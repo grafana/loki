@@ -411,7 +411,7 @@ func (r *Reader) readBloomRows(ctx context.Context, columnNames []string) (arrow
 		return nil, err
 	}
 
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsBloomRowsRead.Observe(collected.NumRows()))
+	xcap.RegionFromContext(ctx).Record(StatPostingsBloomRowsRead.Observe(collected.NumRows()))
 	return collected, nil
 }
 
@@ -776,8 +776,8 @@ func (acc *StreamScan) Finalize(ctx context.Context) *StreamScanResult {
 		}
 	}
 
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(len(matchedRows))))
+	xcap.RegionFromContext(ctx).Record(StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
+	xcap.RegionFromContext(ctx).Record(StatPostingsPointersRead.Observe(int64(len(matchedRows))))
 	return &StreamScanResult{
 		MatchingStreamRefs:       matchingStreams,
 		LabelColumnNames:         labelNames,

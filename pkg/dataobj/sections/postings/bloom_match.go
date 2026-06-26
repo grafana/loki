@@ -41,7 +41,7 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 	defer func() {
 		if bloomDeserializeFailures > 0 {
 			xcap.RegionFromContext(ctx).Record(
-				xcap.StatPostingsBloomDeserializeFailures.Observe(bloomDeserializeFailures),
+				StatPostingsBloomDeserializeFailures.Observe(bloomDeserializeFailures),
 			)
 		}
 	}()

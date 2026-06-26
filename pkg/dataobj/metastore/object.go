@@ -717,7 +717,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp.Indexes = indexEntries
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexEntries)))
-	span.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
+	span.Record(StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
 
 	return resp, nil
 }

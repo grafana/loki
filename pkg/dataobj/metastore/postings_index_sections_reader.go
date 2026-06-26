@@ -176,7 +176,7 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
 	var matchingStreamRefs map[postings.StreamRef]struct{}
@@ -194,7 +194,7 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		res := acc.Finalize(ctx)
 
 		if r.readSpan != nil {
-			r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
+			r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
 		}
 
 		matchingStreamRefs = res.MatchingStreamRefs
@@ -205,7 +205,7 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		r.pointerRows = res.Pointers
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
+	region.Record(StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
 
 	r.filterBloomPredicates(streamLabelNames)
 	r.resolved = true
@@ -238,7 +238,7 @@ func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.R
 	r.pointerOffset = end
 
 	rec := buildPointersRecord(memory.DefaultAllocator, batch)
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
 	r.bloomRowsRead += uint64(rec.NumRows())
 	return rec, nil
 }

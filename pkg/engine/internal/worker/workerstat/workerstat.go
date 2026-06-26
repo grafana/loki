@@ -29,9 +29,10 @@ var (
 	// TaskExecutionReadRecvDuration is the total time (in nanoseconds) spent
 	// inside the per-node receive path that feeds downstream input batches into
 	// non-leaf tasks. It is a sub-phase of [TaskExecutionReadDuration].
-	//
-	// This duplicates [xcap.TaskRecvDuration] (which is a float64 measured in
-	// seconds) at int64-nanosecond resolution so the task summary can render
-	// the value as milliseconds without losing precision.
 	TaskExecutionReadRecvDuration = xcap.NewStatisticInt64("worker.task.execution.read.recv.duration", xcap.AggregationTypeSum)
+
+	TaskRecordsSent          = xcap.NewStatisticInt64("task.records.sent", xcap.AggregationTypeSum)
+	TaskRowsSent             = xcap.NewStatisticInt64("task.rows.sent", xcap.AggregationTypeSum)
+	TaskDrainRecordsReceived = xcap.NewStatisticInt64("task.drain.records.received", xcap.AggregationTypeSum)
+	TaskWireBytes            = xcap.NewStatisticInt64("task.wire.bytes", xcap.AggregationTypeSum)
 )
