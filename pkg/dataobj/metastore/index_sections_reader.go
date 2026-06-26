@@ -31,7 +31,6 @@ import (
 
 type bloomStatsProvider interface {
 	totalReadRows() uint64
-	readFlow() string
 }
 
 // indexSectionsReader combines pointer scanning and bloom filtering into a single reader.
@@ -948,8 +947,4 @@ func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSec
 
 func (r *indexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
-}
-
-func (r *indexSectionsReader) readFlow() string {
-	return flowStreams
 }

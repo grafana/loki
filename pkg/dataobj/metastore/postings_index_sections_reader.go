@@ -365,10 +365,6 @@ func (r *postingsIndexSectionsReader) resolvedSectionCount() int {
 	return len(seen)
 }
 
-func (r *postingsIndexSectionsReader) readFlow() string {
-	return flowPostings
-}
-
 const (
 	streamLabelNamesField        = "__streamLabelNames__"
 	pointerKindStreamIndex int64 = 1
