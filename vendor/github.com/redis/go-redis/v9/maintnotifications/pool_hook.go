@@ -17,6 +17,10 @@ type OperationsManagerInterface interface {
 	UntrackOperationWithConnID(seqID int64, connID uint64)
 }
 
+type maintNotificationsConnTracker interface {
+	UntrackMaintNotificationsConn(connID uint64)
+}
+
 // HandoffRequest represents a request to handoff a connection to a new endpoint
 type HandoffRequest struct {
 	Conn     *pool.Conn
@@ -172,8 +176,10 @@ func (ph *PoolHook) OnPut(ctx context.Context, conn *pool.Conn) (shouldPool bool
 	return true, false, nil
 }
 
-func (ph *PoolHook) OnRemove(_ context.Context, _ *pool.Conn, _ error) {
-	// Not used
+func (ph *PoolHook) OnRemove(_ context.Context, conn *pool.Conn, _ error) {
+	if tracker, ok := ph.operationsManager.(maintNotificationsConnTracker); ok && conn != nil {
+		tracker.UntrackMaintNotificationsConn(conn.GetID())
+	}
 }
 
 // Shutdown gracefully shuts down the processor, waiting for workers to complete

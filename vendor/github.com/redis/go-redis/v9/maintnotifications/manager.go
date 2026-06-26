@@ -82,6 +82,10 @@ type Manager struct {
 	hooksMu      sync.RWMutex // Protects hooks slice
 	poolHooksRef *PoolHook
 
+	// Connections that successfully enabled maintnotifications. These need to be
+	// retired before the pool-level listeners are removed.
+	maintNotificationsConns sync.Map // connID -> *pool.Conn
+
 	// Cluster state reload callback for SMIGRATED notifications
 	clusterStateReloadCallback ClusterStateReloadCallback
 }
@@ -251,12 +255,59 @@ func (hm *Manager) MarkSMigratedSeqIDProcessed(seqID int64) bool {
 	return !alreadyProcessed // Return true if NOT already processed
 }
 
+// TrackMaintNotificationsConn records a connection that successfully enabled
+// maintnotifications so it can be retired if the feature is later disabled for
+// the pool.
+func (hm *Manager) TrackMaintNotificationsConn(cn *pool.Conn) {
+	if cn == nil {
+		return
+	}
+	hm.maintNotificationsConns.Store(cn.GetID(), cn)
+}
+
+// UntrackMaintNotificationsConn removes a connection from the enabled
+// maintnotifications set.
+func (hm *Manager) UntrackMaintNotificationsConn(connID uint64) {
+	hm.maintNotificationsConns.Delete(connID)
+}
+
+func (hm *Manager) maintNotificationsConnSnapshot() []*pool.Conn {
+	var conns []*pool.Conn
+	hm.maintNotificationsConns.Range(func(_, value interface{}) bool {
+		if cn, ok := value.(*pool.Conn); ok {
+			conns = append(conns, cn)
+		}
+		return true
+	})
+	return conns
+}
+
+func (hm *Manager) retireMaintNotificationsConns(ctx context.Context) {
+	conns := hm.maintNotificationsConnSnapshot()
+	if len(conns) == 0 || hm.pool == nil {
+		return
+	}
+
+	if retirer, ok := hm.pool.(pool.ConnRetirer); ok {
+		retirer.RetireConns(ctx, conns, pool.CloseReasonMaintNotificationsDisabled)
+		return
+	}
+
+	for _, cn := range conns {
+		_ = hm.pool.CloseConn(ctx, cn, pool.CloseReasonMaintNotificationsDisabled, pool.MetricStateIdle)
+	}
+}
+
 // Close closes the manager.
 func (hm *Manager) Close() error {
 	// Use atomic operation for thread-safe close check
 	if !hm.closed.CompareAndSwap(false, true) {
 		return nil // Already closed
 	}
+
+	// Retire connections that enabled maintnotifications before removing the
+	// pool-level listeners that process those push notifications.
+	hm.retireMaintNotificationsConns(context.Background())
 
 	// Shutdown the pool hook if it exists
 	if hm.poolHooksRef != nil {

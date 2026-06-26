@@ -75,7 +75,7 @@ bench:
 	export RE_CLUSTER=$(RE_CLUSTER) && \
 	export RCE_DOCKER=$(RCE_DOCKER) && \
 	export REDIS_VERSION=$(REDIS_VERSION) && \
-	go test ./... -test.run=NONE -test.bench=. -test.benchmem -skip Example
+	go test ./... -test.run=NONE -test.bench=. -test.benchmem -skip Example -timeout 11m
 
 test.e2e:
 	@echo "Running E2E tests with auto-start proxy..."
