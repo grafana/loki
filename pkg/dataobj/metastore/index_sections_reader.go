@@ -470,9 +470,6 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 	} else {
 		rec, err = r.readWithBloomFiltering(ctx)
 	}
-	if rec != nil && r.metrics != nil {
-		r.trackResolvedSections(rec)
-	}
 	return rec, err
 }
 
@@ -577,30 +574,10 @@ func (r *indexSectionsReader) Close() {
 	if r.initialized && r.metrics != nil && !r.statsRecorded {
 		r.statsRecorded = true
 		r.metrics.indexReadRowsPerObject.WithLabelValues(flowStreams).Observe(float64(r.totalReadRows()))
-		r.metrics.resolvedSectionsPerObject.WithLabelValues(flowStreams).Observe(float64(len(r.resolvedSections)))
 	}
 
 	if r.readSpan != nil {
 		r.readSpan.End()
-	}
-}
-
-// trackResolvedSections records the distinct (object path, section) tuples present
-// in an emitted record batch, so resolved-sections-per-object can be reported at Close.
-func (r *indexSectionsReader) trackResolvedSections(rec arrow.RecordBatch) {
-	if rec.NumRows() == 0 {
-		return
-	}
-	if r.resolvedSections == nil {
-		r.resolvedSections = make(map[SectionKey]struct{})
-	}
-	buf := make([]pointers.SectionPointer, rec.NumRows())
-	n, err := pointers.FromRecordBatch(rec, buf, pointers.PopulateSectionKey)
-	if err != nil {
-		return
-	}
-	for i := 0; i < n; i++ {
-		r.resolvedSections[SectionKey{ObjectPath: buf[i].Path, SectionIdx: buf[i].Section}] = struct{}{}
 	}
 }
 
