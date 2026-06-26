@@ -67,6 +67,7 @@ func newPostingsIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
+	metrics *ObjectMetastoreMetrics,
 ) *postingsIndexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -88,6 +89,7 @@ func newPostingsIndexSectionsReader(
 		batchSize:  batchSize,
 		start:      start,
 		end:        end,
+		metrics:    metrics,
 	}
 }
 

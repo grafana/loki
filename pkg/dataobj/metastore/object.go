@@ -587,13 +587,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			// this is temporary, the stats will be collected differently in a distributed metastore
 			statsProvider := reader.(bloomStatsProvider)
 			readRows := statsProvider.totalReadRows()
-
-			// Per-object/per-flow metrics (resolved_sections_per_object,
-			// index_read_rows_per_object) are recorded by the reader itself in
-			// Close, so they also populate in the v2 engine path — which resolves
-			// sections via IndexSectionsReader+CollectSections and never calls Sections.
-
-			// Merge the section descriptors for the object into the global section descriptors in one batch
 			sectionsMu.Lock()
 			totalSections.Add(readRows)
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
@@ -656,8 +649,8 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 				req.SectionsRequest.Matchers,
 				req.SectionsRequest.Predicates,
 				req.BatchSize,
+				m.metrics,
 			)
-			reader.metrics = m.metrics
 			return IndexSectionsReaderResponse{Reader: reader}, nil
 		}
 		m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowStreams).Inc()
