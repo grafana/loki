@@ -223,8 +223,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 	table := []test{
 		{
 			src:               &openshiftconfigv1.APIServer{},
-			index:             3,
-			watchesCallsCount: 4,
+			index:             4,
+			watchesCallsCount: 5,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled:          true,
@@ -235,8 +235,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		},
 		{
 			src:               &openshiftconfigv1.Proxy{},
-			index:             3,
-			watchesCallsCount: 4,
+			index:             4,
+			watchesCallsCount: 5,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled:      true,
@@ -248,21 +248,21 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		{
 			src:               &corev1.Service{},
 			index:             0,
-			watchesCallsCount: 3,
+			watchesCallsCount: 4,
 			featureGates:      configv1.FeatureGates{},
-			pred:              createUpdateOrDeletePred,
+			pred:              createOrUpdateOnlyPred,
 		},
 		{
 			src:               &corev1.Secret{},
-			index:             1,
-			watchesCallsCount: 3,
+			index:             2,
+			watchesCallsCount: 4,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},
 		{
 			src:               &corev1.ConfigMap{},
-			index:             2,
-			watchesCallsCount: 3,
+			index:             3,
+			watchesCallsCount: 4,
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},

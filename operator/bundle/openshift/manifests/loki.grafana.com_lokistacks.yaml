@@ -4181,12 +4181,34 @@ spec:
                   type: object
                 type: array
               networkPolicyRuleSet:
-                description: NetworkPolicyRuleSet indicates which NetworkPolicies
-                  ruleset was applied by the operator for this LokiStack.
+                description: |-
+                  NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+
+                  Deprecated: This field is deprecated and will be removed in a future release.
+                  Use NetworkPolicyStatus.RuleSet instead.
                 enum:
                 - None
                 - RestrictIngressEgress
                 type: string
+              networkPolicyStatus:
+                description: NetworkPolicyStatus provides details about the applied
+                  NetworkPolicies configuration
+                properties:
+                  objectStorageAllowedEgressPorts:
+                    description: ObjectStorageAllowedEgressPorts contains the TCP
+                      ports allowed for egress to object storage endpoints.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                  ruleSet:
+                    description: RuleSet indicates which NetworkPolicies ruleset was
+                      applied by the operator for this LokiStack.
+                    enum:
+                    - None
+                    - RestrictIngressEgress
+                    type: string
+                type: object
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred

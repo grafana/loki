@@ -61,6 +61,9 @@ func TestRefreshSuccess(t *testing.T) {
 			CredentialMode: lokiv1.CredentialModeStatic,
 		},
 		NetworkPolicyRuleSet: lokiv1.NetworkPolicyRuleSetNone,
+		NetworkPolicyStatus: lokiv1.LokiStackNetworkPolicyStatus{
+			RuleSet: lokiv1.NetworkPolicyRuleSetNone,
+		},
 		Conditions: []metav1.Condition{
 			{
 				Type:               string(lokiv1.ConditionReady),
@@ -161,4 +164,55 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	condition := updatedStack.Status.Conditions[0]
 	require.Equal(t, conditionDegradedNodeLabels.Reason, condition.Reason)
 	require.Equal(t, conditionDegradedNodeLabels.Type, condition.Type)
+}
+
+func TestRefreshSuccess_NetworkPolicyPorts(t *testing.T) {
+	now := time.Now()
+	stack := &lokiv1.LokiStack{
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXMedium,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	componentPods := map[string]*corev1.PodList{
+		manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, true, corev1.PodRunning),
+		manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, true, corev1.PodRunning),
+		manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, true, corev1.PodRunning),
+		manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, true, corev1.PodRunning),
+		manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, true, corev1.PodRunning),
+		manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, true, corev1.PodRunning),
+		manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, true, corev1.PodRunning),
+		manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, true, corev1.PodRunning),
+	}
+
+	k, sw := setupListClient(t, stack, componentPods)
+
+	statusInfo := &LokiStackStatusInfo{
+		NetworkPolicyObjStorePorts: []int32{443},
+	}
+	err := Refresh(context.Background(), k, req, now, statusInfo)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, k.GetCallCount())
+	require.Equal(t, 8, k.ListCallCount())
+
+	require.Equal(t, 1, sw.UpdateCallCount())
+	_, updated, _ := sw.UpdateArgsForCall(0)
+	updatedStack, ok := updated.(*lokiv1.LokiStack)
+	if !ok {
+		t.Fatalf("not a LokiStack: %T", updatedStack)
+	}
+
+	require.Equal(t, []int32{443}, updatedStack.Status.NetworkPolicyStatus.ObjectStorageAllowedEgressPorts)
 }
