@@ -50,6 +50,14 @@ Before configuring any v14 period, upgrade all components to a version that can
 read the v14 index format. Rolling back after v14 data has been written requires
 stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
+### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
+
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
+
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.

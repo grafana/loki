@@ -23,8 +23,11 @@ func (r *groupByPushdown) apply(root Node) bool {
 	for _, n := range nodes {
 		vecAgg := n.(*VectorAggregation)
 
-		// Can only push down a non-empty by() label set
-		if vecAgg.Grouping.Without || len(vecAgg.Grouping.Columns) == 0 {
+		if vecAgg.Grouping.Without && len(vecAgg.Grouping.Columns) == 0 {
+			// No changes required: Empty without() grouping will aggregation over all possible columns, so it cannot make a child column set stricter.
+			continue
+		} else if vecAgg.Grouping.Without {
+			// TODO: Support pushing down VectorAggregation without(X) groupings
 			continue
 		}
 
@@ -60,8 +63,8 @@ func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression,
 			return false
 		}
 
-		// Cannot push down into without()
 		if node.Grouping.Without && len(node.Grouping.Columns) > 0 {
+			// TODO: Add support for computing the strictest column set in Without(X) cases.
 			return false
 		}
 
@@ -77,6 +80,12 @@ func (r *groupByPushdown) applyToTargets(node Node, grouping []ColumnExpression,
 				node.Grouping.Without = false
 				changed = true
 			}
+		}
+
+		if len(grouping) == 0 {
+			// RangeAggregation with empty without(), meaning all columns, can always be overridden by a stricter column set from the parent.
+			node.Grouping.Without = false
+			changed = true
 		}
 
 		return changed

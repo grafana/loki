@@ -18,14 +18,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           matchers:: {
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                             distributor: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            then [utils.selector.re('job', '($namespace)/(distributor|loki-single-binary)')]
+                            else [utils.selector.re('job', '($namespace)/distributor')],
                             ingester: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
+                            else [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*)')],
                             ingester_zone: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
+                            else [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*)')],
                           },
 
                           local selector(matcherId) =
@@ -71,7 +71,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRow(
-                          $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
+                          $.row('Distributor')
                           .addPanel(
                             $.newQueryPanel('QPS') +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
@@ -98,7 +98,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         )
                         .addRowIf(
                           $._config.tsdb,
-                          $.row((if $._config.ssd.enabled then 'Write Path' else 'Distributor') + ' - Structured Metadata')
+                          $.row('Distributor - Structured Metadata')
                           .addPanel(
                             $.newQueryPanel('Per Total Received Bytes') +
                             $.queryPanel('sum (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'bytes')
@@ -114,8 +114,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             },
                           )
                         )
-                        .addRowIf(
-                          !$._config.ssd.enabled,
+                        .addRow(
                           $.row('Ingester - Zone Aware')
                           .addPanel(
                             $.newQueryPanel('QPS') +
@@ -141,8 +140,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRowIf(
-                          !$._config.ssd.enabled,
+                        .addRow(
                           $.row('Ingester')
                           .addPanel(
                             $.newQueryPanel('QPS') +
@@ -168,8 +166,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRowIf(
-                          !$._config.ssd.enabled,
+                        .addRow(
                           $.row('Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
@@ -213,8 +210,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             )
                           )
                         )
-                        .addRowIf(
-                          !$._config.ssd.enabled,
+                        .addRow(
                           $.row('BoltDB Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +

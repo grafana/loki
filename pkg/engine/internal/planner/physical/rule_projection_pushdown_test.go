@@ -72,6 +72,117 @@ func TestProjectionPushdown(t *testing.T) {
 		require.Equal(t, expected, actual)
 	})
 
+	t.Run("range aggregation empty by() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: false,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.True(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			projected := []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}}
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Projections: projected, // Only Timestamp is required by the RangeAggregation.
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("range aggregation empty without() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: true,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.False(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				// Nothing is projected because the RangeAggregation requires all columns.
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
 	t.Run("filter -> scanset", func(t *testing.T) {
 		filterPredicates := []Expression{
 			&BinaryExpr{
