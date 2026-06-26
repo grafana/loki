@@ -67,11 +67,6 @@ type indexSectionsReader struct {
 	bloomRowsRead            uint64
 	pointerSectionProductive []bool
 
-	// resolvedSections accumulates the distinct (object path, section) tuples
-	// emitted to the consumer, so the reader can report resolved-sections-per-object
-	// without relying on the (merged, in v2) downstream CollectSections.
-	resolvedSections map[SectionKey]struct{}
-
 	// metrics, when non-nil, receives per-object/per-flow observations at Close.
 	// statsRecorded guards against double-recording if Close runs more than once.
 	metrics       *ObjectMetastoreMetrics
@@ -93,6 +88,7 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
+	metrics *ObjectMetastoreMetrics,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -116,6 +112,7 @@ func newIndexSectionsReader(
 		end:                end,
 		matchingStreamIDs:  make(map[int64]struct{}),
 		labelNamesByStream: make(map[int64][]string),
+		metrics:            metrics,
 	}
 }
 
