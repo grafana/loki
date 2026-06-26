@@ -28,8 +28,6 @@ memberlist:
     - "loki-1:7946"
     - "loki-2:7946"
     - "loki-3:7946"
-    - "loki-4:7946"
-    - "loki-5:7946"
   abort_if_cluster_join_fails: false
   cluster_label: loki-ha-monolithic
   cluster_label_verification_disabled: false
@@ -48,13 +46,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-  aws: ## legacy object client
-    endpoint: minio:9000
-    insecure: true
-    bucketnames: loki-chunks
-    access_key_id: loki
-    secret_access_key: supersecret
-    s3forcepathstyle: true
   use_thanos_objstore: true
   object_store: ## thanos storage client
     s3:
