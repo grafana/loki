@@ -31,7 +31,7 @@ groups:
           ),
           "stack_namespace", "$1", "namespace", "(.+)"
         )
-        * on (stack_namespace) group_left(size)
+        * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
       )
   # Ingester memory usage by size (bytes)
@@ -51,7 +51,7 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace) group_left(size)
+        * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
       )
   # Total bytes received by size (bytes/s)
@@ -71,7 +71,7 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace) group_left(size)
+        * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
       )
   # Total bytes discarded by size and reason (bytes/s)
@@ -91,6 +91,6 @@ groups:
           "namespace",
           "(.+)"
         )
-        * on (stack_namespace) group_left(size)
+        * on (stack_namespace, stack_name) group_left(size)
         lokistack_info
       )
