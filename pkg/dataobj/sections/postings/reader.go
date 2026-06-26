@@ -414,7 +414,7 @@ func (r *Reader) readBloomRows(ctx context.Context, columnNames []string) (arrow
 		return nil, err
 	}
 
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsBloomRowsRead.Observe(collected.NumRows()))
+	xcap.RegionFromContext(ctx).Record(StatPostingsBloomRowsRead.Observe(collected.NumRows()))
 	return collected, nil
 }
 
@@ -627,9 +627,13 @@ func matcherMatchesMissingLabel(m *labels.Matcher) bool {
 }
 
 // ScanLabelsInto drains this reader's KindLabel rows in batchSize-row batches into acc.
-func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize int) error {
+// ScanLabelsInto scans this section's KindLabel rows into acc. It returns
+// whether the section was productive (yielded at least one matching stream) so
+// the metastore layer can record the metastore.sections.productive stat without
+// the postings package depending on the metastore package.
+func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize int) (bool, error) {
 	if !r.ready {
-		return errReaderNotOpen
+		return false, errReaderNotOpen
 	}
 	if batchSize <= 0 {
 		batchSize = streamScanBatchSize
@@ -650,7 +654,7 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 		ColumnTypeKind,
 	)
 	if err != nil {
-		return fmt.Errorf("finding ScanLabels columns: %w", err)
+		return false, fmt.Errorf("finding ScanLabels columns: %w", err)
 	}
 	colObjectPath, colSectionIndex, colColumnName, colLabelValue, colStreamIDBitmap, colMinTs, colMaxTs, colKind :=
 		cols[0], cols[1], cols[2], cols[3], cols[4], cols[5], cols[6], cols[7]
@@ -669,9 +673,9 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 
 	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
-		return fmt.Errorf("creating dataset: %w", err)
+		return false, fmt.Errorf("creating dataset: %w", err)
 	} else if len(dset.Columns()) != len(innerColumns) {
-		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
+		return false, fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(innerColumns))
 	}
 
 	columnLookup := map[*Column]dataset.Column{
@@ -693,7 +697,7 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 	}
 	preds, err := mapPredicates([]Predicate{kindEq}, columnLookup)
 	if err != nil {
-		return fmt.Errorf("mapping predicates: %w", err)
+		return false, fmt.Errorf("mapping predicates: %w", err)
 	}
 
 	innerOptions := dataset.RowReaderOptions{
@@ -705,7 +709,7 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 	adapter := columnar.NewReaderAdapter(innerOptions)
 	defer func() { _ = adapter.Close() }()
 	if err := adapter.Open(ctx); err != nil {
-		return fmt.Errorf("opening ScanLabels adapter: %w", err)
+		return false, fmt.Errorf("opening ScanLabels adapter: %w", err)
 	}
 
 	// Inner schema (8 fields) — must match the columnar batch column count/order.
@@ -726,14 +730,14 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 		if colBatch != nil && colBatch.NumRows() > 0 {
 			innerRB, convErr := arrowconv.ToRecordBatch(colBatch, innerSchema)
 			if convErr != nil {
-				return fmt.Errorf("converting ScanLabels columnar batch to arrow: %w", convErr)
+				return false, fmt.Errorf("converting ScanLabels columnar batch to arrow: %w", convErr)
 			}
 			batchProductive, err := accumulateStreamScan(
 				innerRB,
 				acc,
 			)
 			if err != nil {
-				return err
+				return false, err
 			}
 			productive = productive || batchProductive
 		}
@@ -741,15 +745,11 @@ func (r *Reader) ScanLabelsInto(ctx context.Context, acc *StreamScan, batchSize 
 			break
 		}
 		if readErr != nil {
-			return fmt.Errorf("reading ScanLabels batch: %w", readErr)
+			return false, fmt.Errorf("reading ScanLabels batch: %w", readErr)
 		}
 	}
 
-	if productive {
-		xcap.RegionFromContext(ctx).Record(xcap.StatMetastorePointerSectionsProductive.Observe(1))
-	}
-
-	return nil
+	return productive, nil
 }
 
 // Finalize ANDs the per-matcher stream sets and scopes the accumulated pointer
@@ -786,8 +786,8 @@ func (acc *StreamScan) Finalize(ctx context.Context) *StreamScanResult {
 		}
 	}
 
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsPointersRead.Observe(int64(len(matchedRows))))
+	xcap.RegionFromContext(ctx).Record(StatPostingsLabelsResolved.Observe(int64(len(matchingStreams))))
+	xcap.RegionFromContext(ctx).Record(StatPostingsPointersRead.Observe(int64(len(matchedRows))))
 	return &StreamScanResult{
 		MatchingStreamRefs:       matchingStreams,
 		LabelColumnNames:         labelNames,

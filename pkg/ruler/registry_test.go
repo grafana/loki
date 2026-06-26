@@ -3,6 +3,9 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
@@ -14,10 +17,12 @@ import (
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
@@ -28,6 +33,7 @@ import (
 const enabledRWTenant = "enabled"
 const disabledRWTenant = "disabled"
 const additionalHeadersRWTenant = "additional-headers"
+const headersRaceTenant = "headers-race-tenant"
 const noHeadersRWTenant = "no-headers"
 const customRelabelsTenant = "custom-relabels"
 const badRelabelsTenant = "bad-relabels"
@@ -708,6 +714,128 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	// and a user who didn't set any header overrides still gets the X-Scope-OrgId header
 	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], enabledRWTenant)
 	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
+}
+
+func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
+	sharedHeaders := map[string]string{
+		"Additional": "Header",
+	}
+	snapshot := maps.Clone(sharedHeaders)
+
+	limits := fakeLimits{
+		limits: map[string]*validation.Limits{
+			additionalHeadersRWTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerEnableWALReplay:    true,
+			},
+		},
+	}
+
+	reg := setupRegistry(t, backCompatCfg, limits)
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	require.Len(t, tenantCfg.RemoteWrite, 1)
+
+	require.Equal(t, snapshot, sharedHeaders, "getTenantConfig must not mutate the limits override headers map")
+	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", tenantCfg.RemoteWrite[0].Headers),
+		"remote write headers must be a copy of the override map, not the same map instance")
+
+	_, err = reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	require.Equal(t, snapshot, sharedHeaders, "repeated getTenantConfig must not mutate the limits override headers map")
+}
+
+func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
+	sharedHeaders := map[string]string{
+		"Additional": "Header",
+	}
+
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	remoteWriteURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	raceCfg := Config{
+		RemoteWrite: RemoteWriteConfig{
+			AddOrgIDHeader:      true,
+			Enabled:             true,
+			ConfigRefreshPeriod: time.Hour,
+			Clients: map[string]config.RemoteWriteConfig{
+				"default": {
+					URL: &promConfig.URL{URL: remoteWriteURL},
+					QueueConfig: config.QueueConfig{
+						Capacity:          10000,
+						MinShards:         4,
+						MaxShards:         8,
+						MaxSamplesPerSend: 100,
+						BatchSendDeadline: model.Duration(100 * time.Millisecond),
+					},
+				},
+			},
+		},
+	}
+
+	limits := fakeLimits{
+		limits: map[string]*validation.Limits{
+			headersRaceTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerEnableWALReplay:    true,
+			},
+		},
+	}
+
+	reg := setupRegistry(t, raceCfg, limits)
+	reg.configureTenantStorage(headersRaceTenant)
+
+	test.Poll(t, 5*time.Second, true, func() interface{} {
+		return reg.isReady(headersRaceTenant)
+	})
+
+	ctx := user.InjectOrgID(context.Background(), headersRaceTenant)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	for i := range 4 {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := range 500 {
+				select {
+				case <-stop:
+					return
+				default:
+					app := reg.Appender(ctx)
+					_, appendErr := app.Append(
+						0,
+						labels.FromStrings("__name__", "test_metric", "goroutine", fmt.Sprintf("%d", id), "iter", fmt.Sprintf("%d", j)),
+						time.Now().UnixMilli(),
+						float64(j),
+					)
+					if appendErr == nil {
+						_ = app.Commit()
+					}
+				}
+			}
+		}(i)
+	}
+
+	time.Sleep(3 * time.Second)
+	close(stop)
+	wg.Wait()
+
+	require.Positive(t, requests.Load(), "expected remote write requests to exercise header injection")
+
+	// Refresh after writers finish. Concurrent ApplyConfig during active remote-write
+	// shards triggers an unrelated data race in vendored Prometheus SetClient handling.
+	for range 10 {
+		reg.configureTenantStorage(headersRaceTenant)
+	}
 }
 
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {

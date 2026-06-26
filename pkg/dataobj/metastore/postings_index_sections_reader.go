@@ -182,7 +182,7 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
 	var matchingStreamRefs map[postings.StreamRef]struct{}
@@ -193,14 +193,20 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 
 		acc := postings.NewStreamScan(r.matchers, r.start, r.end)
 		for _, reader := range r.postingsReaders {
-			if err := reader.ScanLabelsInto(ctx, acc, r.batchSize); err != nil {
+			productive, err := reader.ScanLabelsInto(ctx, acc, r.batchSize)
+			if err != nil {
 				return fmt.Errorf("scanning postings labels: %w", err)
+			}
+			// Recorded at the metastore layer (rather than inside the postings
+			// reader) so the postings package need not depend on metastore stats.
+			if productive {
+				region.Record(StatMetastorePointerSectionsProductive.Observe(1))
 			}
 		}
 		res := acc.Finalize(ctx)
 
 		if r.readSpan != nil {
-			r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
+			r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(pointerStart).Seconds()))
 		}
 
 		matchingStreamRefs = res.MatchingStreamRefs
@@ -209,10 +215,9 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 		}
 		// Pointer rows come from the same scan; stash them for readPointers.
 		r.pointerRows = res.Pointers
-		r.bloomRowsRead = uint64(len(res.Pointers))
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
+	region.Record(StatMetastoreStreamsRead.Observe(int64(len(matchingStreamRefs))))
 
 	r.filterBloomPredicates(streamLabelNames)
 	r.resolved = true
@@ -245,7 +250,8 @@ func (r *postingsIndexSectionsReader) readPointers(ctx context.Context) (arrow.R
 	r.pointerOffset = end
 
 	rec := buildPointersRecord(memory.DefaultAllocator, batch)
-	r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(rec.NumRows()))
+	r.bloomRowsRead += uint64(rec.NumRows())
 	return rec, nil
 }
 

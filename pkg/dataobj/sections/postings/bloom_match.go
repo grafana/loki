@@ -44,7 +44,7 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 	defer func() {
 		if bloomDeserializeFailures > 0 {
 			xcap.RegionFromContext(ctx).Record(
-				xcap.StatPostingsBloomDeserializeFailures.Observe(bloomDeserializeFailures),
+				StatPostingsBloomDeserializeFailures.Observe(bloomDeserializeFailures),
 			)
 			level.Warn(utillog.WithContext(ctx, utillog.Logger)).Log(
 				"msg", "corrupt bloom filters skipped during postings section matching; affected sections treated as candidates",
