@@ -167,6 +167,7 @@ func (i *KafkaIngester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (i *KafkaIngester) starting(ctx context.Context) error {
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	level.Debug(i.logger).Log("msg", "Starting Kafka ingester")
 	err := i.lifecycler.StartAsync(context.Background())
 	if err != nil {
 		return err
