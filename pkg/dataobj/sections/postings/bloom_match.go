@@ -8,8 +8,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/bits-and-blooms/bloom/v3"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -20,6 +22,7 @@ type Key struct {
 	SectionIndex int64
 }
 
+// MatchSections returns the section keys matching every Equal matcher.
 func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []*labels.Matcher) (map[Key]struct{}, error) {
 	// Filter to MatchEqual matchers only; other types are handled on separate caller paths.
 	equalMatchers := make([]*labels.Matcher, 0, len(matchers))
@@ -42,6 +45,11 @@ func MatchSections(ctx context.Context, batches []arrow.RecordBatch, matchers []
 		if bloomDeserializeFailures > 0 {
 			xcap.RegionFromContext(ctx).Record(
 				StatPostingsBloomDeserializeFailures.Observe(bloomDeserializeFailures),
+			)
+			level.Warn(utillog.WithContext(ctx, utillog.Logger)).Log(
+				"msg", "corrupt bloom filters skipped during postings section matching; affected sections treated as candidates",
+				"deserialize_failures", bloomDeserializeFailures,
+				"predicates", len(equalMatchers),
 			)
 		}
 	}()
