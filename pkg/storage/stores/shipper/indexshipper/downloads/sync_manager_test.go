@@ -13,13 +13,11 @@ import (
 )
 
 // blockingSync is an injectable sync func for syncManager tests. It records the
-// triggers it was called with, counts entries (so a test can wait for an async
-// sync to actually start), and, while gated, blocks until the gate is closed so
-// a sync can be held "in progress".
+// triggers it was called with and, while gated, blocks until the gate is closed
+// so a sync can be held "in progress".
 type blockingSync struct {
 	mu       sync.Mutex
 	triggers []string
-	entered  atomic.Int32
 	gate     chan struct{} // if non-nil, each call blocks until it is closed
 }
 
@@ -29,7 +27,6 @@ func (b *blockingSync) fn(_ context.Context, trigger string) error {
 	gate := b.gate
 	b.mu.Unlock()
 
-	b.entered.Add(1)
 	if gate != nil {
 		<-gate
 	}
@@ -108,20 +105,24 @@ func TestSyncManager_RunPeriodic(t *testing.T) {
 	b := &blockingSync{gate: make(chan struct{})}
 	sm := newTestSyncManager(b.fn)
 
-	// Hold a manual sync in progress (wait until its work has actually started).
+	// Hold a manual sync in progress. TriggerManual returns once it is marked so,
+	// so the in-progress state is visible without polling.
 	require.True(t, sm.TriggerManual(context.Background()))
-	require.Eventually(t, func() bool { return b.entered.Load() == 1 }, time.Second, time.Millisecond)
-
-	// A periodic run must skip (not invoke the work again) while a sync is running.
-	require.NoError(t, sm.RunPeriodic(context.Background()))
-	require.Equal(t, int32(1), b.entered.Load(), "periodic run must skip while a sync is in progress")
 	require.True(t, sm.Status().InProgress)
 
+	// A periodic run must skip while a sync is in progress: it returns nil without
+	// starting a new sync, leaving the in-progress manual sync untouched.
+	require.NoError(t, sm.RunPeriodic(context.Background()))
+	require.True(t, sm.Status().InProgress)
+	require.Equal(t, syncTriggerManual, sm.Status().LastTrigger)
+
+	// Release the manual sync; once idle, a periodic run executes the work.
 	close(b.gate)
 	sm.Wait()
-
-	// When idle, a periodic run executes the work with the periodic trigger.
 	require.NoError(t, sm.RunPeriodic(context.Background()))
+
+	// The work ran exactly twice - the manual sync, then the idle periodic run; the
+	// periodic run that overlapped the manual sync skipped.
 	require.Equal(t, []string{syncTriggerManual, syncTriggerPeriodic}, b.calls())
 	require.Equal(t, syncTriggerPeriodic, sm.Status().LastTrigger)
 }
