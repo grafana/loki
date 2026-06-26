@@ -630,6 +630,9 @@ func unixEpochDay(t int64) int64 {
 	if t >= 0 {
 		return t / ingestedAtDayMilliseconds
 	}
+
+	// Pre-epoch timestamps are not expected for Loki chunks, but we handle them
+	// for the sake of correctness.
 	return (t - ingestedAtDayMilliseconds + 1) / ingestedAtDayMilliseconds
 }
 
