@@ -354,10 +354,14 @@ func (s SortSchema) String() string {
 	return strings.Join(parts, ",")
 }
 
-// Set implements flag.Value.
+// Set implements flag.Value. Each call overwrites any previous value. Input should be a comma separated list of values.
 func (s *SortSchema) Set(v string) error {
-	parts := strings.Split(v, ",")
-	for _, part := range parts {
+	*s = nil
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
 		*s = append(*s, SortKeyFqn(part))
 	}
 	return nil
