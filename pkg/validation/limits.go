@@ -1449,7 +1449,7 @@ func (o *Overrides) SortSchemaLabels(userID string) []string {
 	schema := o.SortSchema(userID)
 	result := make([]string, len(schema))
 	for i, fqn := range schema {
-		result[i] = string(fqn)
+		result[i] = fqn.Name()
 	}
 	return result
 }
