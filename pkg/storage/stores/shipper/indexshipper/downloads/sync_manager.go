@@ -56,12 +56,15 @@ func (s *syncManager) RunPeriodic(ctx context.Context) error {
 	}
 	defer s.runMtx.Unlock()
 
-	return s.run(ctx, syncTriggerPeriodic)
+	return s.run(ctx, syncTriggerPeriodic, nil)
 }
 
 // TriggerManual starts an asynchronous manual sync if none is already in
-// progress, returning true if a new sync was started. The sync runs on ctx so
-// the owner's Stop drains it via Wait.
+// progress, returning true if a new sync was started. It returns only once the
+// sync has been marked in progress, so a Status call right after a true return
+// observes the running sync rather than racing the goroutine's startup
+// (markStarted runs on the spawned goroutine, not the caller's). The sync runs on
+// ctx so the owner's Stop drains it via Wait.
 func (s *syncManager) TriggerManual(ctx context.Context) bool {
 	// Claiming runMtx synchronously here means a concurrent trigger (or the next
 	// periodic tick) immediately sees a sync in progress and backs off. The
@@ -72,14 +75,19 @@ func (s *syncManager) TriggerManual(ctx context.Context) bool {
 	}
 
 	level.Info(s.logger).Log("msg", "manual index sync triggered")
+	// started is closed by run once the sync is marked in progress; waiting on it
+	// before returning makes the in-progress status visible to the caller without
+	// racing the goroutine below (which is where markStarted actually runs).
+	started := make(chan struct{})
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		defer s.runMtx.Unlock()
-		if err := s.run(ctx, syncTriggerManual); err != nil {
+		if err := s.run(ctx, syncTriggerManual, started); err != nil {
 			level.Error(s.logger).Log("msg", "manual index sync failed", "err", err)
 		}
 	}()
+	<-started
 	return true
 }
 
@@ -106,8 +114,14 @@ func (s *syncManager) Wait() {
 
 // run executes one sync pass under runMtx (held by the caller): it marks the sync
 // started, runs the injected work, then (deferred) records the duration and logs.
-func (s *syncManager) run(ctx context.Context, trigger string) error {
+// If started is non-nil it is closed right after the sync is marked in progress,
+// letting an asynchronous caller (TriggerManual) return only once Status reflects
+// the running sync.
+func (s *syncManager) run(ctx context.Context, trigger string, started chan struct{}) error {
 	s.markStarted(trigger)
+	if started != nil {
+		close(started)
+	}
 	defer s.markFinished()
 	return s.sync(ctx, trigger)
 }

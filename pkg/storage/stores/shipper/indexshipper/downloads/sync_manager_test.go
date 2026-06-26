@@ -56,9 +56,10 @@ func TestSyncManager_Status(t *testing.T) {
 	require.Zero(t, st.LastDuration)
 
 	// A manual sync is reported in progress while the injected work blocks.
-	// markStarted runs inside the sync goroutine, so wait for it to take effect.
+	// TriggerManual returns only once the sync has been marked in progress, so the
+	// status reflects it immediately - no polling needed.
 	require.True(t, sm.TriggerManual(context.Background()))
-	require.Eventually(t, func() bool { return sm.Status().InProgress }, time.Second, time.Millisecond)
+	require.True(t, sm.Status().InProgress)
 	require.GreaterOrEqual(t, sm.Status().CurrentDuration, time.Duration(0))
 
 	// Release the work; once finished, status returns to idle with a last duration.
