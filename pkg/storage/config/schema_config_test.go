@@ -627,6 +627,13 @@ func TestPeriodConfigFormatMappings(t *testing.T) {
 			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
 			wantTSDB:    index.FormatV4,
 		},
+		{
+			name:        "v15 defaults to v13 TSDB format",
+			schema:      "v15",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV3,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := PeriodConfig{Schema: tc.schema, RowShards: 16}

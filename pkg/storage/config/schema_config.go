@@ -424,10 +424,10 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	switch {
 	case sver <= 12:
 		return index.FormatV2, nil
-	case sver == 13:
-		return index.FormatV3, nil
-	default:
+	case sver == 14:
 		return index.FormatV4, nil
+	default:
+		return index.FormatV3, nil
 	}
 }
 
