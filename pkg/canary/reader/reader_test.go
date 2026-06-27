@@ -1,7 +1,9 @@
 package reader
 
 import (
+	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -74,6 +76,37 @@ func TestBuildLabelSelector(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, got)
 		})
+	}
+}
+
+func TestNewReaderDisableTail(t *testing.T) {
+	recv := make(chan time.Time, 1)
+	r, err := NewReader(
+		io.Discard,
+		recv,
+		false, nil,
+		"", "", "",
+		"localhost:3100",
+		"", "", "",
+		5*time.Second,
+		"name", "loki-canary",
+		"stream", "stdout",
+		time.Second,
+		"", "",
+		true,
+	)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		r.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Stop() did not complete within timeout")
 	}
 }
 
