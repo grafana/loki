@@ -496,7 +496,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
-	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
+	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if deletion_enabled or retention_enabled is true, then the log entry deletion API endpoints are available.")
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 	f.Float64Var(&l.IndexGatewayMaxCapacity, "index-gateway.max-capacity", 1.0, "Experimental. Defines a fraction (between 0.0 and 1.0) of the total index gateways available for a each tenant. A value of 0.0 has the same effect as 1.0, meaning all available index gateways. This setting only applies to simple mode.")
