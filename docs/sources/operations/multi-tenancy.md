@@ -19,7 +19,9 @@ Multi-tenant mode is set in the configuration with `auth_enabled: true`.
 
 When configured with `auth_enabled: false`, Loki uses a single tenant.
 The `X-Scope-OrgID` header is not required in Loki API requests.
-The single tenant ID will be the string `fake`.
+The single tenant ID defaults to `fake` and can be changed via the `no_auth_tenant` configuration option.
+On a fresh cluster with an empty bucket this is safe to change at any time; on a cluster that has already
+written data, changing the tenant ID requires migrating existing data to the new tenant path (see `cmd/migrate`).
 
 ## Multi-tenant Queries
 
