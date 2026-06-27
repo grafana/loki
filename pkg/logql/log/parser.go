@@ -699,7 +699,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(ParsedLabel, key, "")
+			lbs.Set(ParsedLabel, key, "null")
 		case jsonparser.Object:
 			lbs.Set(ParsedLabel, key, string(data))
 		default:
@@ -713,7 +713,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(ParsedLabel, id, "")
+				lbs.Set(ParsedLabel, id, "null")
 			}
 		}
 	}
