@@ -476,6 +476,107 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "default retention period zero disables retention entirely",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  0,
+				defaults: 0,
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "default retention zero with all stream retentions zero does not scan any tables",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(0)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  0,
+				defaults: 0,
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "default retention zero with positive stream retention uses stream period",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(7 * dayDuration)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-7 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "stream retention zero does not override positive default",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 30 * dayDuration,
+					streamRetention: []validation.StreamRetention{
+						{Period: model.Duration(0)},
+					},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-30 * dayDuration),
+				defaults: now.Add(-30 * dayDuration),
+				byUser:   map[string]model.Time{},
+			},
+		},
+		{
+			name: "per-user retention zero disables retention for user and does not override overall",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 30 * dayDuration,
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 0},
+					"1": {retentionPeriod: 7 * dayDuration},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: now.Add(-30 * dayDuration),
+				byUser: map[string]model.Time{
+					"0": 0,
+					"1": now.Add(-7 * dayDuration),
+				},
+			},
+		},
+		{
+			name: "default zero with some users having positive retention",
+			limit: fakeLimits{
+				defaultLimit: retentionLimit{
+					retentionPeriod: 0,
+				},
+				perTenant: map[string]retentionLimit{
+					"0": {retentionPeriod: 30 * dayDuration},
+					"1": {retentionPeriod: 7 * dayDuration},
+				},
+			},
+			expectedLatestRetentionStartTime: latestRetentionStartTime{
+				overall:  now.Add(-7 * dayDuration),
+				defaults: 0,
+				byUser: map[string]model.Time{
+					"0": now.Add(-30 * dayDuration),
+					"1": now.Add(-7 * dayDuration),
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			latestRetentionStartTime := findLatestRetentionStartTime(now, tc.limit)
@@ -493,6 +594,7 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 			byUser: map[string]model.Time{
 				"user0": now.Add(-72 * time.Hour),
 				"user1": now.Add(-24 * time.Hour),
+				"user2": 0,
 			},
 		},
 	}
@@ -554,6 +656,16 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 				End:   now.Add(-73 * time.Hour),
 			},
 			hasExpiredChunks: true,
+		},
+
+		// user2 has custom retention disabled, so it must not fall back to defaults
+		{
+			name:   "user2 index - disabled retention",
+			userID: "user2",
+			interval: model.Interval{
+				Start: now.Add(-49 * time.Hour),
+				End:   now.Add(-47 * time.Hour),
+			},
 		},
 
 		// user3 not having custom retention so using defaultLatestRetentionStartTime

@@ -242,7 +242,10 @@ func findLatestRetentionStartTime(now model.Time, limits Limits) latestRetention
 	defaultLimits := limits.DefaultLimits()
 	smallestDefaultRetentionPeriod := defaultLimits.RetentionPeriod
 	for _, streamRetention := range defaultLimits.StreamRetention {
-		if streamRetention.Period < smallestDefaultRetentionPeriod {
+		if streamRetention.Period <= 0 {
+			continue
+		}
+		if smallestDefaultRetentionPeriod <= 0 || streamRetention.Period < smallestDefaultRetentionPeriod {
 			smallestDefaultRetentionPeriod = streamRetention.Period
 		}
 	}
@@ -255,21 +258,37 @@ func findLatestRetentionStartTime(now model.Time, limits Limits) latestRetention
 	for userID, limit := range limitsByUserID {
 		smallestRetentionPeriodForUser := limit.RetentionPeriod
 		for _, streamRetention := range limit.StreamRetention {
-			if streamRetention.Period < smallestRetentionPeriodForUser {
+			if streamRetention.Period <= 0 {
+				continue
+			}
+			if smallestRetentionPeriodForUser <= 0 || streamRetention.Period < smallestRetentionPeriodForUser {
 				smallestRetentionPeriodForUser = streamRetention.Period
 			}
 		}
 
-		// update the overallSmallestRetentionPeriod if this user has smaller value
+		if smallestRetentionPeriodForUser <= 0 {
+			smallestRetentionPeriodByUser[userID] = 0
+			continue
+		}
+
+		// update the overallSmallestRetentionPeriod if this user has a smaller positive value
 		smallestRetentionPeriodByUser[userID] = now.Add(time.Duration(-smallestRetentionPeriodForUser))
-		if smallestRetentionPeriodForUser < overallSmallestRetentionPeriod {
+		if overallSmallestRetentionPeriod <= 0 || smallestRetentionPeriodForUser < overallSmallestRetentionPeriod {
 			overallSmallestRetentionPeriod = smallestRetentionPeriodForUser
 		}
 	}
 
+	var defaults, overall model.Time
+	if smallestDefaultRetentionPeriod > 0 {
+		defaults = now.Add(time.Duration(-smallestDefaultRetentionPeriod))
+	}
+	if overallSmallestRetentionPeriod > 0 {
+		overall = now.Add(time.Duration(-overallSmallestRetentionPeriod))
+	}
+
 	return latestRetentionStartTime{
-		defaults: now.Add(time.Duration(-smallestDefaultRetentionPeriod)),
-		overall:  now.Add(time.Duration(-overallSmallestRetentionPeriod)),
+		defaults: defaults,
+		overall:  overall,
 		byUser:   smallestRetentionPeriodByUser,
 	}
 }
