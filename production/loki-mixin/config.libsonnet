@@ -85,5 +85,8 @@
     meta_monitoring: {
       enabled: false,
     },
+
+    //Alert thresholds
+    loki_p99_request_latency_threshold_seconds: 1,
   },
 }
