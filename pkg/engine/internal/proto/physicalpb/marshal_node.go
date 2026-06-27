@@ -123,7 +123,7 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 		return nil, err
 	}
 
-	grouping, err := marshalGrouping(n.Grouping)
+	grouping, err := MarshalGrouping(n.Grouping)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,8 @@ func (n *AggregateRange) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error
 	}, nil
 }
 
-func marshalGrouping(g *Grouping) (physical.Grouping, error) {
+// MarshalGrouping converts a protobuf Grouping into a physical Grouping.
+func MarshalGrouping(g *Grouping) (physical.Grouping, error) {
 	if g == nil {
 		return physical.Grouping{}, fmt.Errorf("empty grouping")
 	}
@@ -176,7 +177,7 @@ func (n *AggregateVector) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 		return nil, err
 	}
 
-	grouping, err := marshalGrouping(n.Grouping)
+	grouping, err := MarshalGrouping(n.Grouping)
 	if err != nil {
 		return nil, err
 	}
