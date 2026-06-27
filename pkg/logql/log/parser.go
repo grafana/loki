@@ -377,6 +377,7 @@ func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 }
 
 func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	line = StripANSI(line)
 	parserHints := lbs.ParserLabelHints()
 	if parserHints.NoLabels() {
 		return line, true
@@ -839,4 +840,13 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 		}
 	}
 	return entry, nil
+}
+
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+
+func StripANSI(b []byte) []byte {
+	if len(b) == 0 || !bytes.Contains(b, []byte{0x1b, '['}) {
+		return b
+	}
+	return ansiRE.ReplaceAll(b, nil)
 }
