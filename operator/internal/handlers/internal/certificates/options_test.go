@@ -44,7 +44,7 @@ func TestGetOptions_ReturnEmpty_WhenCertificatesNotExisting(t *testing.T) {
 	// Require all resource empty as per not existing
 	require.Nil(t, opts.Signer.Secret)
 	require.Nil(t, opts.CABundle)
-	require.Len(t, opts.Certificates, 0)
+	require.Empty(t, opts.Certificates)
 }
 
 func TestGetOptions_ReturnSecrets_WhenCertificatesExisting(t *testing.T) {

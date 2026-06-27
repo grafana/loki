@@ -524,7 +524,7 @@ func TestConfigOptions_RulerAlertManager(t *testing.T) {
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
 
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
@@ -642,7 +642,7 @@ func TestConfigOptions_RulerAlertManager_UserOverride(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
@@ -772,8 +772,8 @@ func TestConfigOptions_RulerOverrides_OCPApplicationTenant(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Overrides)
 		})
 	}
 }
@@ -980,8 +980,8 @@ func TestConfigOptions_RulerOverrides(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOptions, cfg.Overrides)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, cfg.Overrides)
 		})
 	}
 }
@@ -1204,9 +1204,9 @@ func TestConfigOptions_RulerOverrides_OCPUserWorkloadOnlyEnabled(t *testing.T) {
 
 			cfg := ConfigOptions(tc.opts)
 			err := ConfigureOptionsForMode(&cfg, tc.opts)
-			require.Nil(t, err)
-			require.EqualValues(t, tc.wantOverridesOptions, cfg.Overrides)
-			require.EqualValues(t, tc.wantOptions, cfg.Ruler.AlertManager)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOverridesOptions, cfg.Overrides)
+			require.Equal(t, tc.wantOptions, cfg.Ruler.AlertManager)
 		})
 	}
 }
