@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.37.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/apache/cassandra-gocql-driver/v2 v2.0.0
-	github.com/aws/aws-sdk-go-v2 v1.41.12
+	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.23
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.22
 	github.com/baidubce/bce-sdk-go v0.9.262
@@ -185,7 +185,7 @@ require (
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aws/aws-sdk-go v1.55.8 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.29 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.30 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.305.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.82.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/elasticache v1.54.2 // indirect
