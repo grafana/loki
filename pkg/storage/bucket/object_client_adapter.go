@@ -53,12 +53,20 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 
 	hedgedBucket := bucket
 	if hedgingCfg.At != 0 {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		// Build the backend's HTTP transport up-front so hedging wraps a TLS-aware transport
+		// instead of http.DefaultTransport. Without this, setting cfg.S3.HTTP.Transport on the
+		// Thanos client overrides its internal TLS-configured transport. See issue #21854.
+		baseTransport, err := storeCfg.buildBaseTransport(storeType)
+		if err != nil {
+			return nil, fmt.Errorf("create base transport: %w", err)
+		}
+
+		hedgedTransport, err := hedgingCfg.RoundTripperWithRegisterer(baseTransport, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, fmt.Errorf("create hedged transport: %w", err)
 		}
 
-		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
+		if err := storeCfg.configureTransport(storeType, hedgedTransport); err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 

@@ -63,27 +63,40 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		BucketLookupType:   cfg.BucketLookupType,
 		AWSSDKAuth:         cfg.NativeAWSAuthEnabled,
 		PartSize:           cfg.PartSize,
-		HTTPConfig: s3.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-			Transport:             cfg.HTTP.Transport,
-			TLSConfig: exthttp.TLSConfig{
-				CAFile:     cfg.HTTP.TLSConfig.CAPath,
-				CertFile:   cfg.HTTP.TLSConfig.CertPath,
-				KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
-				ServerName: cfg.HTTP.TLSConfig.ServerName,
-			},
-		},
+		HTTPConfig:         newThanosHTTPConfig(cfg),
 		TraceConfig: s3.TraceConfig{
 			Enable: cfg.TraceConfig.Enabled,
 		},
 		STSEndpoint: cfg.STSEndpoint,
 		MaxRetries:  cfg.MaxRetries,
 	}, nil
+}
+
+// newThanosHTTPConfig translates Loki's S3 HTTP config to Thanos's exthttp.HTTPConfig.
+func newThanosHTTPConfig(cfg Config) s3.HTTPConfig {
+	return s3.HTTPConfig{
+		IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+		ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+		InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+		TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+		ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+		MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+		MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
+		Transport:             cfg.HTTP.Transport,
+		TLSConfig: exthttp.TLSConfig{
+			CAFile:     cfg.HTTP.TLSConfig.CAPath,
+			CertFile:   cfg.HTTP.TLSConfig.CertPath,
+			KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
+			ServerName: cfg.HTTP.TLSConfig.ServerName,
+		},
+	}
+}
+
+// NewBaseHTTPTransport builds the HTTP transport (with TLS config) that the Thanos S3
+// client would construct internally, so callers can wrap it (e.g. with hedging) and
+// re-inject it via cfg.HTTP.Transport without losing TLS settings.
+// See issue #21854 for the motivating bug.
+func NewBaseHTTPTransport(cfg Config) (http.RoundTripper, error) {
+	return exthttp.DefaultTransport(newThanosHTTPConfig(cfg))
 }
