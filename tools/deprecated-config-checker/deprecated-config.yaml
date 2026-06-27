@@ -15,6 +15,7 @@
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
 
 ruler:
+  datasource_uid: "Use limits_config.ruler_grafana_datasource_uid instead."
   remote_write:
     client: "Use clients instead."
 
