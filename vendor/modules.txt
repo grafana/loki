@@ -1977,8 +1977,8 @@ github.com/rivo/uniseg
 # github.com/rs/xid v1.6.0
 ## explicit; go 1.16
 github.com/rs/xid
-# github.com/sahilm/fuzzy v0.1.1
-## explicit
+# github.com/sahilm/fuzzy v0.1.3
+## explicit; go 1.24.5
 github.com/sahilm/fuzzy
 # github.com/schollz/progressbar/v3 v3.19.0
 ## explicit; go 1.22
