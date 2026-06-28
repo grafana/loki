@@ -14,7 +14,7 @@ on:
 jobs:
   deploy-pr-preview:
     if: "!github.event.pull_request.head.repo.fork"
-    uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@main
+    uses: grafana/writers-toolkit/.github/workflows/deploy-preview.yml@d6e7c1be7e3f40a59f3e6e409af8320ffba34587 # main
     permissions:
       contents: read # Clone repositories.
       id-token: write # Fetch Vault secrets.
