@@ -72,7 +72,12 @@ func marshalProto(m proto.Message) []byte {
 }
 
 func TestParseRequest(t *testing.T) {
-	var previousBytesReceived, previousStructuredMetadataBytesReceived, previousLinesReceived int
+	// These are process-wide analytics counters that other tests in this package may have already
+	// incremented; capture the current values as the baseline so the per-iteration deltas below are
+	// correct regardless of test execution order.
+	previousBytesReceived := int(bytesReceivedStats.Value()["total"].(int64))
+	previousStructuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64))
+	previousLinesReceived := int(linesReceivedStats.Value()["total"].(int64))
 	for index, test := range []struct {
 		path                            string
 		body                            string

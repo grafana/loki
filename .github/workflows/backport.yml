@@ -1,55 +1,50 @@
 name: Backport PR Creator
+run-name: "Backport for ${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})"
+
 on:
   pull_request:
     types:
       - closed
       - labeled
 
-permissions:
-  contents: read
-
 jobs:
   main:
     # We don't run the backporting for PRs from forks because those can't access "loki-github-bot" secrets in vault.
     # We don't use GitHub actions app (secrets.GITHUB_TOKEN) because PRs created by the bot don't trigger CI.
     # Also only run if the PR is merged, as an extra safe-guard.
-    if: ${{ ! github.event.pull_request.head.repo.fork && github.event.pull_request.merged == true }}
-
-    runs-on: ubuntu-x64
+    # On 'labeled' events, require that the label just added is itself a backport label, otherwise
+    # adding an unrelated label to an already-backported PR would re-trigger the job with the wrong label.
+    if: |
+      !github.event.pull_request.head.repo.fork &&
+      github.event.pull_request.merged == true &&
+      (
+        (github.event.action == 'labeled' && startsWith(github.event.label.name, 'backport ')) ||
+        (github.event.action == 'closed' && contains(join(github.event.pull_request.labels.*.name, ','), 'backport '))
+      )
     permissions:
-      contents: "read"
-      id-token: "write"
-      pull-requests: "write"
+      contents: read
+      id-token: write
+    runs-on: ubuntu-x64
     steps:
-      - name: Checkout Actions
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: grafana/grafana-github-actions
-          persist-credentials: false
-          path: ./actions
-          ref: 3c62d35c5a66e730186a338e45aeb8fa784e2d56
-
-      - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "22"
-
-      - name: Install Actions
-        working-directory: ./actions
-        run: |
-          corepack enable
-          yarn install --immutable
-
-      - name: Generate GitHub App Token
+      - name: Get GitHub App token
         id: app-token
         uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: loki-gh-app
 
+      - name: Checkout loki
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 2
+          persist-credentials: false
+
       - name: Run backport
-        uses: ./actions/backport
+        uses: grafana/grafana-github-actions-go/backport@d484b937d035459a2645f7cd6b1c68cdd40fb291
         with:
           token: ${{ steps.app-token.outputs.token }}
-          labelsToAdd: "backport"
-          title: "{{originalTitle}} (backport {{base}})"
-          removeDefaultReviewers: false
+          pr_title_template: "{{title}} [{{branch}}]"
+          pr_label: ${{ github.event.action == 'labeled' && github.event.label.name || '' }}
+          pr_number: ${{ github.event.pull_request.number }}
+          repo_owner: ${{ github.repository_owner }}
+          repo_name: ${{ github.event.repository.name }}

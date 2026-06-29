@@ -24,7 +24,28 @@ import (
 // multiple logs sections. It requires that the input sections are sorted
 // according to sort.
 func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, logs.CompareForSortOrder(sort))
+}
+
+// IteratorForSchema returns an iterator that performs a k-way merge of records
+// from multiple schema-sorted logs sections. The input sections must be sorted
+// by [schema sort key ASC, streamID ASC, timestamp DESC].
+//
+// It expects sortKeys to contain a mapping from StreamID to schema sort key.
+func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, logs.CompareForSortSchema(sortKeys))
+}
+
+func iterator(
+	ctx context.Context,
+	sections []*dataobj.Section,
+	less func(result.Result[dataset.Row], result.Result[dataset.Row]) bool,
+) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
+
+	// The buffer size is a trade-off between memory overhead and performance: Share a sensible batch size amongst the sections.
+	bufferSize := max(128, 8192/max(1, len(sections)))
+
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
 		if err != nil {
@@ -52,7 +73,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 
 		sequences = append(sequences, &sectionSequence{
 			section:         sec,
-			DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
+			DatasetSequence: logs.NewDatasetSequence(r, bufferSize),
 		})
 	}
 
@@ -64,7 +85,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, logs.CompareForSortOrder(sort), sectionSequenceClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, less, sectionSequenceClose)
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {

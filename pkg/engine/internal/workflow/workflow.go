@@ -344,9 +344,6 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 	_, span := tracer.Start(ctx, "wf.taskAdmission")
 	defer span.End()
 
-	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatTaskCount.Observe(int64(len(tasks))))
-
 	groups := wf.admissionControl.groupByType(tasks)
 	// taskTypeCompaction is appended last because the loop is sequential
 	// (each lane is fully drained before the next): a populated Compaction
@@ -368,12 +365,9 @@ func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
 		for ; offset < total; offset += batchSize {
 			batchSize = int64(1)
 
-			start := time.Now()
 			if err := lane.Acquire(ctx, batchSize); err != nil {
 				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
 			}
-
-			region.Record(xcap.StatTaskAdmissionWaitDuration.Observe(time.Since(start).Seconds()))
 
 			batch := tasks[offset : offset+batchSize]
 			if err := wf.runner.Start(ctx, batch...); err != nil {

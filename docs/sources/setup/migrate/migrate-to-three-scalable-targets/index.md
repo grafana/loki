@@ -4,7 +4,7 @@ menuTitle: Migrate to three targets
 description: Migration guide for moving from two scalable to three scalable targets
 aliases:
   - ../../installation/helm/migrate-to-three-scalable-targets/
-weight: 700
+weight: 600
 keywords:
   - migrate
   - ssd
@@ -13,6 +13,10 @@ keywords:
 ---
 
 # Migrate to three scalable targets
+
+{{< admonition type="caution" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
+{{< /admonition >}}
 
 This guide will walk you through migrating from the old, two target, scalable configuration to the new, three target, scalable configuration. This new configuration introduces a `backend` component, and reduces the `read` component to running just a `Querier` and `QueryFrontend`, allowing it to be run as a kubernetes `Deployment` rather than a `StatefulSet`.
 

@@ -7,8 +7,8 @@ env:
   DRY_RUN: false
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
-  IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
+  IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+  RELEASE_LIB_REF: "00f0ddb8d0d0b5e53ee1bf87a6d8a2e007e6e501"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-minor"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
+    uses: "grafana/loki-release/.github/workflows/check.yml@00f0ddb8d0d0b5e53ee1bf87a6d8a2e007e6e501"
     with:
       build_image: "golang:1.26.4"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "1e32d81ad6fbbd8c271e0bf79ce84c3e65efb0d3"
+      release_lib_ref: "00f0ddb8d0d0b5e53ee1bf87a6d8a2e007e6e501"
       skip_validation: false
   create-release-pr:
     needs:
@@ -208,6 +208,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -283,6 +285,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -358,6 +362,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -439,6 +445,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -514,6 +522,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -595,6 +605,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -676,6 +688,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -757,6 +771,8 @@ jobs:
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "parse image platform"
       run: |
@@ -852,6 +868,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |
@@ -933,6 +951,8 @@ jobs:
       run: "corepack enable"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to DockerHub"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - id: "platform"
       name: "Parse image platform"
       run: |

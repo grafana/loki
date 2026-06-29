@@ -129,6 +129,10 @@ func (e expressionEvaluator) lookupColumnExpr(colExpr *physical.ColumnExpr, inpu
 			if err != nil {
 				return nil, false, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 			}
+			// An ambigous column can be eigher label, metadata, or parsed.
+			if ident.ColumnType() == types.ColumnTypeGenerated || ident.ColumnType() == types.ColumnTypeBuiltin {
+				continue
+			}
 			if ident.ShortName() != colIdent.ShortName() {
 				continue
 			}

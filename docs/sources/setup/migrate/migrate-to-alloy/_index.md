@@ -2,6 +2,9 @@
 title: Migrate to Alloy
 description: Provides links to documentation to migrate to Grafana Alloy.
 weight: 100
+keywords:
+  - migrate
+  - alloy
 ---
 
 # Migrate to Alloy
