@@ -1,0 +1,15 @@
+# govulncheck ignore list
+#
+# Each non-comment line suppresses one Go vulnerability ID from failing the
+# govulncheck CI gate (.github/workflows/govulncheck.yml). The gate still fails
+# on every other reachable vulnerability.
+#
+# Only add an entry after confirming the finding is NOT exploitable in Loki,
+# and document why and when to revisit. A reviewed, reachable vulnerability
+# must be FIXED, not ignored — keep this list short. Entries that no longer
+# match any finding are surfaced as CI warnings so the list can be pruned.
+#
+# Format:
+#   GO-XXXX-NNNN   # justification — owner, date, revisit condition
+
+GO-2026-5662   # Prometheus web-UI stored XSS (CVE-2026-40179). UNREVIEWED report with imprecise pseudo-version mapping; the fix (escapeHTML, prometheus#18506, on main since 2026-04-04) is already present in the pinned prometheus commit (dated 2026-06-12). The vulnerable code is the TypeScript/React web UI, which Loki neither builds nor ships — all reported traces (annotations/zeropool/almost) are false positives. Added 2026-06-29 (sandeep). Revisit when the Go vuln DB records a fixed pseudo-version for the prometheus v0.312/main line.

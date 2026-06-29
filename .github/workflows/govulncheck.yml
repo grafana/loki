@@ -43,5 +43,11 @@ jobs:
       - name: Run govulncheck
         # Symbol-aware reachability so the large vendored tree doesn't
         # drown the signal; we only get fired for vulns actually reachable
-        # from a main package.
-        run: govulncheck -mode=source -show=verbose ./...
+        # from a main package. -format=json always exits 0, so the gate below
+        # parses the output and decides pass/fail against the ignore list.
+        run: govulncheck -format=json -mode=source ./... > govulncheck.json
+      - name: Gate results against ignore list
+        # Fails on any reachable vulnerability whose ID is not in
+        # .govulncheck-ignore.txt (each ignored ID requires a documented
+        # justification). Suppressed and stale entries are reported.
+        run: bash .github/workflows/scripts/govulncheck-filter.sh govulncheck.json .govulncheck-ignore.txt
