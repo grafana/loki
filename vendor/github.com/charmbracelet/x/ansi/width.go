@@ -87,7 +87,7 @@ func stringWidth(m Method, s string) int {
 
 	for i := 0; i < len(s); i++ {
 		state, action := parser.Table.Transition(pstate, s[i])
-		if state == parser.Utf8State {
+		if action == parser.PrintAction || state == parser.Utf8State {
 			cluster, w := FirstGraphemeCluster(s[i:], m)
 			width += w
 

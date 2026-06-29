@@ -893,7 +893,7 @@ thatColor := lightDark(lipgloss.Color("#37CD96"), lipgloss.Color("#22C78A"))
 a := lipgloss.NewStyle().Foreground(thisColor).Render("this")
 b := lipgloss.NewStyle().Foreground(thatColor).Render("that")
 
-// Render the appriate colors at runtime:
+// Render the appropriate colors at runtime:
 lipgloss.Fprintf(os.Stderr, "my fave colors are %s and %s", a, b)
 ```
 
