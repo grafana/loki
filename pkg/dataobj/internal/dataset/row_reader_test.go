@@ -479,7 +479,6 @@ func Test_BuildPredicateRanges(t *testing.T) {
 // buildMemDatasetWithStats creates a test dataset with only column and page stats.
 func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 	t.Helper()
-
 	dset := FromMemory([]*MemColumn{
 		{
 			Desc: ColumnDesc{
@@ -488,24 +487,20 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
-				{
-					Desc: PageDesc{
-						RowCount: 300, // 0 - 299
-						Stats: &datasetmd.Statistics{
-							MinValue: encodeInt64Value(t, 1),
-							MaxValue: encodeInt64Value(t, 2),
-						},
+				{PageDesc{
+					RowCount: 300, // 0 - 299
+					Stats: &datasetmd.Statistics{
+						MinValue: encodeInt64Value(t, 1),
+						MaxValue: encodeInt64Value(t, 2),
 					},
-				},
-				{
-					Desc: PageDesc{
-						RowCount: 700, // 300 - 999
-						Stats: &datasetmd.Statistics{
-							MinValue: encodeInt64Value(t, 2),
-							MaxValue: encodeInt64Value(t, 2),
-						},
+				}, &NonReleasableData{[]byte{}}},
+				{PageDesc{
+					RowCount: 700, // 300 - 999
+					Stats: &datasetmd.Statistics{
+						MinValue: encodeInt64Value(t, 2),
+						MaxValue: encodeInt64Value(t, 2),
 					},
-				},
+				}, &NonReleasableData{[]byte{}}},
 			},
 		},
 		{
@@ -515,33 +510,27 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
-				{
-					Desc: PageDesc{
-						RowCount: 250, // 0 - 249
-						Stats: &datasetmd.Statistics{
-							MinValue: encodeInt64Value(t, 0),
-							MaxValue: encodeInt64Value(t, 100),
-						},
+				{PageDesc{
+					RowCount: 250, // 0 - 249
+					Stats: &datasetmd.Statistics{
+						MinValue: encodeInt64Value(t, 0),
+						MaxValue: encodeInt64Value(t, 100),
 					},
-				},
-				{
-					Desc: PageDesc{
-						RowCount: 500, // 249 - 749
-						Stats: &datasetmd.Statistics{
-							MinValue: encodeInt64Value(t, 200),
-							MaxValue: encodeInt64Value(t, 500),
-						},
+				}, &NonReleasableData{[]byte{}}},
+				{PageDesc{
+					RowCount: 500, // 249 - 749
+					Stats: &datasetmd.Statistics{
+						MinValue: encodeInt64Value(t, 200),
+						MaxValue: encodeInt64Value(t, 500),
 					},
-				},
-				{
-					Desc: PageDesc{
-						RowCount: 250, // 750 - 999
-						Stats: &datasetmd.Statistics{
-							MinValue: encodeInt64Value(t, 800),
-							MaxValue: encodeInt64Value(t, 1000),
-						},
+				}, &NonReleasableData{[]byte{}}},
+				{PageDesc{
+					RowCount: 250, // 750 - 999
+					Stats: &datasetmd.Statistics{
+						MinValue: encodeInt64Value(t, 800),
+						MaxValue: encodeInt64Value(t, 1000),
 					},
-				},
+				}, &NonReleasableData{[]byte{}}},
 			},
 		},
 	})

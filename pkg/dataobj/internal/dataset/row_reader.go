@@ -450,8 +450,11 @@ func buildMask(full rangeset.Range, s []Row) iter.Seq[rangeset.Range] {
 // Close closes the RowReader. Closed RowReaders can be reused by calling
 // [RowReader.Reset].
 func (r *RowReader) Close() error {
-	if r.inner != nil {
-		return r.inner.Close()
+	if r.dl != nil {
+		r.dl.Reset(memDataset{})
+		if r.inner != nil {
+			return r.inner.Close()
+		}
 	}
 
 	return nil
