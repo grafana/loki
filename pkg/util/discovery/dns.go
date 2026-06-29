@@ -81,6 +81,11 @@ func (d *dns) runDiscovery() {
 		level.Error(d.logger).Log("msg", "failed to resolve server addresses", "err", err, "dan", "dan")
 	} else {
 		after := "[" + strings.Join(d.dnsProvider.Addresses(), ",") + "]"
-		level.Info(d.logger).Log("msg", "resolved server addresses", "before", before, "after", after, "dan", "dan")
+		if before != after {
+			level.Info(d.logger).Log("msg", "resolved server addresses", "before", before, "after", after, "dan", "dan")
+		} else {
+			level.Info(d.logger).Log("msg", "no change to server addresses", "dan", "dan")
+		}
+
 	}
 }

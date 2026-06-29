@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -415,7 +416,8 @@ func (s *GatewayClient) poolDo(
 	errCount := 0
 	var lastErr error
 	for _, addr := range addrs {
-		level.Info(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID, "selectedFrom", addrs, "dan", "dan")
+		addressesString := "[" + strings.Join(addrs, ",") + "]"
+		level.Info(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID, "selectedFrom", addressesString, "dan", "dan")
 
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
