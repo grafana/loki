@@ -286,19 +286,19 @@ func batch(n int, now time.Time) arrow.RecordBatch {
 }
 
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
-	// Test precedence between generated, metadata, and label columns
+	// Test precedence between parsed, metadata, and label columns
 	fields := []arrow.Field{
 		semconv.FieldFromFQN("utf8.label.test", true),
 		semconv.FieldFromFQN("utf8.metadata.test", true),
-		semconv.FieldFromFQN("utf8.generated.test", true),
+		semconv.FieldFromFQN("utf8.parsed.test", true),
 	}
 
 	// CSV data where:
-	// Row 0: All columns have values - should pick generated (highest precedence)
-	// Row 1: Generated is null, others have values - should pick metadata
-	// Row 2: Generated and metadata are null - should pick label
+	// Row 0: All columns have values - should pick parsed (highest precedence)
+	// Row 1: Parsed is null, others have values - should pick metadata
+	// Row 2: Parsed and metadata are null - should pick label
 	// Row 3: All are null - should return null
-	data := `label_0,metadata_0,generated_0
+	data := `label_0,metadata_0,parsed_0
 label_1,metadata_1,null
 label_2,null,null
 null,null,null`
@@ -322,10 +322,10 @@ null,null,null`
 
 		// Test per-row precedence resolution
 		col := colVec.(*array.String)
-		require.Equal(t, "generated_0", col.Value(0)) // Generated has highest precedence
-		require.Equal(t, "metadata_1", col.Value(1))  // Generated is null, metadata has next precedence
-		require.Equal(t, "label_2", col.Value(2))     // Generated and metadata are null, label has next precedence
-		require.True(t, col.IsNull(3))                // All are null
+		require.Equal(t, "parsed_0", col.Value(0))   // Parsed has highest precedence
+		require.Equal(t, "metadata_1", col.Value(1)) // Parsed is null, metadata has next precedence
+		require.Equal(t, "label_2", col.Value(2))    // Parsed and metadata are null, label has next precedence
+		require.True(t, col.IsNull(3))               // All are null
 	})
 
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {

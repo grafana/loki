@@ -341,7 +341,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 			SectionStripeMergeLimit: 2,
 		},
 		DataobjSortOrder: "timestamp-desc",
-	}, nil, logsobj.NewBuilderMetrics())
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	for _, stream := range streams {
