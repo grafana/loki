@@ -1,3 +1,7 @@
+# v1.104.0 (2026-06-16)
+
+* **Feature**: Added support for annotations. You can now attach up to 1000 annotations (up to 1 MB each) directly to objects and create, retrieve, list, and delete them using new annotation APIs. Also added support for configuring an annotation table in S3 Metadata.
+
 # v1.103.3 (2026-06-08)
 
 * **Dependency Update**: Updated to the latest SDK module versions
