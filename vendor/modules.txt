@@ -1680,8 +1680,8 @@ github.com/xhit/go-str2duration/v2
 # github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 ## explicit; go 1.19
 github.com/xo/terminfo
-# github.com/yuin/gopher-lua v1.1.1
-## explicit; go 1.17
+# github.com/yuin/gopher-lua v1.1.2
+## explicit; go 1.23
 github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
