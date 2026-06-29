@@ -897,6 +897,12 @@ func (t *Loki) setupModuleManager() error {
 		deps[Server] = append(deps[Server], IngesterGRPCInterceptors)
 	}
 
+	// Ensure index gateway interceptors are registered before the server reads
+	// cfg.GRPCMiddleware to build its gRPC chain.
+	if t.Cfg.isTarget(IndexGateway) {
+		deps[Server] = append(deps[Server], IndexGatewayInterceptors)
+	}
+
 	if t.Cfg.InternalServer.Enable {
 		for key, ds := range deps {
 			idx := -1
