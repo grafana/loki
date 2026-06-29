@@ -93,7 +93,7 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		infoLabels := append(labels,
 			string(stack.Spec.Storage.Secret.Type),
-			storageCredentialsMode(&stack),
+			string(stack.Status.Storage.CredentialMode),
 			currentSchemaVersion(&stack),
 			tenancyMode(&stack),
 		)
@@ -159,16 +159,9 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 	}
 }
 
-func storageCredentialsMode(stack *lokiv1.LokiStack) string {
-	if stack.Spec.Storage.Secret.CredentialMode != "" {
-		return string(stack.Spec.Storage.Secret.CredentialMode)
-	}
-	return string(lokiv1.CredentialModeStatic)
-}
-
 func currentSchemaVersion(stack *lokiv1.LokiStack) string {
 	if len(stack.Status.Storage.Schemas) == 0 {
-		return string(lokiv1.ObjectStorageSchemaV11)
+		return ""
 	}
 
 	return string(stack.Status.Storage.Schemas[len(stack.Status.Storage.Schemas)-1].Version)
@@ -216,8 +209,9 @@ func componentReplicas(stack *lokiv1.LokiStack, defaults *lokiv1.LokiStackSpec) 
 }
 
 func tenancyMode(stack *lokiv1.LokiStack) string {
-	if stack.Spec.Tenants == nil || stack.Spec.Tenants.Mode == "" {
-		return "static"
+	if stack.Spec.Tenants == nil {
+		return ""
 	}
+
 	return string(stack.Spec.Tenants.Mode)
 }

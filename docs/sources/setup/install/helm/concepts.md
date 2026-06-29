@@ -25,7 +25,7 @@ The Loki chart supports three methods of deployment:
 By default, the chart installs in [Simple Scalable](../install-scalable/) mode. For the best possible experience in production, we now recommend deploying Loki in *microservices* mode. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
 
 {{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0.
 {{< /admonition >}}
 
 ## Zone-aware replication

@@ -33,6 +33,35 @@ var (
 	// again, so this is a true "transferred from storage" figure.
 	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
 
+	// Dataset column statistics.
+	StatDatasetPrimaryColumns       = xcap.NewStatisticInt64("primary.columns", xcap.AggregationTypeSum)
+	StatDatasetSecondaryColumns     = xcap.NewStatisticInt64("secondary.columns", xcap.AggregationTypeSum)
+	StatDatasetPrimaryColumnPages   = xcap.NewStatisticInt64("primary.column.pages", xcap.AggregationTypeSum)
+	StatDatasetSecondaryColumnPages = xcap.NewStatisticInt64("secondary.column.pages", xcap.AggregationTypeSum)
+
+	// Dataset row statistics.
+	StatDatasetMaxRows           = xcap.NewStatisticInt64("rows.max", xcap.AggregationTypeSum)
+	StatDatasetRowsAfterPruning  = xcap.NewStatisticInt64("rows.after.pruning", xcap.AggregationTypeSum)
+	StatDatasetPrimaryRowsRead   = xcap.NewStatisticInt64("primary.rows.read", xcap.AggregationTypeSum)
+	StatDatasetSecondaryRowsRead = xcap.NewStatisticInt64("secondary.rows.read", xcap.AggregationTypeSum)
+	StatDatasetPrimaryRowBytes   = xcap.NewStatisticInt64("primary.row.read.bytes", xcap.AggregationTypeSum)
+	StatDatasetSecondaryRowBytes = xcap.NewStatisticInt64("secondary.row.read.bytes", xcap.AggregationTypeSum)
+
+	// Dataset page scan statistics.
+	StatDatasetPagesScanned     = xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+	StatDatasetPageDownloadTime = xcap.NewStatisticFloat64("pages.download.duration", xcap.AggregationTypeSum)
+
+	// Dataset page download byte statistics.
+	StatDatasetPrimaryPagesDownloaded           = xcap.NewStatisticInt64("primary.pages.downloaded", xcap.AggregationTypeSum)
+	StatDatasetSecondaryPagesDownloaded         = xcap.NewStatisticInt64("secondary.pages.downloaded", xcap.AggregationTypeSum)
+	StatDatasetPrimaryColumnBytes               = xcap.NewStatisticInt64("primary.pages.compressed.bytes", xcap.AggregationTypeSum)
+	StatDatasetSecondaryColumnBytes             = xcap.NewStatisticInt64("secondary.pages.compressed.bytes", xcap.AggregationTypeSum)
+	StatDatasetPrimaryColumnUncompressedBytes   = xcap.NewStatisticInt64("primary.column.uncompressed.bytes", xcap.AggregationTypeSum)
+	StatDatasetSecondaryColumnUncompressedBytes = xcap.NewStatisticInt64("secondary.column.uncompressed.bytes", xcap.AggregationTypeSum)
+
+	// Dataset read operation statistics.
+	StatDatasetReadCalls = xcap.NewStatisticInt64("dataset.read.calls", xcap.AggregationTypeSum)
+
 	// -- Following stats are added to understand how data locality affects a query --
 	//
 	// A row is considered relevant to the query if it matches the stream selector.
@@ -55,4 +84,16 @@ var (
 	// stream-ID pages. A single run means all relevant pages are back-to-back;
 	// a count equal to relevant pages means every relevant page is isolated.
 	StatStreamPageRuns = xcap.NewStatisticInt64("dataobj.stream.pages.runs", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNamePagesTotal is the total number of pages in the
+	// postings column-name column.
+	StatPostingsColumnNamePagesTotal = xcap.NewStatisticInt64("postings.column_name.pages.total", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNameRelevantPages is the number of postings column-name
+	// pages whose min/max range overlaps queried label names.
+	StatPostingsColumnNameRelevantPages = xcap.NewStatisticInt64("postings.column_name.pages.relevant", xcap.AggregationTypeSum)
+
+	// StatPostingsColumnNamePageRuns is the number of contiguous runs of
+	// relevant postings column-name pages.
+	StatPostingsColumnNamePageRuns = xcap.NewStatisticInt64("postings.column_name.pages.runs", xcap.AggregationTypeSum)
 )

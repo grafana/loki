@@ -27,6 +27,8 @@ jobs:
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -92,6 +94,8 @@ jobs:
   list-integration-tests:
     name: List integration tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       tests: ${{ steps.list_tests.outputs.tests }}
     steps:
@@ -114,6 +118,8 @@ jobs:
     name: Integration Test
     needs: list-integration-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: needs.list-integration-tests.outputs.tests != '[]'
     strategy:
       matrix:

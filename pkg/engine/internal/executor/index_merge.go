@@ -349,7 +349,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		readers,
 		heapVal[stats.Stat]{isMax: true},
 		heapAt[stats.Stat],
-		heapLess(compareStatsRow),
+		heapLess(stats.Compare),
 		closeSeq[stats.Stat])
 	defer tree.Close()
 
@@ -361,14 +361,14 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 		row := tree.Winner().At()
 
-		// The comparator includes (ObjectPath, SectionIndex) as final
+		// stats.Compare includes (ObjectPath, SectionIndex) as final
 		// tiebreakers, so an equal-key collision here means two source indexes
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
 		// keep the first row, drop the later duplicate, warn, and observe an
 		// xcap statistic.
-		if last != nil && compareStatsRow(*last, row) == 0 {
+		if last != nil && stats.Compare(*last, row) == 0 {
 			if region := xcap.RegionFromContext(ctx); region != nil {
 				region.Record(statIndexMergeDuplicateStats.Observe(1))
 			}

@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -53,10 +54,11 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	bucket      objstore.Bucket
-	parallelism int
-	logger      log.Logger
-	metrics     *ObjectMetastoreMetrics
+	readPostingsSections bool
+	bucket               objstore.Bucket
+	parallelism          int
+	logger               log.Logger
+	metrics              *ObjectMetastoreMetrics
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -163,10 +165,11 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	b = bucket.NewXCapBucket(b)
 
 	store := &ObjectMetastore{
-		bucket:      b,
-		parallelism: 64,
-		logger:      logger,
-		metrics:     metrics,
+		readPostingsSections: cfg.ReadPostingsSections,
+		bucket:               b,
+		parallelism:          64,
+		logger:               logger,
+		metrics:              metrics,
 	}
 
 	return store
@@ -581,13 +584,11 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 				return fmt.Errorf("collect sections: %w", err)
 			}
 
-			// Merge the section descriptors for the object into the global section descriptors in one batch
-			sectionsMu.Lock()
-
 			// this is temporary, the stats will be collected differently in a distributed metastore
 			statsProvider := reader.(bloomStatsProvider)
-			totalSections.Add(statsProvider.totalReadRows())
-
+			readRows := statsProvider.totalReadRows()
+			sectionsMu.Lock()
+			totalSections.Add(readRows)
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
 
@@ -631,6 +632,30 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
+	if m.readPostingsSections {
+		hasPostings, err := hasPostingsSection(ctx, idxObj)
+		if err != nil {
+			level.Error(utillog.WithContext(ctx, m.logger)).Log("msg", "failed to check for postings section", "path", req.IndexPath, "err", err)
+			return IndexSectionsReaderResponse{}, err
+		}
+		// Index objects written before postings still read from streams sections
+		if hasPostings {
+			m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowPostings).Inc()
+			reader := newPostingsIndexSectionsReader(
+				m.logger,
+				idxObj,
+				req.SectionsRequest.Start,
+				req.SectionsRequest.End,
+				req.SectionsRequest.Matchers,
+				req.SectionsRequest.Predicates,
+				req.BatchSize,
+				m.metrics,
+			)
+			return IndexSectionsReaderResponse{Reader: reader}, nil
+		}
+		m.metrics.postingsReaderSelectedTotal.WithLabelValues(flowStreams).Inc()
+	}
+
 	reader := newIndexSectionsReader(
 		m.logger,
 		idxObj,
@@ -639,9 +664,30 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Matchers,
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
+		m.metrics,
 	)
-
 	return IndexSectionsReaderResponse{Reader: reader}, nil
+}
+
+// Read path flow labels for per-flow metric attribution.
+const (
+	flowPostings = "postings"
+	flowStreams  = "streams"
+)
+
+// hasPostingsSection reports whether obj contains a postings section for the tenant
+func hasPostingsSection(ctx context.Context, obj *dataobj.Object) (bool, error) {
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return false, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	for _, section := range obj.Sections() {
+		if section.Tenant == tenant && postings.CheckSection(section) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
@@ -678,7 +724,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp.Indexes = indexEntries
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexEntries)))
-	span.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
+	span.Record(StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
 
 	return resp, nil
 }

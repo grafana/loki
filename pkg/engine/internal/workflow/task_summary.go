@@ -8,6 +8,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
@@ -36,10 +38,10 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		durExecutionSend     = xcap.Value[int64](capture, workerstat.TaskExecutionSendDuration)
 		durExecutionOther    = durExecution - durExecutionSetup - durExecutionOpen - durExecutionRead - durExecutionSend
 
-		pagesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
-		bytesDownloaded = xcap.Value[int64](capture, xcap.StatDatasetPrimaryColumnBytes) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryColumnBytes)
-		bytesProcessed  = xcap.Value[int64](capture, xcap.StatDatasetPrimaryRowBytes) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryRowBytes)
-		linesProcessed  = xcap.Value[int64](capture, xcap.StatDatasetPrimaryRowsRead) + xcap.Value[int64](capture, xcap.StatDatasetSecondaryRowsRead)
+		pagesDownloaded = xcap.Value[int64](capture, dataobj.StatDatasetPrimaryPagesDownloaded) + xcap.Value[int64](capture, dataobj.StatDatasetSecondaryPagesDownloaded)
+		bytesDownloaded = xcap.Value[int64](capture, dataobj.StatDatasetPrimaryColumnBytes) + xcap.Value[int64](capture, dataobj.StatDatasetSecondaryColumnBytes)
+		bytesProcessed  = xcap.Value[int64](capture, dataobj.StatDatasetPrimaryRowBytes) + xcap.Value[int64](capture, dataobj.StatDatasetSecondaryRowBytes)
+		linesProcessed  = xcap.Value[int64](capture, dataobj.StatDatasetPrimaryRowsRead) + xcap.Value[int64](capture, dataobj.StatDatasetSecondaryRowsRead)
 	)
 
 	level.Info(wf.logger).Log(
@@ -84,24 +86,26 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"total_bytes_downloaded", xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded),
 
 		// Stage 10 counters.
-		"batches_emitted", xcap.Value[int64](capture, xcap.TaskRecordsSent),
-		"batches_consumed", xcap.Value[int64](capture, xcap.TaskDrainRecordsReceived),
+		"batches_emitted", xcap.Value[int64](capture, workerstat.TaskRecordsSent),
+		"batches_consumed", xcap.Value[int64](capture, workerstat.TaskDrainRecordsReceived),
 		"bytes_processed", bytesProcessed, // TODO(rfratto): missing semantics for non-leaf nodes
 		"lines_processed", linesProcessed, // TODO(rfratto): missing semantics for non-leaf nodes
-		"lines_emitted", xcap.Value[int64](capture, xcap.TaskRowsSent),
+		"lines_emitted", xcap.Value[int64](capture, workerstat.TaskRowsSent),
 
 		// Task result cache.
 		"cache_check", taskResultCacheOutcome(capture),
 	)
 
-	if isScanTask(task) {
+	if isPostingsScanTask(task) {
+		wf.printTaskPostingsLocalitySummary(task, capture)
+	} else if isScanTask(task) {
 		// print log section data locality as a separate log line.
 		wf.printTaskLogLocalitySummary(task, capture)
 	}
 }
 
 func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Capture) {
-	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, xcap.StatDatasetMaxRows)
+	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatDatasetMaxRows)
 	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
 	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
 	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
@@ -123,6 +127,26 @@ func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Captur
 		"stream_row_relevance", ratio(relevantRows, rowsTotal),
 		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
 		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
+	)
+}
+
+func (wf *Workflow) printTaskPostingsLocalitySummary(task *Task, capture *xcap.Capture) {
+	pagesTotal := xcap.ValueFromRegion[int64](capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePagesTotal)
+	pagesRelevant := xcap.ValueFromRegion[int64](capture, postings.RegionPrefix, dataobj.StatPostingsColumnNameRelevantPages)
+	pageRuns := xcap.ValueFromRegion[int64](capture, postings.RegionPrefix, dataobj.StatPostingsColumnNamePageRuns)
+
+	level.Info(wf.logger).Log(
+		"msg", "task-postings-locality-summary",
+		// Identity
+		"task_id", task.ULID,
+		"query_id", wf.opts.ID,
+
+		// Locality
+		"postings_column_name_pages_total", pagesTotal,
+		"postings_column_name_pages_relevant", pagesRelevant,
+		"postings_column_name_page_runs", pageRuns,
+		"postings_page_relevance", ratio(pagesRelevant, pagesTotal),
+		"postings_page_fragmentation", ratio(pageRuns, pagesRelevant),
 	)
 }
 
@@ -253,8 +277,8 @@ func cancellationPhaseName(oldState, newState TaskState) any {
 // from its capture, returning "hit", "miss", or "n/a".
 func taskResultCacheOutcome(capture *xcap.Capture) string {
 	var (
-		hits, _   = xcap.TryValue[int64](capture, xcap.TaskCacheHits)
-		misses, _ = xcap.TryValue[int64](capture, xcap.TaskCacheMisses)
+		hits, _   = xcap.TryValue[int64](capture, executor.TaskCacheHits)
+		misses, _ = xcap.TryValue[int64](capture, executor.TaskCacheMisses)
 	)
 
 	switch {
