@@ -321,15 +321,49 @@ func Test_ProxyEndpoint_QueryRequests(t *testing.T) {
 }
 
 func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
+	var (
+		requestCount atomic.Uint64
+		wg           sync.WaitGroup
+		testHandler  http.HandlerFunc
+	)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer wg.Done()
+		defer requestCount.Add(1)
+		testHandler(w, r)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	backend2 := httptest.NewServer(handler)
+	defer backend2.Close()
+	backendURL2, err := url.Parse(backend2.URL)
+	require.NoError(t, err)
+
+	proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
+	require.NoError(t, err)
+	proxyBackend2, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
+	require.NoError(t, err)
+	backends := []*ProxyBackend{
+		proxyBackend1,
+		proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiPush))),
+	}
+	// endpoint := createTestEndpoint(backends, "test", nil, false)
+	metrics := NewProxyMetrics(nil)
+	logger := log.NewNopLogger()
+	endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
+
 	for _, tc := range []struct {
-		name           string
-		requestFactory func(*testing.T) *http.Request
-		handlerFactory func(*testing.T) http.HandlerFunc
-		counts         int
+		name    string
+		request func(*testing.T) *http.Request
+		handler func(*testing.T) http.HandlerFunc
+		counts  int
 	}{
 		{
 			name: "POST-request",
-			requestFactory: func(t *testing.T) *http.Request {
+			request: func(t *testing.T) *http.Request {
 				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header.Set("test-X", "test-X-value")
 				r.Header["Content-Type"] = []string{"application/json"}
@@ -337,7 +371,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 				require.NoError(t, err)
 				return r
 			},
-			handlerFactory: func(t *testing.T) http.HandlerFunc {
+			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					require.Equal(t, "test-X-value", r.Header.Get("test-X"))
 					w.WriteHeader(204)
@@ -347,7 +381,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		},
 		{
 			name: "POST-filter-accept-encoding",
-			requestFactory: func(t *testing.T) *http.Request {
+			request: func(t *testing.T) *http.Request {
 				r, err := http.NewRequest("POST", "http://test"+constants.PathLokiPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("Accept-Encoding", "gzip")
@@ -355,7 +389,7 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 				require.NoError(t, err)
 				return r
 			},
-			handlerFactory: func(t *testing.T) http.HandlerFunc {
+			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, r *http.Request) {
 					require.Equal(t, 0, len(r.Header.Values("Accept-Encoding")))
 					w.WriteHeader(204)
@@ -365,14 +399,14 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		},
 		{
 			name: "POST-filtered",
-			requestFactory: func(t *testing.T) *http.Request {
-				r, err := http.NewRequest("POST", "http://test/prom/api/push", strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("POST", "http://test"+constants.PathPromPush, strings.NewReader(`{"streams":[{"stream":{"job":"test"},"values":[["1","test"]]}]}`))
 				r.Header["Content-Type"] = []string{"application/json"}
 				r.Header.Set("X-Scope-OrgID", "test-tenant")
 				require.NoError(t, err)
 				return r
 			},
-			handlerFactory: func(_ *testing.T) http.HandlerFunc {
+			handler: func(_ *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(204)
 				}
@@ -381,48 +415,21 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var (
-				requestCount atomic.Uint64
-				wg           sync.WaitGroup
-			)
-
 			// reset request count
 			requestCount.Store(0)
 			wg.Add(tc.counts)
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requestCount.Add(1)
-				tc.handlerFactory(t)(w, r)
-				wg.Done()
-			})
+			if tc.handler == nil {
+				testHandler = func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(204)
+				}
 
-			backend1 := httptest.NewServer(handler)
-			defer backend1.Close()
-			backendURL1, err := url.Parse(backend1.URL)
-			require.NoError(t, err)
-
-			backend2 := httptest.NewServer(handler)
-			defer backend2.Close()
-			backendURL2, err := url.Parse(backend2.URL)
-			require.NoError(t, err)
-
-			proxyBackend1, err := NewProxyBackend("backend-1", backendURL1, time.Second, true)
-			require.NoError(t, err)
-
-			proxyBackend2, err := NewProxyBackend("backend-2", backendURL2, time.Second, false)
-			require.NoError(t, err)
-
-			backends := []*ProxyBackend{
-				proxyBackend1,
-				proxyBackend2.WithFilter(regexp.MustCompile(regexp.QuoteMeta(constants.PathLokiPush))),
+			} else {
+				testHandler = tc.handler(t)
 			}
 
-			metrics := NewProxyMetrics(nil)
-			logger := log.NewNopLogger()
-			endpoint := NewProxyEndpoint(backends, "test", metrics, logger, nil, false)
-
 			w := httptest.NewRecorder()
-			endpoint.ServeHTTP(w, tc.requestFactory(t))
+			endpoint.ServeHTTP(w, tc.request(t))
 			require.Equal(t, 204, w.Code)
 
 			done := make(chan struct{})
@@ -434,7 +441,6 @@ func Test_ProxyEndpoint_WriteRequests(t *testing.T) {
 			select {
 			case <-done:
 			case <-time.After(10 * time.Second):
-				t.Log("expected", tc.counts, "actual", requestCount.Load())
 				t.Fatal("timeout waiting for backend requests to complete")
 			}
 			require.Equal(t, uint64(tc.counts), requestCount.Load())

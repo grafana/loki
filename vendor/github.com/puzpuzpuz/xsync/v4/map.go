@@ -79,16 +79,6 @@ const (
 	loadAndDeleteOp
 )
 
-type hashKind int
-
-const (
-	hashKindComparable hashKind = iota
-	hashKindInt
-	hashKindInt64
-	hashKindUint64
-	hashKindUintptr
-)
-
 // Deprecated: use [Map]
 type MapOf[K comparable, V any] = Map[K, V]
 
@@ -131,7 +121,7 @@ type Map[K comparable, V any] struct {
 	resizeIdx   atomic.Int64
 	minTableLen int
 	growOnly    bool
-	hashKind    hashKind
+	intKey      bool
 }
 
 type mapTable[K comparable, V any] struct {
@@ -224,12 +214,12 @@ func NewMap[K comparable, V any](options ...func(*MapConfig)) *Map[K, V] {
 
 	m := &Map[K, V]{}
 	m.resizeCond = *sync.NewCond(&m.resizeMu)
-	m.hashKind = detectHashKind[K]()
+	m.intKey = detectIntKey[K]()
 	var table *mapTable[K, V]
 	if c.sizeHint <= defaultMinMapTableLen*entriesPerMapBucket {
 		table = newMapTable[K, V](defaultMinMapTableLen, maphash.MakeSeed())
 	} else {
-		tableLen := nextPowOf2(uint32((float64(c.sizeHint) / entriesPerMapBucket) / mapLoadFactor))
+		tableLen := nextPowOf2(uint64((float64(c.sizeHint) / entriesPerMapBucket) / mapLoadFactor))
 		table = newMapTable[K, V](int(tableLen), maphash.MakeSeed())
 	}
 	m.minTableLen = len(table.buckets)
@@ -238,44 +228,40 @@ func NewMap[K comparable, V any](options ...func(*MapConfig)) *Map[K, V] {
 	return m
 }
 
-// detectHashKind returns the appropriate hash kind for the key type.
-func detectHashKind[K comparable]() hashKind {
+// detectIntKey returns true if the key type is an integer type.
+func detectIntKey[K comparable]() bool {
 	var zero K
 	switch any(zero).(type) {
-	case int:
-		return hashKindInt
-	case int64:
-		return hashKindInt64
-	case uint64:
-		return hashKindUint64
-	case uintptr:
-		return hashKindUintptr
+	case int, uint, uintptr, int64, uint64, int32, uint32, int16, uint16, int8, uint8:
+		return true
 	default:
-		return hashKindComparable
+		return false
 	}
 }
 
-// hashUint64 computes a hash for integer keys using a 128-bit
-// multiply-xorshift mixer (wyhash-style). The constant is xxHash's
-// PRIME64_1 which provides excellent avalanche. This is significantly
-// faster than maphash.Comparable for integer types.
+// hashUint64 computes a hash for integer keys using two rounds of
+// multiply-xorshift mixing (wyhash-style).
+// This is significantly faster than maphash.Comparable for integer types.
 func hashUint64(seed, v uint64) uint64 {
-	hi, lo := bits.Mul64(v^seed, 0x9E3779B185EBCA87)
-	return hi ^ lo
+	hi, lo := bits.Mul64(v^seed, 0x2d358dccaa6c78a5)
+	hi2, lo2 := bits.Mul64(hi^lo, 0x8bb84b93962eacc9)
+	return hi2 ^ lo2
 }
 
-func hashKey[K comparable](k K, hashKind hashKind, seed maphash.Seed, intSeed uint64) uint64 {
-	switch hashKind {
-	case hashKindInt:
-		return hashUint64(intSeed, uint64(any(k).(int)))
-	case hashKindInt64:
-		return hashUint64(intSeed, uint64(any(k).(int64)))
-	case hashKindUint64:
-		return hashUint64(intSeed, any(k).(uint64))
-	case hashKindUintptr:
-		return hashUint64(intSeed, uint64(any(k).(uintptr)))
+// toUint64 reinterprets integer-like keys as uint64 for hashUint64.
+// The size switch is folded per instantiated K by the compiler.
+func toUint64[K any](k K) uint64 {
+	switch unsafe.Sizeof(k) {
+	case 8:
+		return *(*uint64)(unsafe.Pointer(&k))
+	case 4:
+		return uint64(*(*uint32)(unsafe.Pointer(&k)))
+	case 2:
+		return uint64(*(*uint16)(unsafe.Pointer(&k)))
+	case 1:
+		return uint64(*(*uint8)(unsafe.Pointer(&k)))
 	default:
-		return maphash.Comparable(seed, k)
+		panic("unreachable")
 	}
 }
 
@@ -322,18 +308,10 @@ func ToPlainMap[K comparable, V any](m *Map[K, V]) map[K]V {
 // The ok result indicates whether value was found in the map.
 func (m *Map[K, V]) Load(key K) (value V, ok bool) {
 	table := m.table.Load()
-	// This is hot path, hence hand-inlined hashKey().
 	var hash uint64
-	switch m.hashKind {
-	case hashKindInt:
-		hash = hashUint64(table.intSeed, uint64(any(key).(int)))
-	case hashKindInt64:
-		hash = hashUint64(table.intSeed, uint64(any(key).(int64)))
-	case hashKindUint64:
-		hash = hashUint64(table.intSeed, any(key).(uint64))
-	case hashKindUintptr:
-		hash = hashUint64(table.intSeed, uint64(any(key).(uintptr)))
-	default:
+	if m.intKey {
+		hash = hashUint64(table.intSeed, toUint64(key))
+	} else {
 		hash = maphash.Comparable(table.seed, key)
 	}
 	h1 := h1(hash)
@@ -385,18 +363,10 @@ func (m *Map[K, V]) Store(key K, value V) {
 		)
 		table := m.table.Load()
 		tableLen := len(table.buckets)
-		// This is hot path, hence hand-inlined hashKey().
 		var hash uint64
-		switch m.hashKind {
-		case hashKindInt:
-			hash = hashUint64(table.intSeed, uint64(any(key).(int)))
-		case hashKindInt64:
-			hash = hashUint64(table.intSeed, uint64(any(key).(int64)))
-		case hashKindUint64:
-			hash = hashUint64(table.intSeed, any(key).(uint64))
-		case hashKindUintptr:
-			hash = hashUint64(table.intSeed, uint64(any(key).(uintptr)))
-		default:
+		if m.intKey {
+			hash = hashUint64(table.intSeed, toUint64(key))
+		} else {
 			hash = maphash.Comparable(table.seed, key)
 		}
 		h1 := h1(hash)
@@ -613,18 +583,10 @@ func (m *Map[K, V]) doCompute(
 		)
 		table := m.table.Load()
 		tableLen := len(table.buckets)
-		// This is hot path, hence hand-inlined hashKey().
 		var hash uint64
-		switch m.hashKind {
-		case hashKindInt:
-			hash = hashUint64(table.intSeed, uint64(any(key).(int)))
-		case hashKindInt64:
-			hash = hashUint64(table.intSeed, uint64(any(key).(int64)))
-		case hashKindUint64:
-			hash = hashUint64(table.intSeed, any(key).(uint64))
-		case hashKindUintptr:
-			hash = hashUint64(table.intSeed, uint64(any(key).(uintptr)))
-		default:
+		if m.intKey {
+			hash = hashUint64(table.intSeed, toUint64(key))
+		} else {
 			hash = maphash.Comparable(table.seed, key)
 		}
 		h1 := h1(hash)
@@ -956,7 +918,7 @@ func (m *Map[K, V]) transfer(table, newTable *mapTable[K, V]) {
 			// Visit all source buckets that map to this destination bucket.
 			// When growing, runs once. When shrinking, runs twice.
 			for srcIdx := i; srcIdx < tableLen; srcIdx += baseLen {
-				total += transferBucketUnsafe(&table.buckets[srcIdx], newTable, m.hashKind)
+				total += transferBucketUnsafe(&table.buckets[srcIdx], newTable, m.intKey)
 			}
 		}
 		// The exact counter stripe doesn't matter here, so pick up the one
@@ -969,7 +931,7 @@ func (m *Map[K, V]) transfer(table, newTable *mapTable[K, V]) {
 func transferBucketUnsafe[K comparable, V any](
 	b *bucketPadded,
 	destTable *mapTable[K, V],
-	hashKind hashKind,
+	intKey bool,
 ) (copied int) {
 	rootb := b
 	rootb.mu.Lock()
@@ -977,7 +939,12 @@ func transferBucketUnsafe[K comparable, V any](
 		for i := range entriesPerMapBucket {
 			if eptr := b.entries[i]; eptr != nil {
 				e := (*entry[K, V])(eptr)
-				hash := hashKey(e.key, hashKind, destTable.seed, destTable.intSeed)
+				var hash uint64
+				if intKey {
+					hash = hashUint64(destTable.intSeed, toUint64(e.key))
+				} else {
+					hash = maphash.Comparable(destTable.seed, e.key)
+				}
 				bidx := uint64(len(destTable.buckets)-1) & h1(hash)
 				destb := &destTable.buckets[bidx]
 				appendToBucket(h2(hash), e, destb)

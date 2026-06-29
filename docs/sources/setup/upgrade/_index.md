@@ -37,19 +37,13 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Breaking change: Removal of deprecated `/api/prom` API endpoints
+### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
 
-The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in Loki 2.x have been removed:
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
 
-| Removed endpoint  | Replacement |
-| ----------------- | ----------- |
-| `/api/prom/push`  | [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) |
-| `/api/prom/tail`  | [Stream logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#stream-logs) |
-| `/api/prom/query` | [Query logs at a single point in time](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-at-a-single-point-in-time) |
-| `/api/prom/label` | [Query labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-labels) |
-| `/api/prom/rules` | [Rules endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#rules-endpoints) |
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
 
-You must migrate any clients, dashboards, or automation that still use these endpoints to their `/loki/api/v1/` equivalents before upgrading. Requests to the removed endpoints will result in `404` errors.
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
 
 ### Breaking change: Removal of various configuration options
 

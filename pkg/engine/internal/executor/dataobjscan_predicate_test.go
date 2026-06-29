@@ -370,6 +370,145 @@ func Test_buildLogsPredicate(t *testing.T) {
 			},
 			expect: logs.TruePredicate{}, // not match against non-existent column always passes
 		},
+
+		// LogQL: an absent label compares as "". The section-prune layer must
+		// agree with the post-scan filter layer so we don't silently drop
+		// sections whose absent column would have matched.
+		{
+			name: `binary EQ "" (invalid column) — absent matches empty literal`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary NEQ "" (invalid column) — absent does not differ from empty literal`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNeq,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.FalsePredicate{},
+		},
+		{
+			name: `binary GTE "" (invalid column) — "" >= "" is true`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGte,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary LTE any string (invalid column) — "" <= anything is true`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLte,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("zzz"),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary LT non-empty (invalid column) — "" < non-empty is true`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpLt,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral("foo"),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary GT "" (invalid column) — "" > "" is false`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpGt,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.FalsePredicate{},
+		},
+		{
+			name: `binary MATCH_STR "" (invalid column) — "" contains "" is true`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary NOT_MATCH_STR "" (invalid column) — !("" contains "") is false`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchSubstr,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.FalsePredicate{},
+		},
+		{
+			name: `binary MATCH_RE ".*" (invalid column) — matches ""`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(".*"),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary MATCH_RE ".+" (invalid column) — does not match ""`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(".+"),
+			},
+			expect: logs.FalsePredicate{},
+		},
+		{
+			name: `binary NOT_MATCH_RE ".+" (invalid column) — "" does not match .+, so negation passes`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchRe,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(".+"),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary EQ_CI "" (invalid column) — absent matches empty literal case-insensitively`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpEqCaseInsensitive,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary NOT_EQ_CI "" (invalid column) — absent does not differ from empty literal`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotEqCaseInsensitive,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.FalsePredicate{},
+		},
+		{
+			name: `binary MATCH_STR_CI "" (invalid column) — "" contains "" case-insensitively is true`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpMatchSubstrCaseInsensitive,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.TruePredicate{},
+		},
+		{
+			name: `binary NOT_MATCH_STR_CI "" (invalid column) — case-insensitive negation of contains is false`,
+			expr: &physical.BinaryExpr{
+				Op:    types.BinaryOpNotMatchSubstrCaseInsensitive,
+				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: physical.NewLiteral(""),
+			},
+			expect: logs.FalsePredicate{},
+		},
 	}
 
 	for _, tc := range tt {

@@ -259,10 +259,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	)
 	defer span.End()
 
-	span.Record(xcap.TaskExternalSourcesCount.Observe(int64(countSources)))
-	span.Record(xcap.TaskCachedSourcesCount.Observe(int64(countCachedSources)))
-	span.Record(xcap.TaskExternalSinksCount.Observe(int64(countSinks)))
-
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 
 	// If the root pipeline can be interested in some specific contributing time range
@@ -348,8 +344,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	// summary). Only leaf tasks download from object storage today, so these are
 	// zero for non-leaf tasks; recording unconditionally keeps the counters
 	// correct if a non-leaf task ever starts downloading.
-	pagesDownloaded := xcap.Value[int64](capture, xcap.StatDatasetPrimaryPagesDownloaded) +
-		xcap.Value[int64](capture, xcap.StatDatasetSecondaryPagesDownloaded)
+	pagesDownloaded := xcap.Value[int64](capture, dataobj.StatDatasetPrimaryPagesDownloaded) +
+		xcap.Value[int64](capture, dataobj.StatDatasetSecondaryPagesDownloaded)
 	t.Metrics.pagesDownloadedTotal.Add(float64(pagesDownloaded))
 	t.Metrics.pagesPrunedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned)))
 	t.Metrics.bytesDownloadedTotal.Add(float64(xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded)))
@@ -361,7 +357,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		"duration", duration,
 		"status", terminalStatus.State,
 	}
-	logValues = append(logValues, xcap.SummaryLogValues(capture)...)
 
 	level.Info(logger).Log(logValues...)
 	t.Metrics.taskExecSeconds.WithLabelValues(taskType).Observe(duration.Seconds())
@@ -478,7 +473,7 @@ func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline ex
 			return totalRows, err
 		}
 
-		region.Record(xcap.TaskDrainRecordsReceived.Observe(1))
+		region.Record(workerstat.TaskDrainRecordsReceived.Observe(1))
 		totalRows += int(rec.NumRows())
 
 		// Don't bother writing empty records to our peers.
@@ -500,10 +495,9 @@ func (t *thread) drainPipeline(ctx context.Context, taskType string, pipeline ex
 		t.Metrics.passSendSeconds.Observe(sendDuration.Seconds())
 		totalSendTime += sendDuration
 
-		region.Record(xcap.TaskRecordsSent.Observe(1))
-		region.Record(xcap.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(xcap.TaskWireBytes.Observe(recordBatchBytes(rec)))
-		region.Record(xcap.TaskSendDuration.Observe(sendDuration.Seconds()))
+		region.Record(workerstat.TaskRecordsSent.Observe(1))
+		region.Record(workerstat.TaskRowsSent.Observe(rec.NumRows()))
+		region.Record(workerstat.TaskWireBytes.Observe(recordBatchBytes(rec)))
 	}
 
 	return totalRows, nil

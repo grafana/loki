@@ -16,7 +16,7 @@ import (
 func TestRowReader_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
 	b.ObserveLabelPosting(postings.LabelObservation{
@@ -45,25 +45,21 @@ func TestRowReader_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	var sec *postings.Section
+	var rows []postings.Row
 	for _, s := range obj.Sections() {
 		if !postings.CheckSection(s) {
 			continue
 		}
-		sec, err = postings.Open(ctx, s)
+		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
-		break
-	}
-	require.NotNil(t, sec)
 
-	reader := postings.NewRowReader(ctx, sec)
-	defer reader.Close()
-
-	var rows []postings.Row
-	for reader.Next() {
-		rows = append(rows, reader.At())
+		reader := postings.NewRowReader(ctx, sec)
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		reader.Close()
 	}
-	require.NoError(t, reader.Err())
 
 	require.Len(t, rows, 2)
 
@@ -86,7 +82,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 
 	b.ObserveLabelPosting(postings.LabelObservation{
@@ -114,25 +110,21 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	var sec *postings.Section
+	var rows []postings.Row
 	for _, s := range obj.Sections() {
 		if !postings.CheckSection(s) {
 			continue
 		}
-		sec, err = postings.Open(ctx, s)
+		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
-		break
-	}
-	require.NotNil(t, sec)
 
-	reader := postings.NewRowReader(ctx, sec)
-	defer reader.Close()
-
-	var rows []postings.Row
-	for reader.Next() {
-		rows = append(rows, reader.At())
+		reader := postings.NewRowReader(ctx, sec)
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		reader.Close()
 	}
-	require.NoError(t, reader.Err())
 
 	require.Len(t, rows, 2)
 	require.NotEmpty(t, rows[0].StreamIDBitmap, "first row should have non-empty bitmap")
@@ -144,7 +136,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 func TestRowReader_CloseIdempotent(t *testing.T) {
 	ctx := context.Background()
 
-	b := postings.NewBuilder(nil, 0, 0)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	b.ObserveLabelPosting(postings.LabelObservation{
 		ObjectPath:   "/obj",
 		SectionIndex: 0,

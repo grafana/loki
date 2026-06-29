@@ -377,7 +377,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	merger := util.NewYAMLMerger()
 	merger.AddFragment(sb.Bytes())
 
-	// default to using boltdb index
+	// default to using TSDB index
 	if len(c.cluster.periodCfgs) == 0 {
 		c.cluster.periodCfgs = []string{tsdbShipperSchemaConfigTemplate}
 	}

@@ -456,6 +456,10 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__=~"Unknown Error: .*" [1m]))`,
 		},
+		{
+			// match pattern is not supported
+			statement: `sum(count_over_time({env="prod"} |> "ts=<_>" [1m]))`,
+		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
 			q := &query{
