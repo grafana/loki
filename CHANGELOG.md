@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.6.13](https://github.com/grafana/loki/compare/v3.6.12...v3.6.13) (2026-06-29)
+
+
+### Bug Fixes
+
+* **ci:** Helm CI warning fix ([#22606](https://github.com/grafana/loki/issues/22606)) ([4bc2586](https://github.com/grafana/loki/commit/4bc258651f36107086fc7028c4af1105618e67a4))
+* **security/CRITICAL/clients/cmd/fluentd/docker:** Update dependency fluentd to v1.19.3 [SECURITY] (release-3.6.x) ([#22694](https://github.com/grafana/loki/issues/22694)) ([692f2b1](https://github.com/grafana/loki/commit/692f2b1183670b4e6df0436081a00b8dcc2d640a))
+* **security/UNKNOWN/:** Update module github.com/containerd/containerd/v2 to v2.0.10 [SECURITY] (release-3.6.x) ([#22479](https://github.com/grafana/loki/issues/22479)) ([697bd83](https://github.com/grafana/loki/commit/697bd835b91ae9a04c6476bb17d86975c624a642))
+
 ## [3.6.12](https://github.com/grafana/loki/compare/v3.6.12...v3.6.12) (2026-06-24)
 
 
