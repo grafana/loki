@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -16,11 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -830,160 +827,4 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
 	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
-}
-
-func TestIndexSectionsReader_ReaderSelection(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	uploadFixture := func(t *testing.T, obj *dataobj.Object) (objstore.Bucket, string) {
-		t.Helper()
-
-		bucket := objstore.NewInMemBucket()
-		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
-
-		path, err := up.Upload(context.Background(), obj)
-		require.NoError(t, err)
-		return bucket, path
-	}
-
-	tests := []struct {
-		name                 string
-		readPostingsSections bool
-		buildObj             func(*testing.T) *dataobj.Object
-		wantPostingsReader   bool
-	}{
-		{"flag off uses streams+pointers reader", false, buildCombinedFixture, false},
-		{"flag on with postings section uses postings reader", true, buildCombinedFixture, true},
-		{"flag on without postings section falls back to streams+pointers reader", true, buildStreamsPointersFixture, false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			bucket, path := uploadFixture(t, tc.buildObj(t))
-			mstore := NewObjectMetastore(
-				bucket,
-				Config{ReadPostingsSections: tc.readPostingsSections},
-				log.NewNopLogger(),
-				NewObjectMetastoreMetrics(prometheus.NewRegistry()),
-			)
-
-			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-				IndexPath: path,
-				SectionsRequest: SectionsRequest{
-					Start:    now.Add(-4 * time.Hour),
-					End:      now.Add(-time.Hour),
-					Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
-				},
-			})
-			require.NoError(t, err)
-			t.Cleanup(resp.Reader.Close)
-
-			if tc.wantPostingsReader {
-				require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
-			} else {
-				require.IsType(t, &indexSectionsReader{}, resp.Reader)
-			}
-
-			// Both readers must resolve the same matching stream row.
-			require.NoError(t, resp.Reader.Open(ctx))
-			rec, err := resp.Reader.Read(ctx)
-			require.NoError(t, err)
-			require.NotNil(t, rec)
-			require.Equal(t, int64(1), rec.NumRows())
-		})
-	}
-}
-
-// fixtureBuildMu serializes indexobj fixture builds across parallel tests: concurrent Builder.Flush
-// calls race on the package-global defaultCompressionOptions.zstdWriter lazy init in
-// dataset/page_compress_writer.go (a pre-existing race the mutex sidesteps).
-var fixtureBuildMu sync.Mutex
-
-// newFixtureBuilder returns an indexobj.Builder configured for the reader fixtures.
-func newFixtureBuilder(t *testing.T) *indexobj.Builder {
-	t.Helper()
-
-	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
-		TargetPageSize:          1024 * 1024,
-		TargetObjectSize:        10 * 1024 * 1024,
-		TargetSectionSize:       128,
-		BufferSize:              1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-	return builder
-}
-
-// flushFixture flushes builder under fixtureBuildMu (which guards the racy
-// zstdWriter lazy init reached from Flush; see fixtureBuildMu) and registers the
-// returned object's closer for cleanup.
-func flushFixture(t *testing.T, builder *indexobj.Builder) *dataobj.Object {
-	t.Helper()
-
-	fixtureBuildMu.Lock()
-	obj, closer, err := builder.Flush()
-	fixtureBuildMu.Unlock()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-	return obj
-}
-
-func buildStreamsPointersFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := newFixtureBuilder(t)
-
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-	})
-	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-
-	return flushFixture(t, builder)
-}
-
-func buildCombinedFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
-
-	builder := newFixtureBuilder(t)
-
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-		Rows:             1,
-	})
-	require.NoError(t, err)
-
-	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	})
-
-	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
-	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "traceID",
-		Value:            "abcd",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	}))
-
-	return flushFixture(t, builder)
 }

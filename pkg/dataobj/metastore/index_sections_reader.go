@@ -67,6 +67,11 @@ type indexSectionsReader struct {
 	bloomRowsRead            uint64
 	pointerSectionProductive []bool
 
+	// metrics, when non-nil, receives per-object observations at Close.
+	// statsRecorded guards against double-recording if Close runs more than once.
+	metrics       *ObjectMetastoreMetrics
+	statsRecorded bool
+
 	// readSpan for recording observations, it is created once during init.
 	readSpan *xcap.Span
 }
@@ -554,6 +559,11 @@ func (r *indexSectionsReader) Close() {
 	closeAll(r.streamsReaders)
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
+
+	if r.initialized && r.metrics != nil && !r.statsRecorded {
+		r.statsRecorded = true
+		r.metrics.indexReadRowsPerObject.Observe(float64(r.totalReadRows()))
+	}
 
 	if r.readSpan != nil {
 		r.readSpan.End()
