@@ -172,9 +172,9 @@ func Xpthread_exit(tls *TLS, result uintptr) {
 			break
 		}
 	}
-	if state == _DT_JOINABLE {
-		(*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Unlock()
-	}
+	mu := (*sync.Mutex)(unsafe.Pointer(tls.pthread + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex)))
+	mu.TryLock()
+	mu.Unlock()
 	atomic.StoreInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_EXITED)
 	tls.Close()
 	runtime.Goexit()
@@ -187,7 +187,7 @@ func Xpthread_join(tls *TLS, t Tpthread_t, res uintptr) (r int32) {
 
 	(*sync.Mutex)(unsafe.Pointer(t + unsafe.Offsetof(t__pthread{}.F__ccgo_join_mutex))).Lock()
 	if res != 0 {
-		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(tls.pthread)).Fresult
+		*(*uintptr)(unsafe.Pointer(res)) = (*t__pthread)(unsafe.Pointer(t)).Fresult
 	}
 	return 0
 }
@@ -283,20 +283,20 @@ func Xpthread_mutex_lock(tls *TLS, m uintptr) int32 {
 		return 0
 	case PTHREAD_MUTEX_RECURSIVE:
 		if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-			(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+			atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			return 0
 		}
 
 		if atomic.LoadInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner)) == tls.ID {
-			(*pthreadMutex)(unsafe.Pointer(m)).count++
+			atomic.AddInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 			return 0
 		}
 
 		for {
 			(*pthreadMutex)(unsafe.Pointer(m)).Lock()
 			if atomic.CompareAndSwapInt32(&((*pthreadMutex)(unsafe.Pointer(m)).owner), 0, tls.ID) {
-				(*pthreadMutex)(unsafe.Pointer(m)).count = 1
+				atomic.StoreInt32(&((*pthreadMutex)(unsafe.Pointer(m)).count), 1)
 				return 0
 			}
 
@@ -463,9 +463,9 @@ func Xpthread_mutexattr_settype(tls *TLS, a uintptr, typ int32) int32 {
 }
 
 func Xpthread_detach(tls *TLS, t uintptr) int32 {
-	state := atomic.SwapInt32((*int32)(unsafe.Pointer(tls.pthread+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
+	state := atomic.SwapInt32((*int32)(unsafe.Pointer(t+unsafe.Offsetof(t__pthread{}.Fdetach_state))), _DT_DETACHED)
 	switch state {
-	case _DT_EXITED, _DT_DETACHED:
+	case _DT_JOINABLE, _DT_EXITED, _DT_DETACHED:
 		return 0
 	default:
 		panic(todo("", tls.ID, state))
