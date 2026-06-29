@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package proto;
+
+service RateService {
+  rpc AllRealms(AllRealmsRequest) returns (stream AllRealmsResponse) {}
+  rpc GetRealm(GetRealmRequest) returns (GetRealmResponse) {}
+  rpc UpdateRealm(UpdateRealmRequest) returns (UpdateRealmResponse) {}
+}
+
+// An AllRealmsRequest message requests all rates for all realms.
+message AllRealmsRequest {}
+
+// An AllRealmsResponse message contains the rates for all realms.
+message AllRealmsResponse {
+  string realm = 1;
+  repeated RateResult results = 2;
+}
+
+// A GetRealmRequest message requests all rates for the realm.
+message GetRealmRequest {
+  string realm = 1;
+}
+
+// A GetRealmResponse message contains the rates for the realm.
+message GetRealmResponse {
+  string realm = 1;
+  repeated RateResult results = 2;
+}
+
+message RateResult {
+  string name = 1;
+  uint64 value = 2;
+}
+
+message UpdateRealmRequest {
+  string realm = 1;
+  repeated UpdateRealmParam params = 2;
+}
+
+message UpdateRealmParam {
+  string name = 1;
+  repeated UpdateRateParam values = 2;
+}
+
+message UpdateRateParam {
+  uint64 ts = 1;
+  uint64 value = 2;
+}
+
+message UpdateRealmResponse {}
