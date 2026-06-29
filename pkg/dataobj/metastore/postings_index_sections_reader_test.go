@@ -23,7 +23,7 @@ import (
 func TestPostingsIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 	t.Parallel()
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 0)
 
 	rec, err := r.Read(context.Background())
 	require.ErrorIs(t, err, errIndexSectionsReaderNotOpen)
@@ -33,7 +33,7 @@ func TestPostingsIndexSectionsReader_ReadBeforeOpenReturnsError(t *testing.T) {
 func TestPostingsIndexSectionsReader_NoSelectorReturnsEOF(t *testing.T) {
 	t.Parallel()
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), nil, now, now, nil, nil, 0)
 	require.NoError(t, r.Open(context.Background()))
 
 	rec, err := r.Read(context.Background())
@@ -47,7 +47,7 @@ func TestPostingsIndexSectionsReader_MissingOrgIDReturnsError(t *testing.T) {
 	obj := buildPostingsFixture(t)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0)
 
 	// Context without org ID should fail during Open.
 	require.Error(t, r.Open(context.Background()))
@@ -63,7 +63,7 @@ func TestPostingsIndexSectionsReader_ReadsPointers(t *testing.T) {
 	end := now.Add(-time.Hour)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -93,7 +93,7 @@ func TestPostingsIndexSectionsReader_CombinesAcrossPostingsSections(t *testing.T
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	obj := buildMultiPostingsSectionsFixture(t)
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0)
 	t.Cleanup(r.Close)
 
 	require.NoError(t, r.Open(ctx))
@@ -128,7 +128,7 @@ func TestPostingsIndexSectionsReader_PagesPointerOutput(t *testing.T) {
 	// Two postings sections ⇒ two pointer rows for app=foo; batchSize=1 forces
 	// two batches.
 	obj := buildMultiPostingsSectionsFixture(t)
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 1, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 1)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -163,7 +163,7 @@ func TestPostingsIndexSectionsReader_ANDMatchersAcrossPostingsSections(t *testin
 	}
 
 	obj := buildPostingsANDAcrossSectionsFixture(t)
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0)
 	t.Cleanup(r.Close)
 
 	require.NoError(t, r.Open(ctx))
@@ -190,7 +190,7 @@ func TestPostingsIndexSectionsReader_NoPostingsSectionReturnsEOF(t *testing.T) {
 	obj := buildStreamsPointersFixture(t)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now.Add(-time.Hour), matchers, nil, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 	require.Empty(t, r.postingsReaders, "no postings section ⇒ no postings readers")
@@ -212,7 +212,7 @@ func TestPostingsIndexSectionsReader_StreamLabelPredicateOnDisjointName(t *testi
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "ops")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -244,7 +244,7 @@ func TestPostingsIndexSectionsReader_StreamLabelPredicateOnlyOnNonMatchingStream
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "team", "ops")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -263,7 +263,7 @@ func TestPostingsIndexSectionsReader_StreamIDCollisionAcrossObjects(t *testing.T
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	obj := buildPostingsStreamIDCollisionFixture(t)
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, nil, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 
@@ -287,7 +287,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 	appFoo := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
 	t.Run("selector resolves to matching streams from postings alone", func(t *testing.T) {
-		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil, 0, nil)
+		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, nil, 0)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 		require.NotEmpty(t, r.postingsReaders)
@@ -319,7 +319,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 	})
 
 	t.Run("time window outside the data returns EOF", func(t *testing.T) {
-		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-30*time.Minute), now, appFoo, nil, 0, nil)
+		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-30*time.Minute), now, appFoo, nil, 0)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -330,7 +330,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 
 	t.Run("structured-metadata bloom selects the section", func(t *testing.T) {
 		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "abcd")}
-		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0, nil)
+		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -350,7 +350,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 
 	t.Run("structured-metadata bloom miss prunes the section", func(t *testing.T) {
 		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
-		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0, nil)
+		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -361,7 +361,7 @@ func TestPostingsIndexSectionsReader_EndToEnd(t *testing.T) {
 
 	t.Run("non-equal predicates are ignored for bloom filtering", func(t *testing.T) {
 		predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "traceID", "abcd")}
-		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0, nil)
+		r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, inWindowStart, inWindowEnd, appFoo, predicates, 0)
 		t.Cleanup(r.Close)
 		require.NoError(t, r.Open(ctx))
 
@@ -384,7 +384,7 @@ func TestPostingsIndexSectionsReader_RetryAfterBloomErrorStillFiltersPredicates(
 	// This predicate intentionally misses so a correctly filtered retry returns EOF.
 	predicates := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "traceID", "doesnotexist")}
 
-	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0, nil)
+	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, start, end, matchers, predicates, 0)
 	t.Cleanup(r.Close)
 	require.NoError(t, r.Open(ctx))
 	require.NoError(t, r.lazyResolveStreams(ctx))

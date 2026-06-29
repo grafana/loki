@@ -51,11 +51,6 @@ type postingsIndexSectionsReader struct {
 	// Stats
 	bloomRowsRead uint64
 
-	// metrics, when non-nil, receives per-object/per-flow observations at Close.
-	// statsRecorded guards against double-recording if Close runs more than once.
-	metrics       *ObjectMetastoreMetrics
-	statsRecorded bool
-
 	// readSpan for recording observations, it is created once during the first Read.
 	readSpan *xcap.Span
 }
@@ -67,7 +62,6 @@ func newPostingsIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	metrics *ObjectMetastoreMetrics,
 ) *postingsIndexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -89,7 +83,6 @@ func newPostingsIndexSectionsReader(
 		batchSize:  batchSize,
 		start:      start,
 		end:        end,
-		metrics:    metrics,
 	}
 }
 
@@ -144,7 +137,6 @@ func (r *postingsIndexSectionsReader) init(ctx context.Context) error {
 		}
 
 		readers = append(readers, reader)
-		sp.Record(StatMetastorePointerSectionsOpened.Observe(1))
 	}
 	r.postingsReaders = readers
 
@@ -195,14 +187,8 @@ func (r *postingsIndexSectionsReader) lazyResolveStreams(ctx context.Context) er
 
 		acc := postings.NewStreamScan(r.matchers, r.start, r.end)
 		for _, reader := range r.postingsReaders {
-			productive, err := reader.ScanLabelsInto(ctx, acc, r.batchSize)
-			if err != nil {
+			if err := reader.ScanLabelsInto(ctx, acc, r.batchSize); err != nil {
 				return fmt.Errorf("scanning postings labels: %w", err)
-			}
-			// Recorded at the metastore layer (rather than inside the postings
-			// reader) so the postings package need not depend on metastore stats.
-			if productive {
-				region.Record(StatMetastorePointerSectionsProductive.Observe(1))
 			}
 		}
 		res := acc.Finalize(ctx)
@@ -341,12 +327,6 @@ func (r *postingsIndexSectionsReader) readMatchedSectionKeys(ctx context.Context
 func (r *postingsIndexSectionsReader) Close() {
 	closeAll(r.postingsReaders)
 
-	if r.initialized && r.metrics != nil && !r.statsRecorded {
-		r.statsRecorded = true
-		r.metrics.indexReadRowsPerObject.WithLabelValues(flowPostings).Observe(float64(r.totalReadRows()))
-		r.metrics.resolvedSectionsPerObject.WithLabelValues(flowPostings).Observe(float64(r.resolvedSectionCount()))
-	}
-
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
@@ -354,17 +334,6 @@ func (r *postingsIndexSectionsReader) Close() {
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
-}
-
-// resolvedSectionCount returns the number of distinct sections resolved for this
-// object, i.e. the distinct (object path, section) tuples across the resolved
-// pointer rows after stream matching and bloom filtering.
-func (r *postingsIndexSectionsReader) resolvedSectionCount() int {
-	seen := make(map[SectionKey]struct{}, len(r.pointerRows))
-	for _, row := range r.pointerRows {
-		seen[SectionKey{ObjectPath: row.ObjectPath, SectionIdx: row.SectionIndex}] = struct{}{}
-	}
-	return len(seen)
 }
 
 const (
