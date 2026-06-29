@@ -40,6 +40,7 @@ func (it *Iterator) Reset(json string) {
 	it.kind = 0
 	it.key = ""
 	it.err = nil
+	it.state = it.bytes[:0]
 	it.consumed = false
 }
 
@@ -308,6 +309,7 @@ func (it *Iterator) Bool() (bool, error) {
 }
 
 // Int returns the current value as a signed 64-bit integer.
+// Floating point numbers are truncated to their integer part.
 // Returns 0 for null values.
 // Returns an error if the value is not a number, null, or a string that can be parsed as an integer.
 func (it *Iterator) Int() (int64, error) {
@@ -315,16 +317,31 @@ func (it *Iterator) Int() (int64, error) {
 	case Null:
 		return 0, nil
 	case Number:
-		return strconv.ParseInt(it.token, 10, 64)
+		return parseInt(it.token)
 	case String:
 		s, err := Unquote(it.token)
 		if err != nil {
 			return 0, fmt.Errorf("invalid string: %q", it.token)
 		}
-		return strconv.ParseInt(s, 10, 64)
+		return parseInt(s)
 	default:
 		return 0, fmt.Errorf("cannot convert %v to int", it.kind)
 	}
+}
+
+// parseInt parses a string as an integer, falling back to float parsing
+// and truncation if the string contains a decimal point or exponent.
+func parseInt(s string) (int64, error) {
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err == nil {
+		return i, nil
+	}
+	// Fall back to parsing as float and truncating
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, err
+	}
+	return int64(f), nil
 }
 
 // Float returns the current value as a 64-bit floating point number.
@@ -426,6 +443,11 @@ func (it *Iterator) Object(yield func(string, error) bool) {
 	if it.kind == Null {
 		return // null is treated as empty object
 	}
+	if it.kind != Object {
+		it.setErrorf("expected object, got %v", it.kind)
+		yield("", it.err)
+		return
+	}
 	it.consumed = true // mark the object itself as consumed
 	for i := 0; ; i++ {
 		// Auto-consume the previous value if it wasn't consumed
@@ -512,6 +534,11 @@ func (it *Iterator) Object(yield func(string, error) bool) {
 func (it *Iterator) Array(yield func(int, error) bool) {
 	if it.kind == Null {
 		return // null is treated as empty array
+	}
+	if it.kind != Array {
+		it.setErrorf("expected array, got %v", it.kind)
+		yield(0, it.err)
+		return
 	}
 	it.consumed = true // mark the array itself as consumed
 	for i := 0; ; i++ {
