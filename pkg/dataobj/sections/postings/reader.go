@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -115,6 +116,12 @@ func (opts *ReaderOptions) validate() error {
 				validateScalar(p.Value)
 
 			case FuncPredicate:
+				validateColumn(p.Column)
+
+			case BloomMatchPredicate:
+				validateColumn(p.Column)
+
+			case RegexMatchPredicate:
 				validateColumn(p.Column)
 
 			default:
@@ -1097,6 +1104,40 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) dataset.
 			Column: col,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
 				return p.Keep(p.Column, arrowconv.ToScalar(value, fieldType))
+			},
+		}
+
+	case BloomMatchPredicate:
+		col, ok := columnLookup[p.Column]
+		if !ok {
+			panic(fmt.Sprintf("column %p not found in column lookup", p.Column))
+		}
+		return dataset.FuncPredicate{
+			Column: col,
+			Keep: func(column dataset.Column, value dataset.Value) bool {
+				if value.IsNil() || value.Type() != column.ColumnDesc().Type.Physical {
+					return false
+				}
+				var filter bloom.BloomFilter
+				if err := filter.UnmarshalBinary(value.Binary()); err != nil {
+					return false
+				}
+				return filter.Test(p.Value)
+			},
+		}
+
+	case RegexMatchPredicate:
+		col, ok := columnLookup[p.Column]
+		if !ok {
+			panic(fmt.Sprintf("column %p not found in column lookup", p.Column))
+		}
+		return dataset.FuncPredicate{
+			Column: col,
+			Keep: func(column dataset.Column, value dataset.Value) bool {
+				if value.IsNil() || value.Type() != column.ColumnDesc().Type.Physical {
+					return false
+				}
+				return p.Matcher.MatchString(string(value.Binary()))
 			},
 		}
 

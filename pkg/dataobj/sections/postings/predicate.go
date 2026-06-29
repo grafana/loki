@@ -2,6 +2,7 @@ package postings
 
 import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Predicate is an expression used to filter column values in a [Reader].
@@ -11,11 +12,11 @@ import (
 // time-bounded: both copies vanish together when the legacy pointers reader
 // is deleted. Do not extract these into a shared internal package.
 //
-// Bloom-filter membership testing is intentionally NOT modeled as a
-// Predicate here. It lives as a
-// helper alongside the Reader because page-level stats cannot skip
-// candidate rows for a bloom test — wrapping it as a Predicate would hide
-// the byte-deserialize-then-TestString cost.
+// Bloom-filter and regex matching are modeled as section-level predicates
+// ([BloomMatchPredicate], [RegexMatchPredicate]) rather than dataset
+// predicates: the dataset layer has no concept of a bloom filter or a regex.
+// They translate to a [dataset.FuncPredicate] on pushdown (see mapPredicate),
+// keeping that domain knowledge out of the dataset package.
 type Predicate interface{ isPredicate() }
 
 // Supported predicates.
@@ -81,6 +82,29 @@ type (
 		// If Keep returns true, the row is kept.
 		Keep func(column *Column, value scalar.Scalar) bool
 	}
+
+	// BloomMatchPredicate is a [Predicate] which asserts that a row may only be
+	// included if the bloom filter stored in Column's binary value tests positive
+	// for Value.
+	//
+	// Instances of BloomMatchPredicate are ineligible for page filtering: a bloom
+	// blob has no min/max page statistics to prune on. On pushdown it translates
+	// to a [dataset.FuncPredicate] that deserializes the bloom blob and tests it.
+	BloomMatchPredicate struct {
+		Column *Column
+		Value  []byte
+	}
+
+	// RegexMatchPredicate is a [Predicate] which asserts that a row may only be
+	// included if Column's string value matches Matcher.
+	//
+	// Instances of RegexMatchPredicate are ineligible for page filtering: a regex
+	// has no min/max page statistics to prune on. On pushdown it translates to a
+	// [dataset.FuncPredicate] that runs the matcher against the column value.
+	RegexMatchPredicate struct {
+		Column  *Column
+		Matcher *labels.FastRegexMatcher
+	}
 )
 
 func (AndPredicate) isPredicate()         {}
@@ -93,6 +117,8 @@ func (InPredicate) isPredicate()          {}
 func (GreaterThanPredicate) isPredicate() {}
 func (LessThanPredicate) isPredicate()    {}
 func (FuncPredicate) isPredicate()        {}
+func (BloomMatchPredicate) isPredicate()  {}
+func (RegexMatchPredicate) isPredicate()  {}
 
 // walkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, walkPredicate is invoked recursively
@@ -122,6 +148,8 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
 	case FuncPredicate: // No children.
+	case BloomMatchPredicate: // No children.
+	case RegexMatchPredicate: // No children.
 
 	default:
 		panic("postings.walkPredicate: unsupported predicate type")
