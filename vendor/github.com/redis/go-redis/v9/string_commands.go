@@ -18,6 +18,7 @@ type StringCmdable interface {
 	GetSet(ctx context.Context, key string, value interface{}) *StringCmd
 	GetEx(ctx context.Context, key string, expiration time.Duration) *StringCmd
 	GetDel(ctx context.Context, key string) *StringCmd
+	GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd
 	Incr(ctx context.Context, key string) *IntCmd
 	IncrBy(ctx context.Context, key string, value int64) *IntCmd
 	IncrByFloat(ctx context.Context, key string, value float64) *FloatCmd
@@ -31,6 +32,7 @@ type StringCmdable interface {
 	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) *StatusCmd
 	SetArgs(ctx context.Context, key string, value interface{}, a SetArgs) *StatusCmd
 	SetEx(ctx context.Context, key string, value interface{}, expiration time.Duration) *StatusCmd
+	SetFromBuffer(ctx context.Context, key string, buf []byte) *StatusCmd
 	SetIFEQ(ctx context.Context, key string, value interface{}, matchValue interface{}, expiration time.Duration) *StatusCmd
 	SetIFEQGet(ctx context.Context, key string, value interface{}, matchValue interface{}, expiration time.Duration) *StringCmd
 	SetIFNE(ctx context.Context, key string, value interface{}, matchValue interface{}, expiration time.Duration) *StatusCmd
@@ -178,6 +180,24 @@ func (c cmdable) GetEx(ctx context.Context, key string, expiration time.Duration
 // GetDel redis-server version >= 6.2.0.
 func (c cmdable) GetDel(ctx context.Context, key string) *StringCmd {
 	cmd := NewStringCmd(ctx, "getdel", key)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// GetToBuffer executes GET and reads the reply directly into buf, avoiding
+// the intermediate string allocation that *StringCmd would produce. For values
+// larger than the connection's read buffer, the payload is read straight from
+// the socket into buf — effectively zero-copy on the receive path.
+//
+// The returned *ZeroCopyStringCmd reports the number of bytes read via Val(),
+// the populated slice via Bytes() (which is buf[:Val()]), and any error
+// (including redis.Nil when the key does not exist) via Err(). If buf is too
+// small to hold the value, Err() returns a "buffer too small" error.
+//
+// This command opts out of automatic retries because partial data from a
+// failed attempt would already be sitting in the caller's buffer.
+func (c cmdable) GetToBuffer(ctx context.Context, key string, buf []byte) *ZeroCopyStringCmd {
+	cmd := NewZeroCopyStringCmd(ctx, buf, "get", key)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -551,6 +571,27 @@ func (c cmdable) SetArgs(ctx context.Context, key string, value interface{}, a S
 // Deprecated: Use Set with expiration instead as of Redis 2.6.12.
 func (c cmdable) SetEx(ctx context.Context, key string, value interface{}, expiration time.Duration) *StatusCmd {
 	cmd := NewStatusCmd(ctx, "setex", key, formatSec(ctx, expiration), value)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// SetFromBuffer executes SET writing the value directly from buf. For values
+// larger than the connection's write buffer, bufio.Writer.Write flushes its
+// internal buffer (containing the RESP header) and then writes buf straight
+// to the socket — effectively zero-copy on the send path.
+//
+// Expiration is not supported; use Expire separately if a TTL is required.
+//
+// Note: SetFromBuffer is exposed for API symmetry with GetToBuffer and is
+// functionally equivalent to Set(ctx, key, buf, 0) — both dispatch to the
+// same []byte case in the RESP writer and produce identical bytes on the
+// wire. The zero-copy property on the send path comes from
+// bufio.Writer.Write bypassing its internal buffer for large payloads,
+// which Set([]byte) gets automatically. Prefer SetFromBuffer in code that
+// also uses GetToBuffer so the buffer-based pattern reads coherently;
+// otherwise Set(ctx, key, buf, 0) is equally efficient.
+func (c cmdable) SetFromBuffer(ctx context.Context, key string, buf []byte) *StatusCmd {
+	cmd := NewStatusCmd(ctx, "set", key, buf)
 	_ = c(ctx, cmd)
 	return cmd
 }
