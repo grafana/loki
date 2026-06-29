@@ -16,7 +16,7 @@ const (
 	ColumnTypeLabel     // ColumnTypeLabel represents a column from a stream label.
 	ColumnTypeMetadata  // ColumnTypeMetadata represents a column from a log metadata.
 	ColumnTypeParsed    // ColumnTypeParsed represents a parsed column from a parser stage.
-	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a builtin, label, metadata, or parsed.
+	ColumnTypeAmbiguous // ColumnTypeAmbiguous represents a column that can either be a label, metadata, or parsed.
 	ColumnTypeGenerated // ColumnTypeGenerated represents a column that is generated from an expression or computation.
 )
 

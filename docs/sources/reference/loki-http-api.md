@@ -76,6 +76,7 @@ These HTTP endpoints are exposed by their respective component that is part of t
 These HTTP endpoints are exposed by the `ingester`, `write`, and `all` components for flushing chunks and/or shutting down.
 
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
+- [`POST /flush/tenant`](#flush-in-memory-chunks-and-index-for-a-tenant)
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
 
@@ -1284,6 +1285,35 @@ POST /flush
 backing store. Mainly used for local testing.
 
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
+
+## Flush in-memory chunks and index for a tenant
+
+```bash
+POST /flush/tenant
+```
+
+`/flush/tenant` triggers a flush of the in-memory chunks held by an ingester for
+a single tenant, and then forces that ingester's in-memory index (the TSDB head)
+to be built and uploaded to the backing store. This makes the flushed chunks
+immediately referenceable, rather than waiting for the next periodic index
+rotation.
+
+Unlike `/flush`, this endpoint is tenant-scoped: the tenant is taken from the
+`X-Scope-OrgID` header (when running with multi-tenancy enabled). An optional
+`streams` parameter restricts the flush to the streams matching a log stream
+selector; when omitted, all of the tenant's in-memory streams are flushed.
+
+**URL query parameters:**
+
+- `streams=<selector>`:
+  Optional log stream selector that selects the streams to flush, for example `{app="foo"}`.
+  If omitted, all in-memory streams for the tenant are flushed.
+
+The flush is handled synchronously: the index is shipped only after the matching
+chunks have been flushed, so the request can be long-running. Set a generous
+client timeout when calling it.
+
+In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
 
 ## Prepare ingester shutdown
 

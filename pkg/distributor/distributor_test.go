@@ -933,10 +933,10 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:        &fakeRateStore{pushRate: 1},
-				validator:        validator,
-				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-				shardTracker:     NewShardTracker(),
+				rateStore:    &fakeRateStore{pushRate: 1},
+				validator:    validator,
+				m:            newMetrics(prometheus.NewPedanticRegistry()),
+				shardTracker: NewShardTracker(),
 			}
 
 			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
@@ -978,10 +978,10 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
 		d := Distributor{
-			rateStore:        &fakeRateStore{pushRate: 1},
-			validator:        validator,
-			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-			shardTracker:     NewShardTracker(),
+			rateStore:    &fakeRateStore{pushRate: 1},
+			validator:    validator,
+			m:            newMetrics(prometheus.NewPedanticRegistry()),
+			shardTracker: NewShardTracker(),
 		}
 
 		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
@@ -1307,9 +1307,9 @@ func BenchmarkShardStream(b *testing.B) {
 
 	distributorBuilder := func(shards int) *Distributor {
 		d := &Distributor{
-			validator:        validator,
-			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
-			shardTracker:     NewShardTracker(),
+			validator:    validator,
+			m:            newMetrics(prometheus.NewPedanticRegistry()),
+			shardTracker: NewShardTracker(),
 			// streamSize is always zero, so number of shards will be dictated just by the rate returned from store.
 			rateStore: &fakeRateStore{rate: int64(desiredRate*shards - 1)},
 		}
@@ -2586,7 +2586,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 

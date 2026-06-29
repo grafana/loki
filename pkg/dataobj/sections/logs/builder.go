@@ -373,9 +373,14 @@ func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 			},
 		}
 	case SortSchemaASC:
+		// Schema sorting clusters rows by the configured sort key. Within each sort-key
+		// cluster, we also order by stream ID and descending timestamp so entries from
+		// the same stream remain localized. This preserves stream-locality benefits for
+		// queries that cannot use the schema sort key.
 		return &datasetmd_v2.SortInfo{
 			SchemaLabels: schemaLabels,
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
 				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
 			},
 		}

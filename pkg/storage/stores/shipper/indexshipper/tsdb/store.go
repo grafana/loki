@@ -156,6 +156,21 @@ func (s *store) Stop() {
 	})
 }
 
+// FlushIndexes forces the in-memory TSDB head to be built into TSDB files and
+// uploaded to object storage immediately.
+func (s *store) FlushIndexes(ctx context.Context) error {
+	hm, ok := s.indexWriter.(*HeadManager)
+	if !ok {
+		return nil
+	}
+
+	if err := hm.Flush(); err != nil {
+		return errors.Wrap(err, "force-flushing tsdb head")
+	}
+
+	return s.indexShipper.FlushIndexes(ctx)
+}
+
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))

@@ -3,6 +3,9 @@ package ingester
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
 	"sync"
@@ -21,6 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -375,11 +379,116 @@ func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
 	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
 }
 
+func TestFlushTenantHandler(t *testing.T) {
+	const userID = "testUser"
+
+	for _, tc := range []struct {
+		name string
+		// pushStreams are pushed for userID before the request (built with makeStream).
+		pushStreams []logproto.Stream
+		// orgID is injected into the request context; an empty value means no tenant is set.
+		orgID string
+		// flushStreamsSelector is the LogQL selector sent as the "streams" param;
+		// an empty value means no selector (flush the whole tenant).
+		flushStreamsSelector string
+
+		expectedFlushStatusCode int
+		// expectedStreams are the label sets expected to have been flushed to the store.
+		expectedStreams []string
+		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
+		expectedFlushes int32
+	}{
+		{
+			name:                    "matcher scopes flush to matching streams",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			flushStreamsSelector:    `{app="a"}`,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`},
+			expectedFlushes:         1,
+		},
+		{
+			name:                    "empty selector flushes the whole tenant",
+			pushStreams:             []logproto.Stream{makeStream(`{app="a"}`, 1), makeStream(`{app="b"}`, 1)},
+			orgID:                   userID,
+			expectedFlushStatusCode: http.StatusNoContent,
+			expectedStreams:         []string{`{app="a"}`, `{app="b"}`},
+			expectedFlushes:         1,
+		},
+		{
+			name:                    "missing tenant is a bad request",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "invalid matcher is a bad request",
+			orgID:                   userID,
+			flushStreamsSelector:    "not-a-matcher",
+			expectedFlushStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:                    "unknown tenant is a no-op",
+			orgID:                   "no-such-tenant",
+			expectedFlushStatusCode: http.StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			defer func() { _ = services.StopAndAwaitTerminated(context.Background(), ing) }()
+
+			if len(tc.pushStreams) > 0 {
+				_, err := ing.Push(user.InjectOrgID(context.Background(), userID), &logproto.PushRequest{Streams: tc.pushStreams})
+				require.NoError(t, err)
+			}
+
+			target := "/flush/tenant"
+			if tc.flushStreamsSelector != "" {
+				target += "?streams=" + url.QueryEscape(tc.flushStreamsSelector)
+			}
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodPost, target, nil)
+			if tc.orgID != "" {
+				r = r.WithContext(user.InjectOrgID(r.Context(), tc.orgID))
+			}
+
+			ing.FlushTenantHandler(w, r)
+
+			require.Equal(t, tc.expectedFlushStatusCode, w.Code)
+
+			var flushedStreams []string
+			for _, c := range store.getChunksForUser(userID) {
+				flushedStreams = append(flushedStreams, c.Metric.String())
+			}
+			require.ElementsMatch(t, tc.expectedStreams, flushedStreams)
+
+			require.Equal(t, tc.expectedFlushes, store.flushIndexCalls.Load())
+		})
+	}
+}
+
+// makeStream builds a stream with the given labels and numLogs log lines.
+func makeStream(labels string, numLogs int) logproto.Stream {
+	now := time.Now()
+	entries := make([]logproto.Entry, 0, numLogs)
+	for i := 0; i < numLogs; i++ {
+		entries = append(entries, logproto.Entry{Timestamp: now, Line: fmt.Sprintf("line-%d", i)})
+	}
+	return logproto.Stream{Labels: labels, Entries: entries}
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
+
+	// flushIndexCalls counts how many times FlushIndexes was invoked, so tests can
+	// assert the handler forces the index ship after flushing chunks.
+	flushIndexCalls atomic.Int32
+}
+
+func (s *testStore) FlushIndexes(_ context.Context) error {
+	s.flushIndexCalls.Add(1)
+	return nil
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.

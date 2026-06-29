@@ -1,6 +1,22 @@
 # yaml-language-server: $schema=../schema.json
 ---
 queries:
+  - description: Aggregation by value column
+    query: sum by (value) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - min_over_time
+      - logfmt
+      - duration-conversion
+    notes: Vector aggregation by value column which collides with an internal numerical `value` column.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
   - description: Sum over time with duration conversion
     query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
