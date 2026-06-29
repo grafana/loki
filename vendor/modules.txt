@@ -939,7 +939,7 @@ github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum
 github.com/fsouza/fake-gcs-server/internal/notification
 github.com/fsouza/fake-gcs-server/internal/urlhelper
-# github.com/fxamacker/cbor/v2 v2.9.0
+# github.com/fxamacker/cbor/v2 v2.9.2
 ## explicit; go 1.20
 github.com/fxamacker/cbor/v2
 # github.com/gabriel-vasile/mimetype v1.4.13
