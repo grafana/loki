@@ -259,7 +259,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		computeTime := time.Since(startedAt) - inputReadTime
-		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
+		region.Record(StatPipelineExecDuration.Observe(computeTime.Seconds()))
 	}
 
 	return rec, err

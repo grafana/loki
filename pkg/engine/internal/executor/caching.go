@@ -131,8 +131,8 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 		if errors.Is(err, EOF) {
 			region := xcap.RegionFromContext(ctx)
-			region.Record(xcap.TaskCacheBatches.Observe(p.cachedRecords))
-			region.Record(xcap.TaskCacheRows.Observe(p.cachedRows))
+			region.Record(p.stats.Batches.Observe(p.cachedRecords))
+			region.Record(p.stats.Rows.Observe(p.cachedRows))
 		}
 
 		return rec, err
@@ -249,18 +249,18 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 	}
 
 	taskCacheStats := CacheStats{
-		Hits:    xcap.TaskCacheHits,
-		Misses:  xcap.TaskCacheMisses,
-		Batches: xcap.TaskCacheBatches,
-		Rows:    xcap.TaskCacheRows,
-		Bytes:   xcap.TaskCacheBytes,
+		Hits:    TaskCacheHits,
+		Misses:  TaskCacheMisses,
+		Batches: TaskCacheBatches,
+		Rows:    TaskCacheRows,
+		Bytes:   TaskCacheBytes,
 	}
 	dataObjScanCacheStats := CacheStats{
-		Hits:    xcap.DataObjScanCacheHits,
-		Misses:  xcap.DataObjScanCacheMisses,
-		Batches: xcap.DataObjScanCacheBatches,
-		Rows:    xcap.DataObjScanCacheRows,
-		Bytes:   xcap.DataObjScanCacheBytes,
+		Hits:    DataObjScanCacheHits,
+		Misses:  DataObjScanCacheMisses,
+		Batches: DataObjScanCacheBatches,
+		Rows:    DataObjScanCacheRows,
+		Bytes:   DataObjScanCacheBytes,
 	}
 
 	return TaskCacheRegistry{

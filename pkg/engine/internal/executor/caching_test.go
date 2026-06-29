@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 var testFields = []arrow.Field{
@@ -25,11 +24,11 @@ var testFields = []arrow.Field{
 }
 
 var testCacheStats = CacheStats{
-	Hits:    xcap.TaskCacheHits,
-	Misses:  xcap.TaskCacheMisses,
-	Batches: xcap.TaskCacheBatches,
-	Rows:    xcap.TaskCacheRows,
-	Bytes:   xcap.TaskCacheBytes,
+	Hits:    TaskCacheHits,
+	Misses:  TaskCacheMisses,
+	Batches: TaskCacheBatches,
+	Rows:    TaskCacheRows,
+	Bytes:   TaskCacheBytes,
 }
 
 func TestCachingPipeline(t *testing.T) {
