@@ -880,6 +880,115 @@ func (cmd *RawWriteToCmd) Clone() Cmder {
 
 //------------------------------------------------------------------------------
 
+// ZeroCopyStringCmd reads a bulk string response directly into a user-provided
+// buffer, avoiding intermediate allocations. The RESP header is parsed through
+// the buffered reader, then bulk data is read straight into the caller's buffer
+// via proto.Reader.ReadStringInto — for values larger than the bufio buffer,
+// this is effectively zero-copy from the socket to the user buffer.
+//
+// The buffer must be sized to fit the value; if it is too small an error is
+// returned and the payload plus trailing CRLF are drained from the reader so
+// the connection stays aligned for subsequent commands.
+type ZeroCopyStringCmd struct {
+	baseCmd
+	buf    []byte // user-provided buffer to read into
+	n      int    // number of bytes read into buf
+	cloned bool   // set by Clone(); causes readReply to drain + error
+}
+
+var _ Cmder = (*ZeroCopyStringCmd)(nil)
+
+func NewZeroCopyStringCmd(ctx context.Context, buf []byte, args ...interface{}) *ZeroCopyStringCmd {
+	return &ZeroCopyStringCmd{
+		baseCmd: baseCmd{
+			ctx:     ctx,
+			args:    args,
+			cmdType: CmdTypeString,
+		},
+		buf: buf,
+	}
+}
+
+func (cmd *ZeroCopyStringCmd) SetVal(n int) {
+	cmd.n = n
+}
+
+func (cmd *ZeroCopyStringCmd) Val() int {
+	return cmd.n
+}
+
+// Result returns the number of bytes read and any error.
+func (cmd *ZeroCopyStringCmd) Result() (int, error) {
+	return cmd.n, cmd.err
+}
+
+// Bytes returns the slice of the user-provided buffer containing the read data.
+func (cmd *ZeroCopyStringCmd) Bytes() []byte {
+	return cmd.buf[:cmd.n]
+}
+
+func (cmd *ZeroCopyStringCmd) String() string {
+	return cmdString(cmd, cmd.n)
+}
+
+func (cmd *ZeroCopyStringCmd) readReply(rd *proto.Reader) error {
+	// Reset the byte count before reading so a previous successful run
+	// can't leak its data through Bytes() if this call errors out before
+	// updating cmd.n.
+	cmd.n = 0
+	if cmd.cloned {
+		// A cloned ZeroCopyStringCmd has no usable destination buffer
+		// (see Clone for the rationale). Drain the network reply so the
+		// connection stays aligned for the next command, then surface a
+		// clear error rather than silently producing a wrong result.
+		if err := rd.DiscardNext(); err != nil {
+			return err
+		}
+		return fmt.Errorf("redis: ZeroCopyStringCmd cannot be cloned (cmd writes into caller-owned memory)")
+	}
+	n, err := rd.ReadStringInto(cmd.buf)
+	if err != nil {
+		return err
+	}
+	cmd.n = n
+	return nil
+}
+
+// NoRetry returns true because the response is written directly into the
+// caller's buffer. A retry could leave partial data from a failed attempt in
+// the buffer, so the caller must handle retries explicitly if needed.
+func (cmd *ZeroCopyStringCmd) NoRetry() bool {
+	return true
+}
+
+// Clone returns a clone that is intentionally non-functional. Cloning a
+// ZeroCopyStringCmd has no well-defined semantics: the cmd writes into
+// caller-owned memory (the buf passed to GetToBuffer), and a clone can
+// neither safely share that buf (concurrent writes from sibling clones
+// would race, last-writer wins) nor allocate its own buf (the result
+// would be invisible to whoever asked for the original cmd's reply).
+//
+// The Cmder interface requires Clone, so we return a clone marked so
+// that its readReply drains the network reply (keeping the connection
+// aligned) and fails the cmd with a clear error. Whoever processes the
+// clone gets an explicit error instead of silently-wrong bytes.
+//
+// In practice this path is unreachable through normal client flows:
+// Clone is only called from cluster fan-out routing
+// (osscluster_router.go) for multi-shard commands like DBSIZE / KEYS /
+// FLUSHDB, and ZeroCopyStringCmd is only produced by GetToBuffer which
+// issues GET — a single-key command routed to one shard, never fanned
+// out. Combined with NoRetry() returning true, the retry path also will
+// not clone this cmd.
+func (cmd *ZeroCopyStringCmd) Clone() Cmder {
+	return &ZeroCopyStringCmd{
+		baseCmd: cmd.cloneBaseCmd(),
+		cloned:  true,
+	}
+}
+
+//------------------------------------------------------------------------------
+
 type SliceCmd struct {
 	baseCmd
 
