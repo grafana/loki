@@ -176,6 +176,12 @@ type Stats struct {
 	Extra []any
 
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
+
+	// ExpandedEntriesSize is the physical byte total of all entries after resource/scope attribute expansion.
+	// For OTLP, this counts resource and scope attributes once per entry (matching what the rate limiter sees),
+	// whereas LogLinesBytes+StructuredMetadataBytes count them once per resource/scope (billing form).
+	// For Loki-format pushes, ExpandedEntriesSize == LogLinesBytes+StructuredMetadataBytes.
+	ExpandedEntriesSize int64
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
@@ -270,6 +276,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
+		"totalExpandedSize", humanize.Bytes(uint64(pushStats.ExpandedEntriesSize + pushStats.StreamLabelsSize)),
 		"mostRecentLagMs", mostRecentLagMs,
 	}
 
@@ -543,7 +550,9 @@ func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.Pus
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			streamSizeBytes += int64(util.EntryTotalSize(&e))
+			entryTotal := int64(util.EntryTotalSize(&e))
+			streamSizeBytes += entryTotal
+			pushStats.ExpandedEntriesSize += entryTotal
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {

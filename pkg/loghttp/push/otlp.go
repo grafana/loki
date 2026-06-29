@@ -335,6 +335,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
 				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
+
+				// track the total after resource/scope expansion.
+				stats.ExpandedEntriesSize += int64(len(entry.Line)) + int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
 				stream := pushRequestsByStream[entryLabelsStr]
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[entryLabelsStr] = stream
