@@ -104,6 +104,15 @@ func isScanTask(task *Task) bool {
 	return false
 }
 
+func isPostingsScanTask(task *Task) bool {
+	for node := range task.Fragment.Graph().Nodes() {
+		if node.Type() == physical.NodeTypePointersScan {
+			return true
+		}
+	}
+	return false
+}
+
 func isCompactionTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
 		switch node.Type() {
