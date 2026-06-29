@@ -393,6 +393,17 @@ func operandBytes(bmap *Bitmap, n int) (data []byte, off int) {
 	}
 
 	data, off = bmap.BytesTrimmed()
+
+	// Zero any bits past the operand's length in its trailing byte. op reads
+	// n >= len bits per operand, so without this those stale bits leak into the
+	// result. Copy first so we never mutate bmap's backing array.
+	if tail := (off + bmap.len) % 8; tail != 0 {
+		clone := make([]byte, len(data))
+		copy(clone, data)
+		clone[len(clone)-1] &= byte(1<<tail) - 1
+		data = clone
+	}
+
 	if need := (off + n + 7) / 8; len(data) < need {
 		extended := make([]byte, need)
 		copy(extended, data)

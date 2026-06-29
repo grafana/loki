@@ -397,6 +397,46 @@ func TestBitmap_SetAlgebra(t *testing.T) {
 	require.Equal(t, uint8(0b0000_0011), data[0])
 }
 
+// TestBitmap_SetAlgebra_GhostBits guards against a shorter operand leaking
+// stale bits past its Len when the other operand is wide enough that those
+// positions fall within the combined length n. build(1,2,3,4) sliced down to
+// len 2 leaves bits 2,3,4 set in the backing byte; OR'd with a wide {100} must
+// yield {1,100}, never {1,2,3,4,100}.
+func TestBitmap_SetAlgebra_GhostBits(t *testing.T) {
+	build := func(bits ...int) *memory.Bitmap {
+		b := memory.NewBitmap(nil, 0)
+		maxBit := -1
+		for _, x := range bits {
+			if x > maxBit {
+				maxBit = x
+			}
+		}
+		b.Resize(maxBit + 1)
+		for _, x := range bits {
+			b.Set(x, true)
+		}
+		return &b
+	}
+	ids := func(b *memory.Bitmap) []int {
+		var out []int
+		for id := range b.IterValues(true) {
+			out = append(out, id)
+		}
+		return out
+	}
+
+	shortStale := build(1, 2, 3, 4).Slice(0, 2) // value {1}, backing byte 0b0001_1110
+	require.Equal(t, []int{1}, ids(shortStale), "sanity: sliced operand only contains bit 1")
+
+	wideOther := build(100)
+	require.Equal(t, []int{1, 100}, ids(shortStale.Or(wideOther)),
+		"stale bits 2,3,4 from the shorter operand must not leak into Or")
+	require.Empty(t, ids(shortStale.And(wideOther)),
+		"stale bits must not produce phantom intersections in And")
+	require.Equal(t, []int{1}, ids(shortStale.AndNot(wideOther)),
+		"AndNot must reflect only the shorter operand's in-range bits")
+}
+
 func TestBitmap_SetAlgebra_Nil(t *testing.T) {
 	build := func(bits ...int) *memory.Bitmap {
 		b := memory.NewBitmap(nil, 0)
