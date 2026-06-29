@@ -131,6 +131,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               9,
 			},
 		},
 		{
@@ -180,6 +181,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               9,
 			},
 		},
 		{
@@ -229,6 +231,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               9,
 			},
 		},
 		{
@@ -281,6 +284,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               9,
 			},
 		},
 		{
@@ -373,6 +377,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               100,
 			},
 		},
 		{
@@ -474,6 +479,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               178,
 			},
 		},
 		{
@@ -636,6 +642,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+				ExpandedEntriesSize:               214,
 			},
 		},
 	} {
