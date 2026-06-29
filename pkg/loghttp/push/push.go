@@ -179,6 +179,14 @@ type Stats struct {
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
+	// If the X-Loki-Backfill-Day header is set, validate it and stash the day in the request context
+	// so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
+	if day, ok, err := ExtractAndValidateBackfillDay(r); err != nil {
+		return nil, nil, err
+	} else if ok {
+		r = r.Clone(InjectBackfillDayContext(r.Context(), day))
+	}
+
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, util.ErrMessageSizeTooLarge) {
@@ -418,6 +426,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
 	}
 
+	// If this is a backfill push (X-Loki-Backfill-Day header), every stream gets the internal
+	// backfill labels added below.
+	backfillDay := ExtractBackfillDayContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -453,6 +465,13 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
+		}
+
+		if backfillDay != "" {
+			lbs = labels.NewBuilder(lbs).
+				Set(constants.BackfillLabel, "true").
+				Set(constants.BackfillDayLabel, backfillDay).
+				Labels()
 		}
 
 		// Update labels. They were sanitized and potentially with the added service_name label.
