@@ -100,6 +100,7 @@ type ObjectMetastoreMetrics struct {
 	resolvedSectionsTotalDuration       prometheus.Histogram
 	resolvedSectionsTotal               prometheus.Histogram
 	resolvedSectionsRatio               prometheus.Histogram
+	indexReadRowsPerObject              prometheus.Histogram
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
@@ -192,6 +193,14 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_index_read_rows_per_object",
+			Help:                            "Number of index rows read while resolving a single index object",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 	}
 	metrics.register(reg)
 
@@ -213,4 +222,5 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	reg.MustRegister(p.resolvedSectionsTotalDuration)
 	reg.MustRegister(p.resolvedSectionsTotal)
 	reg.MustRegister(p.resolvedSectionsRatio)
+	reg.MustRegister(p.indexReadRowsPerObject)
 }

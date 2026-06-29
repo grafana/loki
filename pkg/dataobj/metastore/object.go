@@ -640,6 +640,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		req.SectionsRequest.Predicates,
 		req.BatchSize,
 	)
+	reader.metrics = m.metrics
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
