@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -604,9 +605,22 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 	if !reflect.DeepEqual(cfg.Common.Storage.FSConfig, filesystemDefaults) {
 		configsFound++
 
+		// Although the common section specifies "filesystem", the ruler is
+		// configured with "local".
+		// The reason is that the ruler handles rules managed in a local directory
+		// differntly than rules managed via the API where it stores them on object
+		// storage.
+		// The legacy RuleStore (configured via Ruler.StoreConfig) did not support
+		// a "filesystem" object client, whereas the new RuleStore (configured via
+		// RulerStorage) does support "filesystem".
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+
+			r.RulerStorage.Backend = "local"
+			r.RulerStorage.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+			r.RulerStorage.Filesystem = filesystem.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
+
 			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
 		}
 	}
