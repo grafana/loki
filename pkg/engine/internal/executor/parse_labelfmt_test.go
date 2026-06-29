@@ -198,10 +198,6 @@ func nullStringArray() *array.String {
 	return b.NewStringArray()
 }
 
-func timestampArrayOf(t time.Time) *array.Timestamp {
-	return timestampArrayOfTs(arrow.Timestamp(t.UnixNano()))
-}
-
 func timestampArrayOfTs(ts arrow.Timestamp) *array.Timestamp {
 	b := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 	b.Append(ts)
