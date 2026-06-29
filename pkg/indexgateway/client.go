@@ -413,10 +413,13 @@ func (s *GatewayClient) poolDo(
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
 
+	sortedAddrs := slices.Clone(addrs)
+	slices.Sort(sortedAddrs)
+	addressesString := "[" + strings.Join(sortedAddrs, ",") + "]"
+
 	errCount := 0
 	var lastErr error
 	for _, addr := range addrs {
-		addressesString := "[" + strings.Join(addrs, ",") + "]"
 		level.Info(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID, "selectedFrom", addressesString, "dan", "dan")
 
 		genericClient, err := s.pool.GetClientFor(addr)

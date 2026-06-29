@@ -3,6 +3,7 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,12 +76,16 @@ func (d *dns) discoveryLoop() {
 func (d *dns) runDiscovery() {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %v", d.addresses))
 	defer cancel()
-	before := "[" + strings.Join(d.dnsProvider.Addresses(), ",") + "]"
+	beforeAddrs := slices.Clone(d.dnsProvider.Addresses())
+	slices.Sort(beforeAddrs)
+	before := "[" + strings.Join(beforeAddrs, ",") + "]"
 	err := d.dnsProvider.Resolve(ctx, d.addresses)
 	if err != nil {
 		level.Error(d.logger).Log("msg", "failed to resolve server addresses", "err", err, "dan", "dan")
 	} else {
-		after := "[" + strings.Join(d.dnsProvider.Addresses(), ",") + "]"
+		afterAddrs := slices.Clone(d.dnsProvider.Addresses())
+		slices.Sort(afterAddrs)
+		after := "[" + strings.Join(afterAddrs, ",") + "]"
 		if before != after {
 			level.Info(d.logger).Log("msg", "resolved server addresses", "before", before, "after", after, "dan", "dan")
 		} else {
