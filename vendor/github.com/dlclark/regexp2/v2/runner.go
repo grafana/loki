@@ -1429,9 +1429,9 @@ func findFirstCharOptimized(r *Runner) (handled bool, found bool) {
 	case syntax.LeadingString_OrdinalIgnoreCase_LeftToRight:
 		return true, findLeadingStringLeftToRight(r, []rune(opts.LeadingPrefix), true)
 	case syntax.LeadingStrings_LeftToRight:
-		return true, findLeadingStringsLeftToRight(r, opts.LeadingPrefixes, false)
+		return true, findLeadingStringsLeftToRight(r, opts.LeadingPrefixesRunes, false)
 	case syntax.LeadingStrings_OrdinalIgnoreCase_LeftToRight:
-		return true, findLeadingStringsLeftToRight(r, opts.LeadingPrefixes, true)
+		return true, findLeadingStringsLeftToRight(r, opts.LeadingPrefixesRunes, true)
 	case syntax.FixedDistanceSets_LeftToRight:
 		return true, findFixedDistanceSetsLeftToRight(r, opts.FixedDistanceSets)
 	case syntax.FixedDistanceChar_LeftToRight:
@@ -1487,20 +1487,19 @@ func findLeadingStringLeftToRight(r *Runner, prefix []rune, ignoreCase bool) boo
 	return true
 }
 
-func findLeadingStringsLeftToRight(r *Runner, prefixes []string, ignoreCase bool) bool {
+func findLeadingStringsLeftToRight(r *Runner, prefixes [][]rune, ignoreCase bool) bool {
 	if len(prefixes) == 0 {
 		return false
 	}
 
 	for start := r.Runtextpos; start <= latestPossibleStart(r); start++ {
 		for _, prefix := range prefixes {
-			prefixRunes := []rune(prefix)
 			if ignoreCase {
-				if helpers.StartsWithIgnoreCase(r.Runtext[start:], prefixRunes) {
+				if helpers.StartsWithIgnoreCase(r.Runtext[start:], prefix) {
 					r.Runtextpos = start
 					return true
 				}
-			} else if helpers.StartsWith(r.Runtext[start:], prefixRunes) {
+			} else if helpers.StartsWith(r.Runtext[start:], prefix) {
 				r.Runtextpos = start
 				return true
 			}
@@ -1627,26 +1626,25 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 	}
 
 	for searchStart := r.Runtextpos; searchStart <= latestPossibleStart(r); {
-		firstStart, firstEnd, ok := findNextRequiredLandmarkRunes(r.Runtext, searchStart, r.Runtextend, chain.Landmarks[0])
+		first, ok := findNextRequiredLandmarkRunes(r.Runtext, searchStart, r.Runtextend, chain.Landmarks[0])
 		if !ok {
 			r.Runtextpos = r.Runtextend
 			return false
 		}
 
-		nextStart := firstEnd
+		nextStart := first.End
 		for i := 1; i < len(chain.Landmarks); i++ {
-			_, landmarkEnd, ok := findNextRequiredLandmarkRunes(r.Runtext, nextStart, r.Runtextend, chain.Landmarks[i])
+			landmark, ok := findNextRequiredLandmarkRunes(r.Runtext, nextStart, r.Runtextend, chain.Landmarks[i])
 			if !ok {
 				r.Runtextpos = r.Runtextend
 				return false
 			}
-			nextStart = landmarkEnd
+			nextStart = landmark.End
 		}
 
-		candidate := firstStart
-		firstWhitespaceSet := firstLandmarkWhitespaceSet(chain.Landmarks[0])
-		for candidate > r.Runtextpos && firstWhitespaceSet != nil && firstWhitespaceSet.CharIn(r.Runtext[candidate-1]) {
-			candidate--
+		candidate := first.Start
+		if candidate < r.Runtextpos {
+			candidate = r.Runtextpos
 		}
 		for candidate > r.Runtextpos && chain.LeadingLoopSet.CharIn(r.Runtext[candidate-1]) {
 			candidate--
@@ -1656,37 +1654,42 @@ func findRequiredLandmarkChainLeftToRight(r *Runner, chain *syntax.RequiredLandm
 			return true
 		}
 
-		searchStart = firstStart + 1
+		searchStart = first.CoreStart + 1
 	}
 
 	r.Runtextpos = r.Runtextend
 	return false
 }
 
-func findNextRequiredLandmarkRunes(input []rune, startAt, endAt int, landmark syntax.RequiredLandmark) (start int, end int, ok bool) {
+type requiredLandmarkMatch struct {
+	Start     int
+	CoreStart int
+	End       int
+}
+
+func findNextRequiredLandmarkRunes(input []rune, startAt, endAt int, landmark syntax.RequiredLandmark) (requiredLandmarkMatch, bool) {
 	for i := startAt; i < endAt; i++ {
 		for _, alt := range landmark.Alternatives {
-			if end, ok := requiredLandmarkAlternativeEnd(input, i, endAt, alt); ok {
-				return i, end, true
+			if match, ok := requiredLandmarkAlternativeMatch(input, i, endAt, alt); ok {
+				return match, true
 			}
 		}
 	}
-	return 0, 0, false
+	return requiredLandmarkMatch{}, false
 }
 
-func requiredLandmarkAlternativeEnd(input []rune, start, endAt int, alt syntax.RequiredLandmarkAlternative) (int, bool) {
+func requiredLandmarkAlternativeMatch(input []rune, start, endAt int, alt syntax.RequiredLandmarkAlternative) (requiredLandmarkMatch, bool) {
 	if alt.RequireWhitespaceBefore &&
-		(start == 0 || alt.WhitespaceSet == nil || !alt.WhitespaceSet.CharIn(input[start-1])) {
-		return 0, false
+		(start == 0 || alt.LeadingWhitespaceSet == nil || !alt.LeadingWhitespaceSet.CharIn(input[start-1])) {
+		return requiredLandmarkMatch{}, false
 	}
 
 	var end int
-	if alt.Literal != "" {
-		literal := []rune(alt.Literal)
-		if len(literal) == 0 || start+len(literal) > endAt || !helpers.StartsWith(input[start:], literal) {
-			return 0, false
+	if len(alt.Literal) > 0 {
+		if start+len(alt.Literal) > endAt || !helpers.StartsWith(input[start:], alt.Literal) {
+			return requiredLandmarkMatch{}, false
 		}
-		end = start + len(literal)
+		end = start + len(alt.Literal)
 	} else if alt.Set != nil && alt.MinRepeat > 0 {
 		end = start
 		maxRepeat := alt.MaxRepeat
@@ -1697,26 +1700,22 @@ func requiredLandmarkAlternativeEnd(input []rune, start, endAt int, alt syntax.R
 			end++
 		}
 		if end-start < alt.MinRepeat {
-			return 0, false
+			return requiredLandmarkMatch{}, false
 		}
 	} else {
-		return 0, false
+		return requiredLandmarkMatch{}, false
 	}
 
 	if alt.RequireWhitespaceAfter &&
-		(end >= endAt || alt.WhitespaceSet == nil || !alt.WhitespaceSet.CharIn(input[end])) {
-		return 0, false
+		(end >= endAt || alt.TrailingWhitespaceSet == nil || !alt.TrailingWhitespaceSet.CharIn(input[end])) {
+		return requiredLandmarkMatch{}, false
 	}
-	return end, true
-}
 
-func firstLandmarkWhitespaceSet(landmark syntax.RequiredLandmark) *syntax.CharSet {
-	for _, alt := range landmark.Alternatives {
-		if alt.WhitespaceSet != nil {
-			return alt.WhitespaceSet
-		}
+	matchStart := start
+	for matchStart > 0 && alt.LeadingWhitespaceSet != nil && alt.LeadingWhitespaceSet.CharIn(input[matchStart-1]) {
+		matchStart--
 	}
-	return nil
+	return requiredLandmarkMatch{Start: matchStart, CoreStart: start, End: end}, true
 }
 
 func indexOfLiteralAfterLoop(r *Runner, literal *syntax.LiteralAfterLoop, searchStart int) int {
