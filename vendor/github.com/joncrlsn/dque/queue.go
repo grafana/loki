@@ -190,6 +190,16 @@ func (q *DQue) Close() error {
 	// Wake-up any waiting goroutines for blocking queue access - they should get a ErrQueueClosed
 	q.emptyCond.Broadcast()
 
+	// Close the first and last segments' file handles
+	if err = q.firstSegment.close(); err != nil {
+		return err
+	}
+	if q.firstSegment != q.lastSegment {
+		if err = q.lastSegment.close(); err != nil {
+			return err
+		}
+	}
+
 	// Safe-guard ourself from accidentally using segments after closing the queue
 	q.firstSegment = nil
 	q.lastSegment = nil
@@ -520,11 +530,21 @@ func (q *DQue) load() error {
 	if maxNum > 0 {
 
 		// We found files
-		seg, err := openQueueSegment(q.fullPath, minNum, q.turbo, q.builder)
-		if err != nil {
-			return errors.Wrap(err, "unable to create queue segment in "+q.fullPath)
+		for {
+			seg, err := openQueueSegment(q.fullPath, minNum, q.turbo, q.builder)
+			if err != nil {
+				return errors.Wrap(err, "unable to create queue segment in "+q.fullPath)
+			}
+			// Make sure the first segment is not empty or it's not complete (i.e. is current)
+			if seg.size() > 0 || seg.sizeOnDisk() < q.config.ItemsPerSegment {
+				q.firstSegment = seg
+				break
+			}
+			// Delete the segment as it's empty and complete
+			seg.delete()
+			// Try the next one
+			minNum++
 		}
-		q.firstSegment = seg
 
 		if minNum == maxNum {
 			// We have only one segment so the
@@ -532,7 +552,7 @@ func (q *DQue) load() error {
 			q.lastSegment = q.firstSegment
 		} else {
 			// We have multiple segments
-			seg, err = openQueueSegment(q.fullPath, maxNum, q.turbo, q.builder)
+			seg, err := openQueueSegment(q.fullPath, maxNum, q.turbo, q.builder)
 			if err != nil {
 				return errors.Wrap(err, "unable to create segment for "+q.fullPath)
 			}
