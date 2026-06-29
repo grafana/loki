@@ -77,6 +77,34 @@ func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
 	require.Equal(t, int64(40), ls.MaxNS, "envelope spans every row for the name")
 }
 
+// TestScanner_LabelStreams_UnionZeroExtends covers accumulating rows whose
+// stream bitmaps differ in byte length. Stream 70 lives beyond the first byte,
+// so its bitmap is longer than stream 1's; the union must zero-extend the
+// shorter operand rather than reject the length mismatch.
+func TestScanner_LabelStreams_UnionZeroExtends(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildLabelBloomSection(t, []labelPosting{
+		{name: "env", value: "prod", streamID: 1, obj: "/o", section: 0, minTs: 10, maxTs: 20},
+		{name: "env", value: "prod", streamID: 70, obj: "/o", section: 0, minTs: 30, maxTs: 40},
+	}, nil)
+	defer closer()
+
+	cm, err := postings.CompileMatcher(labels.MustNewMatcher(labels.MatchEqual, "env", "prod"))
+	require.NoError(t, err)
+
+	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef]postings.LabelStreams, error) {
+		return sc.LabelStreams(ctx, cm)
+	})
+	require.Len(t, got, 1)
+
+	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
+	ls, ok := got[ref]
+	require.True(t, ok)
+
+	require.Equal(t, []int{1, 70}, bitmapIDs(ls.Present), "both streams union across differing bitmap lengths")
+	require.Equal(t, []int{1, 70}, bitmapIDs(ls.Matched))
+}
+
 // scanAll runs scan over each section and returns the single non-empty result
 // map (the builder splits label and bloom rows across sections).
 func scanAll[T any](t *testing.T, secs []*postings.Section, scan func(*postings.Scanner) (map[postings.SectionRef]T, error)) map[postings.SectionRef]T {

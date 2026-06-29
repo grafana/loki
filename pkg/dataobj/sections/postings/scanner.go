@@ -6,6 +6,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -60,7 +62,7 @@ func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[Secti
 		ref := refOf(row)
 		ms := out[ref]
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		ms.Matched = ms.Matched.Or(&bits)
+		ms.Matched = unionStreams(ms.Matched, bits)
 		ms.widen(row)
 		out[ref] = ms
 	})
@@ -87,9 +89,9 @@ func (s *Scanner) LabelStreams(ctx context.Context, cm CompiledMatcher) (map[Sec
 		ref := refOf(row)
 		ls := out[ref]
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		ls.Present = ls.Present.Or(&bits)
+		ls.Present = unionStreams(ls.Present, bits)
 		if cm.matcher.Matches(row.LabelValue) {
-			ls.Matched = ls.Matched.Or(&bits)
+			ls.Matched = unionStreams(ls.Matched, bits)
 		}
 		ls.widen(row)
 		out[ref] = ls
@@ -129,6 +131,47 @@ func (b *timeBounds) widen(row Row) {
 
 func refOf(row Row) SectionRef {
 	return SectionRef{ObjectPath: row.ObjectPath, SectionIndex: row.SectionIndex}
+}
+
+// unionStreams returns the bitwise OR of acc and bits, treating a nil acc as
+// empty. Per-row stream bitmaps vary in length, so the shorter operand is
+// zero-extended to the longer before delegating to compute.Or, which requires
+// equal-length operands.
+//
+// The result uses the nil (GC-managed) allocator on purpose: it escapes the
+// scan in the returned per-section map, so it must not be backed by a
+// reclaimable memory.Allocator region that the scan would free.
+func unionStreams(acc *memory.Bitmap, bits memory.Bitmap) *memory.Bitmap {
+	if acc == nil {
+		acc = &memory.Bitmap{}
+	}
+
+	left, right := *acc, bits
+	if n := max(left.Len(), right.Len()); left.Len() != right.Len() {
+		left = extendBitmap(left, n)
+		right = extendBitmap(right, n)
+	}
+
+	result, err := compute.Or(
+		nil,
+		columnar.NewBool(left, memory.Bitmap{}),
+		columnar.NewBool(right, memory.Bitmap{}),
+		memory.Bitmap{},
+	)
+	if err != nil {
+		panic("unionStreams: " + err.Error())
+	}
+	out := result.(*columnar.Bool).Values()
+	return &out
+}
+
+// extendBitmap returns a length-n copy of b with the trailing bits cleared,
+// leaving b unmodified.
+func extendBitmap(b memory.Bitmap, n int) memory.Bitmap {
+	out := memory.NewBitmap(nil, n)
+	out.AppendBitmap(b)
+	out.AppendCount(false, n-b.Len())
+	return out
 }
 
 // MatcherHits scans the section against [matchers]. The first return is the
@@ -172,7 +215,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 		}
 		_ = br.Close()
 	}
-	xcap.RegionFromContext(ctx).Record(xcap.StatPostingsBloomRowsRead.Observe(bloomRowsRead))
+	xcap.RegionFromContext(ctx).Record(StatPostingsBloomRowsRead.Observe(bloomRowsRead))
 
 	// matchers are predicates from outside the stream selector, so a name may
 	// resolve to either a stream label or a parsed/metadata label. Report which
