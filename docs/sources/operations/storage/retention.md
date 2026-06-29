@@ -217,3 +217,89 @@ compactor:
   delete_request_store: gcs
   retention_enabled: true
 ```
+
+## Object store lifecycle policies
+
+Loki stores chunks and indexes as objects in the configured object store (S3, GCS, Azure Blob Storage, and so on). Chunks are deleted by the [Compactor](#compactor) according to your configured retention, but the Compactor only removes chunk objects: it never deletes the objects that hold cluster state, such as the index or the cluster seed.
+
+If you also configure an object store lifecycle policy on the bucket, scope it carefully. A blanket "delete everything older than N days" rule will eventually remove objects that Loki must keep, which corrupts the store and causes query failures. The note at the top of this page applies here as well: any lifecycle expiration must be longer than your retention period.
+
+{{< admonition type="warning" >}}
+Never apply a lifecycle rule with an empty prefix (one that targets the whole bucket). Always scope lifecycle rules to the per-tenant chunk prefixes described below.
+{{< /admonition >}}
+
+### Bucket object layout
+
+The following objects are written to the configured bucket. The exact prefixes depend on your `schema_config` and on whether multi-tenancy is enabled, so confirm them against your own configuration before writing a lifecycle rule.
+
+| Object or prefix | Content | Safe to expire with a lifecycle policy? |
+|---|---|---|
+| `<tenant_id>/` (for example, `fake/` in single-tenant mode, or your org ID per tenant) | Chunk objects (the log data). | Yes. These are the only objects a lifecycle rule should target. |
+| Index objects (under the index path prefix, `index/` by default, set by `index.path_prefix` in `schema_config`) | TSDB or BoltDB index files, written by ingesters and rewritten by the Compactor. The `index.prefix` value (for example `index_` or `loki_index_`) is the table-name prefix used inside this path, not the path itself, so match a lifecycle rule against the path prefix. | No. Loki manages the index lifecycle internally. Deleting index objects removes references to live chunks and breaks queries. |
+| `loki_cluster_seed.json` | A small file at the bucket root holding the cluster seed used by usage reporting. It is written once and never rotated. | No. A blanket age-based rule will delete it once it ages past the time to live (TTL). |
+| Compactor delete-request store (the `delete_request_store` you configure, such as `markers/` and the delete-request objects) | The Compactor's record of chunks pending deletion and of in-flight delete requests. | No. Removing these makes the Compactor lose track of pending deletions. |
+| Ruler store objects (if the Ruler is backed by the same bucket) | Recording and alerting rule files. | No. These are configuration, not time-series data. |
+
+### Compactor retention versus object store lifecycle policies
+
+Compactor retention and object store lifecycle policies are two independent mechanisms, and they should not be configured in ways that conflict:
+
+- The Compactor is index-aware. It only deletes a chunk after it has removed every reference to that chunk from the index, and it waits `compactor.retention-delete-delay` (default `2h`) before the sweeper deletes the marked chunk, so that index gateways pick up the rewritten index first.
+- An object store lifecycle policy is index-unaware. It deletes objects purely by age and prefix, with no knowledge of whether a chunk is still referenced by the index.
+
+For most deployments, enabling Compactor retention is sufficient and an object store lifecycle policy is not required. If you do add a lifecycle policy as a cost safety net, set its expiration **longer** than your retention period plus `compactor.retention-delete-delay`, so the Compactor always deletes chunks first and the lifecycle rule only ever catches objects the Compactor has already orphaned.
+
+### Example: Amazon S3 lifecycle policy
+
+This policy expires only chunk objects under a single tenant prefix. Replace `fake/` with your tenant prefix (use one rule per tenant, or your org ID prefix, when multi-tenancy is enabled). The `Days` value must be larger than your retention period plus the delete delay.
+
+```json
+{
+  "Rules": [
+    {
+      "ID": "loki-chunk-expiration",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": "fake/"
+      },
+      "Expiration": {
+        "Days": 395
+      }
+    }
+  ]
+}
+```
+
+Apply it with the AWS CLI:
+
+```bash
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket YOUR_LOKI_BUCKET \
+  --lifecycle-configuration file://lifecycle.json
+```
+
+### Example: Google Cloud Storage lifecycle rule
+
+The equivalent GCS rule expires objects by age and prefix. As with S3, scope `matchesPrefix` to the tenant chunk prefix and keep `age` larger than your retention period plus the delete delay.
+
+```json
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 395,
+        "matchesPrefix": ["fake/"]
+      }
+    }
+  ]
+}
+```
+
+Apply it with the Google Cloud CLI:
+
+```bash
+gcloud storage buckets update gs://YOUR_LOKI_BUCKET --lifecycle-file=lifecycle.json
+```
+
+For Azure Blob Storage, use a management policy with a `prefixMatch` set to the tenant chunk prefix and the same "expiration must exceed retention plus delete delay" rule.
