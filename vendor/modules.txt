@@ -1122,7 +1122,7 @@ github.com/lucasb-eyer/go-colorful
 # github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e
 ## explicit; go 1.21
 github.com/lufia/plan9stats
-# github.com/mattn/go-colorable v0.1.14
+# github.com/mattn/go-colorable v0.1.15
 ## explicit; go 1.18
 github.com/mattn/go-colorable
 # github.com/mattn/go-ieproxy v0.0.12
