@@ -27,12 +27,24 @@ func (*JSONMarshaler) MarshalLogs(ld Logs) ([]byte, error) {
 var _ Unmarshaler = (*JSONUnmarshaler)(nil)
 
 // JSONUnmarshaler unmarshals OTLP/JSON formatted-bytes to Logs.
-type JSONUnmarshaler struct{}
+type JSONUnmarshaler struct {
+	// prevent unkeyed literal initialization
+	_ struct{}
+	// DisallowUnknownFields causes UnmarshalLogs to return an error when the
+	// input contains JSON object fields that are not defined by the OTLP
+	// schema. When false (the default), unknown fields are silently ignored.
+	//
+	// Warning: enabling this option breaks forwards compatibility with future
+	// evolutions of the OTLP format, as fields added to the format in newer
+	// versions will be rejected as unknown.
+	DisallowUnknownFields bool
+}
 
 // UnmarshalLogs from OTLP/JSON format into Logs.
-func (*JSONUnmarshaler) UnmarshalLogs(buf []byte) (Logs, error) {
+func (u *JSONUnmarshaler) UnmarshalLogs(buf []byte) (Logs, error) {
 	iter := json.BorrowIterator(buf)
 	defer json.ReturnIterator(iter)
+	iter.SetDisallowUnknownFields(u.DisallowUnknownFields)
 	ld := NewLogs()
 	ld.getOrig().UnmarshalJSON(iter)
 	if iter.Error() != nil {
