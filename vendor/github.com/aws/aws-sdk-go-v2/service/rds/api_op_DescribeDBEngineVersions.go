@@ -58,6 +58,8 @@ type DescribeDBEngineVersionsInput struct {
 	//
 	//   - db2-ae
 	//
+	//   - db2-ce
+	//
 	//   - db2-se
 	//
 	//   - mariadb
@@ -81,6 +83,8 @@ type DescribeDBEngineVersionsInput struct {
 	//   - sqlserver-ex
 	//
 	//   - sqlserver-web
+	//
+	//   - sqlserver-dev-ee
 	Engine *string
 
 	// A specific database engine version to return details for.

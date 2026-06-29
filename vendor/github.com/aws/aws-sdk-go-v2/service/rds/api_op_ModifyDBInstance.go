@@ -555,7 +555,7 @@ type ModifyDBInstanceInput struct {
 	//
 	//   - RDS for MariaDB - general-public-license
 	//
-	//   - RDS for Microsoft SQL Server - license-included
+	//   - RDS for Microsoft SQL Server - license-included | bring-your-own-media
 	//
 	//   - RDS for MySQL - general-public-license
 	//
@@ -923,10 +923,10 @@ type ModifyDBInstanceInput struct {
 	//
 	// This parameter is only supported for Db2 DB instances and Oracle DB instances.
 	//
-	// Db2 Standby DB replicas are included in Db2 Advanced Edition (AE) and Db2
-	// Standard Edition (SE). The main use case for standby replicas is cross-Region
-	// disaster recovery. Because it doesn't accept user connections, a standby replica
-	// can't serve a read-only workload.
+	// Db2 Standby DB replicas are included in Db2 Advanced Edition (AE), Db2
+	// Community Edition (CE), and Db2 Standard Edition (SE). The main use case for
+	// standby replicas is cross-Region disaster recovery. Because it doesn't accept
+	// user connections, a standby replica can't serve a read-only workload.
 	//
 	// You can create a combination of standby and read-only DB replicas for the same
 	// primary DB instance. For more information, see [Working with replicas for Amazon RDS for Db2]in the Amazon RDS User Guide.
