@@ -4,16 +4,37 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// MouseMode represents the mouse mode for the terminal. It is used to enable
-// or disable mouse support on the terminal.
-type MouseMode byte
+// MouseMode represents the mouse tracking mode for the terminal.
+type MouseMode uint8
 
-// Mouse modes.
+// Mouse tracking modes.
+//
+// These determine which mouse events the terminal reports.
 const (
-	MouseModeNone MouseMode = iota
-	MouseModeClick
-	MouseModeDrag
-	MouseModeMotion
+	MouseModeNone   MouseMode = iota // Disable mouse tracking.
+	MouseModePress                   // Press only (DEC mode 9). Reports button press events.
+	MouseModeClick                   // Click tracking (DEC mode 1000). Reports button press and release.
+	MouseModeDrag                    // Drag tracking (DEC mode 1002). Reports press, release, and drag.
+	MouseModeMotion                  // Motion tracking (DEC mode 1003). Reports all mouse events including motion.
+)
+
+// MouseEncoding represents the encoding used for mouse events.
+type MouseEncoding uint8
+
+// Mouse encodings.
+//
+// These determine how mouse coordinates and buttons are encoded in the
+// terminal's escape sequences. The encoding is only meaningful when mouse
+// tracking is enabled via [MouseMode].
+const (
+	MouseEncodingLegacy   MouseEncoding = iota // Legacy X10-compatible encoding. Coordinates limited to 223.
+	MouseEncodingSGR                           // SGR encoding (DEC mode 1006). No coordinate limit, distinguishes press/release.
+	MouseEncodingSGRPixel                      // SGR-pixel encoding (DEC mode 1016). Reports pixel coordinates.
+
+	// TODO: support these additional encodings in the future.
+	// MouseEncodingUTF8                          // UTF-8 encoding (DEC mode 1005). Coordinates limited to 223.
+	// MouseEncodingUrxvt                         // urxvt encoding (DEC mode 1015). No coordinate limit.
+	// MouseEncodingSGRPixel                      // SGR-pixel encoding (DEC mode 1016). Reports pixel coordinates.
 )
 
 // MouseButton represents the button that was pressed during a mouse message.
@@ -55,7 +76,8 @@ const (
 // messages.
 //
 // The X and Y coordinates are zero-based, with (0,0) being the upper left
-// corner of the terminal.
+// corner of the terminal. When using [MouseEncodingSGRPixel] (DEC mode 1016),
+// X and Y are in pixel coordinates; otherwise they are in cell coordinates.
 //
 //	// Catch all mouse events
 //	switch Event := Event.(type) {
@@ -95,4 +117,34 @@ func (m Mouse) String() (s string) {
 	}
 
 	return s
+}
+
+// MousePixelToCell converts a mouse event with pixel coordinates to cell
+// coordinates.
+//
+// This is only meaningful when using [MouseEncodingSGRPixel] encoding, which
+// reports mouse coordinates in pixels rather than cell units. The conversion
+// is based on the terminal's reported pixel dimensions and cell dimensions.
+//
+// On Windows, or other platforms where [Terminal.GetWinsize] doesn't report
+// pixel dimensions, you can query for the terminal window pixel dimensions via
+// [ansi.WindowOp](4) and get back a [PixelSizeEvent] with the pixel
+// dimensions. You can then construct a [Winsize] struct with the pixel
+// dimensions and the cell dimensions from [Terminal.GetWinsize] and pass it to
+// this function.
+func MousePixelToCell(m Mouse, ws *Winsize) Mouse {
+	var col, row int
+	if ws.Xpixel > 0 {
+		col = m.X * int(ws.Col) / int(ws.Xpixel)
+	}
+	if ws.Ypixel > 0 {
+		row = m.Y * int(ws.Row) / int(ws.Ypixel)
+	}
+
+	return Mouse{
+		X:      col,
+		Y:      row,
+		Button: m.Button,
+		Mod:    m.Mod,
+	}
 }

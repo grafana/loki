@@ -1,8 +1,6 @@
 package uv
 
-import (
-	"github.com/charmbracelet/x/ansi"
-)
+import "github.com/charmbracelet/x/ansi"
 
 // Window represents a rectangular area on the screen. It can be a root window
 // with no parent, or a sub-window with a parent window. A window can have its
@@ -105,11 +103,26 @@ func (w *Window) NewView(x, y, width, height int) *Window {
 	return newWindow(w, x, y, width, height, w.method, true)
 }
 
-// NewScreen creates a new root [Window] with the given size and width method.
+// NewWindow creates a new root [Window] with the given size and width method.
+// If the method is nil, it defaults to [ansi.WcWidth].
+//
+// The [WidthMethod] is used to calculate the width of characters in the
+// window, which is important for correctly rendering text, especially when
+// dealing with wide characters, combining characters, emojis, and other
+// Unicode characters that may have varying widths.
+//
+// Use [ansi.WcWidth] as the default width method, which is a common
+// implementation that handles a wide range of Unicode characters according to
+// the Unicode Standard. Use [ansi.GraphemeWidth] if you know that your
+// terminal supports grapheme clusters and proper rendering of combining
+// characters and emojis, and you want to ensure that the width calculations
+// are based on grapheme clusters rather than individual code points.
 //
 // This will panic if width or height is negative.
-func NewScreen(width, height int) *Window {
-	var method WidthMethod = ansi.WcWidth
+func NewWindow(width, height int, method WidthMethod) *Window {
+	if method == nil {
+		method = ansi.WcWidth
+	}
 	return newWindow(nil, 0, 0, width, height, &method, false)
 }
 
