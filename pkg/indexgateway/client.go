@@ -397,7 +397,7 @@ func (s *GatewayClient) poolDo(
 	}
 
 	if len(addrs) == 0 {
-		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
+		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID), "dan", "dan")
 		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
 	}
 
@@ -415,13 +415,11 @@ func (s *GatewayClient) poolDo(
 	errCount := 0
 	var lastErr error
 	for _, addr := range addrs {
-		if s.cfg.LogGatewayRequests {
-			level.Debug(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
-		}
+		level.Info(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID, "selectedFrom", addrs, "dan", "dan")
 
 		genericClient, err := s.pool.GetClientFor(addr)
 		if err != nil {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
+			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err, "dan", "dan")
 			continue
 		}
 
@@ -429,19 +427,22 @@ func (s *GatewayClient) poolDo(
 		if err := callback(client); err != nil {
 			lastErr = err
 			errCount++
-			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err, "dan", "dan")
 
 			if maxRetries >= 0 && errCount > maxRetries {
 				s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
+				level.Error(s.logger).Log("msg", "request failed after running out of retries", "errors", errCount, "dan", "dan")
 				return err
 			}
 			continue
 		}
 
+		level.Info(s.logger).Log("msg", "request succeeded", "errors", errCount, "dan", "dan")
 		s.retriesHistogram.WithLabelValues("success").Observe(float64(errCount))
 		return nil
 	}
 
+	level.Error(s.logger).Log("msg", "request failed after running out of index gateways", "errors", errCount, "dan", "dan")
 	s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 	return lastErr
 }

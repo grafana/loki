@@ -75,8 +75,12 @@ func (d *dns) discoveryLoop() {
 func (d *dns) runDiscovery() {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, fmt.Errorf("DNS lookup timeout: %v", d.addresses))
 	defer cancel()
+	before := "[" + strings.Join(d.dnsProvider.Addresses(), ",") + "]"
 	err := d.dnsProvider.Resolve(ctx, d.addresses)
 	if err != nil {
-		level.Error(d.logger).Log("msg", "failed to resolve server addresses", "err", err)
+		level.Error(d.logger).Log("msg", "failed to resolve server addresses", "err", err, "dan", "dan")
+	} else {
+		after := "[" + strings.Join(d.dnsProvider.Addresses(), ",") + "]"
+		level.Info(d.logger).Log("msg", "resolved server addresses", "before", before, "after", after, "dan", "dan")
 	}
 }
