@@ -1586,7 +1586,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a => github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9
+# github.com/thanos-io/objstore v0.0.0-20260615134008-fb6fd3a5170a => github.com/grafana/objstore v0.0.0-20260507144615-6c81ea69c9a9
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil
