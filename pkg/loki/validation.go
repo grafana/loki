@@ -10,17 +10,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-func validateBackendAndLegacyReadMode(c *Config) []error {
-	var errs []error
-	// Honor the legacy scalable deployment topology
-	if c.LegacyReadTarget {
-		if c.isTarget(Backend) {
-			errs = append(errs, fmt.Errorf("CONFIG ERROR: invalid target, cannot run backend target with legacy read mode"))
-		}
-	}
-	return errs
-}
-
 func validateSchemaRequirements(c *Config) []error {
 	var errs []error
 	p := config.ActivePeriodConfig(c.SchemaConfig.Configs)

@@ -1202,7 +1202,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/loki/api/v1/query_range",
+			path:       "/api/prom/query",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1217,7 +1217,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/loki/api/v1/series",
+			path:       "/api/prom/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1227,7 +1227,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/loki/api/v1/labels",
+			path:       "/api/prom/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1237,7 +1237,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/loki/api/v1/label",
+			path:       "/api/prom/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1247,7 +1247,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/loki/api/v1/label/__name__/values",
+			path:       "/api/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
 		},
 		{

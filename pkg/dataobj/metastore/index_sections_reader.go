@@ -67,6 +67,11 @@ type indexSectionsReader struct {
 	bloomRowsRead            uint64
 	pointerSectionProductive []bool
 
+	// metrics, when non-nil, receives per-object/per-flow observations at Close.
+	// statsRecorded guards against double-recording if Close runs more than once.
+	metrics       *ObjectMetastoreMetrics
+	statsRecorded bool
+
 	// readSpan for recording observations, it is created once during init.
 	readSpan *xcap.Span
 }
@@ -83,6 +88,7 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
+	metrics *ObjectMetastoreMetrics,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -106,6 +112,7 @@ func newIndexSectionsReader(
 		end:                end,
 		matchingStreamIDs:  make(map[int64]struct{}),
 		labelNamesByStream: make(map[int64][]string),
+		metrics:            metrics,
 	}
 }
 
@@ -451,10 +458,16 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 		return nil, io.EOF
 	}
 
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
 	if len(r.predicates) == 0 {
-		return r.readPointers(ctx)
+		rec, err = r.readPointers(ctx)
+	} else {
+		rec, err = r.readWithBloomFiltering(ctx)
 	}
-	return r.readWithBloomFiltering(ctx)
+	return rec, err
 }
 
 func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
@@ -465,7 +478,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
 	for _, sr := range r.streamsReaders {
@@ -518,7 +531,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
@@ -555,6 +568,11 @@ func (r *indexSectionsReader) Close() {
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
 
+	if r.initialized && r.metrics != nil && !r.statsRecorded {
+		r.statsRecorded = true
+		r.metrics.indexReadRowsPerObject.WithLabelValues(flowStreams).Observe(float64(r.totalReadRows()))
+	}
+
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
@@ -578,7 +596,7 @@ func (r *indexSectionsReader) addLabelNamesForStream(streamID int64, names []str
 // section.
 func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
 	defer func(start time.Time) {
-		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
+		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
@@ -609,7 +627,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 					r.pointerSectionProductive[r.pointersReaderIdx] = true
 					r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
 				}
-				r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
+				r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
 				r.bloomRowsRead += uint64(matchedRows)
 				return filteredRec, nil
 			}

@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
@@ -87,10 +86,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		slices.SortStableFunc(duplicates, func(a, b duplicateColumn) int {
 			return cmp.Compare(a.name, b.name)
 		})
-
-		if region := xcap.RegionFromContext(ctx); region != nil {
-			region.Record(xcap.StatCompatCollisionFound.Observe(true))
-		}
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		oldSchema := batch.Schema()
@@ -217,7 +212,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 				for i := range int(batch.NumRows()) {
 					// Preserve existing values over adding null
-					if existingDestCol != nil && !existingDestCol.IsNull(i) && existingDestCol.Value(i) != "" {
+					if existingDestCol != nil && !existingDestCol.IsNull(i) {
 						existingVal := existingDestCol.Value(i)
 						if col.IsNull(i) || !col.IsValid(i) {
 							sourceFieldBuilder.AppendNull()             // append NULL to original column

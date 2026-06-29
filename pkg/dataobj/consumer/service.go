@@ -172,7 +172,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		wrapped,
 	)
 	s.processor = newProcessor(
-		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.TargetObjectSize)),
+		NewTOCAlignedMultiBuilder(builderFactory, int(cfg.BuilderConfig.TargetObjectSize)),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

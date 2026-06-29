@@ -82,12 +82,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
-# in single binary mode. The value 'read' is an alias to run only read-path
-# related components such as the querier and query-frontend, but all in the same
-# process. The value 'write' is an alias to run only write-path related
-# components such as the distributor and compactor, but all in the same process.
-# A full list of available targets can be printed when running Loki with the
-# '-list-targets' command line flag.
+# in single binary mode. A full list of available targets can be printed when
+# running Loki with the '-list-targets' command line flag.
 # CLI flag: -target
 [target: <string> | default = "all"]
 
@@ -1595,6 +1591,11 @@ dataobj:
     # log partitions.
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
+
+    # Experimental: When enabled, reads from new-format postings sections in
+    # index objects instead of the streams sections. Defaults to false.
+    # CLI flag: -dataobj-metastore.read-postings-sections
+    [read_postings_sections: <boolean> | default = false]
 
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
@@ -4551,19 +4552,18 @@ discover_generic_fields:
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
-# How much of the available query capacity ("querier" components in distributed
-# mode, "read" components in SSD mode) can be used by a single tenant. Allowed
-# values are 0.0 to 1.0. For example, setting this to 0.5 would allow a tenant
-# to use half of the available queriers for processing the query workload. If
-# set to 0, query capacity is determined by frontend.max-queriers-per-tenant.
-# When both frontend.max-queriers-per-tenant and frontend.max-query-capacity are
-# configured, smaller value of the resulting querier replica count is
-# considered: min(frontend.max-queriers-per-tenant, ceil(querier_replicas *
-# frontend.max-query-capacity)). *All* queriers will handle requests for the
-# tenant if neither limits are applied. This option only works with queriers
-# connecting to the query-frontend / query-scheduler, not when using downstream
-# URL. Use this feature in a multi-tenant setup where you need to limit query
-# capacity for certain tenants.
+# How much of the available query capacity ("querier" components) can be used by
+# a single tenant. Allowed values are 0.0 to 1.0. For example, setting this to
+# 0.5 would allow a tenant to use half of the available queriers for processing
+# the query workload. If set to 0, query capacity is determined by
+# frontend.max-queriers-per-tenant. When both frontend.max-queriers-per-tenant
+# and frontend.max-query-capacity are configured, smaller value of the resulting
+# querier replica count is considered: min(frontend.max-queriers-per-tenant,
+# ceil(querier_replicas * frontend.max-query-capacity)). *All* queriers will
+# handle requests for the tenant if neither limits are applied. This option only
+# works with queriers connecting to the query-frontend / query-scheduler, not
+# when using downstream URL. Use this feature in a multi-tenant setup where you
+# need to limit query capacity for certain tenants.
 # CLI flag: -frontend.max-query-capacity
 [max_query_capacity: <float> | default = 0]
 
@@ -6833,6 +6833,12 @@ tsdb_shipper:
     # time.Duration, e.g. ['168h', '336h', '504h']
     # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
     [time_based_sharding_buckets: <list of strings> | default = []]
+
+    # Minimum number of index gateway instances included in the shuffle shard,
+    # regardless of the max-capacity setting. A value of 0 disables the minimum.
+    # Only applies to simple mode.
+    # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
+    [min_shuffle_shard_size: <int> | default = 3]
 
   [ingestername: <string> | default = ""]
 

@@ -27,10 +27,27 @@ const (
 	PathLokiRulesNamespace      = "/loki/api/v1/rules/{namespace}"
 	PathLokiRulesNamespaceGroup = "/loki/api/v1/rules/{namespace}/{groupName}"
 	// Delete requests (compactor)
-	PathLokiDelete          = "/loki/api/v1/delete"
-	PathLokiCacheGenNumbers = "/loki/api/v1/cache/generation_numbers"
+	PathLokiDelete                  = "/loki/api/v1/delete"
+	PathLokiCacheGenNumbers         = "/loki/api/v1/cache/generation_numbers"
+	PathLokiIncreaseCacheGenNumbers = "/loki/api/v1/cache/generation_numbers/increase"
 	// Ingest
 	PathLokiPush = "/loki/api/v1/push"
+)
+
+// Prometheus-compatible (legacy) API path constants.
+const (
+	PathPromQuery           = "/api/prom/query"
+	PathPromLabel           = "/api/prom/label"
+	PathPromLabelPrefix     = "/api/prom/label/" // prefix for path matching
+	PathPromLabelSuffix     = "/values"
+	PathPromLabelNameValues = "/api/prom/label/{name}/values"
+	PathPromSeries          = "/api/prom/series"
+	PathPromPush            = "/api/prom/push"
+	PathPromTail            = "/api/prom/tail"
+	// Ruler
+	PathPromRules               = "/api/prom/rules"
+	PathPromRulesNamespace      = "/api/prom/rules/{namespace}"
+	PathPromRulesNamespaceGroup = "/api/prom/rules/{namespace}/{groupName}"
 )
 
 // Prometheus API paths (used by ruler).

@@ -2,13 +2,12 @@ package ingester
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
-
-	"context"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
@@ -20,9 +19,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -142,6 +143,97 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// FlushTenantHandler triggers a synchronous flush of the in-memory chunks for a
+// single tenant (read from the X-Scope-OrgID header), optionally restricted to
+// the streams matching a LogQL stream selector passed via the "streams" param.
+// An empty/absent selector flushes all of the tenant's in-memory streams.
+//
+// After the matched chunks are flushed, it forces the in-memory index (the TSDB
+// head) to be built and shipped to object storage so the flushed chunks are
+// immediately referenceable. The flush is synchronous, so
+// callers should set a generous client timeout.
+func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var matchers []*labels.Matcher
+	if streams := r.URL.Query().Get("streams"); streams != "" {
+		matchers, err = syntax.ParseMatchers(streams, true)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	instance, ok := i.getInstanceByID(tenantID)
+	if !ok {
+		// Nothing in memory for this tenant, nothing to flush.
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Resolve the in-memory streams matching the (optional) selector. An empty
+	// matcher set resolves to all of the tenant's streams.
+	var fps []model.Fingerprint
+	if err := instance.forMatchingStreams(ctx, time.Now(), matchers, nil, func(s *stream) error {
+		fps = append(fps, s.fp)
+		return nil
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	level.Info(i.logger).Log("msg", "flushing tenant streams", "tenant", tenantID, "streams", len(fps))
+
+	if err := i.flushMatchedStreamsChunks(tenantID, fps); err != nil {
+		level.Error(i.logger).Log("msg", "failed flushing tenant streams", "tenant", tenantID, "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Force the in-memory index to be built and shipped so the just-flushed
+	// chunks are referenceable from object storage.
+	if err := i.store.FlushIndexes(ctx); err != nil {
+		level.Error(i.logger).Log("msg", "failed flushing index", "tenant", tenantID, "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// flushMatchedStreamsChunks synchronously flushes the chunks of the given streams
+// for a tenant, bounded by the configured flush concurrency (ConcurrentFlushes),
+// matching the regular flush path. Each stream is flushed through flushOp so it
+// gets the same FlushOpBackoff retry behaviour as the regular (queue-driven)
+// immediate flush.
+func (i *Ingester) flushMatchedStreamsChunks(tenantID string, fps []model.Fingerprint) error {
+	if len(fps) == 0 {
+		return nil
+	}
+
+	logger := util_log.WithUserID(tenantID, i.logger)
+
+	var g errgroup.Group
+	if i.cfg.ConcurrentFlushes > 0 {
+		g.SetLimit(i.cfg.ConcurrentFlushes)
+	}
+	for _, fp := range fps {
+		g.Go(func() error {
+			return i.flushOp(logger, &flushOp{
+				userID:    tenantID,
+				fp:        fp,
+				immediate: true,
+			})
+		})
+	}
+	return g.Wait()
 }
 
 type flushOp struct {

@@ -1,0 +1,9 @@
+overrides:
+  tenant-a:
+    ingestion_rate_mb: 50
+    shard_streams:
+      desired_rate: 128KB
+  tenant-b:
+    ingestion_rate_mb: 50
+    shard_streams:
+      desired_rate: 128KB

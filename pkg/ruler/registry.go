@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 	"sync"
@@ -37,6 +38,7 @@ type walRegistry struct {
 
 	metrics     *storageRegistryMetrics
 	overridesMu sync.Mutex
+	refreshMu   sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -154,9 +156,14 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// we should reconfigure the storage whenever this appender is requested, but since
 	// this can request an appender very often, we hide this behind a gate
 	now := time.Now()
-	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
+	r.refreshMu.Lock()
+	shouldRefresh := r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod))
+	if shouldRefresh {
 		r.lastUpdateTime = now
+	}
+	r.refreshMu.Unlock()
 
+	if shouldRefresh {
 		level.Debug(r.logger).Log("user", tenant, "msg", "refreshing remote-write configuration")
 		r.configureTenantStorage(tenant)
 	}
@@ -207,8 +214,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	if rwCfg.Enabled {
 		for id := range r.config.RemoteWrite.Clients {
 			clt := rwCfg.Clients[id]
-			if rwCfg.Clients[id].Headers == nil {
+			if clt.Headers == nil {
 				clt.Headers = make(map[string]string)
+			} else {
+				clt.Headers = maps.Clone(clt.Headers)
 			}
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
@@ -266,7 +275,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 		// overwrite, do not merge
 		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			clt.Headers = v
+			clt.Headers = maps.Clone(v)
 		}
 
 		relabelConfigs, err := r.createRelabelConfigs(tenant)
@@ -328,7 +337,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
 			// overwrite, do not merge
 			if v.Headers != nil {
-				clt.Headers = v.Headers
+				clt.Headers = maps.Clone(v.Headers)
 			}
 
 			// if any relabel configs are defined for a tenant, override all base relabel configs,

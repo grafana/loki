@@ -205,32 +205,44 @@ func (seq *DatasetSequence) Close() {
 }
 
 // CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [sortKey ASC, timestamp DESC].
+// schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
 // sortKeys maps streamID to its pre-computed sort key.
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys map[int64]string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
-		return result.Compare(a, b, func(ra, rb dataset.Row) int {
-			aStreamID := ra.Values[0].Int64()
-			bStreamID := rb.Values[0].Int64()
-			if aStreamID == math.MaxInt64 && bStreamID == math.MaxInt64 {
-				return 0
-			}
-			if aStreamID == math.MaxInt64 {
-				return 1
-			}
-			if bStreamID == math.MaxInt64 {
-				return -1
-			}
-			aKey := sortKeys[aStreamID]
-			bKey := sortKeys[bStreamID]
-			if res := cmp.Compare(aKey, bKey); res != 0 {
-				return res
-			}
-			aTS := ra.Values[1].Int64()
-			bTS := rb.Values[1].Int64()
-			return cmp.Compare(bTS, aTS)
-		}) < 0
+		aVal, aErr := a.Value()
+		bVal, bErr := b.Value()
+
+		// Put errors first so we return errors early.
+		if aErr != nil {
+			return true
+		} else if bErr != nil {
+			return false
+		}
+
+		aStreamID := aVal.Values[0].Int64()
+		bStreamID := bVal.Values[0].Int64()
+
+		// Guard against the loser-tree sentinel (MaxInt64 means sequence exhausted).
+		// The sentinel must never "win" the tournament.
+		if aStreamID == math.MaxInt64 {
+			return false
+		}
+		if bStreamID == math.MaxInt64 {
+			return true
+		}
+
+		aKey := sortKeys[aStreamID]
+		bKey := sortKeys[bStreamID]
+		if res := cmp.Compare(aKey, bKey); res != 0 {
+			return res < 0
+		}
+		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
+			return res < 0
+		}
+		aTS := aVal.Values[1].Int64()
+		bTS := bVal.Values[1].Int64()
+		return bTS < aTS
 	}
 }
 

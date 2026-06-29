@@ -358,7 +358,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Frontend (query-frontend)",
+            "title": "Query Frontend",
             "titleSize": "h6"
          },
          {

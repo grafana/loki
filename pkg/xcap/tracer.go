@@ -13,10 +13,9 @@ import (
 // Region observations as span attributes before ending the underlying
 // OTel span.
 //
-// If a [Capture] is present in ctx, the Region is registered with it
-// for summary aggregation via [SummaryLogValues]. If no Capture is
-// found, a span is still created but no Region is attached (observation
-// recording is a no-op).
+// If a [Capture] is present in ctx, the Region is registered with it. If no
+// Capture is found, a span is still created but no Region is attached
+// (observation recording is a no-op).
 //
 // The Region is stored in the returned context and can be retrieved
 // with [RegionFromContext] for recording observations.

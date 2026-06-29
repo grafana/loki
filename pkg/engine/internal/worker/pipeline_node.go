@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -32,11 +33,11 @@ type pipelineRegionStat struct {
 	ParentID xcap.ID
 	// Name is the operator region's name, e.g. "DataObjScan.Read".
 	Name string
-	// ReadCalls is xcap.StatPipelineReadCalls: batches produced by this operator.
+	// ReadCalls is executor.StatPipelineReadCalls: batches produced by this operator.
 	ReadCalls int64
-	// RowsOut is xcap.StatPipelineRowsOut: rows produced by this operator.
+	// RowsOut is executor.StatPipelineRowsOut: rows produced by this operator.
 	RowsOut int64
-	// ReadDuration is xcap.StatPipelineReadDuration: wall time around this
+	// ReadDuration is executor.StatPipelineReadDuration: wall time around this
 	// operator's Read, inclusive of its children.
 	ReadDuration time.Duration
 }
@@ -152,15 +153,15 @@ func pipelineRegionsFromCapture(capture *xcap.Capture) []pipelineRegionStat {
 		}
 		for _, obs := range region.Observations() {
 			switch obs.Statistic.Key() {
-			case xcap.StatPipelineReadCalls.Key():
+			case executor.StatPipelineReadCalls.Key():
 				if v, ok := obs.Int64(); ok {
 					stat.ReadCalls = v
 				}
-			case xcap.StatPipelineRowsOut.Key():
+			case executor.StatPipelineRowsOut.Key():
 				if v, ok := obs.Int64(); ok {
 					stat.RowsOut = v
 				}
-			case xcap.StatPipelineReadDuration.Key():
+			case executor.StatPipelineReadDuration.Key():
 				if v, ok := obs.Float64(); ok {
 					stat.ReadDuration = time.Duration(v * float64(time.Second))
 				}
