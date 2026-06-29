@@ -13,7 +13,7 @@ func (r *Reader) ResolveStreamsAndPointers(ctx context.Context, matchers []*labe
 		return &StreamScanResult{}, nil
 	}
 	acc := NewStreamScan(matchers, start, end)
-	if _, err := r.ScanLabelsInto(ctx, acc, streamScanBatchSize); err != nil {
+	if err := r.ScanLabelsInto(ctx, acc, streamScanBatchSize); err != nil {
 		return nil, err
 	}
 	return acc.Finalize(ctx), nil
