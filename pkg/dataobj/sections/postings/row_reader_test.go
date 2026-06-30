@@ -55,7 +55,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := postings.NewRowReader(ctx, sec)
+		reader := postings.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -120,7 +120,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := postings.NewRowReader(ctx, sec)
+		reader := postings.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -152,10 +152,10 @@ func TestRowReader_KindPredicate(t *testing.T) {
 			n := 0
 			for _, sec := range secs {
 				kindCol := getSectionColumn(t, sec, postings.ColumnTypeKind)
-				rr := postings.NewRowReader(ctx, sec, postings.EqualPredicate{
+				rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.EqualPredicate{
 					Column: kindCol,
 					Value:  scalar.NewInt64Scalar(int64(tc.kind)),
-				})
+				}})
 				for rr.Next() {
 					require.Equal(t, tc.kind, rr.At().Kind)
 					n++
@@ -199,7 +199,7 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	reader := postings.NewRowReader(ctx, sec)
+	reader := postings.NewRowReader(ctx, sec, nil)
 	require.True(t, reader.Next())
 	require.NoError(t, reader.Close())
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")
@@ -246,7 +246,7 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	require.NotNil(t, bloomCol)
 
 	countMatches := func(value string) int {
-		rr := postings.NewRowReader(ctx, sec, postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)})
+		rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}})
 		defer func() { _ = rr.Close() }()
 		var got int
 		for rr.Next() {
@@ -321,7 +321,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 	countMatches := func(pattern string) int {
 		re, err := labels.NewFastRegexMatcher(pattern)
 		require.NoError(t, err)
-		rr := postings.NewRowReader(ctx, sec, postings.RegexMatchPredicate{Column: lvCol, Matcher: re})
+		rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.RegexMatchPredicate{Column: lvCol, Matcher: re}})
 		defer func() { _ = rr.Close() }()
 		var got int
 		for rr.Next() {

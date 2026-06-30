@@ -31,10 +31,10 @@ type RowReader struct {
 }
 
 // NewRowReader creates a RowReader over all of sec's columns, applying the
-// optional predicates when scanning. The underlying reader is opened lazily on
+// provided predicates when scanning. The underlying reader is opened lazily on
 // the first call to Next. The provided ctx governs all subsequent I/O (Open and
 // Read).
-func NewRowReader(ctx context.Context, sec *Section, preds ...Predicate) *RowReader {
+func NewRowReader(ctx context.Context, sec *Section, preds []Predicate) *RowReader {
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{

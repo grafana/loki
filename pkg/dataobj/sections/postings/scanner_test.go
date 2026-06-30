@@ -36,7 +36,7 @@ func TestScanner_MatchLabel_PushesValuePredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, []postings.CompiledMatcher{cm})
+		return sc.MatchLabels(ctx, nil, []postings.CompiledMatcher{cm})
 	})
 	require.Len(t, got, 1)
 
@@ -64,7 +64,7 @@ func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
 	require.NoError(t, err)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, []postings.CompiledMatcher{cm})
+		return sc.LabelStreams(ctx, nil, []postings.CompiledMatcher{cm})
 	})
 	require.Len(t, got, 1)
 
@@ -97,7 +97,7 @@ func TestScanner_LabelStreams_UnionZeroExtends(t *testing.T) {
 	require.NoError(t, err)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, []postings.CompiledMatcher{cm})
+		return sc.LabelStreams(ctx, nil, []postings.CompiledMatcher{cm})
 	})
 	require.Len(t, got, 1)
 
@@ -133,7 +133,7 @@ func TestScanner_MatchLabels_MultiMatcherAttribution(t *testing.T) {
 	)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, cms)
+		return sc.MatchLabels(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
 
@@ -164,7 +164,7 @@ func TestScanner_MatchLabels_SharedNameDisambiguation(t *testing.T) {
 	)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
-		return sc.MatchLabels(ctx, cms)
+		return sc.MatchLabels(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
 
@@ -195,7 +195,7 @@ func TestScanner_LabelStreams_MultiMatcherAttribution(t *testing.T) {
 	)
 
 	got := scanAll(t, secs, func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
-		return sc.LabelStreams(ctx, cms)
+		return sc.LabelStreams(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
 

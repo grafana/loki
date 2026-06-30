@@ -13,24 +13,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// timeBounds is the timestamp bounds over all rows a scan visited. MinNS and
-// MaxNS are unix nanos and only meaningful once Has is true.
-type timeBounds struct {
+// MatchedStreams is one logs section's result from a name and value scan.
+type MatchedStreams struct {
+	Matched      *memory.Bitmap
 	MinNS, MaxNS int64
 	Has          bool
 }
 
-// MatchedStreams is one logs section's result from a name and value scan.
-type MatchedStreams struct {
-	Matched *memory.Bitmap
-	timeBounds
-}
-
 // LabelStreams is one logs section's result from the name-only scan.
 type LabelStreams struct {
-	Present *memory.Bitmap
-	Matched *memory.Bitmap
-	timeBounds
+	Present      *memory.Bitmap
+	Matched      *memory.Bitmap
+	MinNS, MaxNS int64
+	Has          bool
 }
 
 // Scanner scans one postings Section. It holds no mutable state — each scan
@@ -48,7 +43,11 @@ func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
 // input matcher (indexed positionally), so the caller can intersect across
 // matchers. Returns nil when the section lacks the required columns or cms is
 // empty.
-func (s *Scanner) MatchLabels(ctx context.Context, cms []CompiledMatcher) (map[SectionRef][]MatchedStreams, error) {
+//
+// The Matched bitmaps in the result are allocated from alloc (a nil alloc uses
+// Go's built-in allocation). They outlive the scan, so the caller must not
+// reclaim alloc while the returned map is in use.
+func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]MatchedStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	valueCol := sectionColumn(s.sec, ColumnTypeLabelValue)
@@ -84,8 +83,8 @@ func (s *Scanner) MatchLabels(ctx context.Context, cms []CompiledMatcher) (map[S
 			if !cms[i].matcher.Matches(row.LabelValue) {
 				continue
 			}
-			perMatcher[i].Matched = unionStreams(perMatcher[i].Matched, bits)
-			perMatcher[i].widen(row)
+			perMatcher[i].Matched = unionStreams(alloc, perMatcher[i].Matched, bits)
+			widen(&perMatcher[i].MinNS, &perMatcher[i].MaxNS, &perMatcher[i].Has, row)
 		}
 	})
 	if err != nil {
@@ -119,7 +118,11 @@ func matchLabelsPredicate(kindCol, nameCol, valueCol *Column, cms []CompiledMatc
 // pushdown), attributing each row to every matcher sharing its column name.
 // Returns, per logs section, one LabelStreams per input matcher (indexed
 // positionally).
-func (s *Scanner) LabelStreams(ctx context.Context, cms []CompiledMatcher) (map[SectionRef][]LabelStreams, error) {
+//
+// The Present and Matched bitmaps in the result are allocated from alloc (a nil
+// alloc uses Go's built-in allocation). They outlive the scan, so the caller
+// must not reclaim alloc while the returned map is in use.
+func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]LabelStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	if kindCol == nil || nameCol == nil {
@@ -148,11 +151,11 @@ func (s *Scanner) LabelStreams(ctx context.Context, cms []CompiledMatcher) (map[
 		}
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
 		for _, i := range cands {
-			perMatcher[i].Present = unionStreams(perMatcher[i].Present, bits)
+			perMatcher[i].Present = unionStreams(alloc, perMatcher[i].Present, bits)
 			if cms[i].matcher.Matches(row.LabelValue) {
-				perMatcher[i].Matched = unionStreams(perMatcher[i].Matched, bits)
+				perMatcher[i].Matched = unionStreams(alloc, perMatcher[i].Matched, bits)
 			}
-			perMatcher[i].widen(row)
+			widen(&perMatcher[i].MinNS, &perMatcher[i].MaxNS, &perMatcher[i].Has, row)
 		}
 	})
 	if err != nil {
@@ -175,7 +178,7 @@ func labelNamesPredicate(kindCol, nameCol *Column, names map[string][]int) Predi
 }
 
 func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) error {
-	rr := NewRowReader(ctx, s.sec, pred)
+	rr := NewRowReader(ctx, s.sec, []Predicate{pred})
 	defer rr.Close()
 	for rr.Next() {
 		row := rr.At()
@@ -187,17 +190,19 @@ func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) err
 	return rr.Err()
 }
 
-// widen extends the bounds to include row's [MinTimestamp,MaxTimestamp].
-func (b *timeBounds) widen(row Row) {
-	if !b.Has {
-		b.MinNS, b.MaxNS, b.Has = row.MinTimestamp, row.MaxTimestamp, true
+// widen extends [min,max] to include row's [MinTimestamp,MaxTimestamp],
+// setting has on first inclusion. MatchedStreams and LabelStreams share the
+// same bounds fields, so both call this with pointers to their own.
+func widen(minNS, maxNS *int64, has *bool, row Row) {
+	if !*has {
+		*minNS, *maxNS, *has = row.MinTimestamp, row.MaxTimestamp, true
 		return
 	}
-	if row.MinTimestamp < b.MinNS {
-		b.MinNS = row.MinTimestamp
+	if row.MinTimestamp < *minNS {
+		*minNS = row.MinTimestamp
 	}
-	if row.MaxTimestamp > b.MaxNS {
-		b.MaxNS = row.MaxTimestamp
+	if row.MaxTimestamp > *maxNS {
+		*maxNS = row.MaxTimestamp
 	}
 }
 
@@ -210,22 +215,22 @@ func refOf(row Row) SectionRef {
 // zero-extended to the longer before delegating to compute.Or, which requires
 // equal-length operands.
 //
-// The result uses the nil (GC-managed) allocator on purpose: it escapes the
-// scan in the returned per-section map, so it must not be backed by a
-// reclaimable memory.Allocator region that the scan would free.
-func unionStreams(acc *memory.Bitmap, bits memory.Bitmap) *memory.Bitmap {
+// The result is allocated from alloc and escapes the scan in the returned
+// per-section map, so alloc must outlive that map.
+func unionStreams(alloc *memory.Allocator, acc *memory.Bitmap, bits memory.Bitmap) *memory.Bitmap {
 	if acc == nil {
-		acc = &memory.Bitmap{}
+		empty := memory.NewBitmap(alloc, 0)
+		acc = &empty
 	}
 
 	left, right := *acc, bits
 	if n := max(left.Len(), right.Len()); left.Len() != right.Len() {
-		left = extendBitmap(left, n)
-		right = extendBitmap(right, n)
+		left = extendBitmap(alloc, left, n)
+		right = extendBitmap(alloc, right, n)
 	}
 
 	result, err := compute.Or(
-		nil,
+		alloc,
 		columnar.NewBool(left, memory.Bitmap{}),
 		columnar.NewBool(right, memory.Bitmap{}),
 		memory.Bitmap{},
@@ -238,9 +243,13 @@ func unionStreams(acc *memory.Bitmap, bits memory.Bitmap) *memory.Bitmap {
 }
 
 // extendBitmap returns a length-n copy of b with the trailing bits cleared,
-// leaving b unmodified.
-func extendBitmap(b memory.Bitmap, n int) memory.Bitmap {
-	out := memory.NewBitmap(nil, n)
+// leaving b unmodified. The copy is allocated from alloc. If b already has at
+// least n bits, b is returned as-is without copying.
+func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap {
+	if b.Len() >= n {
+		return b
+	}
+	out := memory.NewBitmap(alloc, n)
 	out.AppendBitmap(b)
 	out.AppendCount(false, n-b.Len())
 	return out
@@ -272,7 +281,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
 	var bloomRowsRead int64
 	if pred := s.bloomMatchPredicate(kindCol, nameCol, bloomCol, matchers); pred != nil {
-		br := NewRowReader(ctx, s.sec, pred)
+		br := NewRowReader(ctx, s.sec, []Predicate{pred})
 		for br.Next() {
 			bloomRowsRead++
 			row := br.At()
@@ -343,10 +352,10 @@ func (s *Scanner) labelNameHits(ctx context.Context, kindCol, nameCol *Column, m
 		names = append(names, scalar.NewStringScalar(p.Name))
 	}
 
-	lr := NewRowReader(ctx, s.sec, AndPredicate{
+	lr := NewRowReader(ctx, s.sec, []Predicate{AndPredicate{
 		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
 		Right: InPredicate{Column: nameCol, Values: names},
-	})
+	}})
 	defer lr.Close()
 
 	hits := make(map[SectionRef]map[string]struct{})
