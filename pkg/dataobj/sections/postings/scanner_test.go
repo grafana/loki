@@ -154,6 +154,85 @@ func TestScanner_MatcherHits(t *testing.T) {
 	require.True(t, hitFound, "bloom for trace_id=abc must test positive")
 }
 
+// TestScanner_MatcherHits_MultiBloomSinglePass verifies the single OR-of-ANDs
+// scan over 3+ distinct-named matchers attributes each hit to its own
+// (name,value) via the row's ColumnName, isolates branches (no cross-name
+// bleed), and excludes a matcher whose value is absent from the bloom.
+func TestScanner_MatcherHits_MultiBloomSinglePass(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildLabelBloomSection(t, nil, []bloomPosting{
+		{columnName: "trace_id", values: []string{"abc"}, streamID: 1, obj: "/o", section: 0},
+		{columnName: "span_id", values: []string{"xyz"}, streamID: 1, obj: "/o", section: 0},
+		{columnName: "user_id", values: []string{"u1"}, streamID: 1, obj: "/o", section: 0},
+		{columnName: "region", values: []string{"eu"}, streamID: 1, obj: "/o", section: 0},
+	})
+	defer closer()
+
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "trace_id", "abc"), // present
+		labels.MustNewMatcher(labels.MatchEqual, "span_id", "xyz"),  // present
+		labels.MustNewMatcher(labels.MatchEqual, "user_id", "u1"),   // present
+		labels.MustNewMatcher(labels.MatchEqual, "region", "us"),    // name present, value absent
+		labels.MustNewMatcher(labels.MatchEqual, "absent", "x"),     // name absent entirely
+	}
+	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
+
+	got := make(map[postings.PredicateValue]struct{})
+	for _, sec := range secs {
+		hits, _, err := postings.NewScanner(sec).MatcherHits(ctx, matchers)
+		require.NoError(t, err)
+		for pv := range hits[ref] {
+			got[pv] = struct{}{}
+		}
+	}
+	require.Equal(t, map[postings.PredicateValue]struct{}{
+		{Name: "trace_id", Value: "abc"}: {},
+		{Name: "span_id", Value: "xyz"}:  {},
+		{Name: "user_id", Value: "u1"}:   {},
+	}, got, "only present (name,value) pairs attribute; wrong-value and absent-name matchers are excluded")
+}
+
+// TestScanner_MatcherHits_AttributesByValueNotName verifies the OR scan keys
+// hits on the exact value, not just the column name: a section holding the
+// right column but the wrong value yields no hit for that matcher.
+func TestScanner_MatcherHits_AttributesByValueNotName(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildLabelBloomSection(t, nil, []bloomPosting{
+		{columnName: "app", values: []string{"loki"}, streamID: 1, obj: "/o", section: 0},
+	})
+	defer closer()
+
+	ref := postings.SectionRef{ObjectPath: "/o", SectionIndex: 0}
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "mimir")}
+
+	for _, sec := range secs {
+		hits, _, err := postings.NewScanner(sec).MatcherHits(ctx, matchers)
+		require.NoError(t, err)
+		_, hit := hits[ref][postings.PredicateValue{Name: "app", Value: "mimir"}]
+		require.False(t, hit, "matching column name but wrong value must not attribute a hit")
+	}
+}
+
+// TestScanner_MatcherHits_DuplicateNameRejected verifies the single-pass scan
+// guards its distinct-name invariant rather than silently mis-attributing.
+func TestScanner_MatcherHits_DuplicateNameRejected(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildLabelBloomSection(t, nil, []bloomPosting{
+		{columnName: "app", values: []string{"foo"}, streamID: 1, obj: "/o", section: 0},
+	})
+	defer closer()
+
+	matchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+		labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+	}
+	for _, sec := range secs {
+		_, _, err := postings.NewScanner(sec).MatcherHits(ctx, matchers)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "duplicate equal-predicate name")
+	}
+}
+
 // TestScanner_MatcherHits_LabelNamesSinglePass verifies the consolidated
 // label-name scan resolves every matcher's name that appears as a stream label,
 // across multiple names, in one pass.

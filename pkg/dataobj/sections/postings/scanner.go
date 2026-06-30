@@ -2,6 +2,7 @@ package postings
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
@@ -186,21 +187,29 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 		return nil, nil, nil
 	}
 
+	// the bloom match predicate assumes no two matchers will match on the same
+	// name, which is guaranteed upstream by only passing equality matchers.
+	byName := make(map[string]*labels.Matcher, len(matchers))
+	for _, p := range matchers {
+		if existing, dup := byName[p.Name]; dup {
+			return nil, nil, fmt.Errorf("MatcherHits: duplicate equal-predicate name %q (%q, %q); MatcherHits assumes distinct names",
+				p.Name, existing.Value, p.Value)
+		}
+		byName[p.Name] = p
+	}
+
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
 	var bloomRowsRead int64
-	for _, p := range matchers {
-		br := NewRowReader(ctx, s.sec,
-			AndPredicate{
-				Left: AndPredicate{
-					Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindBloom))},
-					Right: EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(p.Name)},
-				},
-				Right: BloomMatchPredicate{Column: bloomCol, Value: []byte(p.Value)},
-			},
-		)
+	if pred := s.bloomMatchPredicate(kindCol, nameCol, bloomCol, matchers); pred != nil {
+		br := NewRowReader(ctx, s.sec, pred)
 		for br.Next() {
 			bloomRowsRead++
-			ref := refOf(br.At())
+			row := br.At()
+			p := byName[row.ColumnName]
+			if p == nil {
+				continue
+			}
+			ref := refOf(row)
 			pv := PredicateValue{Name: p.Name, Value: p.Value}
 			vals := matched[ref]
 			if vals == nil {
@@ -225,6 +234,28 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 		return nil, nil, err
 	}
 	return matched, matchersInLabelNames, nil
+}
+
+// bloomMatchPredicate folds matchers into a single OR of per-matcher
+// (kind=Bloom AND name=p.Name AND bloom~p.Value) branches. Returns nil when
+// there are no matchers.
+func (s *Scanner) bloomMatchPredicate(kindCol, nameCol, bloomCol *Column, matchers []*labels.Matcher) Predicate {
+	var pred Predicate
+	for _, p := range matchers {
+		branch := AndPredicate{
+			Left: AndPredicate{
+				Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindBloom))},
+				Right: EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(p.Name)},
+			},
+			Right: BloomMatchPredicate{Column: bloomCol, Value: []byte(p.Value)},
+		}
+		if pred == nil {
+			pred = branch
+			continue
+		}
+		pred = OrPredicate{Left: pred, Right: branch}
+	}
+	return pred
 }
 
 // labelNameHits scans the section once for all matcher names (kind=Label AND
