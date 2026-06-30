@@ -64,8 +64,10 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	// Default to the chunk's data time range. IngestedAt is the latest append time,
-	// so when present, backfilled chunks are retained until its ingested content expires.
+	// Default to the chunk's data time range (Through). When the chunk carries an
+	// ingestion timestamp (IngestedAt, stamped at flush for backfilled data),
+	// measure retention from that instead, so recently-ingested data is not expired
+	// by its older log time.
 	expirationFrom := chk.Through
 	if chk.IngestedAt != 0 {
 		expirationFrom = chk.IngestedAt

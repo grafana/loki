@@ -308,6 +308,61 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	return c
 }
 
+// TestChunkRewriterPreservesIngestedAtWhenReindexing covers the chunk rewriter
+// path that runs during a partial delete: when only some lines of a chunk are
+// removed, the chunk is decoded, filtered, re-encoded and re-indexed. This test
+// asserts that IngestedAt survives that round-trip, both on the re-indexed entry
+// and on the chunk written back to the store. If it didn't, a delete request
+// against backfilled data would reset its ingestion time and the data would then
+// expire by its (old) log time — defeating ingestion-time retention.
+//
+// v14 is the schema this feature targets (FormatV4 persists IngestedAt). Note the
+// index here is a mock (*table) that records what IndexChunk receives, so this
+// test exercises the rewriter's preservation logic, not the on-disk index format
+// (that round-trip is covered by the tsdb indexshipper tests).
+func TestChunkRewriterPreservesIngestedAtWhenReindexing(t *testing.T) {
+	now := model.Now()
+	schema := allSchemas[5] // v14
+	tableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	ingestedAt := now.Add(-30 * time.Minute)
+
+	// A chunk spanning two hours with a non-zero IngestedAt, as a backfilled chunk would have.
+	originalChunk := createChunk(t, "1", labels.FromStrings("foo", "bar"), tableInterval.Start, tableInterval.Start.Add(2*time.Hour))
+	originalChunk.IngestedAt = ingestedAt
+	require.NoError(t, originalChunk.Encode())
+
+	store := newTestStore(t)
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{originalChunk}))
+	store.Stop()
+
+	indexTables := store.indexTables()
+	require.Len(t, indexTables, 1)
+	indexTable := indexTables[0]
+
+	// Rewrite the chunk, deleting only its first hour so a new (filtered) chunk is produced and re-indexed.
+	cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
+	wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), []byte(originalChunk.UserID), Chunk{
+		ChunkID: getChunkID(originalChunk.ChunkRef),
+		From:    originalChunk.From,
+		Through: originalChunk.Through,
+	}, tableInterval, func(ts time.Time, _ string, _ labels.Labels) bool {
+		return ts.UnixNano() <= tableInterval.Start.Add(time.Hour).UnixNano()
+	})
+	require.NoError(t, err)
+	require.True(t, linesDeleted)
+	require.True(t, wroteChunks)
+
+	// The re-indexed chunk must carry the original IngestedAt.
+	require.Equal(t, []model.Time{ingestedAt}, indexTable.indexedIngestedAt)
+
+	// Both the original (not yet swept) and the rewritten chunk in the store keep IngestedAt.
+	chunks := store.GetChunks(originalChunk.UserID, originalChunk.From, originalChunk.Through, originalChunk.Metric)
+	require.Len(t, chunks, 2)
+	for _, chk := range chunks {
+		require.Equal(t, ingestedAt, chk.IngestedAt)
+	}
+}
+
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
