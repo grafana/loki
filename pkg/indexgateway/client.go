@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -57,7 +58,7 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
 	//
 	// Used by both, ring and simple mode.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description_method=GRPCClientConfigDescription"`
 
 	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
 	//
@@ -80,13 +81,53 @@ type ClientConfig struct {
 	// MinShuffleShardSize is the minimum number of index gateway instances included in the
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
+
+	// experimental is set to true when this config is used as a shadow/experimental index gateway client.
+	// It is used by GRPCClientConfigDescription to return an "Experimental: " prefixed description for the doc generator.
+	experimental bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
 //
 // Flags that are used by both, client and server, are defined in the indexgateway package.
-func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+// If isExperimental is true, non-gRPC flags will have their usage prefixed with "Experimental: ".
+// gRPC flags are always registered directly since they belong to the shared grpc_client block.
+func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet, isShadowClient bool) {
+	// gRPC flags are always registered directly — they're part of the shared grpc_client root block
+	// and must not be marked experimental here, as that would affect the root block's documentation.
+	i.experimental = isShadowClient
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
+
+	if isShadowClient {
+		tmp := flag.NewFlagSet("", flag.ContinueOnError)
+		i.registerNonGRPCFlagsWithPrefix(prefix, tmp)
+		tmp.VisitAll(func(fl *flag.Flag) {
+			usage := withExperimentalShadowPrefix(fl.Usage)
+			f.Var(fl.Value, fl.Name, usage)
+		})
+	} else {
+		i.registerNonGRPCFlagsWithPrefix(prefix, f)
+	}
+}
+
+// GRPCClientConfigDescription returns the description for the grpc_client_config doc block.
+// This is called by the doc generator.
+func (i *ClientConfig) GRPCClientConfigDescription() string {
+	s := "The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki."
+	if i.experimental {
+		s = withExperimentalShadowPrefix(s)
+	}
+	return s
+}
+
+func withExperimentalShadowPrefix(usage string) string {
+	if strings.HasPrefix(usage, "Experimental: ") {
+		usage = strings.TrimPrefix(usage, "Experimental: ")
+	}
+	return "Experimental: Applies to experimental shadow_index_gateway_client. " + usage
+}
+
+func (i *ClientConfig) registerNonGRPCFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 
@@ -100,7 +141,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
-	i.RegisterFlagsWithPrefix("index-gateway-client", f)
+	i.RegisterFlagsWithPrefix("index-gateway-client", f, false)
 }
 
 type GatewayClient struct {
