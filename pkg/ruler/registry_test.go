@@ -66,7 +66,8 @@ var backCompatCfg = Config{
 				},
 			},
 			Headers: map[string]string{
-				"Base": "value",
+				"Base":               "value",
+				user.OrgIDHeaderName: "org-id",
 			},
 			WriteRelabelConfigs: []*relabel.Config{
 				{
@@ -91,7 +92,8 @@ var backCompatCfg = Config{
 					},
 				},
 				Headers: map[string]string{
-					"Base": "value",
+					"Base":               "value",
+					user.OrgIDHeaderName: "org-id",
 				},
 				WriteRelabelConfigs: []*relabel.Config{
 					{
@@ -126,7 +128,8 @@ var cfg = Config{
 					},
 				},
 				Headers: map[string]string{
-					"Base": "value",
+					"Base":               "value",
+					user.OrgIDHeaderName: "org-id",
 				},
 				WriteRelabelConfigs: []*relabel.Config{
 					{
@@ -150,7 +153,8 @@ var cfg = Config{
 					},
 				},
 				Headers: map[string]string{
-					"Base": "value2",
+					"Base":               "value2",
+					user.OrgIDHeaderName: "org-id2",
 				},
 				WriteRelabelConfigs: []*relabel.Config{
 					{
