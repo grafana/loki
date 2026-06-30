@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -182,7 +181,7 @@ var Instance Writer
 // default log level
 var logLevel = LogNone
 
-// Level returns the value specified in AZURE_GO_AUTOREST_LOG_LEVEL.
+// Level returns the value specified in AZURE_GO_SDK_LOG_LEVEL.
 // If no value was specified the default value is LogNone.
 // Custom loggers can call this to retrieve the configured log level.
 func Level() LevelType {
@@ -275,7 +274,7 @@ func (fl fileLogger) WriteRequest(req *http.Request, filter Filter) {
 	}
 	if fl.shouldLogBody(req.Header, req.Body) {
 		// dump body
-		body, err := ioutil.ReadAll(req.Body)
+		body, err := io.ReadAll(req.Body)
 		if err == nil {
 			fmt.Fprintln(b, string(filter.processBody(body)))
 			if nc, ok := req.Body.(io.Seeker); ok {
@@ -283,7 +282,7 @@ func (fl fileLogger) WriteRequest(req *http.Request, filter Filter) {
 				nc.Seek(0, io.SeekStart)
 			} else {
 				// recreate the body
-				req.Body = ioutil.NopCloser(bytes.NewReader(body))
+				req.Body = io.NopCloser(bytes.NewReader(body))
 			}
 		} else {
 			fmt.Fprintf(b, "failed to read body: %v\n", err)
@@ -310,10 +309,10 @@ func (fl fileLogger) WriteResponse(resp *http.Response, filter Filter) {
 	if fl.shouldLogBody(resp.Header, resp.Body) {
 		// dump body
 		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		if err == nil {
 			fmt.Fprintln(b, string(filter.processBody(body)))
-			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			resp.Body = io.NopCloser(bytes.NewReader(body))
 		} else {
 			fmt.Fprintf(b, "failed to read body: %v\n", err)
 		}
