@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -204,8 +205,8 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 }
 
 func TestMaybeSetIngestedAt(t *testing.T) {
-	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v14"}}
-	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v13"}}
+	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
+	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v13"}}
 
 	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
 	live := labels.FromStrings("app", "foo")
@@ -249,7 +250,7 @@ func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
 			// Use a v14 period so the chunk's index would persist IngestedAt.
-			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v14"}}
+			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, IndexType: storagetypes.IndexTypeTSDB, Schema: "v14"}}
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			var captured []chunk.Chunk

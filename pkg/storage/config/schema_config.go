@@ -434,6 +434,9 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 // SupportsIngestedAt reports whether this period persists the per-chunk
 // IngestedAt timestamp (TSDB index FormatV4, schema v14).
 func (cfg *PeriodConfig) SupportsIngestedAt() bool {
+	if cfg.IndexType != types.IndexTypeTSDB {
+		return false
+	}
 	format, err := cfg.TSDBFormat()
 	return err == nil && format >= index.FormatV4
 }

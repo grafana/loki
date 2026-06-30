@@ -15,7 +15,8 @@ type ChunkMeta struct {
 
 	MinTime, MaxTime int64
 
-	// IngestedAt is the time at which the chunk was ingested. It is recorded only
+	// IngestedAt is the time the chunk was ingested into storage, stamped at flush
+	// time (not the time the original log lines were received). It is recorded only
 	// for backfilled chunks — those whose stream carries the __backfill__="true"
 	// label — and is zero for all other (live) chunks. In TSDB FormatV4 it is
 	// encoded as a day-precision delta against MaxTime, rounded up to the next UTC
