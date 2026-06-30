@@ -25,9 +25,10 @@ import (
 
 // Default values.
 var (
-	defaultEndpoint = "localhost:4317"
-	defaultTimeout  = 10 * time.Second
-	defaultRetryCfg = retry.DefaultConfig
+	defaultEndpoint       = "localhost:4317"
+	defaultTimeout        = 10 * time.Second
+	defaultMaxRequestSize = 64 * 1024 * 1024
+	defaultRetryCfg       = retry.DefaultConfig
 )
 
 // Environment variable keys.
@@ -85,13 +86,14 @@ type Option interface {
 }
 
 type config struct {
-	endpoint    setting[string]
-	insecure    setting[bool]
-	tlsCfg      setting[*tls.Config]
-	headers     setting[map[string]string]
-	compression setting[Compression]
-	timeout     setting[time.Duration]
-	retryCfg    setting[retry.Config]
+	endpoint       setting[string]
+	insecure       setting[bool]
+	tlsCfg         setting[*tls.Config]
+	headers        setting[map[string]string]
+	compression    setting[Compression]
+	maxRequestSize setting[int]
+	timeout        setting[time.Duration]
+	retryCfg       setting[retry.Config]
 
 	// gRPC configurations
 	gRPCCredentials    setting[credentials.TransportCredentials]
@@ -128,6 +130,9 @@ func newConfig(options []Option) config {
 	c.timeout = c.timeout.Resolve(
 		getEnv[time.Duration](envTimeout, convDuration),
 		fallback[time.Duration](defaultTimeout),
+	)
+	c.maxRequestSize = c.maxRequestSize.Resolve(
+		fallback[int](defaultMaxRequestSize),
 	)
 	c.retryCfg = c.retryCfg.Resolve(
 		fallback[retry.Config](defaultRetryCfg),
@@ -349,6 +354,19 @@ func WithGRPCConn(conn *grpc.ClientConn) Option {
 func WithTimeout(duration time.Duration) Option {
 	return fnOpt(func(c config) config {
 		c.timeout = newSetting(duration)
+		return c
+	})
+}
+
+// WithMaxRequestSize sets the maximum size, in bytes, of a serialized export
+// request, before compression, that the exporter will send.
+//
+// If size is less than or equal to zero, no request-size limit is applied.
+// Disabling the limit is not recommended because it can lead to excessive
+// resource consumption or abuse.
+func WithMaxRequestSize(size int) Option {
+	return fnOpt(func(c config) config {
+		c.maxRequestSize = newSetting(size)
 		return c
 	})
 }
