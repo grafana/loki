@@ -133,7 +133,7 @@ func (p *Process) GidsWithContext(_ context.Context) ([]uint32, error) {
 	}
 
 	gids := make([]uint32, 0, 3)
-	gids = append(gids, uint32(k.Eproc.Pcred.P_rgid), uint32(k.Eproc.Pcred.P_rgid), uint32(k.Eproc.Pcred.P_svgid))
+	gids = append(gids, uint32(k.Eproc.Pcred.P_rgid), uint32(k.Eproc.Ucred.Groups[0]), uint32(k.Eproc.Pcred.P_svgid))
 
 	return gids, nil
 }
@@ -375,29 +375,49 @@ func (p *Process) cmdlineSlice() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The first bytes hold the nargs int, skip it.
-	args := bytes.Split((pargs)[unsafe.Sizeof(int(0)):], []byte{0})
-	var argStr string
-	// The first element is the actual binary/command path.
-	// command := args[0]
-	var argSlice []string
-	// var envSlice []string
-	// All other, non-zero elements are arguments. The first "nargs" elements
-	// are the arguments. Everything else in the slice is then the environment
-	// of the process.
-	for _, arg := range args[1:] {
-		argStr = string(arg)
-		if argStr != "" {
-			if nargs > 0 {
-				argSlice = append(argSlice, argStr)
-				nargs--
-				continue
-			}
-			break
-			// envSlice = append(envSlice, argStr)
-		}
+	// procArgs reads nargs as a 4-byte uint32; skip exactly those 4 bytes
+	// (matches Apple's ps using sizeof(nargs)). The previous code used
+	// unsafe.Sizeof(int(0)) which is 8 on 64-bit and would discard the
+	// first 4 bytes of exec_path — harmless only because chunks[0] is
+	// dropped, but logically wrong.
+	return parseCmdline(pargs[4:], nargs), nil
+}
+
+// parseCmdline extracts argv from the kern.procargs2 buffer with the leading
+// nargs int already stripped. Layout:
+//
+//	exec_path \0 [padding \0...] argv[0] \0 ... argv[nargs-1] \0 envp[0] \0 ...
+//
+// Empty argv elements within the nargs count are preserved — skipping them
+// would advance past argv[nargs-1] into envp, leaking environment values
+// (potentially secrets) into Cmdline output.
+//
+// Known limitation: a process whose argv[0] is itself an empty string is
+// indistinguishable from padding by this parser, since XNU does not expose
+// the exec/argv alignment boundary. Such a process will still see one envp
+// entry leak. Fixing it requires libgetargv-style alignment math against
+// the XNU exec layout, which is out of scope for this change.
+func parseCmdline(args []byte, nargs int) []string {
+	chunks := bytes.Split(args, []byte{0})
+	if len(chunks) <= 1 {
+		return nil
 	}
-	return argSlice, err
+	// Skip exec_path (chunks[0]) and any padding NULs before argv[0].
+	i := 1
+	for ; i < len(chunks) && len(chunks[i]) == 0; i++ {
+	}
+	if nargs > len(chunks)-i {
+		nargs = len(chunks) - i
+	}
+	if nargs < 0 {
+		nargs = 0
+	}
+	argSlice := make([]string, 0, nargs)
+	for ; nargs > 0; nargs-- {
+		argSlice = append(argSlice, string(chunks[i]))
+		i++
+	}
+	return argSlice
 }
 
 // cmdNameWithContext returns the command name (including spaces) without any arguments
@@ -465,9 +485,8 @@ func (p *Process) MemoryInfoWithContext(_ context.Context) (*MemoryInfoStat, err
 	funcs.lib.ProcPidInfo(p.Pid, common.PROC_PIDTASKINFO, 0, uintptr(unsafe.Pointer(&ti)), int32(unsafe.Sizeof(ti)))
 
 	ret := &MemoryInfoStat{
-		RSS:  uint64(ti.Resident_size),
-		VMS:  uint64(ti.Virtual_size),
-		Swap: uint64(ti.Pageins),
+		RSS: uint64(ti.Resident_size),
+		VMS: uint64(ti.Virtual_size),
 	}
 	return ret, nil
 }
