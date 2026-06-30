@@ -47,7 +47,7 @@ require (
 	github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/hashicorp/consul/api v1.34.3 // indirect
+	github.com/hashicorp/consul/api/v2 v2.0.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
