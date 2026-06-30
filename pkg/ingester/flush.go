@@ -25,7 +25,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -533,6 +535,10 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			lastTime,
 		)
 
+		// Record the ingestion time for backfilled chunks so retention can be
+		// measured from ingestion rather than from the log timestamps.
+		i.maybeSetIngestedAt(&ch, firstTime)
+
 		// encodeChunk mutates the chunk so we must pass by reference
 		if err := i.encodeChunk(ctx, &ch, c); err != nil {
 			return err
@@ -561,6 +567,27 @@ func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
 	chunkMtx.Lock()
 	defer chunkMtx.Unlock()
 	desc.flushed = time.Now()
+}
+
+// maybeSetIngestedAt records the ingestion time on chunks belonging to backfilled
+// streams (those carrying the __backfill__ label) so that, under TSDB FormatV4
+// (schema v14), retention can be measured from ingestion rather than from the log
+// timestamps. Live chunks, and chunks in periods that don't support FormatV4, keep
+// the zero value and fall back to Through-based retention.
+func (i *Ingester) maybeSetIngestedAt(ch *chunk.Chunk, chunkTime model.Time) {
+	if ch.Metric.Get(constants.BackfillLabel) != "true" {
+		return
+	}
+
+	// Only FormatV4 periods persist IngestedAt; the encoder drops it for older
+	// formats, but gate here too so non-v14 chunks never carry a misleading
+	// in-memory ingestion time.
+	schemaCfg := config.SchemaConfig{Configs: i.periodicConfigs}
+	if !schemaCfg.SupportsIngestedAtForTime(chunkTime) {
+		return
+	}
+
+	ch.IngestedAt = model.Now()
 }
 
 // closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.

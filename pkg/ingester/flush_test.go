@@ -203,6 +203,77 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	return res
 }
 
+func TestMaybeSetIngestedAt(t *testing.T) {
+	v14 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v14"}}
+	v13 := []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v13"}}
+
+	backfill := labels.FromStrings("app", "foo", constants.BackfillLabel, "true")
+	live := labels.FromStrings("app", "foo")
+
+	for _, tc := range []struct {
+		name    string
+		periods []config.PeriodConfig
+		metric  labels.Labels
+		wantSet bool
+	}{
+		{"backfill stream under v14 records ingestion time", v14, backfill, true},
+		{"live stream under v14 stays zero", v14, live, false},
+		{"backfill stream under v13 stays zero", v13, backfill, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			i := &Ingester{periodicConfigs: tc.periods}
+			ch := chunk.Chunk{Metric: tc.metric}
+
+			before := model.Now()
+			i.maybeSetIngestedAt(&ch, model.Now())
+
+			if tc.wantSet {
+				require.NotEqual(t, model.Time(0), ch.IngestedAt)
+				require.GreaterOrEqual(t, int64(ch.IngestedAt), int64(before))
+			} else {
+				require.Equal(t, model.Time(0), ch.IngestedAt)
+			}
+		})
+	}
+}
+
+func TestFlushChunksSetsIngestedAtForBackfill(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		labels  labels.Labels
+		wantSet bool
+	}{
+		{"backfill stream", labels.FromStrings("app", "foo", constants.BackfillLabel, "true"), true},
+		{"live stream", labels.FromStrings("app", "foo"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, ing := newTestStore(t, defaultIngesterTestConfig(t), nil)
+			// Use a v14 period so the chunk's index would persist IngestedAt.
+			ing.periodicConfigs = []config.PeriodConfig{{From: config.DayTime{Time: 0}, Schema: "v14"}}
+			ctx := user.InjectOrgID(context.Background(), "foo")
+
+			var captured []chunk.Chunk
+			store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
+				captured = append(captured, chunks...)
+				return nil
+			}
+
+			before := model.Now()
+			require.NoError(t, ing.flushChunks(ctx, 0, tc.labels, buildChunkDecs(t), &sync.RWMutex{}))
+
+			require.NotEmpty(t, captured)
+			for _, c := range captured {
+				if tc.wantSet {
+					require.NotEqual(t, model.Time(0), c.IngestedAt)
+					require.GreaterOrEqual(t, int64(c.IngestedAt), int64(before))
+				} else {
+					require.Equal(t, model.Time(0), c.IngestedAt)
+				}
+			}
+		})
+	}
+}
+
 func TestWALFullFlush(t *testing.T) {
 	// technically replaced with a fake wal, but the ingester New() function creates a regular wal first,
 	// so we enable creation/cleanup even though it remains unused.
