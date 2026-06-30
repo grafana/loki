@@ -1,6 +1,22 @@
 # Changes
 
-## 2.3.0
+## Unreleased
+
+- Reduced reflection decoding time and memory allocations. A city-lookup benchmark
+  decoding a geoip2-style result allocates 20% fewer bytes (saving 48 B/op) and
+  2 fewer heap allocations per lookup when utilizing pointer-heavy destination
+  structures.
+- Optimized map key decoding by adding a fast path for pointer keys, improving
+  general lookup throughput by 2.7% to 6.4%.
+- Optimized tree traversal for IPv6 lookups, resulting in an ~8.8% speedup.
+- Fixed pointer-to-pointer chains in malformed database data so decoder entry
+  points reject them consistently instead of following invalid chains.
+- Reduced memory mapping overhead and system allocations when invoking `OpenBytes`
+  and `NetworksWithin`.
+- Cleaned up, simplified, and deduplicated internal decoder and reader structures,
+  removing deprecated type assertion workarounds and unused helper functions.
+
+## 2.3.0 - 2026-05-17
 
 - This module now targets Go 1.25+.
 - Reduced reflection decoding time and heap allocations on the hot path. A

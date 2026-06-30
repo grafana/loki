@@ -140,13 +140,12 @@ func (v *verifier) verifyDataSectionSeparator() error {
 
 	separator := v.reader.buffer[separatorStart:separatorEnd]
 
-	for _, b := range separator {
-		if b != 0 {
-			return mmdberrors.NewInvalidDatabaseError(
-				"unexpected byte in data separator: %v",
-				separator,
-			)
-		}
+	var zeroSeparator [16]byte
+	if [16]byte(separator) != zeroSeparator {
+		return mmdberrors.NewInvalidDatabaseError(
+			"unexpected byte in data separator: %v",
+			separator,
+		)
 	}
 	return nil
 }

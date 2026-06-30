@@ -33,6 +33,11 @@ const (
 
 	// CloseReasonFailover indicates the connection was closed due to a failover event.
 	CloseReasonFailover = "failover"
+
+	// CloseReasonMaintNotificationsDisabled indicates the connection enabled
+	// maintenance notifications, but the client later downgraded and disabled
+	// maintenance notification handling for the pool.
+	CloseReasonMaintNotificationsDisabled = "maintnotifications_disabled"
 )
 
 // Metric state constants for connection state tracking.
@@ -313,6 +318,10 @@ type Stats struct {
 	PendingRequests uint32 // number of pending requests waiting for a connection
 
 	PubSubStats PubSubStats
+}
+
+type ConnRetirer interface {
+	RetireConns(ctx context.Context, conns []*Conn, reason string)
 }
 
 type Pooler interface {
@@ -1217,6 +1226,11 @@ func (p *ConnPool) putConn(ctx context.Context, cn *Conn, freeTurn bool) {
 	shouldRemove := false
 	var err error
 
+	if reason := cn.CloseOnPutReason(); reason != "" {
+		p.removeConnInternal(ctx, cn, errors.New(reason), freeTurn)
+		return
+	}
+
 	if cn.HasBufferedData() {
 		// Peek at the reply type to check if it's a push notification
 		if replyType, err := cn.PeekReplyTypeSafe(); err != nil || replyType != proto.RespPush {
@@ -1560,6 +1574,47 @@ func (p *ConnPool) Stats() *Stats {
 
 func (p *ConnPool) closed() bool {
 	return atomic.LoadUint32(&p._closed) == 1
+}
+
+func (p *ConnPool) RetireConns(ctx context.Context, conns []*Conn, reason string) {
+	if len(conns) == 0 {
+		return
+	}
+
+	idleConnSet := make(map[*Conn]struct{})
+	toClose := make([]*Conn, 0, len(conns))
+
+	p.connsMu.Lock()
+	for _, ic := range p.idleConns {
+		idleConnSet[ic] = struct{}{}
+	}
+	for _, cn := range conns {
+		if cn == nil {
+			continue
+		}
+		if _, ok := p.conns[cn.GetID()]; !ok {
+			continue
+		}
+		if _, isIdle := idleConnSet[cn]; isIdle {
+			if p.removeConn(cn) {
+				toClose = append(toClose, cn)
+			}
+			continue
+		}
+		cn.MarkCloseOnPut(reason)
+	}
+	p.connsMu.Unlock()
+
+	if hookManager := p.hookManager.Load(); hookManager != nil {
+		for _, cn := range toClose {
+			hookManager.ProcessOnRemove(ctx, cn, errors.New(reason))
+		}
+	}
+	for _, cn := range toClose {
+		p.recordConnectionMetrics(ctx, cn, reason, MetricStateIdle)
+		_ = p.closeConn(cn)
+	}
+	p.checkMinIdleConns()
 }
 
 func (p *ConnPool) Filter(fn func(*Conn) bool) error {

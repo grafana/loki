@@ -46,9 +46,14 @@ import (
 //
 //   - s3tables:PutTablePolicy
 //
+//   - s3tables:PutTableBucketPolicy
+//
 //   - s3tables:PutTableEncryption
 //
 //   - kms:DescribeKey
+//
+//   - iam:PassRole - required if you include an AnnotationTableConfiguration with
+//     an IAM role.
 //
 // The following operations are related to CreateBucketMetadataConfiguration :
 //
@@ -60,6 +65,14 @@ import (
 //
 // [UpdateBucketMetadataJournalTableConfiguration]
 //
+// [UpdateBucketMetadataAnnotationTableConfiguration]
+//
+// If you include an AnnotationTableConfiguration with an IAM role, the role must
+// have a trust policy that allows the Amazon S3 metadata service to assume it, and
+// a permissions policy that grants the actions needed to read annotations from
+// your bucket. The following examples show a trust policy and a permissions policy
+// that you can adapt for your bucket and account.
+//
 // You must URL encode any signed header values that contain spaces. For example,
 // if your header value is my file.txt , containing two spaces after my , you must
 // URL encode this value to my%20%20file.txt .
@@ -68,6 +81,7 @@ import (
 // [Setting up permissions for configuring metadata tables]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-permissions.html
 // [UpdateBucketMetadataJournalTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UpdateBucketMetadataJournalTableConfiguration.html
 // [Accelerating data discovery with S3 Metadata]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-overview.html
+// [UpdateBucketMetadataAnnotationTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UpdateBucketMetadataAnnotationTableConfiguration.html
 // [Permissions for querying metadata tables]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-bucket-query-permissions.html
 // [UpdateBucketMetadataInventoryTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UpdateBucketMetadataInventoryTableConfiguration.html
 // [DeleteBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketMetadataConfiguration.html
