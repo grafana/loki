@@ -376,7 +376,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, indexUpdatePro
 		return err
 	}
 
-	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits, r), c.deleteRequestsManager)
 	return nil
 }
 
