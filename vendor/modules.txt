@@ -1798,8 +1798,8 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/pressly/goose/v3 v3.27.0
-## explicit; go 1.25.0
+# github.com/pressly/goose/v3 v3.27.1
+## explicit; go 1.25.7
 github.com/pressly/goose/v3
 github.com/pressly/goose/v3/database
 github.com/pressly/goose/v3/database/dialect
@@ -1857,8 +1857,8 @@ github.com/prometheus/exporter-toolkit/web
 # github.com/prometheus/otlptranslator v1.0.0
 ## explicit; go 1.23.0
 github.com/prometheus/otlptranslator
-# github.com/prometheus/procfs v0.19.2
-## explicit; go 1.24.0
+# github.com/prometheus/procfs v0.20.1
+## explicit; go 1.25.0
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
@@ -2501,7 +2501,7 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa
+# golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
 ## explicit; go 1.25.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
@@ -3193,8 +3193,8 @@ k8s.io/utils/keymutex
 k8s.io/utils/net
 k8s.io/utils/ptr
 k8s.io/utils/trace
-# modernc.org/libc v1.68.0
-## explicit; go 1.24.0
+# modernc.org/libc v1.72.1
+## explicit; go 1.25.0
 modernc.org/libc
 modernc.org/libc/errno
 modernc.org/libc/fcntl
@@ -3227,8 +3227,8 @@ modernc.org/mathutil
 # modernc.org/memory v1.11.0
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.46.1
-## explicit; go 1.24.0
+# modernc.org/sqlite v1.49.1
+## explicit; go 1.25.0
 modernc.org/sqlite/lib
 # rsc.io/binaryregexp v0.2.0
 ## explicit; go 1.12
