@@ -698,6 +698,9 @@ github.com/gabriel-vasile/mimetype/internal/json
 github.com/gabriel-vasile/mimetype/internal/magic
 github.com/gabriel-vasile/mimetype/internal/markup
 github.com/gabriel-vasile/mimetype/internal/scan
+# github.com/git-lfs/go-netrc v0.0.0-20250218165306-ba0029b43d11
+## explicit; go 1.13
+github.com/git-lfs/go-netrc/netrc
 # github.com/go-jose/go-jose/v4 v4.1.4
 ## explicit; go 1.24.0
 github.com/go-jose/go-jose/v4
