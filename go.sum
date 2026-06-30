@@ -230,8 +230,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.20 h1:ru+
 github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.20/go.mod h1:ihZMtPTKoX/ugQRHbui6zNdSgVYN1KY2Dgwb2d3hXlc=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.29 h1:DRebniUGZ2MqiiIVmQJ04vIXr918hubdHMnarSLEWyU=
 github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.29/go.mod h1:LfRkPCD8YHDM2E5eTkos2UpwYeZnBcVarTa8L59bJHA=
-github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 h1:ZlvrNcHSFFWURB8avufQq9gFsheUgjVD9536obIknfM=
-github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21/go.mod h1:cv3TNhVrssKR0O/xxLJVRfd2oazSnZnkUeTf6ctUwfQ=
+github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.29 h1:hiME6pBzC7OTl9LMtlyTWBuEl1f4QBcUmFDKC7MLXtc=
+github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.29/go.mod h1:G7RP+uhagpKtKhd1BM9N6JQqjCcGEU47K5lBVZQyRQw=
 github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5 h1:VqhkfZJirBQ+oDre0LrX99PNtezadgcy0gpY7R76uLo=
 github.com/aws/aws-sdk-go-v2/service/kafka v1.52.5/go.mod h1:D/VOYsum3JpyWFl9ovLggTXsbn4jkmLzsP0zpOOKrfA=
 github.com/aws/aws-sdk-go-v2/service/lightsail v1.55.3 h1:/ESYN6vHUZZ9A9ImgtS+XA5zDePU3gqVXraKl+v6JTU=
