@@ -14,7 +14,7 @@
 name: loki-ha-monolithic
 
 x-loki-common: &loki-common
-  image: grafana/loki:3.7.2
+  image: grafana/loki:3.7.3@sha256:70b9f699fc9bb868b62f1cfd4f787dfa50242f1fd92e6089787d5d7daea75fe8
   command:
     [
       "-config.file=/etc/loki/loki.yaml",

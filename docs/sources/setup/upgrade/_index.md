@@ -37,6 +37,19 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### TSDB schema v14
+
+Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
+same chunk format as v13 and changes only the TSDB index format, which adds a
+per-chunk ingestion timestamp used by ingestion-time retention features.
+
+v13 remains the recommended schema. To opt in to v14, add a new `period_config`
+with a future `from` date and `schema: v14`; existing v13 periods are unaffected.
+
+Before configuring any v14 period, upgrade all components to a version that can
+read the v14 index format. Rolling back after v14 data has been written requires
+stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
+
 ### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
 
 Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.

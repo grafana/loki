@@ -18,8 +18,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -28,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -212,6 +215,26 @@ func buildChunkMetas(from, to int64, span ...int64) index.ChunkMetas {
 	}
 
 	return chunkMetas
+}
+
+func withIngestedAt(chunkMetas index.ChunkMetas, ingestedAt int64) index.ChunkMetas {
+	out := make(index.ChunkMetas, len(chunkMetas))
+	copy(out, chunkMetas)
+
+	for i := range out {
+		out[i].IngestedAt = ingestedAt
+	}
+
+	return out
+}
+
+type recordingIndexWriter struct {
+	metas index.ChunkMetas
+}
+
+func (w *recordingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, chks index.ChunkMetas) error {
+	w.metas = append(w.metas, chks...)
+	return nil
 }
 
 func buildUserID(i int) string {
@@ -631,9 +654,10 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 	chunkEntries := make([]retention.Chunk, 0, len(chunkMetas))
 	for _, chunkMeta := range chunkMetas {
 		chunkEntries = append(chunkEntries, retention.Chunk{
-			ChunkID: schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
-			From:    chunkMeta.From(),
-			Through: chunkMeta.Through(),
+			ChunkID:    schemaCfg.ExternalKey(chunkMetaToChunkRef(userID, chunkMeta, lbls)),
+			From:       chunkMeta.From(),
+			Through:    chunkMeta.Through(),
+			IngestedAt: model.Time(chunkMeta.IngestedAt),
 		})
 	}
 
@@ -890,7 +914,7 @@ func TestCompactedIndex(t *testing.T) {
 
 			for _, chk := range tc.addChunks {
 				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, uint32(approxKB), uint32(chk.Data.Entries()))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, chk.IngestedAt, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 
@@ -926,6 +950,115 @@ func TestIteratorContextCancelation(t *testing.T) {
 	})
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// TestCompactedIndexForEachSeriesPropagatesIngestedAt proves the passive
+// IngestedAt metadata read from a FormatV4 builder survives the in-memory
+// compaction read path. FormatV3 builders carry zero IngestedAt.
+func TestCompactedIndexForEachSeriesPropagatesIngestedAt(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		indexFormat int
+		chunkMetas  index.ChunkMetas
+	}{
+		{
+			name:        "v3 leaves ingested at zero",
+			indexFormat: index.FormatV3,
+			chunkMetas:  buildChunkMetas(0, 0),
+		},
+		{
+			name:        "v4 propagates ingested at",
+			indexFormat: index.FormatV4,
+			chunkMetas:  withIngestedAt(buildChunkMetas(0, 0), 1234),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Schema stays v13 (FormatV3) in Phase 1; the FormatV4 builder is
+			// driven directly via the index constant, not schema mapping.
+			periodConfig := config.PeriodConfig{
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+				},
+				Schema: "v13",
+			}
+
+			builder := NewBuilder(tc.indexFormat)
+			lbls := mustParseLabels(`{foo="bar"}`)
+			stream := buildStream(lbls, tc.chunkMetas, "")
+			builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+			builder.FinalizeChunks()
+
+			indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+			compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+
+			var got []retention.Chunk
+			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+				got = append(got, series.Chunks()...)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, chunkMetasToRetentionChunk(config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}, buildUserID(0), lbls, tc.chunkMetas), got)
+		})
+	}
+}
+
+// TestFormatV4IndexReadThroughStoreAndCompactor proves a chunk's IngestedAt
+// survives the store writer, a FormatV4 index build, and the compacted-index
+// read path. The FormatV4 encoder is exercised directly (no schema v14 mapping
+// exists in Phase 1).
+func TestFormatV4IndexReadThroughStoreAndCompactor(t *testing.T) {
+	lbls := mustParseLabels(`{foo="bar"}`)
+	metric := labels.NewBuilder(lbls).Set(model.MetricNameLabel, "logs").Labels()
+	now := time.Now()
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 1500*1024)
+	dup, err := memChunk.Append(&logproto.Entry{
+		Timestamp: now,
+		Line:      "a line",
+	})
+	require.False(t, dup)
+	require.NoError(t, err)
+	require.NoError(t, memChunk.Close())
+
+	firstTime, lastTime := lokiutil.RoundToMilliseconds(memChunk.Bounds())
+	flushedChunk := chunk.NewChunk("user-0", model.Fingerprint(labels.StableHash(metric)), metric, chunkenc.NewFacade(memChunk, 256*1024, 1500*1024), firstTime, lastTime)
+	flushedChunk.IngestedAt = model.TimeFromUnix(1234)
+
+	writer := &recordingIndexWriter{}
+	store := &store{indexWriter: writer}
+	require.NoError(t, store.IndexChunk(context.Background(), 0, 0, flushedChunk))
+	require.Len(t, writer.metas, 1)
+	require.Equal(t, int64(flushedChunk.IngestedAt), writer.metas[0].IngestedAt)
+
+	periodConfig := config.PeriodConfig{
+		IndexTables: config.IndexPeriodicTableConfig{
+			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod},
+		},
+		Schema: "v13",
+	}
+
+	// Build a FormatV4 index directly so the encoder is exercised without a
+	// schema v14 mapping (which does not exist until Phase 2).
+	builder := NewBuilder(index.FormatV4)
+	builder.AddSeries(lbls, model.Fingerprint(labels.StableHash(lbls)), index.ChunkMetas{})
+	builder.FinalizeChunks()
+
+	indexBuckets := IndexBuckets(model.Now(), model.Now(), []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: model.Now()})})
+	compactedIndex := newCompactedIndex(context.Background(), indexBuckets[0].Prefix, flushedChunk.UserID, t.TempDir(), periodConfig, builder)
+
+	_, err = compactedIndex.IndexChunk(flushedChunk.ChunkRef, metric, flushedChunk.IngestedAt, writer.metas[0].KB, writer.metas[0].Entries)
+	require.NoError(t, err)
+
+	_, err = compactedIndex.ToIndexFile()
+	require.NoError(t, err)
+
+	var got []retention.Chunk
+	err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+		got = append(got, series.Chunks()...)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, flushedChunk.IngestedAt, got[0].IngestedAt)
 }
 
 type testContext struct {
