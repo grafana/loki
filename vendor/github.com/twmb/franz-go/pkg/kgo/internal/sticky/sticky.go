@@ -17,7 +17,8 @@ import (
 // bug. The second version introduced generations with the default generation
 // from the first generation's consumers defaulting to -1.
 
-// We can support up to 65533 members; two slots are reserved.
+// We can support up to 65533 members; the unassignedPart sentinel and one
+// spare slot are reserved.
 // We can support up to 2,147,483,647 partitions.
 // I expect a server to fall over before reaching either of these numbers.
 
@@ -246,7 +247,10 @@ func (b *balancer) partNumByTopic(topic string, partition int32) (int32, bool) {
 		return 0, false
 	}
 	topicInfo := b.topicInfos[topicNum]
-	if partition >= topicInfo.partitions {
+	// Claimed partitions are arbitrary input from other group members; a
+	// negative partition would index our flat partition state at a
+	// negative offset (or alias into the preceding topic's range).
+	if partition < 0 || partition >= topicInfo.partitions {
 		return 0, false
 	}
 	return topicInfo.partNum + partition, true
@@ -671,22 +675,36 @@ func (b *balancer) tryRestickyStales(
 			}
 		}
 		if !canTake {
-			return
+			continue
 		}
 
-		// The part cannot be unassigned here; a stale member
-		// would just have it. The part also cannot be deleted;
-		// if it is, there are no potential consumers and the
-		// logic above continues before getting here. The part
-		// must be on a different owner (cannot be lastOwner),
-		// otherwise it would not be a lastOwner in the stales
-		// map; it would just be the current owner.
+		// The part cannot be deleted; if it is, there are no
+		// potential consumers and canTake is false above. The part
+		// CAN be unassigned: the member that won the claim (the
+		// higher generation) may have dropped its subscription to
+		// the topic, in which case our caller un-mapped the
+		// partition from the winner's plan and left it unassigned.
+		// We give the partition straight back to the stale member.
 		currentOwner := partitionConsumers[staleNum].memberNum
+		if currentOwner == unassignedPart {
+			b.plan[lastOwnerNum].add(staleNum)
+			partitionConsumers[staleNum] = partitionConsumer{lastOwnerNum, lastOwnerNum}
+			continue
+		}
 		lastOwnerPartitions := &b.plan[lastOwnerNum]
 		currentOwnerPartitions := &b.plan[currentOwner]
 		if len(*lastOwnerPartitions)+1 < len(*currentOwnerPartitions) {
 			currentOwnerPartitions.remove(staleNum)
 			lastOwnerPartitions.add(staleNum)
+			// partitionConsumers seeds the steal graph's edge
+			// ownership (cxns) on the complex path. If we move the
+			// partition in the plan but not here, a later steal of
+			// this partition resolves to the old owner and remove()
+			// runs against a plan that does not contain the
+			// partition -- which swap-removes an unrelated
+			// partition: the final plan then has this partition on
+			// two members and the wrongly removed one on none.
+			partitionConsumers[staleNum] = partitionConsumer{lastOwnerNum, lastOwnerNum}
 		}
 	}
 }
