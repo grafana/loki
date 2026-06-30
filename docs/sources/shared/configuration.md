@@ -3726,7 +3726,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `ruler.client`
 - `ruler.evaluation.query-frontend`
 - `tsdb.shipper.index-gateway-client.grpc`
-- `tsdb.shipper.tee-index-gateway-client.grpc`
+- `tsdb.shipper.shadow-index-gateway-client.grpc`
 
 &nbsp;
 
@@ -3789,7 +3789,7 @@ backoff_config:
 
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is:
-# tsdb.shipper.tee-index-gateway-client.grpc
+# tsdb.shipper.shadow-index-gateway-client.grpc
 [<tls_config>]
 
 # The maximum amount of time to establish a connection. A value of 0 means
@@ -6836,11 +6836,11 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
-  tee_index_gateway_client:
+  shadow_index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # tsdb.shipper.tee-index-gateway-client.grpc
+    # tsdb.shipper.shadow-index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
@@ -6848,11 +6848,11 @@ tsdb_shipper:
     # record with multiple IP's, a DNS SRV record with a followup A record
     # lookup, or a DNS SRV record without a followup A record lookup,
     # respectively.
-    # CLI flag: -tsdb.shipper.tee-index-gateway-client.server-address
+    # CLI flag: -tsdb.shipper.shadow-index-gateway-client.server-address
     [server_address: <string> | default = ""]
 
     # Whether requests sent to the gateway should be logged or not.
-    # CLI flag: -tsdb.shipper.tee-index-gateway-client.log-gateway-requests
+    # CLI flag: -tsdb.shipper.shadow-index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
     # Experimental: Defines buckets for time-based sharding. Time based sharding
@@ -6860,13 +6860,13 @@ tsdb_shipper:
     # side time-based sharding of queries across index gateway instances set at
     # least one bucket in the format of a string representation of a
     # time.Duration, e.g. ['168h', '336h', '504h']
-    # CLI flag: -tsdb.shipper.tee-index-gateway-client.time-based-sharding-buckets
+    # CLI flag: -tsdb.shipper.shadow-index-gateway-client.time-based-sharding-buckets
     [time_based_sharding_buckets: <list of strings> | default = []]
 
     # Minimum number of index gateway instances included in the shuffle shard,
     # regardless of the max-capacity setting. A value of 0 disables the minimum.
     # Only applies to simple mode.
-    # CLI flag: -tsdb.shipper.tee-index-gateway-client.min-shuffle-shard-size
+    # CLI flag: -tsdb.shipper.shadow-index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
   [ingestername: <string> | default = ""]
@@ -7513,7 +7513,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.chunks-cache-l2.memcached`
 - `store.chunks-cache.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
-- `tsdb.shipper.tee-index-gateway-client.grpc`
+- `tsdb.shipper.shadow-index-gateway-client.grpc`
 - `ui.ring.etcd`
 
 &nbsp;
