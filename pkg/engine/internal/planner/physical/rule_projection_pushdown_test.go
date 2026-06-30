@@ -430,6 +430,78 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			},
 		},
 		{
+			name: "RangeAggregation with GroupBy on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | regexp "(?P<referrer>[^ ]+)" [5m]) by (referrer)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<referrer>[^ ]+)")
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "referrer", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			// Regexp has no requestedKeys; we only assert the scan projections.
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"message", "referrer", "timestamp"},
+		},
+		{
+			name: "Filter on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | regexp "(?P<lvl>[^ ]+)" | lvl="error" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<lvl>[^ ]+)")
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("lvl", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"app", "lvl", "message", "timestamp"},
+		},
+		{
 			name: "RangeAggregation with GroupBy on ambiguous columns",
 			buildLogical: func() logical.Value {
 				// count_over_time({app="test"} | logfmt [5m]) by (duration, service)
@@ -744,14 +816,20 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			require.NotNil(t, projectionNode, "Projection not found in plan")
 			var requestedKeys *LiteralExpr
 			for _, expr := range projectionNode.Expressions {
-				switch expr := expr.(type) {
-				case *VariadicExpr:
-					// Parse expressions: [sourceCol, requestedKeys, strict, keepEmpty]
-					// We want the requestedKeys (index 1)
-					if len(expr.Expressions) >= 2 {
-						if e, ok := expr.Expressions[1].(*LiteralExpr); ok {
-							requestedKeys = e
-						}
+				ve, ok := expr.(*VariadicExpr)
+				if !ok {
+					continue
+				}
+				// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
+				// parser's arg index 1 is the pattern literal (a StringLiteral),
+				// not a requested-keys list — interpreting it as requestedKeys
+				// would falsely fail the literal-type assertion below.
+				if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
+					continue
+				}
+				if len(ve.Expressions) >= 2 {
+					if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
+						requestedKeys = e
 					}
 				}
 			}
