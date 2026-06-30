@@ -76,10 +76,7 @@ type Config struct {
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
-	// ShadowIndexGatewayClientConfig configures an optional secondary index gateway client.
-	// When set, index gateway requests are duplicated to this secondary client in a
-	// fire-and-forget fashion, and only the primary response is used.
-	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental"`
+	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"description=Experimental: Configures an optional secondary index gateway client. When set, index gateway requests are duplicated to this secondary client in a fire-and-forget fashion, and only the primary response is used."`
 
 	IngesterName           string
 	Mode                   Mode
