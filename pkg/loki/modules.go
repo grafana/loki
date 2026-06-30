@@ -793,26 +793,52 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	if !t.Cfg.Pattern.Enabled {
 		return nil, nil
 	}
-	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.PatternIngester, err = pattern.New(
-		t.Cfg.Pattern,
-		t.Overrides,
-		t.PatternRingClient,
-		t.Cfg.MetricsNamespace,
-		prometheus.DefaultRegisterer,
-		util_log.Logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-	logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
+	logger := util_log.Logger
+	switch t.Cfg.Pattern.IngestMode {
+	case pattern.IngestModeInMemory:
+		_ = level.Debug(logger).Log("msg", "initializing in-memory pattern ingester...")
+		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+		t.PatternIngester, err = pattern.New(
+			t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			util_log.Logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
 
-	t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
 
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		}
+		return t.PatternIngester, nil
+	case pattern.IngestModeKafka:
+		_ = level.Debug(logger).Log("msg", "initializing Kafka pattern ingester...")
+		svc, err := pattern.NewKafka(t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.tenantConfigs,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			util_log.Logger,
+			t.Cfg.KafkaConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		// should only be used for the Query endpoint, not the Push endpoint
+		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
+		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+
+		return svc, nil
+	default:
+		return nil, fmt.Errorf("unsupported pattern ingest mode: %s", t.Cfg.Pattern.IngestMode)
 	}
-	return t.PatternIngester, nil
 }
 
 func (t *Loki) initPatternRingClient() (_ services.Service, err error) {
@@ -834,34 +860,38 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
 		return nil, nil
 	}
-	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee...")
 
-	svc, err := pattern.NewTeeService(
-		t.Cfg.Pattern,
-		t.Overrides,
-		t.PatternRingClient,
-		t.tenantConfigs,
-		t.Cfg.MetricsNamespace,
-		prometheus.DefaultRegisterer,
-		logger,
-	)
-	if err != nil {
-		return nil, err
+	if t.Cfg.Pattern.IngestMode == pattern.IngestMode(pattern.IngestModeInMemory) {
+		_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+		svc, err := pattern.NewTeeService(
+			t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.tenantConfigs,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, svc)
+		return services.NewBasicService(
+			svc.Start,
+			func(_ context.Context) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+			func(_ error) error {
+				svc.WaitUntilDone()
+				return nil
+			},
+		), nil
+	} else {
+		_ = level.Debug(logger).Log("msg", "pattern ingester tee disabled for Kafka ingest mode")
+		return nil, nil
 	}
-
-	t.Tee = distributor.WrapTee(t.Tee, svc)
-
-	return services.NewBasicService(
-		svc.Start,
-		func(_ context.Context) error {
-			svc.WaitUntilDone()
-			return nil
-		},
-		func(_ error) error {
-			svc.WaitUntilDone()
-			return nil
-		},
-	), nil
 }
 
 func (t *Loki) initStore() (services.Service, error) {

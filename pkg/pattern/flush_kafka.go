@@ -1,0 +1,55 @@
+package pattern
+
+import (
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/v3/pkg/util"
+)
+
+func (i *KafkaIngester) initFlushQueues() {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
+		// for now we don't flush only prune old samples.
+		// go i.flushLoop(j)
+	}
+}
+
+func (i *KafkaIngester) Flush() {
+	i.flush(true)
+}
+
+func (i *KafkaIngester) flush(mayRemoveStreams bool) {
+	i.sweepUsers(true, mayRemoveStreams)
+
+	// Close the flush queues, to unblock waiting workers.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+
+	i.flushQueuesDone.Wait()
+	level.Debug(i.logger).Log("msg", "flush queues have drained")
+}
+
+// sweepUsers periodically schedules series for flushing and garbage collects users with no series
+func (i *KafkaIngester) sweepUsers(immediate, mayRemoveStreams bool) {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		i.sweepInstance(instance, immediate, mayRemoveStreams)
+	}
+}
+
+func (i *KafkaIngester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
+	level.Debug(i.logger).Log("msg", "sweeping instance", "instance", instance.instanceID)
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		if mayRemoveStreams {
+			instance.streams.WithLock(func() {
+				if s.prune(i.cfg.RetainFor) {
+					instance.removeStream(s)
+				}
+			})
+		}
+		return true, nil
+	})
+}
