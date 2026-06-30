@@ -59,7 +59,8 @@ type ObjectSummaryType struct {
 	StorageClass string    `json:"storageClass"`
 	Owner        OwnerType `json:"owner"`
 	VersionId    string    `json:"versionId,omitempty"`
-	IsLatest     int       `json:"isLatest,omitempty"`
+	IsLatest     bool      `json:"isLatest,omitempty"`
+	DeleteMarker bool      `json:"deleteMarker,omitempty"`
 }
 
 type PrefixType struct {
@@ -368,6 +369,7 @@ type CopyObjectArgs struct {
 	ContentCrc32cFlag bool
 	ObjectExpires     int
 	ContentCrc64ECMA  string
+	SrcVersionId      string
 	// please set other header/params of http request By Option
 	// alternative Options please refer to service/bos/api/option.go
 }
@@ -861,6 +863,16 @@ type ObjectTags struct {
 type ObjectTag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type TagSet struct {
+	TagInfo map[string]interface{} `json:"tagInfo,omitempty"`
+}
+
+type GetObjectTagResult struct {
+	Code    string   `json:"code,omitempty"`
+	Message string   `json:"message,omitempty"`
+	TagSet  []TagSet `json:"tagSet,omitempty"`
 }
 
 type BosShareLinkArgs struct {
