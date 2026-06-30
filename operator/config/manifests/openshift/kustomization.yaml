@@ -2,4 +2,3 @@ resources:
 - ../../overlays/openshift
 - ../../samples
 - ../../scorecard
-- bases/telemetry_rules.yaml

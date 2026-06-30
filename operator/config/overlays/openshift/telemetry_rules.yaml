@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: loki-operator-telemetry
+  name: telemetry
 spec:
   groups:
   - name: openshift_logging.telemetry
