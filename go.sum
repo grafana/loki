@@ -955,8 +955,8 @@ go.opentelemetry.io/collector/component/componenttest v0.153.0 h1:u6O1l+9PUNnI22
 go.opentelemetry.io/collector/component/componenttest v0.153.0/go.mod h1:Ym/d5UxnoHmrCI5LsVANBicikNiqtwjk8uWBM+Z4jDM=
 go.opentelemetry.io/collector/confmap v1.61.0 h1:LkSQF8tt3eyYTK+sW4d4ub2T0SjUwwzxAt7dJnfKFHs=
 go.opentelemetry.io/collector/confmap v1.61.0/go.mod h1:OmuazWMkNuAwJr5BMuloacsNrW9ES458VHjVfLB0B78=
-go.opentelemetry.io/collector/confmap/xconfmap v0.153.0 h1:RSn7C87eBp1iuWip3hX8v9AR8adMze1usJxwumefkq4=
-go.opentelemetry.io/collector/confmap/xconfmap v0.153.0/go.mod h1:4SuPyutUiirRqQoPeY+13lLYkOQ2opMQgKvKACnXh1k=
+go.opentelemetry.io/collector/confmap/xconfmap v0.155.0 h1:tJ8UbfRsG7Owqfixr3n3Jq6os1Qk50ZCUUPtBXpXT7w=
+go.opentelemetry.io/collector/confmap/xconfmap v0.155.0/go.mod h1:Px/cVCKxPtca92c0p0SzztHuS+bXSavH3CQS06GeEoo=
 go.opentelemetry.io/collector/consumer v1.61.0 h1:yMmN7wAN/wwkUPVvu/Lt3aRmoLoo1YxROrZXgrHUydk=
 go.opentelemetry.io/collector/consumer v1.61.0/go.mod h1:JrP1TChChplqMfswPgz7UQmUIU+KKHVyV69k2oMbUA4=
 go.opentelemetry.io/collector/consumer/consumertest v0.155.0 h1:cTp+PmbbwlyT9mG3RrUwZiGfJmRwE3qtBZKGrlWKtFE=
