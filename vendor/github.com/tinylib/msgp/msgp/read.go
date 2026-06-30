@@ -121,6 +121,10 @@ func Decode(r io.Reader, d Decodable) error {
 // reader will be buffered.
 func NewReader(r io.Reader) *Reader {
 	p := readerPool.Get().(*Reader)
+	p.recursionDepth = 0
+	p.maxElements = 0
+	p.maxRecursionDepth = 0
+	p.maxStrLen = 0
 	if p.R == nil {
 		p.R = fwd.NewReader(r)
 	} else {
