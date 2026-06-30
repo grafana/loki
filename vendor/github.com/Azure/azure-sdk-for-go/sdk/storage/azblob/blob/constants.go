@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -71,6 +68,7 @@ const (
 	AccessTierP70     AccessTier = generated.AccessTierP70
 	AccessTierP80     AccessTier = generated.AccessTierP80
 	AccessTierPremium AccessTier = generated.AccessTierPremium
+	AccessTierSmart   AccessTier = generated.AccessTierSmart
 )
 
 // PossibleAccessTierValues returns the possible values for the AccessTier const type.
@@ -151,9 +149,10 @@ func PossibleEncryptionAlgorithmTypeValues() []EncryptionAlgorithmType {
 type ArchiveStatus = generated.ArchiveStatus
 
 const (
-	ArchiveStatusRehydratePendingToCool ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
-	ArchiveStatusRehydratePendingToHot  ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
-	ArchiveStatusRehydratePendingToCold ArchiveStatus = generated.ArchiveStatusRehydratePendingToCold
+	ArchiveStatusRehydratePendingToCool  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
+	ArchiveStatusRehydratePendingToHot   ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
+	ArchiveStatusRehydratePendingToCold  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCold
+	ArchiveStatusRehydratePendingToSmart ArchiveStatus = generated.ArchiveStatusRehydratePendingToSmart
 )
 
 // PossibleArchiveStatusValues returns the possible values for the ArchiveStatus const type.
@@ -233,3 +232,17 @@ func (s SourceContentValidationTypeMD5) Apply(src generated.SourceContentSetter)
 func (SourceContentValidationTypeMD5) notPubliclyImplementable() {}
 
 var _ SourceContentValidationType = (SourceContentValidationTypeMD5)(nil)
+
+// FileRequestIntentType is file request intent with  valid value as Backup
+type FileRequestIntentType = generated.FileShareTokenIntent
+
+const (
+	FileRequestIntentTypeBackup FileRequestIntentType = "backup"
+)
+
+// PossibleFileRequestIntentTypeValues returns the possible values for the FileRequestIntentType const type.
+func PossibleFileRequestIntentTypeValues() []FileRequestIntentType {
+	return []FileRequestIntentType{
+		FileRequestIntentTypeBackup,
+	}
+}
