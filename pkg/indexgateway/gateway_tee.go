@@ -71,8 +71,8 @@ func (t *TeeGatewayClient) observe(operation, client string, start time.Time, er
 }
 
 func runTee[Req, Resp any](
-	t *TeeGatewayClient,
 	ctx context.Context,
+	t *TeeGatewayClient,
 	operation string,
 	req Req,
 	fn func(series.GatewayClient, context.Context, Req) (Resp, error),
@@ -92,29 +92,29 @@ func runTee[Req, Resp any](
 }
 
 func (t *TeeGatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	return runTee(t, ctx, "GetChunkRef", in, series.GatewayClient.GetChunkRef)
+	return runTee(ctx, t, "GetChunkRef", in, series.GatewayClient.GetChunkRef)
 }
 
 func (t *TeeGatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	return runTee(t, ctx, "GetSeries", in, series.GatewayClient.GetSeries)
+	return runTee(ctx, t, "GetSeries", in, series.GatewayClient.GetSeries)
 }
 
 func (t *TeeGatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	return runTee(t, ctx, "LabelNamesForMetricName", in, series.GatewayClient.LabelNamesForMetricName)
+	return runTee(ctx, t, "LabelNamesForMetricName", in, series.GatewayClient.LabelNamesForMetricName)
 }
 
 func (t *TeeGatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	return runTee(t, ctx, "LabelValuesForMetricName", in, series.GatewayClient.LabelValuesForMetricName)
+	return runTee(ctx, t, "LabelValuesForMetricName", in, series.GatewayClient.LabelValuesForMetricName)
 }
 
 func (t *TeeGatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	return runTee(t, ctx, "GetStats", in, series.GatewayClient.GetStats)
+	return runTee(ctx, t, "GetStats", in, series.GatewayClient.GetStats)
 }
 
 func (t *TeeGatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	return runTee(t, ctx, "GetVolume", in, series.GatewayClient.GetVolume)
+	return runTee(ctx, t, "GetVolume", in, series.GatewayClient.GetVolume)
 }
 
 func (t *TeeGatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (*logproto.ShardsResponse, error) {
-	return runTee(t, ctx, "GetShards", in, series.GatewayClient.GetShards)
+	return runTee(ctx, t, "GetShards", in, series.GatewayClient.GetShards)
 }
