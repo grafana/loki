@@ -87,11 +87,12 @@ local weeklyImageJobs = {
     lokiRelease.releaseWorkflow(
       branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+', 'main'],
       imagePrefix=imagePrefix,
+      pluginImagePrefix=imagePrefix,
       releaseLibRef=releaseLibRef,
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
-      publishDockerPlugins=false,
+      publishDockerPlugins=true,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({
