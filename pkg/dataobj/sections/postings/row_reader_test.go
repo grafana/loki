@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -53,7 +55,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := postings.NewRowReader(ctx, sec)
+		reader := postings.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -118,7 +120,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := postings.NewRowReader(ctx, sec)
+		reader := postings.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -130,6 +132,40 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 	require.NotEmpty(t, rows[0].StreamIDBitmap, "first row should have non-empty bitmap")
 	require.NotEmpty(t, rows[1].StreamIDBitmap, "second row should have non-empty bitmap")
 	require.NotEqual(t, rows[0].StreamIDBitmap, rows[1].StreamIDBitmap, "bitmaps for different stream IDs should differ")
+}
+
+// TestRowReader_KindPredicate verifies a kind-filtered scan yields only rows of
+// the requested kind, in both directions. This also guards that the kind
+// predicate reaches the dataset layer (kind-block scan exclusivity). The
+// builder emits bloom and label rows into separate sections, so the predicate
+// is applied across every postings section in the object.
+func TestRowReader_KindPredicate(t *testing.T) {
+	ctx := context.Background()
+	secs, closer := buildTestSection(t)
+	defer closer()
+
+	for _, tc := range []struct {
+		name string
+		kind postings.PostingKind
+	}{{"labels", postings.KindLabel}, {"blooms", postings.KindBloom}} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := 0
+			for _, sec := range secs {
+				kindCol := getSectionColumn(t, sec, postings.ColumnTypeKind)
+				rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.EqualPredicate{
+					Column: kindCol,
+					Value:  scalar.NewInt64Scalar(int64(tc.kind)),
+				}})
+				for rr.Next() {
+					require.Equal(t, tc.kind, rr.At().Kind)
+					n++
+				}
+				require.NoError(t, rr.Err())
+				rr.Close()
+			}
+			require.Positive(t, n)
+		})
+	}
 }
 
 // TestRowReader_CloseIdempotent verifies Close can be called more than once.
@@ -163,9 +199,138 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	reader := postings.NewRowReader(ctx, sec)
+	reader := postings.NewRowReader(ctx, sec, nil)
 	require.True(t, reader.Next())
 	require.NoError(t, reader.Close())
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")
 	require.False(t, reader.Next(), "Next() after Close() must return false, not panic")
+}
+
+// TestRowReader_BloomMatchPredicate verifies BloomMatchPredicate filters bloom
+// rows to only those matching a target value.
+func TestRowReader_BloomMatchPredicate(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+	ts := time.Unix(0, 0).UTC()
+
+	b.PrepareBloomColumn("/obj", 0, "pod", 1000)
+	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		Value:            "foo",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	}))
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	bloomCol := getSectionColumn(t, sec, postings.ColumnTypeBloomFilter)
+	require.NotNil(t, bloomCol)
+
+	countMatches := func(value string) int {
+		rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}})
+		defer func() { _ = rr.Close() }()
+		var got int
+		for rr.Next() {
+			got++
+		}
+		require.NoError(t, rr.Err())
+		return got
+	}
+
+	require.Equal(t, 1, countMatches("foo"))
+	require.Equal(t, 0, countMatches("absent-value"))
+}
+
+// TestRowReader_RegexMatchPredicate verifies RegexMatchPredicate filters rows
+// to only those matching a target regex.
+func TestRowReader_RegexMatchPredicate(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+	ts := time.Unix(0, 0).UTC()
+
+	b.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		LabelValue:       "foobar",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	b.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		LabelValue:       "baz",
+		StreamID:         2,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	b.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		LabelValue:       "foo",
+		StreamID:         3,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	lvCol := getSectionColumn(t, sec, postings.ColumnTypeLabelValue)
+	require.NotNil(t, lvCol)
+
+	countMatches := func(pattern string) int {
+		re, err := labels.NewFastRegexMatcher(pattern)
+		require.NoError(t, err)
+		rr := postings.NewRowReader(ctx, sec, []postings.Predicate{postings.RegexMatchPredicate{Column: lvCol, Matcher: re}})
+		defer func() { _ = rr.Close() }()
+		var got int
+		for rr.Next() {
+			got++
+		}
+		require.NoError(t, rr.Err())
+		return got
+	}
+
+	require.Equal(t, 2, countMatches("foo.*")) // foobar, foo
+	require.Equal(t, 0, countMatches("nope.*"))
 }

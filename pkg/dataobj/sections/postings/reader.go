@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	_ "io" // Used for documenting io.EOF.
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -25,29 +24,54 @@ type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
 	Columns []*Column
 
+	// Predicates filter the rows returned by the Reader. Optional; when empty
+	// all rows from Columns are returned.
+	Predicates []Predicate
+
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
-// Columns is non-empty and every column belongs to the same Section.
+// Columns is non-empty and every column (projected or referenced by a
+// predicate) belongs to the same Section.
 func (opts *ReaderOptions) validate() error {
 	if len(opts.Columns) == 0 {
 		return errors.New("ReaderOptions.Columns must be non-empty")
 	}
 	var section *Section
-	for i, col := range opts.Columns {
+	checkSection := func(col *Column) error {
 		if col == nil {
-			return fmt.Errorf("ReaderOptions.Columns[%d] is nil", i)
+			return errors.New("column is nil")
 		}
 		if section == nil {
 			section = col.Section
 		} else if col.Section != section {
-			return fmt.Errorf("ReaderOptions.Columns[%d] belongs to a different Section", i)
+			return errors.New("column belongs to a different Section")
+		}
+		return nil
+	}
+
+	for i, col := range opts.Columns {
+		if err := checkSection(col); err != nil {
+			return fmt.Errorf("ReaderOptions.Columns[%d]: %w", i, err)
 		}
 	}
-	return nil
+
+	var perr error
+	for _, p := range opts.Predicates {
+		walkPredicate(p, func(p Predicate) bool {
+			if perr != nil {
+				return false
+			}
+			if col, ok := predicateColumn(p); ok {
+				perr = checkSection(col)
+			}
+			return true
+		})
+	}
+	return perr
 }
 
 // A Reader reads batches of rows from a postings [Section]. The returned
@@ -148,7 +172,9 @@ func (r *Reader) init(ctx context.Context) error {
 	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.Open")
 	defer span.End()
 
-	cols := r.opts.Columns
+	// Compose the dataset from the projected columns plus any additional
+	// columns referenced only by predicates.
+	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
 	innerSection := cols[0].Section.inner
 	innerColumns := make([]*columnar.Column, len(cols))
 	for i, c := range cols {
@@ -158,12 +184,25 @@ func (r *Reader) init(ctx context.Context) error {
 	dset, err := columnar.MakeDataset(innerSection, innerColumns)
 	if err != nil {
 		return fmt.Errorf("creating dataset: %w", err)
+	} else if len(dset.Columns()) != len(cols) {
+		return fmt.Errorf("dataset has %d columns, expected %d", len(dset.Columns()), len(cols))
+	}
+
+	columnLookup := make(map[*Column]dataset.Column, len(cols))
+	for i, col := range dset.Columns() {
+		columnLookup[cols[i]] = col
+	}
+
+	preds, err := mapPredicates(r.opts.Predicates, columnLookup)
+	if err != nil {
+		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
 	innerOptions := dataset.RowReaderOptions{
-		Dataset:  dset,
-		Columns:  dset.Columns(),
-		Prefetch: true,
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: preds,
+		Prefetch:   true,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)
@@ -176,6 +215,21 @@ func (r *Reader) init(ctx context.Context) error {
 
 	r.ready = true
 	return nil
+}
+
+// appendMissingColumns appends columns from src to dst that are not already
+// present, de-duplicating by pointer identity.
+func appendMissingColumns(dst, src []*Column) []*Column {
+	exists := make(map[*Column]struct{}, len(dst))
+	for _, col := range dst {
+		exists[col] = struct{}{}
+	}
+	for _, col := range src {
+		if _, ok := exists[col]; !ok {
+			dst = append(dst, col)
+		}
+	}
+	return dst
 }
 
 // Close closes the Reader and releases any resources it holds.
