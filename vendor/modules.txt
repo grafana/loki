@@ -307,8 +307,8 @@ github.com/apache/arrow-go/v18/parquet/internal/debug
 github.com/apache/arrow-go/v18/parquet/internal/gen-go/parquet
 github.com/apache/arrow-go/v18/parquet/schema
 github.com/apache/arrow-go/v18/parquet/variant
-# github.com/apache/thrift v0.22.0
-## explicit; go 1.23
+# github.com/apache/thrift v0.23.0
+## explicit; go 1.25
 github.com/apache/thrift/lib/go/thrift
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
@@ -1053,8 +1053,8 @@ github.com/huandu/xstrings
 # github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 ## explicit; go 1.13
 github.com/influxdata/tdigest
-# github.com/jaegertracing/jaeger-idl v0.6.0
-## explicit; go 1.23.6
+# github.com/jaegertracing/jaeger-idl v0.9.0
+## explicit; go 1.25.0
 github.com/jaegertracing/jaeger-idl/model/v1
 github.com/jaegertracing/jaeger-idl/proto-gen/api_v2
 # github.com/jmespath/go-jmespath v0.4.0
