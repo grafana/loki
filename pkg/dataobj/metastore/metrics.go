@@ -100,10 +100,7 @@ type ObjectMetastoreMetrics struct {
 	resolvedSectionsTotalDuration       prometheus.Histogram
 	resolvedSectionsTotal               prometheus.Histogram
 	resolvedSectionsRatio               prometheus.Histogram
-
-	postingsReaderSelectedTotal *prometheus.CounterVec
-	resolvedSectionsPerObject   *prometheus.HistogramVec
-	indexReadRowsPerObject      *prometheus.HistogramVec
+	indexReadRowsPerObject              prometheus.Histogram
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
@@ -196,26 +193,14 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		postingsReaderSelectedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_metastore_postings_reader_selected_total",
-			Help: "Total number of index objects routed in the read path when read_postings_sections is enabled",
-		}, []string{"flow"}),
-		resolvedSectionsPerObject: prometheus.NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_resolved_sections_per_object",
-			Help:                            "Number of sections resolved from a single index object",
-			Buckets:                         nil,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}, []string{"flow"}),
-		indexReadRowsPerObject: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_read_rows_per_object",
 			Help:                            "Number of index rows read while resolving a single index object",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
-		}, []string{"flow"}),
+		}),
 	}
 	metrics.register(reg)
 
@@ -237,7 +222,5 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	reg.MustRegister(p.resolvedSectionsTotalDuration)
 	reg.MustRegister(p.resolvedSectionsTotal)
 	reg.MustRegister(p.resolvedSectionsRatio)
-	reg.MustRegister(p.postingsReaderSelectedTotal)
-	reg.MustRegister(p.resolvedSectionsPerObject)
 	reg.MustRegister(p.indexReadRowsPerObject)
 }

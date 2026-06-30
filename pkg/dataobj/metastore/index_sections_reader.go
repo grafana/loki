@@ -67,7 +67,7 @@ type indexSectionsReader struct {
 	bloomRowsRead            uint64
 	pointerSectionProductive []bool
 
-	// metrics, when non-nil, receives per-object/per-flow observations at Close.
+	// metrics, when non-nil, receives per-object observations at Close.
 	// statsRecorded guards against double-recording if Close runs more than once.
 	metrics       *ObjectMetastoreMetrics
 	statsRecorded bool
@@ -88,7 +88,6 @@ func newIndexSectionsReader(
 	matchers []*labels.Matcher,
 	predicates []*labels.Matcher,
 	batchSize int,
-	metrics *ObjectMetastoreMetrics,
 ) *indexSectionsReader {
 	// Only keep equal predicates for bloom filtering
 	var equalPredicates []*labels.Matcher
@@ -112,7 +111,6 @@ func newIndexSectionsReader(
 		end:                end,
 		matchingStreamIDs:  make(map[int64]struct{}),
 		labelNamesByStream: make(map[int64][]string),
-		metrics:            metrics,
 	}
 }
 
@@ -458,16 +456,10 @@ func (r *indexSectionsReader) Read(ctx context.Context) (arrow.RecordBatch, erro
 		return nil, io.EOF
 	}
 
-	var (
-		rec arrow.RecordBatch
-		err error
-	)
 	if len(r.predicates) == 0 {
-		rec, err = r.readPointers(ctx)
-	} else {
-		rec, err = r.readWithBloomFiltering(ctx)
+		return r.readPointers(ctx)
 	}
-	return rec, err
+	return r.readWithBloomFiltering(ctx)
 }
 
 func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
@@ -570,7 +562,7 @@ func (r *indexSectionsReader) Close() {
 
 	if r.initialized && r.metrics != nil && !r.statsRecorded {
 		r.statsRecorded = true
-		r.metrics.indexReadRowsPerObject.WithLabelValues(flowStreams).Observe(float64(r.totalReadRows()))
+		r.metrics.indexReadRowsPerObject.Observe(float64(r.totalReadRows()))
 	}
 
 	if r.readSpan != nil {

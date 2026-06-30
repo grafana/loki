@@ -15,6 +15,13 @@ type ChunkMeta struct {
 
 	MinTime, MaxTime int64
 
+	// IngestedAt stores the chunk ingestion timestamp.
+	// It is encoded at day precision in TSDB FormatV4, rounded up to the next UTC
+	// day boundary (or kept on the same boundary if already aligned) so retention
+	// measured from ingestion never expires a chunk early, and defaults to zero for
+	// legacy files.
+	IngestedAt int64
+
 	// Bytes stored, rounded to nearest KB
 	KB uint32
 

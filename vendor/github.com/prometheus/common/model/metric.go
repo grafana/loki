@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strconv"
@@ -258,9 +259,7 @@ func (m Metric) Before(o Metric) bool {
 // Clone returns a copy of the Metric.
 func (m Metric) Clone() Metric {
 	clone := make(Metric, len(m))
-	for k, v := range m {
-		clone[k] = v
-	}
+	maps.Copy(clone, m)
 	return clone
 }
 

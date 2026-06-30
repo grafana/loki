@@ -7,6 +7,8 @@ import (
 	"io"
 	"iter"
 
+	"github.com/bits-and-blooms/bloom/v3"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
@@ -377,6 +379,32 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 		}
 		return p.Keep(p.Column, row.Values[columnIndex])
 
+	case BloomMatchPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+			return false
+		}
+		var filter bloom.BloomFilter
+		if err := filter.UnmarshalBinary(value.Binary()); err != nil {
+			return false
+		}
+		return filter.Test(p.Value)
+
+	case RegexMatchPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+			return false
+		}
+		return p.Matcher.MatchString(string(value.Binary()))
+
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
 	}
@@ -547,6 +575,10 @@ func (r *RowReader) validatePredicate() error {
 				err = process(p.Column)
 			case FuncPredicate:
 				err = process(p.Column)
+			case BloomMatchPredicate:
+				err = process(p.Column)
+			case RegexMatchPredicate:
+				err = process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
@@ -666,6 +698,10 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 				process(p.Column)
 			case FuncPredicate:
 				process(p.Column)
+			case BloomMatchPredicate:
+				process(p.Column)
+			case RegexMatchPredicate:
+				process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
@@ -737,7 +773,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case TruePredicate, FuncPredicate, nil:
+	case TruePredicate, FuncPredicate, BloomMatchPredicate, RegexMatchPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -837,25 +873,9 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		pageStart    int
 		lastPageSize int
 
-		// datalocality stat collection
-		// For logs sections, we track streamID clustering as the data locality property.
-		isStreamCol = isStreamIDColumn(c)
-		// For pointer sections, we track column name clustering as the data locality property.
-		isColumnNameCol                                 = isColumnNameColumn(c)
-		observeLocalityStats                            = isStreamCol || isColumnNameCol
-		totalPagesStat, relevantPagesStat, pageRunsStat *xcap.StatisticInt64
-		prevPageIncluded                                bool // used for tracking avg run length
+		isStreamCol      = isStreamIDColumn(c)
+		prevPageIncluded bool // used for tracking avg run length
 	)
-
-	if isStreamCol {
-		totalPagesStat = dataobj.StatStreamPagesTotal
-		relevantPagesStat = dataobj.StatStreamRelevantPages
-		pageRunsStat = dataobj.StatStreamPageRuns
-	} else if isColumnNameCol {
-		totalPagesStat = dataobj.StatPostingsColumnNamePagesTotal
-		relevantPagesStat = dataobj.StatPostingsColumnNameRelevantPages
-		pageRunsStat = dataobj.StatPostingsColumnNamePageRuns
-	}
 
 	for result := range c.ListPages(ctx) {
 		pageStart += lastPageSize
@@ -872,8 +892,8 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			End:   uint64(pageStart + pageInfo.RowCount),
 		}
 
-		if observeLocalityStats {
-			region.Record(totalPagesStat.Observe(1))
+		if isStreamCol {
+			region.Record(dataobj.StatStreamPagesTotal.Observe(1))
 		}
 
 		minValue, maxValue, err := readMinMax(pageInfo.Stats)
@@ -883,13 +903,14 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
 
-			if observeLocalityStats {
-				region.Record(relevantPagesStat.Observe(1))
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
 
 				// record start of a new run
 				if !prevPageIncluded {
-					region.Record(pageRunsStat.Observe(1))
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
 				}
+
 			}
 
 			prevPageIncluded = true
@@ -921,12 +942,12 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		if include {
 			ranges.Add(pageRange)
 
-			if observeLocalityStats {
-				region.Record(relevantPagesStat.Observe(1))
+			if isStreamCol {
+				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
 
 				// track start of a new run
 				if !prevPageIncluded {
-					region.Record(pageRunsStat.Observe(1))
+					region.Record(dataobj.StatStreamPageRuns.Observe(1))
 				}
 			}
 		} else {
@@ -978,6 +999,10 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 			columns[p.Column] = struct{}{}
 		case FuncPredicate:
 			columns[p.Column] = struct{}{}
+		case BloomMatchPredicate:
+			columns[p.Column] = struct{}{}
+		case RegexMatchPredicate:
+			columns[p.Column] = struct{}{}
 		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.
 		default:
@@ -1017,8 +1042,4 @@ func isStreamIDPredicate(p Predicate) bool {
 
 func isStreamIDColumn(col Column) bool {
 	return col.ColumnDesc().Type.Logical == "stream_id"
-}
-
-func isColumnNameColumn(col Column) bool {
-	return col.ColumnDesc().Type.Logical == "column_name"
 }

@@ -320,65 +320,41 @@ func (d *Decoder) SkipValue() error {
 // PeekKind returns the kind of the current value without consuming it.
 // This allows for look-ahead parsing similar to jsontext.Decoder.PeekKind().
 func (d *Decoder) PeekKind() (Kind, error) {
-	kindNum, _, _, err := d.d.decodeCtrlData(d.offset)
+	//nolint:dogsled // only the resolved kind matters here
+	kindNum, _, _, _, err := d.resolveCtrlData(
+		d.offset,
+	)
 	if err != nil {
 		return 0, d.wrapError(err)
 	}
-
-	// Follow pointers to get the actual kind
-	if kindNum == KindPointer {
-		// We need to follow the pointer to get the real kind
-		dataOffset := d.offset
-		for {
-			var size uint
-			kindNum, size, dataOffset, err = d.d.decodeCtrlData(dataOffset)
-			if err != nil {
-				return 0, d.wrapError(err)
-			}
-			if kindNum != KindPointer {
-				break
-			}
-			dataOffset, _, err = d.d.decodePointer(size, dataOffset)
-			if err != nil {
-				return 0, d.wrapError(err)
-			}
-		}
-	}
-
 	return kindNum, nil
 }
 
 // Offset returns the current offset position in the database.
-// If the current position points to a pointer, this method resolves the
-// pointer chain and returns the offset of the actual data. This ensures
+// If the current position points to a pointer, this method resolves one
+// pointer and returns the offset of the actual data. This ensures
 // that multiple pointers to the same data return the same offset, which
 // is important for caching purposes.
 func (d *Decoder) Offset() uint {
-	// Follow pointer chain to get resolved data location
-	dataOffset := d.offset
-	for {
-		kindNum, size, ctrlEndOffset, err := d.d.decodeCtrlData(dataOffset)
-		if err != nil {
-			// Return original offset to avoid breaking the public API.
-			// Offset() returns uint (not (uint, error)), so we can't propagate errors.
-			// In practice, errors here are rare and the original offset is still valid.
-			return d.offset
-		}
-		if kindNum != KindPointer {
-			// dataOffset is now pointing at the actual data (not a pointer)
-			// Return this offset, which is where the data's control bytes start
-			break
-		}
-		// Follow the pointer to get the target offset
-		dataOffset, _, err = d.d.decodePointer(size, ctrlEndOffset)
-		if err != nil {
-			// Return original offset to avoid breaking the public API.
-			// The caller will encounter the same error when they try to read.
-			return d.offset
-		}
-		// dataOffset is now the pointer target; loop to check if it's also a pointer
+	// This intentionally does not use resolveCtrlData: Offset must return the
+	// resolved value's control-byte offset, not the post-control-byte payload
+	// offset used by read methods.
+	kindNum, size, ctrlEndOffset, err := d.d.decodeCtrlData(d.offset)
+	if err != nil || kindNum != KindPointer {
+		return d.offset
 	}
-	return dataOffset
+
+	pointer, _, err := d.d.decodePointer(size, ctrlEndOffset)
+	if err != nil {
+		// Return original offset to avoid breaking the public API.
+		// The caller will encounter the same error when they try to read.
+		return d.offset
+	}
+	kindNum, _, _, err = d.d.decodeCtrlData(pointer)
+	if err != nil || kindNum == KindPointer {
+		return d.offset
+	}
+	return pointer
 }
 
 func (d *Decoder) reset(offset uint) {
@@ -399,32 +375,57 @@ func unexpectedKindErr(expectedKind, actualKind Kind) error {
 }
 
 func (d *Decoder) decodeCtrlDataAndFollow(expectedKind Kind) (uint, uint, error) {
-	dataOffset := d.offset
-	for {
-		var kindNum Kind
-		var size uint
-		var err error
-		kindNum, size, dataOffset, err = d.d.decodeCtrlData(dataOffset)
-		if err != nil {
-			return 0, 0, err // Don't wrap here, let caller wrap
-		}
-
-		if kindNum == KindPointer {
-			var nextOffset uint
-			dataOffset, nextOffset, err = d.d.decodePointer(size, dataOffset)
-			if err != nil {
-				return 0, 0, err // Don't wrap here, let caller wrap
-			}
-			d.setNextOffset(nextOffset)
-			continue
-		}
-
-		if kindNum != expectedKind {
-			return 0, 0, unexpectedKindErr(expectedKind, kindNum)
-		}
-
-		return size, dataOffset, nil
+	kindNum, size, dataOffset, nextOffset, err := d.resolveCtrlData(d.offset)
+	if err != nil {
+		return 0, 0, err // Don't wrap here, let caller wrap
 	}
+	if nextOffset != 0 {
+		d.setNextOffset(nextOffset)
+	}
+	if kindNum != expectedKind {
+		return 0, 0, unexpectedKindErr(expectedKind, kindNum)
+	}
+	return size, dataOffset, nil
+}
+
+// resolveCtrlData resolves at most one pointer starting at offset and returns
+// the control data for the non-pointer value. Unlike decodeCtrlData, which
+// reads exactly one control record, this helper also reports the pointer's end
+// offset so callers can preserve the decoder's sequential "next value" position
+// after resolving indirection. Pointer-to-pointer data is invalid.
+//
+// nextOffset is 0 when offset already pointed at a non-pointer value (no
+// indirection was followed). Callers must check this before calling
+// setNextOffset; passing 0 would clobber the sequential position. A genuine
+// pointer-end offset is always >= 2 because a pointer occupies a control byte
+// plus at least one payload byte.
+func (d *Decoder) resolveCtrlData(
+	offset uint,
+) (kind Kind, size, dataOffset, nextOffset uint, err error) {
+	kind, size, dataOffset, err = d.d.decodeCtrlData(offset)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	if kind != KindPointer {
+		return kind, size, dataOffset, 0, nil
+	}
+
+	var pointerEndOffset uint
+	dataOffset, pointerEndOffset, err = d.d.decodePointer(size, dataOffset)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	nextOffset = pointerEndOffset
+
+	kind, size, dataOffset, err = d.d.decodeCtrlData(dataOffset)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	if kind == KindPointer {
+		return 0, 0, 0, 0, mmdberrors.NewInvalidDatabaseError("pointer-to-pointer chain detected")
+	}
+
+	return kind, size, dataOffset, nextOffset, nil
 }
 
 func (d *Decoder) readBytes(kind Kind) ([]byte, error) {
