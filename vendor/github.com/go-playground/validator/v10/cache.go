@@ -144,7 +144,7 @@ func (v *Validate) extractStructCache(current reflect.Value, sName string) *cStr
 
 		if v.hasTagNameFunc {
 			name := v.tagNameFunc(fld)
-			if len(name) > 0 {
+			if len(name) > 0 || v.omitBlankFieldNames {
 				customName = name
 			}
 		}
@@ -289,6 +289,24 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 				if wrapper, ok := v.validations[current.tag]; ok {
 					current.fn = wrapper.fn
 					current.runValidationWhenNil = wrapper.runValidationOnNil
+				} else if aliasTag, isAlias := v.aliases[current.tag]; isAlias {
+					aliasFirst, aliasLast := v.parseFieldTagsRecursive(aliasTag, fieldName, current.tag, true)
+
+					current.tag = aliasFirst.tag
+					current.fn = aliasFirst.fn
+					current.runValidationWhenNil = aliasFirst.runValidationWhenNil
+					current.hasParam = aliasFirst.hasParam
+					current.param = aliasFirst.param
+					current.typeof = aliasFirst.typeof
+					current.hasAlias = true
+
+					if aliasFirst.next != nil {
+						nextInChain := current.next
+						current.next = aliasFirst.next
+						aliasLast.next = nextInChain
+						aliasLast.isBlockEnd = false
+						current = aliasLast
+					}
 				} else {
 					panic(strings.TrimSpace(fmt.Sprintf(undefinedValidation, current.tag, fieldName)))
 				}

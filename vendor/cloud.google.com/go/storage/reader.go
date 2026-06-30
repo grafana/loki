@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -90,8 +92,8 @@ type ReaderObjectAttrs struct {
 // when calling [NewClient]. This ensures consistency with other client
 // operations, which all use JSON. JSON will become the default in a future
 // release.
-func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
-	return o.NewRangeReader(ctx, 0, -1)
+func (o *ObjectHandle) NewReader(ctx context.Context, opts ...ReaderOption) (*Reader, error) {
+	return o.NewRangeReader(ctx, 0, -1, opts...)
 }
 
 // NewRangeReader reads part of an object, reading at most length bytes
@@ -111,10 +113,10 @@ func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 // when calling [NewClient]. This ensures consistency with other client
 // operations, which all use JSON. JSON will become the default in a future
 // release.
-func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64) (r *Reader, err error) {
+func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64, opts ...ReaderOption) (r *Reader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
-	ctx, _ = startSpan(ctx, "Object.Reader")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Reader")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -129,7 +131,7 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		}
 	}
 
-	opts := makeStorageOpts(true, o.retry, o.userProject)
+	storageOpts := makeStorageOpts(true, o.retry, o.userProject)
 
 	params := &newRangeReaderParams{
 		bucket:         o.bucket,
@@ -142,8 +144,11 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		readCompressed: o.readCompressed,
 		handle:         &o.readHandle,
 	}
+	for _, opt := range opts {
+		opt.apply(params)
+	}
 
-	r, err = o.c.tc.NewRangeReader(ctx, params, opts...)
+	r, err = o.c.tc.NewRangeReader(ctx, params, storageOpts...)
 
 	// Pass the context so that the span can be closed in Reader.Close, or close the
 	// span now if there is an error.
@@ -152,6 +157,11 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 	}
 
 	return r, err
+}
+
+// ReaderOption is an option for NewReader or NewRangeReader.
+type ReaderOption interface {
+	apply(*newRangeReaderParams)
 }
 
 // MRDOption is an option for MultiRangeDownloader.
@@ -221,6 +231,28 @@ func WithTargetPendingBytes(c int) MRDOption {
 	return targetPendingBytes(c)
 }
 
+type disableMRDReadChecksum struct{}
+
+func (c disableMRDReadChecksum) apply(params *newMultiRangeDownloaderParams) {
+	params.disableMRDReadChecksum = true
+}
+
+// WithDisableMRDReadChecksum returns an MRDOption that disables read checksum validation for the MRD range downloads.
+func WithDisableMRDReadChecksum() MRDOption {
+	return disableMRDReadChecksum{}
+}
+
+type disableReaderChecksum struct{}
+
+func (c disableReaderChecksum) apply(params *newRangeReaderParams) {
+	params.disableCRCCheck = true
+}
+
+// WithDisableReaderChecksum returns a ReaderOption that disables read checksum validation.
+func WithDisableReaderChecksum() ReaderOption {
+	return disableReaderChecksum{}
+}
+
 // NewMultiRangeDownloader creates a multi-range reader for an object.
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
@@ -235,7 +267,7 @@ func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context, opts ...MRDO
 	// This span covers the life of the MRD. It is closed via the context
 	// in MultiRangeDownloader.Close.
 	var spanCtx context.Context
-	spanCtx, _ = startSpan(ctx, "Object.MultiRangeDownloader")
+	spanCtx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.MultiRangeDownloader")
 	defer func() {
 		if err != nil {
 			endSpan(spanCtx, err)
@@ -339,21 +371,33 @@ var emptyBody = io.NopCloser(strings.NewReader(""))
 // the stored CRC, returning an error from Read if there is a mismatch. This integrity check
 // is skipped if transcoding occurs. See https://cloud.google.com/storage/docs/transcoding.
 type Reader struct {
+	// remain must be the first field in the struct to guarantee 64-bit
+	// alignment on 32-bit architectures for atomic operations.
+	remain int64
+
 	Attrs          ReaderObjectAttrs
 	objectMetadata *map[string]string
 
-	seen, remain, size int64
-	checkCRC           bool // Did we check the CRC? This is now only used by tests.
+	seen, size int64
+	checkCRC   bool // Did we check the CRC? This is now only used by tests.
 
 	reader      io.ReadCloser
 	ctx         context.Context
 	mu          sync.Mutex
 	handle      *ReadHandle
 	unfinalized bool
+
+	bucket string
+	object string
 }
 
 // Close closes the Reader. It must be called when done reading.
 func (r *Reader) Close() error {
+	if !r.unfinalized && !r.Attrs.Decompressed {
+		if rem := atomic.LoadInt64(&r.remain); rem < 0 {
+			log.Printf("storage: received %d more bytes than requested from GCS for bucket %q, object %q", -rem, r.bucket, r.object)
+		}
+	}
 	err := r.reader.Close()
 	endSpan(r.ctx, err)
 	return err
@@ -361,8 +405,8 @@ func (r *Reader) Close() error {
 
 func (r *Reader) Read(p []byte) (int, error) {
 	n, err := r.reader.Read(p)
-	if r.remain != -1 {
-		r.remain -= int64(n)
+	if !r.unfinalized && !r.Attrs.Decompressed {
+		atomic.AddInt64(&r.remain, -int64(n))
 	}
 	return n, err
 }
@@ -373,8 +417,8 @@ func (r *Reader) WriteTo(w io.Writer) (int64, error) {
 	// This implicitly calls r.reader.WriteTo for gRPC only. JSON and XML don't have an
 	// implementation of WriteTo.
 	n, err := io.Copy(w, r.reader)
-	if r.remain != -1 {
-		r.remain -= int64(n)
+	if !r.unfinalized && !r.Attrs.Decompressed {
+		atomic.AddInt64(&r.remain, -int64(n))
 	}
 	return n, err
 }
@@ -392,10 +436,14 @@ func (r *Reader) Size() int64 {
 // Remain returns the number of bytes left to read, or -1 if unknown.
 // Unfinalized objects will return -1.
 func (r *Reader) Remain() int64 {
-	if r.unfinalized {
+	if r.unfinalized || r.Attrs.Decompressed {
 		return -1
 	}
-	return r.remain
+	rem := atomic.LoadInt64(&r.remain)
+	if rem < 0 {
+		return 0
+	}
+	return rem
 }
 
 // ContentType returns the content type of the object.

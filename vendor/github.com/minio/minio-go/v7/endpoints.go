@@ -244,6 +244,10 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 		"s3.ap-east-2.amazonaws.com",
 		"s3.dualstack.ap-east-2.amazonaws.com",
 	},
+	"ap-southeast-6": {
+		"s3.ap-southeast-6.amazonaws.com",
+		"s3.dualstack.ap-southeast-6.amazonaws.com",
+	},
 }
 
 // getS3ExpressEndpoint get Amazon S3 Express endpoing based on the region

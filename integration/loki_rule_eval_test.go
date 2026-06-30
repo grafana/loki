@@ -16,26 +16,28 @@ import (
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
-
 	"github.com/grafana/loki/v3/pkg/ruler"
 )
 
-// TestLocalRuleEval tests that rules are evaluated locally with an embedded query engine
+// mode=EvalModeLocal tests that rules are evaluated locally with an embedded query engine
 // and that the results are written to the backend correctly.
-func TestLocalRuleEval(t *testing.T) {
-	testRuleEval(t, ruler.EvalModeLocal)
-}
-
-// TestRemoteRuleEval tests that rules are evaluated remotely against a configured query-frontend
+// mode=EvalModeRemote tests that rules are evaluated remotely against a configured query-frontend
 // and that the results are written to the backend correctly.
-func TestRemoteRuleEval(t *testing.T) {
-	testRuleEval(t, ruler.EvalModeRemote)
+func TestRuleEval(t *testing.T) {
+	for _, mode := range []string{ruler.EvalModeLocal, ruler.EvalModeRemote} {
+		for _, useThanosObjstore := range []bool{false, true} {
+			name := fmt.Sprintf("mode=%v/use_thanos_objstore=%v", mode, useThanosObjstore)
+			t.Run(name, func(t *testing.T) {
+				testRuleEval(t, mode, useThanosObjstore)
+			})
+		}
+	}
 }
 
 // The only way we can test rule evaluation in an integration test is to use the remote-write feature.
 // In this test we stub out a remote-write receiver and check that the expected data is sent to it.
 // Both the local and the remote rule evaluation modes should produce the same result.
-func testRuleEval(t *testing.T, mode string) {
+func testRuleEval(t *testing.T, mode string, useThanosObjstore bool) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
 		c.SetSchemaVer("v13")
 	})
@@ -115,6 +117,7 @@ func testRuleEval(t *testing.T, mode string) {
 		"ruler",
 		"-target=ruler",
 		"-common.compactor-address="+tCompactor.HTTPURL(),
+		fmt.Sprintf("-use-thanos-objstore=%v", useThanosObjstore),
 	)
 
 	rwHandler := func(called *bool, test func(w http.ResponseWriter, r *http.Request)) *httptest.Server {
