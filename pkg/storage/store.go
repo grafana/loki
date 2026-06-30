@@ -248,7 +248,7 @@ func shouldUseTeeIndexGatewayClient(cfg indexshipper.Config) bool {
 		return false
 	}
 
-	teeCfg := cfg.TeeIndexGatewayClientConfig
+	teeCfg := cfg.ShadowIndexGatewayClientConfig
 	if teeCfg.Mode == indexgateway.SimpleMode && teeCfg.Address == "" {
 		return false
 	}
@@ -267,35 +267,35 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-		gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		primaryClient, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 
-		var teeGw *indexgateway.GatewayClient
-		var gatewayClient series.GatewayClient = gw
+		var shadowClient *indexgateway.GatewayClient
+		var clientToUse series.GatewayClient = primaryClient
 		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			teeGw, err = indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.TeeIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			shadowClient, err = indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
-				gw.Stop()
+				primaryClient.Stop()
 				return nil, nil, nil, err
 			}
-			teeClient, err := indexgateway.NewTeeGatewayClient(gw, teeGw, indexClientReg, indexClientLogger)
+			teeClient, err := indexgateway.NewTeeGatewayClient(primaryClient, shadowClient, indexClientReg, indexClientLogger)
 			if err != nil {
-				gw.Stop()
-				teeGw.Stop()
+				primaryClient.Stop()
+				shadowClient.Stop()
 				return nil, nil, nil, err
 			}
-			gatewayClient = teeClient
+			clientToUse = teeClient
 		}
 
-		idx := series.NewIndexGatewayClientStore(gatewayClient, indexClientLogger)
+		idx := series.NewIndexGatewayClientStore(clientToUse, indexClientLogger)
 
 		return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 			f.Stop()
-			gw.Stop()
-			if teeGw != nil {
-				teeGw.Stop()
+			primaryClient.Stop()
+			if shadowClient != nil {
+				shadowClient.Stop()
 			}
 		}, nil
 	}
