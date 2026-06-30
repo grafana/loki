@@ -70,6 +70,11 @@ type Config struct {
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
+	// TeeIndexGatewayClientConfig configures an optional secondary index gateway client.
+	// When set, index gateway requests are duplicated to this secondary client in a
+	// fire-and-forget fashion, and only the primary response is used.
+	TeeIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"tee_index_gateway_client,omitempty" category:"Experimental"`
+
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
@@ -82,6 +87,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.TeeIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.tee-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
