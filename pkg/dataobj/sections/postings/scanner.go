@@ -42,30 +42,51 @@ type Scanner struct {
 // NewScanner returns a Scanner bound to sec.
 func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
 
-// MatchLabel scans the section's label rows for cm's label name AND value.
-// Returns per logs section a bitmap of matched streams and the timestamp
-// bounds. Returns nil when the section lacks the required columns.
-func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[SectionRef]MatchedStreams, error) {
+// MatchLabels scans the section once for all cms (kind=Label AND OR-of per
+// matcher (name=cm.Name AND cm.valuePredicate)), attributing each row back to
+// every matcher it satisfies. Returns, per logs section, one MatchedStreams per
+// input matcher (indexed positionally), so the caller can intersect across
+// matchers. Returns nil when the section lacks the required columns or cms is
+// empty.
+func (s *Scanner) MatchLabels(ctx context.Context, cms []CompiledMatcher) (map[SectionRef][]MatchedStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	valueCol := sectionColumn(s.sec, ColumnTypeLabelValue)
 	if kindCol == nil || nameCol == nil || valueCol == nil {
 		return nil, nil
 	}
-
-	pred := AndPredicate{
-		Left:  labelNamePredicate(kindCol, nameCol, cm.matcher.Name),
-		Right: cm.valuePredicate(valueCol),
+	if len(cms) == 0 {
+		return nil, nil
 	}
 
-	out := make(map[SectionRef]MatchedStreams)
+	byName := make(map[string][]int, len(cms))
+	for i, cm := range cms {
+		n := cm.matcher.Name
+		byName[n] = append(byName[n], i)
+	}
+
+	pred := matchLabelsPredicate(kindCol, nameCol, valueCol, cms)
+
+	out := make(map[SectionRef][]MatchedStreams)
 	err := s.eachRow(ctx, pred, func(row Row) {
+		cands := byName[row.ColumnName]
+		if len(cands) == 0 {
+			return
+		}
 		ref := refOf(row)
-		ms := out[ref]
+		perMatcher := out[ref]
+		if perMatcher == nil {
+			perMatcher = make([]MatchedStreams, len(cms))
+			out[ref] = perMatcher
+		}
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		ms.Matched = unionStreams(ms.Matched, bits)
-		ms.widen(row)
-		out[ref] = ms
+		for _, i := range cands {
+			if !cms[i].matcher.Matches(row.LabelValue) {
+				continue
+			}
+			perMatcher[i].Matched = unionStreams(perMatcher[i].Matched, bits)
+			perMatcher[i].widen(row)
+		}
 	})
 	if err != nil {
 		return nil, err
@@ -73,34 +94,84 @@ func (s *Scanner) MatchLabel(ctx context.Context, cm CompiledMatcher) (map[Secti
 	return out, nil
 }
 
-// LabelStreams scans the section's label rows for cm's label name only (no
-// value pushdown), returning per logs section the present streams (every stream
-// carrying the name), the subset that also matched on value, and the timestamp
-// bounds. Returns nil when the section lacks the required columns.
-func (s *Scanner) LabelStreams(ctx context.Context, cm CompiledMatcher) (map[SectionRef]LabelStreams, error) {
+// matchLabelsPredicate folds cms into kind=Label AND OR-of per matcher
+// (name=cm.Name AND cm.valuePredicate).
+func matchLabelsPredicate(kindCol, nameCol, valueCol *Column, cms []CompiledMatcher) Predicate {
+	var branches Predicate
+	for _, cm := range cms {
+		branch := AndPredicate{
+			Left:  EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(cm.matcher.Name)},
+			Right: cm.valuePredicate(valueCol),
+		}
+		if branches == nil {
+			branches = branch
+			continue
+		}
+		branches = OrPredicate{Left: branches, Right: branch}
+	}
+	return AndPredicate{
+		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
+		Right: branches,
+	}
+}
+
+// LabelStreams scans the section once for all cms' label names only (no value
+// pushdown), attributing each row to every matcher sharing its column name.
+// Returns, per logs section, one LabelStreams per input matcher (indexed
+// positionally).
+func (s *Scanner) LabelStreams(ctx context.Context, cms []CompiledMatcher) (map[SectionRef][]LabelStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
-	valueCol := sectionColumn(s.sec, ColumnTypeLabelValue)
-	if kindCol == nil || nameCol == nil || valueCol == nil {
+	if kindCol == nil || nameCol == nil {
+		return nil, nil
+	}
+	if len(cms) == 0 {
 		return nil, nil
 	}
 
-	out := make(map[SectionRef]LabelStreams)
-	err := s.eachRow(ctx, labelNamePredicate(kindCol, nameCol, cm.matcher.Name), func(row Row) {
-		ref := refOf(row)
-		ls := out[ref]
-		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
-		ls.Present = unionStreams(ls.Present, bits)
-		if cm.matcher.Matches(row.LabelValue) {
-			ls.Matched = unionStreams(ls.Matched, bits)
+	byName := make(map[string][]int, len(cms))
+	for i, cm := range cms {
+		byName[cm.matcher.Name] = append(byName[cm.matcher.Name], i)
+	}
+
+	out := make(map[SectionRef][]LabelStreams)
+	err := s.eachRow(ctx, labelNamesPredicate(kindCol, nameCol, byName), func(row Row) {
+		cands := byName[row.ColumnName]
+		if len(cands) == 0 {
+			return
 		}
-		ls.widen(row)
-		out[ref] = ls
+		ref := refOf(row)
+		perMatcher := out[ref]
+		if perMatcher == nil {
+			perMatcher = make([]LabelStreams, len(cms))
+			out[ref] = perMatcher
+		}
+		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
+		for _, i := range cands {
+			perMatcher[i].Present = unionStreams(perMatcher[i].Present, bits)
+			if cms[i].matcher.Matches(row.LabelValue) {
+				perMatcher[i].Matched = unionStreams(perMatcher[i].Matched, bits)
+			}
+			perMatcher[i].widen(row)
+		}
 	})
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// labelNamesPredicate selects KindLabel rows whose name is any of the matcher
+// names. names is the matcher-by-name index; its keys are the distinct names.
+func labelNamesPredicate(kindCol, nameCol *Column, names map[string][]int) Predicate {
+	values := make([]scalar.Scalar, 0, len(names))
+	for name := range names {
+		values = append(values, scalar.NewStringScalar(name))
+	}
+	return AndPredicate{
+		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
+		Right: InPredicate{Column: nameCol, Values: values},
+	}
 }
 
 func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) error {
@@ -300,12 +371,4 @@ func sectionColumn(sec *Section, ct ColumnType) *Column {
 		}
 	}
 	return nil
-}
-
-// labelNamePredicate selects the KindLabel rows for a single label name.
-func labelNamePredicate(kindCol, nameCol *Column, name string) Predicate {
-	return AndPredicate{
-		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
-		Right: EqualPredicate{Column: nameCol, Value: scalar.NewStringScalar(name)},
-	}
 }
