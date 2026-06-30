@@ -222,6 +222,19 @@ func TestUIServiceInitialization(t *testing.T) {
 	})
 }
 
+// TestIndexGatewayInterceptorsOrderedBeforeServer is a regression test for a
+// bug where initServer was called before initIndexGatewayInterceptors, resulting
+// in the interceptors not being effective.
+func TestIndexGatewayInterceptorsOrderedBeforeServer(t *testing.T) {
+	dir := t.TempDir()
+	cfg := minimalWorkingConfig(t, dir, IndexGateway)
+	c, err := New(cfg)
+	require.NoError(t, err)
+
+	require.Contains(t, c.ModuleManager.DependenciesForModule(Server), IndexGatewayInterceptors,
+		"Server must list IndexGatewayInterceptors as a dependency when target=index-gateway")
+}
+
 func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...func(*Config)) Config {
 	prepareGlobalMetricsRegistry(t)
 
