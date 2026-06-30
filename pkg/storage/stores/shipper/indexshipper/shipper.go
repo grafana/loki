@@ -83,8 +83,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
-	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
+	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f, false)
+	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f, true)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
