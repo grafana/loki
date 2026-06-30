@@ -6836,6 +6836,9 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
+  # Experimental: Configures an optional secondary index gateway client. When
+  # set, index gateway requests are duplicated to this secondary client in a
+  # fire-and-forget fashion, and only the primary response is used.
   shadow_index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
