@@ -1259,7 +1259,7 @@ github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/i
 # github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.155.0
 ## explicit; go 1.25.0
 github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil
-# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.153.0
+# github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.155.0
 ## explicit; go 1.25.0
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor
 github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor/internal/data
@@ -1738,7 +1738,7 @@ go.opentelemetry.io/collector/confmap/internal
 go.opentelemetry.io/collector/confmap/internal/mapstructure
 go.opentelemetry.io/collector/confmap/internal/metadata
 go.opentelemetry.io/collector/confmap/internal/third_party/composehook
-# go.opentelemetry.io/collector/confmap/xconfmap v0.153.0
+# go.opentelemetry.io/collector/confmap/xconfmap v0.155.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/confmap/xconfmap
 # go.opentelemetry.io/collector/consumer v1.61.0
