@@ -32,7 +32,7 @@ require (
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fatih/color v1.19.0
 	github.com/felixge/fgprof v0.9.5
-	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
+	github.com/fluent/fluent-bit-go v0.0.0-20260616051939-71a89c3094aa
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.1
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
