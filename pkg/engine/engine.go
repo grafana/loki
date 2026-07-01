@@ -598,10 +598,10 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		if plan == nil {
 			return
 		}
-		plan := physical.PrintAsTree(plan)
+		planStr := physical.PrintAsTree(plan)
 		level.Debug(q.Logger()).Log(
-			"msg", "physical-plan",
-			"plan", plan,
+			"msg", "physical-plan-detail",
+			"plan", planStr,
 		)
 	}()
 }
@@ -647,7 +647,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 
 			return nil
 		}(); err != nil {
-			return nil, fmt.Errorf("index query: build workflow: %w", err)
+			return nil, err
 		}
 
 		// Disable admission lanes for metastore queries
@@ -655,7 +655,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
 		if err != nil {
 			q.RecordError(ctx, err)
-			return nil, fmt.Errorf("index query: prepare workflow: %w", err)
+			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
 		defer func() {
 			start := time.Now()
