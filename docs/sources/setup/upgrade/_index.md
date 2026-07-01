@@ -64,6 +64,15 @@ For the best possible experience in production, we recommend deploying Loki in d
 
 A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
 
+### Breaking change: Ruler always wipes its remote-write WAL on startup
+
+The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
+
+As a result, the following have been removed:
+
+- The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
+- The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
