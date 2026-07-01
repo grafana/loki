@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
+
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
@@ -62,10 +64,10 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 				return &schedulerpb.SchedulerToQuerier{
 					QueryID: 1,
 					Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
-						HttpRequest: &httpgrpc.HTTPRequest{
+						HttpRequest: *httpgrpcpb.FromHTTPRequest(&httpgrpc.HTTPRequest{
 							Method: "GET",
 							Url:    `/loki/api/v1/query_range?query={foo="bar"}&step=10&limit=200&direction=FORWARD`,
-						},
+						}),
 					},
 					FrontendAddress: "127.0.0.2",
 					UserID:          "user-1",

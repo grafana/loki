@@ -168,8 +168,7 @@ func (f *fakeTailServer) Context() context.Context { return context.Background()
 
 func cloneTailResponse(response logproto.TailResponse) logproto.TailResponse {
 	var clone logproto.TailResponse
-	if response.Stream != nil {
-		clone.Stream = &logproto.Stream{}
+	{
 		clone.Stream.Labels = response.Stream.Labels
 		clone.Stream.Hash = response.Stream.Hash
 		if response.Stream.Entries != nil {
@@ -274,7 +273,7 @@ func Test_StructuredMetadata(t *testing.T) {
 			},
 			expectedResponses: []logproto.TailResponse{
 				{
-					Stream: &logproto.Stream{
+					Stream: logproto.Stream{
 						Labels: lbs.String(),
 						Entries: []logproto.Entry{
 							{
@@ -311,7 +310,7 @@ func Test_StructuredMetadata(t *testing.T) {
 			},
 			expectedResponses: []logproto.TailResponse{
 				{
-					Stream: &logproto.Stream{
+					Stream: logproto.Stream{
 						Labels: labels.NewBuilder(lbs).Set("foo", "1").Labels().String(),
 						Entries: []logproto.Entry{
 							{
@@ -325,7 +324,7 @@ func Test_StructuredMetadata(t *testing.T) {
 					DroppedStreams: nil,
 				},
 				{
-					Stream: &logproto.Stream{
+					Stream: logproto.Stream{
 						Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "2").Labels().String(),
 						Entries: []logproto.Entry{
 							{

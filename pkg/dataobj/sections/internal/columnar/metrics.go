@@ -219,7 +219,7 @@ func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 
 		m.columnCompressedBytes.WithLabelValues(columnType).Observe(float64(column.desc.CompressedSize))
 		m.columnUncompressedBytes.WithLabelValues(columnType).Observe(float64(column.desc.UncompressedSize))
-		if compression != datasetmd.COMPRESSION_TYPE_NONE {
+		if compression != datasetmd.CompressionType_COMPRESSION_TYPE_NONE {
 			m.columnCompressionRatio.WithLabelValues(columnType, compression.String()).Observe(float64(column.desc.UncompressedSize) / float64(column.desc.CompressedSize))
 		}
 		m.columnRows.WithLabelValues(columnType).Observe(float64(column.desc.RowsCount))
@@ -230,7 +230,7 @@ func (m *Metrics) Observe(ctx context.Context, section *Section) error {
 		for _, page := range pages {
 			m.pageCompressedBytes.WithLabelValues(columnType).Observe(float64(page.CompressedSize))
 			m.pageUncompressedBytes.WithLabelValues(columnType).Observe(float64(page.UncompressedSize))
-			if compression != datasetmd.COMPRESSION_TYPE_NONE {
+			if compression != datasetmd.CompressionType_COMPRESSION_TYPE_NONE {
 				m.pageCompressionRatio.WithLabelValues(columnType, compression.String()).Observe(float64(page.UncompressedSize) / float64(page.CompressedSize))
 			}
 			m.pageRows.WithLabelValues(columnType).Observe(float64(page.RowsCount))

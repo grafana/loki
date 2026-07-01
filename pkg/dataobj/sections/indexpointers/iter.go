@@ -97,7 +97,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 		column := columns[columnIndex]
 		switch column.Type {
 		case ColumnTypePath:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
@@ -112,7 +112,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			}
 
 		case ColumnTypeMinTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
@@ -123,7 +123,7 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			pointer.StartTs = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMaxTimestamp:
-			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+			if ty := columnValue.Type(); ty != datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 

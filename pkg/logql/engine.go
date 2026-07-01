@@ -94,7 +94,7 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	if s.Plan == nil {
+	if s.Plan.AST == nil {
 		return nil, errors.New("query plan is empty")
 	}
 	expr, ok := s.Plan.AST.(syntax.LogSelectorExpr)
@@ -117,7 +117,7 @@ func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGrou
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	if s.Plan == nil {
+	if s.Plan.AST == nil {
 		return nil, errors.New("query plan is empty")
 	}
 	expr, ok := s.Plan.AST.(syntax.SampleExpr)
@@ -767,9 +767,9 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	for respSize < size && i.Next() {
 		streamLabels, entry := i.Labels(), i.At()
 
-		forwardShouldOutput := dir == logproto.FORWARD &&
+		forwardShouldOutput := dir == logproto.Direction_FORWARD &&
 			(entry.Timestamp.Equal(lastEntry.Add(interval)) || entry.Timestamp.After(lastEntry.Add(interval)))
-		backwardShouldOutput := dir == logproto.BACKWARD &&
+		backwardShouldOutput := dir == logproto.Direction_BACKWARD &&
 			(entry.Timestamp.Equal(lastEntry.Add(-interval)) || entry.Timestamp.Before(lastEntry.Add(-interval)))
 
 		// If step == 0 output every line.

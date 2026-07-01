@@ -484,7 +484,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 		{
 			Desc: ColumnDesc{
 				Tag:       "stream",
-				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Type:      ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
@@ -511,7 +511,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 		{
 			Desc: ColumnDesc{
 				Tag:       "timestamp",
-				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Type:      ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
@@ -568,23 +568,23 @@ func BenchmarkReader(b *testing.B) {
 		Columns: []generatorColumnConfig{
 			{
 				Tag:               "stream",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
-				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 1000,
 			},
 			{
 				Tag:               "timestamp",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
-				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100_000,
 			},
 			{
 				Tag:               "log",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"},
-				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "string"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				AvgSize:           1024,
 				CardinalityTarget: 100_000,
 			},
@@ -652,16 +652,16 @@ func BenchmarkPredicateExecution(b *testing.B) {
 		Columns: []generatorColumnConfig{
 			{
 				Tag:               "more_selective",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "int64"},
-				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "int64"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 500_000,
 			},
 			{
 				Tag:               "less_selective",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "int64"},
-				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "int64"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100,
 			},
 		},
@@ -792,9 +792,9 @@ type generatorColumnConfig struct {
 
 func columnValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
 	switch cfg.Type.Physical {
-	case datasetmd.PHYSICAL_TYPE_INT64, datasetmd.PHYSICAL_TYPE_UINT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 		return numberValues(rng, cfg)
-	case datasetmd.PHYSICAL_TYPE_BINARY:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 		return stringValues(rng, cfg)
 	default:
 		panic(fmt.Sprintf("unsupported type for generation: %v", cfg.Type.Physical))
@@ -832,11 +832,11 @@ func numberValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
 		for {
 			v := rng.Int63n(cfg.CardinalityTarget)
 			switch cfg.Type.Physical {
-			case datasetmd.PHYSICAL_TYPE_INT64:
+			case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 				if !yield(Int64Value(v)) {
 					return
 				}
-			case datasetmd.PHYSICAL_TYPE_UINT64:
+			case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 				if !yield(Uint64Value(uint64(v))) {
 					return
 				}
@@ -871,7 +871,7 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 			},
 		}
 
-		if colCfg.Type.Physical == datasetmd.PHYSICAL_TYPE_INT64 || colCfg.Type.Physical == datasetmd.PHYSICAL_TYPE_UINT64 {
+		if colCfg.Type.Physical == datasetmd.PhysicalType_PHYSICAL_TYPE_INT64 || colCfg.Type.Physical == datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64 {
 			opts.Statistics.StoreRangeStats = true
 		}
 
@@ -911,17 +911,17 @@ func Test_DatasetGenerator(t *testing.T) {
 		Columns: []generatorColumnConfig{
 			{
 				Tag:               "timestamp",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"},
-				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "timestamp"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100_000,
 				SparsityRate:      0.0,
 			},
 			{
 				Tag:               "label",
-				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "label"},
-				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
-				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
+				Type:              ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "label"},
+				Encoding:          datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+				Compression:       datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 				AvgSize:           32,
 				CardinalityTarget: 100,
 				SparsityRate:      0.3,
@@ -1008,9 +1008,9 @@ func buildBinaryColumnDataset(t *testing.T, values [][]byte) (Dataset, Column) {
 	t.Helper()
 
 	builder, err := NewColumnBuilder("bloom_data", BuilderOptions{
-		Type:        ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "binary"},
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
-		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+		Type:        ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "binary"},
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 		Statistics:  StatisticsOptions{},
 	})
 	require.NoError(t, err)

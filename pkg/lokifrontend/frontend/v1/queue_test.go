@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {
@@ -144,8 +145,8 @@ func (p *processServerMock) Send(client *frontendv1pb.FrontendToClient) error {
 		return nil
 
 	case client.GetType() == frontendv1pb.HTTP_REQUEST:
-		p.requests = append(p.requests, client.HttpRequest)
-		p.response = &frontendv1pb.ClientToFrontend{HttpResponse: &httpgrpc.HTTPResponse{Code: 200}}
+		p.requests = append(p.requests, httpgrpcpb.ToHTTPRequest(client.HttpRequest))
+		p.response = &frontendv1pb.ClientToFrontend{HttpResponse: httpgrpcpb.FromHTTPResponse(&httpgrpc.HTTPResponse{Code: 200})}
 		return nil
 
 	default:

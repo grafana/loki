@@ -136,9 +136,9 @@ func newQuery(query string, start, end time.Time, shards []astmapper.ShardAnnota
 		Start:     start,
 		Limit:     1000,
 		End:       end,
-		Direction: logproto.FORWARD,
+		Direction: logproto.Direction_FORWARD,
 		Deletes:   deletes,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(query),
 		},
 	}
@@ -154,7 +154,7 @@ func newSampleQuery(query string, start, end time.Time, shards []astmapper.Shard
 		Start:    start,
 		End:      end,
 		Deletes:  deletes,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: syntax.MustParseExpr(query),
 		},
 	}

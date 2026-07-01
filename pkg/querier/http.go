@@ -181,7 +181,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, utillog.Logger, req.Start, req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -511,7 +511,7 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	// Merge responses
 	if responses.len() == 0 {
 		return &logproto.QueryPatternsResponse{
-			Series: []*logproto.PatternSeries{},
+			Series: []logproto.PatternSeries{},
 		}, nil
 	}
 
@@ -574,15 +574,15 @@ func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.Qu
 
 	// Convert to pattern response format
 	resp := &logproto.QueryPatternsResponse{
-		Series: make([]*logproto.PatternSeries, 0, len(result)),
+		Series: make([]logproto.PatternSeries, 0, len(result)),
 	}
 
 	for lvl, patterns := range result {
 		for pattern, samples := range patterns {
-			series := &logproto.PatternSeries{
+			series := logproto.PatternSeries{
 				Pattern: pattern,
 				Level:   lvl,
-				Samples: make([]*logproto.PatternSample, 0, len(samples)),
+				Samples: make([]logproto.PatternSample, 0, len(samples)),
 			}
 
 			// Convert samples map to slice and sort by timestamp
@@ -597,7 +597,7 @@ func (q *QuerierAPI) queryStoreForPatterns(ctx context.Context, req *logproto.Qu
 				"timestamp", timestamps[0],
 			)
 			for _, ts := range timestamps {
-				series.Samples = append(series.Samples, &logproto.PatternSample{
+				series.Samples = append(series.Samples, logproto.PatternSample{
 					Timestamp: model.Time(ts),
 					Value:     int64(samples[ts]),
 				})

@@ -37,6 +37,9 @@ const (
 // Service is a service that manages stream metadata limits.
 type Service struct {
 	services.Service
+	// Embedded to satisfy the wiresmith/protoc-gen-go-grpc generated server
+	// interface, which requires forward-compatible embedding.
+	proto.UnimplementedIngestLimitsServer
 	cfg                 Config
 	kafkaReader         *kgo.Client
 	kafkaWriter         *kgo.Client

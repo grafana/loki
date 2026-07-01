@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/stretchr/testify/require"
 )
 
 func TestQueryComparatorCmd(t *testing.T) {
@@ -19,7 +20,7 @@ func TestQueryComparatorCmd(t *testing.T) {
 	end := start.Add(1 * time.Minute)
 	query := `{container="distributor"}`
 
-	params, err := logql.NewLiteralParams(query, start, end, 0, 0, logproto.BACKWARD, 1000, nil, nil)
+	params, err := logql.NewLiteralParams(query, start, end, 0, 0, logproto.Direction_BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 
 	// Run subcommands as necessary

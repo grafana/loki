@@ -152,14 +152,14 @@ func marshalGrouping(g *Grouping) (physical.Grouping, error) {
 	}, nil
 }
 
-func marshalColumnExpressions(exprs []*expressionpb.ColumnExpression) []physical.ColumnExpression {
+func marshalColumnExpressions(exprs []expressionpb.ColumnExpression) []physical.ColumnExpression {
 	if exprs == nil {
 		return nil
 	}
 
 	out := make([]physical.ColumnExpression, len(exprs))
-	for i, expr := range exprs {
-		columnExpression, err := expr.MarshalPhysical()
+	for i := range exprs {
+		columnExpression, err := exprs[i].MarshalPhysical()
 		if err != nil {
 			return nil
 		}
@@ -210,10 +210,7 @@ func (n *DataObjScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	}, nil
 }
 
-func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
-	if timeRange == nil {
-		return physical.TimeRange{}
-	}
+func marshalTimeRange(timeRange TimeRange) physical.TimeRange {
 
 	return physical.TimeRange{
 		Start: timeRange.Start,
@@ -221,14 +218,14 @@ func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
 	}
 }
 
-func marshalExpressions(exprs []*expressionpb.Expression) ([]physical.Expression, error) {
+func marshalExpressions(exprs []expressionpb.Expression) ([]physical.Expression, error) {
 	if exprs == nil {
 		return nil, nil
 	}
 
 	out := make([]physical.Expression, len(exprs))
-	for i, expr := range exprs {
-		expression, err := expr.MarshalPhysical()
+	for i := range exprs {
+		expression, err := exprs[i].MarshalPhysical()
 		if err != nil {
 			return nil, err
 		}
@@ -468,17 +465,11 @@ func (n *Node_IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 // MarshalPhysical converts a protobuf IndexMerge into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
 func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	runs := make([]*compactionv2pb.RunRef, len(n.Runs))
-	for i, r := range n.Runs {
-		if r == nil {
-			continue
-		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			sections[j] = &compactionv2pb.SectionRef{
+	runs := make([]compactionv2pb.RunRef, len(n.Runs))
+	for i := range n.Runs {
+		sections := make([]compactionv2pb.SectionRef, len(n.Runs[i].Sections))
+		for j, s := range n.Runs[i].Sections {
+			sections[j] = compactionv2pb.SectionRef{
 				ObjectPath:   s.ObjectPath,
 				SectionIndex: s.SectionIndex,
 				MinKey:       s.MinKey,
@@ -487,7 +478,7 @@ func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 				MaxTimestamp: s.MaxTimestamp,
 			}
 		}
-		runs[i] = &compactionv2pb.RunRef{Sections: sections}
+		runs[i] = compactionv2pb.RunRef{Sections: sections}
 	}
 
 	return &physical.IndexMerge{

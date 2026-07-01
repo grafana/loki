@@ -68,12 +68,12 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, categoriz
 		return nil, err
 	}
 
-	if req.Plan == nil {
+	if req.Plan.AST == nil {
 		parsed, err := syntax.ParseExpr(req.Query)
 		if err != nil {
 			return nil, err
 		}
-		req.Plan = &plan.QueryPlan{
+		req.Plan = plan.QueryPlan{
 			AST: parsed,
 		}
 	}
@@ -89,7 +89,7 @@ func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, categoriz
 			Start:     req.Start,
 			End:       time.Now(),
 			Limit:     req.Limit,
-			Direction: logproto.BACKWARD,
+			Direction: logproto.Direction_BACKWARD,
 			Deletes:   deletes,
 			Plan:      req.Plan,
 		},

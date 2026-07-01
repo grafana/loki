@@ -3,7 +3,13 @@ syntax = "proto3";
 
 package dataobj.metastore;
 
+import "wiresmith/options.proto";
+
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/metastore";
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 // ObjectWrittenEvent describes a new logs object being written to object storage.
 message ObjectWrittenEvent {

@@ -154,11 +154,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd_v2.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd_v2.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
 		},
-		Encoding:    datasetmd_v2.ENCODING_TYPE_PLAIN,
-		Compression: datasetmd_v2.COMPRESSION_TYPE_ZSTD,
+		Encoding:    datasetmd_v2.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression: datasetmd_v2.CompressionType_COMPRESSION_TYPE_ZSTD,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -171,11 +171,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd_v2.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeMinTimestamp.String(),
 		},
-		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
-		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd_v2.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -188,11 +188,11 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		PageSizeHint:    b.pageSize,
 		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd_v2.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeMaxTimestamp.String(),
 		},
-		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
-		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd_v2.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd_v2.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -257,7 +257,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset
 				// NumColumns increases after calling Commit, so we can use the
 				// current value as the index.
 				ColumnIndex: uint32(enc.NumColumns()),
-				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
+				Direction:   datasetmd_v2.SortDirection_SORT_DIRECTION_ASCENDING,
 			}},
 		})
 	}

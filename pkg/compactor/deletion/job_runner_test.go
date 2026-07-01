@@ -142,7 +142,7 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				RebuiltChunks: map[string]*deletionproto.Chunk{
+				RebuiltChunks: map[string]deletionproto.Chunk{
 					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -168,7 +168,7 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				RebuiltChunks: map[string]*deletionproto.Chunk{
+				RebuiltChunks: map[string]deletionproto.Chunk{
 					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -200,7 +200,7 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				RebuiltChunks: map[string]*deletionproto.Chunk{
+				RebuiltChunks: map[string]deletionproto.Chunk{
 					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -220,7 +220,7 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				RebuiltChunks: map[string]*deletionproto.Chunk{
+				RebuiltChunks: map[string]deletionproto.Chunk{
 					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
@@ -240,8 +240,8 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				RebuiltChunks: map[string]*deletionproto.Chunk{
-					chunkKey(chk): nil,
+				RebuiltChunks: map[string]deletionproto.Chunk{
+					chunkKey(chk): {},
 				},
 			},
 		},
@@ -307,8 +307,8 @@ func TestJobRunner_Run(t *testing.T) {
 			for chunkID := range tc.expectedResult.RebuiltChunks {
 				_, ok := result.RebuiltChunks[chunkID]
 				require.True(t, ok)
-				if tc.expectedResult.RebuiltChunks[chunkID] == nil {
-					require.Nil(t, result.RebuiltChunks[chunkID])
+				if tc.expectedResult.RebuiltChunks[chunkID].IsZero() {
+					require.True(t, result.RebuiltChunks[chunkID].IsZero())
 				} else {
 					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
 					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)
@@ -381,7 +381,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	}
 
 	expectedStorageUpdates := &deletionproto.StorageUpdates{
-		RebuiltChunks: map[string]*deletionproto.Chunk{
+		RebuiltChunks: map[string]deletionproto.Chunk{
 			chunkKey(chks[0]): {
 				// chunk recreated by test-request-0
 				From:        yesterdaysTableInterval.Start.Add(31 * time.Minute),
@@ -394,10 +394,10 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 				Through:     chks[5].Through.Add(-time.Minute),
 				Fingerprint: labels.StableHash(lblFoo),
 			},
-			chunkKey(chks[6]): nil, ///////////////////////////////////////////////////////
-			chunkKey(chks[7]): nil, //   chunks completely deleted by test-request-1	 //
-			chunkKey(chks[8]): nil, //													 //
-			chunkKey(chks[9]): nil, ///////////////////////////////////////////////////////
+			chunkKey(chks[6]): {}, ///////////////////////////////////////////////////////
+			chunkKey(chks[7]): {}, //   chunks completely deleted by test-request-1	 //
+			chunkKey(chks[8]): {}, //													 //
+			chunkKey(chks[9]): {}, ///////////////////////////////////////////////////////
 			chunkKey(chks[10]): {
 				// chunk recreated by test-request-1, removing just first line
 				From:        chks[10].From.Add(time.Minute),
@@ -439,8 +439,8 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	for chunkID := range expectedStorageUpdates.RebuiltChunks {
 		_, ok := result.RebuiltChunks[chunkID]
 		require.True(t, ok)
-		if expectedStorageUpdates.RebuiltChunks[chunkID] == nil {
-			require.Nil(t, result.RebuiltChunks[chunkID])
+		if expectedStorageUpdates.RebuiltChunks[chunkID].IsZero() {
+			require.True(t, result.RebuiltChunks[chunkID].IsZero())
 		} else {
 			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
 			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)

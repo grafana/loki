@@ -97,7 +97,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		{
 			`rate({app="foo"} | unwrap foo [30s])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			10,
 			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with a constant value of 1
 			[][]logproto.Series{
@@ -110,7 +110,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 						Start:    time.Unix(30, 0),
 						End:      time.Unix(60, 0),
 						Selector: `rate({app="foo"} | unwrap foo[30s])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
 						},
 					},
@@ -124,7 +124,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		{
 			`rate({app="foo"} | unwrap foo [30s])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			10,
 			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with an increasing value by 1
 			[][]logproto.Series{
@@ -136,7 +136,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
 					},
 				}},
@@ -149,7 +149,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		{
 			`rate_counter({app="foo"} | unwrap foo [30s])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			10,
 			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with a constant value of 1
 			[][]logproto.Series{
@@ -161,7 +161,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Start:    time.Unix(30, 0),
 					End:      time.Unix(60, 0),
 					Selector: `rate_counter({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
+					Plan: plan.QueryPlan{
 						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
 					},
 				}},
@@ -173,7 +173,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 		{
 			`rate_counter({app="foo"} | unwrap foo [30s])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			10,
 			// create a stream {app="foo"} with 300 samples starting at 46s and ending at 345s with an increasing value by 1
 			[][]logproto.Series{
@@ -224,7 +224,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		expected interface{}
 	}{
 		{
-			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
@@ -234,7 +234,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 1, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`rate({app="foo"}[30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
+			`rate({app="foo"}[30s])`, time.Unix(60, 0), logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
 				{newSeries(testSize, offset(46, identity), `{app="foo"}`)},
@@ -245,7 +245,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.5, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`rate({app="foo"} | unwrap foo [30s])`, time.Unix(60, 0), logproto.FORWARD, 10,
+			`rate({app="foo"} | unwrap foo [30s])`, time.Unix(60, 0), logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				// 30s range the lower bound of the range is not inclusive only 15 samples will make it 60 included
 				{newSeries(testSize, offset(46, constantValue(2)), `{app="foo"}`)},
@@ -258,7 +258,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 1.0, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
@@ -268,7 +268,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 6, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			`first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])`, time.Unix(60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
@@ -278,7 +278,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 1, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`count_over_time({app="foo"} |~".+bar" [1m] offset 30s)`, time.Unix(90, 0), logproto.BACKWARD, 10,
+			`count_over_time({app="foo"} |~".+bar" [1m] offset 30s)`, time.Unix(90, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
@@ -288,7 +288,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 90 * 1000, F: 6, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
+			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
@@ -298,7 +298,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{promql.Sample{T: 5 * 60 * 1000, F: 30, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`absent_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
+			`absent_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
@@ -308,13 +308,13 @@ func TestEngine_InstantQuery(t *testing.T) {
 			promql.Vector{},
 		},
 		{
-			`absent_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.BACKWARD, 10,
+			`absent_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{},
 			[]SelectSampleParams{},
 			promql.Vector{promql.Sample{T: 5 * 60 * 1000, F: 1, Metric: labels.FromStrings("app", "foo")}},
 		},
 		{
-			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`),
@@ -329,7 +329,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -341,7 +341,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -354,7 +354,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -366,7 +366,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -378,7 +378,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -391,7 +391,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,app)`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,app)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", namespace="a"}`),
@@ -419,7 +419,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)`, time.Unix(90, 0), logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)`, time.Unix(90, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", namespace="a"}`),
@@ -451,7 +451,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				"$1",
 				"app",
 				"f(.*)"
-				)`, time.Unix(60, 0), logproto.FORWARD, 100,
+				)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", namespace="a"}`),
@@ -478,7 +478,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -490,7 +490,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.FORWARD, 100,
+			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -502,7 +502,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.FORWARD, 100,
+			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(2, identity), `{app="bar"}`)},
 			},
@@ -514,7 +514,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
@@ -527,7 +527,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
@@ -540,7 +540,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
@@ -553,7 +553,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		},
 
 		{
-			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -571,7 +571,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -587,7 +587,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -604,7 +604,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app) + 1`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -622,7 +622,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		},
 		// sort and sort_desc
 		{
-			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -640,7 +640,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 		{
-			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`),
@@ -659,7 +659,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		},
 		{
 			// healthcheck
-			`1+1`, time.Unix(60, 0), logproto.FORWARD, 100,
+			`1+1`, time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Scalar{T: 60 * 1000, V: 2},
@@ -667,7 +667,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			// single literal
 			`2`,
-			time.Unix(60, 0), logproto.FORWARD, 100,
+			time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Scalar{T: 60 * 1000, V: 2},
@@ -675,7 +675,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			// vector instant
 			`vector(2)`,
-			time.Unix(60, 0), logproto.FORWARD, 100,
+			time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Vector{promql.Sample{
@@ -686,7 +686,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			// single comparison
 			`1 == 1`,
-			time.Unix(60, 0), logproto.FORWARD, 100,
+			time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Scalar{T: 60 * 1000, V: 1},
@@ -694,7 +694,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			// single comparison, reduce away bool modifier between scalars
 			`1 == bool 1`,
-			time.Unix(60, 0), logproto.FORWARD, 100,
+			time.Unix(60, 0), logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Scalar{T: 60 * 1000, V: 1},
@@ -702,7 +702,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`count_over_time({app="foo"}[1m]) > 1`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -721,7 +721,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 			// applied to the value of every data sample in the vector
 			`1 < count_over_time({app="foo"}[1m])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -736,7 +736,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -751,7 +751,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -766,7 +766,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -781,7 +781,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -798,7 +798,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`10 / 5 / 2`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			nil,
 			nil,
@@ -807,14 +807,14 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`10 / (5 / 2)`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			nil,
 			nil,
 			promql.Scalar{T: 60 * 1000, V: 4},
 		},
 		{
-			`10 / ((rate({app="foo"} |~".+bar" [1m]) /5))`, time.Unix(60, 0), logproto.BACKWARD, 10,
+			`10 / ((rate({app="foo"} |~".+bar" [1m]) /5))`, time.Unix(60, 0), logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
@@ -826,7 +826,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -841,7 +841,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -858,7 +858,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`)},
@@ -875,7 +875,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`)},
@@ -892,7 +892,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`)},
@@ -909,7 +909,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
@@ -924,7 +924,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
@@ -942,7 +942,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left () sum by (app) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
@@ -960,7 +960,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
@@ -978,7 +978,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 		{
 			`sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))`,
 			time.Unix(60, 0),
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo",pool="foo"}`)},
@@ -1032,57 +1032,57 @@ func TestEngine_RangeQuery(t *testing.T) {
 		expected promql_parser.Value
 	}{
 		{
-			`{app="foo"}`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.FORWARD, 10,
+			`{app="foo"}`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
+				{&logproto.QueryRequest{Direction: logproto.Direction_FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
 		},
 		{
-			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.FORWARD, 10,
+			`{app="food"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.Direction_FORWARD, 10,
 			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="food"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
+				{&logproto.QueryRequest{Direction: logproto.Direction_FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="food"}`}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newIntervalStream(10, 2*time.Second, identity, `{app="food"}`)}),
 		},
 		{
-			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.BACKWARD, 10,
+			`{app="fed"}`, time.Unix(0, 0), time.Unix(30, 0), 0, 2 * time.Second, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Stream{
 				{newBackwardStream(testSize, identity, `{app="fed"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
+				{&logproto.QueryRequest{Direction: logproto.Direction_BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="fed"}`}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 10, 2*time.Second, identity, `{app="fed"}`)}),
 		},
 		{
-			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.BACKWARD, 30,
+			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.Direction_BACKWARD, 30,
 			[][]logproto.Stream{
 				{newStream(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.Direction_BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
 		},
 		{
-			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 0, 3 * time.Second, logproto.BACKWARD, 30,
+			`{app="barf"} |= "foo" |~ ".+bar"`, time.Unix(0, 0), time.Unix(30, 0), 0, 3 * time.Second, logproto.Direction_BACKWARD, 30,
 			[][]logproto.Stream{
 				{newBackwardStream(testSize, identity, `{app="barf"}`)},
 			},
 			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
+				{&logproto.QueryRequest{Direction: logproto.Direction_BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="barf"}|="foo"|~".+bar"`}},
 			},
 			logqlmodel.Streams([]logproto.Stream{newBackwardIntervalStream(testSize, 30, 3*time.Second, identity, `{app="barf"}`)}),
 		},
 		{
-			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
+			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
@@ -1097,7 +1097,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(2, identity), `{app="foo"}`)},
 			},
@@ -1112,7 +1112,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
@@ -1127,7 +1127,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			`count_over_time(({app="foo"} |~".+bar")[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
@@ -1154,7 +1154,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			`last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])`, time.Unix(5*60, 0), time.Unix(5*120, 0), 30 * time.Second, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
@@ -1181,7 +1181,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -1196,7 +1196,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -1211,7 +1211,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1230,7 +1230,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1245,7 +1245,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1260,7 +1260,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1279,7 +1279,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,cluster, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,cluster, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", cluster="b", namespace="a"}`),
@@ -1311,7 +1311,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster, namespace, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster, namespace, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", cluster="b", namespace="a"}`),
@@ -1343,7 +1343,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace, app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo", cluster="b", namespace="a"}`),
@@ -1367,7 +1367,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
@@ -1382,7 +1382,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1397,7 +1397,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(2, identity), `{app="bar"}`)},
 			},
@@ -1412,7 +1412,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`rate(({app=~"foo|bar"} |~".+bar")[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1431,7 +1431,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`absent_over_time(({app="foo"} |~".+bar")[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`absent_over_time(({app="foo"} |~".+bar")[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(1, constant(50), `{app="foo"}`)},
 			},
@@ -1448,7 +1448,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, constantValue(2)), `{app="foo"}`),
@@ -1470,7 +1470,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`), newSeries(testSize, factor(15, identity), `{app="boo"}`)},
 			},
@@ -1489,7 +1489,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
@@ -1504,7 +1504,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`),
@@ -1530,7 +1530,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(20, identity), `{app="bar"}`),
@@ -1552,7 +1552,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			`bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(10, identity), `{app="foo"}`),
@@ -1582,7 +1582,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		// binops
 		{
 			`rate({app="foo"}[1m]) or rate({app="bar"}[1m])`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1608,7 +1608,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`rate({app="foo"}[1m]) or vector(0)`,
-			time.Unix(60, 0), time.Unix(180, 0), 20 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 20 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -1642,7 +1642,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			rate({app=~"foo|bar"}[1m]) and
 			rate({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1668,7 +1668,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			rate({app=~"foo|bar"}[1m]) unless
 			rate({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1694,7 +1694,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			rate({app=~"foo|bar"}[1m]) +
 			rate({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1720,7 +1720,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			rate({app=~"foo|bar"}[1m]) -
 			rate({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1746,7 +1746,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			count_over_time({app=~"foo|bar"}[1m]) *
 			count_over_time({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1772,7 +1772,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			count_over_time({app=~"foo|bar"}[1m]) *
 			count_over_time({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1798,7 +1798,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			count_over_time({app=~"foo|bar"}[1m]) /
 			count_over_time({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1824,7 +1824,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			count_over_time({app=~"foo|bar"}[1m]) %
 			count_over_time({app="bar"}[1m])
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1852,7 +1852,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) /
 			sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1880,7 +1880,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 				) * 2
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1914,7 +1914,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				"f(.*)"
 			)
 			`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1942,7 +1942,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 					sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
 			) + 1
 		`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="foo"}`),
@@ -1961,7 +1961,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`1+1--1`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Matrix{
@@ -1972,7 +1972,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`rate({app="bar"}[1m]) - 1`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="bar"}`),
@@ -1990,7 +1990,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`1 - rate({app="bar"}[1m])`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="bar"}`),
@@ -2008,7 +2008,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`rate({app="bar"}[1m]) - 1 / 2`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="bar"}`),
@@ -2026,7 +2026,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, factor(5, identity), `{app="bar"}`),
@@ -2044,7 +2044,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			`2`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Matrix{
@@ -2056,7 +2056,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		// vector query range
 		{
 			`vector(2)`,
-			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 100,
 			nil,
 			nil,
 			promql.Matrix{
@@ -2066,7 +2066,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_rate({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2090,7 +2090,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2114,7 +2114,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2138,7 +2138,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_over_time({app="foo"}[30s]) > 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_over_time({app="foo"}[30s]) > 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2166,7 +2166,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			// https://grafana.com/docs/loki/latest/query/#comparison-operators
 			// Between a vector and a scalar, these operators are
 			// applied to the value of every data sample in the vector
-			`1 < bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`1 < bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2190,7 +2190,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 		{
-			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`bytes_over_time({app="foo"}[30s]) > bool 1`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2224,7 +2224,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			// https://grafana.com/docs/loki/latest/query/#comparison-operators
 			// Between a vector and a scalar, these operators are
 			// applied to the value of every data sample in the vector
-			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.FORWARD, 10,
+			`1 < bool bytes_over_time({app="foo"}[30s])`, time.Unix(60, 0), time.Unix(120, 0), 15 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{logproto.Series{
 					Labels: `{app="foo"}`,
@@ -2255,7 +2255,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 		},
 		{
 			// tests combining two streams + unwrap
-			`sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.FORWARD, 10,
+			`sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{
 					{
@@ -2338,7 +2338,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 		{
 			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
 			time.Unix(60, 0),
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
@@ -2347,7 +2347,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2363,7 +2363,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 		{
 			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
 			time.Unix(60, 0),
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			[][]logproto.Series{
 				{
@@ -2375,7 +2375,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2391,7 +2391,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 		{
 			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
 			time.Unix(60, 0),
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			[][]logproto.Series{
 				{
@@ -2403,7 +2403,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2421,7 +2421,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 		{
 			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
 			time.Unix(60, 0),
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			[][]logproto.Series{
 				{
@@ -2433,7 +2433,7 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2773,7 +2773,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 	}{
 		{
 			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.FORWARD, 10,
+			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.Direction_FORWARD, 10,
 			[][]logproto.Series{
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
@@ -2781,7 +2781,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2802,7 +2802,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 		},
 		{
 			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
+			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
@@ -2813,7 +2813,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2834,7 +2834,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 		},
 		{
 			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
+			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
@@ -2845,7 +2845,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2874,7 +2874,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 		},
 		{
 			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
+			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.Direction_BACKWARD, 10,
 			[][]logproto.Series{
 				{
 					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
@@ -2885,7 +2885,7 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 				{
 					&logproto.SampleQueryRequest{
 						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
+						Plan: plan.QueryPlan{
 							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
 						},
 						Start: time.Unix(0, 0),
@@ -2960,7 +2960,7 @@ func TestEngine_Stats(t *testing.T) {
 
 	queueTime := 2 * time.Nanosecond
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.FORWARD, 1000, nil, nil)
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.Direction_FORWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 
@@ -2996,7 +2996,7 @@ func (metaQuerier) SelectSamples(
 func TestEngine_Metadata(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
 
-	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 1000, nil, nil)
+	params, err := NewLiteralParams(`{foo="bar"}`, time.Now(), time.Now(), 0, 0, logproto.Direction_BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 
@@ -3013,7 +3013,7 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 	queueTime := 2 * time.Nanosecond
 	logqlVector := `vector(5)`
 
-	params, err := NewLiteralParams(logqlVector, now, now, 0, time.Second*30, logproto.BACKWARD, 1000, nil, nil)
+	params, err := NewLiteralParams(logqlVector, now, now, 0, time.Second*30, logproto.Direction_BACKWARD, 1000, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
@@ -3065,7 +3065,7 @@ func TestMultiVariantQueries_Limits(t *testing.T) {
 			testTime,
 			0,
 			0,
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			nil,
 			nil,
@@ -3104,7 +3104,7 @@ func TestMultiVariantQueries_Limits(t *testing.T) {
 			Start:    time.Unix(0, 0),
 			End:      testTime,
 			Selector: variantQuery,
-			Plan:     plan,
+			Plan:     *plan,
 		}
 
 		data := [][]logproto.Series{series}
@@ -3117,7 +3117,7 @@ func TestMultiVariantQueries_Limits(t *testing.T) {
 			testTime,
 			0,
 			0,
-			logproto.BACKWARD,
+			logproto.Direction_BACKWARD,
 			0,
 			nil,
 			nil,
@@ -3184,7 +3184,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 
-			params, err := NewLiteralParams(tc.qs, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.BACKWARD, 1, nil, nil)
+			params, err := NewLiteralParams(tc.qs, time.Unix(0, 0), time.Unix(180, 0), 1*time.Second, 0, logproto.Direction_BACKWARD, 1, nil, nil)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -3201,13 +3201,13 @@ func TestEngine_MaxSeries(t *testing.T) {
 		direction      logproto.Direction
 		expectLimitErr bool
 	}{
-		{`topk(1,rate(({app=~"foo|bar"})[1m]))`, logproto.FORWARD, true},
-		{`{app="foo"}`, logproto.FORWARD, false},
-		{`{app="bar"} |= "foo" |~ ".+bar"`, logproto.BACKWARD, false},
-		{`rate({app="foo"} |~".+bar" [1m])`, logproto.BACKWARD, true},
-		{`rate({app="foo"}[30s])`, logproto.FORWARD, true},
-		{`count_over_time({app="foo|bar"} |~".+bar" [1m])`, logproto.BACKWARD, true},
-		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD, false},
+		{`topk(1,rate(({app=~"foo|bar"})[1m]))`, logproto.Direction_FORWARD, true},
+		{`{app="foo"}`, logproto.Direction_FORWARD, false},
+		{`{app="bar"} |= "foo" |~ ".+bar"`, logproto.Direction_BACKWARD, false},
+		{`rate({app="foo"} |~".+bar" [1m])`, logproto.Direction_BACKWARD, true},
+		{`rate({app="foo"}[30s])`, logproto.Direction_FORWARD, true},
+		{`count_over_time({app="foo|bar"} |~".+bar" [1m])`, logproto.Direction_BACKWARD, true},
+		{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD, false},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil, nil)
@@ -3232,9 +3232,9 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 		direction      logproto.Direction
 		expectLimitErr bool
 	}{
-		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.FORWARD, true},
-		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.FORWARD, false},
-		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[2d]))`, logproto.Direction_FORWARD, true},
+		{`topk(1,rate(({app=~"foo|bar"})[1d]))`, logproto.Direction_FORWARD, false},
+		{`topk(1,rate({app=~"foo|bar"}[12h]) / (rate({app="baz"}[23h]) + rate({app="fiz"}[25h])))`, logproto.Direction_FORWARD, true},
 	} {
 		t.Run(test.qs, func(t *testing.T) {
 			params, err := NewLiteralParams(test.qs, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, test.direction, 1000, nil, nil)
@@ -3282,29 +3282,29 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			qs        string
 			direction logproto.Direction
 		}{
-			{`{app="foo"}`, logproto.FORWARD},
-			{`{app="bar"} |= "foo" |~ ".+bar"`, logproto.BACKWARD},
-			{`rate({app="foo"} |~".+bar" [1m])`, logproto.BACKWARD},
-			{`rate({app="foo"}[30s])`, logproto.FORWARD},
-			{`count_over_time({app="foo"} |~".+bar" [1m])`, logproto.BACKWARD},
-			{`count_over_time(({app="foo"} |~".+bar")[5m])`, logproto.BACKWARD},
-			{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD},
-			{`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD},
-			{`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD},
-			{`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD},
-			{`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.FORWARD},
-			{`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, logproto.FORWARD},
-			{`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, logproto.FORWARD},
-			{`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, logproto.FORWARD},
-			{`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, logproto.FORWARD},
-			{`rate(({app=~"foo|bar"} |~".+bar")[1m])`, logproto.FORWARD},
-			{`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
-			{`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
-			{`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, logproto.FORWARD},
-			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
-			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
+			{`{app="foo"}`, logproto.Direction_FORWARD},
+			{`{app="bar"} |= "foo" |~ ".+bar"`, logproto.Direction_BACKWARD},
+			{`rate({app="foo"} |~".+bar" [1m])`, logproto.Direction_BACKWARD},
+			{`rate({app="foo"}[30s])`, logproto.Direction_FORWARD},
+			{`count_over_time({app="foo"} |~".+bar" [1m])`, logproto.Direction_BACKWARD},
+			{`count_over_time(({app="foo"} |~".+bar")[5m])`, logproto.Direction_BACKWARD},
+			{`avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD},
+			{`min(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD},
+			{`max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD},
+			{`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD},
+			{`sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`, logproto.Direction_FORWARD},
+			{`sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)`, logproto.Direction_FORWARD},
+			{`count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)`, logproto.Direction_FORWARD},
+			{`stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, logproto.Direction_FORWARD},
+			{`stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m])) `, logproto.Direction_FORWARD},
+			{`rate(({app=~"foo|bar"} |~".+bar")[1m])`, logproto.Direction_FORWARD},
+			{`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.Direction_FORWARD},
+			{`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.Direction_FORWARD},
+			{`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, logproto.Direction_FORWARD},
+			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.Direction_FORWARD},
+			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.Direction_FORWARD},
 		} {
-			params, err := NewLiteralParams(test.qs, start, end, 60*time.Second, 0, logproto.BACKWARD, 1000, nil, nil)
+			params, err := NewLiteralParams(test.qs, start, end, 60*time.Second, 0, logproto.Direction_BACKWARD, 1000, nil, nil)
 			require.NoError(b, err)
 			q := eng.Query(params)
 
@@ -3327,7 +3327,7 @@ func TestHashingStability(t *testing.T) {
 		start:     time.Unix(0, 0),
 		end:       time.Unix(5, 0),
 		step:      60 * time.Second,
-		direction: logproto.FORWARD,
+		direction: logproto.Direction_FORWARD,
 		limit:     1000,
 	}
 
@@ -3400,7 +3400,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 	}
 
 	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
-	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 0, nil, nil)
+	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.Direction_BACKWARD, 0, nil, nil)
 	require.NoError(t, err)
 	q := eng.Query(params).(*query)
 	q.evaluator = mock
@@ -3473,7 +3473,7 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
 		if paramsIn, ok2 := params.([]SelectLogParams); ok2 {
 			for i, p := range paramsIn {
-				p.Plan = &plan.QueryPlan{
+				p.Plan = plan.QueryPlan{
 					AST: syntax.MustParseExpr(p.Selector),
 				}
 				streams[paramsID(p)] = streamsIn[i]
@@ -3487,8 +3487,8 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 			for i, p := range paramsIn {
 				expr, ok3 := syntax.MustParseExpr(p.Selector).(syntax.VariantsExpr)
 				if ok3 {
-					if p.Plan == nil {
-						p.Plan = &plan.QueryPlan{
+					if p.Plan.AST == nil {
+						p.Plan = plan.QueryPlan{
 							AST: expr,
 						}
 					}
@@ -3520,8 +3520,8 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 					series[paramsID(p)] = newSeries
 				} else {
 					for i, p := range paramsIn {
-						if p.Plan == nil {
-							p.Plan = &plan.QueryPlan{
+						if p.Plan.AST == nil {
+							p.Plan = plan.QueryPlan{
 								AST: syntax.MustParseExpr(p.Selector),
 							}
 						}
@@ -3852,7 +3852,7 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 					end:         time.Unix(120, 0), // Range query: multiple steps
 					step:        60 * time.Second,
 					interval:    0,
-					direction:   logproto.FORWARD,
+					direction:   logproto.Direction_FORWARD,
 					limit:       100,
 				}
 			} else {
@@ -3862,7 +3862,7 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 					end:         time.Unix(60, 0), // Instant query: single step
 					step:        30 * time.Second,
 					interval:    0,
-					direction:   logproto.FORWARD,
+					direction:   logproto.Direction_FORWARD,
 					limit:       100,
 				}
 			}
@@ -4026,7 +4026,7 @@ func TestJoinSampleVector_RangeQueryVectorOverwrite(t *testing.T) {
 		end:         time.Unix(120, 0), // 3 steps with 60s step
 		step:        60 * time.Second,
 		interval:    0,
-		direction:   logproto.FORWARD,
+		direction:   logproto.Direction_FORWARD,
 		limit:       100,
 	}
 

@@ -132,11 +132,11 @@ func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilde
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeStreamID.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
 			StoreCardinalityStats: true,
@@ -163,11 +163,11 @@ func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuild
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeTimestamp.String(),
 		},
-		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
-		Compression: datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_DELTA,
+		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -201,11 +201,11 @@ func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressi
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeMetadata.String(),
 		},
-		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:           datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
@@ -239,11 +239,11 @@ func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts *datas
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
-			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeMessage.String(),
 		},
-		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		Encoding:           datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
 
 		// We explicitly don't have range stats for the message column:

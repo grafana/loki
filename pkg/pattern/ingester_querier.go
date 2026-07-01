@@ -82,17 +82,17 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, m
 		}
 	}
 
-	// Create a slice of structs to keep Series and total together
+	// Create a slice of structs to keep Series index and total together for sorting.
 	type SeriesWithTotal struct {
-		Series *logproto.PatternSeries
-		Total  int64
+		Idx   int
+		Total int64
 	}
 
 	seriesWithTotals := make([]SeriesWithTotal, len(resp.Series))
 	for i := range resp.Series {
 		seriesWithTotals[i] = SeriesWithTotal{
-			Series: resp.Series[i],
-			Total:  total[i],
+			Idx:   i,
+			Total: total[i],
 		}
 	}
 
@@ -108,7 +108,7 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, m
 	for i := range seriesWithTotals {
 		if seriesWithTotals[i].Total >= minClusterSize {
 			// Place the valid series at the current position
-			resp.Series[pos] = seriesWithTotals[i].Series
+			resp.Series[pos] = resp.Series[seriesWithTotals[i].Idx]
 			pos++
 		}
 	}

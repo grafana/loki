@@ -185,11 +185,11 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 
 		// pop the next batch of chunks and append/prepend previous overlapping chunks
 		// so we can merge/de-dupe overlapping entries.
-		if !includesOverlap && it.direction == logproto.FORWARD {
+		if !includesOverlap && it.direction == logproto.Direction_FORWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 		batch = append(batch, it.chunks.pop(it.batchSize)...)
-		if !includesOverlap && it.direction == logproto.BACKWARD {
+		if !includesOverlap && it.direction == logproto.Direction_BACKWARD {
 			batch = append(batch, it.lastOverlapping...)
 		}
 
@@ -199,7 +199,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 			nextChunk = it.chunks.Peek()
 			// we max out our iterator boundaries to the next chunks in the queue
 			// so that overlapping chunks are together
-			if it.direction == logproto.BACKWARD {
+			if it.direction == logproto.Direction_BACKWARD {
 				from = time.Unix(0, nextChunk.Chunk.Through.UnixNano())
 
 				// we have to reverse the inclusivity of the chunk iterator from
@@ -232,7 +232,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 
 		}
 
-		if it.direction == logproto.BACKWARD {
+		if it.direction == logproto.Direction_BACKWARD {
 			through = time.Unix(0, headChunk.Chunk.Through.UnixNano())
 
 			if through.After(it.end) {
@@ -276,7 +276,7 @@ func (it *batchChunkIterator) nextBatch() (res *chunkBatch) {
 	// in this case it will be possible to have a through value which is older or equal to our from value
 	// If that happens we reset the bounds according to the iteration direction
 	if through.Sub(from) <= 0 {
-		if it.direction == logproto.BACKWARD {
+		if it.direction == logproto.Direction_BACKWARD {
 			from = it.start
 		} else {
 			through = it.end
@@ -448,7 +448,7 @@ func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, throug
 			}
 			iterators = append(iterators, iterator)
 		}
-		if it.direction == logproto.BACKWARD {
+		if it.direction == logproto.Direction_BACKWARD {
 			for i, j := 0, len(iterators)-1; i < j; i, j = i+1, j-1 {
 				iterators[i], iterators[j] = iterators[j], iterators[i]
 			}
@@ -490,7 +490,7 @@ func newSampleBatchIterator(
 			schemas,
 			chunks,
 			batchSize,
-			logproto.FORWARD,
+			logproto.Direction_FORWARD,
 			start,
 			end,
 			metrics,

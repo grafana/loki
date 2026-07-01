@@ -41,11 +41,11 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			Direction: params.Direction(),
 			Path:      "/loki/api/v1/query", // TODO(owen-d): make this derivable
 			Shards:    params.Shards(),
-			Plan: &plan.QueryPlan{
+			Plan: plan.QueryPlan{
 				AST: params.GetExpression(),
 			},
-			StoreChunks:    params.GetStoreChunks(),
-			CachingOptions: params.CachingOptions(),
+			StoreChunks: params.GetStoreChunks(),
+			CachingOpts: params.CachingOptions(),
 		}
 	}
 	return &LokiRequest{
@@ -58,11 +58,11 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 		Direction: params.Direction(),
 		Path:      "/loki/api/v1/query_range", // TODO(owen-d): make this derivable
 		Shards:    params.Shards(),
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: params.GetExpression(),
 		},
-		StoreChunks:    params.GetStoreChunks(),
-		CachingOptions: params.CachingOptions(),
+		StoreChunks: params.GetStoreChunks(),
+		CachingOpts: params.CachingOptions(),
 	}
 }
 

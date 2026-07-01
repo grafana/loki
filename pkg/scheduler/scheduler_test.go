@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/util/httpgrpcpb"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
@@ -118,10 +120,10 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 			QueryID: 42,
 			UserID:  "100",
 			Request: &schedulerpb.SchedulerToQuerier_HttpRequest{
-				HttpRequest: &httpgrpc.HTTPRequest{
+				HttpRequest: *httpgrpcpb.FromHTTPRequest(&httpgrpc.HTTPRequest{
 					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
 					Body:    []byte("Hello echo!"),
-				},
+				}),
 			},
 			StatsEnabled: true,
 		}
@@ -142,10 +144,10 @@ func TestProtobufBackwardsCompatibility(t *testing.T) {
 			QueryID: 42,
 			UserID:  "100",
 			Request: &schedulerpb.FrontendToScheduler_HttpRequest{
-				HttpRequest: &httpgrpc.HTTPRequest{
+				HttpRequest: *httpgrpcpb.FromHTTPRequest(&httpgrpc.HTTPRequest{
 					Headers: []*httpgrpc.Header{{Key: "foo", Values: []string{"bar"}}},
 					Body:    []byte("Hello echo!"),
-				},
+				}),
 			},
 		}
 		b, err := os.ReadFile("testdata/frontend_to_scheduler_k173.bin")

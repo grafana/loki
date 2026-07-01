@@ -67,6 +67,14 @@ func (r *LokiRequest) GetStart() time.Time {
 	return r.StartTs
 }
 
+// GetCachingOptions implements queryrangebase.Request with a value-typed
+// getter; the wiresmith-generated accessor is GetCachingOpts and returns a
+// pointer (der5: uniform pointer getters). The field is customname-renamed
+// to CachingOpts to free this identifier.
+func (r *LokiRequest) GetCachingOptions() resultscache.CachingOptions {
+	return r.CachingOpts
+}
+
 func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Request {
 	clone := *r
 	clone.StartTs = s
@@ -114,6 +122,14 @@ func (r *LokiInstantRequest) GetEnd() time.Time {
 
 func (r *LokiInstantRequest) GetStart() time.Time {
 	return r.TimeTs
+}
+
+// GetCachingOptions implements queryrangebase.Request with a value-typed
+// getter; the wiresmith-generated accessor is GetCachingOpts and returns a
+// pointer (der5: uniform pointer getters). The field is customname-renamed
+// to CachingOpts to free this identifier.
+func (r *LokiInstantRequest) GetCachingOptions() resultscache.CachingOptions {
+	return r.CachingOpts
 }
 
 func (r *LokiInstantRequest) WithStartEnd(s time.Time, _ time.Time) queryrangebase.Request {
@@ -202,8 +218,8 @@ type LabelRequest struct {
 func NewLabelRequest(start, end time.Time, query, name, path string) *LabelRequest {
 	return &LabelRequest{
 		LabelRequest: logproto.LabelRequest{
-			Start:  &start,
-			End:    &end,
+			Start:  start,
+			End:    end,
 			Query:  query,
 			Name:   name,
 			Values: name != "",
@@ -217,19 +233,19 @@ func (r *LabelRequest) AsProto() *logproto.LabelRequest {
 }
 
 func (r *LabelRequest) GetEnd() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *LabelRequest) GetEndTs() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *LabelRequest) GetStart() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *LabelRequest) GetStartTs() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *LabelRequest) GetStep() int64 {
@@ -238,8 +254,8 @@ func (r *LabelRequest) GetStep() int64 {
 
 func (r *LabelRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.Start = &s
-	clone.End = &e
+	clone.Start = s
+	clone.End = e
 	return &clone
 }
 
@@ -343,7 +359,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
-		req.CachingOptions = queryrangebase.CachingOptions{
+		req.CachingOpts = queryrangebase.CachingOptions{
 			Disabled: disableCacheReq,
 		}
 
@@ -354,7 +370,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
-		req.CachingOptions = queryrangebase.CachingOptions{
+		req.CachingOpts = queryrangebase.CachingOptions{
 			Disabled: disableCacheReq,
 		}
 
@@ -418,7 +434,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         0,
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOptions: queryrangebase.CachingOptions{
+			CachingOpts: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err
@@ -436,7 +452,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-			CachingOptions: queryrangebase.CachingOptions{
+			CachingOpts: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
 		}, err
@@ -1089,7 +1105,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		return &LokiSeriesResponse{
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path)),
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 			Data:    resp.Data,
 		}, nil
 	case *LabelRequest:
@@ -1101,7 +1117,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			Status:  resp.Status,
 			Version: uint32(loghttp.GetVersion(req.Path())),
 			Data:    resp.Data,
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Headers: convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.IndexStatsRequest:
 		var resp logproto.IndexStatsResponse
@@ -1110,7 +1126,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &IndexStatsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.ShardsRequest:
 		var resp logproto.ShardsResponse
@@ -1119,7 +1135,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &ShardsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.VolumeRequest:
 		var resp logproto.VolumeResponse
@@ -1128,7 +1144,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &VolumeResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *DetectedFieldsRequest:
 		var resp logproto.DetectedFieldsResponse
@@ -1137,7 +1153,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &DetectedFieldsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *logproto.QueryPatternsRequest:
 		var resp logproto.QueryPatternsResponse
@@ -1146,7 +1162,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &QueryPatternsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	case *DetectedLabelsRequest:
 		var resp logproto.DetectedLabelsResponse
@@ -1155,7 +1171,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 		}
 		return &DetectedLabelsResponse{
 			Response: &resp,
-			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+			Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 		}, nil
 	default:
 		var resp loghttp.QueryResponse
@@ -1202,7 +1218,7 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 					ResultType: loghttp.ResultTypeStream,
 					Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
 				},
-				Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+				Headers:  convertPrometheusResponseHeadersToPointers(httpResponseHeadersToPromResponseHeaders(headers)),
 				Warnings: resp.Warnings,
 			}, nil
 		case loghttp.ResultTypeVector:
@@ -1841,7 +1857,7 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 				Step:    r.GetStep(),
 				StartTs: r.GetStart(),
 				EndTs:   r.GetEnd(),
-				Plan:    &plan.QueryPlan{AST: expr},
+				Plan:    plan.QueryPlan{AST: expr},
 			},
 		}, nil
 	default:
@@ -1886,7 +1902,7 @@ func (p paramsRangeWrapper) Shards() []string {
 }
 
 func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
-	return p.LokiRequest.CachingOptions
+	return p.LokiRequest.CachingOpts
 }
 
 type paramsInstantWrapper struct {
@@ -1922,7 +1938,7 @@ func (p paramsInstantWrapper) Shards() []string {
 }
 
 func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
-	return p.LokiInstantRequest.CachingOptions
+	return p.LokiInstantRequest.CachingOpts
 }
 
 type paramsSeriesWrapper struct {
@@ -1950,7 +1966,7 @@ func (p paramsSeriesWrapper) Step() time.Duration {
 }
 func (p paramsSeriesWrapper) Interval() time.Duration { return 0 }
 func (p paramsSeriesWrapper) Direction() logproto.Direction {
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 func (p paramsSeriesWrapper) Limit() uint32 { return 0 }
 func (p paramsSeriesWrapper) Shards() []string {
@@ -1990,7 +2006,7 @@ func (p paramsLabelWrapper) Step() time.Duration {
 }
 func (p paramsLabelWrapper) Interval() time.Duration { return 0 }
 func (p paramsLabelWrapper) Direction() logproto.Direction {
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 func (p paramsLabelWrapper) Limit() uint32 { return 0 }
 func (p paramsLabelWrapper) Shards() []string {
@@ -2030,7 +2046,7 @@ func (p paramsStatsWrapper) Step() time.Duration {
 }
 func (p paramsStatsWrapper) Interval() time.Duration { return 0 }
 func (p paramsStatsWrapper) Direction() logproto.Direction {
-	return logproto.FORWARD
+	return logproto.Direction_FORWARD
 }
 func (p paramsStatsWrapper) Limit() uint32 { return 0 }
 func (p paramsStatsWrapper) Shards() []string {
@@ -2079,7 +2095,7 @@ func (p paramsDetectedFieldsWrapper) Interval() time.Duration {
 }
 
 func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
-	return logproto.BACKWARD
+	return logproto.Direction_BACKWARD
 }
 
 func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.LineLimit }
@@ -2122,7 +2138,7 @@ func (p paramsDetectedLabelsWrapper) Interval() time.Duration {
 }
 
 func (p paramsDetectedLabelsWrapper) Direction() logproto.Direction {
-	return logproto.BACKWARD
+	return logproto.Direction_BACKWARD
 }
 func (p paramsDetectedLabelsWrapper) Limit() uint32 { return 0 }
 func (p paramsDetectedLabelsWrapper) Shards() []string {
@@ -2290,7 +2306,7 @@ func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      rangeQuery.Shards,
 		StoreChunks: storeChunks,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: parsed,
 		},
 	}, nil
@@ -2320,7 +2336,7 @@ func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 		Path:        r.URL.Path,
 		Shards:      req.Shards,
 		StoreChunks: storeChunks,
-		Plan: &plan.QueryPlan{
+		Plan: plan.QueryPlan{
 			AST: parsed,
 		},
 	}, nil

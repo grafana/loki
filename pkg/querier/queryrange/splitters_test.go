@@ -14,7 +14,7 @@ func Test_PreservesCachingOptions(t *testing.T) {
 	req := &LokiRequest{
 		StartTs: time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC).Add(-3 * time.Hour),
 		EndTs:   time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC),
-		CachingOptions: resultscache.CachingOptions{
+		CachingOpts: resultscache.CachingOptions{
 			Disabled: true,
 		},
 	}

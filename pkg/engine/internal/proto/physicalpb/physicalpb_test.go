@@ -238,9 +238,9 @@ func Test_Node(t *testing.T) {
 
 				Tenant:         "tenant-a",
 				ToCWindowStart: 1_700_000_000_000_000_000,
-				Runs: []*compactionv2pb.RunRef{
+				Runs: []compactionv2pb.RunRef{
 					{
-						Sections: []*compactionv2pb.SectionRef{
+						Sections: []compactionv2pb.SectionRef{
 							{
 								ObjectPath:   "s3://bucket/index/0",
 								SectionIndex: 1,
@@ -260,7 +260,7 @@ func Test_Node(t *testing.T) {
 						},
 					},
 					{
-						Sections: []*compactionv2pb.SectionRef{
+						Sections: []compactionv2pb.SectionRef{
 							{
 								ObjectPath:   "s3://bucket/index/2",
 								SectionIndex: 3,
@@ -309,9 +309,9 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 
 		Tenant:         "tenant-a",
 		ToCWindowStart: 1_700_000_000_000_000_000,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{
 						ObjectPath:   "s3://bucket/index/0",
 						SectionIndex: 1,
@@ -331,7 +331,7 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 				},
 			},
 			{
-				Sections: []*compactionv2pb.SectionRef{
+				Sections: []compactionv2pb.SectionRef{
 					{
 						ObjectPath:   "s3://bucket/index/2",
 						SectionIndex: 3,
