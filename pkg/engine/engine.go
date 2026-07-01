@@ -565,12 +565,10 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		otherDuration = calculateResidual(duration, indexQueryDuration, optimizeDuration)
 
 		planLen int
-		planStr string
 	)
 
 	if plan != nil {
 		planLen = plan.Len()
-		planStr = physical.PrintAsTree(plan)
 	}
 
 	level.Info(q.Logger()).Log(
@@ -597,6 +595,9 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 
 	// PrintAsTree can take significant amount of time, so get it off the hot path.
 	go func() {
+		if plan == nil {
+			return
+		}
 		plan := physical.PrintAsTree(plan)
 		level.Debug(q.Logger()).Log(
 			"msg", "physical-plan",
@@ -649,6 +650,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			return nil, fmt.Errorf("index query: build workflow: %w", err)
 		}
 
+		// Disable admission lanes for metastore queries
 		useAdmissionLanes := false
 		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
 		if err != nil {
