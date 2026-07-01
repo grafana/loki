@@ -481,7 +481,7 @@ type Header struct {
 }
 
 // RunRangeQuery runs a 7d query and returns an error if anything went wrong
-// This function is kept to keep backwards copatibility of existing tests.
+// This function is kept to keep backwards compatibility of existing tests.
 // Better use (*Client).RunRangeQueryWithStartEnd()
 func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	end := c.Now.Add(time.Second)
@@ -645,6 +645,8 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 
 	v := url.Values{}
 	v.Set("match[]", matcher)
+	v.Set("end", FormatTS(c.Now.Add(time.Second)))
+	v.Set("start", FormatTS(c.Now.Add(-7*24*time.Hour)))
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
