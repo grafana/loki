@@ -267,23 +267,23 @@ func combine(accums map[postings.SectionRef]*accum, hits map[postings.SectionRef
 // foldTimeOverlap folds overlap into acc's time-overlap bitmap, and the scanned
 // rows' [min,max] bounds into acc's bounds, when that aggregated envelope
 // overlaps the query window. has reports whether the scan visited any row.
-func foldTimeOverlap(acc *accum, overlap *memory.Bitmap, min, max int64, has bool, startNanos, endNanos int64) {
+func foldTimeOverlap(acc *accum, overlap *memory.Bitmap, minNS, maxNS int64, has bool, startNanos, endNanos int64) {
 	if !has {
 		return
 	}
-	if max < startNanos || min > endNanos {
+	if maxNS < startNanos || minNS > endNanos {
 		return
 	}
 	acc.timeOverlap = unionBitmaps(acc.timeOverlap, overlap)
 	if !acc.hasTS {
-		acc.minTS, acc.maxTS, acc.hasTS = min, max, true
+		acc.minTS, acc.maxTS, acc.hasTS = minNS, maxNS, true
 		return
 	}
-	if min < acc.minTS {
-		acc.minTS = min
+	if minNS < acc.minTS {
+		acc.minTS = minNS
 	}
-	if max > acc.maxTS {
-		acc.maxTS = max
+	if maxNS > acc.maxTS {
+		acc.maxTS = maxNS
 	}
 }
 

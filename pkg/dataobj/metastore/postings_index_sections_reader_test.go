@@ -38,11 +38,11 @@ func TestPostingsIndexSectionsReader_ResolvesAndEmitsPointersBatch(t *testing.T)
 	ctx := user.InjectOrgID(context.Background(), tenantID)
 
 	ts := now.Add(-2 * time.Hour)
-	obj, close := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
 		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "nginx", StreamID: 7, Timestamp: ts, UncompressedSize: 0},
 		{ObjectPath: "src-obj", SectionIndex: 3, ColumnName: "app", LabelValue: "loki", StreamID: 9, Timestamp: ts, UncompressedSize: 0},
 	})
-	defer close()
+	defer closer()
 
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "nginx")}
 	r := newPostingsIndexSectionsReader(log.NewNopLogger(), obj, now.Add(-4*time.Hour), now, matchers, nil, 8192)

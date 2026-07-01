@@ -649,13 +649,13 @@ func buildLabelBloomSection(t testing.TB, labelsIn []labelPosting, bloomsIn []bl
 		}
 	}
 
-	return openPostingsSections(t, ctx, b)
+	return openPostingsSections(ctx, t, b)
 }
 
 // openPostingsSections flushes the builders into a single object, each builder
 // producing its own physical postings section, and opens every postings section
 // the object contains.
-func openPostingsSections(t testing.TB, ctx context.Context, builders ...*postings.Builder) ([]*postings.Section, func()) {
+func openPostingsSections(ctx context.Context, t testing.TB, builders ...*postings.Builder) ([]*postings.Section, func()) {
 	t.Helper()
 	objBuilder := dataobj.NewBuilder(nil)
 	for _, b := range builders {
@@ -694,5 +694,5 @@ func buildSplitPostingsSections(t testing.TB, perSection ...[]labelPosting) ([]*
 		}
 		builders = append(builders, b)
 	}
-	return openPostingsSections(t, context.Background(), builders...)
+	return openPostingsSections(context.Background(), t, builders...)
 }
