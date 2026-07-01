@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
@@ -37,28 +37,18 @@ type TeeGatewayClient struct {
 // NewTeeGatewayClient creates a TeeGatewayClient that fans out to both primary and secondary.
 // Callers are responsible for stopping both clients independently.
 func NewTeeGatewayClient(primary, secondary series.GatewayClient, r prometheus.Registerer, logger log.Logger) (*TeeGatewayClient, error) {
-	requestDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Name:      "index_gateway_tee_request_duration_seconds",
-		Help:      "Duration of index gateway requests issued by the tee client, labelled by operation, client (primary or secondary), and status.",
-		Buckets:   instrument.DefBuckets,
-	}, []string{"operation", "client", "status"})
-
-	if r != nil {
-		if err := r.Register(requestDuration); err != nil {
-			if alreadyErr, ok := err.(prometheus.AlreadyRegisteredError); ok {
-				requestDuration = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
-			} else {
-				return nil, err
-			}
-		}
-	}
-
 	return &TeeGatewayClient{
-		primary:         primary,
-		secondary:       secondary,
-		logger:          logger,
-		requestDuration: requestDuration,
+		primary:   primary,
+		secondary: secondary,
+		logger:    logger,
+		requestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "index_gateway_tee_request_duration_seconds",
+			Help:                            "Duration of index gateway requests issued by the tee client, labelled by operation, client (primary or secondary), and status.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}, []string{"operation", "client", "status"}),
 	}, nil
 }
 
