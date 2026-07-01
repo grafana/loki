@@ -168,14 +168,19 @@ limits_config:
     # drop them altogether
     [scope_attributes: <list of attributes_configs>]
   
-    # Configuration for Log Attributes to store them as Structured Metadata or
-    # drop them altogether
+    # Configuration for Log Attributes to store them as index labels or
+    # Structured Metadata or drop them altogether
     [log_attributes: <list of attributes_configs>]
+
+    # When true, the severity_text field from log records is stored as an index
+    # label. It is recommended not to use this option unless absolutely
+    # necessary.
+    [severity_text_as_label: <boolean> | default = false]
   
   attributes_config:
     # Configures action to take on matching Attributes. It allows one of
     # [structured_metadata, drop] for all Attribute types. It additionally allows
-    # index_label action for Resource Attributes
+    # index_label action for Resource and Log Attributes
     [action: <string> | default = ""]
   
     # List of attributes to configure how to store them or drop them altogether
@@ -185,6 +190,10 @@ limits_config:
     # altogether
     [regex: <Regexp>]
 ```
+
+{{< admonition type="caution" >}}
+Promoting Log Attributes (or `severity_text`) to index labels can lead to high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), because Log Attributes are set per log record rather than per resource. Only promote a Log Attribute to an index label when its set of values is bounded and you frequently filter streams by it. Otherwise, prefer storing it as Structured Metadata.
+{{< /admonition >}}
 
 {{< admonition type="note" >}}
 If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#otlp-label-mappings) to configure your OTLP config.

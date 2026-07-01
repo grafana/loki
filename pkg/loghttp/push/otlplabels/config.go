@@ -127,7 +127,7 @@ func (c *OTLPConfig) Validate() error {
 }
 
 type AttributesConfig struct {
-	Action     Action         `yaml:"action,omitempty" json:"action,omitempty" doc:"description=Configures action to take on matching attributes. It allows one of [structured_metadata, drop] for all attribute types. It additionally allows index_label action for resource attributes"`
+	Action     Action         `yaml:"action,omitempty" json:"action,omitempty" doc:"description=Configures action to take on matching attributes. It allows one of [structured_metadata, drop] for all attribute types. It additionally allows index_label action for resource and log attributes"`
 	Attributes []string       `yaml:"attributes,omitempty" json:"attributes,omitempty" doc:"description=List of attributes to configure how to store them or drop them altogether"`
 	Regex      relabel.Regexp `yaml:"regex" json:"regex" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
