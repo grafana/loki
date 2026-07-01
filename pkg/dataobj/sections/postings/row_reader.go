@@ -30,15 +30,17 @@ type RowReader struct {
 	exhausted bool  // set when Next has returned false; further calls return false without work
 }
 
-// NewRowReader creates a RowReader over all of sec's columns. The underlying
-// reader is opened lazily on the first call to Next. The provided ctx governs
-// all subsequent I/O (Open and Read).
-func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+// NewRowReader creates a RowReader over all of sec's columns, applying the
+// provided predicates when scanning. The underlying reader is opened lazily on
+// the first call to Next. The provided ctx governs all subsequent I/O (Open and
+// Read).
+func NewRowReader(ctx context.Context, sec *Section, preds []Predicate) *RowReader {
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
+			Columns:    sec.Columns(),
+			Predicates: preds,
+			Allocator:  memory.DefaultAllocator,
 		}),
 	}
 }

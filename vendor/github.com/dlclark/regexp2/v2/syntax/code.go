@@ -299,6 +299,9 @@ func (c *Code) Dump() string {
 	}
 
 	fmt.Fprintf(buf, "Anchors:    %v\n", c.Anchors)
+	if c.FindOptimizations != nil {
+		fmt.Fprint(buf, c.FindOptimizations.Dump())
+	}
 	fmt.Fprintln(buf)
 
 	if c.BmPrefix != nil {

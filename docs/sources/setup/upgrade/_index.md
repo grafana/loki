@@ -37,6 +37,33 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### TSDB schema v14
+
+Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
+same chunk format as v13 and changes only the TSDB index format, which adds a
+per-chunk ingestion timestamp used by ingestion-time retention features.
+
+v13 remains the recommended schema. To opt in to v14, add a new `period_config`
+with a future `from` date and `schema: v14`; existing v13 periods are unaffected.
+
+Before configuring any v14 period, upgrade all components to a version that can
+read the v14 index format. Rolling back after v14 data has been written requires
+stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
+
+### Breaking change: Thanos storage clients are used by default
+
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+
+Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
+
+### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
+
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
+
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
+
 ### Breaking change: Removal of various configuration options
 
 - The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.

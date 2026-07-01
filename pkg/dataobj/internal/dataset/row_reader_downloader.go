@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/rangeset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
@@ -244,13 +245,13 @@ func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *rea
 	if region := xcap.RegionFromContext(ctx); region != nil {
 		for _, page := range batch {
 			if page.column.primary {
-				region.Record(xcap.StatDatasetPrimaryPagesDownloaded.Observe(1))
-				region.Record(xcap.StatDatasetPrimaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
-				region.Record(xcap.StatDatasetPrimaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+				region.Record(dataobj.StatDatasetPrimaryPagesDownloaded.Observe(1))
+				region.Record(dataobj.StatDatasetPrimaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(dataobj.StatDatasetPrimaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
 			} else {
-				region.Record(xcap.StatDatasetSecondaryPagesDownloaded.Observe(1))
-				region.Record(xcap.StatDatasetSecondaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
-				region.Record(xcap.StatDatasetSecondaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
+				region.Record(dataobj.StatDatasetSecondaryPagesDownloaded.Observe(1))
+				region.Record(dataobj.StatDatasetSecondaryColumnBytes.Observe(int64(page.inner.PageDesc().CompressedSize)))
+				region.Record(dataobj.StatDatasetSecondaryColumnUncompressedBytes.Observe(int64(page.inner.PageDesc().UncompressedSize)))
 			}
 		}
 	}
@@ -608,13 +609,11 @@ func (page *readerPage) PageDesc() *PageDesc {
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
 	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatDatasetPagesScanned.Observe(1))
+	region.Record(dataobj.StatDatasetPagesScanned.Observe(1))
 	if page.data != nil {
-		region.Record(xcap.StatDatasetPagesFoundInCache.Observe(1))
 		return page.data, nil
 	}
 
-	region.Record(xcap.StatDatasetPageDownloadRequests.Observe(1))
 	if err := page.column.dl.downloadBatch(ctx, page); err != nil {
 		return nil, err
 	}

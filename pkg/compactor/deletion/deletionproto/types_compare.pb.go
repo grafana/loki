@@ -308,6 +308,9 @@ func (this *Chunk) Equal(that interface{}) bool {
 	if this.Entries != that1.Entries {
 		return false
 	}
+	if this.IngestedAt != that1.IngestedAt {
+		return false
+	}
 	return true
 }
 
@@ -822,6 +825,12 @@ func (this *Chunk) Compare(that interface{}) int {
 	}
 	if this.Entries != that1.Entries {
 		if this.Entries < that1.Entries {
+			return -1
+		}
+		return 1
+	}
+	if this.IngestedAt != that1.IngestedAt {
+		if this.IngestedAt < that1.IngestedAt {
 			return -1
 		}
 		return 1

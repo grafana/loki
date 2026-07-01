@@ -81,15 +81,6 @@
     // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
     recording_rules_range_interval: '1m',
 
-    // SSD related configuration for dashboards.
-    ssd: {
-      // Support Loki SSD mode on dashboards.
-      enabled: false,
-
-      // The prefix used to match the write and read pods on SSD mode.
-      pod_prefix_matcher: '(loki.*|enterprise-logs)',
-    },
-
     // Meta-monitoring related configuration
     meta_monitoring: {
       enabled: false,

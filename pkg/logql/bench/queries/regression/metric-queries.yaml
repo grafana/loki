@@ -1,6 +1,22 @@
 # yaml-language-server: $schema=../schema.json
 ---
 queries:
+  - description: Aggregation by value column
+    query: sum by (value) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - min_over_time
+      - logfmt
+      - duration-conversion
+    notes: Vector aggregation by value column which collides with an internal numerical `value` column.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
   - description: Sum over time with duration conversion
     query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
@@ -316,3 +332,24 @@ queries:
       log_format: logfmt
       detected_fields:
         - error
+  - description: Group by a regexp named-capture output
+    query: sum by (word) (count_over_time(${SELECTOR} | regexp `^(?P<word>\S+)` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - regexp
+      - grouping
+      - named-capture
+    notes: >
+      Regression for the v2 projection-pushdown fix. The regexp parser's
+      source column (the builtin `message`) was never projected to the
+      scan, so the parser saw null lines and every named-capture group
+      collapsed to the empty value — v2 returned a single empty series
+      with a constant per-bucket count while v1 returned one series per
+      distinct first token. Left format-agnostic on purpose so the entry
+      runs against every generator (json, logfmt, unstructured) — the
+      pattern `^\S+` matches any non-empty line. The series label set
+      and per-series counts must match v1.

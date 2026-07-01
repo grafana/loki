@@ -16,7 +16,7 @@ This is a go-gettable library, so install is easy:
 Version 2 includes changes that may affect compatibility with existing v1 users:
 
 * The module path is now `github.com/dlclark/regexp2/v2`, so imports need to use the `/v2` suffix.
-* The minimum supported Go version is now Go 1.26.
+* The minimum supported Go version is now Go 1.25.
 * Changes to support https://github.com/dlclark/regexp2cg are merged in to support generated regex engines.
 * `Regexp.Split` is now available for splitting strings with regexp matches.
 * The new `compat` sub-package provides a [`regexp` compatibility adapter](#regexp-compatibility-adapter) with the same `Find*` and `Match*` method signatures as `regexp.Regexp`, plus a `compat.Matcher` interface that is implemented by both `*regexp.Regexp` and the adapter.
@@ -75,6 +75,22 @@ func regexp2FindAllString(re *regexp2.Regexp, s string) []string {
 `FindNextMatch` is optmized so that it re-uses the underlying string/rune slice.
 
 The internals of `regexp2` always operate on `[]rune` so `RuneIndex` and `RuneLength` data in a `Match` always reference a position in `rune`s rather than `byte`s (even if the input was given as a string). `ByteRange()` provides UTF-8 byte offsets, matching the original string input for string APIs. It's advisable to use the provided `String()` methods when you do not need explicit offsets. `ByteRange()` lazily caches byte offsets on the shared match text, so the first call on captures from the same match is not safe to run concurrently with other `ByteRange()` calls on that match.
+
+## Unicode character classes
+
+`regexp2` supports Unicode character classes with `\p{...}` and negated classes with `\P{...}`. Outside ECMAScript Unicode mode, it also accepts the RE2/PCRE-style one-letter form, such as `\pL`.
+
+The class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
+
+```go
+letter := regexp2.MustCompile(`\p{L}+`)
+katakana := regexp2.MustCompile(`\p{Katakana}+`)
+notEmoji := regexp2.MustCompile(`\P{Emoji}+`)
+```
+
+`regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
+
+Valid property names and aliases come from Unicode 17.0.0 [`PropertyAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyAliases.txt). Valid property values and aliases come from Unicode 17.0.0 [`PropertyValueAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt). The generated tables use Unicode 17.0.0 data from [`DerivedCoreProperties.txt`](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt), [`emoji/emoji-data.txt`](https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt), [`auxiliary/GraphemeBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt), [`auxiliary/WordBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt), and [`auxiliary/SentenceBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/SentenceBreakProperty.txt) for the package-local properties whose data changes more frequently than the Go standard library tables.
 
 ## `regexp` compatibility adapter
 

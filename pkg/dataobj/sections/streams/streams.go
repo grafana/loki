@@ -80,6 +80,14 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// NumRows returns the number of rows in the section.
+func (s *Section) NumRows() int {
+	if len(s.columns) == 0 {
+		return 0
+	}
+	return int(s.columns[0].inner.Metadata().RowsCount)
+}
+
 // A Column represents one of the columns in the streams section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //

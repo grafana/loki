@@ -517,6 +517,7 @@ var supportedHeaders = map[string]bool{
 	"x-amz-website-redirect-location":     true,
 	"x-amz-object-lock-mode":              true,
 	"x-amz-metadata-directive":            true,
+	"x-amz-annotation-directive":          true,
 	"x-amz-object-lock-retain-until-date": true,
 	"expires":                             true,
 	"x-amz-replication-status":            true,

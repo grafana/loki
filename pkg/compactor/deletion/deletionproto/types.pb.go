@@ -71,6 +71,7 @@ type Chunk struct {
 	Checksum    uint32     `protobuf:"varint,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	KB          uint32     `protobuf:"varint,5,opt,name=KB,proto3" json:"KB,omitempty"`
 	Entries     uint32     `protobuf:"varint,6,opt,name=entries,proto3" json:"entries,omitempty"`
+	IngestedAt  model.Time `protobuf:"varint,7,opt,name=ingestedAt,proto3" json:"ingestedAt,omitempty"`
 }
 
 type StorageUpdates struct {
@@ -366,6 +367,14 @@ func (m *Chunk) GetEntries() uint32 {
 	return 0
 }
 
+func (m *Chunk) GetIngestedAt() model.Time {
+	if m != nil {
+		return m.IngestedAt
+	}
+	var zero model.Time
+	return zero
+}
+
 func (m *StorageUpdates) GetRebuiltChunks() map[string]Chunk {
 	if m != nil {
 		return m.RebuiltChunks
@@ -549,6 +558,9 @@ func (m *Chunk) Size() int {
 	}
 	if m.Entries != 0 {
 		n += 1 + protowire.SizeVarint(uint64(m.Entries))
+	}
+	if m.IngestedAt != 0 {
+		n += 1 + protowire.SizeVarint(uint64(m.IngestedAt))
 	}
 	return n
 }
@@ -1077,6 +1089,11 @@ func (m *Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		return 0, nil
 	}
 	i := len(dAtA)
+	if m.IngestedAt != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.IngestedAt))
+		i--
+		dAtA[i] = 0x38
+	}
 	if m.Entries != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Entries))
 		i--
@@ -3277,6 +3294,34 @@ func (m *Chunk) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.Entries = uint32(v)
+		case 7: // ingestedAt
+			if wireType != 0 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return fmt.Errorf("proto: integer overflow")
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					if shift == 63 && b > 1 {
+						return fmt.Errorf("proto: varint overflow")
+					}
+					break
+				}
+			}
+			m.IngestedAt = model.Time(int64(v))
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
