@@ -52,7 +52,8 @@ func (g *Gate) FromVersion() string {
 	return fmt.Sprintf("v%s", g.fromVersion)
 }
 
-// ToVersion returns the version information when Gate's in StageStable.
+// ToVersion returns the version information when Gate will be removed.
+// For Stable and Deprecated stages, this is the last Collector release where this gate can be used.
 func (g *Gate) ToVersion() string {
 	return fmt.Sprintf("v%s", g.toVersion)
 }
