@@ -5,7 +5,7 @@ require 'fileutils'
 require 'openssl'
 require 'tmpdir'
 require 'time'
-require 'yajl'
+require 'json'
 require 'fluent/test'
 require 'fluent/test/driver/output'
 require 'fluent/test/helpers'
@@ -147,7 +147,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(payload[0]['values'].count).to eq 1
     expect(payload[0]['values'][0][0]).to eq '1546270458000000000'
     expect(payload[0]['values'][0][1]).to eq(
-      "{\"message\":\"\xC1 rest of line\",\"number\":1.2345,\"stream\":\"stdout\"}"
+      '{"message":"? rest of line","number":1.2345,"stream":"stdout"}'
     )
   end
 
@@ -181,7 +181,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['stream'].empty?).to eq true
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
-    expect(body[:streams][0]['values'][0][1]).to eq Yajl.dump(line1[1])
+    expect(body[:streams][0]['values'][0][1]).to eq JSON.generate(line1[1])
   end
 
   it 'extracts record key as label' do
@@ -201,7 +201,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['stream']).to eq('stream' => 'stdout')
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
-    expect(body[:streams][0]['values'][0][1]).to eq Yajl.dump('message' => content[0])
+    expect(body[:streams][0]['values'][0][1]).to eq JSON.generate('message' => content[0])
   end
 
   it 'extracts nested record key as label' do
@@ -221,7 +221,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['stream']).to eq('pod' => 'podname')
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
-    expect(body[:streams][0]['values'][0][1]).to eq Yajl.dump('message' => content[0], 'kubernetes' => {})
+    expect(body[:streams][0]['values'][0][1]).to eq JSON.generate('message' => content[0], 'kubernetes' => {})
   end
 
   it 'extracts nested record key as label and drop key after' do
@@ -242,7 +242,7 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['stream']).to eq('pod' => 'podname')
     expect(body[:streams][0]['values'].count).to eq 1
     expect(body[:streams][0]['values'][0][0]).to eq '1546270458000000000'
-    expect(body[:streams][0]['values'][0][1]).to eq Yajl.dump('message' => content[0])
+    expect(body[:streams][0]['values'][0][1]).to eq JSON.generate('message' => content[0])
   end
 
   it 'formats as simple string when only 1 record key' do
