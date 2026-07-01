@@ -13,7 +13,7 @@ const (
 type metrics struct {
 	queryTimeTableDownloadDurationSeconds  *prometheus.CounterVec
 	tablesSyncOperationTotal               *prometheus.CounterVec
-	tablesDownloadOperationDurationSeconds prometheus.Gauge
+	tablesDownloadOperationDurationSeconds *prometheus.GaugeVec
 
 	// new metrics that will supersed the incorrect old types
 	queryWaitTime    *prometheus.HistogramVec
@@ -28,12 +28,12 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		}, []string{"table"}),
 		tablesSyncOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "tables_sync_operation_total",
-			Help: "Total number of tables sync operations done by status",
-		}, []string{"status"}),
-		tablesDownloadOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Help: "Total number of tables sync operations done by status and trigger",
+		}, []string{"status", "trigger"}),
+		tablesDownloadOperationDurationSeconds: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "tables_download_operation_duration_seconds",
 			Help: "Time (in seconds) spent in downloading updated files for all the tables",
-		}),
+		}, []string{"trigger"}),
 
 		queryWaitTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name: "query_wait_time_seconds",
@@ -42,7 +42,7 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		tableSyncLatency: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name: "table_sync_latency_seconds",
 			Help: "Time (in seconds) spent in downloading updated files for all the tables",
-		}, []string{"table", "status"}),
+		}, []string{"table", "status", "trigger"}),
 	}
 
 	return m

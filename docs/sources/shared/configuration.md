@@ -92,6 +92,11 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
 
+lbac:
+  # Enables label based access control through the X-Prom-Label-Policy header.
+  # CLI flag: -lbac.enabled
+  [enabled: <boolean> | default = false]
+
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
 # collection passes, reducing CPU overhead at the cost of heap size. The ballast
@@ -6750,7 +6755,7 @@ congestion_control:
 # `storage_config.object_store` or `common.storage.object_store` block takes
 # effect.
 # CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
+[use_thanos_objstore: <boolean> | default = true]
 
 object_store:
   # The thanos_object_store_config block configures the connection to object
