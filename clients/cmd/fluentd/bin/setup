@@ -4,6 +4,6 @@ set -euo pipefail
 
 ruby --version
 echo ""
-ruby -S gem install bundler --version 2.3.4
+ruby -S gem install bundler --version 2.6.9
 ruby -S bundle config set --local path $(pwd)/vendor/bundle
 ruby -S bundle install
