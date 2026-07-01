@@ -1,3 +1,35 @@
+## v2.13.0 (2026-06-25)
+
+* [GH-3717](https://github.com/gophercloud/gophercloud/pull/3717) build(deps): bump golang.org/x/crypto from 0.49.0 to 0.50.0
+* [GH-3720](https://github.com/gophercloud/gophercloud/pull/3720) build(deps): bump actions/upload-artifact from 7.0.0 to 7.0.1
+* [GH-3723](https://github.com/gophercloud/gophercloud/pull/3723) build(deps): bump github/codeql-action from 4.35.1 to 4.35.2
+* [GH-3728](https://github.com/gophercloud/gophercloud/pull/3728) [v2] Implement resource provider allocations
+* [GH-3730](https://github.com/gophercloud/gophercloud/pull/3730) [v2] fix: skip non-struct fields in extractIntoPtr slice path to prevent unmarshal panic
+* [GH-3731](https://github.com/gophercloud/gophercloud/pull/3731) [v2] Implement usages
+* [GH-3732](https://github.com/gophercloud/gophercloud/pull/3732) [v2] Leverage RandomUUID() in Placement resourceproviders tests
+* [GH-3737](https://github.com/gophercloud/gophercloud/pull/3737) [v2] Bump golangci-lint
+* [GH-3744](https://github.com/gophercloud/gophercloud/pull/3744) build(deps): bump actions/labeler from 6.0.1 to 6.1.0
+* [GH-3752](https://github.com/gophercloud/gophercloud/pull/3752) build(deps): bump github/codeql-action from 4.35.2 to 4.35.4
+* [GH-3758](https://github.com/gophercloud/gophercloud/pull/3758) build(deps): bump golang.org/x/crypto from 0.50.0 to 0.51.0
+* [GH-3760](https://github.com/gophercloud/gophercloud/pull/3760) [v2] fix(vpnaas): change encryption and auth method in acceptance tests
+* [GH-3762](https://github.com/gophercloud/gophercloud/pull/3762) [v2] Allow clearing Placement resource provider parent_provider_uuid
+* [GH-3764](https://github.com/gophercloud/gophercloud/pull/3764) build(deps): bump github/codeql-action from 4.35.4 to 4.35.5
+* [GH-3769](https://github.com/gophercloud/gophercloud/pull/3769) [v2] db/instances: remove hardcoded 300GB size cap
+* [GH-3770](https://github.com/gophercloud/gophercloud/pull/3770) [v2] neutron: properly enable port-forwarding extension in devstack
+* [GH-3771](https://github.com/gophercloud/gophercloud/pull/3771) [v2] tests: Prefer extension check over environment variable
+* [GH-3772](https://github.com/gophercloud/gophercloud/pull/3772) [v2] Add Placement resourceprovider list post 1.39
+* [GH-3774](https://github.com/gophercloud/gophercloud/pull/3774) [v2] Add support for listing recordsets across all zones
+* [GH-3775](https://github.com/gophercloud/gophercloud/pull/3775) [v2] CI: Use pre-built amphora images for Octavia jobs
+* [GH-3776](https://github.com/gophercloud/gophercloud/pull/3776) [v2] allow port ranges in floating ip portforwarding
+* [GH-3781](https://github.com/gophercloud/gophercloud/pull/3781) build(deps): bump golang.org/x/crypto from 0.51.0 to 0.52.0
+* [GH-3784](https://github.com/gophercloud/gophercloud/pull/3784) build(deps): bump github/codeql-action from 4.35.5 to 4.36.0
+* [GH-3787](https://github.com/gophercloud/gophercloud/pull/3787) [v2] docs: relax one-operation-per-PR rule
+* [GH-3790](https://github.com/gophercloud/gophercloud/pull/3790) [v2] Add AGENTS.md
+* [GH-3794](https://github.com/gophercloud/gophercloud/pull/3794) build(deps): bump github/codeql-action from 4.36.0 to 4.36.1
+* [GH-3802](https://github.com/gophercloud/gophercloud/pull/3802) [v2] dns: add AllProjects support to zones.List via X-Auth-All-Projects header
+* [GH-3808](https://github.com/gophercloud/gophercloud/pull/3808) dns: fix SudoTenantID type in zones ListOpts
+
+
 ## v2.12.0 (2026-04-10)
 
 * [GH-3653](https://github.com/gophercloud/gophercloud/pull/3653) [v2] Fix clouds.yaml search path to use XDG convention on all platforms
