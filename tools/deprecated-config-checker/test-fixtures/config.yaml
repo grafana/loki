@@ -124,6 +124,7 @@ limits_config:
   unordered_writes: true # DELETED
   enforce_metric_name: true # DELETED
   ruler_evaluation_delay_duration: 1m # DELETED
+  ruler_enable_wal_replay: true # DELETED
   ruler_remote_write_url: "push.123abc.net" # DEPRECATED
   ruler_remote_write_timeout: 1m # DEPRECATED
   ruler_remote_write_headers: ["foo", "bar"] # DEPRECATED

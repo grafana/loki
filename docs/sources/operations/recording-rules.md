@@ -28,14 +28,9 @@ is that Prometheus will, for example, reject a remote-write request with 100 sam
 
 ### Start-up
 
-When the `ruler` starts up, it will load the WALs for the tenants who have recording rules. These WAL files are stored
-on disk and are loaded into memory.
-
-{{< admonition type="note" >}}
-WALs are loaded one at a time upon start-up. This is a current limitation of the Loki ruler.
-For this reason, it is advisable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
-_no rule evaluation occurs while WAL replay is in progress (this includes alerting rules)_.
-{{< /admonition >}}
+When the `ruler` starts up, it deletes (wipes) its remote-write WAL directory and starts each tenant with a fresh, empty
+WAL. WAL data left over from a previous run is not replayed, so any samples that had not yet been flushed to remote storage
+before the restart are discarded.
 
 
 ### Truncation
@@ -159,14 +154,14 @@ by Prometheus maintainer Callum Styan.
 ### Appender Not Ready
 
 Each tenant's WAL has an "appender" internally; this appender is used to _append_ samples to the WAL. The appender is marked
-as _not ready_ until the WAL replay is complete upon startup. If the WAL is corrupted for some reason, or is taking a long
-time to replay, you can determine this by alerting on `loki_ruler_wal_appender_ready < 1`.
+as _not ready_ until the WAL storage has been initialized upon startup. You can alert on `loki_ruler_wal_appender_ready < 1`
+to detect tenants whose WAL is not yet ready to accept samples.
 
 ### Corrupt WAL
 
 If a disk fails or the `ruler` does not terminate correctly, there's a chance one or more tenant WALs can become corrupted.
-A mechanism exists for automatically repairing the WAL, but this cannot handle every conceivable scenario. In this case,
-the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
+The `ruler` wipes its WAL directory on startup, so any WAL left over from a previous run — corrupt or not — is discarded and
+recreated fresh rather than replayed.
 
 ### Found another failure mode?
 
