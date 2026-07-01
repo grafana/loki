@@ -586,7 +586,7 @@ func Test_PatternRateThreshold(t *testing.T) {
 	}{
 		{
 			name:     "when using default value",
-			yaml:     ``,
+			yaml:     `{}`,
 			expected: 1.0,
 		},
 		{
