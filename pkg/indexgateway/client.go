@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -58,7 +57,7 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Index Gateway client and the server.
 	//
 	// Used by both, ring and simple mode.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config" doc:"description_method=GRPCClientConfigDescription"`
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
 	// Address of the Index Gateway instance responsible for retaining the index for all tenants.
 	//
@@ -81,54 +80,27 @@ type ClientConfig struct {
 	// MinShuffleShardSize is the minimum number of index gateway instances included in the
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
-
-	// experimental is set to true when this config is used as a shadow/experimental index gateway client.
-	// It is used by GRPCClientConfigDescription to return an "Experimental: " prefixed description for the doc generator.
-	experimental bool `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
 //
 // Flags that are used by both, client and server, are defined in the indexgateway package.
-// If isShadowClient is true, flags will have their usage marked as experimental.
-func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet, isShadowClient bool) {
-	// gRPC flags are always registered directly — they're part of the shared grpc_client root block
-	// and must not be marked experimental here, as that would affect the root block's documentation.
-	i.experimental = isShadowClient
+func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
-
-	i.registerNonGRPCFlagsWithPrefix(prefix, f, isShadowClient)
-}
-
-// GRPCClientConfigDescription returns the description for the grpc_client_config doc block.
-// This is called by the doc generator.
-func (i *ClientConfig) GRPCClientConfigDescription() string {
-	return withExperimentalShadowPrefixIfNecessary("The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki.", i.experimental)
-}
-
-func withExperimentalShadowPrefixIfNecessary(usage string, isShadowClient bool) string {
-	if !isShadowClient {
-		return usage
-	}
-	usage = strings.TrimPrefix(usage, "Experimental: ")
-	return "Experimental: Applies to experimental shadow_index_gateway_client. " + usage
-}
-
-func (i *ClientConfig) registerNonGRPCFlagsWithPrefix(prefix string, f *flag.FlagSet, isShadowClient bool) {
-	f.StringVar(&i.Address, prefix+".server-address", "", withExperimentalShadowPrefixIfNecessary("Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.", isShadowClient))
-	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, withExperimentalShadowPrefixIfNecessary("Whether requests sent to the gateway should be logged or not.", isShadowClient))
+	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
+	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 
 	// Experimental: Time-based client side query sharding
 	f.Var(
 		(*flagext.StringSlice)(&i.TimeBasedShardingBuckets),
 		prefix+".time-based-sharding-buckets",
-		withExperimentalShadowPrefixIfNecessary("Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']", isShadowClient),
+		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
-	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, withExperimentalShadowPrefixIfNecessary("Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.", isShadowClient))
+	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
-	i.RegisterFlagsWithPrefix("index-gateway-client", f, false)
+	i.RegisterFlagsWithPrefix("index-gateway-client", f)
 }
 
 type GatewayClient struct {
