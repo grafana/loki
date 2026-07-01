@@ -551,10 +551,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
-	span.SetAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-	)
-
 	span.SetStatus(codes.Ok, "")
 	return physicalPlan, nil
 }
@@ -569,12 +565,10 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		otherDuration = calculateResidual(duration, indexQueryDuration, optimizeDuration)
 
 		planLen int
-		planStr string
 	)
 
 	if plan != nil {
 		planLen = plan.Len()
-		planStr = physical.PrintAsTree(plan)
 	}
 
 	level.Info(q.Logger()).Log(
@@ -597,11 +591,19 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		}),
 
 		"rules_fired", encodePhysicalRules(rules),
-
-		// Large plans result in log line truncation, retain the other
-		// kvs by moving this to the end.
-		"plan", planStr,
 	)
+
+	// PrintAsTree can take significant amount of time, so get it off the hot path.
+	go func() {
+		if plan == nil {
+			return
+		}
+		planStr := physical.PrintAsTree(plan)
+		level.Debug(q.Logger()).Log(
+			"msg", "physical-plan-detail",
+			"plan", planStr,
+		)
+	}()
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
