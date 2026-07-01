@@ -6,40 +6,44 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Sets or replaces the criteria for Allowed AMIs.
+// Removes a watermark from the specified AMI. This is an idempotent operation. It
+// succeeds even if the watermark does not exist on the image.
 //
-// The ImageCriteria can include up to:
+// Removing a watermark from an image does not affect derivative images that
+// already carry the watermark.
 //
-//   - 10 ImageCriterion
-//
-// The Allowed AMIs feature does not restrict the AMIs owned by your account.
-// Regardless of the criteria you set, the AMIs created by your account will always
-// be discoverable and usable by users in your account.
-//
-// For more information, see [Control the discovery and use of AMIs in Amazon EC2 with Allowed AMIs] in Amazon EC2 User Guide.
-//
-// [Control the discovery and use of AMIs in Amazon EC2 with Allowed AMIs]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-allowed-amis.html
-func (c *Client) ReplaceImageCriteriaInAllowedImagesSettings(ctx context.Context, params *ReplaceImageCriteriaInAllowedImagesSettingsInput, optFns ...func(*Options)) (*ReplaceImageCriteriaInAllowedImagesSettingsOutput, error) {
+// Only the AMI owner can detach watermarks.
+func (c *Client) DetachImageWatermark(ctx context.Context, params *DetachImageWatermarkInput, optFns ...func(*Options)) (*DetachImageWatermarkOutput, error) {
 	if params == nil {
-		params = &ReplaceImageCriteriaInAllowedImagesSettingsInput{}
+		params = &DetachImageWatermarkInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ReplaceImageCriteriaInAllowedImagesSettings", params, optFns, c.addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "DetachImageWatermark", params, optFns, c.addOperationDetachImageWatermarkMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ReplaceImageCriteriaInAllowedImagesSettingsOutput)
+	out := result.(*DetachImageWatermarkOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ReplaceImageCriteriaInAllowedImagesSettingsInput struct {
+type DetachImageWatermarkInput struct {
+
+	// The ID of the AMI.
+	//
+	// This member is required.
+	ImageId *string
+
+	// The watermark key to remove, in accountId:watermarkName format (for example,
+	// 123456789012:approvedAmi ).
+	//
+	// This member is required.
+	WatermarkKey *string
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -47,18 +51,13 @@ type ReplaceImageCriteriaInAllowedImagesSettingsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The list of criteria that are evaluated to determine whether AMIs are
-	// discoverable and usable in the account in the specified Amazon Web Services
-	// Region.
-	ImageCriteria []types.ImageCriterionRequest
-
 	noSmithyDocumentSerde
 }
 
-type ReplaceImageCriteriaInAllowedImagesSettingsOutput struct {
+type DetachImageWatermarkOutput struct {
 
 	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	Return *bool
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -66,19 +65,19 @@ type ReplaceImageCriteriaInAllowedImagesSettingsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationDetachImageWatermarkMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpReplaceImageCriteriaInAllowedImagesSettings{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpDetachImageWatermark{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpReplaceImageCriteriaInAllowedImagesSettings{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpDetachImageWatermark{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ReplaceImageCriteriaInAllowedImagesSettings"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "DetachImageWatermark"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -130,7 +129,10 @@ func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewa
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opReplaceImageCriteriaInAllowedImagesSettings(options.Region), middleware.Before); err != nil {
+	if err = addOpDetachImageWatermarkValidationMiddleware(stack); err != nil {
+		return err
+	}
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opDetachImageWatermark(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -160,10 +162,10 @@ func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewa
 	return nil
 }
 
-func newServiceMetadataMiddleware_opReplaceImageCriteriaInAllowedImagesSettings(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opDetachImageWatermark(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ReplaceImageCriteriaInAllowedImagesSettings",
+		OperationName: "DetachImageWatermark",
 	}
 }

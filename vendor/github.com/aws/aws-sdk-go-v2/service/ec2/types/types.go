@@ -6978,6 +6978,10 @@ type FlowLog struct {
 	// The ID of the resource being monitored.
 	ResourceId *string
 
+	// The tag configuration associated with the Flow Logs Amazon EC2 Tags feature
+	// fields in your custom log format.
+	TagFieldSpecifications []TagFieldSpecificationResponse
+
 	// The tags for the flow log.
 	Tags []Tag
 
@@ -7620,6 +7624,9 @@ type Image struct {
 	// The type of image.
 	ImageType ImageTypeValues
 
+	// The watermarks attached to the AMI.
+	ImageWatermarks []ImageWatermark
+
 	// If v2.0 , it indicates that IMDSv2 is specified in the AMI. Instances launched
 	// from this AMI will have HttpTokens automatically set to required so that, by
 	// default, the instance requires that IMDSv2 is used when requesting instance
@@ -7800,6 +7807,14 @@ type ImageCriterion struct {
 	// Maximum: 200 values
 	ImageProviders []string
 
+	// The watermark criteria that an AMI must match to be allowed. An AMI is allowed
+	// if it carries at least one watermark that satisfies an ImageWatermarkFilter. A
+	// watermark satisfies a filter when all specified fields in the
+	// ImageWatermarkFilter match the corresponding values on the watermark of the AMI.
+	//
+	// Maximum: 50 values
+	ImageWatermarks []ImageWatermarkFilterResponse
+
 	// The Amazon Web Services Marketplace product codes for allowed images.
 	//
 	// Length: 1-25 characters
@@ -7826,6 +7841,8 @@ type ImageCriterion struct {
 //   - 50 values for ImageNames
 //
 //   - 50 values for MarketplaceProductCodes
+//
+//   - 50 values for ImageWatermarks
 //
 // For more information, see [How Allowed AMIs works] in the Amazon EC2 User Guide.
 //
@@ -7874,6 +7891,14 @@ type ImageCriterionRequest struct {
 	//
 	// Maximum: 200 values
 	ImageProviders []string
+
+	// The watermark criteria that an AMI must match to be allowed. An AMI is allowed
+	// if it carries at least one watermark that satisfies an ImageWatermarkFilter. A
+	// watermark satisfies a filter when all specified fields in the
+	// ImageWatermarkFilter match the corresponding values on the watermark of the AMI.
+	//
+	// Maximum: 50 values
+	ImageWatermarks []ImageWatermarkFilterRequest
 
 	// The Amazon Web Services Marketplace product codes for allowed images.
 	//
@@ -7940,6 +7965,9 @@ type ImageMetadata struct {
 	//
 	// Valid values: amazon | aws-backup-vault | aws-marketplace
 	ImageOwnerAlias *string
+
+	// The watermarks attached to the AMI.
+	ImageWatermarks []ImageWatermark
 
 	// Indicates whether the AMI has public launch permissions. A value of true means
 	// this AMI has public launch permissions, while false means it has only implicit
@@ -8120,6 +8148,82 @@ type ImageUsageResourceTypeRequest struct {
 	// The options that affect the scope of the report. Valid only when ResourceType
 	// is ec2:LaunchTemplate .
 	ResourceTypeOptions []ImageUsageResourceTypeOptionRequest
+
+	noSmithyDocumentSerde
+}
+
+// Describes a watermark attached to an AMI.
+type ImageWatermark struct {
+
+	// The creation date of the source AMI, in the following format:
+	// YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM.
+	SourceImageCreationTime *time.Time
+
+	// The ID of the AMI to which the watermark was originally attached.
+	SourceImageId *string
+
+	// The Region where the watermark was originally attached.
+	SourceImageRegion *string
+
+	// The date and time the watermark was attached to the AMI, in the following
+	// format: YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM.
+	WatermarkCreationTime *time.Time
+
+	// The watermark identifier, in accountId:watermarkName format (for example,
+	// 123456789012:approvedAmi ). The accountId portion is the Amazon Web Services
+	// account ID of the watermark creator. The watermarkName portion is
+	// customer-provided.
+	WatermarkKey *string
+
+	noSmithyDocumentSerde
+}
+
+// The watermark filter criteria for an allowed image. Each entry can specify one
+// or more fields. All specified fields must match the same watermark on the image.
+type ImageWatermarkFilterRequest struct {
+
+	// The maximum number of days that have elapsed since the source image was created.
+	//
+	// Constraints: Minimum value of 0. Maximum value of 2147483647.
+	MaximumDaysSinceSourceImageCreated *int32
+
+	// The maximum number of days that have elapsed since the watermark was attached
+	// to the image.
+	//
+	// Constraints: Minimum value of 0. Maximum value of 2147483647.
+	MaximumDaysSinceWatermarkCreated *int32
+
+	// The Region where the watermark was originally created. Supports wildcards ( * ,
+	// ? ).
+	SourceImageRegion *string
+
+	// The accountId:name of the watermark. Supports wildcards ( * , ? ).
+	WatermarkKey *string
+
+	noSmithyDocumentSerde
+}
+
+// The watermark filter criteria for an allowed image. Each entry can specify one
+// or more fields. All specified fields must match the same watermark on the image.
+type ImageWatermarkFilterResponse struct {
+
+	// The maximum number of days that have elapsed since the source image was created.
+	//
+	// Constraints: Minimum value of 0. Maximum value of 2147483647.
+	MaximumDaysSinceSourceImageCreated *int32
+
+	// The maximum number of days that have elapsed since the watermark was attached
+	// to the image.
+	//
+	// Constraints: Minimum value of 0. Maximum value of 2147483647.
+	MaximumDaysSinceWatermarkCreated *int32
+
+	// The Region where the watermark was originally created. Supports wildcards ( * ,
+	// ? ).
+	SourceImageRegion *string
+
+	// The accountId:name of the watermark. Supports wildcards ( * , ? ).
+	WatermarkKey *string
 
 	noSmithyDocumentSerde
 }
@@ -15049,6 +15153,10 @@ type ModifyTransitGatewayOptions struct {
 	//   - Direct Connect Gateway
 	//
 	//   - Connect
+	//
+	//   - VPN Concentrator
+	//
+	//   - Client VPN
 	//
 	// You must first delete all transit gateway attachments configured prior to
 	// modifying the ASN on the transit gateway.
@@ -22483,6 +22591,36 @@ type TagDescription struct {
 	noSmithyDocumentSerde
 }
 
+// A single resource's tag configuration associated with the Flow Logs Amazon EC2
+// Tags feature fields in your custom log format.
+type TagFieldSpecificationRequest struct {
+
+	// The resource type for the tag keys associated with the Flow Logs Amazon EC2
+	// Tags feature fields in your custom log format.
+	ResourceType TaggableResourceType
+
+	// The tag keys on your tagged resources to be displayed by the Flow Logs Amazon
+	// EC2 Tags feature fields in your custom log format.
+	TagKeys []string
+
+	noSmithyDocumentSerde
+}
+
+// A single resource's tag configuration associated with the Flow Logs Amazon EC2
+// Tags feature fields in your custom log format.
+type TagFieldSpecificationResponse struct {
+
+	// The resource type for the tag keys associated with the Flow Logs Amazon EC2
+	// Tags feature fields in your custom log format.
+	ResourceType TaggableResourceType
+
+	// The tag keys on your tagged resources to be displayed by the Flow Logs Amazon
+	// EC2 Tags feature fields in your custom log format.
+	TagKeys []string
+
+	noSmithyDocumentSerde
+}
+
 // The tags to apply to a resource when the resource is being created. When you
 // specify a tag, you must specify the resource type to tag, otherwise the request
 // will fail.
@@ -25102,10 +25240,6 @@ type VolumeModification struct {
 
 	// The current modification state.
 	ModificationState VolumeModificationState
-
-	// Describes whether the resource is managed by a service provider and, if so,
-	// describes the service provider that manages it.
-	Operator *OperatorResponse
 
 	// The original IOPS rate of the volume.
 	OriginalIops *int32

@@ -6,40 +6,50 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Sets or replaces the criteria for Allowed AMIs.
+// Attaches a watermark to a non-public AMI. The watermark is a structured
+// identifier that automatically propagates to all derivative images created
+// through [CreateImage], and [CopyImage].
 //
-// The ImageCriteria can include up to:
+// Only the AMI owner can attach watermarks. Watermarks cannot be added to public
+// AMIs.
 //
-//   - 10 ImageCriterion
-//
-// The Allowed AMIs feature does not restrict the AMIs owned by your account.
-// Regardless of the criteria you set, the AMIs created by your account will always
-// be discoverable and usable by users in your account.
-//
-// For more information, see [Control the discovery and use of AMIs in Amazon EC2 with Allowed AMIs] in Amazon EC2 User Guide.
-//
-// [Control the discovery and use of AMIs in Amazon EC2 with Allowed AMIs]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-allowed-amis.html
-func (c *Client) ReplaceImageCriteriaInAllowedImagesSettings(ctx context.Context, params *ReplaceImageCriteriaInAllowedImagesSettingsInput, optFns ...func(*Options)) (*ReplaceImageCriteriaInAllowedImagesSettingsOutput, error) {
+// [CopyImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CopyImage.html
+// [CreateImage]: https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_CreateImage.html
+func (c *Client) AttachImageWatermark(ctx context.Context, params *AttachImageWatermarkInput, optFns ...func(*Options)) (*AttachImageWatermarkOutput, error) {
 	if params == nil {
-		params = &ReplaceImageCriteriaInAllowedImagesSettingsInput{}
+		params = &AttachImageWatermarkInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "ReplaceImageCriteriaInAllowedImagesSettings", params, optFns, c.addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "AttachImageWatermark", params, optFns, c.addOperationAttachImageWatermarkMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*ReplaceImageCriteriaInAllowedImagesSettingsOutput)
+	out := result.(*AttachImageWatermarkOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type ReplaceImageCriteriaInAllowedImagesSettingsInput struct {
+type AttachImageWatermarkInput struct {
+
+	// The ID of the AMI.
+	//
+	// This member is required.
+	ImageId *string
+
+	// The name for the watermark. Combined with the caller's account ID to form the
+	// WatermarkKey ( accountId:watermarkName ).
+	//
+	// Constraints: 3-128 alphanumeric characters, parentheses (()), square brackets
+	// ([]), spaces ( ), periods (.), slashes (/), dashes (-), single quotes ('),
+	// at-signs (@), or underscores(_)
+	//
+	// This member is required.
+	WatermarkName *string
 
 	// Checks whether you have the required permissions for the action, without
 	// actually making the request, and provides an error response. If you have the
@@ -47,18 +57,14 @@ type ReplaceImageCriteriaInAllowedImagesSettingsInput struct {
 	// UnauthorizedOperation .
 	DryRun *bool
 
-	// The list of criteria that are evaluated to determine whether AMIs are
-	// discoverable and usable in the account in the specified Amazon Web Services
-	// Region.
-	ImageCriteria []types.ImageCriterionRequest
-
 	noSmithyDocumentSerde
 }
 
-type ReplaceImageCriteriaInAllowedImagesSettingsOutput struct {
+type AttachImageWatermarkOutput struct {
 
-	// Returns true if the request succeeds; otherwise, it returns an error.
-	ReturnValue *bool
+	// The watermark identifier, in accountId:watermarkName format (for example,
+	// 123456789012:approvedAmi ).
+	WatermarkKey *string
 
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
@@ -66,19 +72,19 @@ type ReplaceImageCriteriaInAllowedImagesSettingsOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewares(stack *middleware.Stack, options Options) (err error) {
+func (c *Client) addOperationAttachImageWatermarkMiddlewares(stack *middleware.Stack, options Options) (err error) {
 	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Serialize.Add(&awsEc2query_serializeOpReplaceImageCriteriaInAllowedImagesSettings{}, middleware.After)
+	err = stack.Serialize.Add(&awsEc2query_serializeOpAttachImageWatermark{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsEc2query_deserializeOpReplaceImageCriteriaInAllowedImagesSettings{}, middleware.After)
+	err = stack.Deserialize.Add(&awsEc2query_deserializeOpAttachImageWatermark{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "ReplaceImageCriteriaInAllowedImagesSettings"); err != nil {
+	if err := addProtocolFinalizerMiddlewares(stack, options, "AttachImageWatermark"); err != nil {
 		return fmt.Errorf("add protocol finalizers: %v", err)
 	}
 
@@ -130,7 +136,10 @@ func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewa
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opReplaceImageCriteriaInAllowedImagesSettings(options.Region), middleware.Before); err != nil {
+	if err = addOpAttachImageWatermarkValidationMiddleware(stack); err != nil {
+		return err
+	}
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opAttachImageWatermark(options.Region), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRecursionDetection(stack); err != nil {
@@ -160,10 +169,10 @@ func (c *Client) addOperationReplaceImageCriteriaInAllowedImagesSettingsMiddlewa
 	return nil
 }
 
-func newServiceMetadataMiddleware_opReplaceImageCriteriaInAllowedImagesSettings(region string) *awsmiddleware.RegisterServiceMetadata {
+func newServiceMetadataMiddleware_opAttachImageWatermark(region string) *awsmiddleware.RegisterServiceMetadata {
 	return &awsmiddleware.RegisterServiceMetadata{
 		Region:        region,
 		ServiceID:     ServiceID,
-		OperationName: "ReplaceImageCriteriaInAllowedImagesSettings",
+		OperationName: "AttachImageWatermark",
 	}
 }

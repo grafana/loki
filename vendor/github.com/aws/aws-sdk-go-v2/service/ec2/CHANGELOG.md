@@ -1,3 +1,23 @@
+# v1.308.0 (2026-06-22)
+
+* **Feature**: This release adds support for AMI Watermark and Allowed AMIs integration
+
+# v1.307.1 (2026-06-18)
+
+* **Documentation**: Documentation updates clarifying CancelCapacityReservation cancellable states
+
+# v1.307.0 (2026-06-10)
+
+* **Feature**: This release adds support for AMI Watermark which a structured identifier that helps in tracking AMI provenance
+
+# v1.306.0 (2026-06-09)
+
+* **Feature**: Added TagFieldSpecifications to CreateFlowLogs and DescribeFlowLogs APIs. Customers can now specify tag keys in their Flow Logs subscriptions to capture associated EC2 resource tag values in their logs, enabling tag-based visibility.
+
+# v1.305.3 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.305.2 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
