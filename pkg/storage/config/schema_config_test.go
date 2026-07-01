@@ -962,3 +962,29 @@ func TestChunkKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestSupportsIngestedAtForTime(t *testing.T) {
+	cfg := SchemaConfig{Configs: []PeriodConfig{
+		{
+			From:      DayTime{Time: model.TimeFromUnix(0)},
+			IndexType: types.IndexTypeTSDB,
+			Schema:    "v13",
+		},
+		{
+			From:      DayTime{Time: model.TimeFromUnix(1000)},
+			IndexType: types.IndexTypeTSDB,
+			Schema:    "v14",
+		},
+	}}
+
+	require.False(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(500)), "v13 period must not support IngestedAt")
+	require.True(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(2000)), "v14 period must support IngestedAt")
+	require.False(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(-1000)), "time before any period must not support IngestedAt")
+
+	v12 := SchemaConfig{Configs: []PeriodConfig{{
+		From:      DayTime{Time: model.TimeFromUnix(0)},
+		IndexType: types.IndexTypeTSDB,
+		Schema:    "v12",
+	}}}
+	require.False(t, v12.SupportsIngestedAtForTime(model.TimeFromUnix(500)), "v12 period must not support IngestedAt")
+}

@@ -5,6 +5,14 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/xcap"
+)
+
+// Postings xcap statistics.
+var (
+	// StatPostingsBloomRowsRead counts bloom rows scanned while resolving
+	// postings sections.
+	StatPostingsBloomRowsRead = xcap.NewStatisticInt64("postings.bloom.rows.read", xcap.AggregationTypeSum)
 )
 
 type (

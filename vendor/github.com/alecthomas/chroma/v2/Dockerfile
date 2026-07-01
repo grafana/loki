@@ -28,7 +28,7 @@ ENV GOARCH=amd64
 RUN just chromad
 
 # Runtime stage
-FROM alpine:3.23 AS runtime
+FROM alpine:3.24 AS runtime
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates curl
