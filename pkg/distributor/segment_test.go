@@ -262,7 +262,7 @@ func measureEntropy(t *testing.T, resolver *segmentationPartitionResolver, parti
 		partitionLoad[id] = 0
 	}
 	for _, s := range streams {
-		partition, err := resolver.Resolve(s.tenant, s.segKey, s.hashKey, s.rateBytes, tenantRateLimitBytes)
+		partition, err := resolver.Resolve(s.tenant, []segmentationKey{s.segKey}, s.hashKey, []uint64{s.rateBytes}, tenantRateLimitBytes)
 		require.NoError(t, err)
 		partitionLoad[partition] += s.sizeBytes
 	}
