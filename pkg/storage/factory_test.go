@@ -1,16 +1,22 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
+	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	lokiaws "github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
@@ -152,6 +158,95 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 		_, ok = ns.storeType["store-4"]
 		assert.False(t, ok)
+	})
+}
+
+type listObjectKeysS3Client struct {
+	*s3.Client
+	keys []string
+}
+
+func (c listObjectKeysS3Client) ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	modifiedAt := time.Unix(0, 0)
+	contents := make([]s3types.Object, 0, len(c.keys))
+	for _, key := range c.keys {
+		contents = append(contents, s3types.Object{
+			Key:          awssdk.String(key),
+			LastModified: awssdk.Time(modifiedAt),
+		})
+	}
+
+	return &s3.ListObjectsV2Output{
+		Contents:    contents,
+		IsTruncated: awssdk.Bool(false),
+	}, nil
+}
+
+func listedS3ObjectKeys(t *testing.T, objectClient client.ObjectClient, keys ...string) []string {
+	t.Helper()
+
+	s3ObjectClient, ok := objectClient.(*lokiaws.S3ObjectClient)
+	require.True(t, ok)
+	s3ObjectClient.S3 = listObjectKeysS3Client{keys: keys}
+
+	objects, _, err := s3ObjectClient.List(context.Background(), "", "")
+	require.NoError(t, err)
+
+	listedKeys := make([]string, 0, len(objects))
+	for _, object := range objects {
+		listedKeys = append(listedKeys, object.Key)
+	}
+
+	return listedKeys
+}
+
+func testS3Config() lokiaws.S3Config {
+	var cfg lokiaws.S3Config
+	flagext.DefaultValues(&cfg)
+	cfg.BucketNames = "bucket"
+	cfg.ChunkDelimiter = "-"
+	cfg.AccessKeyID = "test-key"
+	cfg.SecretAccessKey = flagext.SecretWithValue("test-secret")
+	return cfg
+}
+
+func TestNewIndexObjectClientDoesNotApplyS3ChunkDelimiter(t *testing.T) {
+	const indexKey = "tsdb_index_20332/1779799681971192955-compactor-1779659125419-1779761781223-4eafaf2b.tsdb"
+	colonizedIndexKey := strings.ReplaceAll(indexKey, "-", ":")
+
+	t.Run("default s3 storage", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.S3Config = testS3Config()
+
+		chunkObjectClient, err := NewObjectClient(types.StorageTypeS3, "chunk-store", cfg, cm)
+		require.NoError(t, err)
+		require.Equal(t, []string{colonizedIndexKey}, listedS3ObjectKeys(t, chunkObjectClient, indexKey))
+
+		indexObjectClient, err := newIndexObjectClient(types.StorageTypeS3, "index-store", cfg, cm)
+		require.NoError(t, err)
+		require.Equal(t, []string{indexKey}, listedS3ObjectKeys(t, indexObjectClient, indexKey))
+		require.Equal(t, "-", cfg.S3Config.ChunkDelimiter)
+	})
+
+	t.Run("named aws storage", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.NamedStores = NamedStores{
+			AWS: map[string]NamedAWSStorageConfig{
+				"store-1": NamedAWSStorageConfig(testS3Config()),
+			},
+		}
+		require.NoError(t, cfg.NamedStores.Validate())
+
+		chunkObjectClient, err := NewObjectClient("store-1", "chunk-store", cfg, cm)
+		require.NoError(t, err)
+		require.Equal(t, []string{colonizedIndexKey}, listedS3ObjectKeys(t, chunkObjectClient, indexKey))
+
+		indexObjectClient, err := newIndexObjectClient("store-1", "index-store", cfg, cm)
+		require.NoError(t, err)
+		require.Equal(t, []string{indexKey}, listedS3ObjectKeys(t, indexObjectClient, indexKey))
+		require.Equal(t, "-", cfg.NamedStores.AWS["store-1"].ChunkDelimiter)
 	})
 }
 
