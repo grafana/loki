@@ -222,6 +222,8 @@ func Test_DetectLogLevels(t *testing.T) {
 			{`{foo="bar", level="Debug"}`, constants.LogLevelDebug},
 			{`{foo="bar", level="FaTaL"}`, constants.LogLevelFatal},
 			{`{foo="bar", level="tRaCe"}`, constants.LogLevelTrace},
+			{`{foo="bar", level="informational"}`, "informational"},
+			{`{foo="bar", level="notice"}`, "notice"},
 		}
 
 		for _, tc := range testCases {
