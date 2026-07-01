@@ -125,11 +125,12 @@ func ResourceAttrsToStreamLabels(attrs pcommon.Map, otlpConfig OTLPConfig, disco
 			return false
 		}
 
-		if action == IndexLabel {
+		switch action {
+		case IndexLabel:
 			for _, lbl := range attributeAsLabels {
 				result.StreamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 			}
-		} else if action == StructuredMetadata {
+		case StructuredMetadata:
 			result.StructuredMetadata = append(result.StructuredMetadata, attributeAsLabels...)
 		}
 

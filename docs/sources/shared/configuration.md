@@ -6755,7 +6755,7 @@ congestion_control:
 # `storage_config.object_store` or `common.storage.object_store` block takes
 # effect.
 # CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
+[use_thanos_objstore: <boolean> | default = true]
 
 object_store:
   # The thanos_object_store_config block configures the connection to object
