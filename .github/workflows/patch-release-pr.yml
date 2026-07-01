@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "7ab449296de23c4e7ef562d1988135d28c71bce9"
+  RELEASE_LIB_REF: "a02bbf94332600fbf72b9258861b32c4559cd134"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@7ab449296de23c4e7ef562d1988135d28c71bce9"
+    uses: "grafana/loki-release/.github/workflows/check.yml@a02bbf94332600fbf72b9258861b32c4559cd134"
     with:
       build_image: "golang:1.26.4"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "7ab449296de23c4e7ef562d1988135d28c71bce9"
+      release_lib_ref: "a02bbf94332600fbf72b9258861b32c4559cd134"
       skip_validation: false
   create-release-pr:
     needs:
