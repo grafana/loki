@@ -1371,6 +1371,12 @@ one entry per index (the index-gateway runs an independent sync per schema perio
     "in_progress": false,
     "last_trigger": "periodic",
     "last_duration": "5s"
+  },
+  {
+    "name": "s3_2025-04-01",
+    "in_progress": false,
+    "last_trigger": "never_triggered",
+    "last_duration": "0s"
   }
 ]
 ```
@@ -1379,7 +1385,7 @@ Each entry reports (durations are Go duration strings, e.g. `"1m30s"`):
 
 - `name`: identifies the index (the schema period's store name).
 - `in_progress`: whether a sync (manual or periodic) is currently running for this index.
-- `last_trigger`: what triggered the current or most recent sync — `manual` or `periodic` (omitted if no sync has run yet).
+- `last_trigger`: what triggered the current or most recent sync — `manual` or `periodic`, or `never_triggered` if no sync has run yet.
 - `current_duration`: how long the in-progress sync has been running (present only when `in_progress` is `true`).
 - `last_duration`: how long the previous completed sync took (`"0s"` if none has completed yet).
 

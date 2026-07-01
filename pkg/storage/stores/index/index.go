@@ -74,6 +74,12 @@ type Flusher interface {
 	FlushIndexes(ctx context.Context) error
 }
 
+// SyncTriggerNever is the LastTrigger value the HTTP API reports for an index
+// that has not synced yet (neither a periodic nor a manual sync has run). It is
+// emitted in place of an empty trigger so the "never synced" state is explicit
+// rather than inferred from a zero LastDuration.
+const SyncTriggerNever = "never_triggered"
+
 // SyncStatus reports the state of an index store's background sync.
 type SyncStatus struct {
 	// Name identifies the index this status belongs to (e.g. the schema period's
@@ -88,19 +94,21 @@ type SyncStatus struct {
 	// has completed yet.
 	LastDuration time.Duration
 	// LastTrigger is what triggered the current or most recent sync ("periodic"
-	// or "manual"). Empty if no sync has run yet.
+	// or "manual"), or empty if no sync has run yet. The HTTP API renders an
+	// empty value as SyncTriggerNever ("never_triggered").
 	LastTrigger string
 }
 
 // MarshalJSON renders the status for the HTTP API: durations as Go duration
 // strings (e.g. "1m30s"), with CurrentDuration included only while a sync is in
 // progress. time.Duration would otherwise encode as integer nanoseconds, since
-// encoding/json never calls its String method.
+// encoding/json never calls its String method. An empty LastTrigger (no sync has
+// run yet) is rendered as SyncTriggerNever so the state is explicit.
 func (s SyncStatus) MarshalJSON() ([]byte, error) {
 	out := struct {
 		Name            string  `json:"name"`
 		InProgress      bool    `json:"in_progress"`
-		LastTrigger     string  `json:"last_trigger,omitempty"`
+		LastTrigger     string  `json:"last_trigger"`
 		CurrentDuration *string `json:"current_duration,omitempty"`
 		LastDuration    string  `json:"last_duration"`
 	}{
@@ -108,6 +116,9 @@ func (s SyncStatus) MarshalJSON() ([]byte, error) {
 		InProgress:   s.InProgress,
 		LastTrigger:  s.LastTrigger,
 		LastDuration: s.LastDuration.String(),
+	}
+	if out.LastTrigger == "" {
+		out.LastTrigger = SyncTriggerNever
 	}
 	if s.InProgress {
 		d := s.CurrentDuration.String()

@@ -120,6 +120,19 @@ func TestSyncIndexStatusHandler(t *testing.T) {
 		require.Equal(t, "5s", resp[1].LastDuration)
 	})
 
+	t.Run("never-synced index reports never_triggered", func(t *testing.T) {
+		// An index that exists but has not synced yet renders an explicit
+		// never_triggered trigger and a zero last duration (not an omitted field).
+		resp := get(t, &syncerQuerierMock{statuses: []index.SyncStatus{{Name: "p1"}}})
+
+		require.Len(t, resp, 1)
+		require.Equal(t, "p1", resp[0].Name)
+		require.False(t, resp[0].InProgress)
+		require.Equal(t, index.SyncTriggerNever, resp[0].LastTrigger)
+		require.Equal(t, "0s", resp[0].LastDuration)
+		require.Nil(t, resp[0].CurrentDuration)
+	})
+
 	t.Run("store does not support syncing", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		newSyncTestGateway(t, newIngesterQuerierMock()).SyncIndexStatusHandler(rec, httptest.NewRequest(http.MethodGet, "/sync-indexes", nil))
