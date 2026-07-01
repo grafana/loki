@@ -363,13 +363,12 @@ func statsSummary(capture *xcap.Capture, execTime, queueTime time.Duration, tota
 
 	// Dataobj row/byte stats scoped to logs reader regions only.
 	// TODO: track and report TotalStructuredMetadataBytesProcessed
-	const logsReader = "logs.Reader.Read"
-	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logsReader, dataobj.StatDatasetPrimaryRowBytes)
-	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logsReader, dataobj.StatDatasetSecondaryRowBytes)
-	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = xcap.ValueFromRegion[int64](capture, logsReader, dataobj.StatDatasetPrimaryRowsRead)
+	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowBytes)
+	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowBytes)
+	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowsRead)
 	// TODO: this will report the wrong value if the plan has a filter stage.
 	// pick the min of row_out from filter and scan nodes.
-	result.Querier.Store.Dataobj.PostFilterRows = xcap.ValueFromRegion[int64](capture, logsReader, dataobj.StatDatasetSecondaryRowsRead)
+	result.Querier.Store.Dataobj.PostFilterRows = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead)
 
 	// Cache and wire stats aggregated globally across all regions.
 	taskHits := xcap.Value[int64](capture, executor.TaskCacheHits) + xcap.Value[int64](capture, executor.DataObjScanCacheHits)
@@ -936,10 +935,10 @@ func printExecutionSummary(q *query, duration time.Duration, err error) {
 
 func printLogLocalitySummary(q *query) {
 	var (
-		rowsTotal           = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatDatasetMaxRows)
-		relevantRows        = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
-		streamPagesTotal    = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
-		streamRelevantPages = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
+		rowsTotal           = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatDatasetMaxRows)
+		relevantRows        = xcap.ValueFromRegion[int64](q.capture, logs.RegionRead, dataobj.StatStreamRelevantRows)
+		streamPagesTotal    = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatStreamPagesTotal)
+		streamRelevantPages = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatStreamRelevantPages)
 	)
 
 	level.Info(q.Logger()).Log(

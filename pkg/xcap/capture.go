@@ -57,7 +57,6 @@ package xcap
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/gogo/protobuf/proto"
@@ -76,6 +75,9 @@ type Capture struct {
 	// regions are all regions created within this capture.
 	regions []*Region
 
+	// regionByName is a look-up table for regions by name.
+	regionByName map[string][]*Region
+
 	// ended indicates whether End() has been called.
 	ended bool
 }
@@ -83,8 +85,9 @@ type Capture struct {
 // NewCapture creates a new Capture and attaches it to the provided [context.Context]
 func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.Context, *Capture) {
 	capture := &Capture{
-		attributes: attributes,
-		regions:    make([]*Region, 0),
+		attributes:   attributes,
+		regions:      make([]*Region, 0),
+		regionByName: make(map[string][]*Region),
 	}
 
 	ctx = contextWithCapture(ctx, capture)
@@ -104,8 +107,8 @@ func (c *Capture) End() {
 	c.ended = true
 }
 
-// AddRegion adds a region to this capture. This is called by Region
-// when it is created.
+// AddRegion adds a region to this capture. This is called by [StartRegion]
+// when a region is created.
 func (c *Capture) AddRegion(r *Region) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -115,6 +118,7 @@ func (c *Capture) AddRegion(r *Region) {
 	}
 
 	c.regions = append(c.regions, r)
+	c.regionByName[r.name] = append(c.regionByName[r.name], r)
 }
 
 // Regions returns all regions in this capture.
@@ -125,42 +129,62 @@ func (c *Capture) Regions() []*Region {
 	return c.regions
 }
 
-// LinkParent assigns the provided region as the parent
-// to all root regions of the capture.
-func (c *Capture) LinkParent(parent *Region) {
-	c.mu.RLock()
-	regions := make([]*Region, len(c.regions))
-	copy(regions, c.regions)
-	c.mu.RUnlock()
-
-	for _, region := range regions {
-		region.mu.Lock()
-		if region.parentID.IsZero() {
-			region.parentID = parent.id
-		}
-		region.mu.Unlock()
-	}
-}
-
-// Merge incorporates all regions from src into c. If parent is non-nil, the
-// root regions of src are re-parented onto it before being added to c,
-// preserving the parent/child relationships when src's data is presented as
-// part of c's hierarchy.
+// Merge incorporates all regions from src into c by accumulating observations
+// into matching regions. If a region whose name matches an existing region in
+// c is encountered, its observations are folded into that existing region using
+// each statistic's aggregation semantics ([AggregatedObservation.Merge]).
+// If no region with that name exists in c, a new region is created and
+// observations are copied from src.
 //
-// Regions are shared by reference between c and src after Merge returns.
-//
-// Merge is a no-op if c or src is nil, or if c has already been ended.
+// Unlike a naïve append-based merge, this keeps the number of regions in c
+// bounded by the number of unique region names across all merged captures.
 func (c *Capture) Merge(parent *Region, src *Capture) {
 	if c == nil || src == nil {
 		return
 	}
 
-	if parent != nil {
-		src.LinkParent(parent)
+	// snapshot src.regions under src's read lock to avoid holding two capture
+	// locks simultaneously.
+	src.mu.RLock()
+	srcRegions := make([]*Region, len(src.regions))
+	copy(srcRegions, src.regions)
+	src.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.ended {
+		return
 	}
 
-	for _, region := range src.Regions() {
-		c.AddRegion(region)
+	for _, srcRegion := range srcRegions {
+		if dsts := c.regionByName[srcRegion.name]; len(dsts) > 0 {
+			// A region with this name already exists: fold observations
+			// into it. Lock order: c.mu (held) → srcRegion.mu → dst.mu
+			// (inside MergeObservations).
+			//
+			// We always merge into the last region in the slice, there
+			// is no strong reason to prefer the last one, it is just
+			// a simple deterministic choice.
+			dsts[len(dsts)-1].MergeObservations(srcRegion)
+			continue
+		}
+
+		// no region with this name exists, create a new one.
+		dst := &Region{
+			id:           newID(),
+			name:         srcRegion.name,
+			observations: make(map[StatisticKey]*AggregatedObservation),
+		}
+
+		// Parent every merged region onto the provided parent.
+		if parent != nil {
+			dst.parentID = parent.id
+		}
+		dst.MergeObservations(srcRegion)
+
+		c.regions = append(c.regions, dst)
+		c.regionByName[dst.name] = append(c.regionByName[dst.name], dst)
 	}
 }
 
@@ -259,21 +283,22 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 	return rolled
 }
 
-// ValueFromRegion computes the value of a statistic from regions with
-// names that start with prefix. If the statistic is not present in any matching
-// region, ValueFromRegion returns nil.
-func (c *Capture) ValueFromRegion(prefix string, stat Statistic) *AggregatedObservation {
+// ValueFromRegion computes the value of a statistic from all regions with the
+// given exact name. If the statistic is not present in any matching region,
+// ValueFromRegion returns nil.
+func (c *Capture) ValueFromRegion(name string, stat Statistic) *AggregatedObservation {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
+	regions := c.regionByName[name]
+	if len(regions) == 0 {
+		return nil
+	}
 
 	key := stat.Key()
 	var rolled *AggregatedObservation
 
-	for _, region := range c.regions {
-		if !strings.HasPrefix(region.name, prefix) {
-			continue
-		}
-
+	for _, region := range regions {
 		region.mu.RLock()
 		obs, ok := region.observations[key]
 		if !ok {
@@ -306,12 +331,12 @@ func Value[T any](c *Capture, stat Statistic) T {
 	return v
 }
 
-// ValueFromRegion gets a typed value from a capture, aggregating only
-// regions with names that start with prefix. If the statistic is not present in
-// any matching region, or the statistic is not of type T, ValueFromRegion
-// returns the zero value for T.
-func ValueFromRegion[T any](c *Capture, prefix string, stat Statistic) T {
-	rolled := c.ValueFromRegion(prefix, stat)
+// ValueFromRegion gets a typed value from a capture, aggregating only regions
+// whose name exactly matches name. If the statistic is not present in any
+// matching region, or the statistic is not of type T, ValueFromRegion returns
+// the zero value for T.
+func ValueFromRegion[T any](c *Capture, name string, stat Statistic) T {
+	rolled := c.ValueFromRegion(name, stat)
 	if rolled == nil {
 		var zero T
 		return zero
