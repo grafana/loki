@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
@@ -104,7 +104,7 @@ func createTasks(n int) []*protos.ProtoTask {
 
 func Test_BuilderLoop(t *testing.T) {
 	logger := log.NewNopLogger()
-	//logger := log.NewLogfmtLogger(os.Stdout)
+	// logger := log.NewLogfmtLogger(os.Stdout)
 
 	tasks := createTasks(256)
 	server, err := newFakePlannerServer(tasks)
@@ -176,7 +176,7 @@ func Test_BuilderLoop_Timeout(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := log.NewNopLogger()
-			//logger := log.NewLogfmtLogger(os.Stdout)
+			// logger := log.NewLogfmtLogger(os.Stdout)
 
 			tasks := createTasks(256)
 			server, err := newFakePlannerServer(tasks)
@@ -290,9 +290,9 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 			return fmt.Errorf("failed to receive task response: %w", err)
 		}
 
-		f.completedTasks.Inc()
+		f.completedTasks.Add(1)
 		if result.Result.Error != "" {
-			f.erroredTasks.Inc()
+			f.erroredTasks.Add(1)
 		}
 
 		time.Sleep(10 * time.Millisecond) // Simulate task processing time to add some latency.
