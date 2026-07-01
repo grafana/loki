@@ -5,7 +5,6 @@ description: Reference for Helm Chart values.
 aliases:
   - ../../../installation/helm/reference/
 weight: 500
-keywords: []
 ---
 
 
@@ -78,7 +77,7 @@ Values that are not part of a specific component group.
 | --- | --- | --- | --- |
 | `commonLabels` | object | Labels to be added to resources | `{}` |
 | `deploymentMode` | string | Deployment mode lets you specify how to deploy Loki. There are 3 options: - Monolithic (deprecated: SingleBinary): Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day. - SimpleScalable (deprecated, removed in Loki 4): Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day. - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day. There are also 2 additional modes used for migrating between deployment modes: - Monolithic<->SimpleScalable (deprecated: SingleBinary<->SimpleScalable): Migrate from SingleBinary to SimpleScalable (or vice versa) - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa) Note: SimpleScalable and Distributed REQUIRE the use of object storage. Ref: https://grafana.com/docs/loki/latest/get-started/deployment-modes/ | `"Monolithic"` |
-| `extraObjects` | string |  | `nil` |
+| `extraObjects` | string |  | `nil` | 
 | `fullnameOverride` | string | Overrides the chart's computed fullname | `""` |
 | `ignoreMinioDeprecation` | bool | Ignore MinIO deprecation validation when `minio.enabled=true`. This is a temporary compatibility escape hatch. | `false` |
 | `imagePullSecrets` | list | Image pull secrets for Docker images | `[]` |
