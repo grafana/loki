@@ -204,18 +204,18 @@ func TestFlushTenant(t *testing.T) {
 	// Trigger a manual (cache-refreshing) sync. A periodic resync may momentarily
 	// hold the sync lock and 409 our request - and, unlike the manual sync, it does
 	// not refresh the list cache - so retry until ours is accepted (almost always
-	// the first attempt).
+	// the first attempt). A true return guarantees the sync was marked in progress
+	// before TriggerSyncIndexes returned (see TriggerManual's started-channel).
 	require.Eventually(t, func() bool {
 		started, err := syncClient.TriggerSyncIndexes()
 		return err == nil && started
 	}, 5*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
 
-	// The sync we just started is reported in progress, then completes.
-	require.Eventually(t, func() bool {
-		inProgress, err := syncClient.SyncIndexesInProgress()
-		return err == nil && inProgress
-	}, 10*time.Second, time.Millisecond, "the index sync should be reported in progress")
-
+	// Wait for the sync to complete. We do not assert on observing in_progress==true
+	// here: against the local-filesystem store the sync can finish before our first
+	// HTTP status poll, so requiring the transient in-progress state to be observed
+	// would be inherently flaky. The accepted trigger above already guarantees the
+	// sync ran; this only waits for it to finish before we assert queryability.
 	require.Eventually(t, func() bool {
 		inProgress, err := syncClient.SyncIndexesInProgress()
 		return err == nil && !inProgress
