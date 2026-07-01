@@ -20,14 +20,14 @@ With the move to the Grafana-community repository, the chart numbering has chang
 
 This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment is also referred to as a Distributed deployment. The microservices deployment mode runs components of Loki as distinct processes.
 
-The default Helm chart deploys the following components:
+When you deploy with `deploymentMode: Distributed` and the replica settings shown in the examples below, the chart deploys the following components:
 
 - **Compactor component** (1 replica): Compacts and processes stored data.
-- **Distributor component** (3 replicas, maxUnavailable: 2): Distributes incoming requests. Up to 2 replicas can be unavailable during updates.
-- **IndexGateway component** (2 replicas, maxUnavailable: 1): Handles indexing. Up to 1 replica can be unavailable during updates.
-- **Ingester component** (3 replicas per zone): Handles ingestion of data. By default, zone-aware replication is enabled, creating three StatefulSets (zone-a, zone-b, zone-c) with one replica each.
-- **Querier component** (3 replicas, maxUnavailable: 2): Processes queries. Up to 2 replicas can be unavailable during updates.
-- **QueryFrontend component** (2 replicas, maxUnavailable: 1): Manages frontend queries. Up to 1 replica can be unavailable during updates.
+- **Distributor component** (3 replicas): Distributes incoming requests.
+- **IndexGateway component** (2 replicas): Handles indexing.
+- **Ingester component** (3 replicas total with zone awareness, 1 per zone): Handles ingestion of data. By default, zone-aware replication is enabled, creating three StatefulSets (zone-a, zone-b, zone-c) with one replica each when `ingester.replicas: 3`.
+- **Querier component** (3 replicas): Processes queries.
+- **QueryFrontend component** (2 replicas): Manages frontend queries.
 - **QueryScheduler component** (2 replicas): Schedules queries.
 - **Gateway** (1 NGINX replica): Exposes the Loki API and proxies requests to the correct Loki components.
 - **Loki Canary** (1 DaemonSet): Verifies the Loki deployment is in a healthy state.
@@ -35,7 +35,7 @@ The default Helm chart deploys the following components:
 - **Results cache** (1 replica): Caches query results using memcached.
 
 {{< admonition type="note" >}}
-Zone-aware replication is enabled by default for ingesters. This creates three ingester StatefulSets (one per zone) and requires the `rollout-operator` subchart. To disable zone-aware replication (for example, in development), set `ingester.zoneAwareReplication.enabled: false` in your `values.yaml`.
+Zone-aware replication is enabled by default for ingesters. This creates three ingester StatefulSets (one per zone) and requires the rollout-operator for safe multi-zone rollouts. Enable it with `rollout_operator.enabled: true` in your values.yaml (or install rollout-operator separately). To disable zone-aware replication (for example, in development), set `ingester.zoneAwareReplication.enabled: false`.
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
@@ -45,7 +45,8 @@ We do not recommend running in microservices mode with `filesystem` storage. For
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster (must have at least 3 nodes).
+- Kubernetes 1.25 or later.
+- A running Kubernetes cluster (must have at least 3 nodes for zone-aware replication, which is enabled by default).
 
 ## Deploying the Helm chart for development and testing
 
@@ -116,6 +117,9 @@ If this is the first time you have deployed the Loki Helm chart since the move t
      indexGateway:
        replicas: 2
        maxUnavailable: 1
+     patternIngester:
+       enabled: true
+       replicas: 1
 
      bloomPlanner:
        replicas: 0
@@ -172,26 +176,23 @@ If this is the first time you have deployed the Loki Helm chart since the move t
       loki-canary-th8kb                      1/1     Running   0          167m
       loki-chunks-cache-0                    2/2     Running   0          167m
       loki-compactor-0                       1/1     Running   0          167m
-      loki-compactor-1                       1/1     Running   0          167m
       loki-distributor-7c9bb8f4dd-bcwc5      1/1     Running   0          167m
       loki-distributor-7c9bb8f4dd-jh9h8      1/1     Running   0          167m
       loki-distributor-7c9bb8f4dd-np5dw      1/1     Running   0          167m
       loki-gateway-77bc447887-qgc56          1/1     Running   0          167m
       loki-index-gateway-0                   1/1     Running   0          167m
       loki-index-gateway-1                   1/1     Running   0          166m
-      loki-ingester-zone-a-0                 1/1     Running   0          167m
-      loki-ingester-zone-b-0                 1/1     Running   0          167m
-      loki-ingester-zone-c-0                 1/1     Running   0          167m
+      loki-ingester-0                        1/1     Running   0          167m
+      loki-ingester-1                        1/1     Running   0          167m
+      loki-ingester-2                        1/1     Running   0          167m
       loki-minio-0                           1/1     Running   0          167m
       loki-querier-bb8695c6d-bv9x2           1/1     Running   0          167m
       loki-querier-bb8695c6d-bz2rw           1/1     Running   0          167m
       loki-querier-bb8695c6d-z9qf8           1/1     Running   0          167m
       loki-query-frontend-6659566b49-528j5   1/1     Running   0          167m
       loki-query-frontend-6659566b49-84jtx   1/1     Running   0          167m
-      loki-query-frontend-6659566b49-9wfr7   1/1     Running   0          167m
       loki-query-scheduler-f6dc4b949-fknfk   1/1     Running   0          167m
       loki-query-scheduler-f6dc4b949-h4nwh   1/1     Running   0          167m
-      loki-query-scheduler-f6dc4b949-scfwp   1/1     Running   0          167m
       loki-results-cache-0                   2/2     Running   0          167m
     ```
 
@@ -286,6 +287,9 @@ compactor:
 indexGateway:
   replicas: 2
   maxUnavailable: 1
+patternIngester:
+  enabled: true
+  replicas: 1
 
 bloomPlanner:
   replicas: 0
@@ -427,6 +431,9 @@ gateway:
 Use the top-level `route:` key (mutually exclusive with the top-level `ingress:`) to route Gateway API traffic directly to Loki services, bypassing nginx. The chart auto-generates path-based rules that route requests to the correct microservice components (distributor, query-frontend, ruler, compactor) when `deploymentMode: Distributed` is set.
 
 ```yaml
+gateway:
+  enabled: false
+
 route:
   main:
     enabled: true
@@ -439,6 +446,16 @@ route:
 ```
 
 For both options, if `apiVersion` is not set, the chart auto-detects the latest available Gateway API version installed in the cluster. Supported route kinds include `HTTPRoute`, `GRPCRoute`, `TCPRoute`, `TLSRoute`, and `UDPRoute`.
+
+## Graceful distributor shutdown
+
+For graceful distributor shutdown during rollouts or scale-down, set `distributor.shutdownDelay` (for example `90s`). On SIGTERM the distributor reports 503 on `/ready` for that duration so load balancers can drain connections before shutdown. Keep `distributor.terminationGracePeriodSeconds` greater than `shutdownDelay` plus `loki.server.graceful_shutdown_timeout` (default `5s`).
+
+```yaml
+distributor:
+  shutdownDelay: 90s
+  terminationGracePeriodSeconds: 120
+```
 
 ## Deploying the Loki Helm chart to a Production Environment
 
