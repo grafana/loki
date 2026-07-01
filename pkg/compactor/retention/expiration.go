@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -37,6 +38,7 @@ type ExpirationChecker interface {
 type expirationChecker struct {
 	tenantsRetention         *TenantsRetention
 	latestRetentionStartTime latestRetentionStartTime
+	metrics                  *expirationMetrics
 }
 
 type Limits interface {
@@ -47,9 +49,10 @@ type Limits interface {
 	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
-func NewExpirationChecker(limits Limits) ExpirationChecker {
+func NewExpirationChecker(limits Limits, r prometheus.Registerer) ExpirationChecker {
 	return &expirationChecker{
 		tenantsRetention: NewTenantsRetention(limits),
+		metrics:          newExpirationMetrics(r),
 	}
 }
 
@@ -61,18 +64,33 @@ func (e *expirationChecker) Expired(userID []byte, chk Chunk, lbls labels.Labels
 	if period <= 0 {
 		return false, nil
 	}
-	return now.Sub(chk.Through) > period, nil
+	// Default to the chunk's data time range (Through). When the chunk carries an
+	// ingestion timestamp (IngestedAt, stamped at flush for backfilled data),
+	// measure retention from that instead, so recently-ingested data is not expired
+	// by its older log time.
+	expirationFrom := chk.Through
+	if chk.IngestedAt != 0 {
+		expirationFrom = chk.IngestedAt
+	}
+	expired := now.Sub(expirationFrom) > period
+	if expired && chk.IngestedAt != 0 {
+		e.metrics.chunksExpiredByIngestionTime.Inc()
+	}
+	return expired, nil
 }
 
 // DropFromIndex tells if it is okay to drop the chunk entry from index table.
 // We check if tableEndTime is out of retention period, calculated using the labels from the chunk.
 // If the tableEndTime is out of retention then we can drop the chunk entry without removing the chunk from the store.
-func (e *expirationChecker) DropFromIndex(userID []byte, _ Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
+func (e *expirationChecker) DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool {
 	userIDStr := unsafeGetString(userID)
 	period := e.tenantsRetention.RetentionPeriodFor(userIDStr, labels)
 	// The 0 value should disable retention
 	if period <= 0 {
 		return false
+	}
+	if chk.IngestedAt != 0 {
+		return now.Sub(chk.IngestedAt) > period
 	}
 	return now.Sub(tableEndTime) > period
 }
