@@ -94,3 +94,5 @@ limits_config:
   enforce_metric_name: "This setting is removed."
   allow_deletes: "This setting is removed."
   ruler_enable_wal_replay: "This setting is removed. The ruler now always wipes its remote-write WAL on startup, so there is nothing to replay."
+  per_tenant_override_config: "This setting is removed in favor of runtime_config.file"
+  per_tenant_override_period: "This setting is removed in favor of runtime_config.period"
