@@ -25,7 +25,7 @@ func TestPartitionCommitter(t *testing.T) {
 	// Set up a test cluster.
 	topic := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, 3, topic)
-	consumerGroup := "test-consumer-group-1"
+	consumerGroup := "test-consumer-group"
 	kafkaCfg.ConsumerGroup = consumerGroup
 
 	// Create a test client and admin client.
