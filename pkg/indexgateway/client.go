@@ -122,9 +122,7 @@ func (i *ClientConfig) GRPCClientConfigDescription() string {
 }
 
 func withExperimentalShadowPrefix(usage string) string {
-	if strings.HasPrefix(usage, "Experimental: ") {
-		usage = strings.TrimPrefix(usage, "Experimental: ")
-	}
+	usage = strings.TrimPrefix(usage, "Experimental: ")
 	return "Experimental: Applies to experimental shadow_index_gateway_client. " + usage
 }
 
