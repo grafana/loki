@@ -45,7 +45,7 @@ type AlertGroup struct {
 
 	// receiver
 	// Required: true
-	Receiver *Receiver `json:"receiver"`
+	Receiver *ReceiverReference `json:"receiver"`
 }
 
 // Validate validates this alert group
