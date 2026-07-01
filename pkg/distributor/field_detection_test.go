@@ -222,6 +222,8 @@ func Test_DetectLogLevels(t *testing.T) {
 			{`{foo="bar", level="Debug"}`, constants.LogLevelDebug},
 			{`{foo="bar", level="FaTaL"}`, constants.LogLevelFatal},
 			{`{foo="bar", level="tRaCe"}`, constants.LogLevelTrace},
+			{`{foo="bar", level="informational"}`, "informational"},
+			{`{foo="bar", level="notice"}`, "notice"},
 		}
 
 		for _, tc := range testCases {
@@ -786,6 +788,78 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
 		})
 	}
+}
+
+// Test_detectLogLevelFromOTLPSeverityNumber tests level detection against the OTLP severity_number
+func Test_detectLogLevelFromOTLPSeverityNumber(t *testing.T) {
+	ld := newFieldDetector(
+		validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		})
+
+	entryWithSeverityNumber := func(value string) logproto.Entry {
+		return logproto.Entry{
+			Line: "some log message",
+			StructuredMetadata: push.LabelsAdapter{
+				{Name: loghttp_push.OTLPSeverityNumber, Value: value},
+			},
+		}
+	}
+
+	t.Run("named severity numbers map to their band", func(t *testing.T) {
+		for _, tc := range []struct {
+			name             string
+			severityNumber   plog.SeverityNumber
+			expectedLogLevel string
+		}{
+			// Trace band (1-4)
+			{"trace lower bound", plog.SeverityNumberTrace, constants.LogLevelTrace},
+			{"trace upper bound", plog.SeverityNumberTrace4, constants.LogLevelTrace},
+			// Debug band (5-8)
+			{"debug lower bound", plog.SeverityNumberDebug, constants.LogLevelDebug},
+			{"debug upper bound", plog.SeverityNumberDebug2, constants.LogLevelDebug},
+			{"debug upper bound", plog.SeverityNumberDebug4, constants.LogLevelDebug},
+			// Info band (9-12)
+			{"info lower bound", plog.SeverityNumberInfo, constants.LogLevelInfo},
+			{"info upper bound", plog.SeverityNumberInfo4, constants.LogLevelInfo},
+			// Warn band (13-16)
+			{"warn lower bound", plog.SeverityNumberWarn, constants.LogLevelWarn},
+			{"warn upper bound", plog.SeverityNumberWarn4, constants.LogLevelWarn},
+			// Error band (17-20)
+			{"error lower bound", plog.SeverityNumberError, constants.LogLevelError},
+			{"error upper bound", plog.SeverityNumberError4, constants.LogLevelError},
+			// Fatal band (21-24)
+			{"fatal lower bound", plog.SeverityNumberFatal, constants.LogLevelFatal},
+			{"fatal upper bound", plog.SeverityNumberFatal4, constants.LogLevelFatal},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				entry := entryWithSeverityNumber(fmt.Sprintf("%d", tc.severityNumber))
+				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+				require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "severity number: %d", tc.severityNumber)
+			})
+		}
+	})
+
+	t.Run("out-of-range and invalid severity numbers", func(t *testing.T) {
+		for _, tc := range []struct {
+			name             string
+			value            string
+			expectedLogLevel string
+		}{
+			{"unspecified maps to unknown", fmt.Sprintf("%d", plog.SeverityNumberUnspecified), constants.LogLevelUnknown},
+			{"just above fatal4 maps to unknown", "25", constants.LogLevelUnknown},
+			{"well above the range maps to unknown", "100", constants.LogLevelUnknown},
+			{"non-numeric value falls back to info", "foo", constants.LogLevelInfo},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				entry := entryWithSeverityNumber(tc.value)
+				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+				require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "severity number value: %s", tc.value)
+			})
+		}
+	})
 }
 
 func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
