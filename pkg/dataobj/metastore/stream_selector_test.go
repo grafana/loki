@@ -142,7 +142,7 @@ func TestStreamSelector_TimePruning(t *testing.T) {
 func TestStreamSelector_MissingLabelSemantics(t *testing.T) {
 	ctx := context.Background()
 	// stream 1 has app=nginx (no "team" label); team!="bar" must match it.
-	// app="nginx" is the positive matcher that seeds the result.
+	// app="nginx" is the value-selecting matcher that seeds the result.
 	secs, closer := buildLabelBloomSection(t, []labelPosting{
 		{name: "app", value: "nginx", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
 	}, nil)
@@ -363,8 +363,8 @@ func TestStreamSelector_InterleavedLogicalSections(t *testing.T) {
 }
 
 // TestStreamSelector_SecondMatcherOnlyKeyDropped guards that a logical section
-// first seen by a later positive matcher (never seeded by the first) is dropped
-// rather than crashing on a nil running result. obj-a/0 has both app and team;
+// first seen by a later value-selecting matcher (never seeded by the first) is
+// dropped rather than crashing on a nil running result. obj-a/0 has both app and team;
 // obj-b/1 has only team, so the app matcher never seeds it.
 func TestStreamSelector_SecondMatcherOnlyKeyDropped(t *testing.T) {
 	ctx := context.Background()
@@ -389,8 +389,8 @@ func TestStreamSelector_SecondMatcherOnlyKeyDropped(t *testing.T) {
 }
 
 // TestStreamSelector_MatchAllRegexpDoesNotPanic guards that a `.*` regex matcher,
-// which LogQL admits as a positive (everything-matching) matcher, is resolved
-// rather than rejected as empty-capable-only.
+// which LogQL admits as a value-selecting (everything-matching) matcher, is
+// resolved rather than rejected as filter-only.
 func TestStreamSelector_MatchAllRegexpDoesNotPanic(t *testing.T) {
 	ctx := context.Background()
 	secs, closer := buildLabelBloomSection(t, []labelPosting{
@@ -409,10 +409,10 @@ func TestStreamSelector_MatchAllRegexpDoesNotPanic(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2}, streamIDs(res[0]))
 }
 
-// TestStreamSelector_NoPositiveMatcherErrors guards that a query carrying only
-// empty-capable matchers (which LogQL rejects before stream selection) returns
-// an error rather than silently dropping streams.
-func TestStreamSelector_NoPositiveMatcherErrors(t *testing.T) {
+// TestStreamSelector_OnlyFiltersErrors guards that a query carrying only filters
+// (which LogQL rejects before stream selection) returns an error rather than
+// silently dropping streams.
+func TestStreamSelector_OnlyFiltersErrors(t *testing.T) {
 	ctx := context.Background()
 	secs, closer := buildLabelBloomSection(t, []labelPosting{
 		{name: "app", value: "loki", streamID: 1, obj: "obj-a", section: 0, minTs: 10, maxTs: 20},
@@ -449,7 +449,7 @@ func TestStreamSelector_TimePruningConservativeEnvelope(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 2}, streamIDs(res[0]))
 }
 
-// TestStreamSelector_MatchNotRegexp guards the empty-capable negative-regexp
+// TestStreamSelector_MatchNotRegexp guards the filter negative-regexp
 // path: env!~"prod.*" matches streams whose env fails the regex AND streams
 // lacking env entirely. app=web seeds {1,2,3}; stream 1 has env=production
 // (dropped), stream 2 has env=dev (kept), stream 3 lacks env (kept).
@@ -514,8 +514,8 @@ func TestStreamSelector_LogicalSectionAcrossPhysicalSections(t *testing.T) {
 }
 
 // TestStreamSelector_MixedMatcherTypes guards an AND that mixes every matcher
-// type in a single query: positive MatchEqual/MatchRegexp seed the result,
-// empty-capable MatchNotEqual/MatchNotRegexp prune it. Only stream 1 satisfies
+// type in a single query: value-selecting MatchEqual/MatchRegexp seed the result,
+// filter MatchNotEqual/MatchNotRegexp prune it. Only stream 1 satisfies
 // app=web AND job=~"api.*" AND team!="sre" AND region!~"eu.*".
 func TestStreamSelector_MixedMatcherTypes(t *testing.T) {
 	ctx := context.Background()
@@ -553,8 +553,8 @@ func TestStreamSelector_MixedMatcherTypes(t *testing.T) {
 }
 
 // BenchmarkStreamSelector_SelectStreams measures selectStreams over a section
-// carrying many streams, each with several labels, matched by a mix of positive
-// and empty-capable matchers. Section construction is excluded from the timed
+// carrying many streams, each with several labels, matched by a mix of
+// value-selecting matchers and filters. Section construction is excluded from the timed
 // loop so the benchmark isolates selection cost.
 func BenchmarkStreamSelector_SelectStreams(b *testing.B) {
 	ctx := context.Background()

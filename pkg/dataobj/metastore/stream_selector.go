@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -60,23 +59,23 @@ func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings
 		return nil, nil
 	}
 
-	positive, emptyCapable := s.partitionMatchers()
-	if len(positive) == 0 {
-		return nil, fmt.Errorf("stream selector requires at least one non-empty-capable matcher")
+	filters, matchers := s.splitFiltersAndMatchers()
+	if len(matchers) == 0 {
+		return nil, fmt.Errorf("stream selector requires at least one non-filter matcher")
 	}
 
-	compiledPositive, err := compileAll(positive)
+	compiledMatchers, err := compileAll(matchers)
 	if err != nil {
 		return nil, err
 	}
-	compiledEmptyCapable, err := compileAll(emptyCapable)
+	compiledFilters, err := compileAll(filters)
 	if err != nil {
 		return nil, err
 	}
 
 	startNanos, endNanos := s.start.UnixNano(), s.end.UnixNano()
 
-	accums, err := s.eval(ctx, sections, compiledPositive, compiledEmptyCapable, startNanos, endNanos)
+	accums, err := s.eval(ctx, sections, compiledMatchers, compiledFilters, startNanos, endNanos)
 	if err != nil {
 		return nil, err
 	}
@@ -108,14 +107,14 @@ func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings
 func (s *streamSelector) eval(
 	ctx context.Context,
 	sections []*postings.Section,
-	positive []postings.CompiledMatcher,
-	emptyCapable []postings.CompiledMatcher,
+	matchers []postings.CompiledMatcher,
+	filters []postings.CompiledMatcher,
 	startNanos, endNanos int64,
 ) (map[postings.SectionRef]*accum, error) {
 	accums := make(map[postings.SectionRef]*accum)
 
-	if len(positive) > 0 {
-		if err := s.matchPositive(ctx, sections, positive, accums, startNanos, endNanos); err != nil {
+	if len(matchers) > 0 {
+		if err := s.matchMatchers(ctx, sections, matchers, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -123,8 +122,8 @@ func (s *streamSelector) eval(
 		}
 	}
 
-	if len(emptyCapable) > 0 {
-		if err := s.matchEmptyCapable(ctx, sections, emptyCapable, accums, startNanos, endNanos); err != nil {
+	if len(filters) > 0 {
+		if err := s.matchFilters(ctx, sections, filters, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -135,11 +134,11 @@ func (s *streamSelector) eval(
 	return accums, nil
 }
 
-// matchPositive scans every physical section once for all positive matchers
-// (name AND value), attributing each row to every matcher it satisfies, then
-// intersects the per-matcher hit bitmaps within each ref. Refs that fail any
+// matchMatchers scans every physical section once for all value-selecting
+// matchers (name AND value), attributing each row to every matcher it satisfies,
+// then intersects the per-matcher hit bitmaps within each ref. Refs that fail any
 // matcher are pruned from accums.
-func (s *streamSelector) matchPositive(
+func (s *streamSelector) matchMatchers(
 	ctx context.Context,
 	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
@@ -162,7 +161,7 @@ func (s *streamSelector) matchPositive(
 				ms := perMatcher[i]
 				acc.streamLabels[cms[i].Matcher().Name] = struct{}{}
 				foldTimeOverlap(acc, ms.Matched, ms.MinNS, ms.MaxNS, ms.Has, startNanos, endNanos)
-				perMatcherHits[i][ref] = compute.UnionBitmaps(perMatcherHits[i][ref], ms.Matched)
+				perMatcherHits[i][ref] = unionBitmaps(perMatcherHits[i][ref], ms.Matched)
 			}
 		}
 	}
@@ -176,12 +175,13 @@ func (s *streamSelector) matchPositive(
 	return nil
 }
 
-// matchEmptyCapable scans every physical section once for all empty-capable
-// matchers' names (no value pushdown), gathering the present and matched bitmaps
-// per (ref, matcher). It then intersects each matcher's empty-capable hit
-// (matched streams plus streams lacking the label) into the running result
-// sequentially. Refs that fail any matcher are pruned from accums.
-func (s *streamSelector) matchEmptyCapable(
+// matchFilters scans every physical section once for all filter matchers' names
+// (no value pushdown), gathering the present and matched bitmaps per
+// (ref, matcher). Because a filter also matches streams lacking the label, it
+// then intersects each filter's hit (matched streams plus streams lacking the
+// label) into the running result sequentially. Refs that fail any filter are
+// pruned from accums.
+func (s *streamSelector) matchFilters(
 	ctx context.Context,
 	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
@@ -209,8 +209,8 @@ func (s *streamSelector) matchEmptyCapable(
 				ls := perMatcher[i]
 				acc.streamLabels[cms[i].Matcher().Name] = struct{}{}
 				foldTimeOverlap(acc, ls.Present, ls.MinNS, ls.MaxNS, ls.Has, startNanos, endNanos)
-				present[i][ref] = compute.UnionBitmaps(present[i][ref], ls.Present)
-				matched[i][ref] = compute.UnionBitmaps(matched[i][ref], ls.Matched)
+				present[i][ref] = unionBitmaps(present[i][ref], ls.Present)
+				matched[i][ref] = unionBitmaps(matched[i][ref], ls.Matched)
 			}
 		}
 	}
@@ -218,8 +218,8 @@ func (s *streamSelector) matchEmptyCapable(
 	for i := range cms {
 		hits := make(map[postings.SectionRef]*memory.Bitmap, len(accums))
 		for ref, acc := range accums {
-			missing := compute.DifferenceBitmaps(acc.result, present[i][ref])
-			hits[ref] = compute.UnionBitmaps(matched[i][ref], missing)
+			missing := differenceBitmaps(acc.result, present[i][ref])
+			hits[ref] = unionBitmaps(matched[i][ref], missing)
 		}
 		combine(accums, hits, false)
 		if len(accums) == 0 {
@@ -257,7 +257,7 @@ func combine(accums map[postings.SectionRef]*accum, hits map[postings.SectionRef
 			delete(accums, ref)
 			continue
 		}
-		acc.result = compute.IntersectBitmaps(acc.result, hit)
+		acc.result = intersectBitmaps(acc.result, hit)
 		if acc.result.SetCount() == 0 {
 			delete(accums, ref)
 		}
@@ -274,7 +274,7 @@ func foldTimeOverlap(acc *accum, overlap *memory.Bitmap, min, max int64, has boo
 	if max < startNanos || min > endNanos {
 		return
 	}
-	acc.timeOverlap = compute.UnionBitmaps(acc.timeOverlap, overlap)
+	acc.timeOverlap = unionBitmaps(acc.timeOverlap, overlap)
 	if !acc.hasTS {
 		acc.minTS, acc.maxTS, acc.hasTS = min, max, true
 		return
@@ -297,7 +297,7 @@ func (s *streamSelector) finalize(ref postings.SectionRef, acc *accum, startNano
 		if acc.timeOverlap == nil {
 			return SectionStreams{}, false
 		}
-		result = compute.IntersectBitmaps(result, acc.timeOverlap)
+		result = intersectBitmaps(result, acc.timeOverlap)
 		if result.SetCount() == 0 {
 			return SectionStreams{}, false
 		}
@@ -410,27 +410,29 @@ func (s *streamSelector) refAdmitsPredicates(streamLabels map[string]struct{}, b
 	return true
 }
 
-// partitionMatchers splits matchers into positive (value-selecting, seed the
-// result) and empty-capable (also match streams lacking the label name). Mirrors
-// LogQL's util.SplitFiltersAndMatchers, treating a `.*` regex as positive.
-func (s *streamSelector) partitionMatchers() (positive, emptyCapable []*labels.Matcher) {
+// splitFiltersAndMatchers splits matchers into filters (empty-matching, also
+// select streams lacking the label name) and matchers (value-selecting, seed the
+// result). Mirrors LogQL's util.SplitFiltersAndMatchers, treating a `.*` regex as
+// a value-selecting matcher.
+func (s *streamSelector) splitFiltersAndMatchers() (filters, matchers []*labels.Matcher) {
 	for _, m := range s.matchers {
 		if m == nil {
 			continue
 		}
-		if isEmptyCapable(m) {
-			emptyCapable = append(emptyCapable, m)
+		if isFilter(m) {
+			filters = append(filters, m)
 		} else {
-			positive = append(positive, m)
+			matchers = append(matchers, m)
 		}
 	}
-	return positive, emptyCapable
+	return filters, matchers
 }
 
-// isEmptyCapable reports whether a matcher also matches streams lacking its label
-// name. Mirrors util.SplitFiltersAndMatchers: a matcher that matches "" is
-// empty-capable, except a `.*` regex which selects every stream and is positive.
-func isEmptyCapable(m *labels.Matcher) bool {
+// isFilter reports whether a matcher is treated as a filter: one that also
+// matches streams lacking its label name. Mirrors util.SplitFiltersAndMatchers: a
+// matcher that matches "" is a filter, except a `.*` regex which selects every
+// stream and is a value-selecting matcher.
+func isFilter(m *labels.Matcher) bool {
 	if m.Type == labels.MatchRegexp && m.Value == ".*" {
 		return false
 	}
