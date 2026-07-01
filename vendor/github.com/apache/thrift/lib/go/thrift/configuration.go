@@ -306,7 +306,7 @@ type TConfigurationSetter interface {
 //
 // NOTE: nil cfg is not propagated. If you want to propagate a TConfiguration
 // with everything being default value, use &TConfiguration{} explicitly instead.
-func PropagateTConfiguration(impl interface{}, cfg *TConfiguration) {
+func PropagateTConfiguration(impl any, cfg *TConfiguration) {
 	if cfg == nil || cfg.noPropagation {
 		return
 	}
