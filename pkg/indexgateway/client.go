@@ -97,46 +97,34 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet, i
 	i.experimental = isShadowClient
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 
-	if isShadowClient {
-		// Register flags against a temporary flag set so that we can relabel
-		// them as experimental before we register them to the real flag set.
-		tmp := flag.NewFlagSet("", flag.ContinueOnError)
-		i.registerNonGRPCFlagsWithPrefix(prefix, tmp)
-		tmp.VisitAll(func(fl *flag.Flag) {
-			usage := withExperimentalShadowPrefix(fl.Usage)
-			f.Var(fl.Value, fl.Name, usage)
-		})
-	} else {
-		i.registerNonGRPCFlagsWithPrefix(prefix, f)
-	}
+	i.registerNonGRPCFlagsWithPrefix(prefix, f, isShadowClient)
 }
 
 // GRPCClientConfigDescription returns the description for the grpc_client_config doc block.
 // This is called by the doc generator.
 func (i *ClientConfig) GRPCClientConfigDescription() string {
-	s := "The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki."
-	if i.experimental {
-		s = withExperimentalShadowPrefix(s)
-	}
-	return s
+	return withExperimentalShadowPrefixIfNecessary("The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki.", i.experimental)
 }
 
-func withExperimentalShadowPrefix(usage string) string {
+func withExperimentalShadowPrefixIfNecessary(usage string, isShadowClient bool) string {
+	if !isShadowClient {
+		return usage
+	}
 	usage = strings.TrimPrefix(usage, "Experimental: ")
 	return "Experimental: Applies to experimental shadow_index_gateway_client. " + usage
 }
 
-func (i *ClientConfig) registerNonGRPCFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
-	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
+func (i *ClientConfig) registerNonGRPCFlagsWithPrefix(prefix string, f *flag.FlagSet, isShadowClient bool) {
+	f.StringVar(&i.Address, prefix+".server-address", "", withExperimentalShadowPrefixIfNecessary("Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.", isShadowClient))
+	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, withExperimentalShadowPrefixIfNecessary("Whether requests sent to the gateway should be logged or not.", isShadowClient))
 
 	// Experimental: Time-based client side query sharding
 	f.Var(
 		(*flagext.StringSlice)(&i.TimeBasedShardingBuckets),
 		prefix+".time-based-sharding-buckets",
-		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
+		withExperimentalShadowPrefixIfNecessary("Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']", isShadowClient),
 	)
-	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
+	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, withExperimentalShadowPrefixIfNecessary("Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.", isShadowClient))
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
