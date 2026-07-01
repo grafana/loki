@@ -90,8 +90,7 @@ type ClientConfig struct {
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
 //
 // Flags that are used by both, client and server, are defined in the indexgateway package.
-// If isExperimental is true, non-gRPC flags will have their usage prefixed with "Experimental: ".
-// gRPC flags are always registered directly since they belong to the shared grpc_client block.
+// If isShadowClient is true, flags will have their usage marked as experimental.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet, isShadowClient bool) {
 	// gRPC flags are always registered directly — they're part of the shared grpc_client root block
 	// and must not be marked experimental here, as that would affect the root block's documentation.
@@ -99,6 +98,8 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet, i
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 
 	if isShadowClient {
+		// Register flags against a temporary flag set so that we can relabel
+		// them as experimental before we register them to the real flag set.
 		tmp := flag.NewFlagSet("", flag.ContinueOnError)
 		i.registerNonGRPCFlagsWithPrefix(prefix, tmp)
 		tmp.VisitAll(func(fl *flag.Flag) {
