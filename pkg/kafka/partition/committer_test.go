@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kerr"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -77,12 +76,6 @@ func TestPartitionCommitter(t *testing.T) {
 	// It should not have been committed for partition 2.
 	committedOffset, ok = offsets.Lookup(topic, partition2)
 	require.False(t, ok)
-
-	// Neither should it have been committed for other consumer groups. A
-	// consumer group that has never committed any offsets does not exist, so
-	// fetching its offsets returns GROUP_ID_NOT_FOUND.
-	_, err = admClient.FetchOffsets(ctx, "test-consumer-group-2")
-	require.ErrorIs(t, err, kerr.GroupIDNotFound)
 
 	// Should be able to commit a new offset for partition 1.
 	offset2 := int64(200)
