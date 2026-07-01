@@ -4792,16 +4792,6 @@ ruler_remote_write_sigv4_config:
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
 
-# Feature renamed to 'runtime configuration', flag deprecated in favor of
-# -runtime-config.file (runtime_config.file in YAML).
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Feature renamed to 'runtime configuration'; flag deprecated in favor of
-# -runtime-config.reload-period (runtime_config.period in YAML).
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
-
 # Define streams sharding behavior.
 shard_streams:
   # Automatically shard streams to keep them under the per-stream rate limit.
