@@ -222,23 +222,29 @@ If this is the first time you have deployed the Loki Helm chart since the move t
    helm repo update
    ```
 
+1. Create a new namespace:
+
+  ```bash
+  kubectl create namespace loki
+  ```
+
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana-community/loki -f values.yaml
+    helm install loki grafana-community/loki -f values.yaml --namespace loki
     ```
 
 1. Install or upgrade the Loki deployment.
      - To install:
 
         ```bash
-       helm install --values values.yaml loki grafana-community/loki
+       helm install --values values.yaml loki grafana-community/loki --namespace loki
        ```
 
      - To upgrade:
 
        ```bash
-       helm upgrade --values values.yaml loki grafana-community/loki
+       helm upgrade --values values.yaml loki grafana-community/loki --namespace loki
        ```
 
 1. Verify that Loki is running:
