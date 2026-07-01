@@ -1,6 +1,21 @@
 # Changes
 
-## Unreleased
+## 2.4.1 - 2026-06-28
+
+- Fixed `Result.Decode` and `Result.DecodePath` after `Reader.Close` so stale
+  results return closed-database errors instead of reading invalidated data.
+- Fixed `Networks` and `NetworksWithin` with `SkipEmptyValues` so malformed
+  pointer cycles return an error instead of looping indefinitely.
+- Fixed top-level `Decode` validation so nil and non-pointer values are rejected
+  consistently before custom `Unmarshaler` dispatch.
+- Fixed `ReadMap` and `ReadSlice` iterator cleanup so callers that stop
+  iteration early can continue decoding from the correct next value.
+- Fixed an oversized data-pointer bounds check so malformed databases return an
+  offset error instead of risking a panic on 32-bit builds.
+- Fixed migration and README examples to reference the public `mmdbdata.Decoder`
+  type for custom unmarshaling.
+
+## 2.4.0 - 2026-06-06
 
 - Reduced reflection decoding time and memory allocations. A city-lookup benchmark
   decoding a geoip2-style result allocates 20% fewer bytes (saving 48 B/op) and
