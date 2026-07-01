@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
@@ -25,7 +26,7 @@ func TestPartitionCommitter(t *testing.T) {
 	// Set up a test cluster.
 	topic := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, 3, topic)
-	consumerGroup := "test-consumer-group"
+	consumerGroup := "test-consumer-group-1"
 	kafkaCfg.ConsumerGroup = consumerGroup
 
 	// Create a test client and admin client.
@@ -77,11 +78,11 @@ func TestPartitionCommitter(t *testing.T) {
 	committedOffset, ok = offsets.Lookup(topic, partition2)
 	require.False(t, ok)
 
-	// Neither should it have been committed for other consumer groups.
-	offsets, err = admClient.FetchOffsets(ctx, "test-consumer-group-2")
-	require.NoError(t, err)
-	committedOffset, ok = offsets.Lookup(topic, partition1)
-	require.False(t, ok)
+	// Neither should it have been committed for other consumer groups. A
+	// consumer group that has never committed any offsets does not exist, so
+	// fetching its offsets returns GROUP_ID_NOT_FOUND.
+	_, err = admClient.FetchOffsets(ctx, "test-consumer-group-2")
+	require.ErrorIs(t, err, kerr.GroupIDNotFound)
 
 	// Should be able to commit a new offset for partition 1.
 	offset2 := int64(200)
