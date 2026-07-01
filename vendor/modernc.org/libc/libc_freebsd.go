@@ -2480,3 +2480,28 @@ func Xdup(tls *TLS, fd int32) (r int32) {
 
 	return int32(nfd)
 }
+
+func X__inline_isnand(t *TLS, x float64) int32 {
+	if __ccgo_strace {
+		trc("t=%v x=%v, (%v:)", t, x, origin(2))
+	}
+	return Xisnan(t, x)
+}
+
+func X__inline_isnanf(t *TLS, x float32) int32 {
+	if __ccgo_strace {
+		trc("t=%v x=%v, (%v:)", t, x, origin(2))
+	}
+	return Xisnanf(t, x)
+}
+
+func X__inline_isnanl(t *TLS, x float64) int32 {
+	if __ccgo_strace {
+		trc("t=%v x=%v, (%v:)", t, x, origin(2))
+	}
+	return Xisnan(t, x)
+}
+
+func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
+	return byte(a_load_8(ptr))
+}
