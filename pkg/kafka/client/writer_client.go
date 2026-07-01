@@ -385,13 +385,12 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 // It is safe for concurrent use.
 func (c *Producer) reserveBufferedBytes(size int) bool {
 	c.bufferedBytesMtx.Lock()
+	defer c.bufferedBytesMtx.Unlock()
 	newVal := c.bufferedBytes + int64(size)
 	if c.maxBufferedBytes > 0 && newVal > c.maxBufferedBytes {
-		c.bufferedBytesMtx.Unlock()
 		return false
 	}
 	c.bufferedBytes = newVal
-	c.bufferedBytesMtx.Unlock()
 	return true
 }
 
