@@ -1,4 +1,4 @@
-package executor
+package physical
 
 import (
 	"bytes"
@@ -12,11 +12,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor/matchutil"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-// buildLogsPredicate builds a [logs.Predicate] from an expr. The columns slice
+// BuildLogsPredicate builds a [logs.Predicate] from an expr. The columns slice
 // determines available columns that can be referenced by the expression.
 //
 // The returned predicate performs no filtering on stream ID; callers must use
@@ -25,20 +24,26 @@ import (
 // References to columns that do not exist in the columns slice map to a
 // [logs.FalsePredicate].
 //
-// buildLogsPredicate returns an error if:
+// BuildLogsPredicate returns an error if:
 //
 //   - Expressions cannot be represented as a boolean value
 //   - An expression is not supported (such as comparing two columns or comparing
 //     two literals).
-func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.Predicate, error) {
+//
+// The structural errors returned here are the canonical "can the executor
+// evaluate this?" answer: the physical planner calls [validateLogsPredicate]
+// (a thin wrapper that discards the predicate) at the end of [Planner.Optimize]
+// so unsupported expressions surface as planning errors rather than execution
+// errors.
+func BuildLogsPredicate(expr Expression, columns []*logs.Column) (logs.Predicate, error) {
 	switch expr := expr.(type) {
-	case physical.UnaryExpression:
+	case UnaryExpression:
 		return buildLogsUnaryPredicate(expr, columns)
 
-	case physical.BinaryExpression:
+	case BinaryExpression:
 		return buildLogsBinaryPredicate(expr, columns)
 
-	case *physical.LiteralExpr:
+	case *LiteralExpr:
 		if expr.ValueType() == types.Loki.Bool {
 			val := expr.Value().(bool)
 			if val {
@@ -47,7 +52,7 @@ func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.
 			return logs.FalsePredicate{}, nil
 		}
 
-	case *physical.ColumnExpr:
+	case *ColumnExpr:
 		// TODO(rfratto): This would add support for statements like
 		//
 		// SELECT * WHERE boolean_column
@@ -68,13 +73,26 @@ func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.
 	return nil, fmt.Errorf("expression %[1]s (type %[1]T) cannot be interpreted as a boolean", expr)
 }
 
-func buildLogsUnaryPredicate(expr physical.UnaryExpression, columns []*logs.Column) (logs.Predicate, error) {
-	unaryExpr, ok := expr.(*physical.UnaryExpr)
+// validateLogsPredicate reports whether expr can be converted into a
+// [logs.Predicate]. It is a thin wrapper around [BuildLogsPredicate] that
+// discards the resulting predicate.
+//
+// Because BuildLogsPredicate's "unsupported" branches are structural
+// (operator/expression shape, literal type, regex compilation, value/op
+// compatibility), passing a nil columns slice is sufficient: missing-column
+// branches degrade silently into True/False predicates without raising errors.
+func validateLogsPredicate(expr Expression) error {
+	_, err := BuildLogsPredicate(expr, nil)
+	return err
+}
+
+func buildLogsUnaryPredicate(expr UnaryExpression, columns []*logs.Column) (logs.Predicate, error) {
+	unaryExpr, ok := expr.(*UnaryExpr)
 	if !ok {
-		return nil, fmt.Errorf("expected physical.UnaryExpr, got %[1]T", expr)
+		return nil, fmt.Errorf("expected UnaryExpr, got %[1]T", expr)
 	}
 
-	inner, err := buildLogsPredicate(unaryExpr.Left, columns)
+	inner, err := BuildLogsPredicate(unaryExpr.Left, columns)
 	if err != nil {
 		return nil, fmt.Errorf("building unary predicate: %w", err)
 	}
@@ -87,7 +105,7 @@ func buildLogsUnaryPredicate(expr physical.UnaryExpression, columns []*logs.Colu
 	return nil, fmt.Errorf("unsupported unary operator %s in logs predicate", unaryExpr.Op)
 }
 
-var comparisonBinaryOps = map[types.BinaryOp]struct{}{
+var logsComparisonBinaryOps = map[types.BinaryOp]struct{}{
 	types.BinaryOpEq:                            {},
 	types.BinaryOpNeq:                           {},
 	types.BinaryOpGt:                            {},
@@ -106,46 +124,46 @@ var comparisonBinaryOps = map[types.BinaryOp]struct{}{
 	types.BinaryOpNotMatchSubstrCaseInsensitive: {},
 }
 
-func buildLogsBinaryPredicate(expr physical.BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
-	binaryExpr, ok := expr.(*physical.BinaryExpr)
+func buildLogsBinaryPredicate(expr BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
+	binaryExpr, ok := expr.(*BinaryExpr)
 	if !ok {
-		return nil, fmt.Errorf("expected physical.BinaryExpr, got %[1]T", expr)
+		return nil, fmt.Errorf("expected BinaryExpr, got %[1]T", expr)
 	}
 
 	switch binaryExpr.Op {
 	case types.BinaryOpAnd:
-		left, err := buildLogsPredicate(binaryExpr.Left, columns)
+		left, err := BuildLogsPredicate(binaryExpr.Left, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building left binary predicate: %w", err)
 		}
-		right, err := buildLogsPredicate(binaryExpr.Right, columns)
+		right, err := BuildLogsPredicate(binaryExpr.Right, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building right binary predicate: %w", err)
 		}
 		return logs.AndPredicate{Left: left, Right: right}, nil
 
 	case types.BinaryOpOr:
-		left, err := buildLogsPredicate(binaryExpr.Left, columns)
+		left, err := BuildLogsPredicate(binaryExpr.Left, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building left binary predicate: %w", err)
 		}
-		right, err := buildLogsPredicate(binaryExpr.Right, columns)
+		right, err := BuildLogsPredicate(binaryExpr.Right, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building right binary predicate: %w", err)
 		}
 		return logs.OrPredicate{Left: left, Right: right}, nil
 	}
 
-	if _, ok := comparisonBinaryOps[binaryExpr.Op]; ok {
+	if _, ok := logsComparisonBinaryOps[binaryExpr.Op]; ok {
 		return buildLogsComparison(binaryExpr, columns)
 	}
 
 	return nil, fmt.Errorf("expression %[1]s (type %[1]T) cannot be interpreted as a boolean", expr)
 }
 
-func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (logs.Predicate, error) {
+func buildLogsComparison(expr *BinaryExpr, columns []*logs.Column) (logs.Predicate, error) {
 	// Currently, we only support comparisons where the left-hand side is a
-	// [physical.ColumnExpr] and the right-hand side is a [physical.LiteralExpr].
+	// [ColumnExpr] and the right-hand side is a [LiteralExpr].
 	//
 	// Support for other cases could be added in the future:
 	//
@@ -156,22 +174,23 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 	// * LHS ColumnExpr, RHS ColumnExpr could be supported in the future, but would need
 	//   support down to the dataset level.
 
-	columnRef, leftValid := expr.Left.(*physical.ColumnExpr)
-	literalExpr, rightValid := expr.Right.(*physical.LiteralExpr)
+	columnRef, leftValid := expr.Left.(*ColumnExpr)
+	literalExpr, rightValid := expr.Right.(*LiteralExpr)
 
 	if !leftValid || !rightValid {
 		return nil, fmt.Errorf("binary comparisons require the left-hand operation to reference a column (got %T) and the right-hand operation to be a literal (got %T)", expr.Left, expr.Right)
 	}
 
-	// findColumn may return nil for col if the referenced column doesn't exist;
-	// this is handled in the switch statement below and converts to either
-	// [logs.FalsePredicate] or [logs.TruePredicate] depending on the operation.
-	col, err := findColumn(columnRef.Ref, columns)
+	// findLogsColumn may return nil for col if the referenced column doesn't
+	// exist; this is handled in the switch statement below and converts to
+	// either [logs.FalsePredicate] or [logs.TruePredicate] depending on the
+	// operation.
+	col, err := findLogsColumn(columnRef.Ref, columns)
 	if err != nil {
 		return nil, fmt.Errorf("finding column %s: %w", columnRef.Ref, err)
 	}
 
-	s, err := buildDataobjScalar(literalExpr)
+	s, err := buildLogsScalar(literalExpr)
 	if err != nil {
 		return nil, err
 	}
@@ -358,10 +377,10 @@ func predicateForAbsentColumn(op types.BinaryOp, s scalar.Scalar) (logs.Predicat
 	return logs.FalsePredicate{}, true, nil
 }
 
-// findColumn finds a column by ref in the slice of columns. If ref is invalid,
-// findColumn returns an error. If the column does not exist, findColumn
+// findLogsColumn finds a column by ref in the slice of columns. If ref is invalid,
+// findLogsColumn returns an error. If the column does not exist, findLogsColumn
 // returns nil.
-func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, error) {
+func findLogsColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, error) {
 	if ref.Type != types.ColumnTypeBuiltin && ref.Type != types.ColumnTypeMetadata && ref.Type != types.ColumnTypeAmbiguous {
 		return nil, fmt.Errorf("invalid column ref %s, expected builtin or metadata", ref)
 	}
@@ -388,9 +407,9 @@ func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, erro
 	return nil, nil
 }
 
-// buildDataobjScalar builds a dataobj-compatible [scalar.Scalar] from a
+// buildLogsScalar builds a dataobj-compatible [scalar.Scalar] from a
 // [types.Literal].
-func buildDataobjScalar(expr *physical.LiteralExpr) (scalar.Scalar, error) {
+func buildLogsScalar(expr *LiteralExpr) (scalar.Scalar, error) {
 	// [logs.ReaderOptions.Validate] specifies that all scalars must be one of
 	// the given types:
 	//
@@ -440,7 +459,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return bytes.Contains(getBytes(value), find)
+				return bytes.Contains(getLogsBytes(value), find)
 			},
 		}, nil
 
@@ -448,7 +467,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return !bytes.Contains(getBytes(value), find)
+				return !bytes.Contains(getLogsBytes(value), find)
 			},
 		}, nil
 
@@ -460,7 +479,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return re.Match(getBytes(value))
+				return re.Match(getLogsBytes(value))
 			},
 		}, nil
 
@@ -472,7 +491,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return !re.Match(getBytes(value))
+				return !re.Match(getLogsBytes(value))
 			},
 		}, nil
 	}
@@ -482,7 +501,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 	return nil, fmt.Errorf("unrecognized match operation %s", op)
 }
 
-func getBytes(value scalar.Scalar) []byte {
+func getLogsBytes(value scalar.Scalar) []byte {
 	if !value.IsValid() {
 		return nil
 	}
@@ -515,7 +534,7 @@ func buildLogsCaseInsensitiveMatch(col *logs.Column, op types.BinaryOp, value sc
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return matchutil.EqualUpper(getBytes(value), find)
+				return matchutil.EqualUpper(getLogsBytes(value), find)
 			},
 		}, nil
 
@@ -523,7 +542,7 @@ func buildLogsCaseInsensitiveMatch(col *logs.Column, op types.BinaryOp, value sc
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return matchutil.ContainsUpper(getBytes(value), find)
+				return matchutil.ContainsUpper(getLogsBytes(value), find)
 			},
 		}, nil
 
@@ -531,7 +550,7 @@ func buildLogsCaseInsensitiveMatch(col *logs.Column, op types.BinaryOp, value sc
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
-				return !matchutil.ContainsUpper(getBytes(value), find)
+				return !matchutil.ContainsUpper(getLogsBytes(value), find)
 			},
 		}, nil
 	}
@@ -575,9 +594,9 @@ func logsPredicateIsSatisfiableForAllRows(p logs.Predicate) bool {
 	}
 }
 
-// logsPredicatesAreUnsatisfiable reports whether the conjunction of predicates can
-// never match a row. Multiple predicates passed to [logs.Reader] are ANDed.
-func logsPredicatesAreUnsatisfiable(predicates []logs.Predicate) bool {
+// LogsPredicatesAreUnsatisfiable reports whether the conjunction of predicates
+// can never match a row. Multiple predicates passed to [logs.Reader] are ANDed.
+func LogsPredicatesAreUnsatisfiable(predicates []logs.Predicate) bool {
 	for _, p := range predicates {
 		if logsPredicateIsUnsatisfiable(p) {
 			return true
