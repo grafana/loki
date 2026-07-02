@@ -91,3 +91,28 @@ queries:
       category and extends the input-deletion logic to remove targets in
       addition to rename sources — a regression here would land at the
       result-builder boundary, not at the executor unit test.
+  - description: non-strict logfmt on an unparseable line must not add __error__ (matches v1 silent-swallow)
+    query: ${SELECTOR} | logfmt
+    kind: log
+    time_range:
+      length: 24h
+    directions: backward # forward log queries unsupported by v2 engine
+    tags:
+      - logfmt
+      - parser-error
+      - non-strict
+      - stream-identity
+    requires:
+      log_format: unstructured
+    notes: >
+      Regression for the v1↔v2 stream_missing / stream_entry_count_mismatch
+      goldfish reports. v1's [log.LogfmtParser] only sets [__error__] when
+      strict=true (see `l.strict && l.dec.Err() != nil` guard in
+      pkg/logql/log/parser.go); default `| logfmt` is non-strict and
+      silently swallows parse errors. v2's executor used to unconditionally
+      surface parse errors via [__error__] / [__error_details__], which
+      changed stream identity for the same underlying rows and produced
+      per-stream diffs vs v1 whenever the log line wasn't logfmt-formatted
+      (plain-text lines, embedded JSON bodies with `"`, etc). Stream label
+      sets and per-stream entry counts must match v1 across parseable and
+      unparseable lines.
