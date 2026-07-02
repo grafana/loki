@@ -1888,7 +1888,9 @@ const (
 	RegionNameEuWest3      RegionName = "eu-west-3"
 	RegionNameEuCentral1   RegionName = "eu-central-1"
 	RegionNameEuNorth1     RegionName = "eu-north-1"
+	RegionNameEuSouth2     RegionName = "eu-south-2"
 	RegionNameCaCentral1   RegionName = "ca-central-1"
+	RegionNameApEast1      RegionName = "ap-east-1"
 	RegionNameApSouth1     RegionName = "ap-south-1"
 	RegionNameApSoutheast1 RegionName = "ap-southeast-1"
 	RegionNameApSoutheast2 RegionName = "ap-southeast-2"
@@ -1896,6 +1898,7 @@ const (
 	RegionNameApNortheast2 RegionName = "ap-northeast-2"
 	RegionNameApSoutheast3 RegionName = "ap-southeast-3"
 	RegionNameApSoutheast5 RegionName = "ap-southeast-5"
+	RegionNameSaEast1      RegionName = "sa-east-1"
 )
 
 // Values returns all known values for RegionName. Note that this can be expanded
@@ -1913,7 +1916,9 @@ func (RegionName) Values() []RegionName {
 		"eu-west-3",
 		"eu-central-1",
 		"eu-north-1",
+		"eu-south-2",
 		"ca-central-1",
+		"ap-east-1",
 		"ap-south-1",
 		"ap-southeast-1",
 		"ap-southeast-2",
@@ -1921,6 +1926,7 @@ func (RegionName) Values() []RegionName {
 		"ap-northeast-2",
 		"ap-southeast-3",
 		"ap-southeast-5",
+		"sa-east-1",
 	}
 }
 
