@@ -227,6 +227,20 @@ type SpecIndexConfig struct {
 	// PropertyMergeStrategy defines how to handle conflicts when merging properties.
 	PropertyMergeStrategy datamodel.PropertyMergeStrategy
 
+	// SkipMetadataCollection disables the collection of diagnostic metadata during indexing:
+	// descriptions, summaries, enums, objects-with-properties, security requirement
+	// references, and the JSONPath `Path` values on inline schema references. Skipping
+	// them significantly reduces allocations and retained memory when parsing large
+	// documents. Reference extraction and resolution are unaffected.
+	//
+	// -- UNSAFE FOR DIAGNOSTIC, RULE, OR PATH CONSUMERS --
+	// When enabled, GetAllDescriptions, GetAllSummaries, GetAllEnums,
+	// GetAllObjectsWithProperties, GetSecurityRequirementReferences and the related
+	// counts are intentionally empty/zero, and inline schema Reference.Path values are
+	// empty strings. vacuum and any other tool that consumes index metadata or Path
+	// values must NOT enable this. Defaults to false (everything is collected).
+	SkipMetadataCollection bool
+
 	// private fields
 	uri []string
 	id  string
@@ -279,6 +293,7 @@ func (s *SpecIndexConfig) ToDocumentConfiguration() *datamodel.DocumentConfigura
 		ResolveNestedRefsWithDocumentContext:  s.ResolveNestedRefsWithDocumentContext,
 		PropertyMergeStrategy:                 strategy,
 		SkipExternalRefResolution:             s.SkipExternalRefResolution,
+		SkipMetadataCollection:                s.SkipMetadataCollection,
 		Logger:                                s.Logger,
 	}
 }
@@ -416,7 +431,8 @@ type SpecIndex struct {
 	built                               bool
 	uri                                 []string
 	logger                              *slog.Logger
-	nodeMap                             map[int]map[int]*yaml.Node
+	nodeLines                           [][]nodeLineEntry
+	legacyNodeMap                       map[int]map[int]*yaml.Node // materialized on demand by GetNodeMap only
 	nodeMapCompleted                    chan struct{}
 	pendingResolve                      []refMap
 	highModelCache                      Cache
@@ -444,8 +460,30 @@ func (index *SpecIndex) GetConfig() *SpecIndexConfig {
 }
 
 // GetNodeMap returns the line-to-column-to-node map built during indexing.
+// The map is materialized from the internal line index on first call and cached.
+//
+// Deprecated: use GetNode for single lookups; this method exists for API
+// compatibility and allocates a full legacy map on first use.
 func (index *SpecIndex) GetNodeMap() map[int]map[int]*yaml.Node {
-	return index.nodeMap
+	index.awaitNodeMap()
+	index.nodeMapLock.Lock()
+	defer index.nodeMapLock.Unlock()
+	if index.legacyNodeMap != nil || index.nodeLines == nil {
+		return index.legacyNodeMap
+	}
+	legacy := make(map[int]map[int]*yaml.Node)
+	for line, entries := range index.nodeLines {
+		if len(entries) == 0 {
+			continue
+		}
+		cols := make(map[int]*yaml.Node, len(entries))
+		for _, e := range entries {
+			cols[int(e.column)] = e.node
+		}
+		legacy[line] = cols
+	}
+	index.legacyNodeMap = legacy
+	return legacy
 }
 
 // GetCache returns the reference lookup cache used during resolution.
@@ -543,7 +581,12 @@ func (index *SpecIndex) releaseComponentIndexes() {
 }
 
 func (index *SpecIndex) releaseDerivedState() {
-	index.nodeMap = nil
+	// node-map state is read concurrently via awaitNodeMap/GetNode; nil it
+	// under the same lock those readers use.
+	index.nodeMapLock.Lock()
+	index.nodeLines = nil
+	index.legacyNodeMap = nil
+	index.nodeMapLock.Unlock()
 	index.allDescriptions = nil
 	index.allSummaries = nil
 	index.allEnums = nil
@@ -603,7 +646,9 @@ func (index *SpecIndex) resetRuntimeState() {
 	index.built = false
 	index.componentIndexChan = nil
 	index.polyComponentIndexChan = nil
-	index.nodeMapCompleted = nil
+	// nodeMapCompleted is deliberately NOT nilled: it is closed (retaining
+	// nothing) and awaitNodeMap reads the field without a lock on the GetNode
+	// hot path - writing nil here would race every reader for zero benefit.
 }
 
 // SetAbsolutePath sets the absolute path to the spec file for the index. Will be absolute, either as a http link or a file.

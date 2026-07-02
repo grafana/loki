@@ -20,6 +20,7 @@ import (
 	"github.com/pb33f/libopenapi/datamodel/low"
 	"github.com/pb33f/libopenapi/index"
 	"github.com/pb33f/libopenapi/orderedmap"
+	"github.com/pb33f/libopenapi/utils"
 	"go.yaml.in/yaml/v4"
 )
 
@@ -147,6 +148,10 @@ func ResolveExternalRef[H any, L any](
 		return result, nil
 	}
 
+	if isResolvedExternalRefModel(lowObj) {
+		return result, nil
+	}
+
 	ref := lowObj.GetReference()
 	resolved := idx.FindComponent(context.Background(), ref)
 	if resolved == nil || resolved.Node == nil {
@@ -166,6 +171,22 @@ func ResolveExternalRef[H any, L any](
 	result.Low = lowResolved
 	result.Resolved = true
 	return result, nil
+}
+
+func isResolvedExternalRefModel(lowObj ExternalRefResolver) bool {
+	if !utils.IsExternalRef(lowObj.GetReference()) {
+		return false
+	}
+	rooted, ok := lowObj.(low.HasRootNode)
+	if !ok {
+		return false
+	}
+	root := rooted.GetRootNode()
+	if root == nil {
+		return false
+	}
+	isRef, _, _ := utils.IsNodeRefValue(root)
+	return !isRef
 }
 
 // RenderExternalRef is a convenience function that resolves an external reference and renders it inline.

@@ -41,44 +41,96 @@ type NodeOrigin struct {
 	Index *SpecIndex `json:"-" yaml:"-"`
 }
 
+// nodeLineEntry is a single (column, node) pair on one line of the spec. Lines hold very
+// few nodes, so a small slice scanned linearly is far cheaper than a per-line map.
+type nodeLineEntry struct {
+	column int32
+	node   *yaml.Node
+}
+
 // GetNode returns a node from the spec based on a line and column. The second return var bool is true
-// if the node was found, false if not.
+// if the node was found, false if not. Blocks until the node line index has been fully built.
 func (index *SpecIndex) GetNode(line int, column int) (*yaml.Node, bool) {
+	index.awaitNodeMap()
 	index.nodeMapLock.RLock()
 	defer index.nodeMapLock.RUnlock()
-	if index.nodeMap[line] == nil {
-		return nil, false
-	}
-	node := index.nodeMap[line][column]
+	node := lookupNodeLines(index.nodeLines, line, column)
 	return node, node != nil
 }
 
-// MapNodes maps all nodes in the document to a map of line/column to node.
-// Writes directly to index.nodeMap with lock protection (concurrent reads
-// may happen from ExtractRefs running in parallel).
+// awaitNodeMap blocks until MapNodes has published the node line index. It is a no-op
+// once the index has been built or released (the completion channel is close-only).
+func (index *SpecIndex) awaitNodeMap() {
+	if ch := index.nodeMapCompleted; ch != nil {
+		<-ch
+	}
+}
+
+// lookupNodeLines returns the node stored at line/column, or nil if absent.
+func lookupNodeLines(lines [][]nodeLineEntry, line, column int) *yaml.Node {
+	if line < 0 || line >= len(lines) {
+		return nil
+	}
+	for _, e := range lines[line] {
+		if int(e.column) == column {
+			return e.node
+		}
+	}
+	return nil
+}
+
+// MapNodes maps all nodes in the document by line and column. The index is built into a
+// local structure without locking, published under a single lock, and completion is
+// signalled by closing nodeMapCompleted (close-only: supports any number of waiters).
 func (index *SpecIndex) MapNodes(rootNode *yaml.Node) {
-	mapNodesRecursive(rootNode, index, true)
-	index.nodeMapCompleted <- struct{}{}
+	sizeHint := 0
+	if index.config != nil && index.config.SpecInfo != nil {
+		sizeHint = index.config.SpecInfo.NumLines
+	}
+	// lines are 1-based; +1 so line NumLines is directly addressable.
+	lines := make([][]nodeLineEntry, sizeHint+1)
+	lines = mapNodesRecursive(rootNode, lines)
+	index.nodeMapLock.Lock()
+	index.nodeLines = lines
+	index.nodeMapLock.Unlock()
 	close(index.nodeMapCompleted)
 }
 
-func mapNodesRecursive(node *yaml.Node, index *SpecIndex, root bool) {
+func mapNodesRecursive(node *yaml.Node, lines [][]nodeLineEntry) [][]nodeLineEntry {
 	if node.Kind == yaml.DocumentNode {
 		node = node.Content[0]
 	}
 	for _, child := range node.Content {
-		index.nodeMapLock.Lock()
-		if index.nodeMap[child.Line] == nil {
-			index.nodeMap[child.Line] = make(map[int]*yaml.Node)
+		lines = addNodeLineEntry(lines, child)
+		lines = mapNodesRecursive(child, lines)
+	}
+	return addNodeLineEntry(lines, node)
+}
+
+// addNodeLineEntry records node at its line/column, preserving the previous map
+// semantics: a later write to the same line/column replaces the earlier one
+// (parents are written after their children, so parents win collisions).
+func addNodeLineEntry(lines [][]nodeLineEntry, node *yaml.Node) [][]nodeLineEntry {
+	line := node.Line
+	if line < 0 {
+		return lines
+	}
+	if line >= len(lines) {
+		grown := len(lines) * 2
+		if grown <= line {
+			grown = line + 1
 		}
-		index.nodeMap[child.Line][child.Column] = child
-		index.nodeMapLock.Unlock()
-		mapNodesRecursive(child, index, false)
+		expanded := make([][]nodeLineEntry, grown)
+		copy(expanded, lines)
+		lines = expanded
 	}
-	index.nodeMapLock.Lock()
-	if index.nodeMap[node.Line] == nil {
-		index.nodeMap[node.Line] = make(map[int]*yaml.Node)
+	entries := lines[line]
+	for i := range entries {
+		if int(entries[i].column) == node.Column {
+			entries[i].node = node
+			return lines
+		}
 	}
-	index.nodeMap[node.Line][node.Column] = node
-	index.nodeMapLock.Unlock()
+	lines[line] = append(entries, nodeLineEntry{column: int32(node.Column), node: node})
+	return lines
 }

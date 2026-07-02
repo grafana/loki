@@ -62,7 +62,6 @@ func createNewIndex(ctx context.Context, rootNode *yaml.Node, index *SpecIndex, 
 		return index
 	}
 	index.nodeMapCompleted = make(chan struct{})
-	index.nodeMap = make(map[int]map[int]*yaml.Node)
 	go index.MapNodes(rootNode)
 
 	index.cache = new(sync.Map)

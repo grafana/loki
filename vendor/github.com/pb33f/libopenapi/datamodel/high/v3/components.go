@@ -315,7 +315,7 @@ func preserveComponentRefEntries[T any](
 				sectionNode,
 			)
 		}
-		upsertMapNodeEntry(sectionNode, cloneYAMLNode(keyNode), cloneYAMLNode(valueNode))
+		upsertMapNodeEntry(sectionNode, utils.CloneYAMLNode(keyNode), utils.CloneYAMLNode(valueNode))
 	}
 }
 
@@ -345,21 +345,4 @@ func upsertMapNodeEntry(m *yaml.Node, keyNode, valueNode *yaml.Node) {
 		}
 	}
 	m.Content = append(m.Content, keyNode, valueNode)
-}
-
-// cloneYAMLNode deep-copies a YAML node tree so preserved low-level nodes can be spliced into
-// rendered output without mutating the original parsed model.
-func cloneYAMLNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-
-	cloned := *node
-	if len(node.Content) > 0 {
-		cloned.Content = make([]*yaml.Node, len(node.Content))
-		for i, child := range node.Content {
-			cloned.Content[i] = cloneYAMLNode(child)
-		}
-	}
-	return &cloned
 }

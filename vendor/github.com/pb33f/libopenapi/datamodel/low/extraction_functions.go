@@ -1100,13 +1100,17 @@ func ExtractExtensions(root *yaml.Node) *orderedmap.Map[KeyReference[string], Va
 	if root == nil {
 		return nil
 	}
-	extensions := utils.FindExtensionNodes(root.Content)
 	extensionMap := orderedmap.New[KeyReference[string], ValueReference[*yaml.Node]]()
-	for _, ext := range extensions {
-		extensionMap.Set(KeyReference[string]{
-			Value:   ext.Key.Value,
-			KeyNode: ext.Key,
-		}, ValueReference[*yaml.Node]{Value: ext.Value, ValueNode: ext.Value})
+	content := root.Content
+	for i := 0; i+1 < len(content); i += 2 {
+		key := content[i]
+		if strings.HasPrefix(key.Value, "x-") {
+			value := utils.NodeAlias(content[i+1])
+			extensionMap.Set(KeyReference[string]{
+				Value:   key.Value,
+				KeyNode: key,
+			}, ValueReference[*yaml.Node]{Value: value, ValueNode: value})
+		}
 	}
 	return extensionMap
 }
