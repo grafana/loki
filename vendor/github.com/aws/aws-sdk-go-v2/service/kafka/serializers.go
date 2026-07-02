@@ -5755,6 +5755,13 @@ func awsRestjson1_serializeDocumentKafkaClusterClientAuthentication(v *types.Kaf
 	object := value.Object()
 	defer object.Close()
 
+	if v.MTLS != nil {
+		ok := object.Key("mTLS")
+		if err := awsRestjson1_serializeDocumentKafkaClusterMTLSAuthentication(v.MTLS, ok); err != nil {
+			return err
+		}
+	}
+
 	if v.SaslScram != nil {
 		ok := object.Key("saslScram")
 		if err := awsRestjson1_serializeDocumentKafkaClusterSaslScramAuthentication(v.SaslScram, ok); err != nil {
@@ -5798,6 +5805,18 @@ func awsRestjson1_serializeDocumentKafkaClusterEncryptionInTransit(v *types.Kafk
 	if v.RootCaCertificate != nil {
 		ok := object.Key("rootCaCertificate")
 		ok.String(*v.RootCaCertificate)
+	}
+
+	return nil
+}
+
+func awsRestjson1_serializeDocumentKafkaClusterMTLSAuthentication(v *types.KafkaClusterMTLSAuthentication, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.SecretArn != nil {
+		ok := object.Key("secretArn")
+		ok.String(*v.SecretArn)
 	}
 
 	return nil
