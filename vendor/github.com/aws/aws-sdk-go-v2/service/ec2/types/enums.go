@@ -11106,6 +11106,27 @@ func (SupportedAdditionalProcessorFeature) Values() []SupportedAdditionalProcess
 	}
 }
 
+type TaggableResourceType string
+
+// Enum values for TaggableResourceType
+const (
+	TaggableResourceTypeNetworkInterface TaggableResourceType = "network-interface"
+	TaggableResourceTypeInstance         TaggableResourceType = "instance"
+	TaggableResourceTypeAutoScalingGroup TaggableResourceType = "auto-scaling-group"
+)
+
+// Values returns all known values for TaggableResourceType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (TaggableResourceType) Values() []TaggableResourceType {
+	return []TaggableResourceType{
+		"network-interface",
+		"instance",
+		"auto-scaling-group",
+	}
+}
+
 type TargetCapacityUnitType string
 
 // Enum values for TargetCapacityUnitType

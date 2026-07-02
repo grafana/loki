@@ -33,11 +33,6 @@ func (c *Client) CreateCapacityReservationFleet(ctx context.Context, params *Cre
 
 type CreateCapacityReservationFleetInput struct {
 
-	// Information about the instance types for which to reserve the capacity.
-	//
-	// This member is required.
-	InstanceTypeSpecifications []types.ReservationFleetInstanceSpecification
-
 	// The total number of capacity units to be reserved by the Capacity Reservation
 	// Fleet. This value, together with the instance type weights that you assign to
 	// each instance type used by the Fleet determine the number of instances for which
@@ -89,6 +84,9 @@ type CreateCapacityReservationFleetInput struct {
 	// Instances do not need to explicitly target a Capacity Reservation Fleet to use
 	// its reserved capacity.
 	InstanceMatchCriteria types.FleetInstanceMatchCriteria
+
+	// Information about the instance types for which to reserve the capacity.
+	InstanceTypeSpecifications []types.ReservationFleetInstanceSpecification
 
 	// The tags to assign to the Capacity Reservation Fleet. The tags are
 	// automatically assigned to the Capacity Reservations in the Fleet.
