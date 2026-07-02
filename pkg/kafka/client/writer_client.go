@@ -302,6 +302,10 @@ func (c *Producer) Close() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	if len(records) == 0 {
+		return kgo.ProduceResults{}
+	}
+
 	c.produceRequestsTotal.Add(float64(len(records)))
 
 	// Call interceptor with all records if configured.
