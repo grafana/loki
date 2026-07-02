@@ -63,4 +63,14 @@ type Conn interface {
 
 	// RemoteAddr returns the address of the remote side of the connection.
 	RemoteAddr() net.Addr
+
+	// transport returns the bounded transport label for metrics.
+	transport() transport
+
+	// setMetrics binds the metrics used by the connection's internal send and
+	// receive paths.
+	setMetrics(*Metrics)
+
+	// sendFrame sends frame with the send mode label supplied by Peer.
+	sendFrame(context.Context, Frame, sendMode) error
 }
