@@ -298,7 +298,7 @@ func (orig *ExponentialHistogramDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "zeroThreshold", "zero_threshold":
 			orig.ZeroThreshold = iter.ReadFloat64()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }
