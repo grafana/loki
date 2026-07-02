@@ -324,6 +324,8 @@ func (s *Schema) hash(quick bool) uint64 {
 
 	writeSchemaMapHashes(sb, s.PatternProperties.Value)
 
+	writeSchemaMapHashes(sb, s.Defs.Value)
+
 	if len(s.PrefixItems.Value) > 0 {
 		scratch = resizeSchemaHashScratch(scratch, len(s.PrefixItems.Value))
 		for i := range s.PrefixItems.Value {

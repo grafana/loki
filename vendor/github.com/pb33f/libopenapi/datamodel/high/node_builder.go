@@ -348,6 +348,19 @@ func (n *NodeBuilder) Render() *yaml.Node {
 	return m
 }
 
+// encodeSafeValue returns a value safe to pass to (*yaml.Node).Encode. When the
+// value is a *yaml.Node it returns a deep copy: Encode desolves the represented
+// graph in place (Desolve rewrites Tag/Style), and the representer aliases input
+// nodes, so encoding a model-owned node would mutate it. With concurrent renders
+// (e.g. linters running rules in parallel) that mutation races with readers of
+// the same node. Encoding a copy keeps shared nodes immutable.
+func encodeSafeValue(value any) any {
+	if vn, ok := value.(*yaml.Node); ok {
+		return utils.CloneYAMLNode(vn)
+	}
+	return value
+}
+
 // AddYAMLNode will add a new *yaml.Node to the parent node, using the tag, key and value provided.
 // If the value is nil, then the node will not be added. This method is recursive, so it will dig down
 // into any non-scalar types.
@@ -492,7 +505,7 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 			break
 		}
 
-		err := rawNode.Encode(value)
+		err := rawNode.Encode(encodeSafeValue(value))
 		if err != nil {
 			return parent
 		} else {
@@ -645,7 +658,7 @@ func (n *NodeBuilder) AddYAMLNode(parent *yaml.Node, entry *nodes.NodeEntry) *ya
 						}
 					}
 
-					err := rawNode.Encode(value)
+					err := rawNode.Encode(encodeSafeValue(value))
 					if err != nil {
 						return parent
 					} else {

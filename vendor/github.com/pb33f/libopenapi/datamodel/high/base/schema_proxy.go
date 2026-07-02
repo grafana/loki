@@ -175,12 +175,12 @@ type SchemaProxy struct {
 	buildError error
 	rendered   *Schema
 	refStr     string
-	lock       *sync.Mutex
+	lock       sync.Mutex
 }
 
 // NewSchemaProxy creates a new high-level SchemaProxy from a low-level one.
 func NewSchemaProxy(schema *low.NodeReference[*base.SchemaProxy]) *SchemaProxy {
-	return &SchemaProxy{schema: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{schema: schema}
 }
 
 // copySchemaWithParentProxy creates a shallow copy of a schema and sets the ParentProxy
@@ -193,13 +193,13 @@ func (sp *SchemaProxy) copySchemaWithParentProxy(schema *Schema) *Schema {
 // CreateSchemaProxy will create a new high-level SchemaProxy from a high-level Schema, this acts the same
 // as if the SchemaProxy is pre-rendered.
 func CreateSchemaProxy(schema *Schema) *SchemaProxy {
-	return &SchemaProxy{rendered: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{rendered: schema}
 }
 
 // CreateSchemaProxyRef will create a new high-level SchemaProxy from a reference string, this is used only when
 // building out new models from scratch that require a reference rather than a schema implementation.
 func CreateSchemaProxyRef(ref string) *SchemaProxy {
-	return &SchemaProxy{refStr: ref, lock: &sync.Mutex{}}
+	return &SchemaProxy{refStr: ref}
 }
 
 // CreateSchemaProxyRefWithSchema creates a SchemaProxy that carries both a $ref and sibling schema
@@ -208,7 +208,7 @@ func CreateSchemaProxyRef(ref string) *SchemaProxy {
 //
 // If schema is nil, the result behaves identically to CreateSchemaProxyRef.
 func CreateSchemaProxyRefWithSchema(ref string, schema *Schema) *SchemaProxy {
-	return &SchemaProxy{refStr: ref, rendered: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{refStr: ref, rendered: schema}
 }
 
 // GetValueNode returns the value node of the SchemaProxy.
@@ -228,7 +228,7 @@ func (sp *SchemaProxy) GetValueNode() *yaml.Node {
 // instead for proxies created using NewSchemaProxy or CreateSchema* methods.
 // https://github.com/pb33f/libopenapi/issues/403
 func (sp *SchemaProxy) Schema() *Schema {
-	if sp == nil || sp.lock == nil {
+	if sp == nil {
 		return nil
 	}
 
@@ -376,9 +376,6 @@ func (sp *SchemaProxy) BuildSchema() (*Schema, error) {
 		return nil, nil
 	}
 	schema := sp.Schema()
-	if sp.lock == nil {
-		return schema, sp.buildError
-	}
 	sp.lock.Lock()
 	er := sp.buildError
 	sp.lock.Unlock()
@@ -389,9 +386,6 @@ func (sp *SchemaProxy) BuildSchema() (*Schema, error) {
 func (sp *SchemaProxy) GetBuildError() error {
 	if sp == nil {
 		return nil
-	}
-	if sp.lock == nil {
-		return sp.buildError
 	}
 	sp.lock.Lock()
 	err := sp.buildError
@@ -546,8 +540,8 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 			continue
 		}
 		if keyNode.Value == "$ref" {
-			refKey := cloneYAMLNode(keyNode)
-			refValue := cloneYAMLNode(valueNode)
+			refKey := utils.CloneYAMLNode(keyNode)
+			refValue := utils.CloneYAMLNode(valueNode)
 			if refValue == nil {
 				refValue = utils.CreateStringNode(ref)
 			}
@@ -556,8 +550,8 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 			continue
 		}
 		if _, siblingValue := findYAMLPair(siblingNode, keyNode.Value); siblingValue != nil {
-			renderKey := cloneYAMLNode(keyNode)
-			result.Content = append(result.Content, renderKey, cloneYAMLNode(siblingValue))
+			renderKey := utils.CloneYAMLNode(keyNode)
+			result.Content = append(result.Content, renderKey, utils.CloneYAMLNode(siblingValue))
 			consumed[keyNode.Value] = struct{}{}
 		}
 	}
@@ -568,7 +562,7 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 		if _, ok := consumed[keyNode.Value]; ok {
 			continue
 		}
-		result.Content = append(result.Content, cloneYAMLNode(keyNode), cloneYAMLNode(valueNode))
+		result.Content = append(result.Content, utils.CloneYAMLNode(keyNode), utils.CloneYAMLNode(valueNode))
 	}
 
 	return result, true, nil
@@ -613,32 +607,6 @@ func findYAMLPair(node *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
 		}
 	}
 	return nil, nil
-}
-
-func cloneYAMLNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-	clone := &yaml.Node{
-		Kind:        node.Kind,
-		Style:       node.Style,
-		Tag:         node.Tag,
-		Value:       node.Value,
-		Anchor:      node.Anchor,
-		Alias:       node.Alias,
-		Line:        node.Line,
-		Column:      node.Column,
-		HeadComment: node.HeadComment,
-		LineComment: node.LineComment,
-		FootComment: node.FootComment,
-	}
-	if len(node.Content) > 0 {
-		clone.Content = make([]*yaml.Node, len(node.Content))
-		for i, child := range node.Content {
-			clone.Content[i] = cloneYAMLNode(child)
-		}
-	}
-	return clone
 }
 
 // Render will return a YAML representation of the Schema object as a byte slice.

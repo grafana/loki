@@ -521,10 +521,10 @@ func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode 
 			}
 			return NodeAlias(v), NodeAlias(nodes[i+1]) // next node is what we need.
 		}
-		for x, j := range mergedNodeContent(v) {
+		content := mergedNodeContent(v)
+		for x, j := range content {
 			if key == j.Value {
 				if IsNodeMap(v) {
-					content := mergedNodeContent(v)
 					if x+1 == len(content) {
 						return NodeAlias(v), NodeAlias(content[x])
 					}
@@ -532,7 +532,7 @@ func FindKeyNode(key string, nodes []*yaml.Node) (keyNode *yaml.Node, valueNode 
 
 				}
 				if IsNodeArray(v) {
-					return NodeAlias(v), NodeAlias(mergedNodeContent(v)[x])
+					return NodeAlias(v), NodeAlias(content[x])
 				}
 			}
 		}
@@ -960,43 +960,6 @@ func isPathChar(s string) bool {
 	return true
 }
 
-func appendSegment(sb *strings.Builder, segs []string, cleaned []string, i int, wrapInQuotes bool) {
-	sb.Reset()
-	if wrapInQuotes {
-		sb.WriteString("['")
-		sb.WriteString(segs[i])
-		sb.WriteString("']")
-	} else {
-		sb.WriteString("[")
-		sb.WriteString(segs[i])
-		sb.WriteString("]")
-	}
-	c := sb.String()
-	sb.Reset()
-	sb.WriteString(cleaned[len(cleaned)-1])
-	sb.WriteString(c)
-	cleaned[len(cleaned)-1] = sb.String()
-}
-
-// appendSegmentOptimized uses strings.Builder more efficiently to avoid allocations
-func appendSegmentOptimized(segs []string, cleaned []string, i int, wrapInQuotes bool) {
-	var builder strings.Builder
-	if wrapInQuotes {
-		builder.Grow(len(cleaned[len(cleaned)-1]) + len(segs[i]) + 4) // existing + [''] + segment
-		builder.WriteString(cleaned[len(cleaned)-1])
-		builder.WriteString("['")
-		builder.WriteString(segs[i])
-		builder.WriteString("']")
-	} else {
-		builder.Grow(len(cleaned[len(cleaned)-1]) + len(segs[i]) + 2) // existing + [] + segment
-		builder.WriteString(cleaned[len(cleaned)-1])
-		builder.WriteByte('[')
-		builder.WriteString(segs[i])
-		builder.WriteByte(']')
-	}
-	cleaned[len(cleaned)-1] = builder.String()
-}
-
 // parseSmallUint returns the unsigned integer value and true if s is a string of
 // digits representing a non-negative integer. Returns 0, false otherwise.
 func parseSmallUint(s string) (int, bool) {
@@ -1016,15 +979,16 @@ func parseSmallUint(s string) (int, bool) {
 // ConvertComponentIdIntoFriendlyPathSearch will convert a JSON Path into a friendly path search string.
 // the friendliness comes from it being suitable for use with any JSON Path parser.
 //
-// This function was re-written in v0.18.0 in order to fix a number of performance issues with the original
-// implementation. Allocations were high and this function is used a lot, this new implementation is much
-// lighter on string allocations by using a string builder.
+// Rewritten as a single pass over the input with one output builder: no segment slice,
+// no per-segment builders. Output is byte-identical to the previous implementation and
+// is pinned by the golden corpus in testdata/component_id_golden.txt.
 func ConvertComponentIdIntoFriendlyPathSearch(id string) (string, string) {
 	if id == "" || id == "#/" {
 		return "", "$."
 	}
-	segs := strings.Split(id, "/")
-	lastSeg := segs[len(segs)-1]
+
+	// the name is the raw final segment, JSON-Pointer unescaped and URL decoded.
+	lastSeg := id[strings.LastIndexByte(id, '/')+1:]
 	if strings.Contains(lastSeg, "~1") {
 		lastSeg = strings.ReplaceAll(lastSeg, "~1", "/")
 	}
@@ -1033,151 +997,125 @@ func ConvertComponentIdIntoFriendlyPathSearch(id string) (string, string) {
 	}
 	name := lastSeg
 
-	// Pre-allocate with estimated capacity
-	estimatedCap := len(segs) + (len(segs) / 2)
-	cleaned := make([]string, 0, estimatedCap)
+	idContainsHash := strings.Contains(id, "#")
+	lastIndex := strings.Count(id, "/") // absolute index of the final segment
 
-	// check for strange spaces, chars and if found, wrap them up, clean them and create a new cleaned path.
-	for i := range segs {
-		if segs[i] == "" {
-			continue
-		}
-		if !isPathChar(segs[i]) {
-
-			if strings.Contains(segs[i], "~1") {
-				segs[i] = strings.ReplaceAll(segs[i], "~1", "/")
-			}
-			if strings.ContainsRune(segs[i], '%') {
-				segs[i], _ = url.QueryUnescape(segs[i])
-			}
-
-			// Use string builder for bracket wrapping
-			var bracketBuilder strings.Builder
-			bracketBuilder.Grow(len(segs[i]) + 4)
-			bracketBuilder.WriteString("['")
-			bracketBuilder.WriteString(segs[i])
-			bracketBuilder.WriteString("']")
-			segs[i] = bracketBuilder.String()
-
-			if len(cleaned) > 0 && i < len(segs)-1 {
-				// Use string builder for concatenation with last cleaned element
-				var concatBuilder strings.Builder
-				concatBuilder.Grow(len(cleaned[len(cleaned)-1]) + len(segs[i]))
-				concatBuilder.WriteString(cleaned[len(cleaned)-1])
-				concatBuilder.WriteString(segs[i])
-				cleaned[len(cleaned)-1] = concatBuilder.String()
-				continue
-			} else {
-				if i > 0 && i < len(segs)-1 {
-					cleaned = append(cleaned, segs[i])
-					continue
-				}
-				if i == len(segs)-1 {
-					l := len(cleaned)
-					if l > 0 {
-						// Use string builder for concatenation
-						var endBuilder strings.Builder
-						endBuilder.Grow(len(cleaned[l-1]) + len(segs[i]))
-						endBuilder.WriteString(cleaned[l-1])
-						endBuilder.WriteString(segs[i])
-						cleaned[l-1] = endBuilder.String()
-					} else {
-						cleaned = append(cleaned, segs[i])
-					}
-				}
-			}
-		} else {
-
-			// strip out any backslashes
-			if strings.Contains(id, "#") && strings.Contains(segs[i], `\`) {
-				segs[i] = strings.ReplaceAll(segs[i], `\`, "")
-				cleaned = append(cleaned, segs[i])
-				continue
-			}
-
-			intVal, isNum := parseSmallUint(segs[i])
-			if isNum {
-				if intVal <= 99 {
-					if len(cleaned) > 0 {
-						appendSegmentOptimized(segs, cleaned, i, false)
-					}
-				} else {
-					if len(cleaned) > 0 {
-						appendSegmentOptimized(segs, cleaned, i, true)
-					}
-				}
-				continue
-			}
-
-			// if we have a plural parent, wrap it in quotes.
-			if i > 0 && segs[i-1] != "" && segs[i-1][len(segs[i-1])-1] == 's' {
-				if i == 2 { // ignore first segment.
-					cleaned = append(cleaned, segs[i])
-					continue
-				}
-
-				// Use string builder for plural wrapping
-				var pluralBuilder strings.Builder
-				pluralBuilder.Grow(len(cleaned[len(cleaned)-1]) + len(segs[i]) + 4)
-				pluralBuilder.WriteString(cleaned[len(cleaned)-1])
-				pluralBuilder.WriteString("['")
-				pluralBuilder.WriteString(segs[i])
-				pluralBuilder.WriteString("']")
-				cleaned[len(cleaned)-1] = pluralBuilder.String()
-				continue
-			}
-
-			cleaned = append(cleaned, segs[i])
-		}
-	}
-
-	// use single string builder for final assembly.
 	// note: we do NOT replace # with $ here. the leading # from JSON Pointer notation
-	// (e.g., "#/components/...") is already stripped when we split by "/", and any #
+	// (e.g., "#/components/...") is dropped by the leading-segment rule, and any #
 	// characters within component names (e.g., "async_search.submit#wait_for_completion_timeout")
 	// should be preserved literally in the JSONPath query. see issue #485.
-	var finalBuilder strings.Builder
-	if len(cleaned) > 1 {
-		// Estimate final size
-		totalLen := 0
-		for _, seg := range cleaned {
-			totalLen += len(seg)
-		}
-		finalBuilder.Grow(totalLen + len(cleaned) + 5) // segments + dots + $ + potential extra .
+	var b strings.Builder
+	b.Grow(len(id) + 16)
+	b.WriteString("$.")
+	elements := 0
 
-		finalBuilder.WriteByte('$')
-		for i, segment := range cleaned {
-			if i > 0 {
-				finalBuilder.WriteByte('.')
-			}
-			finalBuilder.WriteString(segment)
-		}
-	} else {
-		// Handle single segment case
-		if len(cleaned) == 1 {
-			finalBuilder.Grow(len(cleaned[0]) + 5)
-			finalBuilder.WriteString("$.")
-			finalBuilder.WriteString(cleaned[0])
+	// the plural-parent rule reads the previous segment as transformed by its own
+	// iteration (bracket-wrapped segments end in ']', stripped segments may shrink),
+	// so track what the previous segment ended up as, not what it started as.
+	prevNonEmpty := false
+	prevEndsInS := false
+
+	pos := 0
+	for i := 0; pos <= len(id); i++ {
+		var seg string
+		if next := strings.IndexByte(id[pos:], '/'); next >= 0 {
+			seg = id[pos : pos+next]
+			pos += next + 1
 		} else {
-			finalBuilder.WriteString("$.")
+			seg = id[pos:]
+			pos = len(id) + 1
 		}
+
+		if seg == "" {
+			prevNonEmpty = false
+			prevEndsInS = false
+			continue
+		}
+		isLast := i == lastIndex
+
+		if !isPathChar(seg) {
+			t := seg
+			if strings.Contains(t, "~1") {
+				t = strings.ReplaceAll(t, "~1", "/")
+			}
+			if strings.ContainsRune(t, '%') {
+				t, _ = url.QueryUnescape(t)
+			}
+			// the transformed segment is bracket-wrapped: never empty, ends in ']'.
+			prevNonEmpty = true
+			prevEndsInS = false
+			if i == 0 && !isLast {
+				// a leading non-path segment (like the '#' of a JSON Pointer) is dropped.
+				continue
+			}
+			if elements == 0 {
+				elements++ // becomes the first element, no separator needed
+			}
+			b.WriteString("['")
+			b.WriteString(t)
+			b.WriteString("']")
+			continue
+		}
+
+		// strip out any backslashes
+		if idContainsHash && strings.Contains(seg, `\`) {
+			t := strings.ReplaceAll(seg, `\`, "")
+			if elements > 0 {
+				b.WriteByte('.')
+			}
+			b.WriteString(t)
+			elements++
+			prevNonEmpty = t != ""
+			prevEndsInS = t != "" && t[len(t)-1] == 's'
+			continue
+		}
+
+		if intVal, isNum := parseSmallUint(seg); isNum {
+			// an index with no preceding element is dropped.
+			if elements > 0 {
+				if intVal <= 99 {
+					b.WriteByte('[')
+					b.WriteString(seg)
+					b.WriteByte(']')
+				} else {
+					b.WriteString("['")
+					b.WriteString(seg)
+					b.WriteString("']")
+				}
+			}
+			prevNonEmpty = true
+			prevEndsInS = false
+			continue
+		}
+
+		// if we have a plural parent, wrap it in quotes.
+		if i > 0 && prevNonEmpty && prevEndsInS {
+			prevNonEmpty = true
+			prevEndsInS = seg[len(seg)-1] == 's'
+			if i == 2 { // ignore first segment.
+				if elements > 0 {
+					b.WriteByte('.')
+				}
+				b.WriteString(seg)
+				elements++
+				continue
+			}
+			b.WriteString("['")
+			b.WriteString(seg)
+			b.WriteString("']")
+			continue
+		}
+
+		if elements > 0 {
+			b.WriteByte('.')
+		}
+		b.WriteString(seg)
+		elements++
+		prevNonEmpty = true
+		prevEndsInS = seg[len(seg)-1] == 's'
 	}
 
-	replaced := finalBuilder.String()
-
-	// Ensure proper format
-	if len(replaced) > 0 {
-		if len(replaced) > 1 && replaced[1] != '.' {
-			// Insert period after $
-			var dotBuilder strings.Builder
-			dotBuilder.Grow(len(replaced) + 1)
-			dotBuilder.WriteByte(replaced[0]) // $
-			dotBuilder.WriteByte('.')         // .
-			dotBuilder.WriteString(replaced[1:])
-			replaced = dotBuilder.String()
-		}
-	}
-	return name, replaced
+	return name, b.String()
 }
 
 // ConvertComponentIdIntoPath will convert a JSON Path into a component ID

@@ -31,6 +31,7 @@ const (
 	DependentSchemasLabel      = "dependentSchemas"
 	DependentRequiredLabel     = "dependentRequired"
 	PatternPropertiesLabel     = "patternProperties"
+	DefsLabel                  = "$defs"
 	IfLabel                    = "if"
 	ElseLabel                  = "else"
 	ThenLabel                  = "then"
