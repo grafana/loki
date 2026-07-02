@@ -152,6 +152,34 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
+			// Baseline: sum(count_over_time(...)) with no label-reducing stage
+			// keeps the sum-pushdown optimization. Each shard leaf is
+			// sum(count_over_time(...)), so the extractor injects the outer
+			// grouping (noLabels=true) and collapses every line to {} at the
+			// source.
+			in: `sum(count_over_time({foo="bar"}[1m]))`,
+			out: `sum(
+				downstream<sum(count_over_time({foo="bar"}[1m])), shard=0_of_2>
+				++ downstream<sum(count_over_time({foo="bar"}[1m])), shard=1_of_2>
+			)`,
+		},
+		{
+			// Reproducer: adding `| drop __error__` trips ReducesLabels, which
+			// disables the sum-pushdown. The shard leaf becomes a bare
+			// count_over_time(...) whose extractor runs with noLabels=false, so
+			// GroupedLabels() retains the full labelset (stream + structured
+			// metadata) per series instead of {} — exploding intermediate
+			// cardinality even though the outer sum still collapses the final
+			// result.
+			in: `sum(count_over_time({foo="bar"} | drop __error__ [1m]))`,
+			out: `sum(
+				sum without() (
+					downstream<count_over_time({foo="bar"} | drop __error__[1m]), shard=0_of_2>
+					++ downstream<count_over_time({foo="bar"} | drop __error__[1m]), shard=1_of_2>
+				)
+			)`,
+		},
+		{
 			in: `max(count(rate({foo="bar"}[5m]))) / 2`,
 			out: `(max(
 				sum(
