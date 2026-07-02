@@ -1,3 +1,7 @@
+# v1.2.1 (2026-06-29)
+
+* No change notes available for this release.
+
 # v1.2.0 (2026-06-10)
 
 * **Feature**: AWS Sign-In now allows customers to control access to the AWS Management Console using resource-based policies. With this release customers can restrict console access based on network perimeters such as VPC IDs, VPC endpoints, and IP addresses.
