@@ -1561,6 +1561,10 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	// TS and line length
 	decompressedBytes += 2 * binary.MaxVarintLen64
 
+	if lineSize < 0 {
+		si.err = fmt.Errorf("invalid line length in chunk: %d", lineSize)
+		return 0, nil, labels.EmptyLabels(), false
+	}
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
 		return 0, nil, labels.EmptyLabels(), false
@@ -1629,6 +1633,11 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 		l, nSymbolsWidth = binary.Uvarint(si.readBuf[symbolsSectionLengthWidth:si.readBufValid])
 		nSymbols = int(l)
 		lastAttempt = si.readBufValid
+	}
+
+	if nSymbols < 0 {
+		si.err = fmt.Errorf("invalid structured metadata symbol count in chunk: %d", nSymbols)
+		return 0, nil, labels.EmptyLabels(), false
 	}
 
 	// Number of labels
