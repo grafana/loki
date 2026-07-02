@@ -149,7 +149,7 @@ func New(clientID string, options ...Option) (Client, error) {
 
 // authCodeURLOptions contains options for AuthCodeURL
 type authCodeURLOptions struct {
-	claims, loginHint, tenantID, domainHint string
+	claims, loginHint, tenantID, domainHint, prompt string
 }
 
 // AuthCodeURLOption is implemented by options for AuthCodeURL
@@ -159,7 +159,7 @@ type AuthCodeURLOption interface {
 
 // AuthCodeURL creates a URL used to acquire an authorization code.
 //
-// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID]
+// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID], [WithPrompt]
 func (pca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, scopes []string, opts ...AuthCodeURLOption) (string, error) {
 	o := authCodeURLOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -172,6 +172,7 @@ func (pca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string,
 	ap.Claims = o.claims
 	ap.LoginHint = o.loginHint
 	ap.DomainHint = o.domainHint
+	ap.Prompt = o.prompt
 	return pca.base.AuthCodeURL(ctx, clientID, redirectURI, scopes, ap)
 }
 
@@ -526,9 +527,9 @@ func (pca Client) RemoveAccount(ctx context.Context, account Account) error {
 
 // interactiveAuthOptions contains the optional parameters used to acquire an access token for interactive auth code flow.
 type interactiveAuthOptions struct {
-	claims, domainHint, loginHint, redirectURI, tenantID string
-	openURL                                              func(url string) error
-	authnScheme                                          AuthenticationScheme
+	claims, domainHint, loginHint, redirectURI, tenantID, prompt string
+	openURL                                                      func(url string) error
+	authnScheme                                                  AuthenticationScheme
 }
 
 // AcquireInteractiveOption is implemented by options for AcquireTokenInteractive
@@ -581,6 +582,33 @@ func WithDomainHint(domain string) interface {
 					t.domainHint = domain
 				case *interactiveAuthOptions:
 					t.domainHint = domain
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithPrompt adds the IdP prompt query parameter in the auth url.
+func WithPrompt(prompt shared.Prompt) interface {
+	AcquireInteractiveOption
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AcquireInteractiveOption
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *authCodeURLOptions:
+					t.prompt = prompt.String()
+				case *interactiveAuthOptions:
+					t.prompt = prompt.String()
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
 				}
@@ -674,7 +702,11 @@ func (pca Client) AcquireTokenInteractive(ctx context.Context, scopes []string, 
 	authParams.LoginHint = o.loginHint
 	authParams.DomainHint = o.domainHint
 	authParams.State = uuid.New().String()
-	authParams.Prompt = "select_account"
+	if o.prompt != "" {
+		authParams.Prompt = o.prompt
+	} else {
+		authParams.Prompt = shared.PromptSelectAccount.String()
+	}
 	if o.authnScheme != nil {
 		authParams.AuthnScheme = o.authnScheme
 	}

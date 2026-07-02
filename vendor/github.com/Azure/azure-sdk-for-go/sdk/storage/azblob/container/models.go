@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -24,6 +21,28 @@ type SharedKeyCredential = exported.SharedKeyCredential
 func NewSharedKeyCredential(accountName, accountKey string) (*SharedKeyCredential, error) {
 	return exported.NewSharedKeyCredential(accountName, accountKey)
 }
+
+// ExpectContinueMode is the mode for applying the HTTP "Expect: 100-continue" header to
+// operations that include a request body.
+type ExpectContinueMode = exported.ExpectContinueMode
+
+const (
+	// ExpectContinueModeApplyOnThrottle indicates that Expect-Continue will not be applied
+	// until specific errors are encountered from the service, at which point it will be
+	// applied for a fixed window of time after the last triggering error. This is the default.
+	ExpectContinueModeApplyOnThrottle = exported.ExpectContinueModeApplyOnThrottle
+
+	// ExpectContinueModeOn indicates Expect-Continue will be applied regardless of recent
+	// error status. The ContentLengthThreshold option still applies.
+	ExpectContinueModeOn = exported.ExpectContinueModeOn
+
+	// ExpectContinueModeOff indicates Expect-Continue will never be applied.
+	ExpectContinueModeOff = exported.ExpectContinueModeOff
+)
+
+// ExpectContinueOptions configures the behavior for applying the HTTP "Expect: 100-continue"
+// header to operations that include a request body.
+type ExpectContinueOptions = exported.ExpectContinueOptions
 
 // Request Model Declaration -------------------------------------------------------------------------------------------
 
@@ -191,6 +210,9 @@ type ListBlobsFlatOptions struct {
 	MaxResults *int32
 	// Filters the results to return only containers whose name begins with the specified prefix.
 	Prefix *string
+	// Specifies the relative path to list paths from. For non-recursive list, only one entity level is supported; For recursive
+	// list, multiple entity levels are supported. (Inclusive)
+	StartFrom *string
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -213,6 +235,9 @@ type ListBlobsHierarchyOptions struct {
 	MaxResults *int32
 	// Filters the results to return only containers whose name begins with the specified prefix.
 	Prefix *string
+	// Specifies the relative path to list paths from. For non-recursive list, only one entity level is supported; For recursive
+	// list, multiple entity levels are supported. (Inclusive)
+	StartFrom *string
 }
 
 // ContainerClientListBlobHierarchySegmentOptions contains the optional parameters for the ContainerClient.ListBlobHierarchySegment method.
