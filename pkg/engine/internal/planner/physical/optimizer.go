@@ -89,11 +89,21 @@ func (o *Optimizer) Optimize(node Node) map[string]bool {
 	return firings
 }
 
-// addUniqueColumnExpr adds a column to the projections list if it's not already present
+// addUniqueColumnExpr adds a column to the projections list if a column with
+// the same (name, type) pair is not already present.
+//
+// Comparing by (name, type) rather than name alone matters when a parsed
+// field's name collides with a builtin/label/metadata column. A metric query
+// like `sum(count_over_time({...} | json | message="X" [1h]))` reaches the
+// projection-pushdown rule with two entries for `message`: [`ambiguous`,
+// contributed by the [Filter]] and [`builtin`, contributed by the JSON
+// parser's source column]. If we dedup by name only, the [Builtin] entry is
+// dropped, the scan never loads the raw log line, the JSON parser has no
+// source to parse, and the filter matches zero rows.
 func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
 	for _, existing := range projections {
 		if existingCol, ok := existing.(*ColumnExpr); ok {
-			if existingCol.Ref.Column == colExpr.Ref.Column {
+			if existingCol.Ref.Column == colExpr.Ref.Column && existingCol.Ref.Type == colExpr.Ref.Type {
 				return projections, false // already exists
 			}
 		}

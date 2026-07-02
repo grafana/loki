@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -343,6 +344,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 		buildLogical                   func() logical.Value
 		expectedParseKeysRequested     []string
 		expectedDataObjScanProjections []string
+		// expectedDataObjScanProjectionRefs, when non-nil, additionally
+		// asserts the scan's projections as (name, type) pairs. Use this
+		// when the case is sensitive to a column's type (e.g. a parsed
+		// field name colliding with a builtin column of the same name).
+		// Order is not asserted; the runner sorts before comparing.
+		expectedDataObjScanProjectionRefs []types.ColumnRef
 	}{
 		{
 			name: "requested keys remain empty when no operations need parsed fields",
@@ -500,6 +507,61 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			},
 			expectedParseKeysRequested:     nil,
 			expectedDataObjScanProjections: []string{"app", "lvl", "message", "timestamp"},
+		},
+		{
+			name: "Filter on parsed field that collides with builtin (message)",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | json | message="hello" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("message", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("hello"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"message"},
+			expectedDataObjScanProjections: []string{"app", "message", "timestamp"},
+			expectedDataObjScanProjectionRefs: []types.ColumnRef{
+				{Column: "app", Type: types.ColumnTypeLabel},
+				// Critical: the [Builtin] `message` must survive so the
+				// scan loads the raw log line for the JSON parser to
+				// consume. Pre-fix (name-only dedup) this entry was
+				// silently dropped in favour of the earlier-added
+				// [Ambiguous] entry.
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				// The [Ambiguous] `message` (from the [Filter]) also
+				// survives dedup since it has a different type; the
+				// scan silently ignores it (no metadata column of that
+				// name in this data) so it costs nothing.
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+				{Column: "timestamp", Type: types.ColumnTypeBuiltin},
+			},
 		},
 		{
 			name: "RangeAggregation with GroupBy on ambiguous columns",
@@ -800,6 +862,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 			var projectionNode *Projection
 			projections := map[string]struct{}{}
+			projectionRefs := map[types.ColumnRef]struct{}{}
 			for node := range optimizedPlan.graph.Nodes() {
 				if pn, ok := node.(*Projection); ok {
 					projectionNode = pn
@@ -809,6 +872,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					for _, colExpr := range pn.Projections {
 						expr := colExpr.(*ColumnExpr)
 						projections[expr.Ref.Column] = struct{}{}
+						projectionRefs[expr.Ref] = struct{}{}
 					}
 				}
 			}
@@ -858,6 +922,31 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			}
 			sort.Strings(projectionArr)
 			require.Equal(t, tt.expectedDataObjScanProjections, projectionArr)
+
+			// Optional stricter assertion: also verify each projection's
+			// [types.ColumnType]. This catches "same name kept, wrong
+			// type" regressions that the name-only slice above cannot
+			// distinguish — e.g. a parsed field colliding with a builtin.
+			if tt.expectedDataObjScanProjectionRefs != nil {
+				gotRefs := make([]types.ColumnRef, 0, len(projectionRefs))
+				for r := range projectionRefs {
+					gotRefs = append(gotRefs, r)
+				}
+				sort.Slice(gotRefs, func(i, j int) bool {
+					if gotRefs[i].Column != gotRefs[j].Column {
+						return gotRefs[i].Column < gotRefs[j].Column
+					}
+					return gotRefs[i].Type < gotRefs[j].Type
+				})
+				wantRefs := slices.Clone(tt.expectedDataObjScanProjectionRefs)
+				sort.Slice(wantRefs, func(i, j int) bool {
+					if wantRefs[i].Column != wantRefs[j].Column {
+						return wantRefs[i].Column < wantRefs[j].Column
+					}
+					return wantRefs[i].Type < wantRefs[j].Type
+				})
+				require.Equal(t, wantRefs, gotRefs)
+			}
 		})
 	}
 }

@@ -334,15 +334,17 @@ func (r *projectionPushdown) isMetricQuery() bool {
 	return false
 }
 
+// deduplicateColumns removes duplicate column expressions from the list,
+// keying by (name, type) rather than name alone. See [addUniqueColumnExpr]
+// for why type matters at this layer.
 func (r *projectionPushdown) deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
-	seen := make(map[string]bool)
+	seen := make(map[types.ColumnRef]bool)
 	var result []ColumnExpression
 
 	for _, col := range columns {
 		if colExpr, ok := col.(*ColumnExpr); ok {
-			key := colExpr.Ref.Column
-			if !seen[key] {
-				seen[key] = true
+			if !seen[colExpr.Ref] {
+				seen[colExpr.Ref] = true
 				result = append(result, col)
 			}
 		}
