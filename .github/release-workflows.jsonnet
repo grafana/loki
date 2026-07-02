@@ -180,7 +180,6 @@ local weeklyImageJobs = {
         })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
-          step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
           step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
           + step.with({ registry: weeklyImageRegistry }),
           step.new('Publish multi-arch manifest')
@@ -201,6 +200,17 @@ local weeklyImageJobs = {
               ${IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
               ${IMAGE_NAME}@${IMAGE_DIGEST_ARM}
             docker buildx imagetools inspect $IMAGE
+            # Record the published manifest in the job summary.
+            {
+              echo "### Published multi-arch manifest"
+              echo ""
+              echo "| Field | Value |"
+              echo "| --- | --- |"
+              echo "| Image | \`${IMAGE}\` |"
+              echo "| linux/amd64 | \`${IMAGE_DIGEST_AMD64}\` |"
+              echo "| linux/arm64 | \`${IMAGE_DIGEST_ARM64}\` |"
+              echo "| linux/arm | \`${IMAGE_DIGEST_ARM}\` |"
+            } >> "$GITHUB_STEP_SUMMARY"
           ||| % { name: name }),
         ])
       for name in std.objectFields(weeklyImageJobs)
