@@ -113,7 +113,8 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
+	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
+	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
@@ -139,9 +141,42 @@ func (cfg *Config) Validate() error {
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
 		return err
 	}
+	if err := cfg.CircuitBreaker.Validate(); err != nil {
+		return err
+	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
+	}
+	return nil
+}
+
+type CircuitBreakerConfig struct {
+	Enabled          bool          `yaml:"enabled"`
+	OpenPeriod       time.Duration `yaml:"open_period"`
+	HalfOpenPeriod   time.Duration `yaml:"half_open_period"`
+	MaxInflightBytes int           `yaml:"max_inflight_bytes"`
+}
+
+func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
+	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
+	f.DurationVar(&cfg.HalfOpenPeriod, "distributor.circuit-breaker.half-open-period", 30*time.Second, "The half-open period.")
+	f.IntVar(&cfg.MaxInflightBytes, "distributor.circuit-breaker.max-inflight-bytes", 0, "The threshold to close the circuit breaker. 0 to disable.")
+}
+
+func (cfg *CircuitBreakerConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.OpenPeriod < 0 {
+		return errors.New("the open period cannot be negative")
+	}
+	if cfg.HalfOpenPeriod <= 0 {
+		return errors.New("the half-open period cannot be negative")
+	}
+	if cfg.MaxInflightBytes < 0 {
+		return errors.New("the max inflight bytes cannot be negative")
 	}
 	return nil
 }
@@ -297,6 +332,7 @@ type Distributor struct {
 	// Track the max inflight bytes in the last 1 minute.
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
+	circuitBreaker             circuitBreaker
 }
 
 // New a distributor creates.
@@ -451,9 +487,15 @@ func New(
 			MaxAge:     time.Minute,
 		}),
 	}
-	cb := newLinearRampCircuitBreaker(time.Second, 30*time.Second)
-	registerer.MustRegister(cb)
-	d.circuitBreaker = cb
+
+	if cfg.CircuitBreaker.Enabled {
+		circuitBreaker := newLinearRampCircuitBreaker(
+			cfg.CircuitBreaker.OpenPeriod,
+			cfg.CircuitBreaker.HalfOpenPeriod,
+		)
+		registerer.MustRegister(circuitBreaker)
+		d.circuitBreaker = circuitBreaker
+	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
@@ -606,8 +648,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
+
+	if d.circuitBreaker != nil {
+		n := int64(d.cfg.CircuitBreaker.MaxInflightBytes)
+		if n > 0 && newInflightBytes > n {
+			d.circuitBreaker.Open()
+		}
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
