@@ -3,9 +3,11 @@ package endpointdiscovery
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/internal/endpoints/awsrulesfn"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/aws/smithy-go/logging"
@@ -94,8 +96,13 @@ func (d *DiscoverEndpoint) HandleFinalize(
 	}
 
 	if weightedAddress.URL != nil {
-		// we only want the host, normal endpoint resolution can include path/query
-		req.URL.Host = weightedAddress.URL.Host
+		// we only want the host, normal endpoint resolution can include path/query, the host must be
+		// validated before override to make sure its dns suffix is within the partition of
+		host := weightedAddress.URL.Host
+		partitionCfg := awsrulesfn.GetPartition(d.Region)
+		if partitionCfg != nil && (strings.HasSuffix(host, "."+partitionCfg.DnsSuffix) || strings.HasSuffix(host, "."+partitionCfg.DualStackDnsSuffix)) {
+			req.URL.Host = weightedAddress.URL.Host
+		}
 	}
 
 	return next.HandleFinalize(ctx, in)
