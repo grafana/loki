@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -108,6 +109,70 @@ func Test_Extractor(t *testing.T) {
 			require.Len(t, extractors, 1)
 		})
 	}
+}
+
+// Test_DropError_CardinalityExplosion reproduces the structured-metadata
+// cardinality explosion caused by adding `| drop __error__` to a
+// `sum(count_over_time(...))` query.
+//
+// The query-frontend shard mapper rewrites the two queries differently because
+// `drop` trips syntax.ReducesLabels:
+//
+//	sum(count_over_time({...}[r]))                   -> shard leaf: sum(count_over_time(...))
+//	sum(count_over_time({...} | drop __error__[r]))  -> shard leaf: count_over_time(...)  (bare)
+//
+// The `sum(count_over_time(...))` leaf injects the outer sum's grouping into the
+// extractor (noLabels=true), so LabelsBuilder.GroupedLabels() collapses every
+// line to {}. The bare count_over_time(...) leaf runs its extractor with
+// noLabels=false, so GroupedLabels() returns the full labelset — including all
+// structured metadata — for every line. That is the cardinality explosion.
+func Test_DropError_CardinalityExplosion(t *testing.T) {
+	t.Parallel()
+
+	stream := labels.FromStrings("job", "loki-prod-036/querier")
+	const numLines = 100
+
+	// extractSeries runs the query's extractor over numLines log lines, each
+	// carrying a unique structured-metadata value (the high-cardinality
+	// dimension that blows up, e.g. a trace_id), and returns the set of
+	// distinct output series identities.
+	extractSeries := func(t *testing.T, query string) map[string]struct{} {
+		t.Helper()
+		expr, err := ParseSampleExpr(query)
+		require.NoError(t, err)
+
+		extractors, err := expr.Extractors()
+		require.NoError(t, err)
+		require.Len(t, extractors, 1)
+
+		streamEx := extractors[0].ForStream(stream)
+		series := make(map[string]struct{})
+		for i := 0; i < numLines; i++ {
+			sm := labels.FromStrings("trace_id", fmt.Sprintf("trace-%d", i))
+			samples, ok := streamEx.Process(0, []byte("a log line"), sm)
+			require.True(t, ok)
+			for _, s := range samples {
+				series[s.Labels.String()] = struct{}{}
+			}
+		}
+		return series
+	}
+
+	// Baseline: the sum-pushdown leaf collapses every line to a single {} series
+	// regardless of structured-metadata cardinality.
+	baseline := extractSeries(t, `sum(count_over_time({job="loki-prod-036/querier"}[5m]))`)
+	require.Len(t, baseline, 1,
+		"sum(count_over_time(...)) leaf should collapse all lines to a single series")
+
+	// Reproducer: the bare count_over_time(...) leaf produced by the shard
+	// mapper for the `drop __error__` variant emits one series per unique
+	// structured-metadata value.
+	exploded := extractSeries(t, `count_over_time({job="loki-prod-036/querier"} | drop __error__ [5m])`)
+	require.Len(t, exploded, numLines,
+		"bare count_over_time(... | drop __error__) leaf explodes to one series per structured metadata value")
+
+	require.Greater(t, len(exploded), len(baseline),
+		"adding `| drop __error__` must not increase series cardinality, but it does")
 }
 
 func Test_MultiVariantExpr_Extractors(t *testing.T) {
