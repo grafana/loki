@@ -68,7 +68,7 @@ func tokenizeLogfmt(input string, requestedKeys []string, strict bool, keepEmpty
 			// In strict mode, return the error immediately.
 			return nil, err
 		}
-		// Do not return any error in non-struct mode.
+		// Do not return any error in non-strict mode.
 	}
 
 	return result, nil
