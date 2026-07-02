@@ -43,7 +43,7 @@ require (
 	github.com/prometheus/procfs v0.19.2 // indirect
 	github.com/thanos-io/objstore v0.0.0-20250813080715-4e5fd4289b50 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
-	github.com/zeebo/xxh3 v1.0.2 // indirect
+	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
