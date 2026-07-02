@@ -4,8 +4,6 @@ package ecs
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -66,6 +64,19 @@ type UpdateExpressGatewayServiceInput struct {
 	// The auto-scaling configuration for the Express service.
 	ScalingTarget *types.ExpressGatewayScalingTarget
 
+	// The Amazon Resource Name (ARN) of a task definition to use to update the
+	// Express Gateway service. This allows you to manage your own task definition,
+	// giving you more control over the service configuration such as adding sidecar
+	// containers.
+	//
+	// The task definition must have a container named Main with a single TCP port
+	// mapping that includes a container port and port name. The task definition must
+	// also have FARGATE compatibility.
+	//
+	// If you provide a task definition ARN, you cannot also specify primaryContainer ,
+	// executionRoleArn , taskRoleArn , cpu , or memory .
+	TaskDefinitionArn *string
+
 	// The Amazon Resource Name (ARN) of the IAM role for containers in this task.
 	TaskRoleArn *string
 
@@ -84,9 +95,6 @@ type UpdateExpressGatewayServiceOutput struct {
 }
 
 func (c *Client) addOperationUpdateExpressGatewayServiceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpUpdateExpressGatewayService{}, middleware.After)
 	if err != nil {
 		return err
@@ -95,17 +103,8 @@ func (c *Client) addOperationUpdateExpressGatewayServiceMiddlewares(stack *middl
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "UpdateExpressGatewayService"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
 	if err = addComputeContentLength(stack); err != nil {
@@ -117,19 +116,7 @@ func (c *Client) addOperationUpdateExpressGatewayServiceMiddlewares(stack *middl
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options, c); err != nil {
-		return err
-	}
-	if err = addRawResponseToMetadata(stack); err != nil {
-		return err
-	}
 	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -138,22 +125,13 @@ func (c *Client) addOperationUpdateExpressGatewayServiceMiddlewares(stack *middl
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateExpressGatewayServiceValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opUpdateExpressGatewayService(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UpdateExpressGatewayService"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -168,22 +146,8 @@ func (c *Client) addOperationUpdateExpressGatewayServiceMiddlewares(stack *middl
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAttempt(stack, options); err != nil {
-		return err
-	}
 	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
-}
-
-func newServiceMetadataMiddleware_opUpdateExpressGatewayService(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "UpdateExpressGatewayService",
-	}
 }

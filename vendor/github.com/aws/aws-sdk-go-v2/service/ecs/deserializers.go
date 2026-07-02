@@ -16033,6 +16033,15 @@ func awsAwsjson11_deserializeDocumentDaemonTaskDefinition(v **types.DaemonTaskDe
 				sv.Family = ptr.String(jtv)
 			}
 
+		case "ipcMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected DaemonIpcMode to be of type string, got %T instead", value)
+				}
+				sv.IpcMode = types.DaemonIpcMode(jtv)
+			}
+
 		case "memory":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -16040,6 +16049,15 @@ func awsAwsjson11_deserializeDocumentDaemonTaskDefinition(v **types.DaemonTaskDe
 					return fmt.Errorf("expected String to be of type string, got %T instead", value)
 				}
 				sv.Memory = ptr.String(jtv)
+			}
+
+		case "pidMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected DaemonPidMode to be of type string, got %T instead", value)
+				}
+				sv.PidMode = types.DaemonPidMode(jtv)
 			}
 
 		case "registeredAt":
@@ -16622,6 +16640,15 @@ func awsAwsjson11_deserializeDocumentDeploymentCircuitBreaker(v **types.Deployme
 				sv.Enable = jtv
 			}
 
+		case "resetOnHealthyTask":
+			if value != nil {
+				jtv, ok := value.(bool)
+				if !ok {
+					return fmt.Errorf("expected BoxedBoolean to be of type *bool, got %T instead", value)
+				}
+				sv.ResetOnHealthyTask = ptr.Bool(jtv)
+			}
+
 		case "rollback":
 			if value != nil {
 				jtv, ok := value.(bool)
@@ -16629,6 +16656,11 @@ func awsAwsjson11_deserializeDocumentDeploymentCircuitBreaker(v **types.Deployme
 					return fmt.Errorf("expected Boolean to be of type *bool, got %T instead", value)
 				}
 				sv.Rollback = jtv
+			}
+
+		case "thresholdConfiguration":
+			if err := awsAwsjson11_deserializeDocumentThresholdConfiguration(&sv.ThresholdConfiguration, value); err != nil {
+				return err
 			}
 
 		default:
@@ -18474,6 +18506,15 @@ func awsAwsjson11_deserializeDocumentExpressGatewayServiceConfiguration(v **type
 					return fmt.Errorf("expected String to be of type string, got %T instead", value)
 				}
 				sv.ServiceRevisionArn = ptr.String(jtv)
+			}
+
+		case "taskDefinitionArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected String to be of type string, got %T instead", value)
+				}
+				sv.TaskDefinitionArn = ptr.String(jtv)
 			}
 
 		case "taskRoleArn":
@@ -22316,6 +22357,125 @@ func awsAwsjson11_deserializeDocumentMemoryMiBRequest(v **types.MemoryMiBRequest
 	return nil
 }
 
+func awsAwsjson11_deserializeDocumentMetricConfiguration(v **types.MetricConfiguration, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.MetricConfiguration
+	if *v == nil {
+		sv = &types.MetricConfiguration{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "metricNames":
+			if err := awsAwsjson11_deserializeDocumentMetricNamesList(&sv.MetricNames, value); err != nil {
+				return err
+			}
+
+		case "resolutionSeconds":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected MetricResolutionSeconds to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.ResolutionSeconds = ptr.Int32(int32(i64))
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson11_deserializeDocumentMetricConfigurationList(v *[]types.MetricConfiguration, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.MetricConfiguration
+	if *v == nil {
+		cv = []types.MetricConfiguration{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.MetricConfiguration
+		destAddr := &col
+		if err := awsAwsjson11_deserializeDocumentMetricConfiguration(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson11_deserializeDocumentMetricNamesList(v *[]string, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []string
+	if *v == nil {
+		cv = []string{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col string
+		if value != nil {
+			jtv, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("expected MetricName to be of type string, got %T instead", value)
+			}
+			col = jtv
+		}
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
 func awsAwsjson11_deserializeDocumentMissingVersionException(v **types.MissingVersionException, value interface{}) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -22345,6 +22505,42 @@ func awsAwsjson11_deserializeDocumentMissingVersionException(v **types.MissingVe
 					return fmt.Errorf("expected String to be of type string, got %T instead", value)
 				}
 				sv.Message = ptr.String(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson11_deserializeDocumentMonitoringConfiguration(v **types.MonitoringConfiguration, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.MonitoringConfiguration
+	if *v == nil {
+		sv = &types.MonitoringConfiguration{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "metricConfigurations":
+			if err := awsAwsjson11_deserializeDocumentMetricConfigurationList(&sv.MetricConfigurations, value); err != nil {
+				return err
 			}
 
 		default:
@@ -26495,6 +26691,11 @@ func awsAwsjson11_deserializeDocumentServiceRevision(v **types.ServiceRevision, 
 				return err
 			}
 
+		case "monitoring":
+			if err := awsAwsjson11_deserializeDocumentMonitoringConfiguration(&sv.Monitoring, value); err != nil {
+				return err
+			}
+
 		case "networkConfiguration":
 			if err := awsAwsjson11_deserializeDocumentNetworkConfiguration(&sv.NetworkConfiguration, value); err != nil {
 				return err
@@ -28761,6 +28962,59 @@ func awsAwsjson11_deserializeDocumentTaskSets(v *[]types.TaskSet, value interfac
 
 	}
 	*v = cv
+	return nil
+}
+
+func awsAwsjson11_deserializeDocumentThresholdConfiguration(v **types.ThresholdConfiguration, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.ThresholdConfiguration
+	if *v == nil {
+		sv = &types.ThresholdConfiguration{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "type":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected ThresholdType to be of type string, got %T instead", value)
+				}
+				sv.Type = types.ThresholdType(jtv)
+			}
+
+		case "value":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected Integer to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.Value = int32(i64)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
 	return nil
 }
 

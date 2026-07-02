@@ -4,8 +4,6 @@ package ecs
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -40,20 +38,6 @@ func (c *Client) CreateExpressGatewayService(ctx context.Context, params *Create
 
 type CreateExpressGatewayServiceInput struct {
 
-	// The Amazon Resource Name (ARN) of the task execution role that grants the
-	// Amazon ECS container agent permission to make Amazon Web Services API calls on
-	// your behalf. This role is required for Amazon ECS to pull container images from
-	// Amazon ECR, send container logs to Amazon CloudWatch Logs, and retrieve
-	// sensitive data from Amazon Web Services Systems Manager Parameter Store or
-	// Amazon Web Services Secrets Manager.
-	//
-	// The execution role must include the AmazonECSTaskExecutionRolePolicy managed
-	// policy or equivalent permissions. For Express services, this role is used during
-	// task startup and runtime for container management operations.
-	//
-	// This member is required.
-	ExecutionRoleArn *string
-
 	// The Amazon Resource Name (ARN) of the infrastructure role that grants Amazon
 	// ECS permission to create and manage Amazon Web Services resources on your behalf
 	// for the Express service. This role is used to provision and manage Application
@@ -68,19 +52,6 @@ type CreateExpressGatewayServiceInput struct {
 	// This member is required.
 	InfrastructureRoleArn *string
 
-	// The primary container configuration for the Express service. This defines the
-	// main application container that will receive traffic from the Application Load
-	// Balancer.
-	//
-	// The primary container must specify at minimum a container image. You can also
-	// configure the container port (defaults to 80), logging configuration,
-	// environment variables, secrets, and startup commands. The container image can be
-	// from Amazon ECR, Docker Hub, or any other container registry accessible to your
-	// execution role.
-	//
-	// This member is required.
-	PrimaryContainer *types.ExpressGatewayContainer
-
 	// The short name or full Amazon Resource Name (ARN) of the cluster on which to
 	// create the Express service. If you do not specify a cluster, the default
 	// cluster is assumed.
@@ -90,6 +61,18 @@ type CreateExpressGatewayServiceInput struct {
 	// allocation for each task in the Express service. The default value for an
 	// Express service is 256 (.25 vCPU).
 	Cpu *string
+
+	// The Amazon Resource Name (ARN) of the task execution role that grants the
+	// Amazon ECS container agent permission to make Amazon Web Services API calls on
+	// your behalf. This role is required for Amazon ECS to pull container images from
+	// Amazon ECR, send container logs to Amazon CloudWatch Logs, and retrieve
+	// sensitive data from Amazon Web Services Systems Manager Parameter Store or
+	// Amazon Web Services Secrets Manager.
+	//
+	// The execution role must include the AmazonECSTaskExecutionRolePolicy managed
+	// policy or equivalent permissions. For Express services, this role is used during
+	// task startup and runtime for container management operations.
+	ExecutionRoleArn *string
 
 	// The path on the container that the Application Load Balancer uses for health
 	// checks. This should be a valid HTTP endpoint that returns a successful response
@@ -114,6 +97,17 @@ type CreateExpressGatewayServiceInput struct {
 	// how your service integrates with your VPC and what network access it has.
 	NetworkConfiguration *types.ExpressGatewayServiceNetworkConfiguration
 
+	// The primary container configuration for the Express service. This defines the
+	// main application container that will receive traffic from the Application Load
+	// Balancer.
+	//
+	// The primary container must specify at minimum a container image. You can also
+	// configure the container port (defaults to 80), logging configuration,
+	// environment variables, secrets, and startup commands. The container image can be
+	// from Amazon ECR, Docker Hub, or any other container registry accessible to your
+	// execution role.
+	PrimaryContainer *types.ExpressGatewayContainer
+
 	// The auto-scaling configuration for the Express service. This defines how the
 	// service automatically adjusts the number of running tasks based on demand.
 	//
@@ -137,6 +131,19 @@ type CreateExpressGatewayServiceInput struct {
 	// organize it. Each tag consists of a key and an optional value. You can apply up
 	// to 50 tags to a service.
 	Tags []types.Tag
+
+	// The Amazon Resource Name (ARN) of a task definition to use to create the
+	// Express Gateway service. This allows you to manage your own task definition,
+	// giving you more control over the service configuration such as adding sidecar
+	// containers.
+	//
+	// The task definition must have a container named Main with a single TCP port
+	// mapping that includes a container port and port name. The task definition must
+	// also have FARGATE compatibility.
+	//
+	// If you provide a task definition ARN, you cannot also specify primaryContainer ,
+	// executionRoleArn , taskRoleArn , cpu , or memory .
+	TaskDefinitionArn *string
 
 	// The Amazon Resource Name (ARN) of the IAM role that containers in this task can
 	// assume. This role allows your application code to access other Amazon Web
@@ -164,9 +171,6 @@ type CreateExpressGatewayServiceOutput struct {
 }
 
 func (c *Client) addOperationCreateExpressGatewayServiceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsAwsjson11_serializeOpCreateExpressGatewayService{}, middleware.After)
 	if err != nil {
 		return err
@@ -175,17 +179,8 @@ func (c *Client) addOperationCreateExpressGatewayServiceMiddlewares(stack *middl
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CreateExpressGatewayService"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
 	if err = addComputeContentLength(stack); err != nil {
@@ -197,19 +192,7 @@ func (c *Client) addOperationCreateExpressGatewayServiceMiddlewares(stack *middl
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options, c); err != nil {
-		return err
-	}
-	if err = addRawResponseToMetadata(stack); err != nil {
-		return err
-	}
 	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -218,22 +201,13 @@ func (c *Client) addOperationCreateExpressGatewayServiceMiddlewares(stack *middl
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateExpressGatewayServiceValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCreateExpressGatewayService(options.Region), middleware.Before); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateExpressGatewayService"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -248,22 +222,8 @@ func (c *Client) addOperationCreateExpressGatewayServiceMiddlewares(stack *middl
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAttempt(stack, options); err != nil {
-		return err
-	}
 	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
-}
-
-func newServiceMetadataMiddleware_opCreateExpressGatewayService(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CreateExpressGatewayService",
-	}
 }
