@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
@@ -340,9 +341,48 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	q.Close()
 
 	totalQueueTime := xcap.Value[int64](q.capture, schedulerstat.TaskQueueDuration)
-	stats := q.capture.ToStatsSummary(q.Duration(), time.Duration(totalQueueTime), builder.Len())
-	result := builder.Build(stats, metadata.FromContext(ctx))
+	queryStats := statsSummary(q.capture, q.Duration(), time.Duration(totalQueueTime), builder.Len())
+	result := builder.Build(queryStats, metadata.FromContext(ctx))
 	return result, nil
+}
+
+// statsSummary computes a stats.Result from observations in the capture.
+func statsSummary(capture *xcap.Capture, execTime, queueTime time.Duration, totalEntriesReturned int) stats.Result {
+	result := stats.Result{
+		Querier: stats.Querier{
+			Store: stats.Store{
+				QueryUsedV2Engine: true,
+			},
+		},
+	}
+
+	if capture == nil {
+		result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
+		return result
+	}
+
+	// Dataobj row/byte stats scoped to logs reader regions only.
+	// TODO: track and report TotalStructuredMetadataBytesProcessed
+	result.Querier.Store.Dataobj.PrePredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowBytes)
+	result.Querier.Store.Dataobj.PostPredicateDecompressedBytes = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowBytes)
+	result.Querier.Store.Dataobj.PrePredicateDecompressedRows = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowsRead)
+	// TODO: this will report the wrong value if the plan has a filter stage.
+	// pick the min of row_out from filter and scan nodes.
+	result.Querier.Store.Dataobj.PostFilterRows = xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead)
+
+	// Cache and wire stats aggregated globally across all regions.
+	taskHits := xcap.Value[int64](capture, executor.TaskCacheHits) + xcap.Value[int64](capture, executor.DataObjScanCacheHits)
+	taskMisses := xcap.Value[int64](capture, executor.TaskCacheMisses) + xcap.Value[int64](capture, executor.DataObjScanCacheMisses)
+	taskBatches := xcap.Value[int64](capture, executor.TaskCacheBatches) + xcap.Value[int64](capture, executor.DataObjScanCacheBatches)
+	taskBytes := xcap.Value[int64](capture, executor.TaskCacheBytes) + xcap.Value[int64](capture, executor.DataObjScanCacheBytes)
+
+	result.Caches.TaskResult.EntriesFound = int32(taskHits)
+	result.Caches.TaskResult.EntriesRequested = int32(taskHits + taskMisses)
+	result.Caches.TaskResult.Requests = int32(taskBatches)
+	result.Caches.TaskResult.BytesReceived = taskBytes
+
+	result.ComputeSummary(execTime, queueTime, totalEntriesReturned)
+	return result
 }
 
 func logqlQueryType(expr syntax.Expr) string {
@@ -511,10 +551,6 @@ func (e *Engine) buildPhysicalPlan(ctx context.Context, q *query, params logql.P
 		return nil, ErrNotSupported
 	}
 
-	span.SetAttributes(
-		attribute.String("plan", physical.PrintAsTree(physicalPlan)),
-	)
-
 	span.SetStatus(codes.Ok, "")
 	return physicalPlan, nil
 }
@@ -529,12 +565,10 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		otherDuration = calculateResidual(duration, indexQueryDuration, optimizeDuration)
 
 		planLen int
-		planStr string
 	)
 
 	if plan != nil {
 		planLen = plan.Len()
-		planStr = physical.PrintAsTree(plan)
 	}
 
 	level.Info(q.Logger()).Log(
@@ -557,11 +591,19 @@ func printPhysicalPlanSummary(q *query, plan *physical.Plan, duration time.Durat
 		}),
 
 		"rules_fired", encodePhysicalRules(rules),
-
-		// Large plans result in log line truncation, retain the other
-		// kvs by moving this to the end.
-		"plan", planStr,
 	)
+
+	// PrintAsTree can take significant amount of time, so get it off the hot path.
+	go func() {
+		if plan == nil {
+			return
+		}
+		planStr := physical.PrintAsTree(plan)
+		level.Debug(q.Logger()).Log(
+			"msg", "physical-plan-detail",
+			"plan", planStr,
+		)
+	}()
 }
 
 func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, logger log.Logger, cacheEnabled bool) physical.MetastoreSectionsResolver {
@@ -662,7 +704,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 		printMetastoreLocalitySummary(q, sectionsResolved)
 
 		if parent != nil {
-			parent.rootRegion.Record(xcap.StatMetastoreSectionsResolved.Observe(int64(sectionsResolved)))
+			parent.rootRegion.Record(metastore.StatMetastoreSectionsResolved.Observe(int64(sectionsResolved)))
 		}
 
 		return resp.SectionsResponse.Sections, nil
@@ -673,7 +715,7 @@ func printMetastoreLocalitySummary(q *query, sectionsResolved int) {
 	level.Info(q.Logger()).Log(
 		"msg", "metastore-locality-summary",
 		"toc_tables", xcap.Value[int64](q.capture, metastore.StatMetastoreTocTables),
-		"index_objects", xcap.Value[int64](q.capture, xcap.StatMetastoreIndexObjects),
+		"index_objects", xcap.Value[int64](q.capture, metastore.StatMetastoreIndexObjects),
 		"index_sections_opened", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsOpened),
 		"index_sections_productive", xcap.Value[int64](q.capture, metastore.StatMetastorePointerSectionsProductive),
 		"logs_sections_resolved", sectionsResolved,
@@ -824,7 +866,7 @@ func printExecutionSummary(q *query, duration time.Duration, err error) {
 		processBatchDuration, _ = q.capture.Value(statProcessBatchDuration).Int64()
 		otherDuration           = calculateResidual(duration, readBatchDuration, processBatchDuration)
 
-		logSections = xcap.Value[int64](q.capture, xcap.StatMetastoreSectionsResolved)
+		logSections = xcap.Value[int64](q.capture, metastore.StatMetastoreSectionsResolved)
 
 		resultRows, _       = q.capture.Value(statResultRows).Int64()
 		timeToFirstBatch, _ = q.capture.Value(statTimeToFirstBatch).Int64()
@@ -895,10 +937,10 @@ func printExecutionSummary(q *query, duration time.Duration, err error) {
 
 func printLogLocalitySummary(q *query) {
 	var (
-		rowsTotal           = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, xcap.StatDatasetMaxRows)
-		relevantRows        = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
-		streamPagesTotal    = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
-		streamRelevantPages = xcap.ValueFromRegion[int64](q.capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
+		rowsTotal           = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatDatasetMaxRows)
+		relevantRows        = xcap.ValueFromRegion[int64](q.capture, logs.RegionRead, dataobj.StatStreamRelevantRows)
+		streamPagesTotal    = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatStreamPagesTotal)
+		streamRelevantPages = xcap.ValueFromRegion[int64](q.capture, logs.RegionOpen, dataobj.StatStreamRelevantPages)
 	)
 
 	level.Info(q.Logger()).Log(

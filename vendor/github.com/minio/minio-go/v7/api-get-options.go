@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 )
@@ -47,6 +48,12 @@ type GetObjectOptions struct {
 	// For multipart objects this is a checksum of part checksums.
 	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	Checksum bool
+
+	// RDMABuffer, when non-nil and Options.EnableRDMA=true, downloads directly
+	// into a contiguous buffer via libminiocpp.so. The returned *Object's
+	// Read() returns EOF immediately; bytes-transferred is in Stat().Size.
+	RDMABuffer     unsafe.Pointer
+	RDMABufferSize int
 
 	// To be not used by external applications
 	Internal AdvancedGetOptions

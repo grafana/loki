@@ -213,7 +213,7 @@ tests:
               description: 'The LokiStack "mystack" in namespace "my-ns" has components that are not ready.'
               summary: "One or more LokiStack components are not ready."
               runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
-      - eval_time: 16m  
+      - eval_time: 16m
         alertname: LokiIngesterFlushFailureRateCritical
         exp_alerts:
           - exp_labels:

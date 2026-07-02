@@ -72,6 +72,117 @@ func TestProjectionPushdown(t *testing.T) {
 		require.Equal(t, expected, actual)
 	})
 
+	t.Run("range aggregation empty by() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: false,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.True(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			projected := []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}}
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Projections: projected, // Only Timestamp is required by the RangeAggregation.
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("range aggregation empty without() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: true,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.False(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				// Nothing is projected because the RangeAggregation requires all columns.
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
 	t.Run("filter -> scanset", func(t *testing.T) {
 		filterPredicates := []Expression{
 			&BinaryExpr{
@@ -317,6 +428,78 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				return builder.Value()
 			},
+		},
+		{
+			name: "RangeAggregation with GroupBy on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | regexp "(?P<referrer>[^ ]+)" [5m]) by (referrer)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<referrer>[^ ]+)")
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "referrer", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			// Regexp has no requestedKeys; we only assert the scan projections.
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"message", "referrer", "timestamp"},
+		},
+		{
+			name: "Filter on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | regexp "(?P<lvl>[^ ]+)" | lvl="error" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<lvl>[^ ]+)")
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("lvl", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"app", "lvl", "message", "timestamp"},
 		},
 		{
 			name: "RangeAggregation with GroupBy on ambiguous columns",
@@ -633,14 +816,20 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			require.NotNil(t, projectionNode, "Projection not found in plan")
 			var requestedKeys *LiteralExpr
 			for _, expr := range projectionNode.Expressions {
-				switch expr := expr.(type) {
-				case *VariadicExpr:
-					// Parse expressions: [sourceCol, requestedKeys, strict, keepEmpty]
-					// We want the requestedKeys (index 1)
-					if len(expr.Expressions) >= 2 {
-						if e, ok := expr.Expressions[1].(*LiteralExpr); ok {
-							requestedKeys = e
-						}
+				ve, ok := expr.(*VariadicExpr)
+				if !ok {
+					continue
+				}
+				// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
+				// parser's arg index 1 is the pattern literal (a StringLiteral),
+				// not a requested-keys list — interpreting it as requestedKeys
+				// would falsely fail the literal-type assertion below.
+				if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
+					continue
+				}
+				if len(ve.Expressions) >= 2 {
+					if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
+						requestedKeys = e
 					}
 				}
 			}

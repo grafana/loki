@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -665,7 +664,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		defer s.resourcesMut.Unlock()
 
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
-		queueDuration := assignTime.Sub(t.QueueTime())
 		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
 
 		if t.State().Terminal() {
@@ -680,11 +678,6 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
-			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration.Seconds()))
-
-			// Record time from task creation until this task assignment.
-			assignmentTailDuration := assignTime.Sub(t.createTime).Seconds()
-			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
 		// Reconcile stream states: send updates for any that changed while sending.
@@ -1177,7 +1170,6 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.MarkQueued()
-		task.region.Record(schedulerstat.TaskStagingDuration.Observe(task.QueueTime().Sub(task.createTime).Nanoseconds()))
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}

@@ -2,6 +2,8 @@
 #
 # The syntax for this file is the same as the syntax for deprecated-config.yaml.
 
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
+
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
 
@@ -91,3 +93,4 @@ limits_config:
   ruler_evaluation_delay_duration: "This setting is removed."
   enforce_metric_name: "This setting is removed."
   allow_deletes: "This setting is removed."
+  ruler_enable_wal_replay: "This setting is removed. The ruler now always wipes its remote-write WAL on startup, so there is nothing to replay."

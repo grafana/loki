@@ -58,13 +58,5 @@ func (f *BuilderFactory) NewSorterBuilder() (*Builder, error) {
 }
 
 func (f *BuilderFactory) newBuilderWithMetrics(metrics *BuilderMetrics) (*Builder, error) {
-	b, err := NewBuilder(f.cfg, f.scratchStore, metrics)
-	if err != nil {
-		return nil, err
-	}
-	if f.overrides != nil {
-		b.SetOverrides(f.overrides)
-	}
-	b.SetLogger(f.logger)
-	return b, nil
+	return NewBuilder(f.cfg, f.scratchStore, metrics, f.logger, f.overrides)
 }

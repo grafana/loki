@@ -57,7 +57,7 @@ func RegisterMetricsServiceServer(s *grpc.Server, srv MetricsServiceServer) {
 //
 //nolint:revive
 func metricsServiceExportHandler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	in := new(internal.ExportMetricsServiceRequest)
+	in := internal.NewExportMetricsServiceRequest()
 	if err := dec(in); err != nil {
 		return nil, err
 	}

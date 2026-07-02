@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -66,7 +67,7 @@ type ContributingTimeRangeChangedNotifier interface {
 var (
 	errNotImplemented  = errors.New("pipeline not implemented")
 	errPipelineNotOpen = errors.New("pipeline not opened")
-	EOF                = errors.New("pipeline exhausted") //nolint:revive,staticcheck
+	EOF                = fmt.Errorf("pipeline exhausted: %w", io.EOF) //nolint:revive,staticcheck
 )
 
 type state struct {
@@ -333,16 +334,16 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	}
 
 	start := time.Now()
-	p.readSpan.Record(xcap.StatPipelineReadCalls.Observe(1))
+	p.readSpan.Record(StatPipelineReadCalls.Observe(1))
 
 	// Inject the span (implicitly links the associated region) into ctx.
 	ctx = xcap.ContextWithSpan(ctx, p.readSpan)
 
 	rec, err := p.inner.Read(ctx)
 	if rec != nil {
-		p.readSpan.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
+		p.readSpan.Record(StatPipelineRowsOut.Observe(rec.NumRows()))
 	}
-	p.readSpan.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	p.readSpan.Record(StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 
 	return rec, err
 }

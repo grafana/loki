@@ -64,12 +64,15 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 					projections = append(projections, e.Left.(ColumnExpression))
 				}
 			case *VariadicExpr:
-				if e.Op == types.VariadicOpParseJSON || e.Op == types.VariadicOpParseLogfmt {
+				switch e.Op {
+				case types.VariadicOpParseJSON, types.VariadicOpParseLogfmt:
 					projectionNodeChanged, projsToPropagate := r.handleParse(e, projections)
 					projections = append(projections, projsToPropagate...)
 					if projectionNodeChanged {
 						changed = true
 					}
+				case types.VariadicOpParseRegexp:
+					projections = append(projections, r.handleParseRegexp(e)...)
 				}
 			}
 		}
@@ -225,6 +228,19 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 	projections = append(projections, exprs.sourceColumnExpr)
 	projections = append(projections, collisionSources...)
 	return changed, projections
+}
+
+// handleParseRegexp returns the regexp parser's source column so the scan
+// loads the line content the pattern is applied against.
+func (r *projectionPushdown) handleParseRegexp(expr *VariadicExpr) []ColumnExpression {
+	if len(expr.Expressions) < 1 {
+		return nil
+	}
+	sourceCol, ok := expr.Expressions[0].(*ColumnExpr)
+	if !ok {
+		return nil
+	}
+	return []ColumnExpression{sourceCol}
 }
 
 // parseExprs is a helper struct for unpacking and packing parse arguments from generic expressions.

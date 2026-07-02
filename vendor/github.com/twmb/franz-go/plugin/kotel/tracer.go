@@ -4,13 +4,14 @@ import (
 	"context"
 	"unicode/utf8"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.18.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 var ( // interface checks to ensure we implement the hooks properly.
@@ -135,7 +136,7 @@ func (t *Tracer) WithProcessSpan(r *kgo.Record) (context.Context, trace.Span) {
 		semconv.MessagingSourceName(r.Topic),
 		semconv.MessagingOperationProcess,
 		semconv.MessagingKafkaSourcePartition(int(r.Partition)),
-		semconv.MessagingKafkaMessageOffset(int(r.Offset)),
+		semconv.MessagingKafkaMessageOffsetKey.Int64(r.Offset),
 	}
 	attrs = t.maybeKeyAttr(attrs, r)
 	if t.clientID != "" {
@@ -212,6 +213,7 @@ func (t *Tracer) OnProduceRecordUnbuffered(r *kgo.Record, err error) {
 	defer span.End()
 	span.SetAttributes(
 		semconv.MessagingKafkaDestinationPartition(int(r.Partition)),
+		semconv.MessagingKafkaMessageOffsetKey.Int64(r.Offset),
 	)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
@@ -234,6 +236,7 @@ func (t *Tracer) OnFetchRecordBuffered(r *kgo.Record) {
 		semconv.MessagingSourceName(r.Topic),
 		semconv.MessagingOperationReceive,
 		semconv.MessagingKafkaSourcePartition(int(r.Partition)),
+		semconv.MessagingKafkaMessageOffsetKey.Int64(r.Offset),
 	}
 	attrs = t.maybeKeyAttr(attrs, r)
 	if t.clientID != "" {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -97,25 +98,24 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 	if messageIdx < 0 {
 		return "", fmt.Errorf("message column not found")
 	}
+
+	// Bucket input columns so `{{.X}}` lookups resolve deterministically
+	// when the same short name exists at multiple categories and one side
+	// is NULL for this row. builtin columns are looked up separately so
+	// references like `{{.timestamp}}` keep working but cannot be shadowed
+	// by a NULL label-like column of the same short name.
+	stream, metadata, parsed := buildLabelsFromInput(input)
+	builtin := buildBuiltinColumnsFromInput(input)
+
 	if lf.simpleKey != "" {
-		var simpleKeyIdx = -1
-		for i := 0; i < len(input.Columns()); i++ {
-			colIdent := semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column
-			if lf.simpleKey == colIdent {
-				simpleKeyIdx = i
-				break
-			}
-		}
-		if simpleKeyIdx < 0 {
-			// Column not present in the schema for this batch (e.g. when no row in
-			// the batch contributed a value for the key, so the parser never created it).
-			// To match v1 engine and the general template path's
-			// `missingkey=zero` semantic: render "" silently, do not raise a
-			// parser error / __error__ label.
+		val, found := lookupCategorized(lf.simpleKey, stream, metadata, parsed, builtin)
+		if !found {
+			// Column absent in every category for this row. Match v1 and the
+			// general template path's `missingkey=zero` semantic: render ""
+			// silently, do not raise a parser error / __error__ label.
 			result[types.ColumnNameBuiltinMessage] = ""
 			return "", nil
 		}
-		val := valueStrOrEmpty(input.Column(simpleKeyIdx), 0)
 		result[types.ColumnNameBuiltinMessage] = val
 		return val, nil
 	}
@@ -137,10 +137,17 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 	}
 	lf.currentTs = ts.UnixNano()
 
-	m := make(map[string]string)
-	for i := 0; i < len(input.Columns()); i++ {
-		m[semconv.MustParseFQN(input.ColumnName(i)).ColumnRef().Column] = valueStrOrEmpty(input.Column(i), 0)
+	// Merge low → high precedence so later writes win: builtin → stream →
+	// metadata → parsed. Matches v1's LabelsBuilder precedence
+	// (parsed > metadata > stream); builtin (timestamp, message, value) is
+	// the lowest tier so a user-set label of the same name still wins.
+	m := make(map[string]string, len(builtin)+stream.Len()+metadata.Len()+parsed.Len())
+	for k, v := range builtin {
+		m[k] = v
 	}
+	stream.Range(func(l labels.Label) { m[l.Name] = l.Value })
+	metadata.Range(func(l labels.Label) { m[l.Name] = l.Value })
+	parsed.Range(func(l labels.Label) { m[l.Name] = l.Value })
 
 	if err := lf.Execute(lf.buf, m); err != nil {
 		return line, err
@@ -148,4 +155,49 @@ func (lf *LineFormatter) Process(line string, input arrow.RecordBatch, result ma
 	result[types.ColumnNameBuiltinMessage] = lf.buf.String()
 
 	return lf.buf.String(), nil
+}
+
+// lookupCategorized resolves `name` in v1's category precedence
+// (parsed > metadata > stream), falling back to builtin (timestamp,
+// message, value) for v2's `{{.timestamp}}` style references. Returns
+// ("", false) when absent everywhere — matches v1 + Go template
+// `missingkey=zero`.
+func lookupCategorized(name string, stream, metadata, parsed labels.Labels, builtin map[string]string) (string, bool) {
+	if parsed.Has(name) {
+		return parsed.Get(name), true
+	}
+	if metadata.Has(name) {
+		return metadata.Get(name), true
+	}
+	if stream.Has(name) {
+		return stream.Get(name), true
+	}
+	if v, ok := builtin[name]; ok {
+		return v, true
+	}
+	return "", false
+}
+
+// buildBuiltinColumnsFromInput returns the row's builtin Arrow columns
+// (timestamp, message, value) as short-name → value pairs, skipping NULL
+// cells. Short names are unique within this category so iteration order
+// is safe. Supports v2's `{{.timestamp}}` references in line templates
+// without mixing them into the label-like buckets.
+func buildBuiltinColumnsFromInput(input arrow.RecordBatch) map[string]string {
+	m := map[string]string{}
+	for i := 0; i < int(input.NumCols()); i++ {
+		ident, err := semconv.ParseFQN(input.ColumnName(i))
+		if err != nil {
+			continue
+		}
+		if ident.ColumnType() != types.ColumnTypeBuiltin {
+			continue
+		}
+		col := input.Column(i)
+		if col.IsNull(0) {
+			continue
+		}
+		m[ident.ColumnRef().Column] = col.ValueStr(0)
+	}
+	return m
 }

@@ -15,6 +15,7 @@ const (
 
 var (
 	expectedConfigDeletes = []string{
+		"legacy-read-mode",
 		"ingester.max_transfer_retries",
 		"querier.engine.timeout",
 		"query_range.split_queries_by_interval",
@@ -39,6 +40,7 @@ var (
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
 		"limits_config.allow_deletes",
+		"limits_config.ruler_enable_wal_replay",
 		"storage_config.bigtable",
 		"storage_config.cassandra",
 		"storage_config.boltdb",
@@ -65,7 +67,6 @@ var (
 	}
 
 	expectedConfigDeprecates = []string{
-		"legacy-read-mode",
 		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"limits_config.ruler_remote_write_url",
@@ -90,10 +91,12 @@ var (
 		"overrides.foo.ruler_evaluation_delay_duration",
 		"overrides.foo.enforce_metric_name",
 		"overrides.foo.allow_deletes",
+		"overrides.foo.ruler_enable_wal_replay",
 		"overrides.bar.unordered_writes",
 		"overrides.bar.ruler_evaluation_delay_duration",
 		"overrides.bar.enforce_metric_name",
 		"overrides.bar.allow_deletes",
+		"overrides.bar.ruler_enable_wal_replay",
 	}
 
 	expectedRuntimeConfigDeprecates = []string{

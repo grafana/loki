@@ -176,6 +176,11 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	for _, path := range paths {
 		entry := objects[path]
 		for _, sec := range entry.obj.Sections() {
+			// Index objects are multi-tenant; only merge sections for the tenant
+			// being compacted, or other tenants' rows leak into this output.
+			if sec.Tenant != node.Tenant {
+				continue
+			}
 			switch {
 			case postings.CheckSection(sec):
 				postingsSections = append(postingsSections, runSection{
@@ -248,7 +253,7 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 		}
 
 		readers = append(readers, indexedSeq[postings.Row]{
-			CloseIterator: postings.NewRowReader(ctx, sec),
+			CloseIterator: postings.NewRowReader(ctx, sec, nil),
 			idx:           i,
 		})
 	}
@@ -344,7 +349,7 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		readers,
 		heapVal[stats.Stat]{isMax: true},
 		heapAt[stats.Stat],
-		heapLess(compareStatsRow),
+		heapLess(stats.Compare),
 		closeSeq[stats.Stat])
 	defer tree.Close()
 
@@ -356,14 +361,14 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 
 		row := tree.Winner().At()
 
-		// The comparator includes (ObjectPath, SectionIndex) as final
+		// stats.Compare includes (ObjectPath, SectionIndex) as final
 		// tiebreakers, so an equal-key collision here means two source indexes
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
 		// keep the first row, drop the later duplicate, warn, and observe an
 		// xcap statistic.
-		if last != nil && compareStatsRow(*last, row) == 0 {
+		if last != nil && stats.Compare(*last, row) == 0 {
 			if region := xcap.RegionFromContext(ctx); region != nil {
 				region.Record(statIndexMergeDuplicateStats.Observe(1))
 			}

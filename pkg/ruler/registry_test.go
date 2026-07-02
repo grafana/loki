@@ -3,7 +3,12 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,10 +19,12 @@ import (
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
@@ -28,6 +35,7 @@ import (
 const enabledRWTenant = "enabled"
 const disabledRWTenant = "disabled"
 const additionalHeadersRWTenant = "additional-headers"
+const headersRaceTenant = "headers-race-tenant"
 const noHeadersRWTenant = "no-headers"
 const customRelabelsTenant = "custom-relabels"
 const badRelabelsTenant = "bad-relabels"
@@ -167,11 +175,9 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteQueueCapacity: 987,
-				RulerEnableWALReplay:          true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
@@ -232,11 +238,9 @@ func newFakeLimits() fakeLimits {
 						QueueConfig: config.QueueConfig{Capacity: 987},
 					},
 				},
-				RulerEnableWALReplay: true,
 			},
 			disabledRWTenant: {
 				RulerRemoteWriteDisabled: true,
-				RulerEnableWALReplay:     false,
 			},
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
@@ -710,6 +714,128 @@ func TestTenantRemoteWriteHeaderOverride(t *testing.T) {
 	assert.Equal(t, tenantCfg.RemoteWrite[1].Headers[user.OrgIDHeaderName], enabledRWTenant)
 }
 
+func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
+	sharedHeaders := map[string]string{
+		"Additional": "Header",
+	}
+	snapshot := maps.Clone(sharedHeaders)
+
+	limits := fakeLimits{
+		limits: map[string]*validation.Limits{
+			additionalHeadersRWTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerEnableWALReplay:    true,
+			},
+		},
+	}
+
+	reg := setupRegistry(t, backCompatCfg, limits)
+
+	tenantCfg, err := reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	require.Len(t, tenantCfg.RemoteWrite, 1)
+
+	require.Equal(t, snapshot, sharedHeaders, "getTenantConfig must not mutate the limits override headers map")
+	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", tenantCfg.RemoteWrite[0].Headers),
+		"remote write headers must be a copy of the override map, not the same map instance")
+
+	_, err = reg.getTenantConfig(additionalHeadersRWTenant)
+	require.NoError(t, err)
+	require.Equal(t, snapshot, sharedHeaders, "repeated getTenantConfig must not mutate the limits override headers map")
+}
+
+func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
+	sharedHeaders := map[string]string{
+		"Additional": "Header",
+	}
+
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	remoteWriteURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	raceCfg := Config{
+		RemoteWrite: RemoteWriteConfig{
+			AddOrgIDHeader:      true,
+			Enabled:             true,
+			ConfigRefreshPeriod: time.Hour,
+			Clients: map[string]config.RemoteWriteConfig{
+				"default": {
+					URL: &promConfig.URL{URL: remoteWriteURL},
+					QueueConfig: config.QueueConfig{
+						Capacity:          10000,
+						MinShards:         4,
+						MaxShards:         8,
+						MaxSamplesPerSend: 100,
+						BatchSendDeadline: model.Duration(100 * time.Millisecond),
+					},
+				},
+			},
+		},
+	}
+
+	limits := fakeLimits{
+		limits: map[string]*validation.Limits{
+			headersRaceTenant: {
+				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
+				RulerEnableWALReplay:    true,
+			},
+		},
+	}
+
+	reg := setupRegistry(t, raceCfg, limits)
+	reg.configureTenantStorage(headersRaceTenant)
+
+	test.Poll(t, 5*time.Second, true, func() interface{} {
+		return reg.isReady(headersRaceTenant)
+	})
+
+	ctx := user.InjectOrgID(context.Background(), headersRaceTenant)
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	for i := range 4 {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := range 500 {
+				select {
+				case <-stop:
+					return
+				default:
+					app := reg.Appender(ctx)
+					_, appendErr := app.Append(
+						0,
+						labels.FromStrings("__name__", "test_metric", "goroutine", fmt.Sprintf("%d", id), "iter", fmt.Sprintf("%d", j)),
+						time.Now().UnixMilli(),
+						float64(j),
+					)
+					if appendErr == nil {
+						_ = app.Commit()
+					}
+				}
+			}
+		}(i)
+	}
+
+	time.Sleep(3 * time.Second)
+	close(stop)
+	wg.Wait()
+
+	require.Positive(t, requests.Load(), "expected remote write requests to exercise header injection")
+
+	// Refresh after writers finish. Concurrent ApplyConfig during active remote-write
+	// shards triggers an unrelated data race in vendored Prometheus SetClient handling.
+	for range 10 {
+		reg.configureTenantStorage(headersRaceTenant)
+	}
+}
+
 func TestTenantRemoteWriteHeadersReset(t *testing.T) {
 	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
 
@@ -935,6 +1061,51 @@ func TestWALRegistryCreation(t *testing.T) {
 
 	_, ok = regDisabled.(nullRegistry)
 	assert.Truef(t, ok, "instance is not of expected type")
+}
+
+func TestWALRegistryWipeOnStartup(t *testing.T) {
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	configWithDir := func(dir string, remoteWriteEnabled bool) Config {
+		cfg := Config{
+			RemoteWrite: RemoteWriteConfig{Enabled: remoteWriteEnabled},
+		}
+		cfg.WAL.Dir = dir
+		return cfg
+	}
+
+	// seedWAL creates a WAL directory containing leftover per-tenant WAL data,
+	// mimicking what a previous ruler run would have left on disk.
+	seedWAL := func(t *testing.T) string {
+		t.Helper()
+		walDir := filepath.Join(t.TempDir(), "ruler-wal")
+		segment := filepath.Join(walDir, "tenant", "wal", "00000000")
+		require.NoError(t, os.MkdirAll(filepath.Dir(segment), 0o755))
+		require.NoError(t, os.WriteFile(segment, []byte("stale"), 0o644))
+		return walDir
+	}
+
+	t.Run("wipes the WAL directory on startup", func(t *testing.T) {
+		walDir := seedWAL(t)
+
+		reg := newWALRegistry(log.NewNopLogger(), nil, configWithDir(walDir, true), overrides)
+		t.Cleanup(reg.stop)
+
+		_, statErr := os.Stat(walDir)
+		require.Truef(t, os.IsNotExist(statErr), "expected WAL dir to be wiped, stat err: %v", statErr)
+	})
+
+	t.Run("does not wipe when remote-write is disabled", func(t *testing.T) {
+		walDir := seedWAL(t)
+
+		// With remote-write disabled the WAL is never used, so newWALRegistry
+		// short-circuits to a null registry and must not touch the directory.
+		newWALRegistry(log.NewNopLogger(), nil, configWithDir(walDir, false), overrides)
+
+		_, statErr := os.Stat(filepath.Join(walDir, "tenant", "wal", "00000000"))
+		require.NoError(t, statErr, "expected WAL contents to be preserved when remote-write is disabled")
+	})
 }
 
 func TestStorageSetup(t *testing.T) {

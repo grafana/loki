@@ -417,8 +417,7 @@ func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]M
 			if len(field) < 2 {
 				continue
 			}
-			v := strings.Trim(field[1], "kB") // remove last "kB"
-			v = strings.TrimSpace(v)
+			v := strings.TrimSpace(strings.TrimSuffix(field[1], " kB"))
 			t, err := strconv.ParseUint(v, 10, 64)
 			if err != nil {
 				return m, err
@@ -924,49 +923,49 @@ func (p *Process) fillFromStatusWithContext(ctx context.Context) error {
 			}
 			p.numCtxSwitches.Involuntary = v
 		case "VmRSS":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.RSS = v * 1024
 		case "VmSize":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.VMS = v * 1024
 		case "VmSwap":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Swap = v * 1024
 		case "VmHWM":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.HWM = v * 1024
 		case "VmData":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Data = v * 1024
 		case "VmStk":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
 			}
 			p.memInfo.Stack = v * 1024
 		case "VmLck":
-			value = strings.Trim(value, " kB") // remove last "kB"
+			value = strings.TrimSpace(strings.TrimSuffix(value, " kB"))
 			v, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
 				return err
@@ -1046,6 +1045,9 @@ func (p *Process) fillFromTIDStatWithContext(ctx context.Context, tid int32) (ui
 	}
 	// Indexing from one, as described in `man proc` about the file /proc/[pid]/stat
 	fields := splitProcStat(contents)
+	if len(fields) < 23 {
+		return 0, 0, nil, 0, 0, 0, nil, fmt.Errorf("malformed stat file: expected at least 23 fields, got %d", len(fields))
+	}
 
 	terminal, err := strconv.ParseUint(fields[7], 10, 64)
 	if err != nil {

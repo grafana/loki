@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -57,6 +58,13 @@ type IndexShipper interface {
 	// On the read path, it would iterate through the files if already downloaded else it would download and iterate through them.
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	// FlushIndexes synchronously uploads any pending index files to object storage.
+	FlushIndexes(ctx context.Context) error
+	// TriggerSync starts a background sync (refreshing the list cache first) if
+	// none is already in progress. It returns true if a new sync was started.
+	TriggerSync() bool
+	// SyncStatus reports the current/last sync status.
+	SyncStatus() indexstore.SyncStatus
 	Stop()
 }
 
@@ -244,6 +252,27 @@ func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID 
 	return g.Wait()
 }
 
+func (s *indexShipper) FlushIndexes(ctx context.Context) error {
+	if s.uploadsManager != nil {
+		return s.uploadsManager.UploadTables(ctx)
+	}
+	return nil
+}
+
+func (s *indexShipper) TriggerSync() bool {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.TriggerSync()
+	}
+	return false
+}
+
+func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.SyncStatus()
+	}
+	return indexstore.SyncStatus{}
+}
+
 func (s *indexShipper) Stop() {
 	s.stopOnce.Do(s.stop)
 }
@@ -267,4 +296,7 @@ func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback
 func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) Stop() {}
+func (Noop) FlushIndexes(_ context.Context) error { return nil }
+func (Noop) TriggerSync() bool                    { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
+func (Noop) Stop()                                {}

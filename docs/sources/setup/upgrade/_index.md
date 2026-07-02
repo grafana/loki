@@ -37,19 +37,41 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
-### Breaking change: Removal of deprecated `/api/prom` API endpoints
+### TSDB schema v14
 
-The legacy Prometheus-compatible `/api/prom` endpoints that were deprecated in Loki 2.x have been removed:
+Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
+same chunk format as v13 and changes only the TSDB index format, which adds a
+per-chunk ingestion timestamp used by ingestion-time retention features.
 
-| Removed endpoint  | Replacement |
-| ----------------- | ----------- |
-| `/api/prom/push`  | [Ingest logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#ingest-logs) |
-| `/api/prom/tail`  | [Stream logs](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#stream-logs) |
-| `/api/prom/query` | [Query logs at a single point in time](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-at-a-single-point-in-time) |
-| `/api/prom/label` | [Query labels](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-labels) |
-| `/api/prom/rules` | [Rules endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#rules-endpoints) |
+v13 remains the recommended schema. To opt in to v14, add a new `period_config`
+with a future `from` date and `schema: v14`; existing v13 periods are unaffected.
 
-You must migrate any clients, dashboards, or automation that still use these endpoints to their `/loki/api/v1/` equivalents before upgrading. Requests to the removed endpoints will result in `404` errors.
+Before configuring any v14 period, upgrade all components to a version that can
+read the v14 index format. Rolling back after v14 data has been written requires
+stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
+
+### Breaking change: Thanos storage clients are used by default
+
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+
+Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
+
+### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
+
+Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
+
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
+
+### Breaking change: Ruler always wipes its remote-write WAL on startup
+
+The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
+
+As a result, the following have been removed:
+
+- The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
+- The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
 
 ### Breaking change: Removal of various configuration options
 

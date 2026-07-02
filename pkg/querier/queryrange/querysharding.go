@@ -245,13 +245,15 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
+	var path string
 	switch r := r.(type) {
-	case *LokiRequest, *LokiInstantRequest:
-		// do nothing
+	case *LokiRequest:
+		path = r.GetPath()
+	case *LokiInstantRequest:
+		path = r.GetPath()
 	default:
 		return nil, fmt.Errorf("expected *LokiRequest or *LokiInstantRequest, got (%T)", r)
 	}
-
 	query := ast.ng.Query(ctx, logql.ParamsWithExpressionOverride{Params: params, ExpressionOverride: parsed})
 
 	res, err := query.Exec(ctx)
@@ -290,7 +292,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 			Status:     loghttp.QueryStatusSuccess,
 			Direction:  params.Direction(),
 			Limit:      params.Limit(),
-			Version:    1,
+			Version:    uint32(loghttp.GetVersion(path)),
 			Statistics: res.Statistics,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,

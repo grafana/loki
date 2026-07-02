@@ -1,20 +1,21 @@
 ---
 title: Migrate from SSD to distributed
 menuTitle: Migrate from SSD to distributed
-description: Migration guide from migrating from simple scalable deployment to a distributed microservices deployment.
-weight: 300
+description: Migration guide from migrating from a simple scalable deployment to a distributed microservices deployment.
+weight: 400
 keywords:
   - migrate
-  - distributed
   - ssd
+  - distributed
+  - microservices
 ---
 
 # Migrate from SSD to distributed
 
 This guide provides instructions for migrating from a [simple scalable deployment (SSD)](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) to a [distributed microservices deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) of Loki. Before starting the migration, make sure you have read the [considerations](#considerations) section.
 
-{{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released. You should plan to migrate from SSD to distributed before Loki 4.0 releases.
+{{< admonition type="caution" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
 {{< /admonition >}}
 
 {{< admonition type="note" >}}
