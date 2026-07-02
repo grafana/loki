@@ -92,6 +92,10 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "file parameter is required", http.StatusBadRequest)
 		return
 	}
+	if err := validateObjectKey(filename); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	attrs, err := s.bucket.Attributes(r.Context(), filename)
 	if err != nil {
