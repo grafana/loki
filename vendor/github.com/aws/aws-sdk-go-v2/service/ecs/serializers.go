@@ -6073,9 +6073,21 @@ func awsAwsjson11_serializeDocumentDeploymentCircuitBreaker(v *types.DeploymentC
 		ok.Boolean(v.Enable)
 	}
 
+	if v.ResetOnHealthyTask != nil {
+		ok := object.Key("resetOnHealthyTask")
+		ok.Boolean(*v.ResetOnHealthyTask)
+	}
+
 	{
 		ok := object.Key("rollback")
 		ok.Boolean(v.Rollback)
+	}
+
+	if v.ThresholdConfiguration != nil {
+		ok := object.Key("thresholdConfiguration")
+		if err := awsAwsjson11_serializeDocumentThresholdConfiguration(v.ThresholdConfiguration, ok); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -7630,6 +7642,63 @@ func awsAwsjson11_serializeDocumentMemoryMiBRequest(v *types.MemoryMiBRequest, v
 	return nil
 }
 
+func awsAwsjson11_serializeDocumentMetricConfiguration(v *types.MetricConfiguration, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.MetricNames != nil {
+		ok := object.Key("metricNames")
+		if err := awsAwsjson11_serializeDocumentMetricNamesList(v.MetricNames, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.ResolutionSeconds != nil {
+		ok := object.Key("resolutionSeconds")
+		ok.Integer(*v.ResolutionSeconds)
+	}
+
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentMetricConfigurationList(v []types.MetricConfiguration, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson11_serializeDocumentMetricConfiguration(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentMetricNamesList(v []string, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		av.String(v[i])
+	}
+	return nil
+}
+
+func awsAwsjson11_serializeDocumentMonitoringConfiguration(v *types.MonitoringConfiguration, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.MetricConfigurations != nil {
+		ok := object.Key("metricConfigurations")
+		if err := awsAwsjson11_serializeDocumentMetricConfigurationList(v.MetricConfigurations, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func awsAwsjson11_serializeDocumentMountPoint(v *types.MountPoint, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -8883,6 +8952,23 @@ func awsAwsjson11_serializeDocumentTaskVolumeConfigurations(v []types.TaskVolume
 	return nil
 }
 
+func awsAwsjson11_serializeDocumentThresholdConfiguration(v *types.ThresholdConfiguration, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if len(v.Type) > 0 {
+		ok := object.Key("type")
+		ok.String(string(v.Type))
+	}
+
+	{
+		ok := object.Key("value")
+		ok.Integer(v.Value)
+	}
+
+	return nil
+}
+
 func awsAwsjson11_serializeDocumentTimeoutConfiguration(v *types.TimeoutConfiguration, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -9466,6 +9552,11 @@ func awsAwsjson11_serializeOpDocumentCreateExpressGatewayServiceInput(v *CreateE
 		}
 	}
 
+	if v.TaskDefinitionArn != nil {
+		ok := object.Key("taskDefinitionArn")
+		ok.String(*v.TaskDefinitionArn)
+	}
+
 	if v.TaskRoleArn != nil {
 		ok := object.Key("taskRoleArn")
 		ok.String(*v.TaskRoleArn)
@@ -9542,6 +9633,13 @@ func awsAwsjson11_serializeOpDocumentCreateServiceInput(v *CreateServiceInput, v
 	if v.LoadBalancers != nil {
 		ok := object.Key("loadBalancers")
 		if err := awsAwsjson11_serializeDocumentLoadBalancers(v.LoadBalancers, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Monitoring != nil {
+		ok := object.Key("monitoring")
+		if err := awsAwsjson11_serializeDocumentMonitoringConfiguration(v.Monitoring, ok); err != nil {
 			return err
 		}
 	}
@@ -10899,9 +10997,19 @@ func awsAwsjson11_serializeOpDocumentRegisterDaemonTaskDefinitionInput(v *Regist
 		ok.String(*v.Family)
 	}
 
+	if len(v.IpcMode) > 0 {
+		ok := object.Key("ipcMode")
+		ok.String(string(v.IpcMode))
+	}
+
 	if v.Memory != nil {
 		ok := object.Key("memory")
 		ok.String(*v.Memory)
+	}
+
+	if len(v.PidMode) > 0 {
+		ok := object.Key("pidMode")
+		ok.String(string(v.PidMode))
 	}
 
 	if v.Tags != nil {
@@ -11667,6 +11775,11 @@ func awsAwsjson11_serializeOpDocumentUpdateExpressGatewayServiceInput(v *UpdateE
 		ok.String(*v.ServiceArn)
 	}
 
+	if v.TaskDefinitionArn != nil {
+		ok := object.Key("taskDefinitionArn")
+		ok.String(*v.TaskDefinitionArn)
+	}
+
 	if v.TaskRoleArn != nil {
 		ok := object.Key("taskRoleArn")
 		ok.String(*v.TaskRoleArn)
@@ -11738,6 +11851,13 @@ func awsAwsjson11_serializeOpDocumentUpdateServiceInput(v *UpdateServiceInput, v
 	if v.LoadBalancers != nil {
 		ok := object.Key("loadBalancers")
 		if err := awsAwsjson11_serializeDocumentLoadBalancers(v.LoadBalancers, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Monitoring != nil {
+		ok := object.Key("monitoring")
+		if err := awsAwsjson11_serializeDocumentMonitoringConfiguration(v.Monitoring, ok); err != nil {
 			return err
 		}
 	}

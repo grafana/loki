@@ -632,9 +632,9 @@ func (e *ServerException) ErrorCode() string {
 }
 func (e *ServerException) ErrorFault() smithy.ErrorFault { return smithy.FaultServer }
 
-// The service deploy ARN that you specified in the StopServiceDeployment doesn't
-// exist. You can use ListServiceDeployments to retrieve the service deployment
-// ARNs.
+// The service deploy ARN that you specified in the ContinueServiceDeployment
+// doesn't exist. You can use ListServiceDeployments to retrieve the service
+// deployment ARNs.
 type ServiceDeploymentNotFoundException struct {
 	Message *string
 
