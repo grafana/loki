@@ -71,7 +71,7 @@ func parseVersion1(reader *bufio.Reader) (*Header, error) {
 	for {
 		b, err := reader.ReadByte()
 		if err != nil {
-			return nil, fmt.Errorf(ErrCantReadVersion1Header.Error()+": %v", err)
+			return nil, fmt.Errorf("%w: %w", ErrCantReadVersion1Header, err)
 		}
 		buf = append(buf, b)
 		if b == '\n' {
@@ -216,7 +216,10 @@ func (header *Header) formatVersion1() ([]byte, error) {
 
 func parseV1PortNumber(portStr string) (int, error) {
 	port, err := strconv.Atoi(portStr)
-	if err != nil || port < 0 || port > 65535 {
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", ErrInvalidPortNumber, err)
+	}
+	if port < 0 || port > 65535 {
 		return 0, ErrInvalidPortNumber
 	}
 	return port, nil
@@ -225,7 +228,7 @@ func parseV1PortNumber(portStr string) (int, error) {
 func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (net.IP, error) {
 	addr, err := netip.ParseAddr(addrStr)
 	if err != nil {
-		return nil, ErrInvalidAddress
+		return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 	}
 
 	switch protocol {
@@ -234,8 +237,20 @@ func parseV1IPAddress(protocol AddressFamilyAndProtocol, addrStr string) (net.IP
 			return net.IP(addr.AsSlice()), nil
 		}
 	case TCPv6:
+		// Some proxies (notably nginx OSS stream module) emit plain IPv4
+		// addresses in TCP6 headers when the backend is IPv4 but the client
+		// is IPv6. Promote to IPv4-mapped IPv6 for interoperability.
+		//
+		// This is an intentional departure from the PROXY protocol v1 spec,
+		// which states that addresses in a TCP6 line must be in IPv6 format.
 		if addr.Is6() || addr.Is4In6() {
 			return net.IP(addr.AsSlice()), nil
+		}
+		// ATTENTION: this is a lossy conversion — round-trip serialization will
+		// render the address as "::ffff:x.x.x.x" rather than the original "x.x.x.x".
+		if addr.Is4() {
+			mapped := netip.AddrFrom16(addr.As16())
+			return net.IP(mapped.AsSlice()), nil
 		}
 	}
 

@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - copyloopvar
+    - goconst
+    - godot
+    - gosec
+    - modernize
+    - misspell
+    - revive
+    - unconvert
+    - usestdlibvars
+
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+
+issues:
+  max-issues-per-linter: 0
