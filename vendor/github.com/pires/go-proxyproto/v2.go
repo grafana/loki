@@ -5,9 +5,19 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net"
 )
+
+// maxV2HeaderSize is the maximum acceptable size of a V2 header.
+//
+// A V2 header may be at most 16 bytes + 64KiB large. We enforce a lower limit
+// to mitigate memory allocation DoS while allowing real-world legitimate
+// headers. PP2_SUBTYPE_SSL_CLIENT_CERT is typically between 1 and 2KiB, so we
+// use a 4KiB limit to leave some room for other TLVs.
+const maxV2HeaderSize = 4096
 
 var (
 	lengthUnspec      = uint16(0)
@@ -62,9 +72,9 @@ type _addrUnix struct {
 
 func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Skip first 12 bytes (signature)
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		if _, err = reader.ReadByte(); err != nil {
-			return nil, ErrCantReadProtocolVersionAndCommand
+			return nil, fmt.Errorf("%w: %w", ErrCantReadProtocolVersionAndCommand, err)
 		}
 	}
 
@@ -74,7 +84,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Read the 13th byte, protocol version and command
 	b13, err := reader.ReadByte()
 	if err != nil {
-		return nil, ErrCantReadProtocolVersionAndCommand
+		return nil, fmt.Errorf("%w: %w", ErrCantReadProtocolVersionAndCommand, err)
 	}
 	header.Command = ProtocolVersionAndCommand(b13)
 	if _, ok := supportedCommand[header.Command]; !ok {
@@ -84,7 +94,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	// Read the 14th byte, address family and protocol
 	b14, err := reader.ReadByte()
 	if err != nil {
-		return nil, ErrCantReadAddressFamilyAndProtocol
+		return nil, fmt.Errorf("%w: %w", ErrCantReadAddressFamilyAndProtocol, err)
 	}
 	header.TransportProtocol = AddressFamilyAndProtocol(b14)
 	// UNSPEC is only supported when LOCAL is set.
@@ -94,8 +104,8 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 
 	// Make sure there are bytes available as specified in length
 	var length uint16
-	if err := binary.Read(io.LimitReader(reader, 2), binary.BigEndian, &length); err != nil {
-		return nil, ErrCantReadLength
+	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCantReadLength, err)
 	}
 	if !header.validateLength(length) {
 		return nil, ErrInvalidLength
@@ -107,7 +117,7 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		return header, nil
 	}
 
-	if _, err := reader.Peek(int(length)); err != nil {
+	if length > maxV2HeaderSize {
 		return nil, ErrInvalidLength
 	}
 
@@ -121,21 +131,21 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 		if header.TransportProtocol.IsIPv4() {
 			var addr _addr4
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 			header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
 			header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 		} else if header.TransportProtocol.IsIPv6() {
 			var addr _addr6
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 			header.SourceAddr = newIPAddr(header.TransportProtocol, addr.Src[:], addr.SrcPort)
 			header.DestinationAddr = newIPAddr(header.TransportProtocol, addr.Dst[:], addr.DstPort)
 		} else if header.TransportProtocol.IsUnix() {
 			var addr _addrUnix
 			if err := binary.Read(payloadReader, binary.BigEndian, &addr); err != nil {
-				return nil, ErrInvalidAddress
+				return nil, fmt.Errorf("%w: %w", ErrInvalidAddress, err)
 			}
 
 			network := "unix"
@@ -158,6 +168,10 @@ func parseVersion2(reader *bufio.Reader) (header *Header, err error) {
 	header.rawTLVs = make([]byte, payloadReader.N) // Allocate minimum size slice
 	if _, err = io.ReadFull(payloadReader, header.rawTLVs); err != nil && err != io.EOF {
 		return nil, err
+	}
+
+	if payloadReader.N != 0 {
+		return nil, ErrInvalidLength
 	}
 
 	return header, nil
@@ -212,11 +226,16 @@ func (header *Header) formatVersion2() ([]byte, error) {
 		buf.Write(addrDst)
 
 		if sourcePort, destPort, ok := header.Ports(); ok {
+			if sourcePort < 0 || sourcePort > math.MaxUint16 || destPort < 0 || destPort > math.MaxUint16 {
+				return nil, ErrInvalidPortNumber
+			}
 			portBytes := make([]byte, 2)
 
+			//nolint:gosec // Bounds are checked above.
 			binary.BigEndian.PutUint16(portBytes, uint16(sourcePort))
 			buf.Write(portBytes)
 
+			//nolint:gosec // Bounds are checked above.
 			binary.BigEndian.PutUint16(portBytes, uint16(destPort))
 			buf.Write(portBytes)
 		}
@@ -253,6 +272,7 @@ func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
 		return nil, errUint16Overflow
 	}
 	a := make([]byte, 2)
+	//nolint:gosec // newLen bounds are validated above.
 	binary.BigEndian.PutUint16(a, uint16(newLen))
 	return a, nil
 }
@@ -260,19 +280,19 @@ func addTLVLen(cur []byte, tlvLen int) ([]byte, error) {
 func newIPAddr(transport AddressFamilyAndProtocol, ip net.IP, port uint16) net.Addr {
 	if transport.IsStream() {
 		return &net.TCPAddr{IP: ip, Port: int(port)}
-	} else if transport.IsDatagram() {
-		return &net.UDPAddr{IP: ip, Port: int(port)}
-	} else {
-		return nil
 	}
+	if transport.IsDatagram() {
+		return &net.UDPAddr{IP: ip, Port: int(port)}
+	}
+	return nil
 }
 
 func parseUnixName(b []byte) string {
-	i := bytes.IndexByte(b, 0)
-	if i < 0 {
+	before, _, ok := bytes.Cut(b, []byte{0})
+	if !ok {
 		return string(b)
 	}
-	return string(b[:i])
+	return string(before)
 }
 
 func formatUnixName(name string) []byte {

@@ -3,6 +3,7 @@ package proxyproto
 // AddressFamilyAndProtocol represents address family and transport protocol.
 type AddressFamilyAndProtocol byte
 
+// AddressFamilyAndProtocol enum values.
 const (
 	UNSPEC       AddressFamilyAndProtocol = '\x00'
 	TCPv4        AddressFamilyAndProtocol = '\x11'
