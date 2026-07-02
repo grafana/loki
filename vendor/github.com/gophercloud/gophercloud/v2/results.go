@@ -84,7 +84,7 @@ func (r Result) extractIntoPtr(to any, label string) error {
 	}
 
 	toValue := reflect.ValueOf(to)
-	if toValue.Kind() == reflect.Ptr {
+	if toValue.Kind() == reflect.Pointer {
 		toValue = toValue.Elem()
 	}
 
@@ -117,6 +117,9 @@ func (r Result) extractIntoPtr(to any, label string) error {
 						// a struct that is never used, but it's good enough to
 						// trigger the UnmarshalJSON method.
 						for i := 0; i < newType.NumField(); i++ {
+							if newType.Field(i).Kind() != reflect.Struct {
+								continue
+							}
 							s := newType.Field(i).Addr().Interface()
 
 							// Unmarshal is used rather than NewDecoder to also work
@@ -189,7 +192,7 @@ func (r Result) ExtractIntoStructPtr(to any, label string) error {
 	}
 
 	t := reflect.TypeOf(to)
-	if k := t.Kind(); k != reflect.Ptr {
+	if k := t.Kind(); k != reflect.Pointer {
 		return fmt.Errorf("expected pointer, got %v", k)
 	}
 
@@ -224,7 +227,7 @@ func (r Result) ExtractIntoSlicePtr(to any, label string) error {
 	}
 
 	t := reflect.TypeOf(to)
-	if k := t.Kind(); k != reflect.Ptr {
+	if k := t.Kind(); k != reflect.Pointer {
 		return fmt.Errorf("expected pointer, got %v", k)
 	}
 
