@@ -1595,11 +1595,14 @@ func validateKafkaClusterClientAuthentication(v *types.KafkaClusterClientAuthent
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "KafkaClusterClientAuthentication"}
-	if v.SaslScram == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("SaslScram"))
-	} else if v.SaslScram != nil {
+	if v.SaslScram != nil {
 		if err := validateKafkaClusterSaslScramAuthentication(v.SaslScram); err != nil {
 			invalidParams.AddNested("SaslScram", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.MTLS != nil {
+		if err := validateKafkaClusterMTLSAuthentication(v.MTLS); err != nil {
+			invalidParams.AddNested("MTLS", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -1631,6 +1634,21 @@ func validateKafkaClusterEncryptionInTransit(v *types.KafkaClusterEncryptionInTr
 	invalidParams := smithy.InvalidParamsError{Context: "KafkaClusterEncryptionInTransit"}
 	if len(v.EncryptionType) == 0 {
 		invalidParams.Add(smithy.NewErrParamRequired("EncryptionType"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateKafkaClusterMTLSAuthentication(v *types.KafkaClusterMTLSAuthentication) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "KafkaClusterMTLSAuthentication"}
+	if v.SecretArn == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("SecretArn"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
