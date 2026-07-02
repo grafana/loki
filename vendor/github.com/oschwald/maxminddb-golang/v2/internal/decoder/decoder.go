@@ -227,7 +227,7 @@ func (d *Decoder) ReadMap() (iter.Seq2[[]byte, error], uint, error) {
 	iterator := func(yield func([]byte, error) bool) {
 		currentOffset := offset
 
-		for range size {
+		for i := range size {
 			key, keyEndOffset, err := d.d.decodeKey(currentOffset)
 			if err != nil {
 				yield(nil, d.wrapErrorAtOffset(err, currentOffset))
@@ -239,6 +239,7 @@ func (d *Decoder) ReadMap() (iter.Seq2[[]byte, error], uint, error) {
 
 			ok := yield(key, nil)
 			if !ok {
+				d.finishMapAfterStop(keyEndOffset, size-i-1)
 				return
 			}
 
@@ -277,14 +278,7 @@ func (d *Decoder) ReadSlice() (iter.Seq[error], uint, error) {
 
 			ok := yield(nil)
 			if !ok {
-				// Skip the unvisited elements
-				remaining := size - i - 1
-				if remaining > 0 {
-					endOffset, err := d.d.nextValueOffset(currentOffset, remaining)
-					if err == nil {
-						d.reset(endOffset)
-					}
-				}
+				d.finishSliceAfterStop(currentOffset, size-i)
 				return
 			}
 
@@ -355,6 +349,48 @@ func (d *Decoder) Offset() uint {
 		return d.offset
 	}
 	return pointer
+}
+
+func (d *Decoder) finishMapAfterStop(keyEndOffset, remainingPairs uint) {
+	valueEndOffset, err := d.valueEndOffsetAfterYield(keyEndOffset)
+	if err != nil {
+		return
+	}
+
+	remainingValues := remainingPairs * 2
+	if remainingValues == 0 {
+		d.reset(valueEndOffset)
+		return
+	}
+
+	endOffset, err := d.d.nextValueOffset(valueEndOffset, remainingValues)
+	if err == nil {
+		d.reset(endOffset)
+	}
+}
+
+func (d *Decoder) finishSliceAfterStop(currentOffset, remainingValues uint) {
+	endOffset := currentOffset
+	if d.hasNextOffset {
+		endOffset = d.nextOffset
+		remainingValues--
+	}
+	if remainingValues == 0 {
+		d.reset(endOffset)
+		return
+	}
+
+	endOffset, err := d.d.nextValueOffset(endOffset, remainingValues)
+	if err == nil {
+		d.reset(endOffset)
+	}
+}
+
+func (d *Decoder) valueEndOffsetAfterYield(valueOffset uint) (uint, error) {
+	if d.hasNextOffset {
+		return d.nextOffset, nil
+	}
+	return d.d.nextValueOffset(valueOffset, 1)
 }
 
 func (d *Decoder) reset(offset uint) {
