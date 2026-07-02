@@ -3,6 +3,7 @@ package executor
 import (
 	"errors"
 	"maps"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -56,10 +57,13 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest    *xxhash.Digest                       // used to compute key for each group
-	operation aggregationOperation                 // aggregation type
-	labels    map[string]arrow.Field               // combined list of all label fields for all sample values
+	points    map[uint64][]groupState // holds the groupState for each point in time series
+	digest    *xxhash.Digest          // used to compute key for each group
+	operation aggregationOperation    // aggregation type
+	labels    map[string]arrow.Field  // combined list of all label fields for all sample values
+	from      int64
+	to        int64
+	step      int64
 
 	// Track unique series across all timestamps to enforce maxSeries limit
 	maxSeries    int                          // maximum number of unique series allowed (0 means no limit)
@@ -70,19 +74,17 @@ type aggregator struct {
 }
 
 // newAggregator creates a new aggregator with the specified grouping.
-func newAggregator(pointsSizeHint int, operation aggregationOperation) *aggregator {
+func newAggregator(operation aggregationOperation, from time.Time, to time.Time, step time.Duration) *aggregator {
 	a := aggregator{
 		digest:       xxhash.New(),
 		operation:    operation,
 		labels:       make(map[string]arrow.Field),
 		uniqueSeries: make(map[uint64]map[string]string),
 		interner:     &interner{interned: make(map[string]string, 16)}, // 16 is arbitrary initial capacity
-	}
-
-	if pointsSizeHint > 0 {
-		a.points = make(map[time.Time]map[uint64]*groupState, pointsSizeHint)
-	} else {
-		a.points = make(map[time.Time]map[uint64]*groupState)
+		from:         from.UnixNano(),
+		to:           to.UnixNano(),
+		step:         step.Nanoseconds(),
+		points:       make(map[uint64][]groupState),
 	}
 
 	return &a
@@ -103,39 +105,30 @@ func (a *aggregator) SetMaxSeries(maxSeries int) {
 	a.maxSeries = maxSeries
 }
 
-func (a *aggregator) add(ts time.Time, value float64, key uint64) {
-	point, ok := a.points[ts]
+func (a *aggregator) add(ts int64, value float64, key uint64) {
+	timesForKey, ok := a.points[key]
 	if !ok {
-		point = make(map[uint64]*groupState)
-		a.points[ts] = point
+		timesForKey = make([]groupState, 1+(a.to-a.from)/a.step)
+		a.points[key] = timesForKey
 	}
 
-	if state, ok := point[key]; ok {
-		// TODO: handle hash collisions
-
-		// accumulate value based on aggregation type
-		switch a.operation {
-		case aggregationOperationSum:
-			state.value += value
-		case aggregationOperationMax:
-			if value > state.value {
-				state.value = value
-			}
-		case aggregationOperationMin:
-			if value < state.value {
-				state.value = value
-			}
-		case aggregationOperationAvg:
-			state.value += value
+	timeIndex := (ts - a.from) / a.step
+	switch a.operation {
+	case aggregationOperationSum:
+		timesForKey[timeIndex].value += value
+	case aggregationOperationMax:
+		timesForKey[timeIndex].value = math.Max(timesForKey[timeIndex].value, value)
+	case aggregationOperationMin:
+		if timesForKey[timeIndex].count == 0 {
+			timesForKey[timeIndex].value = value
+		} else {
+			timesForKey[timeIndex].value = math.Min(timesForKey[timeIndex].value, value)
 		}
-
-		state.count++
-	} else {
-		point[key] = &groupState{
-			value: value,
-			count: int64(1),
-		}
+	case aggregationOperationAvg:
+		timesForKey[timeIndex].value += value
 	}
+
+	timesForKey[timeIndex].count++
 }
 
 // AddN adds new sample values to the aggregation for the given timestamps and grouping labels.
@@ -185,7 +178,7 @@ func (a *aggregator) AddN(timestamps []time.Time, value float64, labels []arrow.
 
 	// Add all observations to the aggregation
 	for _, ts := range timestamps {
-		a.add(ts, value, key)
+		a.add(ts.UnixNano(), value, key)
 	}
 
 	return nil
@@ -208,15 +201,20 @@ func (a *aggregator) BuildRecord() (arrow.RecordBatch, error) {
 
 	// preallocate all builders to the total amount of rows
 	total := 0
-	for _, ts := range sortedTimestamps {
-		total += len(a.points[ts])
-	}
+	total += len(a.points) * int((a.to-a.from)/a.step)
 	rb.Reserve(total)
 
-	for _, ts := range sortedTimestamps {
-		tsValue, _ := arrow.TimestampFromTime(ts, arrow.Nanosecond)
+	// Iterate over the timestamps in order to produce a timestamp ordered output
+	// It is more efficient to iterate over each series but then the output would not be ordered.
+	for i, timestamp := range sortedTimestamps {
+		for key, points := range a.points {
+			entry := points[i]
+			if entry.count == 0 {
+				continue
+			}
 
-		for key, entry := range a.points[ts] {
+			tsValue := arrow.Timestamp(timestamp)
+
 			var value float64
 			switch a.operation {
 			case aggregationOperationAvg:
@@ -258,8 +256,10 @@ func (a *aggregator) Reset() {
 }
 
 // getSortedTimestamps returns all timestamps in sorted order
-func (a *aggregator) getSortedTimestamps() []time.Time {
-	return slices.SortedFunc(maps.Keys(a.points), func(a, b time.Time) int {
-		return a.Compare(b)
-	})
+func (a *aggregator) getSortedTimestamps() []int64 {
+	timestamps := make([]int64, 0, (a.to-a.from)/a.step)
+	for i := a.from; i <= a.to; i += a.step {
+		timestamps = append(timestamps, i)
+	}
+	return timestamps
 }

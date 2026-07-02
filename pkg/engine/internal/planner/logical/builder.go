@@ -180,12 +180,17 @@ func (b *Builder) RangeAggregation(
 func (b *Builder) VectorAggregation(
 	grouping Grouping,
 	operation types.VectorAggregationType,
+	startTS, endTS time.Time,
+	step time.Duration,
 ) *Builder {
 	return &Builder{
 		val: &VectorAggregation{
 			Table:     b.val,
 			Grouping:  grouping,
 			Operation: operation,
+			Start:     startTS,
+			End:       endTS,
+			Step:      step,
 		},
 	}
 }

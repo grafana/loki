@@ -475,6 +475,9 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		grouping:       plan.Grouping,
 		operation:      plan.Operation,
 		maxQuerySeries: plan.MaxQuerySeries,
+		start:          plan.Start,
+		end:            plan.End,
+		step:           plan.Step,
 	})
 	if err != nil {
 		return errorPipeline(ctx, err)
@@ -665,6 +668,9 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.String("operation", string(rune(n.Operation))),
 			attribute.Int("num_grouping", len(n.Grouping.Columns)),
 			attribute.Bool("grouping_without", n.Grouping.Without),
+			attribute.Int64("start_ts", n.Start.UnixNano()),
+			attribute.Int64("end_ts", n.End.UnixNano()),
+			attribute.Int64("step", int64(n.Step)),
 		)
 
 	case *physical.ColumnCompat:
