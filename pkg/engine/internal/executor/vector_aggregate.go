@@ -21,6 +21,11 @@ type vectorAggregationOptions struct {
 	grouping       physical.Grouping
 	operation      types.VectorAggregationType
 	maxQuerySeries int // maximum number of unique series allowed (0 means no limit)
+
+	// Hints for more efficient processing
+	start time.Time
+	end   time.Time
+	step  time.Duration
 }
 
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
@@ -60,7 +65,12 @@ func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvalua
 		panic(fmt.Sprintf("unknown vector aggregation operation: %v", opts.operation))
 	}
 
-	agg := newAggregator(0, op)
+	if opts.start == opts.end {
+		// Instant query
+		opts.step = 1
+	}
+
+	agg := newAggregator(op, opts.start, opts.end, opts.step)
 	agg.SetMaxSeries(opts.maxQuerySeries)
 
 	return &vectorAggregationPipeline{

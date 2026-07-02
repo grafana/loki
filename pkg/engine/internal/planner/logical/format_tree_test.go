@@ -174,6 +174,9 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 			Without: false,
 		},
 		types.VectorAggregationTypeSum,
+		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC), // End Time
+		time.Minute,
 	)
 
 	// Convert to plan so that node IDs get populated

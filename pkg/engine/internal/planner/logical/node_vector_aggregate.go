@@ -2,6 +2,7 @@ package logical
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -18,6 +19,10 @@ type VectorAggregation struct {
 
 	// The type of aggregation operation to perform (e.g., sum, min, max)
 	Operation types.VectorAggregationType
+
+	Start time.Time
+	End   time.Time
+	Step  time.Duration
 }
 
 var (
