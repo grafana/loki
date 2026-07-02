@@ -1,7 +1,5 @@
-// Copyright (c) 2012-2020 Ugorji Nwoke. All rights reserved.
-// Use of this source code is governed by a MIT license found in the LICENSE file.
+# Package Documentation for github.com/ugorji/go/codec
 
-/*
 Package codec provides a High Performance, Feature-Rich Idiomatic Go
 codec/encoding library for binc, msgpack, cbor, json.
 
@@ -13,10 +11,11 @@ Supported Serialization formats are:
   - json: http://json.org http://tools.ietf.org/html/rfc7159
   - simple: (unpublished)
 
-For detailed usage information, read the primer at http://ugorji.net/blog/go-codec-primer .
+For detailed usage information, read the primer at
+http://ugorji.net/blog/go-codec-primer .
 
-The idiomatic Go support is as seen in other encoding packages in
-the standard library (ie json, xml, gob, etc).
+The idiomatic Go support is as seen in other encoding packages in the standard
+library (ie json, xml, gob, etc).
 
 Rich Feature Set includes:
 
@@ -95,143 +94,157 @@ Test only:
 
 # Extension Support
 
-Users can register a function to handle the encoding or decoding of
-their custom types.
+Users can register a function to handle the encoding or decoding of their custom
+types.
 
 There are no restrictions on what the custom type can be. Some examples:
 
-	type BisSet   []int
-	type BitSet64 uint64
-	type UUID     string
-	type MyStructWithUnexportedFields struct { a int; b bool; c []int; }
-	type GifImage struct { ... }
+```go
+    type BisSet   []int
+    type BitSet64 uint64
+    type UUID     string
+    type MyStructWithUnexportedFields struct { a int; b bool; c []int; }
+    type GifImage struct { ... }
+```
 
-As an illustration, MyStructWithUnexportedFields would normally be
-encoded as an empty map because it has no exported fields, while UUID
-would be encoded as a string. However, with extension support, you can
-encode any of these however you like.
+As an illustration, MyStructWithUnexportedFields would normally be encoded as
+an empty map because it has no exported fields, while UUID would be encoded as a
+string. However, with extension support, you can encode any of these however you
+like.
 
-There is also seamless support provided for registering an extension (with a tag)
-but letting the encoding mechanism default to the standard way.
+There is also seamless support provided for registering an extension (with a
+tag) but letting the encoding mechanism default to the standard way.
 
 # Custom Encoding and Decoding
 
-This package maintains symmetry in the encoding and decoding halfs.
-We determine how to encode or decode by walking this decision tree
+This package maintains symmetry in the encoding and decoding halfs. We determine
+how to encode or decode by walking this decision tree
 
   - is there an extension registered for the type?
   - is type a codec.Selfer?
   - is format binary, and is type a encoding.BinaryMarshaler and BinaryUnmarshaler?
   - is format specifically json, and is type a encoding/json.Marshaler and Unmarshaler?
   - is format text-based, and type an encoding.TextMarshaler and TextUnmarshaler?
-  - else we use a pair of functions based on the "kind" of the type e.g. map, slice, int64, etc
+  - else use a pair of functions based on the "kind" of the type e.g. map, slice, int64
 
 This symmetry is important to reduce chances of issues happening because the
 encoding and decoding sides are out of sync e.g. decoded via very specific
 encoding.TextUnmarshaler but encoded via kind-specific generalized mode.
 
-Consequently, if a type only defines one-half of the symmetry
-(e.g. it implements UnmarshalJSON() but not MarshalJSON() ),
-then that type doesn't satisfy the check and we will continue walking down the
-decision tree.
+Consequently, if a type only defines one-half of the symmetry (e.g.
+it implements UnmarshalJSON() but not MarshalJSON() ), then that type doesn't
+satisfy the check and we will continue walking down the decision tree.
 
 # RPC
 
-RPC Client and Server Codecs are implemented, so the codecs can be used
-with the standard net/rpc package.
+RPC Client and Server Codecs are implemented, so the codecs can be used with the
+standard net/rpc package.
 
 # Usage
 
-The Handle is SAFE for concurrent READ, but NOT SAFE for concurrent modification.
+The Handle is SAFE for concurrent READ, but NOT SAFE for concurrent
+modification.
 
 The Encoder and Decoder are NOT safe for concurrent use.
 
 Consequently, the usage model is basically:
 
-  - Create and initialize the Handle before any use.
-    Once created, DO NOT modify it.
+  - Create and initialize the Handle before any use. Once created, DO NOT modify it.
   - Multiple Encoders or Decoders can now use the Handle concurrently.
     They only read information off the Handle (never write).
   - However, each Encoder or Decoder MUST not be used concurrently
-  - To re-use an Encoder/Decoder, call Reset(...) on it first.
-    This allows you use state maintained on the Encoder/Decoder.
+  - To re-use an Encoder/Decoder, call Reset(...) on it first. This allows you
+    use state maintained on the Encoder/Decoder.
 
 Sample usage model:
 
-	// create and configure Handle
-	var (
-	  bh codec.BincHandle
-	  mh codec.MsgpackHandle
-	  ch codec.CborHandle
-	)
+```go
+    // create and configure Handle
+    var (
+      bh codec.BincHandle
+      mh codec.MsgpackHandle
+      ch codec.CborHandle
+    )
 
-	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
+    mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
 
-	// configure extensions
-	// e.g. for msgpack, define functions and enable Time support for tag 1
-	// mh.SetExt(reflect.TypeOf(time.Time{}), 1, myExt)
+    // configure extensions
+    // e.g. for msgpack, define functions and enable Time support for tag 1
+    // mh.SetExt(reflect.TypeOf(time.Time{}), 1, myExt)
 
-	// create and use decoder/encoder
-	var (
-	  r io.Reader
-	  w io.Writer
-	  b []byte
-	  h = &bh // or mh to use msgpack
-	)
+    // create and use decoder/encoder
+    var (
+      r io.Reader
+      w io.Writer
+      b []byte
+      h = &bh // or mh to use msgpack
+    )
 
-	dec = codec.NewDecoder(r, h)
-	dec = codec.NewDecoderBytes(b, h)
-	err = dec.Decode(&v)
+    dec = codec.NewDecoder(r, h)
+    dec = codec.NewDecoderBytes(b, h)
+    err = dec.Decode(&v)
 
-	enc = codec.NewEncoder(w, h)
-	enc = codec.NewEncoderBytes(&b, h)
-	err = enc.Encode(v)
+    enc = codec.NewEncoder(w, h)
+    enc = codec.NewEncoderBytes(&b, h)
+    err = enc.Encode(v)
 
-	//RPC Server
-	go func() {
-	    for {
-	        conn, err := listener.Accept()
-	        rpcCodec := codec.GoRpc.ServerCodec(conn, h)
-	        //OR rpcCodec := codec.MsgpackSpecRpc.ServerCodec(conn, h)
-	        rpc.ServeCodec(rpcCodec)
-	    }
-	}()
+    //RPC Server
+    go func() {
+        for {
+            conn, err := listener.Accept()
+            rpcCodec := codec.GoRpc.ServerCodec(conn, h)
+            //OR rpcCodec := codec.MsgpackSpecRpc.ServerCodec(conn, h)
+            rpc.ServeCodec(rpcCodec)
+        }
+    }()
 
-	//RPC Communication (client side)
-	conn, err = net.Dial("tcp", "localhost:5555")
-	rpcCodec := codec.GoRpc.ClientCodec(conn, h)
-	//OR rpcCodec := codec.MsgpackSpecRpc.ClientCodec(conn, h)
-	client := rpc.NewClientWithCodec(rpcCodec)
+    //RPC Communication (client side)
+    conn, err = net.Dial("tcp", "localhost:5555")
+    rpcCodec := codec.GoRpc.ClientCodec(conn, h)
+    //OR rpcCodec := codec.MsgpackSpecRpc.ClientCodec(conn, h)
+    client := rpc.NewClientWithCodec(rpcCodec)
+```
 
 # Running Tests
 
 To run tests, use the following:
 
-	go test
+```
+    go test
+```
 
 To run the full suite of tests, use the following:
 
-	go test -tags codec.alltests -run Suite
+```
+    go test -tags codec.alltests -run Suite
+```
 
 You can run the tag 'codec.safe' to run tests or build in safe mode. e.g.
 
-	go test -tags codec.safe -run Json
-	go test -tags "codec.alltests codec.safe" -run Suite
+```
+    go test -tags codec.safe -run Json
+    go test -tags "codec.alltests codec.safe" -run Suite
+```
 
 You can run the tag 'codec.notmono' to build bypassing the monomorphized code e.g.
 
+```
 	go test -tags codec.notmono -run Json
+```
 
-Running Benchmarks
+# Running Benchmarks
 
-	cd bench
-	go test -bench . -benchmem -benchtime 1s
+```
+    cd bench
+    go test -bench . -benchmem -benchtime 1s
+```
 
 Please see http://github.com/ugorji/go-codec-bench .
 
 # Caveats
 
 Struct fields matching the following are ignored during encoding and decoding
+
   - struct tag value set to -
   - func, complex numbers, unsafe pointers
   - unexported and not embedded
@@ -240,91 +253,48 @@ Struct fields matching the following are ignored during encoding and decoding
 
 Every other field in a struct will be encoded/decoded.
 
-Embedded fields are encoded as if they exist in the top-level struct,
-with some caveats. See Encode documentation.
-*/
-package codec
+Embedded fields are encoded as if they exist in the top-level struct, with some
+caveats. See Encode documentation.
 
-/*
-Generics
+## Exported Package API
 
-Generics are used across to board to reduce boilerplate, and hopefully
-improve performance by
-- reducing need for interface calls (de-virtualization)
-- resultant inlining of those calls
+```go
+var SelfExt = &extFailWrapper{}
+var GoRpc goRpc
+var MsgpackSpecRpc msgpackSpecRpc
 
-encoder/decoder --> Driver (json/cbor/...) --> input/output (bytes or io abstraction)
+type TypeInfos struct{ ... }
+    func NewTypeInfos(tags []string) *TypeInfos
 
-There are 2 * 5 * 2 (20) combinations of monomorphized values.
+type Handle interface{ ... }
+type BasicHandle struct{ ... }
+type DecodeOptions struct{ ... }
+type EncodeOptions struct{ ... }
 
-Key rules
-- do not use top-level generic functions.
-  Due to type inference, monomorphizing them proves challenging
-- only use generic methods.
-  Monomorphizing is done at the type once, and method names need not change
-- do not have method calls have a parameter of an encWriter or decReader.
-  All those calls are handled directly by the driver.
-- Include a helper type for each parameterized thing, and add all generic functions to them e.g.
-  helperEncWriter[T encWriter]
-  helperEncReader[T decReader]
-  helperEncDriver[T encDriver]
-  helperDecDriver[T decDriver]
-- Always use T as the generic type name (when needed)
-- No inline types
-- No closures taking parameters of generic types
+type Decoder struct{ ... }
+    func NewDecoder(r io.Reader, h Handle) *Decoder
+    func NewDecoderBytes(in []byte, h Handle) *Decoder
+    func NewDecoderString(s string, h Handle) *Decoder
+type Encoder struct{ ... }
+    func NewEncoder(w io.Writer, h Handle) *Encoder
+    func NewEncoderBytes(out *[]byte, h Handle) *Encoder
 
-*/
-/*
-Naming convention:
+type Ext interface{ ... }
+type InterfaceExt interface{ ... }
+type BytesExt interface{ ... }
 
-Currently, as generic and non-generic types/functions/vars are put in the same files,
-we suffer because:
-- build takes longer as non-generic code is built when a build tag wants only monomorphised code
-- files have many lines which are not used at runtime (due to type parameters)
-- code coverage is inaccurate on a single run
+type BincHandle struct{ ... }
+type CborHandle struct{ ... }
+type JsonHandle struct{ ... }
+type MsgpackHandle struct{ ... }
+type SimpleHandle struct{ ... }
 
-To resolve this, we are streamlining our file naming strategy.
-
-Basically, we will have the following nomenclature for filenames:
-- fastpath (tag:notfastpath):        *.notfastpath.*.go vs *.fastpath.*.go
-- typed parameters (tag:notmono):    *.notmono.*.go vs *.mono.*.go
-- safe (tag:safe):                   *.safe.*.go vs *.unsafe.go
-- generated files:                   *.generated.go
-- all others (tags:N/A):             *.go without safe/mono/fastpath/generated in the name
-
-The following files will be affected and split/renamed accordingly
-
-Base files:
-- binc.go
-- cbor.go
-- json.go
-- msgpack.go
-- simple.go
-- decode.go
-- encode.go
-
-For each base file, split into __file__.go (containing type parameters) and __file__.base.go.
-__file__.go will only build with notmono.
-
-Other files:
-- fastpath.generated.go -> base.fastpath.generated.go and base.fastpath.notmono.generated.go
-- fastpath.not.go       -> base.notfastpath.go
-- init.go               -> init.notmono.go
-
-Appropriate build tags will be included in the files, and the right ones only used for
-monomorphization.
-*/
-/*
-Caching Handle options for fast runtime use
-
-If using cached values from Handle options, then
-- re-cache them at each reset() call
-- reset is always called at the start of each (Must)(En|De)code
-  - which calls (en|de)coder.reset([]byte|io.Reader|String)
-  - which calls (en|de)cDriver.reset()
-- at reset, (en|de)c(oder|Driver) can re-cache Handle options before each run
-
-Some examples:
-- json: e.rawext,di,d,ks,is / d.rawext
-- decode: (decoderBase) d.jsms,mtr,str,
-*/
+type MapBySlice interface{ ... }
+type MissingFielder interface{ ... }
+type MsgpackSpecRpcMultiArgs []interface{}
+type RPCOptions struct{ ... }
+type Raw []byte
+type RawExt struct{ ... }
+type Rpc interface{ ... }
+type Selfer interface{ ... }
+```
