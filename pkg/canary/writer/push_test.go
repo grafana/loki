@@ -1,11 +1,16 @@
 package writer
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -103,6 +108,85 @@ func Test_Push(t *testing.T) {
 	push.WriteEntry(ts, payload)
 	resp = <-testCfg.responses
 	assertResponse(t, resp, true, labelSet("name", "loki-canary", "pod", "abc"), ts, payload, 1)
+}
+
+// Test_PushTLS covers TLS without client cert/key files, which previously
+// failed because the writer tried to read empty file paths (issue #22639).
+func Test_PushTLS(t *testing.T) {
+	backoffCfg := backoff.Config{
+		MinBackoff: 300 * time.Millisecond,
+		MaxBackoff: 5 * time.Minute,
+		MaxRetries: 10,
+	}
+
+	newTLSPush := func(t *testing.T, server *httptest.Server, tlsConfig *tls.Config, caFile, certFile, keyFile string) (EntryWriter, error) {
+		t.Helper()
+		return NewPush(
+			server.Listener.Addr().String(),
+			testTenant,
+			2*time.Second,
+			config.DefaultHTTPClientConfig,
+			"name",
+			"loki-canary",
+			"stream",
+			"stdout",
+			true, // useTLS
+			tlsConfig,
+			caFile,
+			certFile,
+			keyFile,
+			"",
+			"",
+			&backoffCfg,
+			1,
+			log.NewNopLogger(),
+		)
+	}
+
+	t.Run("TLS enabled with insecure skip verify and no cert files", func(t *testing.T) {
+		responses := make(chan response, 1)
+		server := httptest.NewTLSServer(createServerHandler(responses))
+		defer server.Close()
+
+		tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{InsecureSkipVerify: true})
+		require.NoError(t, err)
+
+		push, err := newTLSPush(t, server, tlsConfig, "", "", "")
+		require.NoError(t, err)
+
+		ts, payload := testPayload()
+		push.WriteEntry(ts, payload)
+		resp := <-responses
+		assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	})
+
+	t.Run("one-way TLS with a CA file and no client cert", func(t *testing.T) {
+		responses := make(chan response, 1)
+		server := httptest.NewTLSServer(createServerHandler(responses))
+		defer server.Close()
+
+		caFile := writeCertFile(t, server.Certificate())
+
+		tlsConfig, err := config.NewTLSConfig(&config.TLSConfig{CAFile: caFile})
+		require.NoError(t, err)
+
+		push, err := newTLSPush(t, server, tlsConfig, caFile, "", "")
+		require.NoError(t, err)
+
+		ts, payload := testPayload()
+		push.WriteEntry(ts, payload)
+		resp := <-responses
+		assertResponse(t, resp, false, labelSet("name", "loki-canary", "stream", "stdout"), ts, payload, 1)
+	})
+}
+
+// writeCertFile PEM-encodes cert to a temp file and returns its path.
+func writeCertFile(t *testing.T, cert *x509.Certificate) string {
+	t.Helper()
+	caFile := filepath.Join(t.TempDir(), "ca.crt")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	require.NoError(t, os.WriteFile(caFile, pemBytes, 0o600))
+	return caFile
 }
 
 // test batching log lines and ensure the testing resp contains exactly 10 unique entries
