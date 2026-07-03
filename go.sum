@@ -1038,8 +1038,8 @@ github.com/prometheus/procfs v0.0.3/go.mod h1:4A/X28fw3Fc593LaREMrKMqOKvUAntwMDa
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
 github.com/prometheus/procfs v0.1.3/go.mod h1:lV6e/gmhEcM9IjHGsFOCxxuZ+z1YqCvr4OA4YeYWdaU=
 github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1xBZuNvfVA=
-github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4Vws=
-github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
+github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEycfc=
+github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015 h1:DeUM+40/PKd/YPvCvsevpB4f5N7jtnJvJHG4MjFsNwI=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015/go.mod h1:GgwJCUxpytsT8b4joSfadnQ+IhyfaI0665Eta0VTqM0=
 github.com/prometheus/sigv4 v0.4.1 h1:EIc3j+8NBea9u1iV6O5ZAN8uvPq2xOIUPcqCTivHuXs=
@@ -1246,8 +1246,8 @@ go.opentelemetry.io/collector/processor/processortest v0.153.0 h1:aMH8+omUXs2iCK
 go.opentelemetry.io/collector/processor/processortest v0.153.0/go.mod h1:LAPHps5FhQyd0MnNd1ZHmoykG/EWsIpJLs7fivFf5Mc=
 go.opentelemetry.io/collector/processor/xprocessor v0.153.0 h1:mXtOAwZAXcHgAgVRzAk4NRoyj7yHV88LVFrn0CCedog=
 go.opentelemetry.io/collector/processor/xprocessor v0.153.0/go.mod h1:yGFU58TvheCedrVkdqU8jW/vnCFqcyYElf+5lidn0nA=
-go.opentelemetry.io/contrib/bridges/prometheus v0.64.0 h1:7TYhBCu6Xz6vDJGNtEslWZLuuX2IJ/aH50hBY4MVeUg=
-go.opentelemetry.io/contrib/bridges/prometheus v0.64.0/go.mod h1:tHQctZfAe7e4PBPGyt3kae6mQFXNpj+iiDJa3ithM50=
+go.opentelemetry.io/contrib/bridges/prometheus v0.69.0 h1:saQoWg5845Q8TojpqeVStS7zGwVZ6bc5W2PJavTPiBM=
+go.opentelemetry.io/contrib/bridges/prometheus v0.69.0/go.mod h1:AAaS6xs5AyqMdR3Ir0nSWK+QudL2XM8Vbw5INzUxNc8=
 go.opentelemetry.io/contrib/detectors/gcp v1.42.0 h1:kpt2PEJuOuqYkPcktfJqWWDjTEd/FNgrxcniL7kQrXQ=
 go.opentelemetry.io/contrib/detectors/gcp v1.42.0/go.mod h1:W9zQ439utxymRrXsUOzZbFX4JhLxXU4+ZnCt8GG7yA8=
 go.opentelemetry.io/contrib/exporters/autoexport v0.64.0 h1:9pzPj3RFyKOxBAMkM2w84LpT+rdHam1XoFA+QhARiRw=
