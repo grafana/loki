@@ -29,10 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-type bloomStatsProvider interface {
-	totalReadRows() uint64
-}
-
 // indexSectionsReader combines pointer scanning and bloom filtering into a single reader.
 // It reads section pointers matching stream matchers and time range, then applies
 // bloom filter predicates to further filter the results.
@@ -67,18 +63,13 @@ type indexSectionsReader struct {
 	bloomRowsRead            uint64
 	pointerSectionProductive []bool
 
-	// metrics, when non-nil, receives per-object observations at Close.
-	// statsRecorded guards against double-recording if Close runs more than once.
-	metrics       *ObjectMetastoreMetrics
-	statsRecorded bool
-
 	// readSpan for recording observations, it is created once during init.
 	readSpan *xcap.Span
 }
 
 var (
 	_ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
-	_ bloomStatsProvider     = (*indexSectionsReader)(nil)
+	_ statsProvider          = (*indexSectionsReader)(nil)
 )
 
 func newIndexSectionsReader(
@@ -560,11 +551,6 @@ func (r *indexSectionsReader) Close() {
 	closeAll(r.pointersReaders)
 	closeAll(r.bloomReaders)
 
-	if r.initialized && r.metrics != nil && !r.statsRecorded {
-		r.statsRecorded = true
-		r.metrics.indexReadRowsPerObject.Observe(float64(r.totalReadRows()))
-	}
-
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
@@ -913,4 +899,12 @@ func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSec
 
 func (r *indexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+// stats reports per-object read stats.
+func (r *indexSectionsReader) stats() readerStats {
+	return readerStats{
+		Initialized: r.initialized,
+		ReadRows:    r.totalReadRows(),
+	}
 }
