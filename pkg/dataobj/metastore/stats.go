@@ -1,6 +1,10 @@
 package metastore
 
-import "github.com/grafana/loki/v3/pkg/xcap"
+import (
+	"sync"
+
+	"github.com/grafana/loki/v3/pkg/xcap"
+)
 
 // Metastore statistics.
 var (
@@ -25,3 +29,40 @@ var (
 	StatMetastoreSectionPointersRead     = xcap.NewStatisticInt64("metastore.sections.pointers.read", xcap.AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = xcap.NewStatisticFloat64("metastore.sections.pointers.read.duration", xcap.AggregationTypeSum)
 )
+
+const (
+	flowPostings = "postings"
+	flowStreams  = "streams"
+)
+
+type readerStats struct {
+	// Initialized is false when the reader never performed a read, in which case
+	// ReadRows is meaningless and must not be observed.
+	Initialized bool
+	ReadRows    uint64
+}
+
+type statsProvider interface {
+	stats() readerStats
+}
+
+type instrumentedReader struct {
+	ArrowRecordBatchReader
+	metrics *ObjectMetastoreMetrics
+	flow    string
+	once    sync.Once
+}
+
+func (r *instrumentedReader) stats() readerStats {
+	return r.ArrowRecordBatchReader.(statsProvider).stats()
+}
+
+func (r *instrumentedReader) Close() {
+	r.once.Do(func() {
+		s := r.stats()
+		if s.Initialized {
+			r.metrics.indexReadRowsPerObject.WithLabelValues(r.flow).Observe(float64(s.ReadRows))
+		}
+	})
+	r.ArrowRecordBatchReader.Close()
+}

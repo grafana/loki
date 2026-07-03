@@ -100,7 +100,10 @@ type ObjectMetastoreMetrics struct {
 	resolvedSectionsTotalDuration       prometheus.Histogram
 	resolvedSectionsTotal               prometheus.Histogram
 	resolvedSectionsRatio               prometheus.Histogram
-	indexReadRowsPerObject              prometheus.Histogram
+
+	indexReadFlowTotal        *prometheus.CounterVec
+	indexReadRowsPerObject    *prometheus.HistogramVec
+	resolvedSectionsPerObject prometheus.Histogram
 }
 
 func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetrics {
@@ -193,9 +196,21 @@ func NewObjectMetastoreMetrics(reg prometheus.Registerer) *ObjectMetastoreMetric
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		indexReadRowsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
+		indexReadFlowTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_metastore_index_read_flow_total",
+			Help: "Total number of index objects routed to each read flow",
+		}, []string{"flow"}),
+		indexReadRowsPerObject: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_read_rows_per_object",
 			Help:                            "Number of index rows read while resolving a single index object",
+			Buckets:                         nil,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}, []string{"flow"}),
+		resolvedSectionsPerObject: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_resolved_sections_per_object",
+			Help:                            "Number of sections resolved from a single index object",
 			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
@@ -222,5 +237,7 @@ func (p *ObjectMetastoreMetrics) register(reg prometheus.Registerer) {
 	reg.MustRegister(p.resolvedSectionsTotalDuration)
 	reg.MustRegister(p.resolvedSectionsTotal)
 	reg.MustRegister(p.resolvedSectionsRatio)
+	reg.MustRegister(p.indexReadFlowTotal)
 	reg.MustRegister(p.indexReadRowsPerObject)
+	reg.MustRegister(p.resolvedSectionsPerObject)
 }

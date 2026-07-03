@@ -595,8 +595,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			sectionsMu.Lock()
 
 			// this is temporary, the stats will be collected differently in a distributed metastore
-			statsProvider := reader.(bloomStatsProvider)
-			totalSections.Add(statsProvider.totalReadRows())
+			sp := reader.(statsProvider)
+			totalSections.Add(sp.stats().ReadRows)
 
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
@@ -647,7 +647,9 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	}
 
 	var reader ArrowRecordBatchReader
+	flow := flowStreams
 	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
+		flow = flowPostings
 		reader = newPostingsIndexSectionsReader(
 			m.logger,
 			idxObj,
@@ -668,6 +670,9 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 			req.BatchSize,
 		)
 	}
+
+	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
+	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
@@ -748,6 +753,8 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 			break
 		}
 	}
+
+	m.metrics.resolvedSectionsPerObject.Observe(float64(len(objectSectionDescriptors)))
 
 	sections := make([]*DataobjSectionDescriptor, 0, len(objectSectionDescriptors))
 	for _, s := range objectSectionDescriptors {
