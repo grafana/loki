@@ -33,7 +33,8 @@ func Test_jobManager(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 		defer cancel()
 
-		require.NoError(t, jm.WaitReady(ctx), "WaitReady should return when a Recv call is waiting")
+		err := jm.WaitReady(ctx)
+		require.NoError(t, err, "WaitReady should return when a Recv call is waiting")
 	})
 
 	t.Run("Send fails with no calls to Recv", func(t *testing.T) {
