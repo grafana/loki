@@ -6082,8 +6082,7 @@ remote_write:
   [enabled: <boolean> | default = false]
 
   # Minimum period to wait between refreshing remote-write reconfigurations.
-  # This should be greater than or equivalent to
-  # -limits.per-user-override-period.
+  # This should be greater than or equivalent to -runtime-config.reload-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
