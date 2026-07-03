@@ -18,5 +18,6 @@ func main() {
 	addStatsCommand(app)
 	addListStreamsCommand(app)
 	addPrintStreamsCommand(app)
+	addPostingsLocalityCommand(app)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 }
