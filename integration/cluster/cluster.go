@@ -429,12 +429,9 @@ func (c *Component) run() error {
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
-		"-config.file",
-		c.configFile,
-		"-limits.per-user-override-config",
-		c.overridesFile,
-		"-limits.per-user-override-period",
-		"1s",
+		"-config.file", c.configFile,
+		"-runtime-config.file", c.overridesFile,
+		"-runtime-config.reload-period", "1s",
 	), flagset); err != nil {
 		return err
 	}

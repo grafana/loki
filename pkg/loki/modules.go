@@ -285,13 +285,6 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
-		if len(t.Cfg.LimitsConfig.PerTenantOverrideConfig) != 0 {
-			t.Cfg.RuntimeConfig.LoadPath = []string{t.Cfg.LimitsConfig.PerTenantOverrideConfig}
-		}
-		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
-	}
-
-	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
 		// no need to initialize module if load path is empty
 		return nil, nil
 	}
