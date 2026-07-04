@@ -2379,9 +2379,13 @@ go.opentelemetry.io/otel/exporters/prometheus/internal
 go.opentelemetry.io/otel/exporters/prometheus/internal/counter
 go.opentelemetry.io/otel/exporters/prometheus/internal/observ
 go.opentelemetry.io/otel/exporters/prometheus/internal/x
-# go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.19.0
+# go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.20.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/exporters/stdout/stdoutlog
+go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal
+go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal/counter
+go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal/observ
+go.opentelemetry.io/otel/exporters/stdout/stdoutlog/internal/x
 # go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.40.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/otel/exporters/stdout/stdoutmetric
@@ -2396,7 +2400,7 @@ go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal
 go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/counter
 go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/observ
 go.opentelemetry.io/otel/exporters/stdout/stdouttrace/internal/x
-# go.opentelemetry.io/otel/log v0.19.0
+# go.opentelemetry.io/otel/log v0.20.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/log
 go.opentelemetry.io/otel/log/embedded
@@ -2416,7 +2420,7 @@ go.opentelemetry.io/otel/sdk/trace
 go.opentelemetry.io/otel/sdk/trace/internal/env
 go.opentelemetry.io/otel/sdk/trace/internal/observ
 go.opentelemetry.io/otel/sdk/trace/tracetest
-# go.opentelemetry.io/otel/sdk/log v0.19.0
+# go.opentelemetry.io/otel/sdk/log v0.20.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/otel/sdk/log
 go.opentelemetry.io/otel/sdk/log/internal/observ
