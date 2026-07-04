@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -133,9 +134,7 @@ func (js jwtSource) Token() (*oauth2.Token, error) {
 		claims["scope"] = scopes
 	}
 
-	for k, v := range js.conf.PrivateClaims {
-		claims[k] = v
-	}
+	maps.Copy(claims, js.conf.PrivateClaims)
 
 	assertion := jwt.NewWithClaims(js.conf.SigningAlgorithm, claims)
 	if js.conf.PrivateKeyID != "" {
