@@ -1038,8 +1038,8 @@ github.com/prometheus/procfs v0.0.3/go.mod h1:4A/X28fw3Fc593LaREMrKMqOKvUAntwMDa
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
 github.com/prometheus/procfs v0.1.3/go.mod h1:lV6e/gmhEcM9IjHGsFOCxxuZ+z1YqCvr4OA4YeYWdaU=
 github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1xBZuNvfVA=
-github.com/prometheus/procfs v0.19.2 h1:zUMhqEW66Ex7OXIiDkll3tl9a1ZdilUOd/F6ZXw4Vws=
-github.com/prometheus/procfs v0.19.2/go.mod h1:M0aotyiemPhBCM0z5w87kL22CxfcH05ZpYlu+b4J7mw=
+github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEycfc=
+github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015 h1:DeUM+40/PKd/YPvCvsevpB4f5N7jtnJvJHG4MjFsNwI=
 github.com/prometheus/prometheus v0.312.1-0.20260612131846-2ad3a8717015/go.mod h1:GgwJCUxpytsT8b4joSfadnQ+IhyfaI0665Eta0VTqM0=
 github.com/prometheus/sigv4 v0.4.1 h1:EIc3j+8NBea9u1iV6O5ZAN8uvPq2xOIUPcqCTivHuXs=
@@ -1281,8 +1281,8 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0 h1:qazEJ
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0/go.mod h1:fOD2Yefuxixkx3ahVNf0O/PERb6r4OlbxfATVnYvzCo=
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 h1:lgh3PiVrRUWMLOVSkQicxzZll5NjF1r+AtsX1XRIHw0=
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0/go.mod h1:5Cnhth3m/AgOeTgE3ex12pPmiu/gGtZit03kSzx9X7s=
-go.opentelemetry.io/otel/exporters/prometheus v0.61.0 h1:cCyZS4dr67d30uDyh8etKM2QyDsQ4zC9ds3bdbrVoD0=
-go.opentelemetry.io/otel/exporters/prometheus v0.61.0/go.mod h1:iivMuj3xpR2DkUrUya3TPS/Z9h3dz7h01GxU+fQBRNg=
+go.opentelemetry.io/otel/exporters/prometheus v0.66.0 h1:vkrK8PAznv2NKt2r+kdu252ccGzkEqLc2aSXbQIALYQ=
+go.opentelemetry.io/otel/exporters/prometheus v0.66.0/go.mod h1:V/UB6D3vMF/UBOL5igAsAYnk1nG/bzYYTzvsB16cy7o=
 go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.19.0 h1:GJkybS+crDMdExT/BUNCEgfrmfboztcS6PhvSo88HKM=
 go.opentelemetry.io/otel/exporters/stdout/stdoutlog v0.19.0/go.mod h1:NuAyxRYIG2lKX3YQkB+83StTxM7s52PUUkRRiC0wnYI=
 go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.40.0 h1:ZrPRak/kS4xI3AVXy8F7pipuDXmDsrO8Lg+yQjBLjw0=
