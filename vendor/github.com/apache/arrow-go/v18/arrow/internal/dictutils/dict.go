@@ -19,7 +19,8 @@ package dictutils
 import (
 	"errors"
 	"fmt"
-	"hash/maphash"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -57,7 +58,7 @@ func (f *FieldPos) Path() []int32 {
 
 type Mapper struct {
 	pathToID map[uint64]int64
-	hasher   maphash.Hash
+	hasher   maphash.MapHash
 }
 
 func (d *Mapper) NumDicts() int {

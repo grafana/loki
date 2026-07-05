@@ -157,6 +157,14 @@ func (b *BinaryBuilder) AppendValues(v [][]byte, valid []bool) {
 	}
 
 	b.Reserve(len(v))
+
+	// Pre-calculate total data size to minimize allocations
+	totalDataSize := 0
+	for _, vv := range v {
+		totalDataSize += len(vv)
+	}
+	b.ReserveData(totalDataSize)
+
 	for _, vv := range v {
 		b.appendNextOffset()
 		b.values.Append(vv)
@@ -178,6 +186,14 @@ func (b *BinaryBuilder) AppendStringValues(v []string, valid []bool) {
 	}
 
 	b.Reserve(len(v))
+
+	// Pre-calculate total data size to minimize allocations
+	totalDataSize := 0
+	for _, vv := range v {
+		totalDataSize += len(vv)
+	}
+	b.ReserveData(totalDataSize)
+
 	for _, vv := range v {
 		b.appendNextOffset()
 		b.values.Append([]byte(vv))

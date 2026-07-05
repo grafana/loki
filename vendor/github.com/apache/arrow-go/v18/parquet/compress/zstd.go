@@ -64,7 +64,7 @@ func (p *zstdEncoderPool) getEncoderFromPool(level zstd.EncoderLevel) *zstd.Enco
 		if !ok {
 			pool = &sync.Pool{
 				New: func() interface{} {
-					enc, _ := zstd.NewWriter(nil, zstd.WithZeroFrames(true), zstd.WithEncoderLevel(level))
+					enc, _ := zstd.NewWriter(nil, zstd.WithZeroFrames(true), zstd.WithEncoderLevel(level), zstd.WithEncoderConcurrency(1))
 					return enc
 				},
 			}

@@ -235,7 +235,12 @@ func DispatchIsIn(state lookupState, in *exec.ArraySpan, out *exec.ExecResult) e
 
 	switch ty := inType.(type) {
 	case arrow.BinaryDataType:
-		return isInKernelExec(state.(*SetLookupState[[]byte]), in, out)
+		switch ty.Layout().Buffers[1].ByteWidth {
+		case 8:
+			return isInBinaryDirect[int64](state.(*SetLookupState[[]byte]), in, out)
+		default:
+			return isInBinaryDirect[int32](state.(*SetLookupState[[]byte]), in, out)
+		}
 	case arrow.FixedWidthDataType:
 		switch ty.Bytes() {
 		case 1:
@@ -252,6 +257,98 @@ func DispatchIsIn(state lookupState, in *exec.ArraySpan, out *exec.ExecResult) e
 	default:
 		return fmt.Errorf("%w: unsupported type %s for is_in function", arrow.ErrInvalid, in.Type)
 	}
+}
+
+// isInBinaryDirect is a specialized is_in path for binary/string types
+// that avoids the nested closure chain (isInKernelExec -> visitBinary ->
+// VisitBitBlocksShort) which causes per-element heap allocations due to
+// closure escape analysis. It inlines the bit block iteration and calls
+// BinaryMemoTable.ExistsDirect which also avoids closure-based lookup.
+func isInBinaryDirect[OffsetT int32 | int64](state *SetLookupState[[]byte], in *exec.ArraySpan, out *exec.ExecResult) error {
+	if in.Len == 0 {
+		return nil
+	}
+
+	writerBool := bitutil.NewBitmapWriter(out.Buffers[1].Buf, int(out.Offset), int(out.Len))
+	defer writerBool.Finish()
+	writerNulls := bitutil.NewBitmapWriter(out.Buffers[0].Buf, int(out.Offset), int(out.Len))
+	defer writerNulls.Finish()
+
+	valueSetHasNull := state.NullIndex != -1
+	rawBytes := in.Buffers[2].Buf
+	offsets := exec.GetSpanOffsets[OffsetT](in, 1)
+	lookup := state.Lookup.(*hashing.BinaryMemoTable)
+
+	bitmap := in.Buffers[0].Buf
+	counter := bitutils.NewOptionalBitBlockCounter(bitmap, in.Offset, in.Len)
+	pos := int64(0)
+	for pos < in.Len {
+		block := counter.NextBlock()
+		if block.AllSet() {
+			for i := 0; i < int(block.Len); i, pos = i+1, pos+1 {
+				val := rawBytes[offsets[pos]:offsets[pos+1]]
+				if lookup.ExistsDirect(val) {
+					writerBool.Set()
+					writerNulls.Set()
+				} else if state.NullBehavior == NullMatchingInconclusive && valueSetHasNull {
+					writerBool.Clear()
+					writerNulls.Clear()
+				} else {
+					writerBool.Clear()
+					writerNulls.Set()
+				}
+				writerBool.Next()
+				writerNulls.Next()
+			}
+		} else if block.NoneSet() {
+			for i := 0; i < int(block.Len); i, pos = i+1, pos+1 {
+				switch {
+				case state.NullBehavior == NullMatchingMatch && valueSetHasNull:
+					writerBool.Set()
+					writerNulls.Set()
+				case state.NullBehavior == NullMatchingSkip || (!valueSetHasNull && state.NullBehavior == NullMatchingMatch):
+					writerBool.Clear()
+					writerNulls.Set()
+				default:
+					writerBool.Clear()
+					writerNulls.Clear()
+				}
+				writerBool.Next()
+				writerNulls.Next()
+			}
+		} else {
+			for i := 0; i < int(block.Len); i, pos = i+1, pos+1 {
+				if bitutil.BitIsSet(bitmap, int(in.Offset+pos)) {
+					val := rawBytes[offsets[pos]:offsets[pos+1]]
+					if lookup.ExistsDirect(val) {
+						writerBool.Set()
+						writerNulls.Set()
+					} else if state.NullBehavior == NullMatchingInconclusive && valueSetHasNull {
+						writerBool.Clear()
+						writerNulls.Clear()
+					} else {
+						writerBool.Clear()
+						writerNulls.Set()
+					}
+				} else {
+					switch {
+					case state.NullBehavior == NullMatchingMatch && valueSetHasNull:
+						writerBool.Set()
+						writerNulls.Set()
+					case state.NullBehavior == NullMatchingSkip || (!valueSetHasNull && state.NullBehavior == NullMatchingMatch):
+						writerBool.Clear()
+						writerNulls.Set()
+					default:
+						writerBool.Clear()
+						writerNulls.Clear()
+					}
+				}
+				writerBool.Next()
+				writerNulls.Next()
+			}
+		}
+	}
+	return nil
 }
 
 func isInKernelExec[T hashing.MemoTypes](state *SetLookupState[T], in *exec.ArraySpan, out *exec.ExecResult) error {

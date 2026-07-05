@@ -27,7 +27,7 @@ import "unsafe"
 func _int8_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int8MaxMinSSE4(values []int8) (min, max int8) {
-	_int8_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int8_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -35,7 +35,7 @@ func int8MaxMinSSE4(values []int8) (min, max int8) {
 func _uint8_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint8MaxMinSSE4(values []uint8) (min, max uint8) {
-	_uint8_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint8_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -43,7 +43,7 @@ func uint8MaxMinSSE4(values []uint8) (min, max uint8) {
 func _int16_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int16MaxMinSSE4(values []int16) (min, max int16) {
-	_int16_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int16_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -51,7 +51,7 @@ func int16MaxMinSSE4(values []int16) (min, max int16) {
 func _uint16_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint16MaxMinSSE4(values []uint16) (min, max uint16) {
-	_uint16_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint16_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -59,7 +59,7 @@ func uint16MaxMinSSE4(values []uint16) (min, max uint16) {
 func _int32_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int32MaxMinSSE4(values []int32) (min, max int32) {
-	_int32_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int32_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -67,7 +67,7 @@ func int32MaxMinSSE4(values []int32) (min, max int32) {
 func _uint32_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint32MaxMinSSE4(values []uint32) (min, max uint32) {
-	_uint32_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint32_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -75,7 +75,7 @@ func uint32MaxMinSSE4(values []uint32) (min, max uint32) {
 func _int64_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func int64MaxMinSSE4(values []int64) (min, max int64) {
-	_int64_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_int64_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }
 
@@ -83,6 +83,6 @@ func int64MaxMinSSE4(values []int64) (min, max int64) {
 func _uint64_max_min_sse4(values unsafe.Pointer, length int, minout, maxout unsafe.Pointer)
 
 func uint64MaxMinSSE4(values []uint64) (min, max uint64) {
-	_uint64_max_min_sse4(unsafe.Pointer(&values[0]), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
+	_uint64_max_min_sse4(unsafe.Pointer(unsafe.SliceData(values)), len(values), unsafe.Pointer(&min), unsafe.Pointer(&max))
 	return
 }

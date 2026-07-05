@@ -62,14 +62,14 @@ func (e Edits) UnifiedDiff(base, target arrow.Array) string {
 	for i := 0; i < len(e); i++ {
 		if i > 0 {
 			if !wrotePosition {
-				s.WriteString(fmt.Sprintf("@@ -%d, +%d @@\n", baseIndex, targetIndex))
+				fmt.Fprintf(&s, "@@ -%d, +%d @@\n", baseIndex, targetIndex)
 				wrotePosition = true
 			}
 			if e[i].Insert {
-				s.WriteString(fmt.Sprintf("+%v\n", stringAt(target, targetIndex)))
+				fmt.Fprintf(&s, "+%v\n", stringAt(target, targetIndex))
 				targetIndex++
 			} else {
-				s.WriteString(fmt.Sprintf("-%v\n", stringAt(base, baseIndex)))
+				fmt.Fprintf(&s, "-%v\n", stringAt(base, baseIndex))
 				baseIndex++
 			}
 		}

@@ -25,7 +25,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"golang.org/x/xerrors"
 )
 
 type ListScalar interface {
@@ -227,7 +226,7 @@ func (s *Struct) CastTo(to arrow.DataType) (Scalar, error) {
 		if i > 0 {
 			bld.WriteString(", ")
 		}
-		bld.WriteString(fmt.Sprintf("%s:%s = %s", st.Field(i).Name, st.Field(i).Type, v.String()))
+		fmt.Fprintf(&bld, "%s:%s = %s", st.Field(i).Name, st.Field(i).Type, v.String())
 	}
 	bld.WriteByte('}')
 	buf := memory.NewBufferBytes(bld.Bytes())
@@ -331,7 +330,7 @@ func NewStructScalar(val []Scalar, typ arrow.DataType) *Struct {
 
 func NewStructScalarWithNames(val []Scalar, names []string) (*Struct, error) {
 	if len(val) != len(names) {
-		return nil, xerrors.New("mismatching number of field names and child scalars")
+		return nil, errors.New("mismatching number of field names and child scalars")
 	}
 
 	fields := make([]arrow.Field, len(names))
