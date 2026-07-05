@@ -32,7 +32,7 @@
         pattern="(assert|break|case|catch|continue|default|do|else|finally|for|if|goto|instanceof|new|return|switch|this|throw|try|while)\b">
         <token type="Keyword" />
       </rule>
-      <rule pattern="((?:(?:[^\W\d]|\$)[\w.\[\]$&lt;&gt;]*\s+)+?)((?:[^\W\d]|\$)[\w$]*)(\s*)(\()">
+      <rule pattern="((?:(?:[^\W\d]|\$)[\w.\[\]$&lt;&gt;?]*\s+)+?)((?:[^\W\d]|\$)[\w$]*)(\s*)(\()">
         <bygroups>
           <usingself state="root" />
           <token type="NameFunction" />
@@ -44,7 +44,7 @@
         <token type="NameDecorator" />
       </rule>
       <rule
-        pattern="(abstract|const|enum|extends|final|implements|native|private|protected|public|sealed|static|strictfp|super|synchronized|throws|transient|volatile|yield)\b">
+        pattern="(abstract|const|enum|exports|extends|final|implements|native|non-sealed|open|opens|permits|private|protected|provides|public|requires|sealed|static|strictfp|super|synchronized|throws|to|transient|transitive|uses|volatile|with|yield)\b">
         <token type="KeywordDeclaration" />
       </rule>
       <rule pattern="(boolean|byte|char|double|float|int|long|short|void)\b">
@@ -64,6 +64,10 @@
         <token type="KeywordDeclaration" />
         <push state="class" />
       </rule>
+      <rule pattern="(module)\b">
+        <token type="KeywordDeclaration" />
+        <push state="module" />
+      </rule>
       <rule pattern="(var)(\s+)">
         <bygroups>
           <token type="KeywordDeclaration" />
@@ -71,7 +75,7 @@
         </bygroups>
         <push state="var" />
       </rule>
-      <rule pattern="(import(?:\s+static)?)(\s+)">
+      <rule pattern="(import(?:\s+(?:static|module))?)(\s+)">
         <bygroups>
           <token type="KeywordNamespace" />
           <token type="TextWhitespace" />
@@ -139,6 +143,15 @@
       </rule>
     </state>
     <state name="class">
+      <rule pattern="\s+">
+        <token type="Text" />
+      </rule>
+      <rule pattern="([^\W\d]|\$)[\w$]*">
+        <token type="NameClass" />
+        <pop depth="1" />
+      </rule>
+    </state>
+    <state name="module">
       <rule pattern="\s+">
         <token type="Text" />
       </rule>
