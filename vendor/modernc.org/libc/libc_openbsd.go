@@ -1415,7 +1415,10 @@ func Xfflush(t *TLS, stream uintptr) int32 {
 // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
-		trc("t=%v ptr=%+v nmemb=%d stream=%v, (%v:)", t, unsafe.Slice((*byte)(unsafe.Pointer(ptr)), nmemb), nmemb, *(*int32)(unsafe.Pointer(stream)), origin(2))
+		trc("t=%v ptr=%v size=%v nmemb=%v stream=%v, (%v:)", t, ptr, size, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	buf := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), nmemb*size)
 	m, err := unix.Read(int(file(stream).fd()), buf)
@@ -1435,6 +1438,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	buf := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), nmemb*size)
 	m, err := unix.Write(int(file(stream).fd()), buf)
@@ -1908,31 +1914,22 @@ func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, off
 		return uintptr(unsafe.Pointer(&data[0]))
 	}
 
-	// On 2021-12-23, a new syscall for mmap was introduced:
-	//
-	// 	49	STD NOLOCK	{ void *sys_mmap(void *addr, size_t len, int prot, \
-	// 			    int flags, int fd, off_t pos); }
-	//  src: https://github.com/golang/go/issues/59661
-	if __ccgo_strace {
-		trc("Xmmap with addr %d (%v:)", addr, origin(2))
-	}
-
-	panic(todo(""))
-
-	const unix_SYS_MMAP = 49
-
-	// Cannot avoid the syscall here, addr sometimes matter.
-	data, _, err := unix.RawSyscall6(unix_SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), uintptr(offset))
+	// addr != 0 (MAP_FIXED): cannot use unix.Mmap (it chooses the address), so do
+	// the raw syscall. openbsd mmap(2) (SYS_MMAP=197) takes a `long PAD` before
+	// off_t, and on 32-bit (openbsd/386) off_t spans two argument words, so pass
+	// offset>>32 as the high word; it is read on 32-bit and ignored on 64-bit.
+	// Matches golang.org/x/sys/unix's own per-arch openbsd mmap.
+	data, _, err := unix.Syscall9(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), 0, uintptr(offset), uintptr(offset>>32), 0)
 	if err != 0 {
-		//if dmesgs {
-		dmesg("%v: %v FAIL", origin(1), err)
-		//}
+		if dmesgs {
+			dmesg("%v: %v FAIL", origin(1), err)
+		}
 		t.setErrno(err)
 		return ^uintptr(0) // (void*)-1
 	}
 
 	if dmesgs {
-		dmesg("%v: addr %#0x, length %#x0, prot %#0x, flags %#0x, fd %d, offset %#0x returns %#0x", origin(1), addr, length, prot, flags, fd, offset, data)
+		dmesg("%v: %#x", origin(1), data)
 	}
 	return data
 }
@@ -2885,4 +2882,8 @@ func Xrecvmsg(t *TLS, sockfd int32, msg uintptr, flags int32) types.Ssize_t {
 	copy((*RawMem)(unsafe.Pointer(msg))[:n:n], buf[:])
 
 	return types.Ssize_t(n)
+}
+
+func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
+	return byte(a_load_8(ptr))
 }

@@ -1567,6 +1567,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
 	}
+	if size == 0 || nmemb == 0 {
+		return 0
+	}
 	fd := uintptr(file(stream).fd())
 	count := size * nmemb
 	var n int
@@ -1601,6 +1604,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	fd := uintptr(file(stream).fd())
 	count := size * nmemb
@@ -2790,4 +2796,8 @@ func Xdup(tls *TLS, fd int32) (r int32) {
 
 func X__builtin_ctz(t *TLS, n uint32) int32 {
 	return int32(mbits.TrailingZeros32(n))
+}
+
+func AtomicLoadNUint8(ptr uintptr, memorder int32) uint8 {
+	return byte(a_load_8(ptr))
 }
