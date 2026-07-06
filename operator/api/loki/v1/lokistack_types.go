@@ -1583,9 +1583,6 @@ type LokiStackStatus struct {
 
 	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
 	//
-	// Deprecated: This field is deprecated and will be removed in a future release.
-	// Use NetworkPolicyStatus.RuleSet instead.
-	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	NetworkPolicyRuleSet NetworkPolicyRuleSet `json:"networkPolicyRuleSet,omitempty"`
