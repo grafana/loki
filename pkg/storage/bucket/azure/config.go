@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/grafana/dskit/flagext"
+
+	lokihttp "github.com/grafana/loki/v3/pkg/storage/bucket/http"
 )
 
 // Config holds the config options for an Azure backend
@@ -20,6 +22,8 @@ type Config struct {
 
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
+
+	HTTP lokihttp.Config `yaml:"http_config"`
 }
 
 // RegisterFlags registers the flags for Azure storage
@@ -37,4 +41,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
 	f.StringVar(&cfg.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned managed identity. If empty, then System assigned identity is used.")
 	f.StringVar(&cfg.ChunkDelimiter, prefix+"azure.chunk-delimiter", "-", "Delimiter used to replace ':' in chunk IDs when storing chunks")
+	cfg.HTTP.RegisterFlagsWithPrefix(prefix+"azure.", f)
 }
