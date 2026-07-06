@@ -727,8 +727,8 @@ github.com/hashicorp/nomad/api v0.0.0-20260528135333-5b027732945f h1:sdf4a6FF3tC
 github.com/hashicorp/nomad/api v0.0.0-20260528135333-5b027732945f/go.mod h1:Kr8imJwigbQ/50BqVae2+JL+AyX+FnzbnuCoIFb6iYg=
 github.com/hashicorp/serf v0.10.2 h1:m5IORhuNSjaxeljg5DeQVDlQyVkhRIjJDimbkCa8aAc=
 github.com/hashicorp/serf v0.10.2/go.mod h1:T1CmSGfSeGfnfNy/w0odXQUR1rfECGd2Qdsp84DjOiY=
-github.com/heroku/x v0.5.3 h1:lf4/Yg3j/e/QIgAUFmoVd0ELgQjUX9DUx+CULX2AWag=
-github.com/heroku/x v0.5.3/go.mod h1:MEW61sTisuKAjLRoO1reSmX4xKqKxAKWWl2HER8Vn2M=
+github.com/heroku/x v0.6.0 h1:6WoiLH8YFx5k9OveUtQlJPrf20nyB99SuKw7b1Gy/C4=
+github.com/heroku/x v0.6.0/go.mod h1:xJYSIyl7NYNs3tGiBG9FcQXRjuOzmPuLU42gTGG8wfU=
 github.com/hetznercloud/hcloud-go/v2 v2.41.2 h1:fO5zsMgp5oejrtnFj8mYuqlp+iMuirpaKv4b5FYNRdQ=
 github.com/hetznercloud/hcloud-go/v2 v2.41.2/go.mod h1:9OGvC//jbHE4sv2Oyo0bQ2vEWuUMKYoNMyj9Qxz2qcc=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
