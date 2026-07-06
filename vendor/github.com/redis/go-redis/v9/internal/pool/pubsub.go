@@ -53,18 +53,42 @@ func (p *PubSubPool) NewConn(ctx context.Context, network string, addr string, c
 func (p *PubSubPool) TrackConn(cn *Conn) {
 	atomic.AddUint32(&p.stats.Active, 1)
 	p.activeConns.Store(cn.GetID(), cn)
+	// Emit +1 used for PubSub connection
+	if cb := getMetricConnectionCountCallback(); cb != nil {
+		cb(context.Background(), 1, cn, "used", true)
+	}
 }
 
 func (p *PubSubPool) UntrackConn(cn *Conn) {
+	// LoadAndDelete ensures each connection is only decremented once,
+	// guarding against double-decrement if Close() already untracked it.
+	if _, loaded := p.activeConns.LoadAndDelete(cn.GetID()); !loaded {
+		return
+	}
 	atomic.AddUint32(&p.stats.Active, ^uint32(0))
 	atomic.AddUint32(&p.stats.Untracked, 1)
-	p.activeConns.Delete(cn.GetID())
+	// Emit -1 used for PubSub connection
+	if cb := getMetricConnectionCountCallback(); cb != nil {
+		cb(context.Background(), -1, cn, "used", true)
+	}
 }
 
 func (p *PubSubPool) Close() error {
 	p.closed.Store(true)
+	cb := getMetricConnectionCountCallback()
 	p.activeConns.Range(func(key, value interface{}) bool {
 		cn := value.(*Conn)
+		// Use LoadAndDelete to atomically claim ownership of this entry.
+		// If a concurrent UntrackConn already removed it, skip to avoid double-decrement.
+		if _, loaded := p.activeConns.LoadAndDelete(key); !loaded {
+			return true
+		}
+		atomic.AddUint32(&p.stats.Active, ^uint32(0))
+		atomic.AddUint32(&p.stats.Untracked, 1)
+		// Emit -1 used for each PubSub connection being closed
+		if cb != nil {
+			cb(context.Background(), -1, cn, "used", true)
+		}
 		_ = cn.Close()
 		return true
 	})
