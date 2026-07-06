@@ -8,12 +8,12 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kbin"
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -41,9 +41,25 @@ type source struct {
 
 	session fetchSession // supports fetch sessions as per KIP-227
 
-	cursorsMu    sync.Mutex
+	cursorsMu    xsync.Mutex
 	cursors      []*cursor // contains all partitions being consumed on this source
 	cursorsStart int       // incremented every fetch req to ensure all partitions are fetched
+
+	share sourceShare
+}
+
+type sourceShare struct {
+	s  *source // back-pointer for hook, sem, maybeShareConsume
+	sc *shareConsumer
+
+	mu           xsync.Mutex
+	cursors      []*shareCursor
+	cursorsStart int
+	sessionEpoch int32              // 0=new, incremented on success, -1=close
+	sessionParts map[tidp]struct{}  // broker-confirmed session partitions; createShareFetchReq diffs WANT against this to compute add/forget
+	ackCh        chan struct{}      // acks pending, batch on timer
+	ackFlushCh   chan struct{}      // flush acks immediately
+	buffered     shareBufferedFetch // decoded share fetch waiting for poll
 }
 
 func (cl *Client) newSource(nodeID int32) *source {
@@ -55,6 +71,11 @@ func (cl *Client) newSource(nodeID int32) *source {
 	if cl.cfg.disableFetchSessions {
 		s.session.kill()
 	}
+	s.share.s = s
+	s.share.sc = cl.consumer.s
+	s.share.ackCh = make(chan struct{}, 1)
+	s.share.ackFlushCh = make(chan struct{}, 1)
+	s.share.sessionParts = make(map[tidp]struct{})
 	close(s.sem)
 	return s
 }
@@ -384,8 +405,8 @@ func (os usedOffsets) finishUsingAll() {
 type bufferedFetch struct {
 	fetch Fetch
 
-	doneFetch   chan<- struct{} // when unbuffered, we send down this
-	usedOffsets usedOffsets     // what the offsets will be next if this fetch is used
+	doneFetch   chan<- bool // when unbuffered, we send down this
+	usedOffsets usedOffsets // what the offsets will be next if this fetch is used
 }
 
 func (s *source) hook(f *Fetch, buffered, polled bool) {
@@ -537,13 +558,14 @@ func (s *source) takeNBuffered(paused pausedTopics, n int) (Fetch, int, bool) {
 	bf := &b.fetch
 	for len(bf.Topics) > 0 && n > 0 {
 		t := &bf.Topics[0]
+		tCursors := b.usedOffsets[t.Topic]
 
 		// If the topic is outright paused, we allowUsable all
 		// partitions in the topic and skip the topic entirely.
 		if paused.has(t.Topic, -1) {
 			rstrip.Topics = append(rstrip.Topics, *t)
 			bf.Topics = bf.Topics[1:]
-			for _, pCursor := range b.usedOffsets[t.Topic] {
+			for _, pCursor := range tCursors {
 				pCursor.from.allowUsable()
 			}
 			delete(b.usedOffsets, t.Topic)
@@ -568,8 +590,6 @@ func (s *source) takeNBuffered(paused pausedTopics, n int) (Fetch, int, bool) {
 			rtstrip = &rstrip.Topics[len(rstrip.Topics)-1]
 			rtstrip.Partitions = nil
 		}
-
-		tCursors := b.usedOffsets[t.Topic]
 
 		for len(t.Partitions) > 0 && n > 0 {
 			p := &t.Partitions[0]
@@ -643,7 +663,7 @@ func (s *source) takeBufferedFn(polled bool, offsetFn func(usedOffsets)) Fetch {
 	r := s.buffered
 	s.buffered = bufferedFetch{}
 	offsetFn(r.usedOffsets)
-	r.doneFetch <- struct{}{}
+	r.doneFetch <- true
 	close(s.sem)
 
 	s.hook(&r.fetch, false, polled) // unbuffered, potentially polled
@@ -769,7 +789,7 @@ func (s *source) loopFetch() {
 
 	// We receive on canFetch when we can fetch, and we send back when we
 	// are done fetching.
-	canFetch := make(chan chan struct{}, 1)
+	canFetch := make(chan chan bool, 1)
 
 	again := true
 	for again {
@@ -797,7 +817,7 @@ func (s *source) loopFetch() {
 			// to avoid calling fetch with a canceled context just because it passed
 			// the above selects by chance due to pseudo-random select behavior.
 			if session.ctx.Err() != nil {
-				doneFetch <- struct{}{}
+				doneFetch <- false
 				s.fetchState.hardFinish()
 				return
 			}
@@ -843,7 +863,7 @@ func (s *source) killSessionOnClose(ctx context.Context) {
 // *even if* the source needs to be stopped. The knowledge of which preferred
 // replica to use would not be out of date even if the consumer session is
 // changing.
-func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct{}) (fetched bool) {
+func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- bool) (fetched bool) {
 	req := s.createReq()
 
 	// For all returns, if we do not buffer our fetch, then we want to
@@ -863,7 +883,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 				}
 			}
 			if !alreadySentToDoneFetch {
-				doneFetch <- struct{}{}
+				doneFetch <- false
 			}
 		}
 	}()
@@ -907,7 +927,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 		// We preemptively allow more fetches (since we are not buffering)
 		// and reset our session because of the error (who knows if kafka
 		// processed the request but the client failed to receive it).
-		doneFetch <- struct{}{}
+		doneFetch <- false
 		alreadySentToDoneFetch = true
 		s.session.reset()
 		didBackoff = true
@@ -972,9 +992,6 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 	}
 	reloadOffsets.each(deleteReqUsedOffset)
 
-	// The session on the request was updated; we keep those updates.
-	s.session = req.session
-
 	// handleReqResp only parses the body of the response, not the top
 	// level error code.
 	//
@@ -1018,6 +1035,9 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 		s.session.kill()
 	} else {
 		s.session.bumpEpoch(resp.SessionID)
+		// Commit the request's session-used mutations now that the
+		// broker has acknowledged the request.
+		s.session.commitFromReq(req.committedTopics, req.committedForgotten)
 	}
 
 	// If we have a reason to update (per-partition fetch errors), and the
@@ -1393,6 +1413,11 @@ type ProcessFetchPartitionOpts struct {
 
 	// Pools contain potential pools to use for memory pooling.
 	Pools []Pool
+
+	// shareAckSlab, if non-nil, is called once per decoded batch
+	// to allocate a slab for share group ack state tracking. The
+	// slab is injected into each record's context via shareAckKey.
+	shareAckSlab func(numRecords int, firstRecord *Record) *shareAckSlab
 }
 
 // ProcessFetchPartition processes all records in all batches or message sets
@@ -1721,6 +1746,17 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 	if usesPools {
 		p, poolsCtx = recordPoolsCtx(o.Pools, decompressBytes, rrecords)
 	}
+
+	recordCtx := poolsCtx
+	if o.shareAckSlab != nil {
+		if slab := o.shareAckSlab(numRecords, &rrecords[0]); slab != nil {
+			parent := poolsCtx
+			if parent == nil {
+				parent = context.Background()
+			}
+			recordCtx = context.WithValue(parent, shareAckKey, slab)
+		}
+	}
 	var nkept int
 	defer func() {
 		if p != nil && nkept > 0 {
@@ -1737,7 +1773,7 @@ func (o *ProcessFetchPartitionOpts) processRecordBatch(
 			&krecords[i],
 			record,
 		)
-		record.Context = poolsCtx   //nolint:fatcontext // not a nested context
+		record.Context = recordCtx  //nolint:fatcontext // not a nested context
 		krecords[i] = kmsg.Record{} // prevent the kmsg.Record from hanging onto anything
 		if kept := o.maybeKeepRecord(fp, record, abortBatch); kept {
 			nkept++
@@ -1993,12 +2029,15 @@ func recordToRecord(
 	krecord *kmsg.Record,
 	r *Record,
 ) {
-	h := make([]RecordHeader, 0, len(krecord.Headers))
-	for _, kv := range krecord.Headers {
-		h = append(h, RecordHeader{
-			Key:   kv.Key,
-			Value: kv.Value,
-		})
+	var h []RecordHeader
+	if len(krecord.Headers) > 0 {
+		h = make([]RecordHeader, len(krecord.Headers))
+		for i, kv := range krecord.Headers {
+			h[i] = RecordHeader{
+				Key:   kv.Key,
+				Value: kv.Value,
+			}
+		}
 	}
 	*r = Record{
 		Key:           krecord.Key,
@@ -2118,6 +2157,15 @@ type fetchRequest struct {
 	// built. If the source is reset, the session it has is reset at the
 	// field level only. Our view of the original session is still valid.
 	session fetchSession
+
+	// Snapshots of the topic / forgotten-topic slices from the
+	// serialized kmsg.FetchRequest, captured at AppendTo time so fetch()
+	// can apply them to s.session.used after a successful response.
+	// Overwritten by each AppendTo call; the last call wins, which is
+	// correct because only the last serialization made it onto the
+	// wire.
+	committedTopics    []kmsg.FetchRequestTopic
+	committedForgotten []kmsg.FetchRequestForgottenTopic
 }
 
 func (f *fetchRequest) addCursor(c *cursor) {
@@ -2418,7 +2466,12 @@ func (f *fetchRequest) AppendTo(dst []byte) []byte {
 	}
 
 	// Now for everything that we did not use in our session, add it to
-	// forgotten topics and remove it from the session.
+	// forgotten topics. The resulting ForgottenTopics list is what the
+	// broker is asked to drop; the actual mutation of f.session.used and
+	// f.session.t2id happens only after the response is processed, via
+	// fetchSession.commitFromReq. Doing the mutation here would be
+	// unsafe under broker.go's zero-bytes-written retry path, which can
+	// call AppendTo a second time on the same *fetchRequest.
 	if sessionUsed != nil {
 		for topic, partitions := range f.session.used {
 			var forgottenTopic *kmsg.FetchRequestForgottenTopic
@@ -2437,28 +2490,15 @@ func (f *fetchRequest) AppendTo(dst []byte) []byte {
 					forgottenTopic = &req.ForgottenTopics[len(req.ForgottenTopics)-1]
 				}
 				forgottenTopic.Partitions = append(forgottenTopic.Partitions, partition)
-				delete(partitions, partition)
-			}
-			if len(partitions) == 0 {
-				delete(f.session.used, topic)
-				id := f.session.t2id[topic]
-				delete(f.session.t2id, topic)
-				// If we deleted a topic that was missing an ID, then we clear the
-				// previous disableIDs state. We potentially *reenable* disableIDs
-				// if any remaining topics in our session are also missing their ID.
-				var noID [16]byte
-				if id == noID {
-					f.session.disableIDs = false
-					for _, id := range f.session.t2id {
-						if id == noID {
-							f.session.disableIDs = true
-							break
-						}
-					}
-				}
 			}
 		}
 	}
+
+	// Snapshot the topics / forgotten-topics so fetch() can commit them
+	// to s.session.used after a successful response. Last AppendTo wins
+	// (the last serialization is what actually went on the wire).
+	f.committedTopics = req.Topics
+	f.committedForgotten = req.ForgottenTopics
 
 	return req.AppendTo(dst)
 }
@@ -2507,6 +2547,70 @@ func (s *fetchSession) reset() {
 	s.disableIDs = false
 }
 
+// commitFromReq applies to s the session-used mutations implied by a
+// successful fetch request: partitions in req.Topics were TOLD to the
+// broker at their FetchOffset/CurrentLeaderEpoch, and partitions in
+// req.ForgottenTopics were TOLD to be removed. We call this only after
+// the broker has acknowledged the request via a successful (non-error)
+// response, guaranteeing the broker's session state matches what we're
+// recording here.
+func (s *fetchSession) commitFromReq(topics []kmsg.FetchRequestTopic, forgotten []kmsg.FetchRequestForgottenTopic) {
+	if s.killed {
+		return
+	}
+	if s.used == nil {
+		s.used = make(map[string]map[int32]fetchSessionOffsetEpoch)
+		s.t2id = make(map[string][16]byte)
+	}
+	var noID [16]byte
+	for _, rt := range topics {
+		topic := rt.Topic
+		if topic == "" {
+			continue
+		}
+		t := s.used[topic]
+		if t == nil {
+			t = make(map[int32]fetchSessionOffsetEpoch)
+			s.used[topic] = t
+			s.t2id[topic] = rt.TopicID
+			if rt.TopicID == noID {
+				s.disableIDs = true
+			}
+		}
+		for _, rp := range rt.Partitions {
+			t[rp.Partition] = fetchSessionOffsetEpoch{rp.FetchOffset, rp.CurrentLeaderEpoch}
+		}
+	}
+	for _, rft := range forgotten {
+		topic := rft.Topic
+		if topic == "" {
+			continue
+		}
+		t, ok := s.used[topic]
+		if !ok {
+			continue
+		}
+		for _, p := range rft.Partitions {
+			delete(t, p)
+		}
+		if len(t) == 0 {
+			id := s.t2id[topic]
+			delete(s.used, topic)
+			delete(s.t2id, topic)
+			if id == noID {
+				// Recompute disableIDs from remaining topics.
+				s.disableIDs = false
+				for _, tid := range s.t2id {
+					if tid == noID {
+						s.disableIDs = true
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
 // bumpEpoch bumps the epoch and saves the session id.
 //
 // Kafka replies with the session ID of the session to use. When it does, we
@@ -2553,12 +2657,117 @@ type fetchSessionOffsetEpoch struct {
 
 type fetchSessionTopic map[int32]fetchSessionOffsetEpoch
 
+// hasPartitionAt is a pure query: does s already track partition at the
+// given offset/epoch? It MUST NOT mutate s. Session-used writes happen
+// only after a successful response, via fetchSession.commitFromReq.
 func (s fetchSessionTopic) hasPartitionAt(partition int32, offset int64, epoch int32) bool {
 	if s == nil { // if we are nil, the session was killed
 		return false
 	}
 	at, exists := s[partition]
-	now := fetchSessionOffsetEpoch{offset, epoch}
-	s[partition] = now
-	return exists && at == now
+	return exists && at == fetchSessionOffsetEpoch{offset, epoch}
+}
+
+///////////
+// SHARE //
+///////////
+
+type shareBufferedFetch struct {
+	fetch     Fetch
+	doneFetch chan<- bool
+}
+
+func (s *source) signalShareAcks() {
+	select {
+	case s.share.ackCh <- struct{}{}:
+	default:
+	}
+	s.maybeShareConsume()
+}
+
+func (s *source) signalShareAckFlush() {
+	select {
+	case s.share.ackFlushCh <- struct{}{}:
+	default:
+	}
+	s.maybeShareConsume()
+}
+
+func (s *source) resetShareSession() {
+	s.share.mu.Lock()
+	prev := s.share.sessionEpoch
+	s.share.sessionEpoch = 0
+	clear(s.share.sessionParts) // must also be cleared, else we'll have a corrupted session
+	s.share.mu.Unlock()
+	s.cl.cfg.logger.Log(LogLevelDebug, "resetting share session",
+		"broker", logID(s.nodeID),
+		"prev_session_epoch", prev,
+	)
+}
+
+// bumpShareSessionEpochIfCurrent increments the session epoch only if
+// it still matches the caller-supplied epoch. Used after top-level
+// errors that are NOT session-destroying: a concurrent manage
+// goroutine may have reset our session mid-flight (UnknownMemberID
+// path), in which case we must not bump because the reset set the
+// epoch to 0.
+func (s *source) bumpShareSessionEpochIfCurrent(epoch int32) {
+	s.share.mu.Lock()
+	if s.share.sessionEpoch == epoch {
+		s.share.sessionEpoch++
+	}
+	s.share.mu.Unlock()
+}
+
+func (s *source) removeShareCursor(c *shareCursor) {
+	s.share.mu.Lock()
+	if c.cursorsIdx != len(s.share.cursors)-1 {
+		s.share.cursors[c.cursorsIdx], s.share.cursors[len(s.share.cursors)-1] = s.share.cursors[len(s.share.cursors)-1], nil
+		s.share.cursors[c.cursorsIdx].cursorsIdx = c.cursorsIdx
+	} else {
+		s.share.cursors[c.cursorsIdx] = nil
+	}
+	s.share.cursors = s.share.cursors[:len(s.share.cursors)-1]
+	if s.share.cursorsStart == len(s.share.cursors) {
+		s.share.cursorsStart = 0
+	}
+	s.share.mu.Unlock()
+	// We don't ned to wake the source to send this is a forgotten
+	// partition, but it doesn't hurt.
+	s.maybeShareConsume()
+}
+
+func (s *source) addShareCursor(add *shareCursor) {
+	s.share.mu.Lock()
+	add.cursorsIdx = len(s.share.cursors)
+	s.share.cursors = append(s.share.cursors, add)
+	s.share.mu.Unlock()
+	// A cursor migrating between sources may carry pending acks
+	// from the old source. Signal the new source's loop so those
+	// acks are drained rather than stranded.
+	//
+	// No lost-signal window with concurrent appendAck on the same
+	// cursor: appendAck always (a) acquires c.ackMu to append the
+	// new entry, then (b) releases c.ackMu, then (c) atomically
+	// loads c.source and signals it. The interleavings:
+	//
+	//   - addShareCursor reads pending under c.ackMu BEFORE
+	//     appendAck appends: hasPending may be false here, but
+	//     appendAck's later c.source.Load() returns this new
+	//     source (applyMoves stored it before calling
+	//     addShareCursor) and signals us directly.
+	//   - addShareCursor reads pending AFTER appendAck appends:
+	//     hasPending is true and we signal here. appendAck's
+	//     concurrent c.source-read+signal is a harmless duplicate.
+	//
+	// Either way, every appended entry is followed by a signal to
+	// the cursor's current source. The same reasoning covers
+	// pendingGaps via enqueueGaps' signal.
+	add.ackMu.Lock()
+	hasPending := len(add.pendingAcks) > 0 || len(add.pendingGaps) > 0
+	add.ackMu.Unlock()
+	if hasPending {
+		s.signalShareAcks()
+	}
+	s.maybeShareConsume()
 }
