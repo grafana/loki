@@ -360,20 +360,26 @@ func (b *BlobStorage) getBlobClient(blobID string, hedging bool) *blockblob.Clie
 func (b *BlobStorage) newContainerClient(hedgingCfg hedging.Config, isHedging bool) (*container.Client, error) {
 	// Start from the default factory so that tests can inject a custom transport
 	// by overriding defaultClientFactory.  We then layer TLS config on top when
-	// the operator has supplied custom CA / cert / key settings.
+	// the operator has supplied at least one TLS option, leaving the zero-value
+	// case completely unchanged from pre-existing behaviour.
 	httpClient := defaultClientFactory()
-	if t, ok := httpClient.Transport.(*http.Transport); ok {
-		tlsCfg, err := exthttp.NewTLSConfig(&exthttp.TLSConfig{
-			CAFile:             b.cfg.HTTPConfig.CAPath,
-			CertFile:           b.cfg.HTTPConfig.CertPath,
-			KeyFile:            b.cfg.HTTPConfig.KeyPath,
-			ServerName:         b.cfg.HTTPConfig.ServerName,
-			InsecureSkipVerify: b.cfg.HTTPConfig.InsecureSkipVerify,
-		})
-		if err != nil {
-			return nil, err
+	if b.cfg.HTTPConfig.CAPath != "" ||
+		b.cfg.HTTPConfig.CertPath != "" ||
+		b.cfg.HTTPConfig.ServerName != "" ||
+		b.cfg.HTTPConfig.InsecureSkipVerify {
+		if t, ok := httpClient.Transport.(*http.Transport); ok {
+			tlsCfg, err := exthttp.NewTLSConfig(&exthttp.TLSConfig{
+				CAFile:             b.cfg.HTTPConfig.CAPath,
+				CertFile:           b.cfg.HTTPConfig.CertPath,
+				KeyFile:            b.cfg.HTTPConfig.KeyPath,
+				ServerName:         b.cfg.HTTPConfig.ServerName,
+				InsecureSkipVerify: b.cfg.HTTPConfig.InsecureSkipVerify,
+			})
+			if err != nil {
+				return nil, err
+			}
+			t.TLSClientConfig = tlsCfg
 		}
-		t.TLSClientConfig = tlsCfg
 	}
 	if isHedging {
 		var err error
