@@ -5,6 +5,8 @@ package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.g
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -29,6 +31,14 @@ type InterceptorFilter func(*InterceptorInfo) bool
 // A Filter must return true if the request should be instrumented.
 type Filter func(*stats.RPCTagInfo) bool
 
+type semconvMode int
+
+const (
+	semconvModeNew semconvMode = iota // Default
+	semconvModeOld
+	semconvModeDup
+)
+
 // config is a group of options for this instrumentation.
 type config struct {
 	Filter             Filter
@@ -37,7 +47,6 @@ type config struct {
 	TracerProvider     trace.TracerProvider
 	MeterProvider      metric.MeterProvider
 	SpanKind           trace.SpanKind
-	SpanStartOptions   []trace.SpanStartOption
 	SpanAttributes     []attribute.KeyValue
 	MetricAttributes   []attribute.KeyValue
 	MetricAttributesFn func(ctx context.Context) []attribute.KeyValue
@@ -47,6 +56,8 @@ type config struct {
 
 	ReceivedEvent bool
 	SentEvent     bool
+
+	semconvMode semconvMode
 }
 
 // Option applies an option value for a config.
@@ -66,11 +77,31 @@ func newConfig(opts []Option) *config {
 		Propagators:    otel.GetTextMapPropagator(),
 		TracerProvider: otel.GetTracerProvider(),
 		MeterProvider:  otel.GetMeterProvider(),
+		semconvMode:    parseSemconvMode(),
 	}
 	for _, o := range opts {
 		o.apply(c)
 	}
+
 	return c
+}
+
+func parseSemconvMode() semconvMode {
+	val := os.Getenv("OTEL_SEMCONV_STABILITY_OPT_IN")
+	if val == "" {
+		return semconvModeNew
+	}
+	parts := strings.SplitSeq(val, ",")
+	for p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "rpc/dup" {
+			return semconvModeDup
+		}
+		if p == "rpc/old" {
+			return semconvModeOld
+		}
+	}
+	return semconvModeNew
 }
 
 // WithPublicEndpoint configures the Handler to link the span with an incoming
@@ -169,16 +200,6 @@ func WithMessageEvents(events ...Event) Option {
 				c.SentEvent = true
 			}
 		}
-	})
-}
-
-// WithSpanOptions configures an additional set of
-// trace.SpanOptions, which are applied to each new span.
-//
-// Deprecated: It is only used by the deprecated interceptor, and is unused by [NewClientHandler] and [NewServerHandler].
-func WithSpanOptions(opts ...trace.SpanStartOption) Option {
-	return optionFunc(func(c *config) {
-		c.SpanStartOptions = append(c.SpanStartOptions, opts...)
 	})
 }
 
