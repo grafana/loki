@@ -139,7 +139,7 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 			yield(Result{
 				ip:        ip,
 				prefixLen: uint8(bit),
-				err:       fmt.Errorf("prefixing %s with %d", netIP, bit),
+				err:       fmt.Errorf("prefixing %s with %d: %w", netIP, bit, err),
 			})
 			return
 		}
