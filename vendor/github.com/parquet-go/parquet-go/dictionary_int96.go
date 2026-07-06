@@ -13,7 +13,7 @@ type int96Dictionary struct {
 	hashmap map[deprecated.Int96]int32
 }
 
-func newInt96Dictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *int96Dictionary {
+func newInt96Dictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *int96Dictionary {
 	return &int96Dictionary{
 		int96Page: int96Page{
 			typ:         typ,

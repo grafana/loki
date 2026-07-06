@@ -13,7 +13,7 @@ import (
 
 type floatColumnBuffer struct{ floatPage }
 
-func newFloatColumnBuffer(typ Type, columnIndex int16, numValues int32) *floatColumnBuffer {
+func newFloatColumnBuffer(typ Type, columnIndex uint16, numValues int32) *floatColumnBuffer {
 	return &floatColumnBuffer{
 		floatPage: floatPage{
 			typ:         typ,

@@ -15,7 +15,7 @@ type uint32Dictionary struct {
 	table *hashprobe.Uint32Table
 }
 
-func newUint32Dictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *uint32Dictionary {
+func newUint32Dictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *uint32Dictionary {
 	return &uint32Dictionary{
 		uint32Page: uint32Page{
 			typ:         typ,
