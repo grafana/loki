@@ -876,7 +876,16 @@ func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
+	require.IsType(t, &postingsIndexSectionsReader{}, unwrapReader(resp.Reader))
+}
+
+// unwrapReader returns the reader that IndexSectionsReader selected, unwrapping
+// the metrics decorator applied when read_postings_sections is enabled.
+func unwrapReader(r ArrowRecordBatchReader) ArrowRecordBatchReader {
+	if ir, ok := r.(*instrumentedReader); ok {
+		return ir.ArrowRecordBatchReader
+	}
+	return r
 }
 
 func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
@@ -892,7 +901,7 @@ func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.IsType(t, &indexSectionsReader{}, resp.Reader)
+	require.IsType(t, &indexSectionsReader{}, unwrapReader(resp.Reader))
 }
 
 // TestCollectSections_PostingsAndLegacyParity builds the same logical stream

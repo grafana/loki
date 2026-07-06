@@ -23,7 +23,7 @@ import (
 
 var (
 	_ ArrowRecordBatchReader = (*postingsIndexSectionsReader)(nil)
-	_ bloomStatsProvider     = (*postingsIndexSectionsReader)(nil)
+	_ statsProvider          = (*postingsIndexSectionsReader)(nil)
 )
 
 // postingsResultSchema is the pointers-section Arrow schema the resolver's
@@ -222,6 +222,13 @@ func (r *postingsIndexSectionsReader) Close() {
 
 func (r *postingsIndexSectionsReader) totalReadRows() uint64 {
 	return r.resolvedRefs
+}
+
+func (r *postingsIndexSectionsReader) stats() readerStats {
+	return readerStats{
+		Initialized: r.initialized,
+		ReadRows:    r.totalReadRows(),
+	}
 }
 
 // sectionResultsToRecordBatch serializes expanded per-stream rows into the

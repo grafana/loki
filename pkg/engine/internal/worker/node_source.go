@@ -9,6 +9,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -18,6 +19,9 @@ import (
 // Records are made available by a [nodeSource] calling [nodeSource.Write],
 // after which each record can be read by the [nodeSource.Read] method.
 type nodeSource struct {
+	Metrics  *metrics
+	TaskType taskType
+
 	initOnce  sync.Once
 	closeOnce sync.Once
 
@@ -50,19 +54,23 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		region.Record(workerstat.TaskExecutionReadRecvDuration.Observe(recvDuration.Nanoseconds()))
 	}()
 
-	src.lazyInit()
+	var rec arrow.RecordBatch
+	_, err := src.Metrics.timeCommSite("node_source_read_wait", sendModeInternal, wire.StreamDataMessage{}.Kind(), src.TaskType, func() error {
+		src.lazyInit()
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-src.closed:
-		if ep := src.failErr.Load(); ep != nil {
-			return nil, *ep
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-src.closed:
+			if ep := src.failErr.Load(); ep != nil {
+				return *ep
+			}
+			return executor.EOF
+		case rec = <-src.records:
+			return nil
 		}
-		return nil, executor.EOF
-	case rec := <-src.records:
-		return rec, nil
-	}
+	})
+	return rec, err
 }
 
 func (src *nodeSource) lazyInit() {
