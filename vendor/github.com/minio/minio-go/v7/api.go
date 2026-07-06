@@ -109,6 +109,15 @@ type Client struct {
 
 	trailingHeaderSupport bool
 	maxRetries            int
+
+	// RDMA dispatch state. rdmaEnabled mirrors Options.EnableRDMA;
+	// the rest are only touched by rdma.go (built with -tags=rdma) but
+	// have to live on the struct so the stub and the tagged build share
+	// one shape.
+	rdmaEnabled bool
+	rdmaOnce    sync.Once         //nolint:unused
+	rdmaHandle  *rdmaClientHandle //nolint:unused
+	rdmaInitErr error             //nolint:unused
 }
 
 // Options for New method
@@ -156,6 +165,11 @@ type Options struct {
 	// Number of times a request is retried. Defaults to 10 retries if this option is not configured.
 	// Set to 1 to disable retries.
 	MaxRetries int
+
+	// EnableRDMA causes PutObject / GetObject to dispatch to libminiocpp.so
+	// when the caller supplies PutObjectOptions.RDMABuffer / GetObjectOptions.RDMABuffer.
+	// No-op unless built with -tags=rdma.
+	EnableRDMA bool
 }
 
 // Global constants.
@@ -198,6 +212,9 @@ func New(endpoint string, opts *Options) (*Client, error) {
 		// Amazon S3 endpoints are resolved into dual-stack endpoints by default
 		// for backwards compatibility.
 		clnt.s3DualstackEnabled = true
+	} else if s3utils.IsAmazonOutpostsEndpoint(*clnt.endpointURL) {
+		// S3 on Outposts uses signature v4 with service name s3-outposts.
+		clnt.overrideSignerType = credentials.SignatureV4
 	}
 
 	return clnt, nil
@@ -308,6 +325,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	}
 
 	clnt.trailingHeaderSupport = opts.TrailingHeaders && clnt.overrideSignerType.IsV4()
+	clnt.rdmaEnabled = opts.EnableRDMA
 
 	// Sets bucket lookup style, whether server accepts DNS or Path lookup. Default is Auto - determined
 	// by the SDK. When Auto is specified, DNS lookup is used for Amazon/Google cloud endpoints and Path for all other endpoints.
@@ -912,7 +930,11 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 			req = signer.PreSignV2(*req, accessKeyID, secretAccessKey, metadata.expires, isVirtualHost)
 		} else if signerType.IsV4() {
 			// Presign URL with signature v4.
-			req = signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+				req = signer.PreSignV4Outposts(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			} else {
+				req = signer.PreSignV4(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.expires)
+			}
 		}
 		return req, nil
 	}
@@ -971,6 +993,9 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
 			req = signer.StreamingSignV4Express(req, accessKeyID,
 				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
+		} else if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+			req = signer.StreamingSignV4Outposts(req, accessKeyID,
+				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
 		} else {
 			req = signer.StreamingSignV4(req, accessKeyID,
 				secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
@@ -991,6 +1016,8 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 
 		if s3utils.IsAmazonExpressRegionalEndpoint(*c.endpointURL) {
 			req = signer.SignV4TrailerExpress(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
+		} else if s3utils.IsAmazonOutpostsEndpoint(*c.endpointURL) {
+			req = signer.SignV4TrailerOutposts(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
 		} else {
 			// Add signature version '4' authorization header.
 			req = signer.SignV4Trailer(*req, accessKeyID, secretAccessKey, sessionToken, location, metadata.trailer)
