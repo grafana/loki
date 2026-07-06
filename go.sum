@@ -500,8 +500,8 @@ github.com/grafana/pyroscope-go/godeltaprof v0.1.11 h1:el5LYpXissAiCKZ5/6yjlr6mh
 github.com/grafana/pyroscope-go/godeltaprof v0.1.11/go.mod h1:jl1V8M4cWsXciROCPIDDG7CtjSjT/ECbp6eLVuMxYRI=
 github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853 h1:cLN4IBkmkYZNnk7EAJ0BHIethd+J6LqxFNw5mSiI2bM=
 github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853/go.mod h1:+JKpmjMGhpgPL+rXZ5nsZieVzvarn86asRlBg4uNGnk=
-github.com/grafana/wiresmith v0.0.0-20260618160438-f15959a1e4e7 h1:5pu6KRrmje6ouoDu/gYjxvUw88Sffn691MZcl92lzmw=
-github.com/grafana/wiresmith v0.0.0-20260618160438-f15959a1e4e7/go.mod h1:DOJ6wXM/DqpexnNJlQQxMN4dL+vFVQOwtTToO9+ltaY=
+github.com/grafana/wiresmith v0.0.0-20260706094138-fc34fadb1d56 h1:Zqs49egeUVShXziOjDAmRaMjCWPro1Ra88IvOnH7GpE=
+github.com/grafana/wiresmith v0.0.0-20260706094138-fc34fadb1d56/go.mod h1:tbNC+NhZdF/BduWbmHlgxiOuBzhJ3VQGJlkjY7IIwvM=
 github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3 h1:B+8ClL/kCQkRiU82d9xajRPKYMrB7E0MbtzWVi1K4ns=
 github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3/go.mod h1:NbCUVmiS4foBGBHOYlCT25+YmGpJ32dZPi75pGEUpj4=
 github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 h1:5VipnvEpbqr2gA2VbM+nYVbkIF28c5ZQfqCBQ5g2xfk=

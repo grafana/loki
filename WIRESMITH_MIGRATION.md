@@ -4,6 +4,24 @@ Status of generating Loki's protobuf Go code with
 [wiresmith](https://github.com/grafana/wiresmith) instead of the current
 `protoc --gogoslick_out` toolchain.
 
+> **2026-07-06 (branch `wiresmith`):** re-pinned `go.mod` to
+> `v0.0.0-20260706094138-fc34fadb1d56` (`fc34fad`) — the flat-file import-keying
+> flip to protoc/buf path-parity. wiresmith now keys every compiled file by its
+> path relative to the `--proto_path` root (a file sitting directly at a root
+> keys by its bare filename); the old proto-package-derived key for flat files is
+> gone. **Loki needed no Makefile/staging change:** every migrated proto is
+> staged at its nested repo-relative path and imported by that same full path,
+> and the old keying already used the relative path for *nested* files — only
+> flat files were package-keyed — so every import key is unchanged. Regen against
+> `fc34fad` is byte-identical to the committed `.pb.go` (zero diff, byte-stable
+> across two consecutive runs); the only working-tree change is the pin itself
+> (`go.mod` + `go.sum` + `vendor/modules.txt`). fc34fad also lowers wiresmith's
+> own `go` directive to 1.25.0 and tolerates a byte-identical on-disk
+> `wiresmith/options.proto`; neither touches Loki (its `go` directive stays
+> 1.26.4, and it never stages/vendors `options.proto` — the embed is served
+> directly). Build + `go vet` (no new findings; the 3 pre-existing findings are
+> unrelated hand-written code) + touched-package tests green.
+>
 > **2026-06-22 (branch `wiresmith`, rebased on upstream/main post-#22468):**
 > `go.mod` pins `v0.0.0-20260618160438-f15959a1e4e7` (`f15959a`), the
 > squash-merge of the `databases` branch into `grafana/wiresmith` main (#142).
@@ -430,10 +448,11 @@ handling.
 ## Reproduction
 
 - Regenerate: `make wiresmith-protos BUILD_IN_CONTAINER=false` (the public
-  `github.com/grafana/wiresmith@f15959a` binary on PATH —
-  `go install github.com/grafana/wiresmith/cmd/wiresmith@v0.0.0-20260618160438-f15959a1e4e7`).
-  Targets post-#142 merged main (`databases` → `grafana/wiresmith` main).
-  Reproducible — byte-identical output across runs.
+  `github.com/grafana/wiresmith@fc34fad` binary on PATH —
+  `go install github.com/grafana/wiresmith/cmd/wiresmith@v0.0.0-20260706094138-fc34fadb1d56`).
+  Targets post-#142 merged main (`databases` → `grafana/wiresmith` main), at the
+  flat-file path-parity keying flip. Reproducible — byte-identical output across
+  runs.
 - The gogo pipeline (`make protos`) still generates the remaining gogo protos
   (push/push-rf1, indexgateway, vendored Thanos/dskit) and excludes the
   migrated ones via `WIRESMITH_PROTO_DEFS`.
