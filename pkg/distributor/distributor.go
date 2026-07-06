@@ -374,7 +374,7 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 100, logger, registerer)
+		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 200, logger, registerer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
