@@ -81,8 +81,10 @@ func (f *RecordFormatter) AppendPartitionRecord(b []byte, p *FetchPartition, r *
 //	%a    record attributes (formatting required, described below)
 //	%x    producer id
 //	%y    producer epoch
+//	%D    share group delivery count (0 if not from a share group)
+//	%A    share group acquisition deadline (timestamp, 0 if not from a share group)
 //
-// For AppendPartitionRecord, the formatter also undersands the following three
+// For AppendPartitionRecord, the formatter also understands the following three
 // formatting options:
 //
 //	%[    partition log start offset
@@ -236,9 +238,7 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 	var f RecordFormatter
 
 	var literal []byte // non-formatted raw text to output
-	var i int
 	for len(layout) > 0 {
-		i++
 		c, size := utf8.DecodeRuneInString(layout)
 		rawc := layout[:size]
 		layout = layout[size:]
@@ -293,7 +293,7 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 		default:
 			return nil, fmt.Errorf("unknown escape sequence %%%s", string(escaped))
 
-		case 'T', 'K', 'V', 'H', 'p', 'o', 'e', 'i', 'x', 'y', '[', '|', ']':
+		case 'T', 'K', 'V', 'H', 'p', 'o', 'e', 'i', 'x', 'y', 'D', '[', '|', ']':
 			// Numbers default to ascii, but we support a bunch of
 			// formatting options. We parse the format here, and
 			// then below is switching on which field to print.
@@ -348,6 +348,10 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 			case 'y':
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
 					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, int64(r.ProducerEpoch)) })
+				})
+			case 'D':
+				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
+					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, int64(r.DeliveryCount())) })
 				})
 			case '[':
 				f.fns = append(f.fns, func(b []byte, p *FetchPartition, _ *Record) []byte {
@@ -554,18 +558,38 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 				return b
 			})
 
-		case 'd':
+		case 'd', 'A':
 			// For datetime parsing, we support plain millis in any
 			// number format, strftime, or go formatting. We
 			// default to plain ascii millis.
+			//
+			// %d uses the record timestamp; %A uses the share
+			// group acquisition deadline. For non-share records,
+			// AcquisitionDeadline returns the zero time; we map
+			// that to the Unix epoch so all sub-formats print a
+			// sensible value (millis=0, year=1970) rather than
+			// time.Time{}'s native year-1 representation.
+			isDeadline := escaped == 'A'
+			getTime := func(r *Record) time.Time {
+				if isDeadline {
+					t := r.AcquisitionDeadline()
+					if t.IsZero() {
+						return time.Unix(0, 0)
+					}
+					return t
+				}
+				return r.Timestamp
+			}
+
 			handledBrace = isOpenBrace
 			if !handledBrace {
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return strconv.AppendInt(b, r.Timestamp.UnixNano()/1e6, 10) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return strconv.AppendInt(b, getTime(r).UnixNano()/1e6, 10) })
 				})
 				continue
 			}
 
+			escChar := string(escaped)
 			switch {
 			case strings.HasPrefix(layout, "strftime"):
 				tfmt, rem, err := nomOpenClose(layout[len("strftime"):])
@@ -573,11 +597,11 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 					return nil, fmt.Errorf("strftime parse err: %v", err)
 				}
 				if len(rem) == 0 || rem[0] != '}' {
-					return nil, fmt.Errorf("%%d{strftime missing closing } in %q", layout)
+					return nil, fmt.Errorf("%%%s{strftime missing closing } in %q", escChar, layout)
 				}
 				layout = rem[1:]
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return strftimeAppendFormat(b, tfmt, r.Timestamp.UTC()) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return strftimeAppendFormat(b, tfmt, getTime(r).UTC()) })
 				})
 
 			case strings.HasPrefix(layout, "go"):
@@ -586,22 +610,22 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 					return nil, fmt.Errorf("go parse err: %v", err)
 				}
 				if len(rem) == 0 || rem[0] != '}' {
-					return nil, fmt.Errorf("%%d{go missing closing } in %q", layout)
+					return nil, fmt.Errorf("%%%s{go missing closing } in %q", escChar, layout)
 				}
 				layout = rem[1:]
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return r.Timestamp.UTC().AppendFormat(b, tfmt) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return getTime(r).UTC().AppendFormat(b, tfmt) })
 				})
 
 			default:
 				numfn, n, err := parseNumWriteLayout(layout)
 				if err != nil {
-					return nil, fmt.Errorf("unknown %%d{ time specification in %q", layout)
+					return nil, fmt.Errorf("unknown %%%s{ time specification in %q", escChar, layout)
 				}
 				layout = layout[n:]
 
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
-					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, r.Timestamp.UnixNano()/1e6) })
+					return writeR(b, r, func(b []byte, r *Record) []byte { return numfn(b, getTime(r).UnixNano()/1e6) })
 				})
 			}
 		}
@@ -751,7 +775,7 @@ func parseUnpack(layout string) (func([]byte, []byte) []byte, error) {
 		islittle := little
 		fns = append(fns, func(dst, src []byte) ([]byte, int) {
 			if len(src) < need {
-				return append(dst, fmt.Sprintf("%%!%%s(have %d bytes, need %d)", len(src), need)...), len(src)
+				return append(dst, fmt.Sprintf("%%!(have %d bytes, need %d)", len(src), need)...), len(src)
 			}
 
 			var ul, ub uint64
@@ -1200,7 +1224,11 @@ func (r *RecordReader) parseReadLayout(layout string) error {
 
 		switch escaped {
 		default:
-			return fmt.Errorf("unknown percent escape sequence %q", layout[:1])
+			// escaped is the verb byte; layout has already advanced past
+			// it (and past any '{'), so it can be empty here - slicing
+			// layout[:1] would panic for an unknown verb at the end of
+			// the layout (e.g. "%q").
+			return fmt.Errorf("unknown percent escape sequence %q", string(escaped))
 
 		case 'T', 'K', 'V', 'H':
 			var dst *uint64
@@ -1365,7 +1393,7 @@ func (r *RecordReader) parseReadLayout(layout string) error {
 				inner(b, r)
 				return nil
 			}}
-			bit.set(bit)
+			bits.set(bit)
 			if bits.has(bitSize) {
 				if re != nil {
 					return errors.New("cannot specify exact size and regular expression")
@@ -1454,6 +1482,13 @@ func (r *RecordReader) parseReadLayout(layout string) error {
 		} else {
 			reads = append(reads, fn)
 		}
+	}
+	// A layout consisting solely of noread verbs (fixed sizes/numbers like
+	// "%p{3}") never consumes input, so next() never reaches an EOF, never
+	// sets r.done, and ReadRecord returns identical records forever. Reject
+	// it at construction rather than looping at read time.
+	if len(reads) == 0 {
+		return errors.New("RecordReader: layout reads nothing from the input")
 	}
 	r.fns = make([]readParse, 0, len(noreads)+len(reads))
 	r.fns = append(r.fns, noreads...)
@@ -1741,6 +1776,20 @@ func (r *RecordReader) next(rec *Record) error {
 			continue
 		}
 
+		// If the input EOF'd before a fixed-size read accumulated its full
+		// byte count, r.buf is short. This happens on the fall-through
+		// above: a zero-byte read surfaces as plain io.EOF (readSize only
+		// reports io.EOF when it read nothing; a partial read is already
+		// io.ErrUnexpectedEOF), and if that read is the last fn after an
+		// earlier real read it is not the clean record boundary, so it
+		// reaches here with an empty buffer. The fixed-width number parsers
+		// index r.buf at constant offsets (binary.*.Uint64 etc.) and panic
+		// on a short slice, so surface the truncation as the unexpected EOF
+		// that ReadRecord's doc already promises for a mid-record EOF.
+		if fn.read.size > 0 && len(r.buf) < fn.read.size {
+			return io.ErrUnexpectedEOF
+		}
+
 		if err := fn.parse(r.buf, rec); err != nil {
 			return err
 		}
@@ -1811,10 +1860,34 @@ func (r *RecordReader) readRe(re *regexp.Regexp) error {
 }
 
 func (r *RecordReader) readSize(n int) error {
-	r.buf = append(r.buf, make([]byte, n)...)
-	n, err := io.ReadFull(r.r, r.buf)
-	r.buf = r.buf[:n]
-	return err
+	if n < 0 {
+		// A size verb (%T/%K/%V) reads its value from the input as a
+		// uint64; converting to int can wrap negative for values above
+		// math.MaxInt64. Reject rather than panicking in make below.
+		return fmt.Errorf("invalid negative read size %d", n)
+	}
+	// Read in bounded chunks rather than pre-allocating n bytes up front:
+	// a hostile or corrupt size verb can claim a huge length that would
+	// OOM the process before io.ReadFull notices the input is short. The
+	// caller resets r.buf to empty before invoking us, so we accumulate
+	// from index 0.
+	const chunk = 64 << 10
+	for len(r.buf) < n {
+		start := len(r.buf)
+		r.buf = append(r.buf, make([]byte, min(n-start, chunk))...)
+		nn, err := io.ReadFull(r.r, r.buf[start:])
+		r.buf = r.buf[:start+nn]
+		if err != nil {
+			// io.ReadFull reports EOF only when it read zero bytes of
+			// this chunk; if we have already accumulated bytes for this
+			// field the value is truncated, which is an unexpected EOF.
+			if err == io.EOF && len(r.buf) > 0 {
+				err = io.ErrUnexpectedEOF
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *RecordReader) readExact(d []byte) error {
@@ -2237,7 +2310,10 @@ func parseLayoutSlash(layout string) (byte, int, error) {
 			return 0, 0, errors.New("invalid non-terminated hex escape sequence at end of delim string")
 		}
 		hex := layout[1:3]
-		n, err := strconv.ParseInt(hex, 16, 8)
+		// A \xNN escape names the byte with hex value NN, i.e. the full
+		// [0, 255] range. ParseInt with bitSize 8 caps at 0x7f and
+		// rejected 0x80-0xff; ParseUint with bitSize 8 accepts [0, 255].
+		n, err := strconv.ParseUint(hex, 16, 8)
 		if err != nil {
 			return 0, 0, fmt.Errorf("unable to parse hex escape sequence %q: %v", hex, err)
 		}

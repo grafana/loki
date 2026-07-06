@@ -1,6 +1,7 @@
 package kgo
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -41,7 +42,7 @@ type HookNewClient interface {
 	OnNewClient(*Client)
 }
 
-// HookClientClosed is called in Close or CloseAfterRebalance after a client
+// HookClientClosed is called in Close or CloseAllowingRebalance after a client
 // has been closed. This hook can be used to perform final cleanup work.
 type HookClientClosed interface {
 	// OnClientClosed is passed the client that has been closed, after
@@ -175,7 +176,7 @@ type HookBrokerE2E interface {
 type HookBrokerThrottle interface {
 	// OnBrokerThrottle is passed the broker metadata, the imposed
 	// throttling interval, and whether the throttle was applied before
-	// Kafka responded to them request or after.
+	// Kafka responded to the request or after.
 	//
 	// For Kafka < 2.0, the throttle is applied before issuing a response.
 	// For Kafka >= 2.0, the throttle is applied after issuing a response.
@@ -379,8 +380,8 @@ type HookFetchRecordBuffered interface {
 
 // HookFetchRecordUnbuffered is called when a fetched record is unbuffered.
 //
-// A record can be internally discarded after being in some scenarios without
-// being polled, such as when the internal assignment changes.
+// A record can be internally discarded in some scenarios without being
+// polled, such as when the internal assignment changes.
 //
 // As an example, if using HookFetchRecordBuffered for a gauge of how many
 // record bytes are buffered ready to be polled, this hook can be used to
@@ -392,6 +393,20 @@ type HookFetchRecordUnbuffered interface {
 	// "unbuffered" within the client, and whether the record is being
 	// returned from polling.
 	OnFetchRecordUnbuffered(r *Record, polled bool)
+}
+
+// HookPollStart is called at the beginning of every PollFetches or
+// PollRecords call, before any records are drained from internal buffers and
+// before any HookFetchRecordUnbuffered hooks fire for the same poll.
+//
+// This hook is useful for instrumenting the poll boundary: for example, a
+// tracing integration that opens a span per record via HookFetchRecordUnbuffered
+// can implement this hook to finish the previous poll's spans before new ones
+// are created.
+type HookPollStart interface {
+	// OnPollStart is called at the start of every PollFetches or
+	// PollRecords call with the context passed by the caller.
+	OnPollStart(ctx context.Context)
 }
 
 /////////////
@@ -416,7 +431,8 @@ func implementsAnyHook(h Hook) bool {
 		HookProduceRecordPartitioned,
 		HookProduceRecordUnbuffered,
 		HookFetchRecordBuffered,
-		HookFetchRecordUnbuffered:
+		HookFetchRecordUnbuffered,
+		HookPollStart:
 		return true
 	}
 	return false

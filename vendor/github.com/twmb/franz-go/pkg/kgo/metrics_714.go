@@ -9,11 +9,11 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
@@ -28,6 +28,8 @@ func (cl *Client) pushMetrics() {
 
 	select {
 	case <-cl.ctx.Done():
+		return
+	case <-m.quitting:
 		return
 	case <-m.firstObserve:
 	}
@@ -58,12 +60,30 @@ func (cl *Client) pushMetrics() {
 			case <-cl.ctx.Done():
 				after.Stop()
 				return
+			case <-m.quitting:
+				after.Stop()
+				return
 			case <-after.C:
 			}
 			continue
 		}
 
 		clientInstanceID = gresp.ClientInstanceID
+
+		// A broker must advertise a positive push interval; a <=0 value is
+		// invalid. We substitute Kafka's documented default rather than honor
+		// it, matching the Java client's validateIntervalMs. Without this, the
+		// no-requested-metrics arm below times on the raw interval (no floor,
+		// unlike the push loop's max(..., time.Second)), so a broker returning
+		// an empty RequestedMetrics list with a non-positive interval would
+		// re-issue GetTelemetrySubscriptions at round-trip pace forever.
+		if v := validatePushIntervalMillis(gresp.PushIntervalMillis); v != gresp.PushIntervalMillis {
+			cl.cfg.logger.Log(LogLevelWarn, "broker advertised a non-positive telemetry push interval, substituting the default",
+				"advertised", gresp.PushIntervalMillis,
+				"substituted", v,
+			)
+			gresp.PushIntervalMillis = v
+		}
 
 		// If there are no requested metrics, we wait the push interval
 		// and re-get.
@@ -74,6 +94,10 @@ func (cl *Client) pushMetrics() {
 			select {
 			case <-cl.ctx.Done():
 				terminating = true
+				after.Stop()
+			case <-m.quitting:
+				terminating = true
+				after.Stop()
 			case <-after.C:
 			}
 			continue
@@ -81,7 +105,7 @@ func (cl *Client) pushMetrics() {
 		cl.cfg.logger.Log(LogLevelInfo, "received client metrics subscription, beginning periodic send loop",
 			"client_instance_id", fmt.Sprintf("%x", gresp.ClientInstanceID),
 			"subscription_id", gresp.SubscriptionID,
-			"accepteded_compression_types", gresp.AcceptedCompressionTypes,
+			"accepted_compression_types", gresp.AcceptedCompressionTypes,
 			"telemetry_max_bytes", gresp.TelemetryMaxBytes,
 			"push_interval", time.Duration(gresp.PushIntervalMillis)*time.Millisecond,
 			"requested_metrics", gresp.RequestedMetrics,
@@ -120,12 +144,24 @@ func (cl *Client) pushMetrics() {
 			}
 
 			// Wait until our push interval; if the client is quitting,
-			// we immediately send a push with Terminating=true.
+			// we immediately send a push with Terminating=true. The
+			// quitting signal fires during Close BEFORE the client
+			// context is canceled - once cl.ctx is dead, the request
+			// path aborts everything and the push could not be
+			// delivered. This assigns the outer terminating so that
+			// after the terminating push is handled, both loops exit
+			// and our deferred ctxCancel releases Close's bounded
+			// wait; a shadowing variable here would re-enter the loop
+			// and send a second terminating push (which brokers
+			// reject).
 			after := time.NewTimer(wait)
-			var terminating bool
 			select {
 			case <-cl.ctx.Done():
 				terminating = true
+				after.Stop()
+			case <-m.quitting:
+				terminating = true
+				after.Stop()
 			case <-after.C:
 			}
 
@@ -197,6 +233,22 @@ func (cl *Client) pushMetrics() {
 			}
 		}
 	}
+}
+
+// defaultPushIntervalMillis is Kafka's documented telemetry push interval
+// default (5m), substituted when a broker advertises a non-positive interval
+// (Java's ClientTelemetryReporter.DEFAULT_PUSH_INTERVAL_MS).
+const defaultPushIntervalMillis = 5 * 60 * 1000
+
+// validatePushIntervalMillis returns the broker-advertised telemetry push
+// interval, substituting the default for a non-positive (invalid) value so the
+// re-get / push loops always pace on a sane interval. Mirrors the Java client's
+// ClientTelemetryUtils.validateIntervalMs.
+func validatePushIntervalMillis(advertised int32) int32 {
+	if advertised <= 0 {
+		return defaultPushIntervalMillis
+	}
+	return advertised
 }
 
 func buildNameFilter(requested []string) func(string) bool {
@@ -289,16 +341,17 @@ type (
 
 	// metricRate is a count per second and a total.
 	metricRate struct {
-		count   atomic.Int64 // Sum of events this period; rate == float64(count/time) at rollup
+		count   atomic.Int64 // Events this period; rate == count/elapsed-seconds at rollup.
 		tot     atomic.Int64 // Total events over all time.
 		lastTot int64        // Updated when encoding; the last value for tot in case broker requests DELTA.
 	}
 
-	// metricTime reports average latency, max latency, and total latency.
-	// The unit is in milliseconds.
+	// metricTime reports average latency and max latency. The unit is in
+	// milliseconds.
 	metricTime struct {
-		sum atomic.Int64 // With separate aggDur field, avg = sum/aggDur at rollup.
-		max atomic.Int64 // Max latency seen during this window.
+		sum   atomic.Int64 // Sum of all observations this period; avg = sum/count at rollup.
+		count atomic.Int64 // Number of observations this period; the avg denominator.
+		max   atomic.Int64 // Max latency seen during this window.
 	}
 
 	// We skip:
@@ -313,7 +366,7 @@ type (
 		closedFirstObserve atomic.Bool
 
 		// mu is grabbed when accessing the map fields.
-		mu          sync.Mutex
+		mu          xsync.Mutex
 		unsupported atomic.Bool // set to true if the broker does not support client metrics; guards nil-ing the maps
 
 		pConnCreation metricRate
@@ -331,6 +384,12 @@ type (
 
 		firstObserve chan struct{}
 
+		// quitting is closed by Close before the client context is
+		// canceled, asking pushMetrics to send its final terminating
+		// push while requests can still complete.
+		quitting       chan struct{}
+		closedQuitting atomic.Bool
+
 		ctx       context.Context
 		ctxCancel func()
 	}
@@ -340,7 +399,16 @@ func (m *metrics) init(cl *Client) {
 	m.cl = cl
 	m.initNano = time.Now().UnixNano()
 	m.firstObserve = make(chan struct{})
+	m.quitting = make(chan struct{})
 	m.ctx, m.ctxCancel = context.WithCancel(context.Background()) // for graceful shutdown
+}
+
+// quit asks pushMetrics to send its final terminating push and exit; it is
+// safe to call multiple times (Close can run more than once).
+func (m *metrics) quit() {
+	if !m.closedQuitting.Swap(true) {
+		close(m.quitting)
+	}
 }
 
 func safeDiv[T ~int64 | ~float64](num, denom T) T {
@@ -357,13 +425,17 @@ func (t *metricRate) observe() {
 	t.tot.Add(1)
 }
 
-func (t *metricRate) rollNums() (rate float64, tot, lastTot int64) {
+func (t *metricRate) rollNums(aggDur time.Duration) (rate float64, tot, lastTot int64) {
 	count := t.count.Swap(0)
 	lastTot = t.lastTot
 	tot = t.tot.Load()
 	t.lastTot = tot
 
-	rate = safeDiv(float64(count), float64(tot-lastTot))
+	// A rate is events-per-second over the aggregation window, matching
+	// Kafka's Rate stat (value / elapsed-time). The previous divisor was
+	// tot-lastTot, which equals count by construction (observe increments
+	// both count and tot), so the rate was a constant ~1.0.
+	rate = safeDiv(float64(count), aggDur.Seconds())
 	return rate, tot, lastTot
 }
 
@@ -371,6 +443,7 @@ func (t *metricRate) rollNums() (rate float64, tot, lastTot int64) {
 // triggerFirstObserve is always called.
 func (t *metricTime) observe(millis int64) {
 	t.sum.Add(millis)
+	t.count.Add(1)
 	for {
 		max := t.max.Load()
 		if millis < max {
@@ -382,10 +455,14 @@ func (t *metricTime) observe(millis int64) {
 	}
 }
 
-func (t *metricTime) rollNums(aggDur time.Duration) (avg float64, max int64) {
+func (t *metricTime) rollNums() (avg float64, max int64) {
 	sum := t.sum.Swap(0)
+	count := t.count.Swap(0)
 	max = t.max.Swap(0)
-	avg = safeDiv(float64(sum), float64(aggDur.Milliseconds()))
+	// An avg is the mean observation, matching Kafka's Avg stat
+	// (total / count). The previous divisor was the aggregation window
+	// duration in millis, which is not the number of observations.
+	avg = safeDiv(float64(sum), float64(count))
 	return avg, max
 }
 
@@ -512,6 +589,7 @@ func (m *metrics) appendTo(b []byte, useDeltaSums bool, maxBytes int32, allowedN
 						timeNano:   nowNano,
 					},
 					aggregationTemporality: otelTempDelta,
+					isMonotonic:            true,
 				},
 			})
 		} else {
@@ -525,6 +603,7 @@ func (m *metrics) appendTo(b []byte, useDeltaSums bool, maxBytes int32, allowedN
 						timeNano:   nowNano,
 					},
 					aggregationTemporality: otelTempCumulative,
+					isMonotonic:            true,
 				},
 			})
 		}
@@ -548,18 +627,18 @@ func (m *metrics) appendTo(b []byte, useDeltaSums bool, maxBytes int32, allowedN
 	} {
 		switch t := s.v.(type) {
 		case *metricRate:
-			rate, tot, lastTot := t.rollNums()
+			rate, tot, lastTot := t.rollNums(aggDur)
 			appendGauge(s.name+".rate", 0, rate, nil)
 			appendSum(s.name+".total", tot, lastTot, nil)
 
 		case *metricTime:
-			avg, max := t.rollNums(aggDur)
+			avg, max := t.rollNums()
 			appendGauge(s.name+".avg", 0, avg, nil)
 			appendGauge(s.name+".max", max, 0, nil)
 
 		case *map[int32]*metricTime:
 			for broker, m := range *t {
-				avg, max := m.rollNums(aggDur)
+				avg, max := m.rollNums()
 				attrs := map[string]any{"node_id": broker}
 				appendGauge(s.name+".avg", 0, avg, attrs)
 				appendGauge(s.name+".max", max, 0, attrs)
@@ -732,7 +811,6 @@ const (
 	protoTypeVarint = 0
 	protoType64bit  = 1
 	protoTypeLength = 2
-	protoType32bit  = 5
 )
 
 // appendProtoTag adds a Protocol Buffer tag (field number + proto type)
@@ -898,18 +976,13 @@ func (d *otelNumDataPoint) appendTo(b []byte) []byte {
 }
 
 func appendOtelAttributesTo(b []byte, fieldNumber int, attrs map[string]any) []byte {
-outer:
 	for key, value := range attrs {
-		b = appendProtoTag(b, fieldNumber, protoTypeLength)
-
-		kvBytes := []byte{}
-		// Field 1: key (string)
-		kvBytes = appendProtoTag(kvBytes, 1, protoTypeLength)
-		kvBytes = appendProtoString(kvBytes, key)
-
-		// Field 2: value (AnyValue)
-		kvBytes = appendProtoTag(kvBytes, 2, protoTypeLength)
-
+		// We must determine that the value is serializable BEFORE we
+		// write anything to b: an unsupported type continues the loop,
+		// and if we had already appended the field tag we would leave a
+		// dangling tag with no length+payload, corrupting the whole
+		// protobuf (the documented Attrs contract is to silently skip
+		// unsupported types).
 		var anyValueBytes []byte
 		switch t := value.(type) {
 		case *string, string:
@@ -974,9 +1047,18 @@ outer:
 			anyValueBytes = binary.AppendUvarint(anyValueBytes, uint64(len(t)))
 			anyValueBytes = append(anyValueBytes, t...)
 		default:
-			continue outer
+			continue
 		}
 
+		b = appendProtoTag(b, fieldNumber, protoTypeLength)
+
+		kvBytes := []byte{}
+		// Field 1: key (string)
+		kvBytes = appendProtoTag(kvBytes, 1, protoTypeLength)
+		kvBytes = appendProtoString(kvBytes, key)
+
+		// Field 2: value (AnyValue)
+		kvBytes = appendProtoTag(kvBytes, 2, protoTypeLength)
 		kvBytes = binary.AppendUvarint(kvBytes, uint64(len(anyValueBytes)))
 		kvBytes = append(kvBytes, anyValueBytes...)
 

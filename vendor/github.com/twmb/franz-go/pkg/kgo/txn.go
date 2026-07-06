@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kmsg"
-
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kgo/internal/xsync"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 func ctx2fn(ctx context.Context) func() context.Context { return func() context.Context { return ctx } }
@@ -29,14 +27,10 @@ const (
 // GroupTransactSession abstracts away the proper way to begin and end a
 // transaction when consuming in a group, modifying records, and producing
 // (EOS).
-//
-// If you are running Kafka 2.5+, it is strongly recommended that you also use
-// RequireStableFetchOffsets. See that config option's documentation for more
-// details.
 type GroupTransactSession struct {
 	cl *Client
 
-	failMu sync.Mutex
+	failMu xsync.Mutex
 
 	revoked   bool
 	revokedCh chan struct{} // closed once when revoked is set; reset after End
@@ -67,9 +61,9 @@ type GroupTransactSession struct {
 // proper rebalance timeout, this single request will not fail and the commit
 // will succeed properly.
 //
-// If this client detects you are talking to a pre-2.5 cluster, OR if you have
-// not enabled RequireStableFetchOffsets, the client will sleep for 200ms after
-// a successful commit to allow Kafka's txn markers to propagate. This is not
+// If this client detects you are talking to a pre-2.5 cluster (one too old
+// for KIP-447 stable fetch offsets), the client sleeps for 500ms after a
+// successful commit to allow Kafka's txn markers to propagate. This is not
 // foolproof in the event of some extremely unlikely communication patterns and
 // **potentially** could allow duplicates. See this repo's transaction's doc
 // for more details.
@@ -274,6 +268,17 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 			// ILLEGAL_GENERATION: rebalance began and completed
 			// before we committed.
 			//
+			// UNKNOWN_MEMBER_ID: coordinator forgot us (session
+			// timeout under load). Our consumer_group manage loop
+			// rejoins with a new member id; the txn just needs to
+			// abort here so the caller retries on a fresh session.
+			// Semantically equivalent to ILLEGAL_GENERATION.
+			//
+			// STALE_MEMBER_EPOCH: 848-side equivalent of
+			// ILLEGAL_GENERATION -- our epoch drifted (e.g. a
+			// heartbeat response was lost), the 848 manage loop
+			// rejoins, same recovery as above.
+			//
 			// REBALANCE_IN_PREGRESS: rebalance began, abort.
 			//
 			// COORDINATOR_NOT_AVAILABLE,
@@ -288,6 +293,8 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 			// certain versions.
 			switch {
 			case errors.Is(err, kerr.IllegalGeneration),
+				errors.Is(err, kerr.UnknownMemberID),
+				errors.Is(err, kerr.StaleMemberEpoch),
 				errors.Is(err, kerr.RebalanceInProgress),
 				errors.Is(err, kerr.CoordinatorNotAvailable),
 				errors.Is(err, kerr.CoordinatorLoadInProgress),
@@ -300,7 +307,7 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 			return false
 		}
 
-		var commitErrs []string
+		var commitErrs []error
 
 		committed := make(chan struct{})
 		g = s.cl.commitTransactionOffsets(ctx, postcommit,
@@ -311,7 +318,7 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 						hasAbortableCommitErr = true
 						return
 					}
-					commitErrs = append(commitErrs, err.Error())
+					commitErrs = append(commitErrs, err)
 					return
 				}
 				kip447 = resp.Version >= 3
@@ -322,7 +329,7 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 							if isAbortableCommitErr(err) {
 								hasAbortableCommitErr = true
 							} else {
-								commitErrs = append(commitErrs, fmt.Sprintf("topic %s partition %d: %v", t.Topic, p.Partition, err))
+								commitErrs = append(commitErrs, fmt.Errorf("topic %s partition %d: %w", t.Topic, p.Partition, err))
 							}
 						}
 					}
@@ -332,7 +339,11 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 		<-committed
 
 		if len(commitErrs) > 0 {
-			commitErr = fmt.Errorf("unable to commit transaction offsets: %s", strings.Join(commitErrs, ", "))
+			// Preserve the kerr chain via errors.Join so callers can
+			// use errors.Is(err, kerr.SomeError) to classify the
+			// failure. Without this, a raw string join would erase
+			// the wrapping and force callers to string-match.
+			commitErr = fmt.Errorf("unable to commit transaction offsets: %w", errors.Join(commitErrs...))
 		}
 	}
 
@@ -368,25 +379,25 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 
 	s.failMu.Lock()
 
-	// If we know we are KIP-447 and the user is requiring stable, we can
-	// unlock immediately because Kafka will itself block a rebalance
-	// fetching offsets from outstanding transactions.
+	// If we know the broker supports KIP-447, we can unlock immediately
+	// because RequireStable (always enabled) causes the broker to block
+	// any rebalance's OffsetFetch from outstanding transactions.
 	//
-	// If either of these are false, we spin up a goroutine that sleeps for
-	// 200ms before unlocking to give Kafka a chance to avoid some odd race
-	// that would permit duplicates (i.e., what KIP-447 is preventing).
+	// If the broker is too old for KIP-447, we spin up a goroutine that
+	// sleeps for 500ms before unlocking to give Kafka a chance to avoid
+	// some odd race that would permit duplicates.
 	//
-	// This 200ms is not perfect but it should be well enough time on a
+	// This 500ms is not perfect but it should be well enough time on a
 	// stable cluster. On an unstable cluster, I still expect clients to be
 	// slower than intra-cluster communication, but there is a risk.
-	if kip447 && s.cl.cfg.requireStable {
+	if kip447 {
 		defer s.failMu.Unlock()
 	} else {
 		defer func() {
 			if committed {
-				s.cl.cfg.logger.Log(LogLevelDebug, "sleeping 200ms before allowing a rebalance to continue to give the brokers a chance to write txn markers and avoid duplicates")
+				s.cl.cfg.logger.Log(LogLevelDebug, "sleeping 500ms before allowing a rebalance to continue to give the brokers a chance to write txn markers and avoid duplicates")
 				go func() {
-					time.Sleep(200 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond)
 					s.failMu.Unlock()
 				}()
 			} else {
@@ -395,18 +406,18 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 		}()
 	}
 
-	// If we have KIP-447 with RequireStable, we can safely commit even if
-	// the heartbeat returned REBALANCE_IN_PROGRESS. The TxnOffsetCommit
-	// already succeeded; the offsets are stored as pending transactional
-	// offsets on the broker. RequireStable causes any new consumer's
-	// OffsetFetch to return UNSTABLE_OFFSET_COMMIT while our transaction
-	// is pending, blocking it from consuming until our EndTransaction
-	// completes. This is safe even if the rebalance timeout expires and
-	// we are kicked from the group: the blocking is based on transaction
-	// state, not group membership.
-	canCommitDespiteRebalance := heartbeatRebalance && kip447 && s.cl.cfg.requireStable
+	// If we have KIP-447, we can safely commit even if the heartbeat
+	// returned REBALANCE_IN_PROGRESS. The TxnOffsetCommit already
+	// succeeded; the offsets are stored as pending transactional offsets
+	// on the broker. RequireStable (always enabled) causes any new
+	// consumer's OffsetFetch to return UNSTABLE_OFFSET_COMMIT while our
+	// transaction is pending, blocking it from consuming until our
+	// EndTransaction completes. This is safe even if the rebalance
+	// timeout expires and we are kicked from the group: the blocking is
+	// based on transaction state, not group membership.
+	canCommitDespiteRebalance := heartbeatRebalance && kip447
 	if canCommitDespiteRebalance {
-		s.cl.cfg.logger.Log(LogLevelInfo, "heartbeat returned RebalanceInProgress, but TxnOffsetCommit succeeded and RequireStableFetchOffsets is enabled; allowing commit")
+		s.cl.cfg.logger.Log(LogLevelInfo, "heartbeat returned RebalanceInProgress, but TxnOffsetCommit succeeded and RequireStable is always enabled; allowing commit")
 	}
 	tryCommit := !s.failed() && commitErr == nil && !hasAbortableCommitErr && (okHeartbeat || canCommitDespiteRebalance)
 	willTryCommit := wantCommit && tryCommit
@@ -421,10 +432,11 @@ func (s *GroupTransactSession) End(ctx context.Context, commit TransactionEndTry
 	// We have a few potential retryable errors from EndTransaction.
 	// OperationNotAttempted will be returned at most once.
 	//
-	// UnknownServerError should not be returned, but some brokers do:
-	// technically this is fatal, but there is no downside to retrying
-	// (even retrying a commit) and seeing if we are successful or if we
-	// get a better error.
+	// UnknownServerError should not be returned, but some brokers do
+	// (e.g. Redpanda in certain versions). It leaves the commit/abort
+	// unconfirmed: the broker may or may not have completed it. We
+	// retry as an abort (see the arm below) rather than reporting a
+	// commit we cannot confirm.
 	var tries int
 retry:
 	endTxnErr := s.cl.EndTransaction(ctx, TransactionEndTry(willTryCommit))
@@ -442,13 +454,20 @@ retry:
 			goto retry
 
 		case errors.Is(endTxnErr, kerr.UnknownServerError):
-			s.cl.cfg.logger.Log(LogLevelInfo, "end transaction with commit unknown server error; retrying")
-			after := time.NewTimer(s.cl.cfg.retryBackoff(tries))
-			select {
-			case <-after.C: // context canceled; we will see when we retry
-			case <-s.cl.ctx.Done():
-				after.Stop()
-			}
+			// We must downgrade to an abort exactly like the two arms
+			// above. EndTransaction already consumed inTxn on the
+			// erroring call, so re-calling it returns nil at its !inTxn
+			// guard without issuing another EndTxn: we cannot actually
+			// re-commit. If willTryCommit stayed true, that manufactured
+			// nil would fall into the "willTryCommit && endTxnErr == nil"
+			// success tail below and report a committed transaction,
+			// advancing the consumer offsets to postcommit even though the
+			// broker's UNKNOWN_SERVER_ERROR may have aborted it: a silent
+			// EOS data loss. Retrying as an abort reports not-committed and
+			// rewinds to the last committed offsets, so the caller
+			// reprocesses (at-least-once).
+			s.cl.cfg.logger.Log(LogLevelInfo, "end transaction returned an unknown server error; the commit is unconfirmed, retrying as abort to avoid reporting a false commit")
+			willTryCommit = false
 			goto retry
 		}
 	}
@@ -510,8 +529,9 @@ func (cl *Client) BeginTransaction() error {
 	}
 
 	cl.producer.inTxn = true
-	if !cl.producer.tx890p2 {
-		cl.producer.tx890p2 = cl.supportsKIP890p2()
+	cl.producer.producedInTxn.Store(false)
+	if !cl.producer.tx890p2.Load() && cl.supportsKIP890p2() {
+		cl.producer.tx890p2.Store(true)
 	}
 	cl.producer.producingTxn.Store(true) // allow produces for txns now
 	cl.cfg.logger.Log(LogLevelInfo, "beginning transaction", "transactional_id", *cl.cfg.txnID)
@@ -573,7 +593,7 @@ func (cl *Client) EndAndBeginTransaction(
 	return cl.EndTransaction(ctx, commit)
 }
 
-// AbortBufferedRecords fails all unflushed records with ErrAborted and waits
+// AbortBufferedRecords fails all unflushed records with ErrAborting and waits
 // for there to be no buffered records.
 //
 // This accepts a context to quit the wait early, but quitting the wait may
@@ -610,7 +630,7 @@ func (cl *Client) AbortBufferedRecords(ctx context.Context) error {
 	return cl.Flush(ctx)
 }
 
-// UnsafeAbortBufferedRecords fails all unflushed records with ErrAborted and
+// UnsafeAbortBufferedRecords fails all unflushed records with ErrAborting and
 // waits for there to be no buffered records. This function does NOT wait for
 // any inflight produce requests to finish, meaning topics in the client may be
 // in an invalid state and producing to an invalid-state topic may cause the
@@ -649,8 +669,9 @@ func (cl *Client) UnsafeAbortBufferedRecords() {
 // It may be possible for the client to recover in a new transaction via
 // BeginTransaction if an error is returned from this function:
 //
-//   - Before Kafka 4.0, InvalidProducerIDMapping and InvalidProducerEpoch
-//     are recoverable
+//   - When transactions are not running under KIP-890 part 2 (the cluster's
+//     transaction.version feature is below 2), InvalidProducerIDMapping and
+//     InvalidProducerEpoch are recoverable
 //   - UnknownProducerID is recoverable for Kafka 2.5+
 //   - TransactionAbortable is always recoverable (after aborting)
 //
@@ -677,12 +698,18 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 	// issues AddOffsetsToTxn, which internally adds a __consumer_offsets
 	// partition to the transaction. Thus, if we added offsets, then we
 	// also produced.
-	var anyAdded bool
-	if g := cl.consumer.g; g != nil {
+	var (
+		anyAdded         bool
+		addedSwapped     []*recBuf // every addedToTxn we consume, restored if the commit is not attempted
+		offsetsWereAdded bool
+	)
+	g := cl.consumer.g
+	if g != nil {
 		// We do not lock because we expect commitTransactionOffsets to
 		// be called *before* ending a transaction.
 		if g.offsetsAddedToTxn {
 			g.offsetsAddedToTxn = false
+			offsetsWereAdded = true
 			anyAdded = true
 		}
 	} else {
@@ -693,7 +720,10 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 	// addedToTxn to false outside of any mutex.
 	for _, parts := range cl.producer.topics.load() {
 		for _, part := range parts.load().partitions {
-			anyAdded = part.records.addedToTxn.Swap(false) || anyAdded
+			if part.records.addedToTxn.Swap(false) {
+				addedSwapped = append(addedSwapped, part.records)
+				anyAdded = true
+			}
 		}
 	}
 
@@ -702,13 +732,52 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 	// Note that anyAdded is true if the producer ID was failed, meaning we will
 	// get to the potential recovery logic below if necessary.
 	if !anyAdded {
-		cl.cfg.logger.Log(LogLevelDebug, "no records were produced during the commit; thus no transaction was began; ending without doing anything")
-		return nil
+		// Under KIP-890 part 2, produce requests implicitly add their
+		// partition to the transaction on the broker BEFORE the data
+		// append; the registration is durable even if the append then
+		// fails, and we mark a partition added client-side only on a
+		// SUCCESSFUL produce response. If produces were attempted but
+		// none succeeded, the broker can have an ongoing transaction
+		// with registered partitions that only the transaction timeout
+		// would clear, and the next transaction's produces (same
+		// epoch, since no EndTxn bumped it) would silently join that
+		// ongoing transaction. Aborting is always legal under 890p2
+		// (aborting an empty transaction succeeds and bumps the
+		// epoch), so abort regardless of what the caller asked: with
+		// zero successful produces and no committed offsets, there is
+		// nothing to commit anyway.
+		if !cl.producer.tx890p2.Load() || !cl.producer.producedInTxn.Load() {
+			cl.cfg.logger.Log(LogLevelDebug, "no records were produced during the commit; thus no transaction was began; ending without doing anything")
+			return nil
+		}
+		cl.cfg.logger.Log(LogLevelInfo, "no produce succeeded in this transaction but produces were attempted; issuing an abort to clear any server-side partition registrations",
+			"transactional_id", *cl.cfg.txnID,
+		)
+		commit = TryAbort
 	}
 
 	id, epoch, err := cl.producerID(ctx2fn(ctx))
 	if err != nil {
 		if commit {
+			// We are NOT attempting the commit: restore everything this
+			// call consumed (inTxn, addedToTxn, offsetsAddedToTxn). We
+			// document that the caller should retry with TryAbort, and
+			// that retry must still see the transaction state to issue
+			// the EndTxn abort; consuming the state here would turn the
+			// retry into a silent no-op that leaves the broker-side
+			// transaction ongoing (stalling read_committed consumers on
+			// the LSO) until the transaction timeout aborts it.
+			// producingTxn deliberately stays false: produces between
+			// the failed commit and the abort retry fail fast with
+			// errNotInTransaction rather than buffering against a
+			// failed producer ID.
+			for _, rb := range addedSwapped {
+				rb.addedToTxn.Store(true)
+			}
+			if offsetsWereAdded {
+				g.offsetsAddedToTxn = true
+			}
+			cl.producer.inTxn = true
 			return kerr.OperationNotAttempted
 		}
 
@@ -736,7 +805,7 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 		req.ProducerEpoch = epoch
 		req.Commit = bool(commit)
 		ctx := ctx // capture a local ctx variable in case we introduce concurrency above later
-		if !cl.producer.tx890p2 {
+		if !cl.producer.tx890p2.Load() {
 			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
 		}
 		resp, err := req.RequestWith(ctx, cl)
@@ -767,7 +836,7 @@ func (cl *Client) EndTransaction(ctx context.Context, commit TransactionEndTry) 
 				"producer_id", id,
 				"epoch", epoch,
 			)
-			if !cl.producer.tx890p2 && cl.supportsKIP890p2() {
+			if !cl.producer.tx890p2.Load() && cl.supportsKIP890p2() {
 				cl.cfg.logger.Log(LogLevelInfo, "end transaction noticed the cluster now supports KIP-890p2, reloading the producer ID and opting in",
 					"transactional_id", *cl.cfg.txnID,
 					"producer_id", id,
@@ -814,14 +883,55 @@ func (cl *Client) maybeRecoverProducerID(ctx context.Context) (necessary, did bo
 
 	var ke *kerr.Error
 	if ok := errors.As(err, &ke); !ok {
+		// The stored PID error is not a kerr (broker-side) error -- most
+		// likely a transient network error wrapped in errProducerIDLoadFail
+		// (dial refused, EOF, etc.) from a broker restart or transient
+		// unreachability. Rather than surfacing "producer ID has a fatal,
+		// unrecoverable error" to the caller, flag the PID for reload so
+		// the next produce/begin re-runs InitProducerID now that the
+		// broker is (probably) back.
+		if isRetryableBrokerErr(err) || isAnyDialErr(err) {
+			cl.producer.id.Store(&producerID{
+				id:    id,
+				epoch: epoch,
+				err:   errReloadProducerID,
+			})
+			return true, true, nil
+		}
 		return true, false, err
 	}
 
+	if ke.Retriable {
+		// The stored failure is a retriable broker code, e.g.
+		// COORDINATOR_LOAD_IN_PROGRESS or NOT_COORDINATOR that
+		// outlived its internal retries, or CONCURRENT_TRANSACTIONS
+		// that outlived doWithConcurrentTransactions. These are
+		// transient load failures, not a fatal producer state: flag
+		// the ID for reload exactly like the transport-level failures
+		// above, rather than reporting "fatal, unrecoverable" for a
+		// condition that clears on its own.
+		cl.producer.id.Store(&producerID{
+			id:    id,
+			epoch: epoch,
+			err:   errReloadProducerID,
+		})
+		return true, true, nil
+	}
+
 	var recoverable bool
-	if cl.supportsKeyVersion(int16(kmsg.EndTxn), 5) {
-		// As of KIP-890 / Kafka 4.0, InvalidProducerIDMapping and
+	if cl.producer.tx890p2.Load() {
+		// Under KIP-890 part 2 (transaction.version=2 in effect for
+		// this client's transactions), InvalidProducerIDMapping and
 		// InvalidProducerEpoch are NOT recoverable. Only
 		// UnknownProducerID and TransactionAbortable are.
+		//
+		// We gate on the mode our transactions actually ran in, NOT
+		// on broker-advertised EndTxn versions: a 4.0+ broker
+		// advertises EndTxn v5 even while the cluster's
+		// transaction.version is still 0 or 1, and under those the
+		// cluster still operates the pre-890p2 semantics where the
+		// KIP-360/KIP-588 re-init below is the designed recovery
+		// (e.g. after a transaction-timeout abort bumped our epoch).
 		recoverable = errors.Is(ke, kerr.UnknownProducerID) || errors.Is(ke, kerr.TransactionAbortable)
 	} else {
 		kip360 := cl.producer.idVersion >= 3 && (errors.Is(ke, kerr.UnknownProducerID) || errors.Is(ke, kerr.InvalidProducerIDMapping))
@@ -846,6 +956,31 @@ func (cl *Client) maybeRecoverProducerID(ctx context.Context) (necessary, did bo
 // If a transaction is begun too quickly after finishing an old transaction,
 // Kafka may still be finalizing its commit / abort and will return a
 // concurrent transactions error. We handle that by retrying for a bit.
+//
+// Constraints any change to EOS-under-coordinator-churn (here and in
+// maybeRecoverProducerID / EndTransaction) must preserve — established by the
+// txn-churn audit:
+//
+//  1. This wrapper / coordinator-retry division stays: the coordinator
+//     wrapper retries only coordinator-move codes; CONCURRENT_TRANSACTIONS
+//     loops belong to callers, ctx-bounded, because CT can legitimately last
+//     as long as a marker drain. Route CT recovery through this loop, not a
+//     second one.
+//  2. anyAdded gating stays for TV1 — EndTxn on an EMPTY TV1 transaction is
+//     INVALID_TXN_STATE. The TV2 forced-abort-when-every-produce-failed path
+//     must stay TV2-only and attempted-only; idle Begin/End cycles stay
+//     wireless.
+//  3. Producer-fenced means dead: no fix may add recovery for PRODUCER_FENCED
+//     from coordinator paths. Only the timeout-abort IPE-on-produce path is
+//     recoverable, and only under TV1 semantics.
+//
+// Two design-sized items remain deliberately NOT taken (would need their own
+// round; until then docs + AbortingFirstErrPromise carry them): (a)
+// commit-after-failed-produce — kgo commits whatever succeeded if the caller
+// asks, unlike Java's abortable-state block, so changing it means tracking
+// per-txn batch failures and changing End's contract; (b) TV2 feature
+// downgrade mid-session (transaction.version 2=>1 while a client lives) —
+// Java's per-EndTxn re-check is the reference shape if it ever bites.
 func (cl *Client) doWithConcurrentTransactions(ctx context.Context, name string, fn func() error) error {
 	start := time.Now()
 	tries := 0
@@ -855,20 +990,21 @@ start:
 	err := fn()
 	if errors.Is(err, kerr.ConcurrentTransactions) {
 		// The longer we are stalled, the more we enforce a minimum
-		// backoff.
+		// backoff. Checks are ordered longest first; switch takes the
+		// first true case.
 		since := time.Since(start)
 		switch {
-		case since > time.Second:
-			if backoff < 200*time.Millisecond {
-				backoff = 200 * time.Millisecond
+		case since > 5*time.Second:
+			if backoff < time.Second {
+				backoff = time.Second
 			}
 		case since > 5*time.Second/2:
 			if backoff < 500*time.Millisecond {
 				backoff = 500 * time.Millisecond
 			}
-		case since > 5*time.Second:
-			if backoff < time.Second {
-				backoff = time.Second
+		case since > time.Second:
+			if backoff < 200*time.Millisecond {
+				backoff = 200 * time.Millisecond
 			}
 		}
 
@@ -952,7 +1088,7 @@ func (cl *Client) commitTransactionOffsets(
 		return g
 	}
 
-	tx890p2 := cl.producer.tx890p2 // requires mu
+	tx890p2 := cl.producer.tx890p2.Load()
 
 	if !g.offsetsAddedToTxn {
 		// We only need to issue the AddOffsetsToTxn request if we are
@@ -1038,49 +1174,35 @@ func (g *groupConsumer) commitTxn(ctx context.Context, tx890p2 bool, req *kmsg.T
 		onDone = func(_ *kmsg.TxnOffsetCommitRequest, _ *kmsg.TxnOffsetCommitResponse, _ error) {}
 	}
 
-	if g.commitCancel != nil {
-		g.commitCancel() // cancel any prior commit
-	}
-	priorCancel := g.commitCancel
 	priorDone := g.commitDone
-
-	// Unlike the non-txn consumer, we use the group context for
-	// transaction offset committing. We want to quit when the group is
-	// left, and we are not committing when leaving. We rely on proper
-	// usage of the GroupTransactSession API to issue commits, so there is
-	// no reason not to use the group context here.
-	commitCtx, commitCancel := context.WithCancel(g.ctx) // enable ours to be canceled and waited for
 	commitDone := make(chan struct{})
-
-	g.commitCancel = commitCancel
 	g.commitDone = commitDone
-
-	if ctx.Done() != nil {
-		go func() {
-			select {
-			case <-ctx.Done():
-				commitCancel()
-			case <-commitCtx.Done():
-			}
-		}()
-	}
 
 	go func() {
 		defer close(commitDone) // allow future commits to continue when we are done
-		defer commitCancel()
-		if priorDone != nil {
+		if priorDone != nil {   // wait for any prior request to finish
+			// Same as commit(): we must NOT cancel the prior commit
+			// because canceling kills the TCP connection, and our
+			// subsequent request on a new connection can be processed
+			// out of order at the broker, rewinding committed offsets.
 			select {
 			case <-priorDone:
 			default:
-				g.cl.cfg.logger.Log(LogLevelDebug, "canceling prior txn offset commit to issue another")
-				priorCancel()
-				<-priorDone // wait for any prior request to finish
+				g.cl.cfg.logger.Log(LogLevelDebug, "waiting for prior txn offset commit to finish before issuing another")
+				<-priorDone
 			}
 		}
 		g.cl.cfg.logger.Log(LogLevelDebug, "issuing txn offset commit", "uncommitted", req)
 
 		start := time.Now()
-		ctx := ctx // capture a local ctx variable; do not use the shared one that is concurrently read above
+		// The request rides the caller's context (the End context),
+		// not the group context: a transactional offset commit must
+		// not be canceled by group teardown midway, because canceling
+		// an in-flight request kills the connection and a replacement
+		// commit on a new connection can be reordered behind the
+		// canceled one by the broker. End documents that canceling
+		// ITS context risks an invalid state.
+		ctx := ctx
 		if !tx890p2 {
 			ctx = context.WithValue(ctx, ctxPinReq, &pinReq{pinMax: true, max: 4}) // v5 is only supported with KIP-890 part 2
 		}
