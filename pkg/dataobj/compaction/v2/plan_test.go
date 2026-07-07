@@ -52,7 +52,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 	sections := make([]*compactionv2pb.SectionRef, 0, 10)
 	for i := 0; i < 10; i++ {
 		// MaxKey = "z" so all of them overlap pairwise (MinKey "a" < MaxKey "z").
-		sections = append(sections, sec("o", int32(i), "a", "z"))
+		sections = append(sections, sec("o", int64(i), "a", "z"))
 	}
 
 	got := Plan(context.Background(), sections, "tenantA", 3)

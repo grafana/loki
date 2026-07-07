@@ -29,11 +29,12 @@ option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 // and (max_key, max_timestamp) -- label tuple first, then timestamp.
 message SectionRef {
   string object_path = 1 [(gogoproto.jsontag) = "object_path"];
-  int32 section_index = 2 [(gogoproto.jsontag) = "section_index"];
+  int64 section_index = 2 [(gogoproto.jsontag) = "section_index"];
   repeated string min_key = 3 [(gogoproto.jsontag) = "min_key"];
   repeated string max_key = 4 [(gogoproto.jsontag) = "max_key"];
   int64 min_timestamp = 5 [(gogoproto.jsontag) = "min_timestamp"];
   int64 max_timestamp = 6 [(gogoproto.jsontag) = "max_timestamp"];
+  int64 uncompressed_size = 7 [(gogoproto.jsontag) = "uncompressed_size"];
 }
 
 // RunRef is one pile: a sorted, non-overlapping section sequence.
@@ -45,4 +46,5 @@ message RunRef {
 message TaskSpec {
   string tenant = 1 [(gogoproto.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
+  repeated string sort_schema = 3 [(gogoproto.jsontag) = "sort_schema"];
 }

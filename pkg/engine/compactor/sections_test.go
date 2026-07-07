@@ -72,7 +72,7 @@ func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
 	require.Len(t, got, 2)
 
 	require.Equal(t, "indexes/aa/idx-0", got[0].ObjectPath)
-	require.Equal(t, int32(0), got[0].SectionIndex)
+	require.Equal(t, int64(0), got[0].SectionIndex)
 	require.Empty(t, got[0].MinKey, "timestamp-only bounds")
 	require.Empty(t, got[0].MaxKey, "timestamp-only bounds")
 	require.Equal(t, window.Add(1*time.Hour).UnixNano(), got[0].MinTimestamp)

@@ -14,7 +14,7 @@ var _ = rand.Float64
 
 // sec is a small constructor for SectionRef test fixtures with single-column
 // MinKey/MaxKey values (the common case in existing tests).
-func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionRef {
+func sec(path string, idx int64, minKey, maxKey string) *compactionv2pb.SectionRef {
 	return &compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
@@ -26,7 +26,7 @@ func sec(path string, idx int32, minKey, maxKey string) *compactionv2pb.SectionR
 // secT is a constructor for SectionRef test fixtures with multi-column
 // MinKey/MaxKey tuples (for tests that exercise multi-column sort_schema
 // semantics).
-func secT(path string, idx int32, minKey, maxKey []string) *compactionv2pb.SectionRef {
+func secT(path string, idx int64, minKey, maxKey []string) *compactionv2pb.SectionRef {
 	return &compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
@@ -267,7 +267,7 @@ func TestCalculateRuns_MultiColumn_OverlapAcrossColumns(t *testing.T) {
 // MinTimestamp/MaxTimestamp values (for tests that exercise the timestamp
 // component of the composite sort key). MinKey/MaxKey are still []string
 // tuples; pass single-element slices for the single-column case.
-func secTS(path string, idx int32, minKey, maxKey []string, minTs, maxTs int64) *compactionv2pb.SectionRef {
+func secTS(path string, idx int64, minKey, maxKey []string, minTs, maxTs int64) *compactionv2pb.SectionRef {
 	return &compactionv2pb.SectionRef{
 		ObjectPath:   path,
 		SectionIndex: idx,
