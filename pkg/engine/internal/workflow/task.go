@@ -38,6 +38,53 @@ type Task struct {
 	// as metadata to control execution (such as cancelling ongoing tasks based
 	// on their maximum time range).
 	MaxTimeRange physical.TimeRange
+
+	// SinkRouting defines how records should be routed to the task's sinks.
+	// nil means broadcast mode (send all records to all sinks).
+	SinkRouting *SinkRouting
+}
+
+// SinkRouting defines how records from a task should be distributed to its sinks.
+type SinkRouting struct {
+	Strategy SinkRoutingStrategy
+
+	// Grouping specifies the columns to use for label-based sharding.
+	// Only used when Strategy is SinkRoutingStrategyLabelHash.
+	Grouping physical.Grouping
+
+	// TimeRanges specifies the time range for each shard.
+	// Only used when Strategy is SinkRoutingStrategyTimeShard.
+	// The order matches the order of sinks: TimeRanges[i] corresponds to sinks[i].
+	TimeRanges []physical.TimeRange
+}
+
+// SinkRoutingStrategy defines the strategy for routing records to sinks.
+type SinkRoutingStrategy int
+
+const (
+	// SinkRoutingStrategyBroadcast sends all records to all sinks.
+	SinkRoutingStrategyBroadcast SinkRoutingStrategy = iota
+
+	// SinkRoutingStrategyLabelHash routes records to sinks based on a hash of grouping labels.
+	// The shard is determined by: hash(grouping_labels) % len(sinks).
+	SinkRoutingStrategyLabelHash
+
+	// SinkRoutingStrategyTimeShard routes records to sinks based on timestamp.
+	// The time range is divided evenly among shards.
+	SinkRoutingStrategyTimeShard
+)
+
+func (s SinkRoutingStrategy) String() string {
+	switch s {
+	case SinkRoutingStrategyBroadcast:
+		return "broadcast"
+	case SinkRoutingStrategyLabelHash:
+		return "label_hash"
+	case SinkRoutingStrategyTimeShard:
+		return "time_shard"
+	default:
+		return "unknown"
+	}
 }
 
 // ID returns the Task's ULID.

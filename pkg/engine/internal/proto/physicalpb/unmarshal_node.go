@@ -177,7 +177,7 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	grouping, err := unmarshalGrouping(rangeAgg.Grouping)
+	grouping, err := UnmarshalGrouping(rangeAgg.Grouping)
 	if err != nil {
 		return err
 	}
@@ -200,7 +200,8 @@ func (n *AggregateRange) UnmarshalPhysical(from physical.Node) error {
 	return nil
 }
 
-func unmarshalGrouping(g physical.Grouping) (*Grouping, error) {
+// UnmarshalGrouping converts a physical Grouping into a protobuf Grouping.
+func UnmarshalGrouping(g physical.Grouping) (*Grouping, error) {
 	columns, err := unmarshalColumnExpressions(g.Columns)
 	if err != nil {
 		return nil, err
@@ -235,7 +236,7 @@ func (n *AggregateVector) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	grouping, err := unmarshalGrouping(vectorAgg.Grouping)
+	grouping, err := UnmarshalGrouping(vectorAgg.Grouping)
 	if err != nil {
 		return err
 	}
