@@ -11,10 +11,10 @@ import (
 )
 
 func TestPlan_EmptyInput(t *testing.T) {
-	got := Plan(context.Background(), nil, "tenantA", 3)
+	got := Plan(context.Background(), nil, "tenantA", 3, nil)
 	require.Nil(t, got, "empty input should produce no tasks")
 
-	got = Plan(context.Background(), []*compactionv2pb.SectionRef{}, "tenantA", 3)
+	got = Plan(context.Background(), []*compactionv2pb.SectionRef{}, "tenantA", 3, nil)
 	require.Nil(t, got)
 }
 
@@ -22,22 +22,22 @@ func TestPlan_InvalidK_Panics(t *testing.T) {
 	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b")}
 
 	require.PanicsWithValue(t, "k must be > 0, got 0", func() {
-		Plan(context.Background(), sections, "tenantA", 0)
+		Plan(context.Background(), sections, "tenantA", 0, nil)
 	}, "k=0 must panic")
 
 	require.PanicsWithValue(t, "k must be > 0, got -1", func() {
-		Plan(context.Background(), sections, "tenantA", -1)
+		Plan(context.Background(), sections, "tenantA", -1, nil)
 	}, "negative k must panic")
 
 	// Empty input + k<=0: panic still fires (k validation is unconditional).
 	require.Panics(t, func() {
-		Plan(context.Background(), nil, "tenantA", 0)
+		Plan(context.Background(), nil, "tenantA", 0, nil)
 	}, "k<=0 panic fires even with empty input")
 }
 
 func TestPlan_SingleSection(t *testing.T) {
 	s := sec("o", 0, "a", "b")
-	got := Plan(context.Background(), []*compactionv2pb.SectionRef{s}, "tenantA", 8)
+	got := Plan(context.Background(), []*compactionv2pb.SectionRef{s}, "tenantA", 8, nil)
 
 	require.Len(t, got, 1, "P=1 K=8 should produce exactly 1 task")
 	require.Equal(t, "tenantA", got[0].Tenant)
@@ -55,7 +55,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 		sections = append(sections, sec("o", int64(i), "a", "z"))
 	}
 
-	got := Plan(context.Background(), sections, "tenantA", 3)
+	got := Plan(context.Background(), sections, "tenantA", 3, nil)
 
 	require.Len(t, got, 4, "P=10 K=3 should produce ⌈10/3⌉ = 4 tasks")
 	require.Equal(t, "tenantA", got[0].Tenant)
@@ -82,7 +82,7 @@ func TestPlan_KGreaterThanP(t *testing.T) {
 		sec("o", 2, "a", "z"),
 	}
 
-	got := Plan(context.Background(), sections, "tenantB", 100)
+	got := Plan(context.Background(), sections, "tenantB", 100, nil)
 	require.Len(t, got, 1)
 	require.Equal(t, "tenantB", got[0].Tenant)
 	require.Len(t, got[0].Runs, 3)
@@ -102,7 +102,7 @@ func TestPlan_Determinism(t *testing.T) {
 		sec("p", 1, "08", "09"),
 	}
 
-	want := Plan(context.Background(), append([]*compactionv2pb.SectionRef(nil), base...), "tenantA", 3)
+	want := Plan(context.Background(), append([]*compactionv2pb.SectionRef(nil), base...), "tenantA", 3, nil)
 
 	r := rand.New(rand.NewSource(1337))
 	for trial := 0; trial < 10; trial++ {
@@ -110,7 +110,7 @@ func TestPlan_Determinism(t *testing.T) {
 		r.Shuffle(len(shuffled), func(i, j int) {
 			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
 		})
-		got := Plan(context.Background(), shuffled, "tenantA", 3)
+		got := Plan(context.Background(), shuffled, "tenantA", 3, nil)
 
 		require.Equal(t, len(want), len(got), "trial %d: task count must be deterministic", trial)
 		for i := range want {
@@ -127,9 +127,33 @@ func TestPlan_Determinism(t *testing.T) {
 func TestPlan_TenantPassThrough(t *testing.T) {
 	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b"), sec("o", 1, "a", "c")}
 	for _, tenant := range []string{"", "tenant-1", "tenant_with_strange_chars-A.B/C"} {
-		got := Plan(context.Background(), sections, tenant, 1)
+		got := Plan(context.Background(), sections, tenant, 1, nil)
 		for _, tsk := range got {
 			require.Equal(t, tenant, tsk.Tenant)
 		}
 	}
+}
+
+func TestPlan_StampsSortSchema(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		{ObjectPath: "o0", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"a"}},
+		{ObjectPath: "o1", SectionIndex: 0, MinKey: []string{"b"}, MaxKey: []string{"b"}},
+	}
+	schema := []string{"service_name"}
+
+	tasks := Plan(context.Background(), sections, "t1", 2, schema)
+
+	require.NotEmpty(t, tasks)
+	for _, ts := range tasks {
+		require.Equal(t, schema, ts.SortSchema)
+	}
+}
+
+func TestPlan_NilSortSchemaStaysEmpty(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{{ObjectPath: "o0", SectionIndex: 0}}
+
+	tasks := Plan(context.Background(), sections, "t1", 2, nil)
+
+	require.NotEmpty(t, tasks)
+	require.Empty(t, tasks[0].SortSchema)
 }

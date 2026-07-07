@@ -254,7 +254,7 @@ func (c *coordinator) compactTenant(
 ) (compactionStats, error) {
 	// Plan.
 	sections := sectionRefsFor(entries)
-	tasks := v2.Plan(ctx, sections, tenant, c.cfg.MaxRunsPerTask)
+	tasks := v2.Plan(ctx, sections, tenant, c.cfg.MaxRunsPerTask, nil)
 	if len(tasks) == 0 {
 		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
 			"tenant", tenant, "window", window)
