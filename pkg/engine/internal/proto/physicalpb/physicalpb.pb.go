@@ -1708,10 +1708,7 @@ type LogMerge struct {
 	Runs                    []*proto1.RunRef `protobuf:"bytes,3,rep,name=runs,proto3" json:"runs,omitempty"`
 	SourceIndexPaths        []string         `protobuf:"bytes,4,rep,name=source_index_paths,json=sourceIndexPaths,proto3" json:"source_index_paths,omitempty"`
 	SortSchema              []string         `protobuf:"bytes,5,rep,name=sort_schema,json=sortSchema,proto3" json:"sort_schema,omitempty"`
-	// Path of the index object the worker builds from the newly-created compacted
-	// log object and returns to the planner for the ToC swap. The log object's
-	// own path is derived and owned by the worker.
-	OutputIndexPath string `protobuf:"bytes,6,opt,name=output_index_path,json=outputIndexPath,proto3" json:"output_index_path,omitempty"`
+	OutputIndexPath         string           `protobuf:"bytes,6,opt,name=output_index_path,json=outputIndexPath,proto3" json:"output_index_path,omitempty"`
 }
 
 func (m *LogMerge) Reset()      { *m = LogMerge{} }
