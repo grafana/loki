@@ -22,7 +22,7 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 			},
 		},
 		SourceIndexPaths: []string{"idx/x.idx"},
-		OutputPath:       "tenants/tenant-29/objects/abc",
+		OutputIndexPath:  "tenants/tenant-29/objects/abc",
 	}
 
 	clone := orig.Clone().(*LogMerge)

@@ -181,7 +181,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// LogMerge ships with a stub executor that writes a zero-byte object at
 		// OutputPath. The real K-way merge over log sections lands in a later PR,
 		// after we ship IndeXMerge.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
