@@ -55,14 +55,14 @@ jobs:
               --force
 
       - name: Checkout operatorhub repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: grafanabot/${{ inputs.repo }}
           token: ${{ steps.get-github-app-token.outputs.token }}
           persist-credentials: false
 
       - name: Checkout loki to tmp/ directory
-        uses: actions/checkout@v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           repository: grafana/loki
           token: ${{ steps.get-github-app-token.outputs.token }}

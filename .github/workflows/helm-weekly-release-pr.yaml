@@ -21,7 +21,7 @@ jobs:
     env:
       BUILD_IN_CONTAINER: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           persist-credentials: false
       - name: Generate GitHub App Token
