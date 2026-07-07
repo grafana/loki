@@ -970,19 +970,3 @@ func Test_Reader_Stats(t *testing.T) {
 	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
 	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
 }
-
-// readAllRows reads all rows from a dataset with the given columns and predicates.
-func readAllRows(t *testing.T, dset Dataset, columns []Column, predicates ...Predicate) []Row {
-	t.Helper()
-
-	r := NewRowReader(RowReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-	})
-	defer r.Close()
-
-	rows, err := readDataset(r, 3)
-	require.NoError(t, err)
-	return rows
-}
