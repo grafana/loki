@@ -490,12 +490,13 @@ func copyRunRefs(in []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 				continue
 			}
 			sections[j] = &compactionv2pb.SectionRef{
-				ObjectPath:   s.ObjectPath,
-				SectionIndex: s.SectionIndex,
-				MinKey:       s.MinKey,
-				MaxKey:       s.MaxKey,
-				MinTimestamp: s.MinTimestamp,
-				MaxTimestamp: s.MaxTimestamp,
+				ObjectPath:       s.ObjectPath,
+				SectionIndex:     s.SectionIndex,
+				MinKey:           s.MinKey,
+				MaxKey:           s.MaxKey,
+				MinTimestamp:     s.MinTimestamp,
+				MaxTimestamp:     s.MaxTimestamp,
+				UncompressedSize: s.UncompressedSize,
 			}
 		}
 		runs[i] = &compactionv2pb.RunRef{Sections: sections}
