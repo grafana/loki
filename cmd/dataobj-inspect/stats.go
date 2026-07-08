@@ -306,6 +306,7 @@ type PercentileStats struct {
 	Median float64
 	P95    float64
 	P99    float64
+	Max    float64
 }
 
 // ReadStats returns statistics about the data object. ReadStats returns an
@@ -354,7 +355,10 @@ func calcSectionSizeStats(s *Stats) {
 	calcPercentiles(sizes, &s.SectionSizeStats)
 }
 
-func calcPercentiles[T int | uint | int64 | uint64](input []T, s *PercentileStats) {
+func calcPercentiles[T int | uint | int64 | uint64 | float64](input []T, s *PercentileStats) {
+	if len(input) == 0 {
+		return
+	}
 	// Data must be sorted to calculate percentiles.
 	slices.Sort(input)
 	n := len(input)
@@ -373,4 +377,5 @@ func calcPercentiles[T int | uint | int64 | uint64](input []T, s *PercentileStat
 		idx = n - 1
 	}
 	s.P99 = float64(input[idx])
+	s.Max = float64(input[n-1])
 }
