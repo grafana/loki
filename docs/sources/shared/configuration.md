@@ -1623,6 +1623,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
 
+    # Experimental: Maximum runs per LogMerge task (K for log compaction).
+    # Separate from max-runs-per-task to scale independently
+    # CLI flag: -dataobj.compaction.logs.max-runs-per-task
+    [logs_max_runs_per_task: <int> | default = 3]
+
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
     # CLI flag: -dataobj.compaction.toc-consolidate-timeout
@@ -4792,16 +4797,6 @@ ruler_remote_write_sigv4_config:
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
 
-# Feature renamed to 'runtime configuration', flag deprecated in favor of
-# -runtime-config.file (runtime_config.file in YAML).
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Feature renamed to 'runtime configuration'; flag deprecated in favor of
-# -runtime-config.reload-period (runtime_config.period in YAML).
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
-
 # Define streams sharding behavior.
 shard_streams:
   # Automatically shard streams to keep them under the per-stream rate limit.
@@ -6092,8 +6087,7 @@ remote_write:
   [enabled: <boolean> | default = false]
 
   # Minimum period to wait between refreshing remote-write reconfigurations.
-  # This should be greater than or equivalent to
-  # -limits.per-user-override-period.
+  # This should be greater than or equivalent to -runtime-config.reload-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
@@ -6213,7 +6207,8 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 
 # Delimiter used to replace the default delimiter ':' in chunk IDs when storing
 # chunks. This is mainly intended when you run a MinIO instance on a Windows
-# machine. You should not change this value inflight.
+# machine. You must not change this value during operations, otherwise you may
+# not be able to read existing chunks from object storage.
 # CLI flag: -<prefix>.s3.chunk-delimiter
 [chunk_delimiter: <string> | default = ""]
 
@@ -7565,7 +7560,7 @@ Configuration for `tracing`.
 
 ## Runtime Configuration file
 
-Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag.
 
 At the moment, two components use runtime configuration: limits and multi KV store.
 

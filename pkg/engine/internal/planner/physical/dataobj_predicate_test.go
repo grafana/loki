@@ -1,4 +1,4 @@
-package executor
+package physical
 
 import (
 	"testing"
@@ -9,13 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func Test_buildLogsPredicate(t *testing.T) {
+func Test_BuildLogsPredicate(t *testing.T) {
 	var (
-		// streamID isn't included since [physical.Expression]s can't reference
+		// streamID isn't included since [Expression]s can't reference
 		// stream IDs.
 
 		timestampColumn = &logs.Column{Type: logs.ColumnTypeTimestamp}
@@ -27,25 +26,25 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 	tt := []struct {
 		name   string
-		expr   physical.Expression
+		expr   Expression
 		expect logs.Predicate
 	}{
 		{
 			name:   "literal true",
-			expr:   physical.NewLiteral(true),
+			expr:   NewLiteral(true),
 			expect: logs.TruePredicate{},
 		},
 		{
 			name:   "literal false",
-			expr:   physical.NewLiteral(false),
+			expr:   NewLiteral(false),
 			expect: logs.FalsePredicate{},
 		},
 
 		{
 			name: "unary NOT",
-			expr: &physical.UnaryExpr{
+			expr: &UnaryExpr{
 				Op:   types.UnaryOpNot,
-				Left: physical.NewLiteral(false),
+				Left: NewLiteral(false),
 			},
 			expect: logs.NotPredicate{
 				Inner: logs.FalsePredicate{},
@@ -54,10 +53,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary AND",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpAnd,
-				Left:  physical.NewLiteral(true),
-				Right: physical.NewLiteral(false),
+				Left:  NewLiteral(true),
+				Right: NewLiteral(false),
 			},
 			expect: logs.AndPredicate{
 				Left:  logs.TruePredicate{},
@@ -66,10 +65,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary OR",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpOr,
-				Left:  physical.NewLiteral(true),
-				Right: physical.NewLiteral(false),
+				Left:  NewLiteral(true),
+				Right: NewLiteral(false),
 			},
 			expect: logs.OrPredicate{
 				Left:  logs.TruePredicate{},
@@ -79,10 +78,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "builtin timestamp reference",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(int64(1234567890)),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral(int64(1234567890)),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -91,10 +90,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "builtin message reference",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinMessage),
-				Right: physical.NewLiteral(int64(9876543210)),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinMessage),
+				Right: NewLiteral(int64(9876543210)),
 			},
 			expect: logs.EqualPredicate{
 				Column: messageColumn,
@@ -103,10 +102,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "metadata reference",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral(int64(5555555555)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral(int64(5555555555)),
 			},
 			expect: logs.EqualPredicate{
 				Column: metadataColumn,
@@ -115,10 +114,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "ambiguous metadata reference",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeAmbiguous, "metadata"),
-				Right: physical.NewLiteral(int64(7777777777)),
+				Left:  predicateColumnRef(types.ColumnTypeAmbiguous, "metadata"),
+				Right: NewLiteral(int64(7777777777)),
 			},
 			expect: logs.EqualPredicate{
 				Column: metadataColumn,
@@ -128,10 +127,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "check column for null literal",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(nil),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral(nil),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -140,10 +139,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for integer literal",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(int64(42)),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral(int64(42)),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -152,10 +151,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for bytes literal",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(types.Bytes(1024)),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral(types.Bytes(1024)),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -164,10 +163,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for timestamp literal",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(types.Timestamp(1609459200000000000)), // 2021-01-01 00:00:00 UTC in nanoseconds
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral(types.Timestamp(1609459200000000000)), // 2021-01-01 00:00:00 UTC in nanoseconds
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -176,10 +175,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for string literal",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral("hello world"),
+				Left:  predicateColumnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
+				Right: NewLiteral("hello world"),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -189,10 +188,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary EQ",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("test_value"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("test_value"),
 			},
 			expect: logs.EqualPredicate{
 				Column: metadataColumn,
@@ -201,10 +200,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary NEQ",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNeq,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("test_value"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("test_value"),
 			},
 			expect: logs.NotPredicate{
 				Inner: logs.EqualPredicate{
@@ -215,10 +214,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary GT",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGt,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.GreaterThanPredicate{
 				Column: metadataColumn,
@@ -227,10 +226,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary GTE",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGte,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.OrPredicate{
 				Left:  logs.GreaterThanPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
@@ -239,10 +238,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary LT",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLt,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.LessThanPredicate{
 				Column: metadataColumn,
@@ -251,10 +250,10 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary LTE",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLte,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.OrPredicate{
 				Left:  logs.LessThanPredicate{Column: metadataColumn, Value: scalar.NewInt64Scalar(100)},
@@ -264,109 +263,109 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary EQ (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("test_value"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("test_value"),
 			},
 			expect: logs.FalsePredicate{}, // non-null value can't equal NULL column
 		},
 		{
 			name: "binary NEQ (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNeq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("test_value"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("test_value"),
 			},
 			expect: logs.TruePredicate{}, // non-null value != NULL column
 		},
 		{
 			name: "binary EQ NULL (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(nil),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(nil),
 			},
 			expect: logs.TruePredicate{}, // NULL == NULL: always passes
 		},
 		{
 			name: "binary NEQ NULL (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNeq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(nil),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(nil),
 			},
 			expect: logs.FalsePredicate{}, // NULL != NULL: always fails
 		},
 		{
 			name: "binary GT (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGt,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.FalsePredicate{}, // NULL > value always fails
 		},
 		{
 			name: "binary GTE (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGte,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.FalsePredicate{}, // NULL >= value always fails
 		},
 		{
 			name: "binary LT (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLt,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.FalsePredicate{}, // NULL < value always fails
 		},
 		{
 			name: "binary LTE (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLte,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(int64(100)),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(int64(100)),
 			},
 			expect: logs.FalsePredicate{}, // NULL <= value always fails
 		},
 		{
 			name: "binary MATCH_STR (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("substring"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("substring"),
 			},
 			expect: logs.FalsePredicate{}, // match against non-existent column always fails
 		},
 		{
 			name: "binary NOT_MATCH_STR (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("substring"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("substring"),
 			},
 			expect: logs.TruePredicate{}, // not match against non-existent column always passes
 		},
 		{
 			name: "binary MATCH_RE (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("^test.*"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("^test.*"),
 			},
 			expect: logs.FalsePredicate{}, // match against non-existent column always fails
 		},
 		{
 			name: "binary NOT_MATCH_RE (invalid column)",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("^test.*"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("^test.*"),
 			},
 			expect: logs.TruePredicate{}, // not match against non-existent column always passes
 		},
@@ -376,136 +375,136 @@ func Test_buildLogsPredicate(t *testing.T) {
 		// sections whose absent column would have matched.
 		{
 			name: `binary EQ "" (invalid column) — absent matches empty literal`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary NEQ "" (invalid column) — absent does not differ from empty literal`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNeq,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.FalsePredicate{},
 		},
 		{
 			name: `binary GTE "" (invalid column) — "" >= "" is true`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGte,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary LTE any string (invalid column) — "" <= anything is true`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLte,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("zzz"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("zzz"),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary LT non-empty (invalid column) — "" < non-empty is true`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpLt,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral("foo"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral("foo"),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary GT "" (invalid column) — "" > "" is false`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpGt,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.FalsePredicate{},
 		},
 		{
 			name: `binary MATCH_STR "" (invalid column) — "" contains "" is true`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary NOT_MATCH_STR "" (invalid column) — !("" contains "") is false`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.FalsePredicate{},
 		},
 		{
 			name: `binary MATCH_RE ".*" (invalid column) — matches ""`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(".*"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(".*"),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary MATCH_RE ".+" (invalid column) — does not match ""`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(".+"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(".+"),
 			},
 			expect: logs.FalsePredicate{},
 		},
 		{
 			name: `binary NOT_MATCH_RE ".+" (invalid column) — "" does not match .+, so negation passes`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(".+"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(".+"),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary EQ_CI "" (invalid column) — absent matches empty literal case-insensitively`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpEqCaseInsensitive,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary NOT_EQ_CI "" (invalid column) — absent does not differ from empty literal`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotEqCaseInsensitive,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.FalsePredicate{},
 		},
 		{
 			name: `binary MATCH_STR_CI "" (invalid column) — "" contains "" case-insensitively is true`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchSubstrCaseInsensitive,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.TruePredicate{},
 		},
 		{
 			name: `binary NOT_MATCH_STR_CI "" (invalid column) — case-insensitive negation of contains is false`,
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchSubstrCaseInsensitive,
-				Left:  columnRef(types.ColumnTypeMetadata, "nonexistent"),
-				Right: physical.NewLiteral(""),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "nonexistent"),
+				Right: NewLiteral(""),
 			},
 			expect: logs.FalsePredicate{},
 		},
@@ -517,17 +516,17 @@ func Test_buildLogsPredicate(t *testing.T) {
 				t.Skip()
 			}
 
-			actual, err := buildLogsPredicate(tc.expr, columns)
+			actual, err := BuildLogsPredicate(tc.expr, columns)
 			require.NoError(t, err)
 			require.Equal(t, tc.expect, actual)
 		})
 	}
 }
 
-// Test_buildLogsPredicate_FuncPredicates tests cases of [buildLogsPredicate]
+// Test_BuildLogsPredicate_FuncPredicates tests cases of [BuildLogsPredicate]
 // which generate [logs.FuncPredicate], testing that the generated functions are
 // correct.
-func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
+func Test_BuildLogsPredicate_FuncPredicates(t *testing.T) {
 	var (
 		metadataColumn = &logs.Column{Name: "metadata", Type: logs.ColumnTypeMetadata}
 		columns        = []*logs.Column{metadataColumn}
@@ -540,16 +539,16 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 
 	tt := []struct {
 		name           string
-		expr           physical.Expression
+		expr           Expression
 		expectedColumn *logs.Column
 		keepTests      []keepTest
 	}{
 		{
 			name: "binary MATCH_STR",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("substring"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("substring"),
 			},
 			expectedColumn: metadataColumn,
 			keepTests: []keepTest{
@@ -581,10 +580,10 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary NOT_MATCH_STR",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchSubstr,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("substring"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("substring"),
 			},
 			expectedColumn: metadataColumn,
 			keepTests: []keepTest{
@@ -616,10 +615,10 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary MATCH_RE",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("^test.*"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("^test.*"),
 			},
 			expectedColumn: metadataColumn,
 			keepTests: []keepTest{
@@ -651,10 +650,10 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary NOT_MATCH_RE",
-			expr: &physical.BinaryExpr{
+			expr: &BinaryExpr{
 				Op:    types.BinaryOpNotMatchRe,
-				Left:  columnRef(types.ColumnTypeMetadata, "metadata"),
-				Right: physical.NewLiteral("^test.*"),
+				Left:  predicateColumnRef(types.ColumnTypeMetadata, "metadata"),
+				Right: NewLiteral("^test.*"),
 			},
 			expectedColumn: metadataColumn,
 			keepTests: []keepTest{
@@ -688,7 +687,7 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			actual, err := buildLogsPredicate(tc.expr, columns)
+			actual, err := BuildLogsPredicate(tc.expr, columns)
 			require.NoError(t, err)
 
 			// Verify it's a FuncPredicate
@@ -707,8 +706,8 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 	}
 }
 
-func columnRef(ty types.ColumnType, column string) *physical.ColumnExpr {
-	return &physical.ColumnExpr{
+func predicateColumnRef(ty types.ColumnType, column string) *ColumnExpr {
+	return &ColumnExpr{
 		Ref: types.ColumnRef{
 			Type:   ty,
 			Column: column,
@@ -716,24 +715,24 @@ func columnRef(ty types.ColumnType, column string) *physical.ColumnExpr {
 	}
 }
 
-func Test_buildLogsPredicate_CaseInsensitive_Substring(t *testing.T) {
+func Test_BuildLogsPredicate_CaseInsensitive_Substring(t *testing.T) {
 	messageColumn := &logs.Column{Type: logs.ColumnTypeMessage}
 	columns := []*logs.Column{messageColumn}
 
 	// Build a predicate for case-insensitive substring match
-	expr := &physical.BinaryExpr{
+	expr := &BinaryExpr{
 		Op: types.BinaryOpMatchSubstrCaseInsensitive,
-		Left: &physical.ColumnExpr{
+		Left: &ColumnExpr{
 			Ref: types.ColumnRef{
 				Type:   types.ColumnTypeBuiltin,
 				Column: types.ColumnNameBuiltinMessage,
 			},
 		},
-		Right: physical.NewLiteral("DURATION"), // Uppercased pattern
+		Right: NewLiteral("DURATION"), // Uppercased pattern
 	}
 
-	predicate, err := buildLogsPredicate(expr, columns)
-	require.NoError(t, err, "buildLogsPredicate should support case-insensitive operators")
+	predicate, err := BuildLogsPredicate(expr, columns)
+	require.NoError(t, err, "BuildLogsPredicate should support case-insensitive operators")
 
 	funcPred, ok := predicate.(logs.FuncPredicate)
 	require.True(t, ok, "expected logs.FuncPredicate")
@@ -767,24 +766,24 @@ func Test_buildLogsPredicate_CaseInsensitive_Substring(t *testing.T) {
 	}
 }
 
-func Test_buildLogsPredicate_CaseInsensitive_Equality(t *testing.T) {
+func Test_BuildLogsPredicate_CaseInsensitive_Equality(t *testing.T) {
 	messageColumn := &logs.Column{Type: logs.ColumnTypeMessage}
 	columns := []*logs.Column{messageColumn}
 
 	// Build a predicate for case-insensitive equality
-	expr := &physical.BinaryExpr{
+	expr := &BinaryExpr{
 		Op: types.BinaryOpEqCaseInsensitive,
-		Left: &physical.ColumnExpr{
+		Left: &ColumnExpr{
 			Ref: types.ColumnRef{
 				Type:   types.ColumnTypeBuiltin,
 				Column: types.ColumnNameBuiltinMessage,
 			},
 		},
-		Right: physical.NewLiteral("ERROR"), // Uppercased pattern
+		Right: NewLiteral("ERROR"), // Uppercased pattern
 	}
 
-	predicate, err := buildLogsPredicate(expr, columns)
-	require.NoError(t, err, "buildLogsPredicate should support case-insensitive operators")
+	predicate, err := BuildLogsPredicate(expr, columns)
+	require.NoError(t, err, "BuildLogsPredicate should support case-insensitive operators")
 
 	funcPred, ok := predicate.(logs.FuncPredicate)
 	require.True(t, ok, "expected logs.FuncPredicate")
@@ -814,4 +813,86 @@ func Test_buildLogsPredicate_CaseInsensitive_Equality(t *testing.T) {
 				"case-insensitive equality should correctly match %q", tc.input)
 		})
 	}
+}
+
+func Test_logsPredicateIsUnsatisfiable(t *testing.T) {
+	timestampColumn := &logs.Column{Type: logs.ColumnTypeTimestamp}
+	columns := []*logs.Column{timestampColumn}
+
+	tests := []struct {
+		name string
+		p    logs.Predicate
+		want bool
+	}{
+		{name: "false", p: logs.FalsePredicate{}, want: true},
+		{name: "true", p: logs.TruePredicate{}, want: false},
+		{
+			name: "AND with false child",
+			p: logs.AndPredicate{
+				Left:  logs.TruePredicate{},
+				Right: logs.FalsePredicate{},
+			},
+			want: true,
+		},
+		{
+			name: "OR with one satisfiable child",
+			p: logs.OrPredicate{
+				Left:  logs.FalsePredicate{},
+				Right: logs.TruePredicate{},
+			},
+			want: false,
+		},
+		{
+			name: "OR with both unsatisfiable",
+			p: logs.OrPredicate{
+				Left:  logs.FalsePredicate{},
+				Right: logs.FalsePredicate{},
+			},
+			want: true,
+		},
+		{
+			name: "NOT false",
+			p:    logs.NotPredicate{Inner: logs.FalsePredicate{}},
+			want: false,
+		},
+		{
+			name: "NOT true",
+			p:    logs.NotPredicate{Inner: logs.TruePredicate{}},
+			want: true,
+		},
+		{
+			name: "equality can match",
+			p: logs.EqualPredicate{
+				Column: timestampColumn,
+				Value:  scalar.NewInt64Scalar(1),
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, logsPredicateIsUnsatisfiable(tt.p))
+		})
+	}
+
+	t.Run("missing column becomes false", func(t *testing.T) {
+		expr := &BinaryExpr{
+			Op:    types.BinaryOpEq,
+			Left:  predicateColumnRef(types.ColumnTypeMetadata, "missing"),
+			Right: NewLiteral("value"),
+		}
+		p, err := BuildLogsPredicate(expr, columns)
+		require.NoError(t, err)
+		require.True(t, logsPredicateIsUnsatisfiable(p))
+	})
+}
+
+func Test_LogsPredicatesAreUnsatisfiable(t *testing.T) {
+	require.False(t, LogsPredicatesAreUnsatisfiable(nil))
+	require.False(t, LogsPredicatesAreUnsatisfiable([]logs.Predicate{logs.TruePredicate{}}))
+	require.True(t, LogsPredicatesAreUnsatisfiable([]logs.Predicate{
+		logs.TruePredicate{},
+		logs.FalsePredicate{},
+	}))
 }
