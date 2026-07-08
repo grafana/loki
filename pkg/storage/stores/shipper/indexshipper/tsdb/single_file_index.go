@@ -26,22 +26,49 @@ import (
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
-// disableIndexMmap, when true, causes NewTSDBIndexFromFile to load index files
-// into memory with os.ReadFile instead of mmap'ing them. This is a process-wide
-// toggle configured at store initialization; see indexshipper.Config.DisableIndexMmap.
-// Package-level state is a phase-1 shortcut — a future refactor should thread
-// this through the constructor arguments.
-var disableIndexMmap atomic.Bool
+// indexReaderMode selects how NewTSDBIndexFromFile opens on-disk TSDB index
+// files. This is a process-wide toggle configured at store initialization;
+// see indexshipper.Config.IndexReaderMode. Package-level state is a
+// phase-1/2 shortcut — Phase 2 Bucket E's P2.E1 replaces it with real
+// constructor plumbing.
+//
+// Values: "mmap" (default), "buffered", "streaming". Empty string is
+// treated as "mmap".
+var indexReaderMode atomic.Value // holds string
 
-// SetDisableIndexMmap configures whether subsequent calls to NewTSDBIndexFromFile
-// avoid mmap in favor of an in-memory buffer.
-func SetDisableIndexMmap(disable bool) {
-	disableIndexMmap.Store(disable)
+// SetIndexReaderMode configures the strategy subsequent calls to
+// NewTSDBIndexFromFile use to open TSDB index files.
+func SetIndexReaderMode(mode string) {
+	if mode == "" {
+		mode = "mmap"
+	}
+	indexReaderMode.Store(mode)
 }
 
-// GetDisableIndexMmap reports the current value of the mmap-disable toggle.
+// GetIndexReaderMode reports the current mode. Empty string / unset means
+// "mmap".
+func GetIndexReaderMode() string {
+	v, _ := indexReaderMode.Load().(string)
+	if v == "" {
+		return "mmap"
+	}
+	return v
+}
+
+// SetDisableIndexMmap is a deprecated alias for SetIndexReaderMode. Retained
+// so existing callers keep compiling; a follow-up removes it.
+func SetDisableIndexMmap(disable bool) {
+	if disable {
+		SetIndexReaderMode("buffered")
+	} else {
+		SetIndexReaderMode("mmap")
+	}
+}
+
+// GetDisableIndexMmap reports whether the current mode is anything other
+// than "mmap". Deprecated — call GetIndexReaderMode() and compare.
 func GetDisableIndexMmap() bool {
-	return disableIndexMmap.Load()
+	return GetIndexReaderMode() != "mmap"
 }
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
@@ -68,7 +95,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 		}
 	}()
 
-	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(*index.Reader).Version()
+	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(interface{ Version() int }).Version()
 	if currVer == desiredVer {
 		return nil, ErrAlreadyOnDesiredVersion
 	}
@@ -145,14 +172,27 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
+// tsdbFileReader is any concrete index reader that provides both the
+// IndexReader surface used by TSDBIndex and the RawFileReader closure the
+// indexshipper needs for upload. *index.Reader and *index.StreamReader both
+// satisfy it.
+type tsdbFileReader interface {
+	IndexReader
+	Version() int
+	RawFileReader() (io.ReadSeeker, error)
+}
+
 func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
 	var (
-		reader *index.Reader
+		reader tsdbFileReader
 		err    error
 	)
-	if disableIndexMmap.Load() {
+	switch GetIndexReaderMode() {
+	case "streaming":
+		reader, err = index.NewStreamFileReader(location)
+	case "buffered":
 		reader, err = index.NewBufferedFileReader(location)
-	} else {
+	default: // "mmap" or unset
 		reader, err = index.NewFileReader(location)
 	}
 	if err != nil {
