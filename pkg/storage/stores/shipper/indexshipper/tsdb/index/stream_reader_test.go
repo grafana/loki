@@ -82,6 +82,105 @@ func TestStreamReader_MetadataMatchesMmap(t *testing.T) {
 	}
 }
 
+// TestStreamReader_SymbolsMatchesMmap covers P2.A3: symbol iteration,
+// lookup by ordinal, reverse lookup by string, and the reported symbol
+// table size all match the mmap reader.
+func TestStreamReader_SymbolsMatchesMmap(t *testing.T) {
+	path := buildStreamReaderFixture(t, FormatV3)
+
+	mmap, err := NewFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mmap.Close() })
+
+	stream, err := NewStreamFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	// Iteration order must match.
+	var mmapSyms, streamSyms []string
+	mIter := mmap.Symbols()
+	for mIter.Next() {
+		mmapSyms = append(mmapSyms, mIter.At())
+	}
+	require.NoError(t, mIter.Err())
+
+	sIter := stream.Symbols()
+	for sIter.Next() {
+		streamSyms = append(streamSyms, sIter.At())
+	}
+	require.NoError(t, sIter.Err())
+	require.Equal(t, mmapSyms, streamSyms, "symbol iteration")
+
+	// Lookup by ordinal.
+	for i, want := range mmapSyms {
+		got, err := stream.lookupSymbol(uint32(i))
+		require.NoError(t, err, "lookup ordinal %d (%q)", i, want)
+		require.Equal(t, want, got, "lookup ordinal %d", i)
+	}
+
+	// Reverse lookup.
+	for i, sym := range mmapSyms {
+		ord, err := stream.symbols.ReverseLookup(sym)
+		require.NoError(t, err, "reverse %q", sym)
+		require.Equal(t, uint32(i), ord, "reverse ordinal for %q", sym)
+	}
+
+	// SymbolTableSize matches (on-heap footprint of sparse offsets).
+	require.Equal(t, mmap.SymbolTableSize(), stream.SymbolTableSize(), "SymbolTableSize")
+}
+
+// TestStreamReader_SymbolsScaling exercises the sparse-index scan across
+// symbolFactor boundaries. We seed just over 2*symbolFactor unique symbols
+// so the offset table has multiple entries and the intra-group scan runs.
+func TestStreamReader_SymbolsScaling(t *testing.T) {
+	dir := t.TempDir()
+	fn := filepath.Join(dir, IndexFilename)
+
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
+	require.NoError(t, err)
+
+	const numSyms = 2*symbolFactor + 7
+	syms := make([]string, 0, numSyms+2)
+	for i := 0; i < numSyms; i++ {
+		s := "sym-" + string(rune('a'+i%26)) + string(rune('a'+(i/26)%26)) + string(rune('a'+i))
+		syms = append(syms, s)
+	}
+	// Plus the symbols we need for the single series below.
+	syms = append(syms, "__name__", "val")
+	sort.Strings(syms)
+	for _, s := range syms {
+		require.NoError(t, iw.AddSymbol(s))
+	}
+	// Creator refuses an empty index; add one series to make the file valid.
+	require.NoError(t, iw.AddSeries(1, labels.FromStrings("__name__", "val"), model.Fingerprint(labels.StableHash(labels.FromStrings("__name__", "val")))))
+
+	_, err = iw.Close(false)
+	require.NoError(t, err)
+
+	stream, err := NewStreamFileReader(fn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	// Enumerate all symbols and cross-check both lookup directions.
+	var allSyms []string
+	it := stream.Symbols()
+	for it.Next() {
+		allSyms = append(allSyms, it.At())
+	}
+	require.NoError(t, it.Err())
+	require.GreaterOrEqual(t, len(allSyms), numSyms)
+
+	for i, s := range allSyms {
+		got, err := stream.lookupSymbol(uint32(i))
+		require.NoError(t, err, "lookupSymbol(%d) = ? (want %q)", i, s)
+		require.Equal(t, s, got)
+
+		ord, err := stream.symbols.ReverseLookup(s)
+		require.NoError(t, err, "reverse %q", s)
+		require.Equal(t, uint32(i), ord)
+	}
+}
+
 // TestStreamReader_RejectsCorruptMagic ensures header validation runs.
 func TestStreamReader_RejectsCorruptMagic(t *testing.T) {
 	path := buildStreamReaderFixture(t, FormatV3)
