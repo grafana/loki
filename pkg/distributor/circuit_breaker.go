@@ -54,14 +54,12 @@ type linearRampCircuitBreaker struct {
 func newLinearRampCircuitBreaker(
 	openPeriod, halfOpenPeriod time.Duration,
 	isOpenErr func(err error) bool,
-	maxRequests int,
 ) *linearRampCircuitBreaker {
 	return &linearRampCircuitBreaker{
 		state:          circuitBreakerClosed,
 		openPeriod:     openPeriod,
 		halfOpenPeriod: halfOpenPeriod,
 		isOpenErr:      isOpenErr,
-		maxRequests:    maxRequests,
 	}
 }
 
@@ -109,6 +107,7 @@ func (b *linearRampCircuitBreaker) doneFunc(err error) {
 func (b *linearRampCircuitBreaker) open() {
 	b.state = circuitBreakerOpen
 	b.lastOpened = time.Now()
+	b.maxRequests = b.requests
 }
 
 func (b *linearRampCircuitBreaker) handleAllow() bool {
