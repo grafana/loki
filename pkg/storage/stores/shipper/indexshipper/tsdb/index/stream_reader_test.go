@@ -391,6 +391,21 @@ func TestStreamReader_LabelsMatchesMmap(t *testing.T) {
 	}
 }
 
+// TestStreamReader_FingerprintOffsetsMatchesMmap covers P2.A7.
+func TestStreamReader_FingerprintOffsetsMatchesMmap(t *testing.T) {
+	path := buildStreamReaderFixture(t, FormatV3)
+
+	mmap, err := NewFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mmap.Close() })
+
+	stream, err := NewStreamFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	require.Equal(t, mmap.fingerprintOffsets, stream.fingerprintOffsets)
+}
+
 // TestStreamReader_RejectsCorruptMagic ensures header validation runs.
 func TestStreamReader_RejectsCorruptMagic(t *testing.T) {
 	path := buildStreamReaderFixture(t, FormatV3)

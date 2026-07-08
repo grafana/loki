@@ -118,6 +118,12 @@ func NewStreamFileReaderWithOptions(path string, opts StreamReaderOptions) (*Str
 		return nil, errors.Wrap(err, "read postings table")
 	}
 
+	sr.fingerprintOffsets, err = sr.readFingerprintOffsetsTable(context.Background(), toc.FingerprintOffsets)
+	if err != nil {
+		_ = factory.Close()
+		return nil, errors.Wrap(err, "loading fingerprint offsets")
+	}
+
 	// Warm the nameSymbols cache with reverse lookups for every label name
 	// discovered in the postings table. Matches newReader.
 	sr.nameSymbols = make(map[uint32]string, len(sr.streamPostings))
@@ -260,6 +266,26 @@ func (r *StreamReader) RawFileReader() (io.ReadSeeker, error) {
 // Close releases the DecbufFactory resources. The file itself is not deleted.
 func (r *StreamReader) Close() error {
 	return r.factory.Close()
+}
+
+// readFingerprintOffsetsTable is the streaming counterpart to the
+// package-level readFingerprintOffsetsTable. Reads the whole section into
+// memory (a few 16-byte entries per 1024 series — small even for large
+// indexes).
+func (r *StreamReader) readFingerprintOffsetsTable(ctx context.Context, off uint64) (FingerprintOffsets, error) {
+	d := r.factory.NewDecbufAtChecked(ctx, int(off), castagnoliTable)
+	if err := d.Err(); err != nil {
+		return nil, err
+	}
+	defer func() { _ = d.Close() }()
+
+	cnt := d.Be32()
+	res := make(FingerprintOffsets, 0, int(cnt))
+	for d.Err() == nil && cnt > 0 {
+		res = append(res, [2]uint64{d.Be64(), d.Be64()})
+		cnt--
+	}
+	return res, d.Err()
 }
 
 // --------- Not-yet-implemented surface (later A proposals) ---------
