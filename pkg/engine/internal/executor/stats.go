@@ -46,3 +46,15 @@ var (
 	statIndexMergeDuplicatePostings = xcap.NewStatisticInt64("index.merge.duplicate.postings", xcap.AggregationTypeSum)
 	statIndexMergeDuplicateStats    = xcap.NewStatisticInt64("index.merge.duplicate.stats", xcap.AggregationTypeSum)
 )
+
+// LogMerge statistics emitted per successful compaction task.
+var (
+	statLogMergeDuration                = xcap.NewStatisticFloat64("log.merge.duration", xcap.AggregationTypeSum)
+	statLogMergeSourceObjects           = xcap.NewStatisticInt64("log.merge.source.objects", xcap.AggregationTypeSum)
+	statLogMergeInputSections           = xcap.NewStatisticInt64("log.merge.input.sections", xcap.AggregationTypeSum)
+	statLogMergeOutputObjects           = xcap.NewStatisticInt64("log.merge.output.objects", xcap.AggregationTypeSum)
+	statLogMergeOutputStreams           = xcap.NewStatisticInt64("log.merge.output.streams", xcap.AggregationTypeSum)
+	statLogMergeOutputRecords           = xcap.NewStatisticInt64("log.merge.output.records", xcap.AggregationTypeSum)
+	statLogMergeOutputBytesCompressed   = xcap.NewStatisticInt64("log.merge.output.bytes.compressed", xcap.AggregationTypeSum)
+	statLogMergeOutputBytesUncompressed = xcap.NewStatisticInt64("log.merge.output.bytes.uncompressed", xcap.AggregationTypeSum)
+)

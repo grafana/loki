@@ -101,6 +101,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		// connects to remote schedulers via DNS-SRV.
 		IndexobjCfg:        params.IndexobjCfg,
 		IndexMergeObserver: wm,
+		LogMergeObserver:   wm,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)
