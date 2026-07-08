@@ -37,6 +37,12 @@ func TestLinearRampCircuitBreaker(t *testing.T) {
 		require.False(t, ok)
 		require.NotNil(t, doneFunc)
 		require.Equal(t, circuitBreakerOpen, b.state)
+
+		// When the circuit breaker is open, the requests counter should not be
+		// incremented, and the doneFunc should be a noopDoneFunc.
+		require.Equal(t, b.requests, 0)
+		doneFunc(nil)
+		require.Equal(t, b.requests, 0)
 	})
 
 	t.Run("transitions to half-open after open period", func(t *testing.T) {

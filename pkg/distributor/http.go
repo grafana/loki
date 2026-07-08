@@ -52,13 +52,13 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	)
 	if d.circuitBreaker != nil {
 		circuitBreakerOk, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+		// Must be wrapped in a func to avoid capture of circuitBreakerErr, otherwise
+		// updates to the err variable are invisible.
+		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
 		if !circuitBreakerOk {
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
 			return
 		}
-		// Must be wrapped in a func to avoid capture of circuitBreakerErr, otherwise
-		// updates to the err variable are invisible.
-		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
 	}
 
 	if d.RequestParserWrapper != nil {
