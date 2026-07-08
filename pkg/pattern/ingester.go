@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -42,6 +40,9 @@ const (
 	// dead pod is evicted promptly so its partitions get reassigned.
 	defaultKafkaSessionTimeout  = 2 * time.Minute
 	defaultPatternConsumerGroup = "pattern-ingester"
+	// PartitionRingKey is the key under which we store the partitions ring used by the pattern ingesters.
+	PartitionRingKey  = "pattern-ingester-partitions-key"
+	PartitionRingName = "pattern-ingester-partitions"
 )
 
 type Config struct {
@@ -62,7 +63,6 @@ type Config struct {
 	PatternSampleInterval   time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
 	VolumeThreshold         float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
 	IngestMode              IngestMode            `yaml:"ingest_mode"`
-	RingConfig              RingConfig            `yaml:"ring_config,omitempty"`
 	KafkaConfig             kafka.Config          `yaml:"kafka_config,omitempty" doc:"description=Configures how the pattern ingester will connect to Kafka."`
 	FlushQueueSize          int                   `yaml:"flush_queue_size"`
 	FlushWorkerCount        int                   `yaml:"flush_worker_count"`
@@ -184,7 +184,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		30*time.Second,
 		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
 	)
-	cfg.RingConfig.RegisterFlags(fs, "pattern-ingester.ring.")
 }
 
 // IngestMode determines how the consumer receives records.
@@ -203,26 +202,6 @@ type TeeConfig struct {
 	FlushWorkerCount   int           `yaml:"flush_worker_count"`
 	MaxBufferedBytes   int           `yaml:"max_buffered_bytes"`
 	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
-}
-
-type RingConfig struct {
-	Key               string              `yaml:"key"`
-	Memberlist        memberlist.KVConfig `yaml:"memberlist"`
-	WatcherBufferSize int                 `yaml:"watcher_buffer_size"`
-
-	// StartupTimeout bounds how long the builder will wait for the
-	// partition ring to be populated (PartitionsCount > 0) before
-	// failing service startup. This is intentionally a hard failure:
-	// if it's misconfigured (wrong KV key, wrong cluster label, ring
-	// not yet provisioned), the pod must crashloop.
-	StartupTimeout time.Duration `yaml:"startup_timeout"`
-}
-
-func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Key, prefix+"ring.key", "pattern-ingester", "The key to use for the pattern ingester ring.")
-	f.IntVar(&cfg.WatcherBufferSize, prefix+"ring.watcher-buffer-size", 0, "Size of the buffer for key watchers.")
-	cfg.Memberlist.RegisterFlagsWithPrefix(f, prefix+"ring.memberlist.")
-	f.DurationVar(&cfg.StartupTimeout, prefix+"ring.startup-timeout", DefaultStartupTimeout, "How long to wait for the partition ring to be populated before failing startup.")
 }
 
 func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
@@ -263,10 +242,6 @@ func (cfg *TeeConfig) Validate() error {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
-		return errors.New("pattern ingester replication factor must be 1")
-	}
-
 	// Validate retain-for >= chunk-duration
 	if cfg.RetainFor < cfg.MaxChunkAge {
 		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.MaxChunkAge)

@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
@@ -138,7 +139,9 @@ func NewKafka(
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_pattern_consumer_", registerer),
 	)
-	i.partitionRing = (NewPartitionRingWatcher(cfg.RingConfig, logger, registerer))
+	kvClient, err := kv.NewClient(kv.Config{}, ring.GetPartitionRingCodec(), registerer, logger)
+	ringOptions := ring.DefaultPartitionRingOptions()
+	i.partitionRing = ring.NewPartitionRingWatcherWithOptions(PartitionRingName+"watcher", PartitionRingKey, kvClient, ringOptions, logger, registerer)
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "pattern-ingester", "pattern-ring", true, i.logger, registerer)
@@ -187,8 +190,8 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 	senderCtx, senderCancel := context.WithCancel(context.Background())
 
 	sendersWg := &sync.WaitGroup{}
-	sendersWg.Add(i.cfg.TeeConfig.FlushWorkerCount)
-	for j := 0; j < i.cfg.TeeConfig.FlushWorkerCount; j++ {
+	sendersWg.Add(i.cfg.FlushWorkerCount)
+	for j := 0; j < i.cfg.FlushWorkerCount; j++ {
 		go func() {
 			i.sender(senderCtx)
 			sendersWg.Done()
@@ -210,7 +213,7 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 		// timeout and cancel thir context. In either case, we wait for them to
 		// finish before we consider the service to be done.
 		select {
-		case <-time.After(i.cfg.TeeConfig.StopFlushTimeout):
+		case <-time.After(i.cfg.StopFlushTimeout):
 			senderCancel() // Cancel any remaining senders
 			<-sendersDone  // Wait for them to be done
 		case <-sendersDone:
