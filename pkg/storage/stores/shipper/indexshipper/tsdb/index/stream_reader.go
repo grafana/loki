@@ -51,6 +51,20 @@ type StreamReader struct {
 	// symbols is set by newStreamSymbols once the symbol section has been
 	// scanned. It stays nil until P2.A3 fires during construction.
 	symbols *streamSymbols
+
+	// streamPostings is the sparse postings-offset-table index for V2+
+	// indexes. See stream_postings.go for details on `off` semantics.
+	streamPostings map[string][]streamPostingOffset
+	// streamPostingsV1 holds the full offset table for V1 indexes.
+	streamPostingsV1 map[string]map[string]uint64
+
+	// nameSymbols is a small cache of label-name symbol ordinals populated
+	// during construction. Mirrors Reader.nameSymbols.
+	nameSymbols map[uint32]string
+
+	// fingerprintOffsets is set by P2.A7. Nil until then; nil is treated as
+	// an empty offset table by the sharded-postings logic.
+	fingerprintOffsets FingerprintOffsets
 }
 
 // NewStreamFileReader opens a TSDB index file for streaming access. The file
@@ -99,6 +113,26 @@ func NewStreamFileReaderWithOptions(path string, opts StreamReaderOptions) (*Str
 	if err != nil {
 		_ = factory.Close()
 		return nil, errors.Wrap(err, "read symbols")
+	}
+
+	if err := sr.buildPostingsIndex(context.Background()); err != nil {
+		_ = factory.Close()
+		return nil, errors.Wrap(err, "read postings table")
+	}
+
+	// Warm the nameSymbols cache with reverse lookups for every label name
+	// discovered in the postings table. Matches newReader.
+	sr.nameSymbols = make(map[uint32]string, len(sr.streamPostings))
+	for k := range sr.streamPostings {
+		if k == "" {
+			continue
+		}
+		ord, err := sr.symbols.ReverseLookup(k)
+		if err != nil {
+			_ = factory.Close()
+			return nil, errors.Wrap(err, "reverse symbol lookup")
+		}
+		sr.nameSymbols[ord] = k
 	}
 
 	return sr, nil
@@ -244,9 +278,11 @@ func (r *StreamReader) SymbolTableSize() uint64 {
 }
 
 // lookupSymbol resolves a symbol ordinal (or file offset on V1) to its
-// string value. It mirrors Reader.lookupSymbol; the nameSymbols cache lives
-// on future proposals (A4).
+// string value. Mirrors Reader.lookupSymbol including the nameSymbols cache.
 func (r *StreamReader) lookupSymbol(o uint32) (string, error) {
+	if s, ok := r.nameSymbols[o]; ok {
+		return s, nil
+	}
 	return r.symbols.Lookup(o)
 }
 
@@ -272,12 +308,6 @@ func (r *StreamReader) LabelValueFor(_ storage.SeriesRef, _ string) (string, err
 // Not yet implemented — P2.A6.
 func (r *StreamReader) LabelNamesFor(_ ...storage.SeriesRef) ([]string, error) {
 	return nil, errStreamReaderNotImplemented("LabelNamesFor")
-}
-
-// Postings returns a postings iterator for the label pairs.
-// Not yet implemented — P2.A4.
-func (r *StreamReader) Postings(_ string, _ FingerprintFilter, _ ...string) (Postings, error) {
-	return nil, errStreamReaderNotImplemented("Postings")
 }
 
 // Series populates lbls and chks for the given series ref.

@@ -181,6 +181,57 @@ func TestStreamReader_SymbolsScaling(t *testing.T) {
 	}
 }
 
+// TestStreamReader_PostingsMatchesMmap covers P2.A4 — every label/value
+// combination produces the same postings iterator as the mmap reader.
+func TestStreamReader_PostingsMatchesMmap(t *testing.T) {
+	path := buildStreamReaderFixture(t, FormatV3)
+
+	mmap, err := NewFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mmap.Close() })
+
+	stream, err := NewStreamFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	mmapNames, err := mmap.LabelNames()
+	require.NoError(t, err)
+
+	for _, name := range mmapNames {
+		vals, err := mmap.LabelValues(name)
+		require.NoError(t, err)
+		for _, v := range vals {
+			mmapP, err := mmap.Postings(name, nil, v)
+			require.NoError(t, err)
+			streamP, err := stream.Postings(name, nil, v)
+			require.NoError(t, err)
+
+			var mmapRefs, streamRefs []storage.SeriesRef
+			for mmapP.Next() {
+				mmapRefs = append(mmapRefs, mmapP.At())
+			}
+			require.NoError(t, mmapP.Err())
+			for streamP.Next() {
+				streamRefs = append(streamRefs, streamP.At())
+			}
+			require.NoError(t, streamP.Err())
+			require.Equal(t, mmapRefs, streamRefs, "postings for %s=%s differ", name, v)
+		}
+	}
+
+	// Missing label should return EmptyPostings, not an error.
+	sp, err := stream.Postings("no-such-name", nil, "x")
+	require.NoError(t, err)
+	require.False(t, sp.Next())
+	require.NoError(t, sp.Err())
+
+	// Missing value should return no refs (but a valid iterator).
+	sp, err = stream.Postings("a", nil, "no-such-value")
+	require.NoError(t, err)
+	require.False(t, sp.Next())
+	require.NoError(t, sp.Err())
+}
+
 // TestStreamReader_RejectsCorruptMagic ensures header validation runs.
 func TestStreamReader_RejectsCorruptMagic(t *testing.T) {
 	path := buildStreamReaderFixture(t, FormatV3)
