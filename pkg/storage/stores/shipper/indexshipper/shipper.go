@@ -68,6 +68,24 @@ type IndexShipper interface {
 	Stop()
 }
 
+// IndexReaderMode selects the strategy the index-gateway uses to open on-disk
+// TSDB index files.
+type IndexReaderMode string
+
+const (
+	// IndexReaderModeMmap is the historical default: fileutil.OpenMmapFile.
+	// Fast, memory-efficient (page-cache-evictable) but page faults block
+	// goroutines invisibly to the Go runtime.
+	IndexReaderModeMmap IndexReaderMode = "mmap"
+	// IndexReaderModeBuffered reads the whole index file into a []byte on
+	// open. Trades heap residency for schedulable I/O. See Phase 1 of the
+	// nommap plan.
+	IndexReaderModeBuffered IndexReaderMode = "buffered"
+	// IndexReaderModeStreaming reads bytes from disk on demand through a
+	// streamenc.DecbufFactory. Neither mmap'd nor fully resident. Phase 2.
+	IndexReaderModeStreaming IndexReaderMode = "streaming"
+)
+
 type Config struct {
 	ActiveIndexDirectory     string                    `yaml:"active_index_directory"`
 	CacheLocation            string                    `yaml:"cache_location"`
@@ -75,10 +93,14 @@ type Config struct {
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
-	// DisableIndexMmap, when true, causes on-disk TSDB index files to be loaded
-	// into memory via os.ReadFile instead of mmap. This trades additional heap
-	// usage for I/O that the Go runtime can schedule around, avoiding invisible
-	// goroutine stalls caused by mmap page faults. Experimental; default false.
+	// IndexReaderMode selects the index-file access strategy: "mmap"
+	// (default), "buffered" (os.ReadFile-backed byte slice), or "streaming"
+	// (file-backed streamenc.DecbufFactory). Experimental — the two
+	// non-mmap modes are still in ramp-up. Default is "mmap".
+	IndexReaderMode IndexReaderMode `yaml:"index_reader_mode"`
+	// DisableIndexMmap is a deprecated alias for IndexReaderMode="buffered".
+	// If set alongside IndexReaderMode, IndexReaderMode wins. Remove once
+	// downstream configs have migrated.
 	DisableIndexMmap bool `yaml:"disable_index_mmap"`
 
 	IngesterName           string
@@ -99,13 +121,45 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
-	f.BoolVar(&cfg.DisableIndexMmap, prefix+"shipper.disable-index-mmap", false, "Experimental: load TSDB index files into memory (os.ReadFile) instead of mmap'ing them. Avoids invisible goroutine stalls from mmap page faults at the cost of additional heap usage.")
+	f.BoolVar(&cfg.DisableIndexMmap, prefix+"shipper.disable-index-mmap", false, "Deprecated alias for -"+prefix+"shipper.index-reader-mode=buffered. Prefer setting index-reader-mode directly.")
+	f.Var((*indexReaderModeValue)(&cfg.IndexReaderMode), prefix+"shipper.index-reader-mode", "Experimental: how the index-gateway opens on-disk TSDB index files. One of: mmap (default), buffered (os.ReadFile), streaming (file-backed on-demand reads). The non-mmap modes avoid invisible goroutine stalls from page faults; buffered uses more heap, streaming uses more syscalls.")
+}
+
+// indexReaderModeValue wraps IndexReaderMode so it can be used with flag.Var.
+type indexReaderModeValue IndexReaderMode
+
+func (m *indexReaderModeValue) String() string { return string(*m) }
+func (m *indexReaderModeValue) Set(v string) error {
+	switch IndexReaderMode(v) {
+	case IndexReaderModeMmap, IndexReaderModeBuffered, IndexReaderModeStreaming:
+		*m = indexReaderModeValue(v)
+		return nil
+	case "":
+		*m = ""
+		return nil
+	default:
+		return fmt.Errorf("invalid index-reader-mode %q (want mmap, buffered, or streaming)", v)
+	}
 }
 
 func (cfg *Config) Validate() error {
 	// set the default value for mode
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
+	}
+
+	// Backwards compatibility: DisableIndexMmap=true == IndexReaderMode=buffered.
+	if cfg.IndexReaderMode == "" {
+		if cfg.DisableIndexMmap {
+			cfg.IndexReaderMode = IndexReaderModeBuffered
+		} else {
+			cfg.IndexReaderMode = IndexReaderModeMmap
+		}
+	}
+	switch cfg.IndexReaderMode {
+	case IndexReaderModeMmap, IndexReaderModeBuffered, IndexReaderModeStreaming:
+	default:
+		return fmt.Errorf("invalid index-reader-mode %q", cfg.IndexReaderMode)
 	}
 
 	return nil
