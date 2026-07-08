@@ -110,7 +110,7 @@ func (b *linearRampCircuitBreaker) open() {
 	}
 	b.state = circuitBreakerOpen
 	b.lastOpened = time.Now()
-	b.maxRequests = max(1, b.requests/2)
+	b.maxRequests = max(1, b.requests)
 }
 
 func (b *linearRampCircuitBreaker) handleAllow() bool {
