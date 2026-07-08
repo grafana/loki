@@ -75,6 +75,11 @@ type Config struct {
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
+	// DisableIndexMmap, when true, causes on-disk TSDB index files to be loaded
+	// into memory via os.ReadFile instead of mmap. This trades additional heap
+	// usage for I/O that the Go runtime can schedule around, avoiding invisible
+	// goroutine stalls caused by mmap page faults. Experimental; default false.
+	DisableIndexMmap bool `yaml:"disable_index_mmap"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -94,6 +99,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
+	f.BoolVar(&cfg.DisableIndexMmap, prefix+"shipper.disable-index-mmap", false, "Experimental: load TSDB index files into memory (os.ReadFile) instead of mmap'ing them. Avoids invisible goroutine stalls from mmap page faults at the cost of additional heap usage.")
 }
 
 func (cfg *Config) Validate() error {
