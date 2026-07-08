@@ -783,9 +783,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			streamIDsAfter[stream.id] = struct{}{}
 
 			if i > 0 {
-				prevKey, err := computeSortKey(streamsAfter[i-1].labels, schemaLabels)
+				prevKey, err := ComputeSortKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				currKey, err := computeSortKey(stream.labels, schemaLabels)
+				currKey, err := ComputeSortKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
 				require.LessOrEqual(t, prevKey, currKey)
 			}
@@ -825,9 +825,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				continue
 			}
 			prev := logsAfter[i-1]
-			prevKey, err := computeSortKey(prev.labels, schemaLabels)
+			prevKey, err := ComputeSortKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey, err := computeSortKey(record.labels, schemaLabels)
+			currKey, err := ComputeSortKey(record.labels, schemaLabels)
 			require.NoError(t, err)
 
 			switch {
@@ -922,7 +922,7 @@ func TestComputeSortKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := computeSortKey(tt.labels, tt.schemaLabels)
+			got, err := ComputeSortKey(tt.labels, tt.schemaLabels)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
