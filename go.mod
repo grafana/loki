@@ -142,7 +142,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.29.0
 	github.com/pressly/goose/v3 v3.27.0
-	github.com/prometheus/alertmanager v0.32.1
+	github.com/prometheus/alertmanager v0.33.1
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/prometheus/otlptranslator v1.0.0
 	github.com/prometheus/sigv4 v0.4.1
@@ -151,10 +151,10 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/tjhop/slog-gokit v0.1.6
-	github.com/twmb/franz-go v1.20.7
-	github.com/twmb/franz-go/pkg/kadm v1.17.2
-	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
-	github.com/twmb/franz-go/pkg/kmsg v1.12.0
+	github.com/twmb/franz-go v1.21.2
+	github.com/twmb/franz-go/pkg/kadm v1.18.0
+	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
+	github.com/twmb/franz-go/pkg/kmsg v1.13.1
 	github.com/twmb/franz-go/plugin/kotel v1.6.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
 	go.opentelemetry.io/collector/pdata v1.59.0

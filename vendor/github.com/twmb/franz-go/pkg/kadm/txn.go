@@ -679,7 +679,7 @@ func (ms TxnMarkersResponses) SortedPartitions() []TxnMarkersPartitionResponse {
 	})
 	sort.Slice(all, func(i, j int) bool {
 		l, r := all[i], all[j]
-		return l.ProducerID < r.ProducerID || l.ProducerID == r.ProducerID && l.Topic < r.Topic || l.Topic == r.Topic && l.Partition < r.Partition
+		return l.ProducerID < r.ProducerID || l.ProducerID == r.ProducerID && (l.Topic < r.Topic || l.Topic == r.Topic && l.Partition < r.Partition)
 	})
 	return all
 }
