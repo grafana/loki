@@ -71,6 +71,12 @@ limits_config:
       - action: drop
         attributes: [email]
 
+# local rule storage is set by common.storage.filesystem.rules_directory
+# ruler_storage:
+#   backend: local
+#   local:
+#     directory: {{.sharedDataPath}}/rules
+
 storage_config:
   # Legacy config
   named_stores:
@@ -120,6 +126,9 @@ ruler:
       store: inmemory
   wal:
     dir: {{.sharedDataPath}}/ruler-wal
+  # local rule storage is set by common.storage.filesystem.rules_directory
+  # however, even if this is set, ruler_storage has precedence over ruler.storage 
+  # when storage.use_thanos_objstore is true, so keep it for testing purpose
   storage:
     type: local
     local:
@@ -420,12 +429,9 @@ func (c *Component) run() error {
 
 	if err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
-		"-config.file",
-		c.configFile,
-		"-limits.per-user-override-config",
-		c.overridesFile,
-		"-limits.per-user-override-period",
-		"1s",
+		"-config.file", c.configFile,
+		"-runtime-config.file", c.overridesFile,
+		"-runtime-config.reload-period", "1s",
 	), flagset); err != nil {
 		return err
 	}

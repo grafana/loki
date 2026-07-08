@@ -6,8 +6,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/expressionpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
-
-	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
 type unmarshaler interface {
@@ -50,6 +48,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Cache{}
 	case *physical.IndexMerge:
 		n.Kind = &Node_IndexMerge{}
+	case *physical.LogMerge:
+		n.Kind = &Node_LogMerge{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -593,33 +593,37 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	runs := make([]*compactionv2pb.RunRef, len(indexMerge.Runs))
-	for i, r := range indexMerge.Runs {
-		if r == nil {
-			continue
-		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			sections[j] = &compactionv2pb.SectionRef{
-				ObjectPath:   s.ObjectPath,
-				SectionIndex: s.SectionIndex,
-				MinKey:       s.MinKey,
-				MaxKey:       s.MaxKey,
-				MinTimestamp: s.MinTimestamp,
-				MaxTimestamp: s.MaxTimestamp,
-			}
-		}
-		runs[i] = &compactionv2pb.RunRef{Sections: sections}
-	}
-
 	*n = IndexMerge{
 		Tenant:                  indexMerge.Tenant,
 		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
-		Runs:                    runs,
+		Runs:                    copyRunRefs(indexMerge.Runs),
 		OutputIndexPath:         indexMerge.OutputIndexPath,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_LogMerge) UnmarshalPhysical(from physical.Node) error {
+	n.LogMerge = new(LogMerge)
+	return n.LogMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
+	logMerge, ok := from.(*physical.LogMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = LogMerge{
+		Tenant:                  logMerge.Tenant,
+		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
+		Runs:                    copyRunRefs(logMerge.Runs),
+		SourceIndexPaths:        logMerge.SourceIndexPaths,
+		SortSchema:              logMerge.SortSchema,
+		OutputIndexPath:         logMerge.OutputIndexPath,
 	}
 	return nil
 }

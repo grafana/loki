@@ -1333,20 +1333,35 @@ func Xabort(t *TLS) {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo("")) //TODO
-	// if dmesgs {
-	// 	dmesg("%v:", origin(1))
-	// }
-	// p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(signal.Sigaction{})))
-	// if p == 0 {
-	// 	panic("OOM")
-	// }
-
-	// (*signal.Sigaction)(unsafe.Pointer(p)).F__sigaction_u.F__sa_handler = signal.SIG_DFL
-	// Xsigaction(t, signal.SIGABRT, p, 0)
-	// Xfree(t, p)
-	// unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
-	// panic(todo("unrechable"))
+	if dmesgs {
+		dmesg("%v:", origin(1))
+	}
+	// NetBSD's Xabort was a stub, so C abort(3) didn't terminate by signal — callers
+	// such as SQLite's crash tests (writecrash.test) require the process to be killed
+	// BY SIGABRT. Three things are needed on netbsd:
+	//  1. Reset SIGABRT to SIG_DFL — the Go runtime otherwise intercepts a delivered
+	//     SIGABRT and exit(2)s instead of dying by signal. Done via the raw
+	//     __sigaction_sigtramp(2) syscall (an all-zero struct sigaction = SIG_DFL; the
+	//     trampoline/version args are unused for SIG_DFL). x/sys/unix has no high-level
+	//     Sigaction on netbsd and Xsigaction is unimplemented here.
+	//  2. Unblock SIGABRT on the calling thread so a blocked mask can't defeat abort().
+	//     __sigprocmask14(SIG_UNBLOCK, {SIGABRT}, NULL) — syscall 293, not exported by
+	//     x/sys/unix for netbsd.
+	//  3. Deliver SIGABRT SYNCHRONOUSLY and thread-directed via _lwp_kill(_lwp_self())
+	//     (the primitive the Go runtime's raise() uses). A process-directed kill(2) is
+	//     async — the calling thread can race ahead and exit the wrong way before the
+	//     signal lands (observed as a rare writecrash failure). With SIG_DFL the kernel
+	//     terminates the process here; the kill(2) and panic below are unreachable
+	//     fallbacks.
+	var sa [5]uint64 // >= sizeof(struct sigaction); zero value == SIG_DFL
+	unix.Syscall6(unix.SYS___SIGACTION_SIGTRAMP, uintptr(unix.SIGABRT), uintptr(unsafe.Pointer(&sa)), 0, 0, 0, 0)
+	var set [4]uint32
+	set[0] = uint32(1) << (uint(unix.SIGABRT) - 1) // SIGABRT==6 -> bit 5
+	unix.Syscall(293 /* SYS___sigprocmask14 */, 2 /* SIG_UNBLOCK */, uintptr(unsafe.Pointer(&set)), 0)
+	lwp, _, _ := unix.Syscall(unix.SYS__LWP_SELF, 0, 0, 0)
+	unix.Syscall(unix.SYS__LWP_KILL, lwp, uintptr(unix.SIGABRT), 0)
+	unix.Kill(unix.Getpid(), unix.SIGABRT)
+	panic(todo("unreachable"))
 }
 
 // int fflush(FILE *stream);
@@ -1361,6 +1376,9 @@ func Xfflush(t *TLS, stream uintptr) int32 {
 func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	m, _, err := unix.Syscall(unix.SYS_READ, uintptr(file(stream).fd()), ptr, uintptr(size*nmemb))
 	if err != 0 {
@@ -1379,6 +1397,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 func Xfwrite(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types.Size_t {
 	if __ccgo_strace {
 		trc("t=%v ptr=%v nmemb=%v stream=%v, (%v:)", t, ptr, nmemb, stream, origin(2))
+	}
+	if size == 0 || nmemb == 0 {
+		return 0
 	}
 	m, _, err := unix.Syscall(unix.SYS_WRITE, uintptr(file(stream).fd()), ptr, uintptr(size*nmemb))
 	if err != 0 {
@@ -1837,8 +1858,20 @@ func Xmmap(t *TLS, addr uintptr, length types.Size_t, prot, flags, fd int32, off
 	if __ccgo_strace {
 		trc("t=%v addr=%v length=%v fd=%v offset=%v, (%v:)", t, addr, length, fd, offset, origin(2))
 	}
-	// Cannot avoid the unix here, addr sometimes matter.
-	data, _, err := unix.Syscall6(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), uintptr(offset))
+	// NetBSD mmap(2) is
+	//
+	//	mmap(void *addr, size_t len, int prot, int flags, int fd, long PAD, off_t pos)
+	//
+	// i.e. there is a `long PAD` argument before `off_t pos`. The offset must
+	// therefore be passed as the 7th syscall argument (Syscall9), not the 6th
+	// (Syscall6): with Syscall6 the offset lands in the PAD slot and `pos` is
+	// left as stack garbage, so the kernel maps at a garbage file offset and
+	// returns an unaligned/unbacked pointer that faults on first access (e.g.
+	// the SQLite WAL-index shm). On 32-bit (netbsd/arm) off_t additionally spans
+	// two argument words, so pass offset>>32 as the high word; it is read on
+	// 32-bit and ignored on 64-bit. Matches golang.org/x/sys/unix's own per-arch
+	// netbsd mmap.
+	data, _, err := unix.Syscall9(unix.SYS_MMAP, addr, uintptr(length), uintptr(prot), uintptr(flags), uintptr(fd), 0, uintptr(offset), uintptr(offset>>32), 0)
 	if err != 0 {
 		if dmesgs {
 			dmesg("%v: %v FAIL", origin(1), err)

@@ -156,6 +156,16 @@ const (
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
 	All                          = "all"
+	AuthMiddleware               = "auth-middleware"
+	LabelAccess                  = "label-access"
+	LabelAccessUserIDTransformer = "label-access-user-id-transformer"
+	LabelAccessInterceptors      = "label-access-interceptors"
+	LabelAccessStoreWrapper      = "label-access-store-wrapper"
+	LabelAccessIngesterWrapper   = "label-access-ingester-wrapper"
+	LabelAccessV2Engine          = "label-access-v2-engine"
+	LabelAccessTripperware       = "label-access-tripperware"
+	Filterers                    = "filterers"
+	AuthTripperware              = "auth-tripperware"
 )
 
 const (
@@ -274,13 +284,6 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
-	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
-		if len(t.Cfg.LimitsConfig.PerTenantOverrideConfig) != 0 {
-			t.Cfg.RuntimeConfig.LoadPath = []string{t.Cfg.LimitsConfig.PerTenantOverrideConfig}
-		}
-		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
-	}
-
 	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
 		// no need to initialize module if load path is empty
 		return nil, nil
@@ -1932,6 +1935,15 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	}
 
 	logproto.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
+
+	// On-demand index sync: refresh the object-listing cache and download newly
+	// shipped indexes so a freshly flushed index becomes queryable without
+	// waiting for the periodic list-cache TTL. This is cluster-wide and not
+	// tenant-scoped, so it carries no auth middleware (mirroring /flush rather
+	// than /flush/tenant). PUT triggers an async sync; GET reports its status.
+	t.Server.HTTP.Methods("PUT").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexesHandler))
+	t.Server.HTTP.Methods("GET").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexStatusHandler))
+
 	return gateway, nil
 }
 

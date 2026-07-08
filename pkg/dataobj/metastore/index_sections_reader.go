@@ -29,10 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-type bloomStatsProvider interface {
-	totalReadRows() uint64
-}
-
 // indexSectionsReader combines pointer scanning and bloom filtering into a single reader.
 // It reads section pointers matching stream matchers and time range, then applies
 // bloom filter predicates to further filter the results.
@@ -73,7 +69,7 @@ type indexSectionsReader struct {
 
 var (
 	_ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
-	_ bloomStatsProvider     = (*indexSectionsReader)(nil)
+	_ statsProvider          = (*indexSectionsReader)(nil)
 )
 
 func newIndexSectionsReader(
@@ -465,7 +461,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
 	for _, sr := range r.streamsReaders {
@@ -518,7 +514,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
@@ -578,7 +574,7 @@ func (r *indexSectionsReader) addLabelNamesForStream(streamID int64, names []str
 // section.
 func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
 	defer func(start time.Time) {
-		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
+		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
@@ -609,7 +605,7 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 					r.pointerSectionProductive[r.pointersReaderIdx] = true
 					r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
 				}
-				r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
+				r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
 				r.bloomRowsRead += uint64(matchedRows)
 				return filteredRec, nil
 			}
@@ -903,4 +899,12 @@ func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSec
 
 func (r *indexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+// stats reports per-object read stats.
+func (r *indexSectionsReader) stats() readerStats {
+	return readerStats{
+		Initialized: r.initialized,
+		ReadRows:    r.totalReadRows(),
+	}
 }

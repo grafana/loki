@@ -53,6 +53,43 @@ Log data itself is then compressed and stored in chunks in object stores such as
 
 Here are answers to some frequently asked questions about how to configure and run Loki.
 
+### What is Loki and what can it do?
+
+Grafana Loki is a horizontally scalable, highly available, multi-tenant log aggregation system inspired by Prometheus. Unlike traditional log management solutions, Loki indexes only a small set of labels (metadata) for each log stream rather than the full text of every log line. The log data itself is compressed and stored in object storage such as Amazon S3, Google Cloud Storage, or Azure Blob Storage. This design makes Loki significantly cheaper to operate and easier to scale than full-text indexing systems.
+
+With Loki you can:
+
+- **Aggregate and query logs** from applications, infrastructure, and Kubernetes clusters using [LogQL](https://grafana.com/docs/loki/latest/query/), a query language inspired by PromQL.
+- **Correlate logs with metrics and traces** in Grafana alongside Prometheus/Mimir metrics and Tempo traces.
+- **Alert on log patterns** using LogQL-based [recording rules and alerting rules](https://grafana.com/docs/loki/latest/alert/).
+- **Scale from a single binary to a distributed microservices architecture** using the same codebase and configuration format.
+- **Control costs** by storing logs in cheap object storage and keeping the index small.
+
+### Where should I start if I'm new to Loki?
+
+Start with the [Loki Tutorial](https://grafana.com/docs/loki/latest/get-started/), which walks you through what Loki is, how it works, and how the components fit together. 
+
+- **Try it locally.** The fastest way to experiment is to run Loki in [monolithic (single-binary) mode](https://grafana.com/docs/loki/latest/setup/install/) with a local filesystem backend and send logs to it with [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+- **Understand labels.** Loki's indexing model is label-based, which is different from most logging systems. Read [Labels](https://grafana.com/docs/loki/latest/get-started/labels/) and the [label best practices](https://grafana.com/docs/loki/latest/get-started/labels/bp-labels/) early — how you label your logs directly affects query performance and storage costs.
+- **Learn LogQL.** [LogQL](https://grafana.com/docs/loki/latest/query/) is Loki's query language. Start with simple label matchers and line filters, then explore log pipeline stages and metric queries as you need them.
+- **Explore with Grafana.** Connect Loki as a [data source in Grafana](https://grafana.com/docs/grafana/latest/datasources/loki/) and use [Explore](https://grafana.com/docs/grafana/latest/explore/) to run ad-hoc queries against your logs.
+
+The [Grafana Labs Learning Hub](https://grafana.com/docs/learning-hub/) offers self-paced, hands-on courses relevant to Loki:
+
+- **[Send logs to Grafana Cloud using Alloy](https://grafana.com/docs/learning-hub/)** — Walk through configuring Grafana Alloy to ship logs to Loki in Grafana Cloud.
+- **[Send data from external collectors](https://grafana.com/docs/learning-hub/)** — Learn how to send logs to Loki using OpenTelemetry (OTLP) or the HTTP API, and choose the right method for your setup.
+- **[Explore your infrastructure data with Grafana Drilldown apps](https://grafana.com/docs/learning-hub/)** — Explore Loki logs visually without writing LogQL, using the Logs Drilldown app to filter by labels, detect patterns, and investigate errors.
+- **[Optimize Adaptive Logs](https://grafana.com/docs/learning-hub/)** — Reduce log volume and storage costs in Grafana Cloud by tuning which logs Loki ingests.
+
+### Should I self-host or use Grafana Cloud for logs?
+
+The right answer depends on your team's capacity and priorities.
+Choose Grafana Cloud if you want to get up and running quickly, prefer not to manage infrastructure, or are a small team without dedicated operations resources. The free tier is generous enough for most individuals and small projects.
+
+Choose self-hosted OSS or Enterprise if you have strict data residency or compliance requirements, need to keep all data on your own infrastructure, or have an existing investment in self-managed tooling like Prometheus and want to extend it.
+
+The feature set between Cloud and a self-managed Enterprise stack is broadly equivalent. The primary difference is operational overhead: self-hosting means you own the availability, scaling, and maintenance of every component in the stack.
+
 ### What are the best practices for Loki labels vs. structured metadata?
 
 Loki's indexing model differs significantly from other observability products. Choosing the wrong fields as labels is the most common cause of poor query performance and high resource usage.

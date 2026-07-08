@@ -22,7 +22,7 @@ The Loki chart supports three methods of deployment:
 - [Simple Scalable](../install-scalable/)
 - [Microservice](../install-microservices/)
 
-By default, the chart installs in [Simple Scalable](../install-scalable/) mode. For the best possible experience in production, we now recommend deploying Loki in *microservices* mode. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
+By default, the chart installs in [Monolithic](../install-monolithic/) mode (`deploymentMode: Monolithic`). For production at scale, we recommend deploying Loki in *microservices* (`deploymentMode: Distributed`) mode. To understand the differences between deployment methods, see the [Loki deployment modes](../../../../get-started/deployment-modes/) documentation.
 
 {{< admonition type="note" >}}
 Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0.
@@ -30,7 +30,7 @@ Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.
 
 ## Zone-aware replication
 
-When deploying in [microservices](../install-microservices/) mode, the chart enables **zone-aware replication** for ingesters by default (`ingester.zoneAwareReplication.enabled: true`). This creates three ingester StatefulSets (zone-a, zone-b, zone-c) and requires the `rollout-operator` subchart. Zone-aware replication allows multiple ingesters within a single zone to be shut down and restarted simultaneously during rollouts, while the remaining two zones guarantee at least one copy of the data.
+When deploying in [microservices](../install-microservices/) mode, the chart enables **zone-aware replication** for ingesters by default (`ingester.zoneAwareReplication.enabled: true`). This creates three ingester StatefulSets (zone-a, zone-b, zone-c) and requires enabling the `rollout-operator` subchart (`rollout_operator.enabled: true`) for coordinated zone rollouts. Zone-aware replication allows multiple ingesters within a single zone to be shut down and restarted simultaneously during rollouts, while the remaining two zones guarantee at least one copy of the data.
 
 To disable zone-aware replication (for example, in a development or test environment):
 
@@ -42,7 +42,19 @@ ingester:
 
 ## Pattern ingester
 
-The chart includes an optional **pattern ingester** component (`patternIngester`) for detecting and extracting log patterns. It is disabled by default (`patternIngester.replicas: 0`). To enable it as a standalone component in microservices mode, set `patternIngester.replicas` to a non-zero value. In other modes, enable it in the Loki configuration:
+The chart includes an optional **pattern ingester** component (`patternIngester`) for detecting and extracting log patterns. It is disabled by default (`patternIngester.enabled: false`, `replicas: 0`). In Distributed mode (`deploymentMode: Distributed`), enable the standalone workload with:
+
+```yaml
+deploymentMode: Distributed
+patternIngester:
+  enabled: true
+  replicas: 1
+loki:
+  pattern_ingester:
+    enabled: true
+```
+
+In Monolithic or SimpleScalable mode, enable it via Loki configuration only:
 
 ```yaml
 loki:
@@ -67,13 +79,14 @@ All three are disabled by default (replicas set to 0). Enable bloom filters in t
 
 The Loki Helm chart includes built-in monitoring resources that can be enabled:
 - **ServiceMonitor** (`monitoring.serviceMonitor.enabled`): Creates Prometheus Operator ServiceMonitor resources for scraping Loki metrics.
-- **Recording rules and alerts** (`monitoring.rules.enabled`): Creates PrometheusRule resources with pre-configured recording rules and alerts (for example, `LokiRequestErrors`, `LokiRequestPanics`, `LokiRequestLatency`).
+- **Recording rules** (`monitoring.rules.enabled`): Creates a PrometheusRule resource with loki-mixin recording rules.
+- **Alert rules** (`monitoring.alerts.enabled`): Creates a PrometheusRule resource with alerts such as `LokiRequestErrors`, `LokiRequestPanics`, and `LokiRequestLatency`.
 - **Dashboards** (`monitoring.dashboards.enabled`): Creates ConfigMaps containing Grafana dashboards for monitoring Loki.
 
-These built-in monitoring resources are disabled by default. For a more comprehensive monitoring setup, Loki clusters can also be monitored using the meta-monitoring stack, which monitors the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack, see the installation instructions within [Monitoring](../monitor-and-alert/).
+These built-in monitoring resources are disabled by default. For comprehensive cluster-wide observability, use the [Kubernetes monitoring Helm chart](https://github.com/grafana/k8s-monitoring-helm). See [Monitoring](../monitor-and-alert/) for details.
 
 {{< admonition type="note" >}}
-The Kubernetes Monitoring Helm chart replaces the monitoring section of the Loki Helm chart which is now **DEPRECATED**. Refer to the [Monitoring](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/) section for more information.
+For comprehensive cluster-wide observability, Grafana Labs recommends the [Kubernetes monitoring Helm chart](https://github.com/grafana/k8s-monitoring-helm). The Loki chart still provides optional built-in Prometheus Operator resources under `monitoring.*`; only the former `monitoring.selfMonitoring` / Grafana Agent integration has been removed.
 {{< /admonition >}}
 
 ## Canary
@@ -85,10 +98,10 @@ This chart installs the [Loki Canary app](../../../../operations/loki-canary/) b
 By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki), the chart
 installs the gateway component which is an NGINX that exposes the Loki API and automatically proxies requests to the correct
 Loki components (read or write, or single instance in the case of filesystem storage).
-The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
+You can expose Loki either through `gateway.ingress` (with `gateway.enabled: true`) or through the top-level `ingress` key (with `gateway.enabled: false`), but not both.
 If the gateway is enabled, Grafana and log shipping agents, such as Grafana Alloy, should be configured to use the gateway.
 If NetworkPolicies are enabled, they are more restrictive if the gateway is enabled.
 
 ## Caching
 
-By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup [memcache](../../../../operations/caching/).
+By default, the chart deploys Memcached-based **chunks cache** (`chunksCache.enabled: true`) and **results cache** (`resultsCache.enabled: true`). To use an externally managed Memcached instead, disable the built-in caches and point `chunksCache.addresses` / `resultsCache.addresses` at your service. See [caching](../../../../operations/caching/) for tuning guidance.

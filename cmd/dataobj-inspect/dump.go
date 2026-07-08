@@ -234,7 +234,7 @@ func (cmd *dumpCommand) dumpPostingsSection(ctx context.Context, offset int, sec
 	bold.Println("Postings section:")
 	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 
-	r := postings.NewRowReader(ctx, postingsSec)
+	r := postings.NewRowReader(ctx, postingsSec, nil)
 	defer r.Close()
 	for r.Next() {
 		row := r.At()

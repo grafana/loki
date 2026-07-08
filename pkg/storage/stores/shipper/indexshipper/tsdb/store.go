@@ -171,16 +171,28 @@ func (s *store) FlushIndexes(ctx context.Context) error {
 	return s.indexShipper.FlushIndexes(ctx)
 }
 
+// TriggerSync starts a background index sync (refreshing the object-listing
+// cache and downloading newly shipped indexes) if none is already in progress.
+func (s *store) TriggerSync() bool {
+	return s.indexShipper.TriggerSync()
+}
+
+// SyncStatus reports the current/last index sync status.
+func (s *store) SyncStatus() index.SyncStatus {
+	return s.indexShipper.SyncStatus()
+}
+
 func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdbindex.ChunkMetas{
 		{
-			Checksum: chk.Checksum,
-			MinTime:  int64(chk.From),
-			MaxTime:  int64(chk.Through),
-			KB:       uint32(approxKB),
-			Entries:  uint32(chk.Data.Entries()),
+			Checksum:   chk.Checksum,
+			MinTime:    int64(chk.From),
+			MaxTime:    int64(chk.Through),
+			IngestedAt: int64(chk.IngestedAt),
+			KB:         uint32(approxKB),
+			Entries:    uint32(chk.Data.Entries()),
 		},
 	}
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.Fingerprint, metas); err != nil {

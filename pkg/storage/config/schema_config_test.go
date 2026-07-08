@@ -11,8 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
 
+	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
@@ -384,6 +386,18 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
+		{
+			desc: "v14",
+			in: PeriodConfig{
+				Schema:    "v14",
+				RowShards: 16,
+				IndexTables: IndexPeriodicTableConfig{
+					PathPrefix:          "index/",
+					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
+				},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.err == "" {
@@ -558,6 +572,19 @@ func TestVersionAsInt(t *testing.T) {
 			},
 			expected: int(13),
 		},
+		{
+			name: "v14",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v14",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(14),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			version, err := tc.schemaCfg.Configs[0].VersionAsInt()
@@ -567,6 +594,58 @@ func TestVersionAsInt(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestPeriodConfigFormatMappings(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		schema      string
+		wantChunk   byte
+		wantHeadFmt chunkenc.HeadBlockFmt
+		wantTSDB    int
+	}{
+		{
+			name:        "v12",
+			schema:      "v12",
+			wantChunk:   chunkenc.ChunkFormatV3,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3),
+			wantTSDB:    index.FormatV2,
+		},
+		{
+			name:        "v13",
+			schema:      "v13",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV3,
+		},
+		{
+			name:        "v14",
+			schema:      "v14",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV4,
+		},
+		{
+			name:        "v15 defaults to v13 TSDB format",
+			schema:      "v15",
+			wantChunk:   chunkenc.ChunkFormatV4,
+			wantHeadFmt: chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4),
+			wantTSDB:    index.FormatV3,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := PeriodConfig{Schema: tc.schema, RowShards: 16}
+
+			chunkFmt, headFmt, err := cfg.ChunkFormat()
+			require.NoError(t, err)
+			require.Equal(t, tc.wantChunk, chunkFmt)
+			require.Equal(t, tc.wantHeadFmt, headFmt)
+
+			tsdbFmt, err := cfg.TSDBFormat()
+			require.NoError(t, err)
+			require.Equal(t, tc.wantTSDB, tsdbFmt)
 		})
 	}
 }
@@ -882,4 +961,30 @@ func TestChunkKeys(t *testing.T) {
 			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk.ChunkRef))
 		})
 	}
+}
+
+func TestSupportsIngestedAtForTime(t *testing.T) {
+	cfg := SchemaConfig{Configs: []PeriodConfig{
+		{
+			From:      DayTime{Time: model.TimeFromUnix(0)},
+			IndexType: types.IndexTypeTSDB,
+			Schema:    "v13",
+		},
+		{
+			From:      DayTime{Time: model.TimeFromUnix(1000)},
+			IndexType: types.IndexTypeTSDB,
+			Schema:    "v14",
+		},
+	}}
+
+	require.False(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(500)), "v13 period must not support IngestedAt")
+	require.True(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(2000)), "v14 period must support IngestedAt")
+	require.False(t, cfg.SupportsIngestedAtForTime(model.TimeFromUnix(-1000)), "time before any period must not support IngestedAt")
+
+	v12 := SchemaConfig{Configs: []PeriodConfig{{
+		From:      DayTime{Time: model.TimeFromUnix(0)},
+		IndexType: types.IndexTypeTSDB,
+		Schema:    "v12",
+	}}}
+	require.False(t, v12.SupportsIngestedAtForTime(model.TimeFromUnix(500)), "v12 period must not support IngestedAt")
 }

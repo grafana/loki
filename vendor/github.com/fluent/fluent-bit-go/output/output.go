@@ -36,6 +36,9 @@ const (
 
 	FLB_PROXY_OUTPUT_PLUGIN = C.FLB_PROXY_OUTPUT_PLUGIN
 	FLB_PROXY_GOLANG        = C.FLB_PROXY_GOLANG
+	FLB_OUTPUT_LOGS         = C.FLB_OUTPUT_LOGS
+	FLB_OUTPUT_METRICS      = C.FLB_OUTPUT_METRICS
+	FLB_OUTPUT_TRACES       = C.FLB_OUTPUT_TRACES
 )
 
 // Local type to define a plugin definition
@@ -53,6 +56,18 @@ func FLBPluginRegister(def unsafe.Pointer, name, desc string) int {
 	p.flags = 0
 	p.name = C.CString(name)
 	p.description = C.CString(desc)
+	p.event_type = 0
+	return 0
+}
+
+func FLBPluginRegisterWithEventType(def unsafe.Pointer, eventType int, name, desc string) int {
+	p := (*FLBPluginProxyDef)(def)
+	p._type = FLB_PROXY_OUTPUT_PLUGIN
+	p.proxy = FLB_PROXY_GOLANG
+	p.flags = 0
+	p.name = C.CString(name)
+	p.description = C.CString(desc)
+	p.event_type = C.int(eventType)
 	return 0
 }
 

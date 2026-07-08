@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -343,6 +344,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 		buildLogical                   func() logical.Value
 		expectedParseKeysRequested     []string
 		expectedDataObjScanProjections []string
+		// expectedDataObjScanProjectionRefs, when non-nil, additionally
+		// asserts the scan's projections as (name, type) pairs. Use this
+		// when the case is sensitive to a column's type (e.g. a parsed
+		// field name colliding with a builtin column of the same name).
+		// Order is not asserted; the runner sorts before comparing.
+		expectedDataObjScanProjectionRefs []types.ColumnRef
 	}{
 		{
 			name: "requested keys remain empty when no operations need parsed fields",
@@ -427,6 +434,133 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				builder = builder.Select(ambiguousFilter)
 
 				return builder.Value()
+			},
+		},
+		{
+			name: "RangeAggregation with GroupBy on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | regexp "(?P<referrer>[^ ]+)" [5m]) by (referrer)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<referrer>[^ ]+)")
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "referrer", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			// Regexp has no requestedKeys; we only assert the scan projections.
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"message", "referrer", "timestamp"},
+		},
+		{
+			name: "Filter on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | regexp "(?P<lvl>[^ ]+)" | lvl="error" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<lvl>[^ ]+)")
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("lvl", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"app", "lvl", "message", "timestamp"},
+		},
+		{
+			name: "Filter on parsed field that collides with builtin (message)",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | json | message="hello" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("message", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("hello"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"message"},
+			expectedDataObjScanProjections: []string{"app", "message", "timestamp"},
+			expectedDataObjScanProjectionRefs: []types.ColumnRef{
+				{Column: "app", Type: types.ColumnTypeLabel},
+				// Critical: the [Builtin] `message` must survive so the
+				// scan loads the raw log line for the JSON parser to
+				// consume. Pre-fix (name-only dedup) this entry was
+				// silently dropped in favour of the earlier-added
+				// [Ambiguous] entry.
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				// The [Ambiguous] `message` (from the [Filter]) also
+				// survives dedup since it has a different type; the
+				// scan silently ignores it (no metadata column of that
+				// name in this data) so it costs nothing.
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+				{Column: "timestamp", Type: types.ColumnTypeBuiltin},
 			},
 		},
 		{
@@ -728,6 +862,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 			var projectionNode *Projection
 			projections := map[string]struct{}{}
+			projectionRefs := map[types.ColumnRef]struct{}{}
 			for node := range optimizedPlan.graph.Nodes() {
 				if pn, ok := node.(*Projection); ok {
 					projectionNode = pn
@@ -737,6 +872,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					for _, colExpr := range pn.Projections {
 						expr := colExpr.(*ColumnExpr)
 						projections[expr.Ref.Column] = struct{}{}
+						projectionRefs[expr.Ref] = struct{}{}
 					}
 				}
 			}
@@ -744,14 +880,20 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			require.NotNil(t, projectionNode, "Projection not found in plan")
 			var requestedKeys *LiteralExpr
 			for _, expr := range projectionNode.Expressions {
-				switch expr := expr.(type) {
-				case *VariadicExpr:
-					// Parse expressions: [sourceCol, requestedKeys, strict, keepEmpty]
-					// We want the requestedKeys (index 1)
-					if len(expr.Expressions) >= 2 {
-						if e, ok := expr.Expressions[1].(*LiteralExpr); ok {
-							requestedKeys = e
-						}
+				ve, ok := expr.(*VariadicExpr)
+				if !ok {
+					continue
+				}
+				// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
+				// parser's arg index 1 is the pattern literal (a StringLiteral),
+				// not a requested-keys list — interpreting it as requestedKeys
+				// would falsely fail the literal-type assertion below.
+				if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
+					continue
+				}
+				if len(ve.Expressions) >= 2 {
+					if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
+						requestedKeys = e
 					}
 				}
 			}
@@ -780,6 +922,175 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			}
 			sort.Strings(projectionArr)
 			require.Equal(t, tt.expectedDataObjScanProjections, projectionArr)
+
+			// Optional stricter assertion: also verify each projection's
+			// [types.ColumnType]. This catches "same name kept, wrong
+			// type" regressions that the name-only slice above cannot
+			// distinguish — e.g. a parsed field colliding with a builtin.
+			if tt.expectedDataObjScanProjectionRefs != nil {
+				gotRefs := make([]types.ColumnRef, 0, len(projectionRefs))
+				for r := range projectionRefs {
+					gotRefs = append(gotRefs, r)
+				}
+				sort.Slice(gotRefs, func(i, j int) bool {
+					if gotRefs[i].Column != gotRefs[j].Column {
+						return gotRefs[i].Column < gotRefs[j].Column
+					}
+					return gotRefs[i].Type < gotRefs[j].Type
+				})
+				wantRefs := slices.Clone(tt.expectedDataObjScanProjectionRefs)
+				sort.Slice(wantRefs, func(i, j int) bool {
+					if wantRefs[i].Column != wantRefs[j].Column {
+						return wantRefs[i].Column < wantRefs[j].Column
+					}
+					return wantRefs[i].Type < wantRefs[j].Type
+				})
+				require.Equal(t, wantRefs, gotRefs)
+			}
+		})
+	}
+}
+
+func TestAddUniqueColumnExpr(t *testing.T) {
+	col := func(name string, typ types.ColumnType) *ColumnExpr {
+		return &ColumnExpr{Ref: types.ColumnRef{Column: name, Type: typ}}
+	}
+
+	refs := func(projections []ColumnExpression) []types.ColumnRef {
+		var out []types.ColumnRef
+		for _, p := range projections {
+			if pe, ok := p.(*ColumnExpr); ok {
+				out = append(out, pe.Ref)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Column != out[j].Column {
+				return out[i].Column < out[j].Column
+			}
+			return out[i].Type < out[j].Type
+		})
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		start    []ColumnExpression
+		add      []*ColumnExpr
+		expected []types.ColumnRef
+	}{
+		{
+			name:  "Ambiguous added first absorbs Label added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Label already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added first absorbs Metadata added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeAmbiguous),
+				col("trace_id", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Metadata already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeMetadata),
+				col("trace_id", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous absorbs both Label and Metadata with same name at once",
+			start: nil,
+			add: []*ColumnExpr{
+				col("foo", types.ColumnTypeLabel),
+				col("foo", types.ColumnTypeMetadata),
+				col("foo", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "foo", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Builtin coexists with Ambiguous of same name (PR #22907 case)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("message", types.ColumnTypeBuiltin),
+				col("message", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				// Sorted by type ordinal: Builtin (1) < Ambiguous (5).
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Label and Metadata with same name coexist (different storage sections)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("status", types.ColumnTypeLabel),
+				col("status", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "status", Type: types.ColumnTypeLabel},
+				{Column: "status", Type: types.ColumnTypeMetadata},
+			},
+		},
+		{
+			name:  "Exact duplicate (name, type) is skipped",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeLabel},
+			},
+		},
+		{
+			name:  "Different names never absorb each other",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("service", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+				{Column: "service", Type: types.ColumnTypeLabel},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projections := tt.start
+			for _, c := range tt.add {
+				projections, _ = addUniqueColumnExpr(projections, c)
+			}
+			require.Equal(t, tt.expected, refs(projections))
 		})
 	}
 }

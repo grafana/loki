@@ -286,19 +286,19 @@ func batch(n int, now time.Time) arrow.RecordBatch {
 }
 
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
-	// Test precedence between generated, metadata, and label columns
+	// Test precedence between parsed, metadata, and label columns
 	fields := []arrow.Field{
 		semconv.FieldFromFQN("utf8.label.test", true),
 		semconv.FieldFromFQN("utf8.metadata.test", true),
-		semconv.FieldFromFQN("utf8.generated.test", true),
+		semconv.FieldFromFQN("utf8.parsed.test", true),
 	}
 
 	// CSV data where:
-	// Row 0: All columns have values - should pick generated (highest precedence)
-	// Row 1: Generated is null, others have values - should pick metadata
-	// Row 2: Generated and metadata are null - should pick label
+	// Row 0: All columns have values - should pick parsed (highest precedence)
+	// Row 1: Parsed is null, others have values - should pick metadata
+	// Row 2: Parsed and metadata are null - should pick label
 	// Row 3: All are null - should return null
-	data := `label_0,metadata_0,generated_0
+	data := `label_0,metadata_0,parsed_0
 label_1,metadata_1,null
 label_2,null,null
 null,null,null`
@@ -322,10 +322,10 @@ null,null,null`
 
 		// Test per-row precedence resolution
 		col := colVec.(*array.String)
-		require.Equal(t, "generated_0", col.Value(0)) // Generated has highest precedence
-		require.Equal(t, "metadata_1", col.Value(1))  // Generated is null, metadata has next precedence
-		require.Equal(t, "label_2", col.Value(2))     // Generated and metadata are null, label has next precedence
-		require.True(t, col.IsNull(3))                // All are null
+		require.Equal(t, "parsed_0", col.Value(0))   // Parsed has highest precedence
+		require.Equal(t, "metadata_1", col.Value(1)) // Parsed is null, metadata has next precedence
+		require.Equal(t, "label_2", col.Value(2))    // Parsed and metadata are null, label has next precedence
+		require.True(t, col.IsNull(3))               // All are null
 	})
 
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
@@ -678,7 +678,7 @@ func TestLogfmtParser(t *testing.T) {
 			},
 		},
 		{
-			name: "handle errors with error columns",
+			name: "non-strict handles errors without adding error columns",
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
 			}, nil),
@@ -690,25 +690,19 @@ func TestLogfmtParser(t *testing.T) {
 			requestedKeys:  []string{"level", "status"},
 			strict:         false,
 			keepEmpty:      false,
-			expectedFields: 4, // 4 columns: level, status, __error__, __error_details__
+			expectedFields: 2, // level, status — no __error__ / __error_details__ in non-strict.
 			expectedOutput: arrowtest.Rows{
 				{
-					"utf8.parsed.level":                   "info",
-					"utf8.parsed.status":                  "200",
-					semconv.ColumnIdentError.FQN():        "",
-					semconv.ColumnIdentErrorDetails.FQN(): "",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.status": "200",
 				},
 				{
-					"utf8.parsed.level":                   "error",
-					"utf8.parsed.status":                  nil,
-					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
-					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 8 : unexpected '='",
+					"utf8.parsed.level":  "error",
+					"utf8.parsed.status": nil,
 				},
 				{
-					"utf8.parsed.level":                   nil,
-					"utf8.parsed.status":                  nil,
-					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
-					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 27 : unterminated quoted value",
+					"utf8.parsed.level":  nil,
+					"utf8.parsed.status": nil,
 				},
 			},
 		},
@@ -751,7 +745,7 @@ func TestLogfmtParser(t *testing.T) {
 			},
 		},
 		{
-			name: "extract all keys with errors when none requested",
+			name: "non-strict extract all keys ignores errors, no error columns",
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
 			}, nil),
@@ -764,39 +758,31 @@ func TestLogfmtParser(t *testing.T) {
 			requestedKeys:  nil, // nil means extract all keys
 			strict:         false,
 			keepEmpty:      false,
-			expectedFields: 6, // 5 columns: level, method, status, code __error__, __error_details__
+			expectedFields: 4, // level, method, status, code — no __error__ / __error_details__.
 			expectedOutput: arrowtest.Rows{
 				{
-					"utf8.parsed.level":                   "info",
-					"utf8.parsed.method":                  "GET",
-					"utf8.parsed.status":                  "200",
-					"utf8.parsed.code":                    nil,
-					semconv.ColumnIdentError.FQN():        "",
-					semconv.ColumnIdentErrorDetails.FQN(): "",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.method": "GET",
+					"utf8.parsed.status": "200",
+					"utf8.parsed.code":   nil,
 				},
 				{
-					"utf8.parsed.level":                   nil,
-					"utf8.parsed.method":                  nil,
-					"utf8.parsed.status":                  nil,
-					"utf8.parsed.code":                    "500",
-					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
-					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 7 : unexpected '='",
+					"utf8.parsed.level":  nil,
+					"utf8.parsed.method": nil,
+					"utf8.parsed.status": nil,
+					"utf8.parsed.code":   "500",
 				},
 				{
-					"utf8.parsed.level":                   nil,
-					"utf8.parsed.method":                  nil,
-					"utf8.parsed.status":                  nil,
-					"utf8.parsed.code":                    nil,
-					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
-					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 38 : unterminated quoted value",
+					"utf8.parsed.level":  nil,
+					"utf8.parsed.method": nil,
+					"utf8.parsed.status": nil,
+					"utf8.parsed.code":   nil,
 				},
 				{
-					"utf8.parsed.level":                   "debug",
-					"utf8.parsed.method":                  "POST",
-					"utf8.parsed.status":                  nil,
-					"utf8.parsed.code":                    nil,
-					semconv.ColumnIdentError.FQN():        "",
-					semconv.ColumnIdentErrorDetails.FQN(): "",
+					"utf8.parsed.level":  "debug",
+					"utf8.parsed.method": "POST",
+					"utf8.parsed.status": nil,
+					"utf8.parsed.code":   nil,
 				},
 			},
 		},
@@ -992,7 +978,7 @@ func TestLogfmtParser(t *testing.T) {
 			},
 		},
 		{
-			name: "non-strict mode of logfmt includes partial parsed columns",
+			name: "non-strict mode of logfmt includes partial parsed columns without error labels",
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
 			}, nil),
@@ -1004,28 +990,22 @@ func TestLogfmtParser(t *testing.T) {
 			requestedKeys:  []string{"status", "level", "method"},
 			strict:         false,
 			keepEmpty:      false,
-			expectedFields: 5, // status, level, method, __error__, __error_details__
+			expectedFields: 3, // status, level, method — no __error__ / __error_details__.
 			expectedOutput: arrowtest.Rows{
 				{
-					"utf8.parsed.status":               "200",
-					"utf8.parsed.level":                "info",
-					"utf8.parsed.method":               "GET",
-					"utf8.generated.__error__":         "",
-					"utf8.generated.__error_details__": "",
+					"utf8.parsed.status": "200",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.method": "GET",
 				},
 				{
-					"utf8.parsed.status":               "500",
-					"utf8.parsed.level":                nil,
-					"utf8.parsed.method":               "POST",
-					"utf8.generated.__error__":         "LogfmtParserErr",
-					"utf8.generated.__error_details__": "logfmt syntax error at pos 18 : unexpected '='",
+					"utf8.parsed.status": "500",
+					"utf8.parsed.level":  nil,
+					"utf8.parsed.method": "POST",
 				},
 				{
-					"utf8.parsed.status":               "201",
-					"utf8.parsed.level":                "debug",
-					"utf8.parsed.method":               nil,
-					"utf8.generated.__error__":         "",
-					"utf8.generated.__error_details__": "",
+					"utf8.parsed.status": "201",
+					"utf8.parsed.level":  "debug",
+					"utf8.parsed.method": nil,
 				},
 			},
 		},

@@ -77,26 +77,40 @@ type DataobjSectionDescriptor struct {
 	Start     time.Time
 	End       time.Time
 
-	// Ambiguous predicates are predicates which are present in the stream's labels as well as the LogQL query, and are therefore ambiguous.
-	AmbiguousPredicatesByStream map[int64][]string
+	// AmbiguousPredicates are predicate names present both as a stream label in
+	// the section and in the LogQL query, and are therefore ambiguous. It is the
+	// deduped union across the section's streams.
+	AmbiguousPredicates []string
+}
+
+// dedupeStringSlice returns s with duplicates removed, order preserved.
+func dedupeStringSlice(s []string) []string {
+	if len(s) <= 1 {
+		return s
+	}
+	result := make([]string, 0, len(s))
+	for _, v := range s {
+		if !slices.Contains(result, v) {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 // NewSectionDescriptor creates a new section descriptor with the given pointer and labels.
 func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames []string) *DataobjSectionDescriptor {
+	deduped := dedupeStringSlice(ambiguousLabelNames)
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs:                   []int64{pointer.StreamIDRef},
-		RowCount:                    int(pointer.LineCount),
-		Size:                        pointer.UncompressedSize,
-		Start:                       pointer.StartTs,
-		End:                         pointer.EndTs,
-		AmbiguousPredicatesByStream: make(map[int64][]string),
-	}
-	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
+		StreamIDs:           []int64{pointer.StreamIDRef},
+		RowCount:            int(pointer.LineCount),
+		Size:                pointer.UncompressedSize,
+		Start:               pointer.StartTs,
+		End:                 pointer.EndTs,
+		AmbiguousPredicates: deduped,
 	}
 	return obj
 }
@@ -113,18 +127,11 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 		d.End = pointer.EndTs
 	}
 
-	if len(lbls) == 0 {
-		return
+	for _, lbl := range lbls {
+		if !slices.Contains(d.AmbiguousPredicates, lbl) {
+			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
+		}
 	}
-
-	curLbls, exists := d.AmbiguousPredicatesByStream[pointer.StreamIDRef]
-	if !exists {
-		d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = lbls
-		return
-	}
-
-	curLbls = append(curLbls, lbls...)
-	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
 }
 
 // TableOfContentsPath returns the object-storage path of the ToC file that
@@ -588,8 +595,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			sectionsMu.Lock()
 
 			// this is temporary, the stats will be collected differently in a distributed metastore
-			statsProvider := reader.(bloomStatsProvider)
-			totalSections.Add(statsProvider.totalReadRows())
+			sp := reader.(statsProvider)
+			totalSections.Add(sp.stats().ReadRows)
 
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
@@ -634,53 +641,50 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	if m.readPostingsSections {
-		hasPostings, err := hasPostingsSection(ctx, idxObj)
-		if err != nil {
-			level.Error(utillog.WithContext(ctx, m.logger)).Log("msg", "failed to check for postings section", "path", req.IndexPath, "err", err)
-			return IndexSectionsReaderResponse{}, err
-		}
-		// Index objects written before postings still read from streams sections
-		if hasPostings {
-			reader := newPostingsIndexSectionsReader(
-				m.logger,
-				idxObj,
-				req.SectionsRequest.Start,
-				req.SectionsRequest.End,
-				req.SectionsRequest.Matchers,
-				req.SectionsRequest.Predicates,
-				req.BatchSize,
-			)
-			return IndexSectionsReaderResponse{Reader: reader}, nil
-		}
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	reader := newIndexSectionsReader(
-		m.logger,
-		idxObj,
-		req.SectionsRequest.Start,
-		req.SectionsRequest.End,
-		req.SectionsRequest.Matchers,
-		req.SectionsRequest.Predicates,
-		req.BatchSize,
-	)
+	var reader ArrowRecordBatchReader
+	flow := flowStreams
+	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
+		flow = flowPostings
+		reader = newPostingsIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	} else {
+		reader = newIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	}
+
+	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
+	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
 }
 
-// hasPostingsSection reports whether obj contains a postings section for the tenant
-func hasPostingsSection(ctx context.Context, obj *dataobj.Object) (bool, error) {
-	tenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return false, fmt.Errorf("extracting org ID: %w", err)
-	}
-
-	for _, section := range obj.Sections() {
-		if section.Tenant == tenant && postings.CheckSection(section) {
-			return true, nil
+// hasPostingsSection reports whether obj has a postings section owned by tenant.
+func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
+	for _, sec := range obj.Sections() {
+		if sec.Tenant == tenant && postings.CheckSection(sec) {
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
@@ -717,7 +721,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	resp.Indexes = indexEntries
 
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexEntries)))
-	span.Record(xcap.StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
+	span.Record(StatMetastoreIndexObjects.Observe(int64(len(indexEntries))))
 
 	return resp, nil
 }
@@ -749,6 +753,8 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 			break
 		}
 	}
+
+	m.metrics.resolvedSectionsPerObject.Observe(float64(len(objectSectionDescriptors)))
 
 	sections := make([]*DataobjSectionDescriptor, 0, len(objectSectionDescriptors))
 	for _, s := range objectSectionDescriptors {

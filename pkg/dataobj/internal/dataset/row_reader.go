@@ -7,6 +7,8 @@ import (
 	"io"
 	"iter"
 
+	"github.com/bits-and-blooms/bloom/v3"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bitmask"
@@ -95,7 +97,7 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 	}
 
 	region := xcap.RegionFromContext(ctx)
-	region.Record(xcap.StatDatasetReadCalls.Observe(1))
+	region.Record(dataobj.StatDatasetReadCalls.Observe(1))
 
 	// Our Read implementation works by:
 	//
@@ -168,8 +170,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			primaryColumnBytes += s[i].Size()
 		}
 
-		region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-		region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+		region.Record(dataobj.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+		region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 	} else {
 		rowsRead, passCount, err = r.readAndFilterPrimaryColumns(ctx, readSize, s[:readSize])
 		if err != nil {
@@ -201,8 +203,8 @@ func (r *RowReader) Read(ctx context.Context, s []Row) (int, error) {
 			totalBytesFilled += s[i].Size() - s[i].SizeOfColumns(r.primaryColumnIndexes)
 		}
 
-		region.Record(xcap.StatDatasetSecondaryRowsRead.Observe(int64(count)))
-		region.Record(xcap.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
+		region.Record(dataobj.StatDatasetSecondaryRowsRead.Observe(int64(count)))
+		region.Record(dataobj.StatDatasetSecondaryRowBytes.Observe(totalBytesFilled))
 	}
 
 	// We only advance r.row after we successfully read and filled rows. This
@@ -295,8 +297,8 @@ func (r *RowReader) readAndFilterPrimaryColumns(ctx context.Context, readSize in
 		readSize = passCount
 	}
 
-	region.Record(xcap.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
-	region.Record(xcap.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
+	region.Record(dataobj.StatDatasetPrimaryRowsRead.Observe(int64(rowsRead)))
+	region.Record(dataobj.StatDatasetPrimaryRowBytes.Observe(primaryColumnBytes))
 
 	return rowsRead, passCount, nil
 }
@@ -376,6 +378,32 @@ func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
 			panic("checkPredicate: column not found")
 		}
 		return p.Keep(p.Column, row.Values[columnIndex])
+
+	case BloomMatchPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+			return false
+		}
+		var filter bloom.BloomFilter
+		if err := filter.UnmarshalBinary(value.Binary()); err != nil {
+			return false
+		}
+		return filter.Test(p.Value)
+
+	case RegexMatchPredicate:
+		columnIndex, ok := lookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		value := row.Values[columnIndex]
+		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+			return false
+		}
+		return p.Matcher.MatchString(string(value.Binary()))
 
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
@@ -547,6 +575,10 @@ func (r *RowReader) validatePredicate() error {
 				err = process(p.Column)
 			case FuncPredicate:
 				err = process(p.Column)
+			case BloomMatchPredicate:
+				err = process(p.Column)
+			case RegexMatchPredicate:
+				err = process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
 			default:
@@ -589,11 +621,11 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 
 		if primary {
 			r.primaryColumnIndexes = append(r.primaryColumnIndexes, i)
-			region.Record(xcap.StatDatasetPrimaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetPrimaryColumnPages.Observe(pageCount))
+			region.Record(dataobj.StatDatasetPrimaryColumns.Observe(1))
+			region.Record(dataobj.StatDatasetPrimaryColumnPages.Observe(pageCount))
 		} else {
-			region.Record(xcap.StatDatasetSecondaryColumns.Observe(1))
-			region.Record(xcap.StatDatasetSecondaryColumnPages.Observe(pageCount))
+			region.Record(dataobj.StatDatasetSecondaryColumns.Observe(1))
+			region.Record(dataobj.StatDatasetSecondaryColumnPages.Observe(pageCount))
 		}
 	}
 
@@ -627,8 +659,8 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
-	region.Record(xcap.StatDatasetMaxRows.Observe(int64(rowsCount)))
-	region.Record(xcap.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
+	region.Record(dataobj.StatDatasetMaxRows.Observe(int64(rowsCount)))
+	region.Record(dataobj.StatDatasetRowsAfterPruning.Observe(int64(ranges.Len())))
 
 	return nil
 }
@@ -665,6 +697,10 @@ func (r *RowReader) fillPrimaryMask(mask *bitmask.Mask) {
 			case LessThanPredicate:
 				process(p.Column)
 			case FuncPredicate:
+				process(p.Column)
+			case BloomMatchPredicate:
+				process(p.Column)
+			case RegexMatchPredicate:
 				process(p.Column)
 			case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 				// No columns to process.
@@ -737,7 +773,7 @@ func (r *RowReader) buildPredicateRanges(ctx context.Context, p Predicate) (rang
 	case LessThanPredicate:
 		return r.buildColumnPredicateRanges(ctx, p.Column, p)
 
-	case TruePredicate, FuncPredicate, nil:
+	case TruePredicate, FuncPredicate, BloomMatchPredicate, RegexMatchPredicate, nil:
 		// These predicates (and nil) don't support any filtering, so it maps to
 		// the full range being valid.
 		//
@@ -962,6 +998,10 @@ func (r *RowReader) predicateColumns(p Predicate, keep func(c Column) bool) ([]C
 		case LessThanPredicate:
 			columns[p.Column] = struct{}{}
 		case FuncPredicate:
+			columns[p.Column] = struct{}{}
+		case BloomMatchPredicate:
+			columns[p.Column] = struct{}{}
+		case RegexMatchPredicate:
 			columns[p.Column] = struct{}{}
 		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
 			// No columns to process.

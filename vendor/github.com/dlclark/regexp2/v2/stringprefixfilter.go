@@ -88,30 +88,110 @@ func stringIndexPrefixesFilter(prefixes []string, ignoreCase bool, minRequiredLe
 		}
 	}
 
-	prefixes = append([]string(nil), prefixes...)
+	if filter, ok := compileASCIIStringSetPrefixFilter(prefixes, ignoreCase, minRequiredLength); ok {
+		return filter.index
+	}
+
 	return func(input string, startAt int) (candidateByteIndex int, ok bool) {
-		if !hasMinRequiredBytes(input, startAt, minRequiredLength) {
-			return 0, false
+		return indexAnyPrefixFallback(input, startAt, prefixes, ignoreCase, minRequiredLength)
+	}
+}
+
+func indexAnyPrefixFallback(input string, startAt int, prefixes []string, ignoreCase bool, minRequiredLength int) (candidateByteIndex int, ok bool) {
+	if !hasMinRequiredBytes(input, startAt, minRequiredLength) {
+		return 0, false
+	}
+
+	best := -1
+	remaining := input[startAt:]
+	for _, prefix := range prefixes {
+		var offset int
+		if ignoreCase {
+			offset = helpers.IndexStringIgnoreCaseASCII(remaining, prefix)
+		} else {
+			offset = strings.Index(remaining, prefix)
+		}
+		if offset >= 0 && (best < 0 || offset < best) {
+			best = offset
+		}
+	}
+	if best < 0 {
+		return 0, false
+	}
+	return startAt + best, true
+}
+
+type asciiStringSetPrefixFilter struct {
+	firstChars       string
+	prefixesByFirst  [256][]string
+	minRequiredBytes int
+}
+
+// compileASCIIStringSetPrefixFilter builds a byte-oriented multi-prefix scanner
+// for the narrow shape where it beats running strings.Index once per prefix:
+// case-sensitive ASCII prefixes with at least two prefixes sharing a first byte.
+// It indexes possible first bytes with strings.IndexAny, then verifies only the
+// bucket for the byte found. Other shapes fall back to the old implementation.
+func compileASCIIStringSetPrefixFilter(prefixes []string, ignoreCase bool, minRequiredLength int) (*asciiStringSetPrefixFilter, bool) {
+	if ignoreCase {
+		return nil, false
+	}
+
+	filter := &asciiStringSetPrefixFilter{
+		minRequiredBytes: minRequiredLength,
+	}
+	var firstChars [256]bool
+	var hasSharedFirst bool
+	for _, prefix := range prefixes {
+		if prefix == "" || !isASCIIString(prefix) {
+			return nil, false
 		}
 
-		best := -1
-		remaining := input[startAt:]
-		for _, prefix := range prefixes {
-			var offset int
-			if ignoreCase {
-				offset = helpers.IndexStringIgnoreCaseASCII(remaining, prefix)
-			} else {
-				offset = strings.Index(remaining, prefix)
-			}
-			if offset >= 0 && (best < 0 || offset < best) {
-				best = offset
-			}
+		first := prefix[0]
+		filter.prefixesByFirst[first] = append(filter.prefixesByFirst[first], prefix)
+		if len(filter.prefixesByFirst[first]) > 1 {
+			hasSharedFirst = true
 		}
-		if best < 0 {
+		firstChars[first] = true
+	}
+
+	if !hasSharedFirst {
+		return nil, false
+	}
+
+	firstBytes := make([]byte, 0, len(prefixes)*2)
+	for i, ok := range firstChars {
+		if ok {
+			firstBytes = append(firstBytes, byte(i))
+		}
+	}
+	if len(firstBytes) == 0 {
+		return nil, false
+	}
+	filter.firstChars = string(firstBytes)
+	return filter, true
+}
+
+func (f *asciiStringSetPrefixFilter) index(input string, startAt int) (candidateByteIndex int, ok bool) {
+	if !hasMinRequiredBytes(input, startAt, f.minRequiredBytes) {
+		return 0, false
+	}
+
+	for searchAt := startAt; searchAt < len(input); {
+		offset := strings.IndexAny(input[searchAt:], f.firstChars)
+		if offset < 0 {
 			return 0, false
 		}
-		return startAt + best, true
+		i := searchAt + offset
+		first := input[i]
+		for _, prefix := range f.prefixesByFirst[first] {
+			if len(input)-i >= len(prefix) && strings.HasPrefix(input[i:], prefix) {
+				return i, true
+			}
+		}
+		searchAt = i + 1
 	}
+	return 0, false
 }
 
 func stringFixedDistanceCharFilter(ch rune, distance, minRequiredLength int) StringPrefixFilter {

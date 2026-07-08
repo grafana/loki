@@ -64,12 +64,15 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 					projections = append(projections, e.Left.(ColumnExpression))
 				}
 			case *VariadicExpr:
-				if e.Op == types.VariadicOpParseJSON || e.Op == types.VariadicOpParseLogfmt {
+				switch e.Op {
+				case types.VariadicOpParseJSON, types.VariadicOpParseLogfmt:
 					projectionNodeChanged, projsToPropagate := r.handleParse(e, projections)
 					projections = append(projections, projsToPropagate...)
 					if projectionNodeChanged {
 						changed = true
 					}
+				case types.VariadicOpParseRegexp:
+					projections = append(projections, r.handleParseRegexp(e)...)
 				}
 			}
 		}
@@ -227,6 +230,19 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 	return changed, projections
 }
 
+// handleParseRegexp returns the regexp parser's source column so the scan
+// loads the line content the pattern is applied against.
+func (r *projectionPushdown) handleParseRegexp(expr *VariadicExpr) []ColumnExpression {
+	if len(expr.Expressions) < 1 {
+		return nil
+	}
+	sourceCol, ok := expr.Expressions[0].(*ColumnExpr)
+	if !ok {
+		return nil
+	}
+	return []ColumnExpression{sourceCol}
+}
+
 // parseExprs is a helper struct for unpacking and packing parse arguments from generic expressions.
 type parseExprs struct {
 	sourceColumnExpr  *ColumnExpr
@@ -318,15 +334,17 @@ func (r *projectionPushdown) isMetricQuery() bool {
 	return false
 }
 
+// deduplicateColumns removes duplicate column expressions from the list,
+// keying by (name, type) rather than name alone. See [addUniqueColumnExpr]
+// for why type matters at this layer.
 func (r *projectionPushdown) deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
-	seen := make(map[string]bool)
+	seen := make(map[types.ColumnRef]bool)
 	var result []ColumnExpression
 
 	for _, col := range columns {
 		if colExpr, ok := col.(*ColumnExpr); ok {
-			key := colExpr.Ref.Column
-			if !seen[key] {
-				seen[key] = true
+			if !seen[colExpr.Ref] {
+				seen[colExpr.Ref] = true
 				result = append(result, col)
 			}
 		}

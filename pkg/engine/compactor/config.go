@@ -38,6 +38,10 @@ type Config struct {
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
 
+	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
+	// single LogMerge task may consume. Kept separate from index max runs
+	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
+
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
 	// RPC; on expiry the cycle aborts inline and the next polling tick re-plans.
@@ -136,6 +140,7 @@ const (
 
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMaxRunsPerTask        = 8
+	defaultLogMaxRunsPerTask     = 3
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
 )
@@ -158,6 +163,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Coordinator main-loop cadence.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
+		"Experimental: Maximum runs per LogMerge task (K for log compaction). Separate from max-runs-per-task to scale independently")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
@@ -214,6 +221,9 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
 	}
+	if cfg.LogMaxRunsPerTask <= 0 {
+		return errInvalidLogMaxRunsPerTask
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -229,4 +239,5 @@ var (
 	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMaxRunsPerTask         = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
 )

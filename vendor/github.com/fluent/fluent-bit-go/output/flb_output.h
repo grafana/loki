@@ -20,6 +20,10 @@
 #ifndef FLBGO_OUTPUT_H
 #define FLBGO_OUTPUT_H
 
+#define FLB_OUTPUT_LOGS    1
+#define FLB_OUTPUT_METRICS 2
+#define FLB_OUTPUT_TRACES  4
+
 struct flb_api {
     char *(*output_get_property) (char *, void *);
     char *_;
