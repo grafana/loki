@@ -28,6 +28,31 @@ func TestLinearRampCircuitBreaker(t *testing.T) {
 		require.Equal(t, circuitBreakerOpen, b.state)
 	})
 
+	t.Run("transitions to open are de-bounced", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			b := newLinearRampCircuitBreaker(time.Second, 10*time.Second, isAnyErr, 10)
+
+			// Make two calls to Allow so we can have two separate doneFuncs.
+			ok, doneFunc := b.Allow()
+			require.True(t, ok)
+			ok2, doneFunc2 := b.Allow()
+			require.True(t, ok2)
+
+			// The first doneFunc should open the circuit breaker.
+			doneFunc(errors.New("some error occurred"))
+			require.Equal(t, circuitBreakerOpen, b.state)
+			now := time.Now()
+			require.Equal(t, now, b.lastOpened)
+
+			// Sleep 1ms, and then use doneFunc2 to open the circuit breaker a second
+			// time. It should be de-bounced.
+			time.Sleep(time.Millisecond)
+			doneFunc2(errors.New("some error occurred"))
+			require.Equal(t, circuitBreakerOpen, b.state)
+			require.Equal(t, now, b.lastOpened)
+		})
+	})
+
 	t.Run("rejects all requests when open", func(t *testing.T) {
 		b := newLinearRampCircuitBreaker(time.Second, 10*time.Second, isAnyErr, 10)
 		b.state = circuitBreakerOpen
@@ -107,7 +132,6 @@ func TestLinearRampCircuitBreaker(t *testing.T) {
 			// The 10th should be allowed now we've called one of the done funcs from
 			// the previous requests.
 			doneFuncs[0](nil)
-			doneFuncs = doneFuncs[1:]
 			ok, _ = b.Allow()
 			require.True(t, ok)
 		})
