@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math/bits"
 	"sync"
 
@@ -11,6 +13,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
+
+// readBatchSize is the number of rows requested per [postings.Reader.Read].
+// It matches the batch size used by [postings.RowReader].
+const readBatchSize = 8192
 
 // labelValue identifies a label posting by its column name and value. The
 // value is empty for the name-only rollup.
@@ -138,8 +144,17 @@ func (c *collector) foldSection(ctx context.Context, sec *dataobj.Section, objPa
 	}
 
 	pred := postings.EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(postings.KindLabel))}
-	rr := postings.NewRowReader(ctx, psec, []postings.Predicate{pred})
-	defer rr.Close()
+	// Project only the columns the configured rollups and export actually
+	// consume; reading the full column set would download and decode data
+	// (e.g. bloom_filter, stream_id_bitmap) that this scan never uses.
+	reader := postings.NewReader(postings.ReaderOptions{
+		Columns:    c.projectionColumns(psec, kindCol),
+		Predicates: []postings.Predicate{pred},
+	})
+	defer reader.Close()
+	if err := reader.Open(ctx); err != nil {
+		return fmt.Errorf("opening postings reader %s: %w", objPath, err)
+	}
 
 	var (
 		nvLocal   map[labelValue]int64
@@ -160,49 +175,64 @@ func (c *collector) foldSection(ctx context.Context, sec *dataobj.Section, objPa
 		logsLocal = make(map[string]map[sectionRef]int64)
 	}
 
-	for rr.Next() {
-		row := rr.At()
-		if row.Kind != postings.KindLabel {
-			continue
+	// columns is built lazily from the first batch's schema and reused for
+	// every subsequent batch, which all share the same schema.
+	var columns postings.ColumnIndex
+	for {
+		batch, readErr := reader.Read(ctx, readBatchSize)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return fmt.Errorf("reading postings section %s: %w", objPath, readErr)
 		}
-		if c.opts.byNameValue {
-			nvLocal[labelValue{name: row.ColumnName, value: row.LabelValue}]++
-		}
-		if c.opts.byName {
-			nameLocal[row.ColumnName]++
-		}
-		if c.opts.logsLocality && row.ColumnName == c.opts.sortKey {
-			refs := logsLocal[row.LabelValue]
-			if refs == nil {
-				refs = make(map[sectionRef]int64)
-				logsLocal[row.LabelValue] = refs
+
+		if batch != nil && batch.NumRows() > 0 {
+			if columns == nil {
+				columns = postings.BuildColumnIndex(batch.Schema())
 			}
-			ref := sectionRef{objectPath: row.ObjectPath, sectionIndex: row.SectionIndex}
-			// Within a postings section a (section, value) pair is aggregated to
-			// a single row, but guard against duplicates by keeping the largest.
-			if sz, ok := refs[ref]; !ok || row.UncompressedSize > sz {
-				refs[ref] = row.UncompressedSize
+			for i := range int(batch.NumRows()) {
+				row := postings.DecodeRow(batch, columns, i)
+				if row.Kind != postings.KindLabel {
+					continue
+				}
+				if c.opts.byNameValue {
+					nvLocal[labelValue{name: row.ColumnName, value: row.LabelValue}]++
+				}
+				if c.opts.byName {
+					nameLocal[row.ColumnName]++
+				}
+				if c.opts.logsLocality && row.ColumnName == c.opts.sortKey {
+					refs := logsLocal[row.LabelValue]
+					if refs == nil {
+						refs = make(map[sectionRef]int64)
+						logsLocal[row.LabelValue] = refs
+					}
+					ref := sectionRef{objectPath: row.ObjectPath, sectionIndex: row.SectionIndex}
+					// Within a postings section a (section, value) pair is aggregated to
+					// a single row, but guard against duplicates by keeping the largest.
+					if sz, ok := refs[ref]; !ok || row.UncompressedSize > sz {
+						refs[ref] = row.UncompressedSize
+					}
+				}
+
+				if c.sink != nil {
+					facts = append(facts, factRow{
+						Tenant:           c.opts.tenant,
+						IndexObject:      objPath,
+						IndexSection:     sectionIdx,
+						Compacted:        isCompactedIndexPath(objPath),
+						ColumnName:       row.ColumnName,
+						LabelValue:       row.LabelValue,
+						LogsObject:       row.ObjectPath,
+						LogsSection:      row.SectionIndex,
+						StreamRefs:       int64(popcount(row.StreamIDBitmap)),
+						UncompressedSize: row.UncompressedSize,
+					})
+				}
 			}
 		}
 
-		if c.sink != nil {
-			facts = append(facts, factRow{
-				Tenant:           c.opts.tenant,
-				IndexObject:      objPath,
-				IndexSection:     sectionIdx,
-				ColumnName:       row.ColumnName,
-				LabelValue:       row.LabelValue,
-				LogsObject:       row.ObjectPath,
-				LogsSection:      row.SectionIndex,
-				StreamRefs:       int64(popcount(row.StreamIDBitmap)),
-				UncompressedSize: row.UncompressedSize,
-				MinTimestamp:     row.MinTimestamp,
-				MaxTimestamp:     row.MaxTimestamp,
-			})
+		if errors.Is(readErr, io.EOF) {
+			break
 		}
-	}
-	if err := rr.Err(); err != nil {
-		return fmt.Errorf("reading postings section %s: %w", objPath, err)
 	}
 
 	// Flush fact rows to the sink before taking the aggregation lock.
@@ -295,4 +325,34 @@ func findColumn(sec *postings.Section, ct postings.ColumnType) *postings.Column 
 		}
 	}
 	return nil
+}
+
+// projectionColumns returns the subset of psec's columns actually needed for
+// the collector's configured rollups plus, when set, the export sink. This
+// keeps the RowReader from downloading and decoding columns like
+// bloom_filter or stream_id_bitmap when nothing consumes them: bloom_filter
+// is never read (rows are already filtered to KindLabel), and
+// stream_id_bitmap is only needed to compute StreamRefs for export.
+// kindCol is always included since it backs the KindLabel predicate.
+func (c *collector) projectionColumns(psec *postings.Section, kindCol *postings.Column) []*postings.Column {
+	want := map[postings.ColumnType]bool{
+		postings.ColumnTypeColumnName: true,
+		postings.ColumnTypeLabelValue: true,
+	}
+	if c.opts.logsLocality || c.sink != nil {
+		want[postings.ColumnTypeObjectPath] = true
+		want[postings.ColumnTypeSectionIndex] = true
+		want[postings.ColumnTypeUncompressedSize] = true
+	}
+	if c.sink != nil {
+		want[postings.ColumnTypeStreamIDBitmap] = true
+	}
+
+	cols := []*postings.Column{kindCol}
+	for _, col := range psec.Columns() {
+		if want[col.Type] {
+			cols = append(cols, col)
+		}
+	}
+	return cols
 }

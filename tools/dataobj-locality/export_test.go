@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/stretchr/testify/require"
@@ -24,21 +23,18 @@ var testFacts = []factRow{
 		LogsSection:      2,
 		StreamRefs:       5,
 		UncompressedSize: 1024,
-		MinTimestamp:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		MaxTimestamp:     time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC).UnixNano(),
 	},
 	{
 		Tenant:           "tenant-a",
-		IndexObject:      "indexes/00/abc123",
+		IndexObject:      "indexes/tenants/tenant-a/00/ghi789",
 		IndexSection:     5,
+		Compacted:        true,
 		ColumnName:       "service_name",
 		LabelValue:       "backend",
 		LogsObject:       "logs/00/ghi789",
 		LogsSection:      0,
 		StreamRefs:       3,
 		UncompressedSize: 512,
-		MinTimestamp:     time.Date(2024, 1, 1, 2, 0, 0, 0, time.UTC).UnixNano(),
-		MaxTimestamp:     time.Date(2024, 1, 1, 3, 0, 0, 0, time.UTC).UnixNano(),
 	},
 }
 
@@ -72,11 +68,11 @@ func TestParquetFactSink_RoundTrip(t *testing.T) {
 	require.Equal(t, testFacts[0].LogsSection, got[0].LogsSection)
 	require.Equal(t, testFacts[0].StreamRefs, got[0].StreamRefs)
 	require.Equal(t, testFacts[0].UncompressedSize, got[0].UncompressedSize)
-	require.Equal(t, testFacts[0].MinTimestamp, got[0].MinTimestamp)
-	require.Equal(t, testFacts[0].MaxTimestamp, got[0].MaxTimestamp)
+	require.Equal(t, testFacts[0].Compacted, got[0].Compacted)
 
 	require.Equal(t, testFacts[1].LabelValue, got[1].LabelValue)
 	require.Equal(t, testFacts[1].IndexSection, got[1].IndexSection)
+	require.Equal(t, testFacts[1].Compacted, got[1].Compacted)
 }
 
 func TestCSVFactSink_RoundTrip(t *testing.T) {
@@ -100,19 +96,21 @@ func TestCSVFactSink_RoundTrip(t *testing.T) {
 	require.Equal(t, csvHeader, records[0])
 
 	// Spot-check data row 0.
-	// Column layout: tenant(0) index_object(1) index_section(2) column_name(3)
-	//                label_value(4) logs_object(5) logs_section(6) stream_refs(7)
-	//                uncompressed_size(8) min_timestamp(9) max_timestamp(10)
+	// Column layout: tenant(0) index_object(1) index_section(2) compacted(3)
+	//                column_name(4) label_value(5) logs_object(6) logs_section(7)
+	//                stream_refs(8) uncompressed_size(9)
 	require.Equal(t, "tenant-a", records[1][0])
-	require.Equal(t, "3", records[1][2])        // index_section
-	require.Equal(t, "service_name", records[1][3])
-	require.Equal(t, "frontend", records[1][4])
-	require.Equal(t, "2", records[1][6])    // logs_section
-	require.Equal(t, "5", records[1][7])    // stream_refs
-	require.Equal(t, "1024", records[1][8]) // uncompressed_size
+	require.Equal(t, "3", records[1][2])     // index_section
+	require.Equal(t, "false", records[1][3]) // compacted
+	require.Equal(t, "service_name", records[1][4])
+	require.Equal(t, "frontend", records[1][5])
+	require.Equal(t, "2", records[1][7])    // logs_section
+	require.Equal(t, "5", records[1][8])    // stream_refs
+	require.Equal(t, "1024", records[1][9]) // uncompressed_size
 
 	// Spot-check data row 1.
-	require.Equal(t, "backend", records[2][4])
+	require.Equal(t, "true", records[2][3]) // compacted
+	require.Equal(t, "backend", records[2][5])
 	require.Equal(t, "5", records[2][2]) // index_section
 }
 

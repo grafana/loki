@@ -5,8 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

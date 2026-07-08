@@ -99,14 +99,13 @@ duckdb
 | `tenant` | VARCHAR | Tenant the posting belongs to. |
 | `index_object` | VARCHAR | Path of the index object that contains the postings section. |
 | `index_section` | BIGINT | Section index of the postings section within the index object. Together with `index_object` this uniquely identifies a physical postings section, matching the `sectionSpread` metric in the console report. |
+| `compacted` | BOOLEAN | Whether the index object is a compacted (IndexMerge) output rather than an uncompacted per-partition index. Derived from the index object path (`indexes/tenants/...` = compacted). |
 | `column_name` | VARCHAR | Label name (e.g. `service_name`). |
 | `label_value` | VARCHAR | Label value (e.g. `frontend`). |
 | `logs_object` | VARCHAR | Path of the logs object referenced by the posting. |
 | `logs_section` | BIGINT | Section index within the logs object. |
 | `stream_refs` | BIGINT | Number of distinct log streams in the section for this label value. |
 | `uncompressed_size` | BIGINT | Uncompressed bytes of log records for this label value in this section. |
-| `min_timestamp` | TIMESTAMP | Earliest log record timestamp in the section for this label value. |
-| `max_timestamp` | TIMESTAMP | Latest log record timestamp in the section for this label value. |
 
 ### Useful queries
 

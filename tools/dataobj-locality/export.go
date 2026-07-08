@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/parquet-go/parquet-go"
 )
@@ -18,14 +17,13 @@ type factRow struct {
 	Tenant           string `parquet:"tenant,dict"`
 	IndexObject      string `parquet:"index_object,dict"`
 	IndexSection     int64  `parquet:"index_section"`
+	Compacted        bool   `parquet:"compacted"`
 	ColumnName       string `parquet:"column_name,dict"`
 	LabelValue       string `parquet:"label_value,dict"`
 	LogsObject       string `parquet:"logs_object,dict"`
 	LogsSection      int64  `parquet:"logs_section"`
 	StreamRefs       int64  `parquet:"stream_refs"`
 	UncompressedSize int64  `parquet:"uncompressed_size"`
-	MinTimestamp     int64  `parquet:"min_timestamp,timestamp(nanosecond)"`
-	MaxTimestamp     int64  `parquet:"max_timestamp,timestamp(nanosecond)"`
 }
 
 // csvHeader lists the CSV column names in the same order as [factRow.record].
@@ -33,14 +31,13 @@ var csvHeader = []string{
 	"tenant",
 	"index_object",
 	"index_section",
+	"compacted",
 	"column_name",
 	"label_value",
 	"logs_object",
 	"logs_section",
 	"stream_refs",
 	"uncompressed_size",
-	"min_timestamp",
-	"max_timestamp",
 }
 
 // record converts a factRow to a CSV record. Column order matches csvHeader.
@@ -49,14 +46,13 @@ func (r factRow) record() []string {
 		r.Tenant,
 		r.IndexObject,
 		strconv.FormatInt(r.IndexSection, 10),
+		strconv.FormatBool(r.Compacted),
 		r.ColumnName,
 		r.LabelValue,
 		r.LogsObject,
 		strconv.FormatInt(r.LogsSection, 10),
 		strconv.FormatInt(r.StreamRefs, 10),
 		strconv.FormatInt(r.UncompressedSize, 10),
-		time.Unix(0, r.MinTimestamp).UTC().Format(time.RFC3339Nano),
-		time.Unix(0, r.MaxTimestamp).UTC().Format(time.RFC3339Nano),
 	}
 }
 
