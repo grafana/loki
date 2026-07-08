@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/runtimeconfig"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/runtime"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"

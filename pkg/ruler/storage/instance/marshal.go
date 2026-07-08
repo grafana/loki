@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"io"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // UnmarshalConfig unmarshals an instance config from a reader based on a
