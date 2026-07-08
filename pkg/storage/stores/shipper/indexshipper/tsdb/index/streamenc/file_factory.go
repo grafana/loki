@@ -121,6 +121,22 @@ func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
 	return Decbuf{r: reader}
 }
 
+// FileSize returns the current size of the underlying file. It's a
+// convenience for callers that need to seek to a tail-relative offset without
+// keeping a separate handle open.
+func (df *FilePoolDecbufFactory) FileSize() (int64, error) {
+	f, err := df.files.Get()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = df.files.Put(f) }()
+	stat, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	return stat.Size(), nil
+}
+
 // Close cleans up resources associated with this DecbufFactory.
 func (df *FilePoolDecbufFactory) Close() error {
 	df.files.Stop()
