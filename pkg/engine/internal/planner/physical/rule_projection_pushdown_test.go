@@ -950,3 +950,147 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 		})
 	}
 }
+
+func TestAddUniqueColumnExpr(t *testing.T) {
+	col := func(name string, typ types.ColumnType) *ColumnExpr {
+		return &ColumnExpr{Ref: types.ColumnRef{Column: name, Type: typ}}
+	}
+
+	refs := func(projections []ColumnExpression) []types.ColumnRef {
+		var out []types.ColumnRef
+		for _, p := range projections {
+			if pe, ok := p.(*ColumnExpr); ok {
+				out = append(out, pe.Ref)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Column != out[j].Column {
+				return out[i].Column < out[j].Column
+			}
+			return out[i].Type < out[j].Type
+		})
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		start    []ColumnExpression
+		add      []*ColumnExpr
+		expected []types.ColumnRef
+	}{
+		{
+			name:  "Ambiguous added first absorbs Label added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Label already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added first absorbs Metadata added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeAmbiguous),
+				col("trace_id", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Metadata already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeMetadata),
+				col("trace_id", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous absorbs both Label and Metadata with same name at once",
+			start: nil,
+			add: []*ColumnExpr{
+				col("foo", types.ColumnTypeLabel),
+				col("foo", types.ColumnTypeMetadata),
+				col("foo", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "foo", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Builtin coexists with Ambiguous of same name (PR #22907 case)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("message", types.ColumnTypeBuiltin),
+				col("message", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				// Sorted by type ordinal: Builtin (1) < Ambiguous (5).
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Label and Metadata with same name coexist (different storage sections)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("status", types.ColumnTypeLabel),
+				col("status", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "status", Type: types.ColumnTypeLabel},
+				{Column: "status", Type: types.ColumnTypeMetadata},
+			},
+		},
+		{
+			name:  "Exact duplicate (name, type) is a no-op",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeLabel},
+			},
+		},
+		{
+			name:  "Different names never absorb each other",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("service", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+				{Column: "service", Type: types.ColumnTypeLabel},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projections := tt.start
+			for _, c := range tt.add {
+				projections, _ = addUniqueColumnExpr(projections, c)
+			}
+			require.Equal(t, tt.expected, refs(projections))
+		})
+	}
+}
