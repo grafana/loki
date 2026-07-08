@@ -45,61 +45,63 @@ type circuitBreaker interface {
 	Allow() (bool, func(err error))
 }
 
-// A linearRampCircuitBreaker is a circuit breaker which, in half-open state,
-// accepts more requests for each second that passes in half-opened until
-// the half-open period is over.
-type linearRampCircuitBreaker struct {
-	state, totalOpens          int
-	openPeriod, halfOpenPeriod time.Duration
-	lastOpened                 time.Time
-	isOpenErr                  func(err error) bool
-	maxRequests                int
-	requests                   int
-	mtx                        sync.Mutex
+// A trialCircuitBreaker is a circuit breaker which, once the open period has
+// elapsed, allows up to maxTrials trial requests through in the half-open
+// state. If all of those trials succeed it switches back to closed. If any
+// trial fails it switches back to open.
+type trialCircuitBreaker struct {
+	state, totalOpens int
+	openPeriod        time.Duration
+	lastOpened        time.Time
+	isOpenErr         func(err error) bool
+	maxTrials         int
+	trials            int
+	successes         int
+	mtx               sync.Mutex
 }
 
-// newLinearRampCircuitBreaker returns a new circuit breaker which remains
-// open until the end of the open window, and half-open until the end of the
-// half-open window. It drops all requests in the open state, and drops all
-// requests over max requests in half open state. It never drops requests
-// in closed state.
-func newLinearRampCircuitBreaker(
-	openPeriod, halfOpenPeriod time.Duration,
+// newTrialCircuitBreaker returns a new circuit breaker which remains open until
+// the end of the open window, then allows up to maxTrials trial requests in the
+// half-open state. It drops all requests in the open state, and drops requests
+// over maxTrials in the half-open state. It never drops requests in the closed
+// state.
+func newTrialCircuitBreaker(
+	openPeriod time.Duration,
 	isOpenErr func(err error) bool,
-) *linearRampCircuitBreaker {
-	return &linearRampCircuitBreaker{
-		state:          circuitBreakerClosed,
-		openPeriod:     openPeriod,
-		halfOpenPeriod: halfOpenPeriod,
-		isOpenErr:      isOpenErr,
+	maxTrials int,
+) *trialCircuitBreaker {
+	return &trialCircuitBreaker{
+		state:      circuitBreakerClosed,
+		openPeriod: openPeriod,
+		isOpenErr:  isOpenErr,
+		maxTrials:  maxTrials,
 	}
 }
 
 // Allow implements [circuitBreaker].
-func (b *linearRampCircuitBreaker) Allow() (ok bool, done func(err error)) {
+func (b *trialCircuitBreaker) Allow() (ok bool, done func(err error)) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 	ok = b.handleAllow()
 	if !ok {
 		return ok, noopDoneFunc
 	}
-	b.requests++
 	return ok, b.doneFunc
 }
 
 // Describe implements [prometheus.Collector].
-func (b *linearRampCircuitBreaker) Describe(descs chan<- *prometheus.Desc) {
+func (b *trialCircuitBreaker) Describe(descs chan<- *prometheus.Desc) {
 	descs <- circuitBreakerStateDesc
 	descs <- circuitBreakerOpenTotal
 	descs <- circuitBreakerMaxRequests
 }
 
 // Collect implements [prometheus.Collector].
-func (b *linearRampCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
+func (b *trialCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
 	b.mtx.Lock()
 	state := float64(b.state)
 	totalOpens := float64(b.totalOpens)
-	maxRequests := float64(b.maxRequests)
+	maxTrials := float64(b.maxTrials)
 	b.mtx.Unlock()
 	metrics <- prometheus.MustNewConstMetric(
 		circuitBreakerStateDesc,
@@ -114,33 +116,51 @@ func (b *linearRampCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
 	metrics <- prometheus.MustNewConstMetric(
 		circuitBreakerMaxRequests,
 		prometheus.GaugeValue,
-		maxRequests,
+		maxTrials,
 	)
 }
 
-// A reference to doneFunc is returned in successful calls to [Allow]. It subtracts
-// 1 from the requests counter and also checks if the (optional) error should open
-// the circuit breaker.
-func (b *linearRampCircuitBreaker) doneFunc(err error) {
+// A reference to doneFunc is returned in successful calls to [Allow]. It checks
+// if the (optional) error should open the circuit breaker, and otherwise counts
+// successful trials in the half-open state, switching to closed once all trial
+// requests have succeeded.
+func (b *trialCircuitBreaker) doneFunc(err error) {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
-	b.requests--
 	if b.isOpenErr(err) {
 		b.open()
+		return
+	}
+	if b.state == circuitBreakerHalfOpen {
+		b.successes++
+		if b.successes >= b.maxTrials {
+			b.close()
+		}
 	}
 }
 
-func (b *linearRampCircuitBreaker) open() {
+func (b *trialCircuitBreaker) open() {
 	if b.state == circuitBreakerOpen {
 		return
 	}
 	b.state = circuitBreakerOpen
 	b.totalOpens++
 	b.lastOpened = time.Now()
-	b.maxRequests = max(1, b.requests)
 }
 
-func (b *linearRampCircuitBreaker) handleAllow() bool {
+func (b *trialCircuitBreaker) halfOpen() {
+	b.state = circuitBreakerHalfOpen
+	b.trials = 0
+	b.successes = 0
+}
+
+func (b *trialCircuitBreaker) close() {
+	b.state = circuitBreakerClosed
+	b.trials = 0
+	b.successes = 0
+}
+
+func (b *trialCircuitBreaker) handleAllow() bool {
 	switch b.state {
 	case circuitBreakerClosed:
 		return true
@@ -154,28 +174,21 @@ func (b *linearRampCircuitBreaker) handleAllow() bool {
 	}
 }
 
-func (b *linearRampCircuitBreaker) handleOpenState() bool {
+func (b *trialCircuitBreaker) handleOpenState() bool {
 	if time.Since(b.lastOpened) > b.openPeriod {
-		b.state = circuitBreakerHalfOpen
+		b.halfOpen()
 		return b.handleHalfOpenState()
 	}
 	return false
 }
 
-func (b *linearRampCircuitBreaker) handleHalfOpenState() bool {
-	d := time.Since(b.lastOpened)
-	if d > b.openPeriod+b.halfOpenPeriod {
-		b.state = circuitBreakerClosed
+// handleHalfOpenState allows up to maxTrials trial requests through. Requests
+// over maxTrials are dropped until the outstanding trials either all succeed
+// (switching to closed) or one fails (switching to open).
+func (b *trialCircuitBreaker) handleHalfOpenState() bool {
+	if b.trials < b.maxTrials {
+		b.trials++
 		return true
 	}
-	return b.allowHalfOpen(d - b.openPeriod)
-}
-
-// allowHalfOpen returns true if a request is allowed d seconds into the
-// half-open period. The number of allowed requests increases from 0 to
-// maxRequests in equal increments over the half-open period.
-func (b *linearRampCircuitBreaker) allowHalfOpen(d time.Duration) bool {
-	ramp := d.Seconds() / b.halfOpenPeriod.Seconds()
-	rampMax := int(float64(b.maxRequests) * ramp)
-	return b.requests < min(b.maxRequests, rampMax)
+	return false
 }

@@ -152,15 +152,13 @@ func (cfg *Config) Validate() error {
 }
 
 type CircuitBreakerConfig struct {
-	Enabled        bool          `yaml:"enabled"`
-	OpenPeriod     time.Duration `yaml:"open_period"`
-	HalfOpenPeriod time.Duration `yaml:"half_open_period"`
+	Enabled    bool          `yaml:"enabled"`
+	OpenPeriod time.Duration `yaml:"open_period"`
 }
 
 func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
 	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
-	f.DurationVar(&cfg.HalfOpenPeriod, "distributor.circuit-breaker.half-open-period", 30*time.Second, "The half-open period.")
 }
 
 func (cfg *CircuitBreakerConfig) Validate() error {
@@ -169,9 +167,6 @@ func (cfg *CircuitBreakerConfig) Validate() error {
 	}
 	if cfg.OpenPeriod < 0 {
 		return errors.New("the open period must be a positive duration")
-	}
-	if cfg.HalfOpenPeriod <= 0 {
-		return errors.New("the half-open period must be a positive duration")
 	}
 	return nil
 }
@@ -484,12 +479,12 @@ func New(
 	}
 
 	if cfg.CircuitBreaker.Enabled {
-		circuitBreaker := newLinearRampCircuitBreaker(
+		circuitBreaker := newTrialCircuitBreaker(
 			cfg.CircuitBreaker.OpenPeriod,
-			cfg.CircuitBreaker.HalfOpenPeriod,
 			func(err error) bool {
 				return errors.Is(err, kgo.ErrMaxBuffered)
 			},
+			10,
 		)
 		registerer.MustRegister(circuitBreaker)
 		d.circuitBreaker = circuitBreaker
