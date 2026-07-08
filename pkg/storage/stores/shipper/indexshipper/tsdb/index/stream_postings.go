@@ -278,11 +278,9 @@ func applyFingerprintFilter(p Postings, fpFilter FingerprintFilter, fpOffsets Fi
 	return NewShardedPostings(p, fpFilter, fpOffsets)
 }
 
-// streamFingerprintOffsets returns the reader's fingerprint offsets, or nil
-// if fingerprint-offsets loading hasn't landed yet (P2.A7). Callers that need
-// sharding will surface as fpFilter != nil; for now we return nil and the
-// filter application would treat it as an empty offsets table. Once A7
-// lands this should return r.fingerprintOffsets unconditionally.
+// streamFingerprintOffsets returns the reader's fingerprint offsets. Loaded
+// during construction (P2.A7); callers that pass a non-nil FingerprintFilter
+// rely on this table to shard postings.
 func (r *StreamReader) streamFingerprintOffsets() FingerprintOffsets {
 	return r.fingerprintOffsets
 }
