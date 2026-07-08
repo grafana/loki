@@ -76,6 +76,11 @@ type Config struct {
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	DownloadTimeout          time.Duration             `yaml:"download_timeout"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
+	// DisableIndexMmap, when true, causes on-disk TSDB index files to be loaded
+	// into memory via os.ReadFile instead of mmap. This trades additional heap
+	// usage for I/O that the Go runtime can schedule around, avoiding invisible
+	// goroutine stalls caused by mmap page faults. Experimental; default false.
+	DisableIndexMmap bool `yaml:"disable_index_mmap"`
 
 	// Temporary experimental feature
 	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
@@ -101,6 +106,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
 	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query. "+
 		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
+	f.BoolVar(&cfg.DisableIndexMmap, prefix+"shipper.disable-index-mmap", false, "Experimental: load TSDB index files into memory (os.ReadFile) instead of mmap'ing them. Avoids invisible goroutine stalls from mmap page faults at the cost of additional heap usage.")
 }
 
 func (cfg *Config) Validate() error {

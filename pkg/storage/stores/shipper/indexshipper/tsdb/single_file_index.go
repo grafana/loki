@@ -8,6 +8,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -24,6 +25,24 @@ import (
 )
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
+
+// disableIndexMmap, when true, causes NewTSDBIndexFromFile to load index files
+// into memory with os.ReadFile instead of mmap'ing them. This is a process-wide
+// toggle configured at store initialization; see indexshipper.Config.DisableIndexMmap.
+// Package-level state is a phase-1 shortcut — a future refactor should thread
+// this through the constructor arguments.
+var disableIndexMmap atomic.Bool
+
+// SetDisableIndexMmap configures whether subsequent calls to NewTSDBIndexFromFile
+// avoid mmap in favor of an in-memory buffer.
+func SetDisableIndexMmap(disable bool) {
+	disableIndexMmap.Store(disable)
+}
+
+// GetDisableIndexMmap reports the current value of the mmap-disable toggle.
+func GetDisableIndexMmap() bool {
+	return disableIndexMmap.Load()
+}
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
@@ -127,7 +146,15 @@ type TSDBIndex struct {
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
-	reader, err := index.NewFileReader(location)
+	var (
+		reader *index.Reader
+		err    error
+	)
+	if disableIndexMmap.Load() {
+		reader, err = index.NewBufferedFileReader(location)
+	} else {
+		reader, err = index.NewFileReader(location)
+	}
 	if err != nil {
 		return nil, nil, err
 	}

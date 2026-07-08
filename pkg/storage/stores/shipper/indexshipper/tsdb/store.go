@@ -56,6 +56,11 @@ func NewStore(
 		logger: logger,
 	}
 
+	// Phase 1 wiring for the mmap-free index reader path: honor the
+	// DisableIndexMmap flag as a process-wide toggle. This is a package-level
+	// shortcut — see SetDisableIndexMmap in single_file_index.go.
+	SetDisableIndexMmap(indexShipperCfg.DisableIndexMmap)
+
 	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
 		return nil, nil, err
 	}
