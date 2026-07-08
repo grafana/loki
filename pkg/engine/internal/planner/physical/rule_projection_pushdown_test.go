@@ -1060,7 +1060,7 @@ func TestAddUniqueColumnExpr(t *testing.T) {
 			},
 		},
 		{
-			name:  "Exact duplicate (name, type) is a no-op",
+			name:  "Exact duplicate (name, type) is skipped",
 			start: nil,
 			add: []*ColumnExpr{
 				col("level", types.ColumnTypeLabel),
