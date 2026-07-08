@@ -205,13 +205,16 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 
 	var (
-		refs   []*compactionv2pb.SectionRef
-		schema []string
-		reader stats.Reader
+		refs           []*compactionv2pb.SectionRef
+		schema         []string
+		reader         stats.Reader
+		sortSchemaLbls []string
+		schemaDerived  bool
 	)
 
 	defer reader.Close()
 	const batchSize = 1024
+	scratch := make([]stats.Stat, batchSize)
 
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		if section.Tenant != tenant {
@@ -238,16 +241,12 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				break
 			}
 
-			dest := make([]stats.Stat, numRows)
+			dest := scratch[:numRows]
 			n, err := stats.FromRecordBatch(rec, dest)
 			if err != nil {
 				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
-			var (
-				sortSchemaLbls []string
-				schemaDerived  bool
-			)
 			for i := range n {
 				st := dest[i]
 
