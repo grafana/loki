@@ -1,8 +1,10 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -339,6 +341,28 @@ func taskSectionIDs(runs []*compactionv2pb.RunRef) []string {
 	for _, r := range runs {
 		for _, s := range r.Sections {
 			ids = append(ids, fmt.Sprintf("%s#%d", s.ObjectPath, s.SectionIndex))
+		}
+	}
+	return ids
+}
+
+// logTaskSectionIDs returns unique IDs for every section across [runs]. A log
+// SectionRef's identity is {ObjectPath, SectionIndex, labelTuple}. Components
+// are separated by \x00 (which cannot occur in object paths or label values) to
+// keep the encoding unambiguous. Callers may reuse the same [buf] across calls.
+func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []string {
+	var ids []string
+	for _, r := range runs {
+		for _, s := range r.Sections {
+			buf.Reset()
+			buf.WriteString(s.ObjectPath)
+			buf.WriteByte(0)
+			buf.WriteString(strconv.FormatInt(s.SectionIndex, 10))
+			for _, v := range s.MinKey {
+				buf.WriteByte(0)
+				buf.WriteString(v)
+			}
+			ids = append(ids, buf.String())
 		}
 	}
 	return ids
