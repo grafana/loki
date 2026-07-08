@@ -34,11 +34,8 @@ You may also use it standalone for your projects.
 
 * **2025-12-19** : new community chat on discord
   * a new discord community channel is available to be notified of changes and support users
-  * our venerable Slack channel remains open, and will be eventually discontinued on **2026-03-31**
 
 You may join the discord community by clicking the invite link on the discord badge (also above). [![Discord Channel][discord-badge]][discord-url]
-
-Or join our Slack channel: [![Slack Channel][slack-logo]![slack-badge]][slack-url]
 
 ## Status
 
@@ -70,11 +67,12 @@ Child modules will continue to evolve and some new ones may be added in the futu
 | `cmdutils`     | utilities to work with CLIs ||
 | `conv`        | type conversion utilities | convert between values and pointers for any types<br />convert from string to builtin types (wraps `strconv`)<br />require `./typeutils` (test dependency)<br /> |
 | `fileutils`   | file utilities | |
-| `jsonname`    | JSON utilities | infer JSON names from `go` properties<br /> |
+| `jsonname`    | JSON utilities (deprecated) | infer JSON names from `go` properties<br />use `github.com/go-openapi/jsonpointer/jsonname` instead |
 | `jsonutils`   | JSON utilities | fast json concatenation<br />read and write JSON from and to dynamic `go` data structures<br />~require `github.com/mailru/easyjson`~<br /> |
 | `loading`     | file loading | load from file or http<br />require `./yamlutils`<br /> |
 | `mangling`    | safe name generation | name mangling for `go`<br /> |
 | `netutils`    | networking utilities | host, port from address<br /> |
+| `pools`       | utilities to work with sync.Pools | |
 | `stringutils` | `string` utilities | search in slice (with case-insensitive)<br />split/join query parameters as arrays<br /> |
 | `typeutils`   | `go` types utilities | check the zero value for any type<br />safe check for a nil value<br /> |
 | `yamlutils`   | YAML utilities | converting YAML to JSON<br />loading YAML into a dynamic YAML document<br />maintaining the original order of keys in YAML objects<br />require `./jsonutils`<br />~require `github.com/mailru/easyjson`~<br />require `go.yaml.in/yaml/v3`<br /> |
@@ -171,9 +169,9 @@ on top of which it has been built.
 ## Other documentation
 
 * [All-time contributors](./CONTRIBUTORS.md)
-* [Contributing guidelines](.github/CONTRIBUTING.md)
-* [Maintainers documentation](docs/MAINTAINERS.md)
-* [Code style](docs/STYLE.md)
+* [Contributing guidelines][contributing-doc-site]
+* [Maintainers documentation][maintainers-doc-site]
+* [Code style][style-doc-site]
 
 ## Cutting a new release
 
@@ -208,11 +206,8 @@ Maintainers can cut a new release by either:
 [doc-url]: https://goswagger.io/go-openapi
 [godoc-badge]: https://pkg.go.dev/badge/github.com/go-openapi/swag
 [godoc-url]: http://pkg.go.dev/github.com/go-openapi/swag
-[slack-logo]: https://a.slack-edge.com/e6a93c1/img/icons/favicon-32.png
-[slack-badge]: https://img.shields.io/badge/slack-blue?link=https%3A%2F%2Fgoswagger.slack.com%2Farchives%2FC04R30YM
-[slack-url]: https://goswagger.slack.com/archives/C04R30YMU
 [discord-badge]: https://img.shields.io/discord/1446918742398341256?logo=discord&label=discord&color=blue
-[discord-url]: https://discord.gg/twZ9BwT3
+[discord-url]: https://discord.gg/FfnFYaC3k5
 
 <!-- Badges: license & compliance -->
 [license-badge]: http://img.shields.io/badge/license-Apache%20v2-orange.svg
@@ -222,3 +217,7 @@ Maintainers can cut a new release by either:
 [goversion-url]: https://github.com/go-openapi/swag/blob/master/go.mod
 [top-badge]: https://img.shields.io/github/languages/top/go-openapi/swag
 [commits-badge]: https://img.shields.io/github/commits-since/go-openapi/swag/latest
+<!-- Organization docs -->
+[contributing-doc-site]: https://go-openapi.github.io/doc-site/contributing/contributing/index.html
+[maintainers-doc-site]: https://go-openapi.github.io/doc-site/maintainers/index.html
+[style-doc-site]: https://go-openapi.github.io/doc-site/contributing/style/index.html
