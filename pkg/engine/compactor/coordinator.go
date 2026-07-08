@@ -134,9 +134,10 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	}
 
 	var (
-		converged = 0 // tenants already at <=1 index (no work)
-		compacted = 0 // tenants whose cycle ran to completion
-		failed    = 0 // tenants whose cycle returned an error
+		converged    = 0 // tenants with no index, or a single index with no log-merge work
+		compacted    = 0 // tenants whose cycle ran to completion
+		logCompacted = 0 // tenants whose window dispatched log-merge tasks
+		failed       = 0 // tenants whose cycle returned an error
 	)
 	for tenant, entries := range indexes {
 		// Stop the cycle early on context cancellation. Remaining tenants
@@ -151,6 +152,8 @@ func (c *coordinator) runCycle(ctx context.Context) {
 			converged++
 		case tenantCycleCompacted:
 			compacted++
+		case tenantCycleLogCompacted:
+			logCompacted++
 		case tenantCycleFailed:
 			failed++
 		}
@@ -164,6 +167,7 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		"tenants_total", len(indexes),
 		"tenants_compacted", compacted,
 		"tenants_converged", converged,
+		"tenants_log_compacted", logCompacted,
 		"tenants_failed", failed,
 	)
 
@@ -178,6 +182,10 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		} else {
 			cycleOutcome = "compacted"
 		}
+	}
+
+	if compacted == 0 && failed == 0 && logCompacted > 0 {
+		cycleOutcome = "log_compacted"
 	}
 	c.metrics.observeCycle(cycleOutcome, duration)
 
@@ -195,10 +203,13 @@ func (c *coordinator) runCycle(ctx context.Context) {
 type tenantCycleResult int
 
 const (
-	// tenantCycleConverged: tenant was already at <=1 index, no work done.
+	// tenantCycleConverged: no index at all, or a single converged index with no
+	// log-merge work; no work dispatched.
 	tenantCycleConverged tenantCycleResult = iota
-	// tenantCycleCompacted: tenant cycle ran to completion.
+	// tenantCycleCompacted: index-compaction cycle ran to completion.
 	tenantCycleCompacted
+	// tenantCycleLogCompacted: converged window dispatched log-merge tasks.
+	tenantCycleLogCompacted
 	// tenantCycleFailed: the tenant cycle returned an error.
 	tenantCycleFailed
 )
@@ -213,12 +224,32 @@ func (c *coordinator) runTenantCycle(
 ) tenantCycleResult {
 	tenantStart := c.clock()
 
-	if len(entries) <= 1 {
-		level.Debug(c.logger).Log("msg", "cycle: tenant converged, skipping",
-			"tenant", tenant, "indexes", len(entries))
+	if len(entries) == 0 {
+		level.Debug(c.logger).Log("msg", "cycle: tenant has no index, skipping", "tenant", tenant)
 		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(tenantStart), compactionStats{})
 		c.metrics.observeEntries(tenant, entries, c.clock())
 		return tenantCycleConverged
+	}
+
+	if len(entries) == 1 {
+		result, err := c.compactTenantLogs(ctx, tenant, window, entries[0])
+		tenantDuration := c.clock().Sub(tenantStart)
+		switch {
+		case err != nil:
+			level.Warn(c.logger).Log("msg", "tenant log-compaction failed",
+				"tenant", tenant, "window", window, "err", err)
+			c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
+			c.metrics.observeEntries(tenant, entries, c.clock())
+			return tenantCycleFailed
+		case result == tenantCycleConverged:
+			c.metrics.observeTenantCycle(tenant, "converged", tenantDuration, compactionStats{})
+			c.metrics.observeEntries(tenant, entries, c.clock())
+			return tenantCycleConverged
+		default:
+			c.metrics.observeTenantCycle(tenant, "log_compacted", tenantDuration, compactionStats{})
+			c.metrics.observeEntries(tenant, entries, c.clock())
+			return tenantCycleLogCompacted
+		}
 	}
 
 	stats, err := c.compactTenant(ctx, tenant, window, entries)
@@ -241,6 +272,58 @@ type compactionStats struct {
 	removed    int
 	added      int
 	dispatched int
+}
+
+// compactTenantLogs plans and dispatches log-merge tasks for a window with a
+// converged index. It reads the index's stats sections, forms runs, and
+// dispatches one LogMerge plan per task. Returns tenantCycleConverged when
+// there is no log work, tenantCycleLogCompacted when plans were dispatched.
+func (c *coordinator) compactTenantLogs(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	converged indexEntry,
+) (tenantCycleResult, error) {
+	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
+	if err != nil {
+		return tenantCycleFailed, fmt.Errorf("reading log section refs: %w", err)
+	}
+
+	tasks := v2.Plan(ctx, sections, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+	if len(tasks) == 0 {
+		level.Debug(c.logger).Log("msg", "log-compaction: no tasks",
+			"tenant", tenant, "window", window)
+		return tenantCycleConverged, nil
+	}
+
+	var pathBuilder indexMergePath
+	var idBuf bytes.Buffer
+	outputs := make([]string, len(tasks))
+	for i, ts := range tasks {
+		outputs[i] = pathBuilder.Build(tenant, window, c.cfg.PlanVersion, i, logTaskSectionIDs(ts.Runs, &idBuf))
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	if c.cfg.MaxRunningCompactionTasks > 0 {
+		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
+	}
+	for i, ts := range tasks {
+		g.Go(func() error {
+			plan := buildLogMergePlan(tenant, window, ts, outputs[i])
+			opts := workflow.Options{
+				Tenant: tenant,
+				Actor:  []string{"compaction", "log-merge"},
+			}
+			return c.runPlan(gctx, opts, plan)
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return tenantCycleFailed, fmt.Errorf("failed to execute log-merge tasks: %w", err)
+	}
+
+	level.Info(c.logger).Log("msg", "log-compaction dispatched",
+		"tenant", tenant, "window", window, "tasks", len(tasks))
+	return tenantCycleLogCompacted, nil
 }
 
 // compactTenant performs the per-(tenant, window) compaction. Returns the
