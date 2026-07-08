@@ -47,6 +47,10 @@ type StreamReader struct {
 
 	toc     *TOC
 	version int
+
+	// symbols is set by newStreamSymbols once the symbol section has been
+	// scanned. It stays nil until P2.A3 fires during construction.
+	symbols *streamSymbols
 }
 
 // NewStreamFileReader opens a TSDB index file for streaming access. The file
@@ -90,6 +94,12 @@ func NewStreamFileReaderWithOptions(path string, opts StreamReaderOptions) (*Str
 		return nil, errors.Wrap(err, "read TOC")
 	}
 	sr.toc = toc
+
+	sr.symbols, err = newStreamSymbols(context.Background(), factory, sr.version, int(toc.Symbols))
+	if err != nil {
+		_ = factory.Close()
+		return nil, errors.Wrap(err, "read symbols")
+	}
 
 	return sr, nil
 }
@@ -223,17 +233,21 @@ func (r *StreamReader) Close() error {
 // --------- Not-yet-implemented surface (later A proposals) ---------
 
 // Symbols returns an iterator over the symbols in the index.
-// Not yet implemented — P2.A3.
 func (r *StreamReader) Symbols() StringIter {
-	return errStringIter{err: errStreamReaderNotImplemented("Symbols")}
+	return r.symbols.Iter()
 }
 
-// SymbolTableSize returns the on-disk size of the symbol table.
-// Not yet implemented — P2.A3.
+// SymbolTableSize returns the on-heap footprint of the sparse symbol offsets
+// table. Matches Reader.SymbolTableSize() semantics.
 func (r *StreamReader) SymbolTableSize() uint64 {
-	// Return 0 as a benign default until A3 lands. The value is used for
-	// stats reporting; callers must not treat it as authoritative until then.
-	return 0
+	return uint64(r.symbols.Size())
+}
+
+// lookupSymbol resolves a symbol ordinal (or file offset on V1) to its
+// string value. It mirrors Reader.lookupSymbol; the nameSymbols cache lives
+// on future proposals (A4).
+func (r *StreamReader) lookupSymbol(o uint32) (string, error) {
+	return r.symbols.Lookup(o)
 }
 
 // LabelValues returns possible label values for the given name.
