@@ -641,8 +641,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
+
+	if newInflightBytes > d.cfg.KafkaConfig.ProducerMaxBufferedBytes {
+		return nil, kgo.ErrMaxBuffered
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
