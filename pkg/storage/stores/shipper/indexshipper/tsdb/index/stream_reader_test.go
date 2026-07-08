@@ -232,6 +232,77 @@ func TestStreamReader_PostingsMatchesMmap(t *testing.T) {
 	require.NoError(t, sp.Err())
 }
 
+// TestStreamReader_SeriesMatchesMmap covers P2.A5 — for every posting ref
+// on the fixture, Series() and ChunkStats() return the same labels/chunks
+// as the mmap reader. Runs on V3 and V4 fixtures to exercise the paged
+// chunk-meta and IngestedAt encodings respectively.
+func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version int
+	}{
+		{"V3", FormatV3},
+		{"V4", FormatV4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := buildStreamReaderFixture(t, tc.version)
+
+			mmap, err := NewFileReader(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = mmap.Close() })
+
+			stream, err := NewStreamFileReader(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = stream.Close() })
+
+			names, err := mmap.LabelNames()
+			require.NoError(t, err)
+
+			for _, name := range names {
+				vals, err := mmap.LabelValues(name)
+				require.NoError(t, err)
+				for _, v := range vals {
+					p, err := mmap.Postings(name, nil, v)
+					require.NoError(t, err)
+
+					for p.Next() {
+						ref := p.At()
+
+						var mLbls labels.Labels
+						var mChks []ChunkMeta
+						mFP, err := mmap.Series(ref, 0, 0, &mLbls, &mChks)
+						require.NoError(t, err)
+
+						var sLbls labels.Labels
+						var sChks []ChunkMeta
+						sFP, err := stream.Series(ref, 0, 0, &sLbls, &sChks)
+						require.NoError(t, err)
+
+						require.Equal(t, mFP, sFP, "fingerprint for ref %d", ref)
+						require.Equal(t, mLbls, sLbls, "labels for ref %d", ref)
+						require.Equal(t, mChks, sChks, "chunks for ref %d", ref)
+
+						// ChunkStats with an all-by set that includes every
+						// label captured on the series.
+						by := make(map[string]struct{})
+						mLbls.Range(func(l labels.Label) { by[l.Name] = struct{}{} })
+						var mLbls2 labels.Labels
+						mFP2, mStats, err := mmap.ChunkStats(ref, 0, int64(1<<62), &mLbls2, by)
+						require.NoError(t, err)
+						var sLbls2 labels.Labels
+						sFP2, sStats, err := stream.ChunkStats(ref, 0, int64(1<<62), &sLbls2, by)
+						require.NoError(t, err)
+						require.Equal(t, mFP2, sFP2, "chunk-stats fingerprint for ref %d", ref)
+						require.Equal(t, mStats, sStats, "chunk-stats for ref %d", ref)
+						require.Equal(t, mLbls2, sLbls2, "chunk-stats labels for ref %d", ref)
+					}
+					require.NoError(t, p.Err())
+				}
+			}
+		})
+	}
+}
+
 // TestStreamReader_RejectsCorruptMagic ensures header validation runs.
 func TestStreamReader_RejectsCorruptMagic(t *testing.T) {
 	path := buildStreamReaderFixture(t, FormatV3)

@@ -310,18 +310,6 @@ func (r *StreamReader) LabelNamesFor(_ ...storage.SeriesRef) ([]string, error) {
 	return nil, errStreamReaderNotImplemented("LabelNamesFor")
 }
 
-// Series populates lbls and chks for the given series ref.
-// Not yet implemented — P2.A5.
-func (r *StreamReader) Series(_ storage.SeriesRef, _ int64, _ int64, _ *labels.Labels, _ *[]ChunkMeta) (uint64, error) {
-	return 0, errStreamReaderNotImplemented("Series")
-}
-
-// ChunkStats returns chunk statistics for the series identified by ref.
-// Not yet implemented — P2.A5.
-func (r *StreamReader) ChunkStats(_ storage.SeriesRef, _ int64, _ int64, _ *labels.Labels, _ map[string]struct{}) (uint64, ChunkStats, error) {
-	return 0, ChunkStats{}, errStreamReaderNotImplemented("ChunkStats")
-}
-
 // errStreamReaderNotImplemented is emitted by every method not yet ported.
 // It carries the method name so unit tests can pinpoint what's missing.
 func errStreamReaderNotImplemented(method string) error {
