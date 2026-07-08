@@ -181,7 +181,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// LogMerge ships with a stub executor that writes a zero-byte object at
 		// OutputPath. The real K-way merge over log sections lands in a later PR,
 		// after we ship IndeXMerge.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -280,7 +280,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p, logsSection.Columns())
+		conv, err := physical.BuildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -288,7 +288,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
-	if logsPredicatesAreUnsatisfiable(predicates) {
+	if physical.LogsPredicatesAreUnsatisfiable(predicates) {
 		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
 		return emptyPipeline()
 	}

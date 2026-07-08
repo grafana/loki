@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -89,15 +90,61 @@ func (o *Optimizer) Optimize(node Node) map[string]bool {
 	return firings
 }
 
-// addUniqueColumnExpr adds a column to the projections list if it's not already present
+// addUniqueColumnExpr appends colExpr unless it duplicates an existing
+// entry by (name, type), and additionally treats [ColumnTypeAmbiguous] as
+// absorbing same-name Label / Metadata refs — the scan projects both
+// Label (streams section) and Metadata (logs section) columns for an
+// Ambiguous ref anyway, so retaining separate Label / Metadata entries
+// would double-load the same storage column.
+//
+// Builtin is NOT absorbed by Ambiguous: `(X, Ambiguous)` and `(X, Builtin)`
+// both remain. The executor's ambiguous lookup skips Builtin,
+// so both refs are semantically distinct.
 func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
-	for _, existing := range projections {
-		if existingCol, ok := existing.(*ColumnExpr); ok {
-			if existingCol.Ref.Column == colExpr.Ref.Column {
-				return projections, false // already exists
+	// If we're adding a Label/Metadata ref, drop it silently when a
+	// same-name Ambiguous ref is already present — the Ambiguous entry
+	// already causes the same storage column to be loaded.
+	if colExpr.Ref.Type == types.ColumnTypeLabel || colExpr.Ref.Type == types.ColumnTypeMetadata {
+		for _, existing := range projections {
+			e, ok := existing.(*ColumnExpr)
+			if !ok {
+				continue
+			}
+			if e.Ref.Column == colExpr.Ref.Column && e.Ref.Type == types.ColumnTypeAmbiguous {
+				return projections, false // absorbed
 			}
 		}
 	}
+
+	// Exact (name, type) dedup.
+	for _, existing := range projections {
+		e, ok := existing.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+		if e.Ref.Column == colExpr.Ref.Column && e.Ref.Type == colExpr.Ref.Type {
+			return projections, false
+		}
+	}
+
+	// If we're adding an Ambiguous ref, remove any same-name Label / Metadata refs it absorbs.
+	if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+		filtered := make([]ColumnExpression, 0, len(projections)+1)
+		for _, existing := range projections {
+			e, ok := existing.(*ColumnExpr)
+			if !ok {
+				filtered = append(filtered, existing)
+				continue
+			}
+			if e.Ref.Column == colExpr.Ref.Column &&
+				(e.Ref.Type == types.ColumnTypeLabel || e.Ref.Type == types.ColumnTypeMetadata) {
+				continue // absorbed by the new Ambiguous
+			}
+			filtered = append(filtered, existing)
+		}
+		return append(filtered, colExpr), true
+	}
+
 	return append(projections, colExpr), true
 }
 
