@@ -12,10 +12,12 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -35,6 +37,125 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, logs.CompareForSortSchema(sortKeys))
 }
+
+// IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
+// multiple source objects. Each section's stream IDs are rewritten into a single global space
+// via remaps[i] (the map for sections[i]) before records are compared, so one
+// merge can order records across objects.
+func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
+	if len(sections) != len(remaps) {
+		return nil, fmt.Errorf("sortmerge: got %d sections but %d remaps", len(sections), len(remaps))
+	}
+
+	sequences := make([]*remapSectionSequence, 0, len(sections))
+	bufferSize := max(128, 8192/max(1, len(sections)))
+
+	for i, s := range sections {
+		sec, err := logs.Open(ctx, s)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open logs section: %w", err)
+		}
+
+		schema, err := sec.SchemaLabels()
+		if err != nil {
+			return nil, fmt.Errorf("reading section schema labels: %w", err)
+		}
+		if !slices.Equal(schema, expectedSchema) {
+			return nil, fmt.Errorf("section schema %v does not match expected sort schema %v", schema, expectedSchema)
+		}
+
+		ds, err := logs.MakeColumnarDataset(sec)
+		if err != nil {
+			return nil, fmt.Errorf("creating columnar dataset: %w", err)
+		}
+
+		columns, err := result.Collect(ds.ListColumns(ctx))
+		if err != nil {
+			return nil, err
+		}
+
+		r := dataset.NewRowReader(dataset.RowReaderOptions{
+			Dataset:  ds,
+			Columns:  columns,
+			Prefetch: true,
+		})
+		if err := r.Open(ctx); err != nil {
+			return nil, fmt.Errorf("opening dataset row reader: %w", err)
+		}
+
+		sequences = append(sequences, &remapSectionSequence{
+			section:         sec,
+			remap:           remaps[i],
+			DatasetSequence: logs.NewDatasetSequence(r, bufferSize),
+		})
+	}
+
+	maxValue := result.Value(dataset.Row{
+		Index: math.MaxInt,
+		Values: []dataset.Value{
+			dataset.Int64Value(math.MaxInt64), // StreamID
+			dataset.Int64Value(math.MinInt64), // Timestamp
+		},
+	})
+
+	tree := loser.New(sequences, maxValue, remapSectionSequenceAt, logs.CompareForSortSchema(globalSortKeys), remapSectionSequenceClose)
+	sym := symbolizer.New(1024, 100_000)
+
+	return result.Iter(
+		func(yield func(logs.Record) bool) error {
+			defer tree.Close()
+			for tree.Next() {
+				seq := tree.Winner()
+
+				row, err := remapSectionSequenceAt(seq).Value()
+				if err != nil {
+					return err
+				}
+
+				var record logs.Record
+				if err := logs.DecodeRow(seq.section.Columns(), row, &record, sym); err != nil {
+					return err
+				}
+				// StreamID was rewritten to the global ID in the row; annotate the
+				// sort key so downstream builders (SortSchemaASC) sort correctly.
+				if record.StreamID >= 0 && int(record.StreamID) < len(globalSortKeys) {
+					record.SortKey = globalSortKeys[record.StreamID]
+				}
+				if !yield(record) {
+					return nil
+				}
+			}
+			return nil
+		}), nil
+}
+
+// remapSectionSequence wraps a section cursor and rewrites its local stream IDs
+// into a global space as rows are produced.
+type remapSectionSequence struct {
+	logs.DatasetSequence
+	section *logs.Section
+	remap   map[int64]int64
+}
+
+var _ loser.Sequence = (*remapSectionSequence)(nil)
+
+func (s *remapSectionSequence) Next() bool {
+	if !s.DatasetSequence.Next() {
+		return false
+	}
+	res := s.DatasetSequence.At()
+	row, err := res.Value()
+	if err != nil {
+		return true // error is surfaced via At() to the consumer
+	}
+	if g, ok := s.remap[row.Values[0].Int64()]; ok {
+		row.Values[0] = dataset.Int64Value(g)
+	}
+	return true
+}
+
+func remapSectionSequenceAt(seq *remapSectionSequence) result.Result[dataset.Row] { return seq.At() }
+func remapSectionSequenceClose(seq *remapSectionSequence)                         { seq.Close() }
 
 func iterator(
 	ctx context.Context,
