@@ -22,8 +22,6 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
@@ -284,30 +282,6 @@ func (r *StreamReader) lookupSymbol(o uint32) (string, error) {
 		return s, nil
 	}
 	return r.symbols.Lookup(o)
-}
-
-// LabelValues returns possible label values for the given name.
-// Not yet implemented — P2.A6.
-func (r *StreamReader) LabelValues(_ string, _ ...*labels.Matcher) ([]string, error) {
-	return nil, errStreamReaderNotImplemented("LabelValues")
-}
-
-// LabelNames returns all label names present in the index.
-// Not yet implemented — P2.A6.
-func (r *StreamReader) LabelNames(_ ...*labels.Matcher) ([]string, error) {
-	return nil, errStreamReaderNotImplemented("LabelNames")
-}
-
-// LabelValueFor returns a label value for a specific series ref.
-// Not yet implemented — P2.A6.
-func (r *StreamReader) LabelValueFor(_ storage.SeriesRef, _ string) (string, error) {
-	return "", errStreamReaderNotImplemented("LabelValueFor")
-}
-
-// LabelNamesFor returns label names present for the given series refs.
-// Not yet implemented — P2.A6.
-func (r *StreamReader) LabelNamesFor(_ ...storage.SeriesRef) ([]string, error) {
-	return nil, errStreamReaderNotImplemented("LabelNamesFor")
 }
 
 // errStreamReaderNotImplemented is emitted by every method not yet ported.

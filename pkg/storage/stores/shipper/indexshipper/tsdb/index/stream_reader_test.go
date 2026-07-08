@@ -303,6 +303,94 @@ func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
 	}
 }
 
+// TestStreamReader_LabelsMatchesMmap covers P2.A6 — LabelNames,
+// LabelValues, LabelValueFor, LabelNamesFor.
+func TestStreamReader_LabelsMatchesMmap(t *testing.T) {
+	path := buildStreamReaderFixture(t, FormatV3)
+
+	mmap, err := NewFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = mmap.Close() })
+
+	stream, err := NewStreamFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = stream.Close() })
+
+	// LabelNames.
+	mmapNames, err := mmap.LabelNames()
+	require.NoError(t, err)
+	streamNames, err := stream.LabelNames()
+	require.NoError(t, err)
+	require.Equal(t, mmapNames, streamNames, "LabelNames")
+
+	// LabelValues per name.
+	for _, name := range mmapNames {
+		mV, err := mmap.LabelValues(name)
+		require.NoError(t, err)
+		sV, err := stream.LabelValues(name)
+		require.NoError(t, err)
+		require.Equal(t, mV, sV, "LabelValues for %q", name)
+	}
+
+	// Missing name -> nil, nil.
+	sV, err := stream.LabelValues("no-such-name")
+	require.NoError(t, err)
+	require.Nil(t, sV)
+
+	// LabelValueFor + LabelNamesFor: pick every ref we can find.
+	var refs []storage.SeriesRef
+	for _, name := range mmapNames {
+		vals, err := mmap.LabelValues(name)
+		require.NoError(t, err)
+		for _, v := range vals {
+			p, err := mmap.Postings(name, nil, v)
+			require.NoError(t, err)
+			for p.Next() {
+				refs = append(refs, p.At())
+			}
+			require.NoError(t, p.Err())
+		}
+	}
+	// Dedup refs (postings from different labels return the same series).
+	sort.Slice(refs, func(i, j int) bool { return refs[i] < refs[j] })
+	out := refs[:0]
+	for i, r := range refs {
+		if i == 0 || r != refs[i-1] {
+			out = append(out, r)
+		}
+	}
+	refs = out
+
+	for _, ref := range refs {
+		var mLbls labels.Labels
+		var mChks []ChunkMeta
+		_, err := mmap.Series(ref, 0, 0, &mLbls, &mChks)
+		require.NoError(t, err)
+
+		mLbls.Range(func(l labels.Label) {
+			mVal, mErr := mmap.LabelValueFor(ref, l.Name)
+			sVal, sErr := stream.LabelValueFor(ref, l.Name)
+			require.Equal(t, mErr, sErr, "LabelValueFor(%d,%q) err", ref, l.Name)
+			require.Equal(t, mVal, sVal, "LabelValueFor(%d,%q) value", ref, l.Name)
+		})
+
+		mNames, err := mmap.LabelNamesFor(ref)
+		require.NoError(t, err)
+		sNames, err := stream.LabelNamesFor(ref)
+		require.NoError(t, err)
+		require.Equal(t, mNames, sNames, "LabelNamesFor(%d)", ref)
+	}
+
+	// LabelNamesFor over multiple refs at once.
+	if len(refs) > 1 {
+		mNames, err := mmap.LabelNamesFor(refs...)
+		require.NoError(t, err)
+		sNames, err := stream.LabelNamesFor(refs...)
+		require.NoError(t, err)
+		require.Equal(t, mNames, sNames, "LabelNamesFor(all)")
+	}
+}
+
 // TestStreamReader_RejectsCorruptMagic ensures header validation runs.
 func TestStreamReader_RejectsCorruptMagic(t *testing.T) {
 	path := buildStreamReaderFixture(t, FormatV3)
