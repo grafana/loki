@@ -20,6 +20,18 @@ var (
 		nil,
 		nil,
 	)
+	circuitBreakerOpenTotal = prometheus.NewDesc(
+		"loki_distributor_circuit_breaker_open_total",
+		"The number of times the circuit breaker opened.",
+		nil,
+		nil,
+	)
+	circuitBreakerMaxRequests = prometheus.NewDesc(
+		"loki_distributor_circuit_breaker_max_requests",
+		"The current number of max requests.",
+		nil,
+		nil,
+	)
 )
 
 var (
@@ -37,7 +49,7 @@ type circuitBreaker interface {
 // accepts more requests for each second that passes in half-opened until
 // the half-open period is over.
 type linearRampCircuitBreaker struct {
-	state                      int
+	state, totalOpens          int
 	openPeriod, halfOpenPeriod time.Duration
 	lastOpened                 time.Time
 	isOpenErr                  func(err error) bool
@@ -78,17 +90,31 @@ func (b *linearRampCircuitBreaker) Allow() (ok bool, done func(err error)) {
 // Describe implements [prometheus.Collector].
 func (b *linearRampCircuitBreaker) Describe(descs chan<- *prometheus.Desc) {
 	descs <- circuitBreakerStateDesc
+	descs <- circuitBreakerOpenTotal
+	descs <- circuitBreakerMaxRequests
 }
 
 // Collect implements [prometheus.Collector].
 func (b *linearRampCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
 	b.mtx.Lock()
 	state := float64(b.state)
+	totalOpens := float64(b.totalOpens)
+	maxRequests := float64(b.maxRequests)
 	b.mtx.Unlock()
 	metrics <- prometheus.MustNewConstMetric(
 		circuitBreakerStateDesc,
 		prometheus.GaugeValue,
 		state,
+	)
+	metrics <- prometheus.MustNewConstMetric(
+		circuitBreakerOpenTotal,
+		prometheus.CounterValue,
+		totalOpens,
+	)
+	metrics <- prometheus.MustNewConstMetric(
+		circuitBreakerMaxRequests,
+		prometheus.GaugeValue,
+		maxRequests,
 	)
 }
 
@@ -109,6 +135,7 @@ func (b *linearRampCircuitBreaker) open() {
 		return
 	}
 	b.state = circuitBreakerOpen
+	b.totalOpens++
 	b.lastOpened = time.Now()
 	b.maxRequests = max(1, b.requests)
 }
