@@ -50,18 +50,34 @@ Before configuring any v14 period, upgrade all components to a version that can
 read the v14 index format. Rolling back after v14 data has been written requires
 stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
+### Breaking change: Thanos storage clients are used by default
+
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+
+Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
+
 ### Breaking change: Fully remove Simple Scalable Deployment (SSD) mode
 
 Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. The targets `write`, `read`, and `backend`, as well as the configuration option `-legacy-read-mode` are not available any more and Loki will fail to start if used.
 
-For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
+For the best possible experience in production, we recommend deploying Loki in distributed mode. Please refer to the [Migrating from SSD to distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-distributed/) guide for instructions how to migrate your deployment to distributed mode.
 
-A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
+A second option for smaller scale deployments that still need high availability, is to migrate to HA Monolithic, which reduces the complexity of the deployment. Please refer to the [Migrate from SSD to HA Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/ssd-to-ha-monolithic/) guide for instructions how to migrate your deployment.
 
-### Breaking change: Removal of various configuration options
+### Breaking change: Ruler always wipes its remote-write WAL on startup
 
-- The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
-- The deprecated setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+The ruler now deletes (wipes) its remote-write write-ahead log (WAL) directory on startup and starts each tenant with a fresh, empty WAL. WAL data left over from a previous run is no longer replayed, so any samples that had not yet been flushed to remote storage before a restart are discarded. For recording rules this is generally safe, since rules are re-evaluated and re-sent after startup.
+
+As a result, the following have been removed:
+
+- The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
+- The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
+
+### Breaking change: Removal of various deprecated configuration options
+
+- The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
+- The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
+- The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
 - The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
 

@@ -131,11 +131,35 @@ func rwMap(dst jsWriter, src *Reader) (n int, err error) {
 			n++
 		}
 
-		field, err = src.ReadMapKeyPtr()
+		var kt Type
+		kt, err = src.NextType()
 		if err != nil {
 			return
 		}
-		nn, err = rwquoted(dst, field)
+		switch kt {
+		case IntType:
+			var i64 int64
+			i64, err = src.ReadInt64()
+			if err != nil {
+				return
+			}
+			src.scratch = strconv.AppendInt(src.scratch[:0], i64, 10)
+			nn, err = rwquoted(dst, src.scratch)
+		case UintType:
+			var u64 uint64
+			u64, err = src.ReadUint64()
+			if err != nil {
+				return
+			}
+			src.scratch = strconv.AppendUint(src.scratch[:0], u64, 10)
+			nn, err = rwquoted(dst, src.scratch)
+		default:
+			field, err = src.ReadMapKeyPtr()
+			if err != nil {
+				return
+			}
+			nn, err = rwquoted(dst, field)
+		}
 		n += nn
 		if err != nil {
 			return

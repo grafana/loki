@@ -86,10 +86,6 @@ func executorHandler(
 		h.(*queryHandler).retentionChecker = newRetentionChecker(limits, logger)
 	}
 
-	if cfg.AlignQueriesWithStep {
-		h = newMetricStepAlignMiddleware().Wrap(h)
-	}
-
 	if cache.IsCacheConfigured(cfg.ResultsCache.CacheConfig) {
 		newCache := func(suffix string, cacheType stats.CacheType) (cache.Cache, error) {
 			cfgCopy := cfg.ResultsCache.CacheConfig
@@ -122,6 +118,16 @@ func executorHandler(
 			return nil, fmt.Errorf("creating engine cache middleware: %w", err)
 		}
 		h = cacheMw.Wrap(h)
+	}
+
+	// Step alignment must wrap the cache so the cache sees aligned start/end.
+	// Otherwise the cache keys, stored extent bounds, and the per-read
+	// [extractMatrix] clip all use the un-aligned request bounds, which
+	// silently drops the leading floor-aligned sample on every cache hit
+	// (the engine emits it on cache miss, the cache writes it once, then
+	// every subsequent read clips it back out).
+	if cfg.AlignQueriesWithStep {
+		h = newMetricStepAlignMiddleware().Wrap(h)
 	}
 
 	h = metricsRecordingMiddleware{logger: logger}.Wrap(h)

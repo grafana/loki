@@ -102,11 +102,11 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 }
 
 func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Capture) {
-	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatDatasetMaxRows)
-	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantRows)
-	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPagesTotal)
-	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamRelevantPages)
-	streamPageRuns := xcap.ValueFromRegion[int64](capture, logs.RegionPrefix, dataobj.StatStreamPageRuns)
+	rowsTotal := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatDatasetMaxRows)
+	relevantRows := xcap.ValueFromRegion[int64](capture, logs.RegionRead, dataobj.StatStreamRelevantRows)
+	streamPagesTotal := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamPagesTotal)
+	streamRelevantPages := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamRelevantPages)
+	streamPageRuns := xcap.ValueFromRegion[int64](capture, logs.RegionOpen, dataobj.StatStreamPageRuns)
 
 	level.Info(wf.logger).Log(
 		"msg", "task-log-locality-summary",
