@@ -1329,6 +1329,19 @@ func NewFileReader(path string) (*Reader, error) {
 	return r, nil
 }
 
+// NewBufferedFileReader returns a new index reader that reads the entire index
+// file into a byte buffer on open instead of mmap'ing it. This trades memory
+// residency (bytes live on the Go heap rather than page-cache-eviction-eligible
+// mmap pages) for I/O that the Go runtime can schedule around instead of the
+// invisible blocking that mmap page faults cause.
+func NewBufferedFileReader(path string) (*Reader, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return newReader(RealByteSlice(data), io.NopCloser(nil))
+}
+
 func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	r := &Reader{
 		b:        b,
