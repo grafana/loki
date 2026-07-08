@@ -45,14 +45,20 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// TODO: In future, we want to be able to compose this with the middleware pattern,
 	// but this requires refactor of this file to support next handlers. We will do
 	// this at a later time.
-	var circuitBreakerDoneFunc func(err error)
+	var (
+		circuitBreakerOk       bool
+		circuitBreakerDoneFunc func(err error)
+		circuitBreakerErr      error
+	)
 	if d.circuitBreaker != nil {
-		var ok bool
-		ok, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
-		if !ok {
+		circuitBreakerOk, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+		if !circuitBreakerOk {
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
 			return
 		}
+		// Must be wrapped in a func to avoid capture of circuitBreakerErr, otherwise
+		// updates to the err variable are invisible.
+		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
 	}
 
 	if d.RequestParserWrapper != nil {
@@ -165,9 +171,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	}
 
 	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
-	if circuitBreakerDoneFunc != nil {
-		circuitBreakerDoneFunc(err)
-	}
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -178,6 +181,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	circuitBreakerErr = err
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
