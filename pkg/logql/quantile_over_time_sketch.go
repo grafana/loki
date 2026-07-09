@@ -180,6 +180,11 @@ func (e *QuantileSketchStepEvaluator) Error() error {
 	return e.iter.Error()
 }
 
+// SetMaxOutputSeries does not enforce this limit. Probabilistic quantile queries
+// are joined via JoinQuantileSketchVector rather than JoinSampleVector and are
+// not covered by max_query_series enforcement here.
+func (*QuantileSketchStepEvaluator) SetMaxOutputSeries(int) {}
+
 func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 	parent.Child("QuantileSketch")
 }
@@ -366,3 +371,7 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
 func (e *QuantileSketchVectorStepEvaluator) Error() error { return e.err }
+
+// SetMaxOutputSeries does not enforce this limit (quantile-sketch path, see
+// QuantileSketchStepEvaluator).
+func (*QuantileSketchVectorStepEvaluator) SetMaxOutputSeries(int) {}

@@ -43,6 +43,12 @@ type StepEvaluator interface {
 	Error() error
 	// Explain returns a print of the step evaluation tree
 	Explain(Node)
+	// SetMaxOutputSeries informs the evaluator of the maximum number of output
+	// series the query is allowed to produce. Ideally all implementations would perfectly
+	// detect when the output series should be evaluated at the current level and when it
+	// is safe to push the limit down to child evaluators. We are nowhere near this. Currently
+	// we have some basic implementations only at the root for some evaluators
+	SetMaxOutputSeries(n int)
 }
 
 type EmptyEvaluator[R StepResult] struct {
@@ -105,3 +111,12 @@ func (*SketchMatrixStepEvaluator[_]) Error() error { return nil }
 func (m *SketchMatrixStepEvaluator[_]) Explain(parent Node) {
 	parent.Child(m.name)
 }
+
+// SetMaxOutputSeries does not enforce this limit. It replays a materialized
+// matrix of sketches produced downstream; the limit is enforced by whatever
+// consumes the resulting vector.
+func (*SketchMatrixStepEvaluator[_]) SetMaxOutputSeries(int) {}
+
+// SetMaxOutputSeries implements StepEvaluator. EmptyEvaluator produces no
+// series, so the limit is a no-op.
+func (EmptyEvaluator[_]) SetMaxOutputSeries(int) {}

@@ -373,6 +373,11 @@ func (e *countDistinctSketchEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctSketch")
 }
 
+// SetMaxOutputSeries does not enforce this limit. Count-distinct sketch
+// aggregations are joined via a dedicated HLL merge path rather than
+// JoinSampleVector and are not covered by max_query_series enforcement here.
+func (*countDistinctSketchEvaluator) SetMaxOutputSeries(int) {}
+
 // CountDistinctSketchMergeExpr concatenates sharded CountDistinctSketchExpr children.
 type CountDistinctSketchMergeExpr struct {
 	syntax.SampleExpr
@@ -456,3 +461,7 @@ func (*CountDistinctSketchVectorStepEvaluator) Error() error { return nil }
 func (e *CountDistinctSketchVectorStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctSketchVector")
 }
+
+// SetMaxOutputSeries does not enforce this limit (count-distinct sketch path,
+// see countDistinctSketchEvaluator).
+func (*CountDistinctSketchVectorStepEvaluator) SetMaxOutputSeries(int) {}

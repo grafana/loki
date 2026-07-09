@@ -2,6 +2,8 @@ package logql
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type hintCapturingQuerier struct {
@@ -409,6 +412,57 @@ func TestNewVectorAggEvaluator_DoesNotMutateGroupingInPlace(t *testing.T) {
 	require.Equal(t, []string{"b", "a"}, expr.Grouping.Groups)
 }
 
+func TestVectorAggEvaluator_MaxOutputSeries(t *testing.T) {
+	expr, err := syntax.ParseSampleExpr(`sum by (foo) (count_over_time({app="x"}[1m]))`)
+	require.NoError(t, err)
+	aggExpr := expr.(*syntax.VectorAggregationExpr)
+
+	// a step vector with n distinct values of "foo" produces n aggregation groups.
+	mkVec := func(n int) promql.Vector {
+		vec := make(promql.Vector, 0, n)
+		for i := range n {
+			vec = append(vec, promql.Sample{T: 0, F: 1, Metric: labels.FromStrings("foo", fmt.Sprintf("v%d", i))})
+		}
+		return vec
+	}
+
+	newAgg := func(maxSeries int, vec promql.Vector) *VectorAggEvaluator {
+		e := &VectorAggEvaluator{
+			nextEvaluator:    &returnVectorEvaluator{vec: vec},
+			expr:             aggExpr,
+			exprSortedGroups: aggExpr.Grouping.Groups,
+			buf:              make([]byte, 0, 1024),
+			lb:               labels.NewBuilder(labels.EmptyLabels()),
+		}
+		e.SetMaxOutputSeries(maxSeries)
+		return e
+	}
+
+	t.Run("fails fast when a single step exceeds the limit", func(t *testing.T) {
+		e := newAgg(3, mkVec(5))
+		ok, _, _ := e.Next()
+		require.False(t, ok)
+		require.Error(t, e.Error())
+		require.True(t, errors.Is(e.Error(), logqlmodel.ErrLimit))
+	})
+
+	t.Run("passes when at the limit", func(t *testing.T) {
+		e := newAgg(3, mkVec(3))
+		ok, _, r := e.Next()
+		require.True(t, ok)
+		require.NoError(t, e.Error())
+		require.Len(t, r.SampleVector(), 3)
+	})
+
+	t.Run("no limit when unset", func(t *testing.T) {
+		e := newAgg(0, mkVec(5))
+		ok, _, r := e.Next()
+		require.True(t, ok)
+		require.NoError(t, e.Error())
+		require.Len(t, r.SampleVector(), 5)
+	})
+}
+
 type emptyEvaluator struct{}
 
 func (*emptyEvaluator) Next() (ok bool, ts int64, r StepResult) {
@@ -424,6 +478,8 @@ func (*emptyEvaluator) Error() error {
 }
 
 func (*emptyEvaluator) Explain(Node) {}
+
+func (*emptyEvaluator) SetMaxOutputSeries(int) {}
 
 // returnVectorEvaluator returns elements of vector
 // passed in, everytime it's `Next()` is called. Used for testing.
@@ -446,6 +502,8 @@ func (*returnVectorEvaluator) Error() error {
 func (*returnVectorEvaluator) Explain(Node) {
 
 }
+
+func (*returnVectorEvaluator) SetMaxOutputSeries(int) {}
 
 func newReturnVectorEvaluator(vec []float64) *returnVectorEvaluator {
 	testTime := time.Now().Unix()
