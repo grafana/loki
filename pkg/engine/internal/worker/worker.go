@@ -297,7 +297,7 @@ func (w *Worker) runAcceptLoop(ctx context.Context) {
 
 func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(w.logger, "remote_addr", conn.RemoteAddr())
-	level.Info(logger).Log("msg", "handling connection")
+	//level.Info(logger).Log("msg", "handling connection")
 
 	peer := &wire.Peer{
 		Logger:  logger,
@@ -319,7 +319,7 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	// error occurs.
 	err := peer.Serve(ctx)
 	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
-		level.Debug(logger).Log("msg", "connection closed")
+		//level.Debug(logger).Log("msg", "connection closed")
 	} else if err != nil {
 		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}

@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"slices"
+	"sync"
 
 	"github.com/oklog/ulid/v2"
 
@@ -14,7 +15,13 @@ type stream struct {
 	inner   *workflow.Stream
 	handler workflow.StreamEventHandler
 
-	state workflow.StreamState
+	// stateMut guards state so that stream-state transitions do not require the
+	// scheduler's global resourcesMut write lock. This lets the hot
+	// handleStreamStatus path (which floods the scheduler during fan-in
+	// teardown) hold only resourcesMut.RLock, mirroring how task state is
+	// guarded by the per-task mutex.
+	stateMut sync.Mutex
+	state    workflow.StreamState
 
 	localReceiver workflow.RecordWriter // Local receiver (for root task results)
 	taskReceiver  ulid.ULID             // ID of the receiving task.
@@ -28,12 +35,22 @@ var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
 	workflow.StreamStateClosed:  {}, // Closed streams cannot transition to any other state.
 }
 
+// getState returns the current state of the stream.
+func (s *stream) getState() workflow.StreamState {
+	s.stateMut.Lock()
+	defer s.stateMut.Unlock()
+	return s.state
+}
+
 // setState updates the state of the stream. setState returns an error if the
 // transition is invalid.
 //
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
 func (s *stream) setState(m *metrics, newState workflow.StreamState) (bool, error) {
+	s.stateMut.Lock()
+	defer s.stateMut.Unlock()
+
 	oldState := s.state
 
 	if newState == oldState {

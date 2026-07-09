@@ -55,6 +55,7 @@ message Node {
     Cache cache = 16;
     IndexMerge index_merge = 17;
     LogMerge log_merge = 18;
+    DummyLoad dummy_load = 19;
   }
 }
 
@@ -292,6 +293,23 @@ message Join {}
 // It wraps the root of the plan and is added after optimization.
 message Batching {
   int64 batch_size = 1;
+}
+
+// DummyLoad generates synthetic Arrow data for benchmarking and stress-testing.
+message DummyLoad {
+  // Total number of batches to generate across all shards.
+  int64 num_batches = 1;
+  // Number of rows per generated batch.
+  int64 batch_size = 2;
+  // How long to sleep before emitting each batch (nanoseconds).
+  google.protobuf.Duration sleep_per_batch = 3 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
+  // Number of parallel shards to split the load into.
+  int64 parallelism = 4;
+  // Label names to include as columns. Empty means use defaults.
+  repeated string labels = 5;
 }
 
 // IndexMerge represents one K-way sort-merge task over INDEX sections

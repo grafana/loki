@@ -175,6 +175,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeCache(ctx, n, inputs))
 	case *physical.ScanSet:
 		return c.executeScanSet(ctx, n)
+	case *physical.DummyLoad:
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeDummyLoad(ctx, n))
 	case *physical.IndexMerge:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMerge(ctx, n))
 	case *physical.LogMerge:
@@ -541,6 +543,10 @@ func (c *Context) executeCache(ctx context.Context, node *physical.Cache, inputs
 	return newCachingPipeline(cache, inputs[0], node.Key, node.MaxSizeBytes, node.Compression, c.logger, cacheStats, node.CacheName)
 }
 
+func (c *Context) executeDummyLoad(_ context.Context, node *physical.DummyLoad) Pipeline {
+	return newDummyLoadPipeline(node)
+}
+
 func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
@@ -683,6 +689,14 @@ func nodeAttributes(n physical.Node) []attribute.KeyValue {
 			attribute.Int("num_targets", len(n.Targets)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
+		)
+
+	case *physical.DummyLoad:
+		attrs = append(attrs,
+			attribute.Int("num_batches", n.NumBatches),
+			attribute.Int("batch_size", n.BatchSize),
+			attribute.Int64("sleep_per_batch_ns", n.SleepPerBatch.Nanoseconds()),
+			attribute.Int("parallelism", n.Parallelism),
 		)
 	default:
 		// do nothing.

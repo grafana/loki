@@ -158,6 +158,13 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("hashed_key", false, cache.HashKey(node.Key)),
 			tree.NewProperty("key", false, node.Key),
 		}
+	case *DummyLoad:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("num_batches", false, node.NumBatches),
+			tree.NewProperty("batch_size", false, node.BatchSize),
+			tree.NewProperty("sleep_per_batch", false, node.SleepPerBatch),
+			tree.NewProperty("parallelism", false, node.Parallelism),
+		}
 	}
 	return treeNode
 }

@@ -93,6 +93,12 @@ func (n *Node_Join) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 
 // MarshalPhysical converts a protobuf node into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
+func (n *Node_DummyLoad) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return n.DummyLoad.MarshalPhysical(nodeID)
+}
+
+// MarshalPhysical converts a protobuf node into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
 func (n *Node_Merge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return n.Merge.MarshalPhysical(nodeID)
 }
@@ -412,6 +418,19 @@ func (n *Join) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 // an error if the conversion fails or is unsupported.
 func (n *Merge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.Merge{NodeID: nodeID}, nil
+}
+
+// MarshalPhysical converts a protobuf DummyLoad into a physical plan node. Returns
+// an error if the conversion fails or is unsupported.
+func (n *DummyLoad) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
+	return &physical.DummyLoad{
+		NodeID:        nodeID,
+		NumBatches:    int(n.NumBatches),
+		BatchSize:     int(n.BatchSize),
+		SleepPerBatch: n.SleepPerBatch,
+		Parallelism:   int(n.Parallelism),
+		Labels:        n.Labels,
+	}, nil
 }
 
 // MarshalPhysical converts a protobuf PointersScan into a physical plan node. Returns

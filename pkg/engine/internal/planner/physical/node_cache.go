@@ -196,6 +196,8 @@ func (*Parallelize) CacheKey(_ context.Context) string { return "" }
 
 func (*ScanSet) CacheKey(_ context.Context) string { return "" }
 
+func (*DummyLoad) CacheKey(_ context.Context) string { return "" }
+
 func (*Join) CacheKey(_ context.Context) string { return "" }
 
 func (l *Limit) CacheKey(_ context.Context) string {

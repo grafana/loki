@@ -25,6 +25,21 @@ type SchedulerParams struct {
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
 	Endpoint string
+
+	// LocalNetwork registers the scheduler's local listener in a shared
+	// in-process routing table so that multiple workers can dial it and each
+	// other. Only valid when AdvertiseAddr is nil.
+	LocalNetwork *wire.LocalNetwork
+}
+
+// LocalNetwork is a shared in-process routing table for multi-worker local
+// deployments. Use [NewLocalNetwork] to create one and pass it to both
+// [SchedulerParams] and [WorkerParams] to connect them without a real network.
+type LocalNetwork = wire.LocalNetwork
+
+// NewLocalNetwork returns a new empty [LocalNetwork].
+func NewLocalNetwork() *LocalNetwork {
+	return wire.NewLocalNetwork()
 }
 
 // Scheduler is a service that can schedule tasks to connected [Worker]
@@ -60,7 +75,11 @@ func NewScheduler(params SchedulerParams) (*Scheduler, error) {
 		)
 		listener, handler = remoteListener, remoteListener
 	} else {
-		listener = &wire.Local{Address: wire.LocalScheduler}
+		l := &wire.Local{Address: wire.LocalScheduler}
+		if params.LocalNetwork != nil {
+			params.LocalNetwork.Register(l)
+		}
+		listener = l
 	}
 
 	inner, err := scheduler.New(scheduler.Config{

@@ -33,6 +33,16 @@ type Peer struct {
 	outgoing chan outgoingFrame   // Buffered queue of outgoing frames.
 	initOnce sync.Once
 
+	// Outbound frames are held in an unbounded queue drained by handleOutgoing,
+	// rather than a bounded channel. enqueueFrame is called by message handlers
+	// running on the incoming goroutine; if it could block (as a full bounded
+	// channel would), incoming processing would stall and the duplex connection
+	// could deadlock once both peers' outbound buffers fill. A non-blocking
+	// enqueue guarantees receiving never waits on sending.
+	outMu    sync.Mutex
+	outQueue []Frame
+	outWake  chan struct{} // Buffered(1) signal that outQueue is non-empty.
+
 	requestID    atomic.Uint64
 	sentRequests sync.Map // map[uint64]*request
 }
@@ -90,6 +100,7 @@ func (p *Peer) lazyInit() {
 		p.done = make(chan struct{})
 		p.incoming = make(chan incomingMessage, p.Buffer)
 		p.outgoing = make(chan outgoingFrame, p.Buffer)
+		p.outWake = make(chan struct{}, 1)
 	})
 }
 
@@ -200,11 +211,38 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 
 func (p *Peer) handleOutgoing(ctx context.Context) error {
 	for {
+		p.outMu.Lock()
+		batch := p.outQueue
+		p.outQueue = nil
+		p.outMu.Unlock()
+
+		for _, frame := range batch {
+			if err := p.Conn.Send(ctx, frame); err != nil && ctx.Err() == nil {
+				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
+				p.notifyError(frame, err)
+			}
+		}
+
+		// If we drained frames, loop again immediately to pick up anything
+		// enqueued while we were sending (checking for shutdown first).
+		if len(batch) > 0 {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-p.done:
+				return nil
+			default:
+			}
+			continue
+		}
+
+		// Queue empty: wait for a wake-up or shutdown.
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-p.done:
 			return nil // Closed connection.
+		case <-p.outWake:
 		case queued := <-p.outgoing:
 			frame, sendMode := p.dequeueOutgoing(queued)
 			if err := p.Conn.sendFrame(ctx, frame, sendMode); err != nil && ctx.Err() == nil {
@@ -395,8 +433,14 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 	return p.enqueueFrame(ctx, MessageFrame{ID: reqID, Message: message}, sendModeAsync)
 }
 
-// enqueueFrame enqueues a frame to be sent to the remote peer. sendMode records
-// how the send was issued (sync|async|internal) for queue metrics.
+// enqueueFrame enqueues a frame to be sent to the remote peer.
+// enqueueFrame appends a frame to the unbounded outbound queue and signals
+// handleOutgoing. It never blocks on a slow or backed-up peer. This is
+// essential: enqueueFrame runs on the incoming/handler goroutine, so blocking
+// here would stall incoming processing and can deadlock the duplex connection
+// when both peers' outbound buffers fill (e.g. under a stream-status /
+// cancellation storm). Backpressure is handled at the protocol layer
+// (WorkerReady / 429), not by blocking raw frame delivery.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame, sendMode sendMode) error {
 	queued := outgoingFrame{frame: frame, sendMode: sendMode, enqueuedAt: time.Now()}
 	select {
@@ -422,6 +466,16 @@ func (p *Peer) enqueueFrame(ctx context.Context, frame Frame, sendMode sendMode)
 		p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
 		return nil
 	}
+
+	p.outMu.Lock()
+	p.outQueue = append(p.outQueue, frame)
+	p.outMu.Unlock()
+
+	select {
+	case p.outWake <- struct{}{}:
+	default:
+	}
+	return nil
 }
 
 // LocalAddr returns the address of the local peer.

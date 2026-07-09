@@ -44,6 +44,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_PointersScan{}
 	case *physical.Batching:
 		n.Kind = &Node_Batching{}
+	case *physical.DummyLoad:
+		n.Kind = &Node_DummyLoad{}
 	case *physical.Cache:
 		n.Kind = &Node_Cache{}
 	case *physical.IndexMerge:
@@ -90,6 +92,13 @@ func (n *Node_Scan) UnmarshalPhysical(from physical.Node) error {
 func (n *Node_Filter) UnmarshalPhysical(from physical.Node) error {
 	n.Filter = new(Filter)
 	return n.Filter.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_DummyLoad) UnmarshalPhysical(from physical.Node) error {
+	n.DummyLoad = new(DummyLoad)
+	return n.DummyLoad.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -557,6 +566,24 @@ func (n *Batching) UnmarshalPhysical(from physical.Node) error {
 
 	*n = Batching{
 		BatchSize: batching.BatchSize,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *DummyLoad) UnmarshalPhysical(from physical.Node) error {
+	dummyLoad, ok := from.(*physical.DummyLoad)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = DummyLoad{
+		NumBatches:    int64(dummyLoad.NumBatches),
+		BatchSize:     int64(dummyLoad.BatchSize),
+		SleepPerBatch: dummyLoad.SleepPerBatch,
+		Parallelism:   int64(dummyLoad.Parallelism),
+		Labels:        dummyLoad.Labels,
 	}
 	return nil
 }

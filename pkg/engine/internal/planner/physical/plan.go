@@ -30,6 +30,7 @@ const (
 	NodeTypePointersScan                      // NodeTypePointersScan represents a [PointersScan].
 	NodeTypeBatching                          // NodeTypeBatching represents a [Batching] node.
 	NodeTypeCache                             // NodeTypeCache represents a [Cache] node.
+	NodeTypeDummyLoad                         // NodeTypeDummyLoad represents a [DummyLoad].
 	NodeTypeIndexMerge                        // NodeTypeIndexMerge represents an [IndexMerge].
 	NodeTypeLogMerge                          // NodeTypeLogMerge represents a [LogMerge].
 )
@@ -67,6 +68,8 @@ func (t NodeType) String() string {
 		return "Batching"
 	case NodeTypeCache:
 		return "Cache"
+	case NodeTypeDummyLoad:
+		return "DummyLoad"
 	case NodeTypeIndexMerge:
 		return "IndexMerge"
 	case NodeTypeLogMerge:
@@ -126,6 +129,7 @@ var _ Node = (*PointersScan)(nil)
 var _ Node = (*Merge)(nil)
 var _ Node = (*Batching)(nil)
 var _ Node = (*Cache)(nil)
+var _ Node = (*DummyLoad)(nil)
 var _ Node = (*IndexMerge)(nil)
 var _ Node = (*LogMerge)(nil)
 
@@ -144,6 +148,7 @@ func (*PointersScan) isNode()      {}
 func (*Merge) isNode()             {}
 func (*Batching) isNode()          {}
 func (*Cache) isNode()             {}
+func (*DummyLoad) isNode()         {}
 func (*IndexMerge) isNode()        {}
 func (*LogMerge) isNode()          {}
 
