@@ -116,6 +116,8 @@ func (e errorRangeVectorIterator) Error() error {
 	return e.err
 }
 
+func (errorRangeVectorIterator) SetMaxSeries(int) {}
+
 type errorStepEvaluator struct {
 	err error
 }
