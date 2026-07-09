@@ -1,4 +1,4 @@
-# cel.dev/expr v0.25.1
+# cel.dev/expr v0.25.2
 ## explicit; go 1.23.0
 cel.dev/expr
 # cloud.google.com/go v0.123.0
