@@ -91,6 +91,21 @@ func (d *Decbuf) Skip(l int) {
 	d.E = d.r.Skip(l)
 }
 
+// ReadInto reads len(dst) bytes into dst, consuming them from the underlying
+// BufReader. If E is non-nil this method has no effect. A short read (EOF
+// before len(dst) bytes) sets E and leaves dst partially populated.
+//
+// This is the batch counterpart to Byte / Be32 / Be64 — useful when a caller
+// needs to materialize a contiguous chunk of the section (a series record's
+// content, a postings list, etc.) without paying per-byte Peek+Skip
+// overhead.
+func (d *Decbuf) ReadInto(dst []byte) {
+	if d.E != nil {
+		return
+	}
+	d.E = d.r.ReadInto(dst)
+}
+
 // SkipUvarintBytes advances the pointer of the underlying BufReader past the
 // next varint-prefixed bytes. If E is non-nil, this method has no effect.
 func (d *Decbuf) SkipUvarintBytes() {

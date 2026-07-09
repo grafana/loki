@@ -9,7 +9,6 @@ package index
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sort"
 
@@ -149,24 +148,14 @@ func (r *StreamReader) readPostingsList(ctx context.Context, postingsOff uint64)
 		return nil, err
 	}
 
-	// After Be32, Decbuf Len() is (4+contentLen+4) - (4+4) = contentLen. But
-	// the last 4 bytes are the CRC we've already validated, so we want to
-	// read n*4 bytes. Sanity-check that the section has enough room.
-	need := 4 * n
-	list := make([]byte, need)
-	// Decbuf lacks a direct ReadInto for arbitrary lengths; use Be32/Be64/
-	// Byte primitives. For postings lists (which can be large — millions of
-	// refs for popular label values), reading Be32 per ref would be
-	// acceptable but wasteful. Instead we read Be32 into a big-endian byte
-	// buffer so BigEndianPostings can operate on it without re-encoding.
-	for i := 0; i < n; i++ {
-		v := d.Be32()
-		if err := d.Err(); err != nil {
-			return nil, err
-		}
-		binary.BigEndian.PutUint32(list[i*4:(i+1)*4], v)
+	// The refs are stored as N contiguous big-endian uint32s. BigEndianPostings
+	// reads them lazily via binary.BigEndian.Uint32, so we can hand it the raw
+	// bytes as-is — no need to decode each ref individually.
+	list := make([]byte, 4*n)
+	d.ReadInto(list)
+	if err := d.Err(); err != nil {
+		return nil, err
 	}
-	_ = need // vet appeasement (documenting the expected count)
 	return NewBigEndianPostings(list), nil
 }
 
