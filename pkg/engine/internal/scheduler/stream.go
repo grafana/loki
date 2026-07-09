@@ -3,8 +3,8 @@ package scheduler
 import (
 	"fmt"
 	"slices"
-	"sync"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -20,7 +20,7 @@ type stream struct {
 	// handleStreamStatus path (which floods the scheduler during fan-in
 	// teardown) hold only resourcesMut.RLock, mirroring how task state is
 	// guarded by the per-task mutex.
-	stateMut sync.Mutex
+	stateMut obslock.Mutex
 	state    workflow.StreamState
 
 	localReceiver workflow.RecordWriter // Local receiver (for root task results)
@@ -37,8 +37,8 @@ var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
 
 // getState returns the current state of the stream.
 func (s *stream) getState() workflow.StreamState {
-	s.stateMut.Lock()
-	defer s.stateMut.Unlock()
+	guard := s.stateMut.Lock("get_state")
+	defer guard.Unlock()
 	return s.state
 }
 
@@ -48,8 +48,8 @@ func (s *stream) getState() workflow.StreamState {
 // Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
 func (s *stream) setState(m *metrics, newState workflow.StreamState) (bool, error) {
-	s.stateMut.Lock()
-	defer s.stateMut.Unlock()
+	guard := s.stateMut.Lock("set_state")
+	defer guard.Unlock()
 
 	oldState := s.state
 

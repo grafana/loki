@@ -30,7 +30,6 @@ type Peer struct {
 
 	done     chan struct{}        // Closed when the peer connection is closed.
 	incoming chan incomingMessage // Buffered queue of incoming messages.
-	outgoing chan outgoingFrame   // Buffered queue of outgoing frames.
 	initOnce sync.Once
 
 	// Outbound frames are held in an unbounded queue drained by handleOutgoing,
@@ -40,7 +39,7 @@ type Peer struct {
 	// could deadlock once both peers' outbound buffers fill. A non-blocking
 	// enqueue guarantees receiving never waits on sending.
 	outMu    sync.Mutex
-	outQueue []Frame
+	outQueue []outgoingFrame
 	outWake  chan struct{} // Buffered(1) signal that outQueue is non-empty.
 
 	requestID    atomic.Uint64
@@ -99,7 +98,6 @@ func (p *Peer) lazyInit() {
 	p.initOnce.Do(func() {
 		p.done = make(chan struct{})
 		p.incoming = make(chan incomingMessage, p.Buffer)
-		p.outgoing = make(chan outgoingFrame, p.Buffer)
 		p.outWake = make(chan struct{}, 1)
 	})
 }
@@ -216,8 +214,9 @@ func (p *Peer) handleOutgoing(ctx context.Context) error {
 		p.outQueue = nil
 		p.outMu.Unlock()
 
-		for _, frame := range batch {
-			if err := p.Conn.Send(ctx, frame); err != nil && ctx.Err() == nil {
+		for _, queued := range batch {
+			frame, sendMode := p.dequeueOutgoing(queued)
+			if err := p.Conn.sendFrame(ctx, frame, sendMode); err != nil && ctx.Err() == nil {
 				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
 				p.notifyError(frame, err)
 			}
@@ -243,12 +242,6 @@ func (p *Peer) handleOutgoing(ctx context.Context) error {
 		case <-p.done:
 			return nil // Closed connection.
 		case <-p.outWake:
-		case queued := <-p.outgoing:
-			frame, sendMode := p.dequeueOutgoing(queued)
-			if err := p.Conn.sendFrame(ctx, frame, sendMode); err != nil && ctx.Err() == nil {
-				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
-				p.notifyError(frame, err)
-			}
 		}
 	}
 }
@@ -442,34 +435,21 @@ func (p *Peer) SendMessageAsync(ctx context.Context, message Message) error {
 // cancellation storm). Backpressure is handled at the protocol layer
 // (WorkerReady / 429), not by blocking raw frame delivery.
 func (p *Peer) enqueueFrame(ctx context.Context, frame Frame, sendMode sendMode) error {
-	queued := outgoingFrame{frame: frame, sendMode: sendMode, enqueuedAt: time.Now()}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-p.done:
 		return ErrConnClosed
-	case p.outgoing <- queued:
-		p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
-		return nil
 	default:
 	}
 
-	done := p.noteQueueBlockedSender(queueOutgoing, frame, sendMode)
-	defer done()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-p.done:
-		return ErrConnClosed
-	case p.outgoing <- queued:
-		p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
-		return nil
-	}
+	queued := outgoingFrame{frame: frame, sendMode: sendMode, enqueuedAt: time.Now()}
 
 	p.outMu.Lock()
-	p.outQueue = append(p.outQueue, frame)
+	p.outQueue = append(p.outQueue, queued)
 	p.outMu.Unlock()
+
+	p.noteFrameEnqueued(queueOutgoing, frame, sendMode)
 
 	select {
 	case p.outWake <- struct{}{}:

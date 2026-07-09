@@ -356,8 +356,8 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	// write lock here would serialize every status update against dispatch
 	// (finalizeAssignment) and cancellation (Cancel), throttling the scheduler
 	// under load. Using a read lock lets status processing run concurrently.
-	resourcesGuard := s.resourcesMut.Lock("handle_task_status")
-	defer resourcesGuard.Unlock()
+	resourcesGuard := s.resourcesMut.RLock("handle_task_status")
+	defer resourcesGuard.RUnlock()
 
 	task, found := s.tasks[msg.ID]
 	if !found {
@@ -434,8 +434,8 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, 
 	// write lock here serializes them against dispatch and cancellation and
 	// backs up the per-connection message goroutines. Using a read lock lets
 	// them run concurrently.
-	resourcesGuard := s.resourcesMut.Lock("handle_stream_status")
-	defer resourcesGuard.Unlock()
+	resourcesGuard := s.resourcesMut.RLock("handle_stream_status")
+	defer resourcesGuard.RUnlock()
 
 	stream, found := s.streams[msg.StreamID]
 	if !found {
@@ -829,8 +829,8 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	// dispatch — including the expensive per-source bind-message loop for
 	// fan-in root tasks — and starve concurrent readers, stalling dispatch.
 	func() {
-		resourcesGuard := s.resourcesMut.Lock("finalize_assignment")
-		defer resourcesGuard.Unlock()
+		resourcesGuard := s.resourcesMut.RLock("finalize_assignment")
+		defer resourcesGuard.RUnlock()
 
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
 		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
@@ -1430,8 +1430,8 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	// holding the write lock serializes them and starves the dispatcher's
 	// prepareAssignment read lock, stalling dispatch. A read lock lets them run
 	// concurrently.
-	resourcesGuard := s.resourcesMut.Lock("cancel")
-	defer resourcesGuard.Unlock()
+	resourcesGuard := s.resourcesMut.RLock("cancel")
+	defer resourcesGuard.RUnlock()
 
 	var errs []error
 
