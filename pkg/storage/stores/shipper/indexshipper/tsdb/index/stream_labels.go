@@ -53,9 +53,9 @@ func (r *StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]
 		if k := d.Uvarint(); k != 2 {
 			return nil, errors.Errorf("unexpected number of keys for postings offset table %d", k)
 		}
-		d.SkipUvarintBytes()   // Label name.
-		v := d.UvarintStr()    // Label value (copy).
-		d.Uvarint64()          // Postings offset.
+		d.SkipUvarintBytes() // Label name.
+		v := d.UvarintStr()  // Label value (copy).
+		d.Uvarint64()        // Postings offset.
 		values = append(values, v)
 		if v == lastVal {
 			break
