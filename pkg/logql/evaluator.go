@@ -768,12 +768,9 @@ func (r *RangeVectorEvaluator) Error() error {
 	return r.iter.Error()
 }
 
-// SetMaxOutputSeries does not enforce the limit. A range aggregation emits one
-// series per stream, which is typically far more than the query output once a
-// vector aggregation reduces above it, so the limit cannot be applied here. It
-// would only be sound when this range aggregation is itself the query root with
-// no reducing parent, a case JoinSampleVector already handles.
-func (*RangeVectorEvaluator) SetMaxOutputSeries(int) {}
+// SetMaxOutputSeries forwards the limit to the underlying range vector iterator,
+// which caps the distinct series it holds per window.
+func (r *RangeVectorEvaluator) SetMaxOutputSeries(n int) { r.iter.SetMaxSeries(n) }
 
 type AbsentRangeVectorEvaluator struct {
 	iter RangeVectorIterator

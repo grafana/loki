@@ -39,8 +39,9 @@ type StepEvaluator interface {
 	// SetMaxOutputSeries informs the evaluator of the maximum number of output
 	// series the query is allowed to produce. Ideally all implementations would perfectly
 	// detect when the output series should be evaluated at the current level and when it
-	// is safe to push the limit down to child evaluators. We are nowhere near this. Currently
-	// we have some basic implementations only at the root for some evaluators
+	// is safe to push the limit down to child evaluators. We are nowhere near this and it would be quite
+	// difficult. Implementing this should be done carefully. Currently we are only setting this at the
+	// root level in evalSample and never pushing down.
 	SetMaxOutputSeries(n int)
 }
 
