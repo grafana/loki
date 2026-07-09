@@ -129,6 +129,17 @@ func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.
 	b.unflushedSizeEstimate += postSize - preSize
 	b.currentSizeEstimate += postSize - preSize
 	b.state = builderStateDirty
+
+	// Cut a section once the tenant's accumulated postings reach the target
+	// section size, so peak in-memory accumulation stays ~TargetSectionSize
+	// rather than the full merged output. Mirrors AppendStat. Callers feed
+	// globally sorted, de-duplicated rows, so sections stay ordered.
+	if postSize > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
@@ -151,6 +162,14 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	b.unflushedSizeEstimate += postSize - preSize
 	b.currentSizeEstimate += postSize - preSize
 	b.state = builderStateDirty
+
+	// Cut a section at the target size; see AppendPostingsLabelEntry.
+	if postSize > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
 	}
