@@ -1,3 +1,28 @@
+# v1.55.0 (2026-07-06)
+
+* **Feature**: Add request serialization snapshot tests.
+
+# v1.54.2 (2026-07-01)
+
+* **Bug Fix**: Bump smithy-go to 1.27.3, fix JSON encorder for document.Number, endpoint host label format validation and CBOR union serialization on new serde
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.1 (2026-06-29)
+
+* No change notes available for this release.
+
+# v1.54.0 (2026-06-23)
+
+* **Feature**: Amazon MSK Replicator now supports mTLS authentication when connecting to external Apache Kafka clusters, enabling customers to replicate data from clusters that require mutual TLS for client authentication. This capability is supported when replicating to Amazon MSK Express brokers.
+
+# v1.53.0 (2026-06-22)
+
+* **Feature**: Amazon MSK Replicator now supports mTLS authentication when connecting to external Apache Kafka clusters, enabling customers to replicate data from clusters that require mutual TLS for client authentication. This capability is supported when replicating to Amazon MSK Express brokers.
+
+# v1.52.6 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.52.5 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.

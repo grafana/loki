@@ -14963,6 +14963,11 @@ func awsRestjson1_deserializeDocumentKafkaClusterClientAuthentication(v **types.
 
 	for key, value := range shape {
 		switch key {
+		case "mTLS":
+			if err := awsRestjson1_deserializeDocumentKafkaClusterMTLSAuthentication(&sv.MTLS, value); err != nil {
+				return err
+			}
+
 		case "saslScram":
 			if err := awsRestjson1_deserializeDocumentKafkaClusterSaslScramAuthentication(&sv.SaslScram, value); err != nil {
 				return err
@@ -15121,6 +15126,46 @@ func awsRestjson1_deserializeDocumentKafkaClusterEncryptionInTransit(v **types.K
 					return fmt.Errorf("expected __string to be of type string, got %T instead", value)
 				}
 				sv.RootCaCertificate = ptr.String(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsRestjson1_deserializeDocumentKafkaClusterMTLSAuthentication(v **types.KafkaClusterMTLSAuthentication, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.KafkaClusterMTLSAuthentication
+	if *v == nil {
+		sv = &types.KafkaClusterMTLSAuthentication{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "secretArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected __string to be of type string, got %T instead", value)
+				}
+				sv.SecretArn = ptr.String(jtv)
 			}
 
 		default:

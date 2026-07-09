@@ -809,9 +809,10 @@ type KafkaCluster struct {
 // Details of the client authentication used by the Apache Kafka cluster.
 type KafkaClusterClientAuthentication struct {
 
+	// Details for mTLS client authentication.
+	MTLS *KafkaClusterMTLSAuthentication
+
 	// Details for SASL/SCRAM client authentication.
-	//
-	// This member is required.
 	SaslScram *KafkaClusterSaslScramAuthentication
 
 	noSmithyDocumentSerde
@@ -867,6 +868,17 @@ type KafkaClusterEncryptionInTransit struct {
 
 	// The root CA certificate.
 	RootCaCertificate *string
+
+	noSmithyDocumentSerde
+}
+
+// Details for mTLS client authentication.
+type KafkaClusterMTLSAuthentication struct {
+
+	// The Amazon Resource Name (ARN) of the Secrets Manager secret.
+	//
+	// This member is required.
+	SecretArn *string
 
 	noSmithyDocumentSerde
 }
