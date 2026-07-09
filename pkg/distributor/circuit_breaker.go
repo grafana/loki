@@ -52,10 +52,11 @@ type circuitBreaker interface {
 }
 
 // A trialCircuitBreaker is a circuit breaker which opens after maxFailures
-// successive failures. Once the open period has elapsed, it allows up to
-// maxTrials trial requests through in the half-open state. If all of those
-// trials succeed it switches back to closed. If maxFailures successive trials
-// fail it switches back to open.
+// successive failures in the closed state. Once the open period has elapsed, it
+// allows up to maxTrials trial requests through in the half-open state. If all
+// of those trials succeed it switches back to closed. If any single trial fails
+// it switches back to open (the maxFailures threshold applies only to the closed
+// state).
 type trialCircuitBreaker struct {
 	state, totalOpens int
 	openPeriod        time.Duration
@@ -75,11 +76,11 @@ type trialCircuitBreaker struct {
 }
 
 // newTrialCircuitBreaker returns a new circuit breaker which opens after
-// maxFailures successive failures (as classified by isOpenErr). It remains open
-// until the end of the open window, then allows up to maxTrials trial requests
-// in the half-open state. It drops all requests in the open state, and drops
-// requests over maxTrials in the half-open state. It never drops requests in the
-// closed state.
+// maxFailures successive failures in the closed state (as classified by
+// isOpenErr). It remains open until the end of the open window, then allows up to
+// maxTrials trial requests in the half-open state, re-opening on the first
+// failing trial. It drops all requests in the open state, and drops requests over
+// maxTrials in the half-open state. It never drops requests in the closed state.
 func newTrialCircuitBreaker(
 	openPeriod time.Duration,
 	isOpenErr func(err error) bool,
@@ -147,11 +148,13 @@ func (b *trialCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
 	)
 }
 
-// done is invoked by the callback returned from successful calls to [Allow]. It
-// counts successive failures (as classified by isOpenErr), opening the circuit
-// breaker once maxFailures is reached. Any non-opening completion resets the
-// successive failure count and, in the half-open state, counts as a successful
-// trial, switching to closed once all trial requests have succeeded.
+// done is invoked by the callback returned from successful calls to [Allow]. In
+// the closed state it counts successive failures (as classified by isOpenErr),
+// opening the circuit breaker once maxFailures is reached. In the half-open state
+// any single failing trial re-opens the breaker immediately. Any non-opening
+// completion resets the successive failure count and, in the half-open state,
+// counts as a successful trial, switching to closed once all trial requests have
+// succeeded.
 //
 // term is the term the request was admitted in; completions from an earlier
 // term are stale (the breaker has since transitioned) and are ignored, so they
@@ -163,6 +166,12 @@ func (b *trialCircuitBreaker) done(term int, err error) {
 		return
 	}
 	if b.isOpenErr(err) {
+		if b.state == circuitBreakerHalfOpen {
+			// Any failing trial re-opens the circuit breaker immediately. The
+			// maxFailures threshold applies only in the closed state.
+			b.open()
+			return
+		}
 		b.failures++
 		if b.failures >= b.maxFailures {
 			b.open()

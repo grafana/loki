@@ -155,12 +155,14 @@ type CircuitBreakerConfig struct {
 	Enabled          bool          `yaml:"enabled"`
 	OpenPeriod       time.Duration `yaml:"open_period"`
 	FailureThreshold int           `yaml:"failure_threshold"`
+	MaxTrials        int           `yaml:"max_trials"`
 }
 
 func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
 	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
 	f.IntVar(&cfg.FailureThreshold, "distributor.circuit-breaker.failure-threshold", 1, "The number of successive failures required to open the circuit breaker.")
+	f.IntVar(&cfg.MaxTrials, "distributor.circuit-breaker.max-trials", 1, "The number of trial requests allowed through in the half-open state. All of them must succeed to close the circuit breaker; any failure re-opens it.")
 }
 
 func (cfg *CircuitBreakerConfig) Validate() error {
@@ -172,6 +174,9 @@ func (cfg *CircuitBreakerConfig) Validate() error {
 	}
 	if cfg.FailureThreshold < 1 {
 		return errors.New("the failure threshold must be at least 1")
+	}
+	if cfg.MaxTrials < 1 {
+		return errors.New("the maximum number of trials must be at least 1")
 	}
 	return nil
 }
@@ -489,7 +494,7 @@ func New(
 			func(err error) bool {
 				return errors.Is(err, kgo.ErrMaxBuffered)
 			},
-			10,
+			cfg.CircuitBreaker.MaxTrials,
 			cfg.CircuitBreaker.FailureThreshold,
 		)
 		registerer.MustRegister(circuitBreaker)
