@@ -194,8 +194,32 @@ func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)
+	case *logical.DummyLoad:
+		return p.processDummyLoad(inst, ctx)
 	}
 	return nil, nil
+}
+
+// processDummyLoad converts [logical.DummyLoad] into a Parallelize -> DummyLoad
+// physical node pair, mirroring the structure used for MakeTable/ScanSet.
+func (p *Planner) processDummyLoad(lp *logical.DummyLoad, _ *Context) (Node, error) {
+	parallelize := &Parallelize{NodeID: ulid.Make()}
+	p.plan.graph.Add(parallelize)
+
+	dummyLoad := &DummyLoad{
+		NodeID:        ulid.Make(),
+		NumBatches:    lp.NumBatches,
+		BatchSize:     lp.BatchSize,
+		SleepPerBatch: lp.SleepPerBatch,
+		Parallelism:   lp.Parallelism,
+		Labels:        lp.Labels,
+	}
+	p.plan.graph.Add(dummyLoad)
+
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: dummyLoad}); err != nil {
+		return nil, err
+	}
+	return parallelize, nil
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.

@@ -49,8 +49,8 @@ var _ Listener = (*Local)(nil)
 func (l *Local) DialFrom(ctx context.Context, from net.Addr) (Conn, error) {
 	l.lazyInit()
 
-	localToRemote := make(chan Frame)
-	remoteToLocal := make(chan Frame)
+	localToRemote := make(chan Frame, 128)
+	remoteToLocal := make(chan Frame, 128)
 
 	// Generate a context to share between the streams for whether the
 	// connection is still open.
@@ -228,4 +228,64 @@ func (d *LocalDialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error)
 		return nil, fmt.Errorf("address %s not found", to)
 	}
 	return listener.DialFrom(ctx, from)
+}
+
+// LocalNetwork is a shared in-process routing table that lets multiple [Local]
+// listeners discover and dial each other without a real network stack.
+//
+// Use [NewLocalNetwork] to create a network, [LocalNetwork.Register] to add an
+// existing listener (e.g. a scheduler's), and [LocalNetwork.NewListener] to
+// allocate uniquely-addressed listeners for workers. All peers share the
+// [Dialer] returned by [LocalNetwork.Dialer] and can therefore reach one
+// another, enabling multi-worker in-process deployments.
+type LocalNetwork struct {
+	mu      sync.RWMutex
+	peers   map[net.Addr]*Local
+	counter atomic.Int64
+}
+
+// NewLocalNetwork returns an empty [LocalNetwork].
+func NewLocalNetwork() *LocalNetwork {
+	return &LocalNetwork{peers: make(map[net.Addr]*Local)}
+}
+
+// NewListener allocates a new [Local] listener with a unique address derived
+// from prefix (e.g. "worker" yields addresses "worker-1", "worker-2", …) and
+// registers it with the network.
+func (n *LocalNetwork) NewListener(prefix string) *Local {
+	id := n.counter.Add(1)
+	l := &Local{Address: localAddr(fmt.Sprintf("%s-%d", prefix, id))}
+	n.mu.Lock()
+	n.peers[l.Address] = l
+	n.mu.Unlock()
+	return l
+}
+
+// Register adds l to the network. Panics if a listener with the same address
+// is already registered.
+func (n *LocalNetwork) Register(l *Local) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, exists := n.peers[l.Address]; exists {
+		panic(fmt.Sprintf("wire: LocalNetwork already has a listener for address %s", l.Address))
+	}
+	n.peers[l.Address] = l
+}
+
+// Dialer returns a [Dialer] that performs live lookups against the network and
+// can reach any listener registered at the time [Dialer.Dial] is called.
+func (n *LocalNetwork) Dialer() Dialer {
+	return &networkLocalDialer{n: n}
+}
+
+type networkLocalDialer struct{ n *LocalNetwork }
+
+func (d *networkLocalDialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error) {
+	d.n.mu.RLock()
+	l, ok := d.n.peers[to]
+	d.n.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("wire: no local peer at address %s", to)
+	}
+	return l.DialFrom(ctx, from)
 }

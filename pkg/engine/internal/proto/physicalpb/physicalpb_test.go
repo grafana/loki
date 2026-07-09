@@ -175,6 +175,17 @@ func Test_Node(t *testing.T) {
 			node: &physical.Merge{NodeID: ulid.Make()},
 		},
 		{
+			name: "DummyLoad",
+			node: &physical.DummyLoad{
+				NodeID:        ulid.Make(),
+				NumBatches:    10,
+				BatchSize:     100,
+				SleepPerBatch: 10,
+				Parallelism:   1,
+				Labels:        []string{""},
+			},
+		},
+		{
 			name: "PointersScan",
 			node: &physical.PointersScan{
 				NodeID: ulid.Make(),

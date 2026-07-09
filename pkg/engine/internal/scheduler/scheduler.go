@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gotrace "runtime/trace"
@@ -64,6 +65,11 @@ type Scheduler struct {
 
 	assignSema chan struct{}       // assignSema signals that task assignment is ready.
 	tasksCh    chan taskAssignment // channel for sending task assignments to worker routines.
+
+	// dispatchedTasks is a local-debug counter of tasks successfully dispatched
+	// to workers, sampled every second by runDebugStats to print the dispatch
+	// rate. Local debug only.
+	dispatchedTasks atomic.Uint64
 
 	wireMetrics *wire.Metrics
 }
@@ -127,8 +133,50 @@ func (s *Scheduler) run(ctx context.Context) error {
 	g.Go(func() error { return s.collector.Process(ctx) })
 	g.Go(func() error { return s.runAcceptLoop(ctx) })
 	g.Go(func() error { return s.runAssignLoop(ctx) })
+	g.Go(func() error { return s.runDebugStats(ctx) })
 
 	return g.Wait()
+}
+
+// runDebugStats prints, roughly once per second, the rate of tasks dispatched
+// to workers along with the current total queue size.
+//
+// The rate is normalized by the actual wall-clock time elapsed since the
+// previous sample rather than assuming exactly one second: under heavy load
+// this goroutine can be starved and the ticker fires late (missed ticks are
+// dropped), so dividing the raw delta by the real interval keeps the reported
+// rate accurate instead of inflating it into misleading spikes.
+//
+// This is intended for local debugging only, hence the use of fmt.Printf
+// rather than metrics or structured logging.
+func (s *Scheduler) runDebugStats(ctx context.Context) error {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	var prevDispatched uint64
+	prevTime := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case now := <-ticker.C:
+			dispatched := s.dispatchedTasks.Load()
+			elapsed := now.Sub(prevTime).Seconds()
+			prevTime = now
+
+			var rate float64
+			if elapsed > 0 {
+				rate = float64(dispatched-prevDispatched) / elapsed
+			}
+			prevDispatched = dispatched
+
+			assignGuard := s.assignMut.Lock("run_debug_stats")
+			queueSize := s.taskQueue.Len()
+			assignGuard.Unlock()
+
+			fmt.Printf("[scheduler debug] dispatch rate: %.0f tasks/s (over %.1fs), queue size: %d\n", rate, elapsed, queueSize)
+		}
+	}
 }
 
 func (s *Scheduler) runAcceptLoop(ctx context.Context) error {
@@ -582,6 +630,10 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		}
 
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
+
+		// Local-debug: count tasks successfully dispatched to workers, sampled
+		// by runDebugStats to print the dispatch rate.
+		s.dispatchedTasks.Add(1)
 
 		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
 	}

@@ -50,6 +50,13 @@ type WorkerParams struct {
 	// still connect to remote schedulers.
 	LocalScheduler *Scheduler
 
+	// LocalNetwork is the shared in-process routing table for multi-worker
+	// local deployments. When set together with LocalScheduler, each worker
+	// gets a unique address in the network so workers can stream data to one
+	// another without a real network stack. The scheduler must have been
+	// created with the same LocalNetwork so its listener is already registered.
+	LocalNetwork *wire.LocalNetwork
+
 	// Address to advertise to other workers and schedulers. Must be set when
 	// the worker runs in remote transport mode.
 	//
@@ -123,15 +130,24 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		dialer = wire.NewHTTP2Dialer(params.Endpoint)
 
 	case params.LocalScheduler != nil:
-		localListener := &wire.Local{Address: wire.LocalWorker}
-		listener = localListener
+		if params.LocalNetwork != nil {
+			// Multi-worker path: each worker gets a unique address in the shared
+			// network so workers can dial each other for stream delivery.
+			localListener := params.LocalNetwork.NewListener("worker")
+			listener = localListener
+			dialer = params.LocalNetwork.Dialer()
+		} else {
+			// Single-worker path: static addresses, no shared network needed.
+			localListener := &wire.Local{Address: wire.LocalWorker}
+			listener = localListener
 
-		schedulerListener, ok := params.LocalScheduler.listener.(*wire.Local)
-		if !ok {
-			return nil, errors.New("scheduler is not configured for local traffic")
+			schedulerListener, ok := params.LocalScheduler.listener.(*wire.Local)
+			if !ok {
+				return nil, errors.New("scheduler is not configured for local traffic")
+			}
+
+			dialer = wire.NewLocalDialer(localListener, schedulerListener)
 		}
-
-		dialer = wire.NewLocalDialer(localListener, schedulerListener)
 		localSchedulerAddress = wire.LocalScheduler
 
 	default:
