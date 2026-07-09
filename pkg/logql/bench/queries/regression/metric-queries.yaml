@@ -380,3 +380,86 @@ queries:
       bind to the parsed capture (matching v1's parsed-label semantics —
       v1 has no builtin `message` label), not to the raw log line. The
       series label set and per-series counts must match v1.
+  - description: Unwrap a value extracted from line_format template output
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | line_format `{{.bytes}}` | regexp `(?P<val>\d+)` | unwrap val [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - line_format
+      - regexp
+      - grouping
+    notes: >
+      Regression for the v2 line_format projection-pushdown fix. The
+      `line_format "{{.bytes}}"` template references `bytes`, which is
+      not consumed by any downstream filter or grouping (the downstream
+      `regexp` produces `val` and the group-by uses stream label
+      `level`). Pre-fix, projection pushdown narrowed logfmt's
+      requestedKeys to `[val]` (plus stream columns), so logfmt never
+      extracted `bytes`, `line_format` rendered "" via missingkey=zero,
+      `regexp` matched nothing, and `unwrap val` produced empty. Post-fix
+      the template's referenced fields are added to logfmt's
+      requestedKeys and per-level sums match v1. Must equal v1.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes
+      detected_fields:
+        - level
+  - description: Group by a label_format-renamed destination whose source is only known via the rename
+    query: sum by (msg_new) (count_over_time(${SELECTOR} | logfmt | label_format msg_new=msg [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - rename
+      - grouping
+    notes: >
+      Regression for the v2 label_format projection-pushdown fix. The
+      pipeline renames `msg` to `msg_new` and the outer aggregation
+      groups on the destination `msg_new`. Nothing else references the
+      source `msg`. Pre-fix, projection pushdown asked logfmt for
+      `msg_new` (which isn't a real logfmt key) and never asked for the
+      rename source `msg`, so logfmt extracted nothing, the rename
+      produced null, and grouping collapsed to a single empty series.
+      Post-fix, `handleParseLabelfmt` adds the rename source to
+      requestedKeys so `msg` is extracted and per-msg series match v1.
+      Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg
+  - description: label_format template field ref not pinned by any filter or grouping
+    query: sum by (tag) (count_over_time(${SELECTOR} | logfmt | label_format tag=`x{{.msg}}y` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - template
+      - grouping
+    notes: >
+      Companion to the label_format rename regression above, exercising
+      the template branch of `handleParseLabelfmt`. The template
+      references `msg` but no filter or grouping pins it. Pre-fix,
+      logfmt was asked only for `tag` (not a real key) and never
+      extracted `msg`, so the template rendered `"xy"` via
+      missingkey=zero and every stream collapsed onto a single
+      `tag="xy"` series. Post-fix, the template's referenced fields are
+      added to logfmt's requestedKeys and per-msg series match v1. Must
+      equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg
