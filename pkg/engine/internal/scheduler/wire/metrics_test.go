@@ -212,37 +212,12 @@ func TestPeer_Metrics_ActiveConnection(t *testing.T) {
 	}, 5*time.Second, 10*time.Millisecond, "client connection should be marked inactive")
 }
 
-func TestPeer_Metrics_BlockedOutgoingQueue(t *testing.T) {
-	metrics := NewMetrics()
-	peer := &Peer{Logger: log.NewNopLogger(), Metrics: metrics, Buffer: 1}
-	peer.lazyInit()
-
-	frame := MessageFrame{ID: 1, Message: WorkerReadyMessage{}}
-	peer.outgoing <- outgoingFrame{frame: frame, sendMode: sendModeAsync, enqueuedAt: time.Now()}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- peer.SendMessageAsync(ctx, WorkerReadyMessage{})
-	}()
-
-	labels := map[string]string{
-		"queue":        queueOutgoing.String(),
-		"frame_type":   FrameKindMessage.String(),
-		"message_type": WorkerReadyMessage{}.Kind().String(),
-		"mode":         sendModeAsync.String(),
-	}
-	require.Eventually(t, func() bool {
-		return gaugeValue(t, metrics.reg, "loki_engine_scheduler_wire_queue_blocked_senders", labels) == 1
-	}, 5*time.Second, 10*time.Millisecond, "sender should be blocked by the full outgoing queue")
-
-	cancel()
-	require.ErrorIs(t, <-errCh, context.Canceled)
-	require.Eventually(t, func() bool {
-		return gaugeValue(t, metrics.reg, "loki_engine_scheduler_wire_queue_blocked_senders", labels) == 0
-	}, 5*time.Second, 10*time.Millisecond, "blocked-sender gauge should drain")
-}
+// NOTE: the outgoing queue is intentionally an unbounded, non-blocking queue
+// (see Peer.enqueueFrame) so that a handler running on the incoming goroutine
+// never blocks on a backed-up peer — this prevents a duplex-connection deadlock.
+// Because outgoing sends never block, there is no "blocked outgoing sender"
+// metric to assert; the blocked-sender gauge is still exercised by the bounded
+// incoming queue on the receive path.
 
 func TestPeer_Metrics_LocalRoundTripFrameLabels(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
