@@ -106,6 +106,40 @@ func TestPeer_DiscardDropsQueuedMessage(t *testing.T) {
 	})
 }
 
+// TestPeer_SendMessageCancelEmitsDiscard verifies canceling SendMessage cancels
+// the remote handler.
+func TestPeer_SendMessageCancelEmitsDiscard(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		started, canceled := make(chan struct{}), make(chan struct{})
+		handler := func(hctx context.Context, _ *wire.Peer, _ wire.Message) error {
+			close(started)
+			<-hctx.Done()
+			close(canceled)
+			return hctx.Err()
+		}
+
+		clientConn, serverConn := dialLocal(ctx, t)
+		defer serve(ctx, newServer(serverConn, handler))()
+		client := &wire.Peer{Logger: log.NewNopLogger(), Metrics: wire.NewMetrics(), Conn: clientConn, Buffer: 4}
+		defer serve(ctx, client)()
+
+		sendCtx, sendCancel := context.WithCancel(ctx)
+		sendErr := make(chan error, 1)
+		go func() { sendErr <- client.SendMessage(sendCtx, wire.WorkerReadyMessage{}) }()
+
+		synctest.Wait()
+		requireClosed(t, started, "server handler did not start")
+
+		sendCancel()
+		synctest.Wait()
+		requireClosed(t, canceled, "server handler was not canceled by the discard")
+		require.ErrorIs(t, <-sendErr, context.Canceled)
+	})
+}
+
+// dialLocal returns a connected Local Conn pair.
 func dialLocal(ctx context.Context, t *testing.T) (client, server wire.Conn) {
 	t.Helper()
 

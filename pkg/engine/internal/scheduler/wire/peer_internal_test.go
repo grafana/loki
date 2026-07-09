@@ -3,9 +3,38 @@ package wire
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 )
+
+// TestPeer_SendMessageCancelDoesNotBlockOnFullQueue verifies canceling
+// SendMessage returns promptly with a full outgoing queue.
+func TestPeer_SendMessageCancelDoesNotBlockOnFullQueue(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		// Buffer 1 and no Serve: the message frame fills the only outgoing slot.
+		p := &Peer{Logger: log.NewNopLogger(), Metrics: NewMetrics(), Buffer: 1}
+		p.lazyInit()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		sendErr := make(chan error, 1)
+		go func() { sendErr <- p.SendMessage(ctx, WorkerReadyMessage{}) }()
+
+		synctest.Wait() // The message frame has taken the only outgoing slot.
+		require.Len(t, p.outgoing, 1)
+
+		cancel()
+		synctest.Wait()
+		select {
+		case err := <-sendErr:
+			require.ErrorIs(t, err, context.Canceled)
+		default:
+			t.Fatal("SendMessage did not return after cancellation with a full outgoing queue")
+		}
+	})
+}
 
 // TestPeer_processMessageHonorsDiscard covers nil-handler and unknown-ID discards.
 func TestPeer_processMessageHonorsDiscard(t *testing.T) {

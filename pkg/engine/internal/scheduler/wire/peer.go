@@ -384,7 +384,8 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 
 	select {
 	case <-ctx.Done():
-		// TODO(rfratto): queue a DiscardFrame
+		// Tell the remote peer we don't care about the result anymore.
+		p.queueDiscard(reqID)
 		outcome = contextOutcome(ctx)
 		return ctx.Err()
 	case <-p.done:
@@ -393,6 +394,19 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	case err := <-req.result:
 		outcome = resultOutcome(err)
 		return err
+	}
+}
+
+// queueDiscard tells the remote peer to stop processing message id. It does not
+// block, and drops the discard if the outgoing queue is full.
+func (p *Peer) queueDiscard(id uint64) {
+	frame := DiscardFrame{ID: id}
+	queued := outgoingFrame{frame: frame, sendMode: sendModeInternal, enqueuedAt: time.Now()}
+	select {
+	case p.outgoing <- queued:
+		p.noteFrameEnqueued(queueOutgoing, frame, sendModeInternal)
+	default:
+		level.Debug(p.Logger).Log("msg", "dropping discard frame; outgoing queue full", "id", id)
 	}
 }
 
