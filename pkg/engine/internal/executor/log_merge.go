@@ -64,9 +64,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return fmt.Errorf("starting k-way log merge: %w", err)
 	}
 
-	// Consume the globally-sorted stream and build compacted object(s). Ranging
-	// here (rather than passing the iterator to a helper) avoids naming the
-	// dataobj-internal result.Seq type, which this package cannot import.
+	// Consume the globally-sorted stream and build compacted object
 	w := c.newLogObjectWriter(node, table)
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
@@ -291,8 +289,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 	return table, nil
 }
 
-// sectionsWithRemaps flattens the sources' logs sections and, in lockstep, the
-// per-section local->global stream-ID remap the merge consumes.
+// sectionsWithRemaps flattens the sources' logs sections
 func sectionsWithRemaps(sources []*logSource, table *globalStreamTable) ([]*dataobj.Section, []map[int64]int64) {
 	var (
 		sections []*dataobj.Section

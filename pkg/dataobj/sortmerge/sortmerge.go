@@ -26,7 +26,7 @@ import (
 // multiple logs sections. It requires that the input sections are sorted
 // according to sort.
 func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, logs.CompareForSortOrder(sort))
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortOrder(sort)})
 }
 
 // IteratorForSchema returns an iterator that performs a k-way merge of records
@@ -35,7 +35,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 //
 // It expects sortKeys to contain a mapping from StreamID to schema sort key.
 func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, logs.CompareForSortSchema(sortKeys))
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(sortKeys)})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
@@ -43,11 +43,33 @@ func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKey
 // via remaps[i] (the map for sections[i]) before records are compared, so one
 // merge can order records across objects.
 func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
-	if len(sections) != len(remaps) {
-		return nil, fmt.Errorf("sortmerge: got %d sections but %d remaps", len(sections), len(remaps))
+	return iterator(ctx, sections, iteratorOptions{
+		less:     logs.CompareForSortSchema(globalSortKeys),
+		remaps:   remaps,
+		sortKeys: globalSortKeys,
+		schema:   expectedSchema,
+	})
+}
+
+// iteratorOptions are options for k-way merge implementation
+type iteratorOptions struct {
+	// required -
+	less     func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
+	remaps   []map[int64]int64
+	sortKeys []string
+	schema   []string
+}
+
+func iterator(
+	ctx context.Context,
+	sections []*dataobj.Section,
+	opts iteratorOptions,
+) (result.Seq[logs.Record], error) {
+	if opts.remaps != nil && len(sections) != len(opts.remaps) {
+		return nil, fmt.Errorf("sort merge: got %d sections but %d remaps", len(sections), len(opts.remaps))
 	}
 
-	sequences := make([]*remapSectionSequence, 0, len(sections))
+	sequences := make([]*sectionSequence, 0, len(sections))
 	bufferSize := max(128, 8192/max(1, len(sections)))
 
 	for i, s := range sections {
@@ -56,121 +78,14 @@ func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, r
 			return nil, fmt.Errorf("failed to open logs section: %w", err)
 		}
 
-		schema, err := sec.SchemaLabels()
-		if err != nil {
-			return nil, fmt.Errorf("reading section schema labels: %w", err)
-		}
-		if !slices.Equal(schema, expectedSchema) {
-			return nil, fmt.Errorf("section schema %v does not match expected sort schema %v", schema, expectedSchema)
-		}
-
-		ds, err := logs.MakeColumnarDataset(sec)
-		if err != nil {
-			return nil, fmt.Errorf("creating columnar dataset: %w", err)
-		}
-
-		columns, err := result.Collect(ds.ListColumns(ctx))
-		if err != nil {
-			return nil, err
-		}
-
-		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  ds,
-			Columns:  columns,
-			Prefetch: true,
-		})
-		if err := r.Open(ctx); err != nil {
-			return nil, fmt.Errorf("opening dataset row reader: %w", err)
-		}
-
-		sequences = append(sequences, &remapSectionSequence{
-			section:         sec,
-			remap:           remaps[i],
-			DatasetSequence: logs.NewDatasetSequence(r, bufferSize),
-		})
-	}
-
-	maxValue := result.Value(dataset.Row{
-		Index: math.MaxInt,
-		Values: []dataset.Value{
-			dataset.Int64Value(math.MaxInt64), // StreamID
-			dataset.Int64Value(math.MinInt64), // Timestamp
-		},
-	})
-
-	tree := loser.New(sequences, maxValue, remapSectionSequenceAt, logs.CompareForSortSchema(globalSortKeys), remapSectionSequenceClose)
-	sym := symbolizer.New(1024, 100_000)
-
-	return result.Iter(
-		func(yield func(logs.Record) bool) error {
-			defer tree.Close()
-			for tree.Next() {
-				seq := tree.Winner()
-
-				row, err := remapSectionSequenceAt(seq).Value()
-				if err != nil {
-					return err
-				}
-
-				var record logs.Record
-				if err := logs.DecodeRow(seq.section.Columns(), row, &record, sym); err != nil {
-					return err
-				}
-				// StreamID was rewritten to the global ID in the row; annotate the
-				// sort key so downstream builders (SortSchemaASC) sort correctly.
-				if record.StreamID >= 0 && int(record.StreamID) < len(globalSortKeys) {
-					record.SortKey = globalSortKeys[record.StreamID]
-				}
-				if !yield(record) {
-					return nil
-				}
+		if opts.schema != nil {
+			schema, err := sec.SchemaLabels()
+			if err != nil {
+				return nil, fmt.Errorf("reading section schema labels: %w", err)
 			}
-			return nil
-		}), nil
-}
-
-// remapSectionSequence wraps a section cursor and rewrites its local stream IDs
-// into a global space as rows are produced.
-type remapSectionSequence struct {
-	logs.DatasetSequence
-	section *logs.Section
-	remap   map[int64]int64
-}
-
-var _ loser.Sequence = (*remapSectionSequence)(nil)
-
-func (s *remapSectionSequence) Next() bool {
-	if !s.DatasetSequence.Next() {
-		return false
-	}
-	res := s.DatasetSequence.At()
-	row, err := res.Value()
-	if err != nil {
-		return true // error is surfaced via At() to the consumer
-	}
-	if g, ok := s.remap[row.Values[0].Int64()]; ok {
-		row.Values[0] = dataset.Int64Value(g)
-	}
-	return true
-}
-
-func remapSectionSequenceAt(seq *remapSectionSequence) result.Result[dataset.Row] { return seq.At() }
-func remapSectionSequenceClose(seq *remapSectionSequence)                         { seq.Close() }
-
-func iterator(
-	ctx context.Context,
-	sections []*dataobj.Section,
-	less func(result.Result[dataset.Row], result.Result[dataset.Row]) bool,
-) (result.Seq[logs.Record], error) {
-	sequences := make([]*sectionSequence, 0, len(sections))
-
-	// The buffer size is a trade-off between memory overhead and performance: Share a sensible batch size amongst the sections.
-	bufferSize := max(128, 8192/max(1, len(sections)))
-
-	for _, s := range sections {
-		sec, err := logs.Open(ctx, s)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open logs section: %w", err)
+			if !slices.Equal(schema, opts.schema) {
+				return nil, fmt.Errorf("section schema %v does not match expected sort schema %v", schema, opts.schema)
+			}
 		}
 
 		ds, err := logs.MakeColumnarDataset(sec)
@@ -192,10 +107,14 @@ func iterator(
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)
 		}
 
-		sequences = append(sequences, &sectionSequence{
+		seq := &sectionSequence{
 			section:         sec,
 			DatasetSequence: logs.NewDatasetSequence(r, bufferSize),
-		})
+		}
+		if opts.remaps != nil {
+			seq.remap = opts.remaps[i]
+		}
+		sequences = append(sequences, seq)
 	}
 
 	maxValue := result.Value(dataset.Row{
@@ -206,7 +125,13 @@ func iterator(
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, less, sectionSequenceClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, opts.less, sectionSequenceClose)
+
+	// Use interning on remap path, which reads multiple sections
+	var sym *symbolizer.Symbolizer
+	if opts.sortKeys != nil {
+		sym = symbolizer.New(1024, 100_000)
+	}
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
@@ -220,21 +145,46 @@ func iterator(
 				}
 
 				var record logs.Record
-				err = logs.DecodeRow(seq.section.Columns(), row, &record, nil)
-				if err != nil || !yield(record) {
+				if err := logs.DecodeRow(seq.section.Columns(), row, &record, sym); err != nil {
 					return err
+				}
+				// StreamID was rewritten to the global ID in the row; annotate the
+				// sort key so downstream builders (SortSchemaASC) sort correctly.
+				if opts.sortKeys != nil && record.StreamID >= 0 && int(record.StreamID) < len(opts.sortKeys) {
+					record.SortKey = opts.sortKeys[record.StreamID]
+				}
+				if !yield(record) {
+					return nil
 				}
 			}
 			return nil
 		}), nil
 }
 
+// sectionSequence wraps a section cursor. When remap is non-nil it rewrites the
+// section's local stream IDs into a global space as rows are produced.
 type sectionSequence struct {
 	logs.DatasetSequence
 	section *logs.Section
+	remap   map[int64]int64
 }
 
-var _ loser.Sequence = (*sectionSequence)(nil)
+func (s *sectionSequence) Next() bool {
+	if !s.DatasetSequence.Next() {
+		return false
+	}
+	if s.remap == nil {
+		return true
+	}
+	row, err := s.DatasetSequence.At().Value()
+	if err != nil {
+		return true // error is surfaced via At() to the consumer
+	}
+	if g, ok := s.remap[row.Values[0].Int64()]; ok {
+		row.Values[0] = dataset.Int64Value(g)
+	}
+	return true
+}
 
 func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
 func sectionSequenceClose(seq *sectionSequence)                         { seq.Close() }
