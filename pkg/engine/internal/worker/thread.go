@@ -103,6 +103,7 @@ type thread struct {
 	BatchSize      int64
 	PrefetchBytes  int64
 	Bucket         objstore.Bucket
+	DataBucket     objstore.Bucket
 	Metastore      metastore.Metastore
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
@@ -125,6 +126,15 @@ func (t *thread) State() threadState {
 	t.stateMut.RLock()
 	defer t.stateMut.RUnlock()
 	return t.state
+}
+
+// dataBucketXCap wraps the source-object bucket for tracing, returning nil when
+// no separate data bucket is configured so the executor falls back to Bucket.
+func (t *thread) dataBucketXCap() objstore.Bucket {
+	if t.DataBucket == nil {
+		return nil
+	}
+	return bucket.NewXCapBucket(t.DataBucket)
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
@@ -215,6 +225,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		BatchSize:      t.BatchSize,
 		PrefetchBytes:  t.PrefetchBytes,
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
+		DataBucket:     t.dataBucketXCap(),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,

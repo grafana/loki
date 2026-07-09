@@ -194,6 +194,44 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 	require.Equal(t, map[string]bool{"a": true}, apps, "other tenants' streams must be excluded")
 }
 
+// TestCollectLogSources_ReadsFromUnprefixedDataBucket reproduces the bug where
+// the compaction worker was wired with only the index-prefixed bucket. Source
+// log objects live at the unprefixed dataobj root, so reading them through the
+// prefixed bucket prepended the index prefix and failed with "key does not
+// exist". collectLogSources must read sources from dataBucket (unprefixed).
+func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
+	ctx := context.Background()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Source log objects are written at the unprefixed root, exactly as the
+	// uploader writes them (objects/<sha>/<sha>).
+	root := objstore.NewInMemBucket()
+	buildSourceLogObject(t, root, "objects/09/abcdef", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+	})
+
+	// bucket is the index-prefixed view the compaction wiring hands the
+	// executor; dataBucket is the unprefixed root for reading source objects.
+	c := newTestExecutorContext(t, objstore.NewPrefixedBucket(root, "dataobj/index/v0"))
+	c.dataBucket = root
+
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
+		},
+	}
+
+	sources, err := c.collectLogSources(ctx, node)
+	require.NoError(t, err, "source objects must resolve against the unprefixed data bucket")
+	require.Len(t, sources, 1)
+	require.Equal(t, "objects/09/abcdef", sources[0].path)
+}
+
 // newSmallObjectExecutorContext is like newTestExecutorContext but with a tiny
 // TargetObjectSize so the merge splits its output across multiple objects.
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
