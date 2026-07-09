@@ -3373,6 +3373,10 @@ ring:
 # CLI flag: -distributor.max-decompressed-size
 [max_decompressed_size: <int> | default = 5242880000]
 
+# The maximum number of inflight bytes at a time. 0 means disabled.
+# CLI flag: -distributor.max-inflight-bytes
+[max_inflight_bytes: <int> | default = 0]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
