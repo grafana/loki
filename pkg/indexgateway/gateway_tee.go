@@ -19,6 +19,9 @@ const (
 	clientLabelSecondary = "secondary"
 	statusSuccess        = "success"
 	statusError          = "error"
+
+	// shadowConcurrencyLimit is the maximum number of inflight shadow requests.
+	shadowConcurrencyLimit = 1000
 )
 
 // TeeGatewayClient wraps a primary and secondary GatewayClient.
@@ -27,20 +30,27 @@ const (
 // This is intended for testing different configurations of the index gateway client, or index
 // gateways themselves.
 // To do this, spin up a secondary set of index gateways with your experimental configuration.
+//
+// Shadow requests are bounded by shadowConcurrencyLimit. When the limit is reached, the
+// secondary request is skipped and shadow_requests_dropped_total is incremented, signaling
+// that comparisons across the two clients are no longer over identical traffic.
 type TeeGatewayClient struct {
-	primary         series.GatewayClient
-	secondary       series.GatewayClient
-	logger          log.Logger
-	requestDuration *prometheus.HistogramVec
+	primary                      series.GatewayClient
+	secondary                    series.GatewayClient
+	logger                       log.Logger
+	requestDuration              *prometheus.HistogramVec
+	shadowRequestsDroppedCounter *prometheus.CounterVec
+	shadowSemaphore              chan struct{}
 }
 
 // NewTeeGatewayClient creates a TeeGatewayClient that fans out to both primary and secondary.
 // Callers are responsible for stopping both clients independently.
 func NewTeeGatewayClient(primary, secondary series.GatewayClient, r prometheus.Registerer, logger log.Logger) (*TeeGatewayClient, error) {
 	return &TeeGatewayClient{
-		primary:   primary,
-		secondary: secondary,
-		logger:    logger,
+		primary:         primary,
+		secondary:       secondary,
+		logger:          logger,
+		shadowSemaphore: make(chan struct{}, shadowConcurrencyLimit),
 		requestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
 			Name:                            "index_gateway_tee_request_duration_seconds",
@@ -49,6 +59,11 @@ func NewTeeGatewayClient(primary, secondary series.GatewayClient, r prometheus.R
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operation", "client", "status"}),
+		shadowRequestsDroppedCounter: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_tee_shadow_requests_dropped_total",
+			Help:      "Number of secondary (shadow) requests dropped because the tee client reached its concurrency limit. When non-zero, primary/secondary comparisons are no longer over identical traffic.",
+		}, []string{"operation"}),
 	}, nil
 }
 
@@ -67,14 +82,20 @@ func runTee[Req, Resp any](
 	req Req,
 	fn func(series.GatewayClient, context.Context, Req) (Resp, error),
 ) (Resp, error) {
-	go func() {
-		start := time.Now()
-		_, err := fn(t.secondary, context.WithoutCancel(ctx), req)
-		t.observe(operation, clientLabelSecondary, start, err)
-		if err != nil {
-			level.Warn(t.logger).Log("msg", "tee index gateway request failed", "operation", operation, "err", err)
-		}
-	}()
+	select {
+	case t.shadowSemaphore <- struct{}{}:
+		go func() {
+			defer func() { <-t.shadowSemaphore }()
+			start := time.Now()
+			_, err := fn(t.secondary, context.WithoutCancel(ctx), req)
+			t.observe(operation, clientLabelSecondary, start, err)
+			if err != nil {
+				level.Warn(t.logger).Log("msg", "tee index gateway request failed", "operation", operation, "err", err)
+			}
+		}()
+	default:
+		t.shadowRequestsDroppedCounter.WithLabelValues(operation).Inc()
+	}
 	start := time.Now()
 	resp, err := fn(t.primary, ctx, req)
 	t.observe(operation, clientLabelPrimary, start, err)

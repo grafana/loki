@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
@@ -71,6 +72,25 @@ func histogramCount(t *testing.T, reg prometheus.Gatherer, operation, client, st
 				"status":    status,
 			}) {
 				return m.GetHistogram().GetSampleCount()
+			}
+		}
+	}
+	return 0
+}
+
+// shadowDroppedCount returns the value of the shadow-requests-dropped counter for
+// the given operation label, or 0 if the series has not yet been created.
+func shadowDroppedCount(t *testing.T, reg prometheus.Gatherer, operation string) float64 {
+	t.Helper()
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+	for _, mf := range mfs {
+		if mf.GetName() != "loki_index_gateway_tee_shadow_requests_dropped_total" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			if labelsMatch(m.GetLabel(), map[string]string{"operation": operation}) {
+				return m.GetCounter().GetValue()
 			}
 		}
 	}
@@ -175,4 +195,48 @@ func TestRunTee_BothError(t *testing.T) {
 
 	require.Equal(t, uint64(1), histogramCount(t, reg, "GetChunkRef", clientLabelPrimary, statusError))
 	waitSecondary(t, reg, "GetChunkRef", statusError)
+}
+
+// TestRunTee_ShadowConcurrencyLimit fills the shadow semaphore with in-flight
+// secondary calls and verifies that any further requests bypass the shadow: the
+// primary still succeeds, the drop counter increments, and the secondary never
+// receives the extra call.
+func TestRunTee_ShadowConcurrencyLimit(t *testing.T) {
+	// Construct a primary gateway client where requests immediately succeed, and a secondary gateway client where
+	// requests hang until we release them.
+	var secondaryCalls atomic.Int64
+	release := make(chan struct{})
+	secondary := &mockGatewayClient{getChunkRefFn: func(_ context.Context, _ *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+		secondaryCalls.Add(1)
+		<-release
+		return &logproto.GetChunkRefResponse{}, nil
+	}}
+	primary := &mockGatewayClient{}
+
+	tee, reg := newTestTee(t, primary, secondary)
+
+	// Saturate the shadow semaphore with 1000 blocked secondary calls.
+	for i := 0; i < 1000; i++ {
+		_, err := tee.GetChunkRef(context.Background(), &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+	require.Eventually(t, func() bool {
+		return secondaryCalls.Load() == int64(1000)
+	}, 5*time.Second, time.Millisecond, "expected 1000 secondary calls to be in flight")
+
+	// The next call must still succeed on the primary, but the shadow must be dropped.
+	_, err := tee.GetChunkRef(context.Background(), &logproto.GetChunkRefRequest{})
+	require.NoError(t, err)
+	require.Equal(t, float64(1), shadowDroppedCount(t, reg, "GetChunkRef"))
+
+	// Give any spurious secondary invocation a chance to happen, then confirm it didn't.
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int64(1000), secondaryCalls.Load(),
+		"secondary must not receive calls beyond the concurrency limit")
+
+	// Unblock the secondaries and wait for them to finish so we don't leak goroutines.
+	close(release)
+	require.Eventually(t, func() bool {
+		return histogramCount(t, reg, "GetChunkRef", clientLabelSecondary, statusSuccess) == uint64(1000)
+	}, 5*time.Second, time.Millisecond)
 }
