@@ -147,7 +147,8 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 }
 
 // observeTenantCycle records per-tenant cycle outcomes and counts. stats is
-// only consulted for the compacted outcome; pass the zero value otherwise.
+// consulted for the work-producing outcomes (compacted, log_compacted); pass
+// the zero value for converged/failed.
 func (m *coordinatorMetrics) observeTenantCycle(
 	tenant string,
 	outcome string,
@@ -162,7 +163,9 @@ func (m *coordinatorMetrics) observeTenantCycle(
 	if outcome != "converged" {
 		m.tenantCycleDurationSeconds.WithLabelValues(outcome).Observe(duration.Seconds())
 	}
-	if outcome == "compacted" {
+	// Both the index-compaction (compacted) and log-compaction (log_compacted)
+	// paths add/remove indexes and dispatch tasks, so record their deltas.
+	if outcome == "compacted" || outcome == "log_compacted" {
 		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed))
 		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
 		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
