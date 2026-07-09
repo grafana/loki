@@ -323,6 +323,6 @@ type errStringIter struct {
 	err error
 }
 
-func (e errStringIter) Next() bool  { return false }
-func (e errStringIter) At() string  { return "" }
-func (e errStringIter) Err() error  { return e.err }
+func (e errStringIter) Next() bool { return false }
+func (e errStringIter) At() string { return "" }
+func (e errStringIter) Err() error { return e.err }

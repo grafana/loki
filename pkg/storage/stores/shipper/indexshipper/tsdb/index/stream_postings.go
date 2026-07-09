@@ -284,4 +284,3 @@ func applyFingerprintFilter(p Postings, fpFilter FingerprintFilter, fpOffsets Fi
 func (r *StreamReader) streamFingerprintOffsets() FingerprintOffsets {
 	return r.fingerprintOffsets
 }
-
