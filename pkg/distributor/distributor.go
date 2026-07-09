@@ -152,13 +152,15 @@ func (cfg *Config) Validate() error {
 }
 
 type CircuitBreakerConfig struct {
-	Enabled    bool          `yaml:"enabled"`
-	OpenPeriod time.Duration `yaml:"open_period"`
+	Enabled          bool          `yaml:"enabled"`
+	OpenPeriod       time.Duration `yaml:"open_period"`
+	FailureThreshold int           `yaml:"failure_threshold"`
 }
 
 func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
 	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
+	f.IntVar(&cfg.FailureThreshold, "distributor.circuit-breaker.failure-threshold", 1, "The number of successive failures required to open the circuit breaker.")
 }
 
 func (cfg *CircuitBreakerConfig) Validate() error {
@@ -167,6 +169,9 @@ func (cfg *CircuitBreakerConfig) Validate() error {
 	}
 	if cfg.OpenPeriod < 0 {
 		return errors.New("the open period must be a positive duration")
+	}
+	if cfg.FailureThreshold < 1 {
+		return errors.New("the failure threshold must be at least 1")
 	}
 	return nil
 }
@@ -485,6 +490,7 @@ func New(
 				return errors.Is(err, kgo.ErrMaxBuffered)
 			},
 			10,
+			cfg.CircuitBreaker.FailureThreshold,
 		)
 		registerer.MustRegister(circuitBreaker)
 		d.circuitBreaker = circuitBreaker

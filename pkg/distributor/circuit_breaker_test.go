@@ -13,7 +13,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	isAnyErr := func(err error) bool { return err != nil }
 
 	t.Run("allows requests when closed", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		ok, doneFunc := b.Allow()
 		require.True(t, ok)
 		require.NotNil(t, doneFunc)
@@ -21,7 +21,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("transitions to open on error", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		ok, doneFunc := b.Allow()
 		require.True(t, ok)
 		doneFunc(errors.New("some error occurred"))
@@ -29,7 +29,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("rejects all requests when open", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		b.state = circuitBreakerOpen
 		b.lastOpened = time.Now()
 
@@ -46,7 +46,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 
 	t.Run("transitions to half-open after open period", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+			b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 			b.state = circuitBreakerOpen
 			b.lastOpened = time.Now()
 
@@ -65,7 +65,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("allows up to maxTrials trials when half-open", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		b.state = circuitBreakerHalfOpen
 
 		// Exactly maxTrials trial requests are allowed through.
@@ -81,7 +81,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("transitions to closed when all trials succeed", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		b.state = circuitBreakerHalfOpen
 
 		doneFuncs := make([]func(err error), 0, 10)
@@ -103,7 +103,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("transitions to open if a trial fails in half-open", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 		b.state = circuitBreakerHalfOpen
 
 		// Some trials succeed.
@@ -121,7 +121,7 @@ func TestTrialCircuitBreaker(t *testing.T) {
 
 	t.Run("resets trials and successes when re-entering half-open", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			b := newTrialCircuitBreaker(time.Second, isAnyErr, 10)
+			b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
 			b.state = circuitBreakerHalfOpen
 
 			// A few successful trials accumulate, then a failure re-opens it.
@@ -149,6 +149,88 @@ func TestTrialCircuitBreaker(t *testing.T) {
 				doneFunc(nil)
 			}
 			require.Equal(t, circuitBreakerClosed, b.state)
+		})
+	})
+
+	t.Run("opens only after maxFailures successive failures", func(t *testing.T) {
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 3)
+
+		// The first two failures keep the circuit breaker closed.
+		for range 2 {
+			ok, doneFunc := b.Allow()
+			require.True(t, ok)
+			doneFunc(errors.New("an error occurred"))
+			require.Equal(t, circuitBreakerClosed, b.state)
+		}
+
+		// The third successive failure opens it.
+		ok, doneFunc := b.Allow()
+		require.True(t, ok)
+		doneFunc(errors.New("an error occurred"))
+		require.Equal(t, circuitBreakerOpen, b.state)
+	})
+
+	t.Run("a success resets the successive failure count", func(t *testing.T) {
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 3)
+
+		fail := func() {
+			ok, doneFunc := b.Allow()
+			require.True(t, ok)
+			doneFunc(errors.New("an error occurred"))
+		}
+		succeed := func() {
+			ok, doneFunc := b.Allow()
+			require.True(t, ok)
+			doneFunc(nil)
+		}
+
+		// Two failures, then a success resets the count, so two more failures
+		// are not enough to open.
+		fail()
+		fail()
+		succeed()
+		fail()
+		fail()
+		require.Equal(t, circuitBreakerClosed, b.state)
+
+		// A third successive failure finally opens it.
+		fail()
+		require.Equal(t, circuitBreakerOpen, b.state)
+	})
+
+	t.Run("a single failing trial does not re-open when maxFailures > 1", func(t *testing.T) {
+		b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 3)
+		b.state = circuitBreakerHalfOpen
+
+		// A single failing trial is below the threshold, so it stays half-open.
+		ok, doneFunc := b.Allow()
+		require.True(t, ok)
+		doneFunc(errors.New("an error occurred"))
+		require.Equal(t, circuitBreakerHalfOpen, b.state)
+	})
+
+	t.Run("a late completion from a previous state is ignored", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			b := newTrialCircuitBreaker(time.Second, isAnyErr, 10, 1)
+
+			// Admit a request while closed, but hold its done callback.
+			ok, staleDone := b.Allow()
+			require.True(t, ok)
+
+			// The breaker opens (from an unrelated failure) and then transitions
+			// to half-open after the open period.
+			b.open()
+			require.Equal(t, circuitBreakerOpen, b.state)
+			time.Sleep(2 * time.Second)
+			ok, _ = b.Allow()
+			require.True(t, ok)
+			require.Equal(t, circuitBreakerHalfOpen, b.state)
+
+			// The late success from the closed state must NOT count as a
+			// half-open trial success.
+			staleDone(nil)
+			require.Equal(t, 0, b.successes)
+			require.Equal(t, circuitBreakerHalfOpen, b.state)
 		})
 	})
 }
