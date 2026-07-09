@@ -40,7 +40,8 @@ func (r *StreamReader) readUvarintSection(ctx context.Context, off int) ([]byte,
 		return nil, err
 	}
 	content := make([]byte, l)
-	if err := streamReadBytes(&d, content); err != nil {
+	d.ReadInto(content)
+	if err := d.Err(); err != nil {
 		return nil, err
 	}
 	expCRC := d.Be32()
@@ -51,20 +52,6 @@ func (r *StreamReader) readUvarintSection(ctx context.Context, off int) ([]byte,
 		return nil, errors.Wrap(streamenc.ErrInvalidChecksum, "series record")
 	}
 	return content, nil
-}
-
-// streamReadBytes drains len(dst) bytes from d into dst. Uses byte-level
-// reads because the streamenc.Decbuf surface doesn't expose a public
-// ReadInto helper. For series records this is at most a few hundred bytes;
-// if profiling shows it's hot we can widen Decbuf's API.
-func streamReadBytes(d *streamenc.Decbuf, dst []byte) error {
-	for i := 0; i < len(dst); i++ {
-		dst[i] = d.Byte()
-		if err := d.Err(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Series populates lbls and chks for the given series ref, matching
