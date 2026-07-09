@@ -184,9 +184,6 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		}
 	}
 
-	if compacted == 0 && failed == 0 && logCompacted > 0 {
-		cycleOutcome = "log_compacted"
-	}
 	c.metrics.observeCycle(cycleOutcome, duration)
 
 	//TODO(twhitney): will want a metric for this
@@ -304,8 +301,8 @@ func (c *coordinator) compactTenantLogs(
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.MaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
+	if c.cfg.LogMaxRunningCompactionTasks > 0 {
+		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
 	}
 	for i, ts := range tasks {
 		g.Go(func() error {

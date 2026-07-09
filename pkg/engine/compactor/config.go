@@ -29,6 +29,11 @@ type Config struct {
 	// admission throttle). Negative values are rejected at config validation.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
 
+	// LogMaxRunningCompactionTasks caps how many LogMerge tasks the coordinator
+	// runs concurrently per tenant within a single cycle. Zero means unlimited.
+	// Negative values are rejected at config validation.
+	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
+
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and runs a compaction plan per tenant
 	// that has > 1 index in the window.
@@ -135,8 +140,9 @@ type WorkerConfig struct {
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
-	defaultMaxRunningCompactionTasks = 16
-	defaultEndpoint                  = "/api/v2/compaction-frame"
+	defaultMaxRunningCompactionTasks    = 16
+	defaultLogMaxRunningCompactionTasks = 16
+	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMaxRunsPerTask        = 8
@@ -159,6 +165,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
+	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
+		defaultLogMaxRunningCompactionTasks,
+		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
@@ -209,6 +218,9 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunningCompactionTasks < 0 {
 		return errInvalidMaxRunningCompactionTasks
 	}
+	if cfg.LogMaxRunningCompactionTasks < 0 {
+		return errInvalidLogMaxRunningCompactionTasks
+	}
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
 	}
@@ -234,10 +246,11 @@ func (cfg *Config) Validate() error {
 // Sentinel validation errors. Kept at package scope so tests can match
 // them with errors.Is.
 var (
-	errInvalidMaxRunningCompactionTasks = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
-	errEmptySchedulerEndpoint           = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
-	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
-	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
-	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
-	errInvalidLogMaxRunsPerTask         = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
+	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
+	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
+	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
+	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
+	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
 )
