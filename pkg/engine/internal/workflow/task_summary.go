@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -95,7 +96,9 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"cache_check", taskResultCacheOutcome(capture),
 	)
 
-	if isScanTask(task) {
+	if isPostingsScanTask(task) {
+		wf.printTaskPostingsLocalitySummary(task, capture)
+	} else if isScanTask(task) {
 		// print log section data locality as a separate log line.
 		wf.printTaskLogLocalitySummary(task, capture)
 	}
@@ -124,6 +127,31 @@ func (wf *Workflow) printTaskLogLocalitySummary(task *Task, capture *xcap.Captur
 		"stream_row_relevance", ratio(relevantRows, rowsTotal),
 		"stream_page_relevance", ratio(streamRelevantPages, streamPagesTotal),
 		"stream_page_fragmentation", ratio(streamPageRuns, streamRelevantPages),
+	)
+}
+
+func (wf *Workflow) printTaskPostingsLocalitySummary(task *Task, capture *xcap.Capture) {
+	labelPagesTotal := xcap.Value[int64](capture, metastore.StatPostingsLabelColumnNameTotalPages)
+	labelPagesRelevant := xcap.Value[int64](capture, metastore.StatPostingsLabelColumnNameRelevantPages)
+
+	bloomPagesTotal := xcap.Value[int64](capture, metastore.StatPostingsBloomColumnNameTotalPages)
+	bloomPagesRelevant := xcap.Value[int64](capture, metastore.StatPostingsBloomColumnNameRelevantPages)
+
+	level.Info(wf.logger).Log(
+		"msg", "task-postings-locality-summary",
+		// Identity
+		"task_id", task.ULID,
+		"query_id", wf.opts.ID,
+		"parent_task_id", wf.parentTaskID(task),
+
+		// Locality
+		"postings_label_column_name_pages_total", labelPagesTotal,
+		"postings_label_column_name_pages_relevant", labelPagesRelevant,
+		"postings_label_column_name_page_relevance", ratio(labelPagesRelevant, labelPagesTotal),
+
+		"postings_bloom_column_name_pages_total", bloomPagesTotal,
+		"postings_bloom_column_name_pages_relevant", bloomPagesRelevant,
+		"postings_bloom_column_name_page_relevance", ratio(bloomPagesRelevant, bloomPagesTotal),
 	)
 }
 
