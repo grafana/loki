@@ -21,7 +21,7 @@ type coordinatorMetrics struct {
 	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
 
 	// cyclesTotal counts coordinator cycles by outcome.
-	cyclesTotal *prometheus.CounterVec // outcome=toc_not_found|index_load_err|no_indexes|converged|compaction_failed|compacted_with_failures|compacted
+	cyclesTotal *prometheus.CounterVec // outcome=toc_not_found|index_load_err|no_indexes|converged|compaction_failed|compacted_with_failures|compacted|log_compacted
 
 	// tenantCyclesTotal counts per-tenant cycle outcomes.
 	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|log_compacted|converged|failed, tenant

@@ -1,62 +1,73 @@
 package compactionv2
 
 import (
-	"context"
 	"fmt"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// Plan sorts the input sections into P runs and groups them into
-// ⌈P/K⌉ task batches: runs [0..K) -> task 0, runs [K..2K) -> task 1, ...
-//
-// The output is deterministic for a given input regardless of the input order.
+// Run is one non-overlapping layer of sections over the sort key.
+type Run interface {
+	// Sections returns the run's sections in sorted order.
+	Sections() []*compactionv2pb.SectionRef
+	// Size returns the sum of the run's sections' UncompressedSize.
+	Size() uint64
+}
+
+// CalculateRuns sorts [sections] in place and returns the resulting runs.
+func CalculateRuns(sections []*compactionv2pb.SectionRef) []Run {
+	calculated := calculateRuns(sections)
+	runs := make([]Run, len(calculated))
+	for i, r := range calculated {
+		runs[i] = r
+	}
+	return runs
+}
+
+// IsTerminal reports whether a converged window is already a single run (or
+// none), or when the total data across all runs is below minCompactionSize.
+func IsTerminal(runs []Run, minCompactionSize uint64) bool {
+	if len(runs) <= 1 {
+		return true
+	}
+	var total uint64
+	for _, r := range runs {
+		total += r.Size()
+	}
+	return total < minCompactionSize
+}
+
+// Plan groups [runs] into ⌈P/K⌉ task batches: runs [0..K) -> task
+// 0, runs [K..2K) -> task 1, ... The output is deterministic for a given input.
 //
 // Special cases:
-//   - len(sections) == 0  -> returns nil (no tasks).
-//   - k >= P              -> returns a single TaskSpec containing all runs.
-//
-// K must be greater than 0. Plan sorts the input sections slice in place;
-// callers that need the original order must copy beforehand. The contract
-// requires non-nil SectionRef entries.
-//
-// The ctx parameter is currently not used. The algorithm runs to completion
-// without honoring cancellation, because partial output would violate the
-// determinism contract.
+//   - len(runs) == 0 -> returns nil (no tasks).
+//   - k >= P         -> returns a single TaskSpec containing all runs.
 func Plan(
-	ctx context.Context,
-	sections []*compactionv2pb.SectionRef,
+	runs []Run,
 	tenant string,
 	k int,
 	sortSchema []string,
 ) []*compactionv2pb.TaskSpec {
-	_ = ctx
 	if k <= 0 {
 		panic(fmt.Sprintf("k must be > 0, got %d", k))
 	}
-	if len(sections) == 0 {
+	if len(runs) == 0 {
 		return nil
 	}
 
-	calculated := calculateRuns(sections)
-	if len(calculated) == 0 {
-		return nil
+	refs := make([]*compactionv2pb.RunRef, len(runs))
+	for i, r := range runs {
+		refs[i] = &compactionv2pb.RunRef{Sections: r.Sections()}
 	}
 
-	// Materialize runs as RunRefs in creation order.
-	runs := make([]*compactionv2pb.RunRef, len(calculated))
-	for i, r := range calculated {
-		runs[i] = &compactionv2pb.RunRef{Sections: r.sections}
-	}
-
-	// Group into ⌈P/K⌉ TaskSpec batches.
-	numTasks := (len(runs) + k - 1) / k
+	numTasks := (len(refs) + k - 1) / k
 	tasks := make([]*compactionv2pb.TaskSpec, 0, numTasks)
-	for start := 0; start < len(runs); start += k {
-		end := min(start+k, len(runs))
+	for start := 0; start < len(refs); start += k {
+		end := min(start+k, len(refs))
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
 			Tenant:     tenant,
-			Runs:       runs[start:end],
+			Runs:       refs[start:end],
 			SortSchema: sortSchema,
 		})
 	}
