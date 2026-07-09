@@ -2728,6 +2728,8 @@ func (m *mockStepEvaluator) Close() error {
 func (m *mockStepEvaluator) Explain(_ Node) {
 }
 
+func (m *mockStepEvaluator) SetMaxOutputSeries(int) {}
+
 // storeSampleResult implements StepResult for testing
 type storeSampleResult struct {
 	vector promql.Vector

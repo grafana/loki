@@ -405,6 +405,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
+	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	// logs drilldown has special partial results handling, so don't set max output series
+	if !httpreq.IsLogsDrilldownRequest(ctx) {
+		stepEvaluator.SetMaxOutputSeries(maxSeries)
+	}
+
 	next, _, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
@@ -413,8 +420,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if next && r != nil {
 		switch vec := r.(type) {
 		case SampleVector:
-			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 			mfl := false
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true

@@ -204,6 +204,11 @@ func (*mergeOverTimeStepEvaluator) Close() error { return nil }
 
 func (*mergeOverTimeStepEvaluator) Error() error { return nil }
 
+// SetMaxOutputSeries does not enforce the limit. It merges sharded
+// first/last_over_time results and emits one series per stream; the limit is
+// enforced above it (and by JoinSampleVector).
+func (*mergeOverTimeStepEvaluator) SetMaxOutputSeries(int) {}
+
 func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}

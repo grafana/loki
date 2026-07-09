@@ -61,3 +61,8 @@ func (m *MatrixStepEvaluator) Next() (bool, int64, StepResult) {
 func (m *MatrixStepEvaluator) Close() error { return nil }
 
 func (m *MatrixStepEvaluator) Error() error { return nil }
+
+// SetMaxOutputSeries does not enforce the limit. It replays a materialized
+// matrix produced downstream (e.g. by a shard); the limit is enforced by the
+// aggregation or the root that consumes it.
+func (*MatrixStepEvaluator) SetMaxOutputSeries(int) {}

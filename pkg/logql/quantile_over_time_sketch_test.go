@@ -112,6 +112,8 @@ func (e errorStepEvaluator) Error() error {
 
 func (e errorStepEvaluator) Explain(Node) {}
 
+func (e errorStepEvaluator) SetMaxOutputSeries(int) {}
+
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	selRange := (5 * time.Second).Nanoseconds()
 	step := (30 * time.Second)
