@@ -1495,7 +1495,7 @@ type ReplicationGroup struct {
 
 	// The durability setting of the replication group. For more information, see [Durability].
 	//
-	// [Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.html
+	// [Durability]: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/durability.html
 	Durability Durability
 
 	// The effective durability of the replication group. When Durability is set to
@@ -1503,7 +1503,7 @@ type ReplicationGroup struct {
 	// version, cluster mode, and other parameters. This field reflects the resolved
 	// value. For more information, see [Configuring Durability].
 	//
-	// [Configuring Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/ConfiguringDurability.html
+	// [Configuring Durability]: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.Configuring.html
 	EffectiveDurability EffectiveDurability
 
 	// The engine used in a replication group. The options are valkey, memcached or
@@ -2318,7 +2318,7 @@ type Snapshot struct {
 	// restoring from this snapshot, the cluster uses this durability setting unless
 	// overridden in the restore request. For more information, see [Durability].
 	//
-	// [Durability]: http://docs.aws.amazon.com/AmazonElastiCache/latest/dg/Durability.html
+	// [Durability]: https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/durability.html
 	Durability Durability
 
 	// The name of the cache engine ( memcached or redis ) used by the source cluster.
