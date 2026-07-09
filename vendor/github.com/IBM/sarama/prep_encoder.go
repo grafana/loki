@@ -197,6 +197,10 @@ func (pe *prepFlexibleEncoder) putArrayLength(in int) error {
 }
 
 func (pe *prepFlexibleEncoder) putBytes(in []byte) error {
+	if in == nil {
+		pe.putUVarint(0)
+		return nil
+	}
 	pe.putUVarint(uint64(len(in) + 1))
 	return pe.putRawBytes(in)
 }

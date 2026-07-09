@@ -35,6 +35,7 @@ type packetDecoder interface {
 	getString() (string, error)
 	getNullableString() (*string, error)
 	getInt32Array() ([]int32, error)
+	getNullableInt32Array() ([]int32, error)
 	getInt64Array() ([]int64, error)
 	getStringArray() ([]string, error)
 

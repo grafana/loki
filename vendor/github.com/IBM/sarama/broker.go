@@ -157,6 +157,30 @@ func NewBroker(addr string) *Broker {
 	return &Broker{id: -1, addr: addr}
 }
 
+func (b *Broker) getSockError() error {
+	// skip socket health checks while another operation owns broker state
+	if !b.lock.TryLock() {
+		return nil
+	}
+	defer b.lock.Unlock()
+
+	if b.conn == nil {
+		return nil
+	}
+
+	conn := b.conn
+	if c, ok := conn.(*bufConn); ok {
+		conn = c.Conn
+	}
+	if c, ok := conn.(*tls.Conn); ok {
+		conn = c.NetConn()
+	}
+	if c, ok := conn.(*net.TCPConn); ok {
+		return getTCPConnSockError(c)
+	}
+	return nil
+}
+
 // Open tries to connect to the Broker if it is not already connected or connecting, but does not block
 // waiting for the connection to complete. This means that any subsequent operations on the broker will
 // block waiting for the connection to succeed or fail. To get the effect of a fully synchronous Open call,
@@ -220,16 +244,22 @@ func (b *Broker) Open(conf *Config) error {
 		// Send an ApiVersionsRequest to identify the client (KIP-511).
 		// Store the response in the brokerAPIVersions map.
 		// It will be used to determine the supported API versions for each request.
-		// This should happen before SASL authentication: https://kafka.apache.org/26/protocol.html#api_versions
+		// This should happen before SASL authentication: https://kafka.apache.org/42/design/protocol/#retrieving-supported-api-versions
 		if conf.ApiVersionsRequest {
-			apiVersionsResponse, err := b.sendAndReceiveApiVersions(3)
+			// v4 additionally includes supported features whose min version is 0,
+			// which v0-v3 omit from the response
+			apiVersionsVersion := int16(3)
+			if conf.Version.IsAtLeast(V3_9_0_0) {
+				apiVersionsVersion = 4
+			}
+			apiVersionsResponse, err := b.sendAndReceiveApiVersions(apiVersionsVersion)
 			if err != nil {
 				if b.maybeCloseLocked(err) {
 					// Open is async, so we can't return the error here; surface it via Connected().
 					return
 				}
 
-				Logger.Printf("Error while sending ApiVersionsRequest V3 to broker %s: %s\n", b.addr, err)
+				Logger.Printf("Error while sending ApiVersionsRequest V%d to broker %s: %s\n", apiVersionsVersion, b.addr, err)
 				// send a lower version request in case remote cluster is <= 2.4.0.0
 				maxVersion := int16(0)
 				if apiVersionsResponse != nil {
@@ -287,16 +317,12 @@ func (b *Broker) Open(conf *Config) error {
 		if conf.Net.SASL.Enable && !useSaslV0 {
 			b.connErr = b.authenticateViaSASLv1()
 			if b.connErr != nil {
-				close(b.responses)
-				<-b.done
-				err = b.conn.Close()
+				err = b.closeLocked()
 				if err == nil {
 					DebugLogger.Printf("Closed connection to broker %s due to SASL v1 auth error: %s\n", b.addr, b.connErr)
 				} else {
 					Logger.Printf("Error while closing connection to broker %s (due to SASL v1 auth error: %s): %s\n", b.addr, b.connErr, err)
 				}
-				b.conn = nil
-				b.opened.Store(false)
 				return
 			}
 		}
@@ -375,11 +401,11 @@ func (b *Broker) closeLocked() error {
 	if b.responses != nil {
 		close(b.responses)
 	}
+	// close the socket before waiting so in-flight reads can exit
+	err := b.conn.Close()
 	if b.done != nil {
 		<-b.done
 	}
-
-	err := b.conn.Close()
 
 	b.conn = nil
 	b.responses = nil
@@ -557,11 +583,16 @@ func (b *Broker) Produce(request *ProduceRequest) (*ProduceResponse, error) {
 // Fetch returns a FetchResponse or error
 func (b *Broker) Fetch(request *FetchRequest) (*FetchResponse, error) {
 	defer func() {
-		if b.fetchRate != nil {
-			b.fetchRate.Mark(1)
+		// snapshot meters under the lock; Open may reassign them on reconnect
+		b.lock.Lock()
+		fetchRate, brokerFetchRate := b.fetchRate, b.brokerFetchRate
+		b.lock.Unlock()
+
+		if fetchRate != nil {
+			fetchRate.Mark(1)
 		}
-		if b.brokerFetchRate != nil {
-			b.brokerFetchRate.Mark(1)
+		if brokerFetchRate != nil {
+			brokerFetchRate.Mark(1)
 		}
 	}()
 
@@ -978,6 +1009,18 @@ func (b *Broker) AlterUserScramCredentials(req *AlterUserScramCredentialsRequest
 	return res, nil
 }
 
+// UpdateFeatures sends a request to update finalized feature versions
+func (b *Broker) UpdateFeatures(req *UpdateFeaturesRequest) (*UpdateFeaturesResponse, error) {
+	res := new(UpdateFeaturesResponse)
+
+	err := b.sendAndReceive(req, res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 // DescribeClientQuotas sends a request to get the broker's quotas
 func (b *Broker) DescribeClientQuotas(request *DescribeClientQuotasRequest) (*DescribeClientQuotasResponse, error) {
 	response := new(DescribeClientQuotasResponse)
@@ -1150,6 +1193,22 @@ func (b *Broker) sendAndReceive(req protocolBody, res protocolBody) error {
 		b.handleThrottledResponse(res)
 	}
 	return nil
+}
+
+// negotiateApiVersion clamps pb's version to the broker's advertised maximum
+// for pb's API (treating pb's current version as the client max). When the
+// broker has not advertised ApiVersions info, pb's version is left untouched
+// (optimistic). Returns (0, false) if the resulting version is below
+// minVersion.
+func (b *Broker) negotiateApiVersion(pb protocolBody, minVersion int16) (int16, bool) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	_ = restrictApiVersion(pb, b.brokerAPIVersions)
+	if pb.version() < minVersion {
+		return 0, false
+	}
+	return pb.version(), true
 }
 
 func handleResponsePromise(req protocolBody, res protocolBody, promise *responsePromise, metricRegistry metrics.Registry) error {
@@ -1668,7 +1727,11 @@ func (b *Broker) sendAndReceiveSASLSCRAMv0() error {
 			Logger.Printf("Failed to read response header while authenticating with SASL to broker %s: %s\n", b.addr, err.Error())
 			return err
 		}
-		payload := make([]byte, int32(binary.BigEndian.Uint32(header)))
+		payloadLength := binary.BigEndian.Uint32(header)
+		if int64(payloadLength) > int64(MaxResponseSize) {
+			return PacketDecodingError{fmt.Sprintf("SASL response of length %d too large", payloadLength)}
+		}
+		payload := make([]byte, int(payloadLength))
 		n, err := b.readFull(payload)
 		if err != nil {
 			b.addRequestInFlightMetrics(-1)
@@ -1717,7 +1780,9 @@ func (b *Broker) sendAndReceiveSASLSCRAMv1(authSendReceiver func(authBytes []byt
 
 func (b *Broker) createSaslAuthenticateRequest(msg []byte) *SaslAuthenticateRequest {
 	authenticateRequest := SaslAuthenticateRequest{SaslAuthBytes: msg}
-	if b.conf.Version.IsAtLeast(V2_2_0_0) {
+	if b.conf.Version.IsAtLeast(V2_5_0_0) {
+		authenticateRequest.Version = 2
+	} else if b.conf.Version.IsAtLeast(V2_2_0_0) {
 		authenticateRequest.Version = 1
 	}
 

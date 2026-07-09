@@ -204,6 +204,10 @@ func (re *realFlexibleEncoder) putArrayLength(in int) error {
 }
 
 func (re *realFlexibleEncoder) putBytes(in []byte) error {
+	if in == nil {
+		re.putUVarint(0)
+		return nil
+	}
 	re.putUVarint(uint64(len(in) + 1))
 	return re.putRawBytes(in)
 }

@@ -29,6 +29,10 @@ func (c *AlterConfigError) Error() string {
 	return text
 }
 
+func (c *AlterConfigError) Unwrap() error {
+	return c.Err
+}
+
 // AlterConfigsResourceResponse is a response type for alter config resource
 type AlterConfigsResourceResponse struct {
 	ErrorCode int16
@@ -61,6 +65,9 @@ func (a *AlterConfigsResponse) decode(pd packetDecoder, version int16) (err erro
 	responseCount, err := pd.getArrayLength()
 	if err != nil {
 		return err
+	}
+	if responseCount < 0 {
+		return errInvalidArrayLength
 	}
 
 	a.Resources = make([]*AlterConfigsResourceResponse, responseCount)

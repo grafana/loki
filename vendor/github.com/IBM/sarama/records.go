@@ -183,6 +183,28 @@ func (r *Records) isOverflow() (bool, error) {
 	return false, fmt.Errorf("unknown records type: %v", r.recordsType)
 }
 
+// partialSize reports the total on-wire size required to fetch the partial
+// trailing batch fully. Returns 0 when not partial or when the size is unknown
+// (e.g. legacy MessageSet partials).
+func (r *Records) partialSize() (int32, error) {
+	if r.recordsType == unknownRecords {
+		if empty, err := r.setTypeFromFields(); err != nil || empty {
+			return 0, err
+		}
+	}
+
+	switch r.recordsType {
+	case legacyRecords:
+		return 0, nil
+	case defaultRecords:
+		if r.RecordBatch == nil {
+			return 0, nil
+		}
+		return r.RecordBatch.partialSize, nil
+	}
+	return 0, fmt.Errorf("unknown records type: %v", r.recordsType)
+}
+
 func (r *Records) nextOffset() (*int64, error) {
 	switch r.recordsType {
 	case unknownRecords:

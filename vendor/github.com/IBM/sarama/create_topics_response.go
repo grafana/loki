@@ -64,12 +64,15 @@ func (c *CreateTopicsResponse) decode(pd packetDecoder, version int16) (err erro
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	c.TopicErrors = make(map[string]*TopicError, n)
 	if version >= 5 {
 		c.TopicResults = make(map[string]*CreatableTopicResult, n)
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		topic, err := pd.getString()
 		if err != nil {
 			return err
@@ -116,11 +119,13 @@ func (c *CreateTopicsResponse) isFlexibleVersion(version int16) bool {
 }
 
 func (c *CreateTopicsResponse) isValidVersion() bool {
-	return c.Version >= 0 && c.Version <= 5
+	return c.Version >= 0 && c.Version <= 6
 }
 
 func (c *CreateTopicsResponse) requiredVersion() KafkaVersion {
 	switch c.Version {
+	case 6:
+		return V2_7_0_0
 	case 5:
 		return V2_4_0_0
 	case 4:
@@ -245,15 +250,19 @@ func (r *CreatableTopicResult) decode(pd packetDecoder, version int16) (err erro
 	if err != nil {
 		return err
 	}
-	r.Configs = make(map[string]*CreatableTopicConfigs, n)
-	for i := 0; i < n; i++ {
-		name, err := pd.getString()
-		if err != nil {
-			return err
-		}
-		r.Configs[name] = &CreatableTopicConfigs{}
-		if err := r.Configs[name].decode(pd, version); err != nil {
-			return err
+	if n < 0 {
+		// null allowed
+	} else {
+		r.Configs = make(map[string]*CreatableTopicConfigs, n)
+		for range n {
+			name, err := pd.getString()
+			if err != nil {
+				return err
+			}
+			r.Configs[name] = &CreatableTopicConfigs{}
+			if err := r.Configs[name].decode(pd, version); err != nil {
+				return err
+			}
 		}
 	}
 	err = pd.getTaggedFieldArray(taggedFieldDecoders{

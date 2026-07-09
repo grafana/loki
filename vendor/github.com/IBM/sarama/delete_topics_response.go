@@ -5,9 +5,10 @@ import (
 )
 
 type DeleteTopicsResponse struct {
-	Version         int16
-	ThrottleTime    time.Duration
-	TopicErrorCodes map[string]KError
+	Version            int16
+	ThrottleTime       time.Duration
+	TopicErrorCodes    map[string]KError
+	TopicErrorMessages map[string]*string // v5, ErrorMessage
 }
 
 func (d *DeleteTopicsResponse) setVersion(v int16) {
@@ -27,6 +28,11 @@ func (d *DeleteTopicsResponse) encode(pe packetEncoder) error {
 			return err
 		}
 		pe.putKError(errorCode)
+		if d.Version >= 5 {
+			if err := pe.putNullableString(d.TopicErrorMessages[topic]); err != nil {
+				return err
+			}
+		}
 		pe.putEmptyTaggedFieldArray()
 	}
 
@@ -47,10 +53,16 @@ func (d *DeleteTopicsResponse) decode(pd packetDecoder, version int16) (err erro
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	d.TopicErrorCodes = make(map[string]KError, n)
+	if version >= 5 {
+		d.TopicErrorMessages = make(map[string]*string, n)
+	}
 
-	for i := 0; i < n; i++ {
+	for range n {
 		topic, err := pd.getString()
 		if err != nil {
 			return err
@@ -58,6 +70,11 @@ func (d *DeleteTopicsResponse) decode(pd packetDecoder, version int16) (err erro
 		d.TopicErrorCodes[topic], err = pd.getKError()
 		if err != nil {
 			return err
+		}
+		if version >= 5 {
+			if d.TopicErrorMessages[topic], err = pd.getNullableString(); err != nil {
+				return err
+			}
 		}
 
 		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
@@ -93,11 +110,13 @@ func (d *DeleteTopicsResponse) isFlexibleVersion(version int16) bool {
 }
 
 func (d *DeleteTopicsResponse) isValidVersion() bool {
-	return d.Version >= 0 && d.Version <= 4
+	return d.Version >= 0 && d.Version <= 5
 }
 
 func (d *DeleteTopicsResponse) requiredVersion() KafkaVersion {
 	switch d.Version {
+	case 5:
+		return V2_7_0_0
 	case 4:
 		return V2_4_0_0
 	case 3:

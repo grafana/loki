@@ -246,3 +246,39 @@ func (p *hashPartitioner) RequiresConsistency() bool {
 func (p *hashPartitioner) MessageRequiresConsistency(message *ProducerMessage) bool {
 	return message.Key != nil
 }
+
+type murmur2Partitioner struct {
+	random Partitioner
+}
+
+// NewMurmur2Partitioner returns a Partitioner that replicates the partitioning
+// behavior of the Apache Kafka Java client's DefaultPartitioner. It uses the
+// murmur2 hash algorithm with the formula:
+//
+//	(murmur2(keyBytes) & 0x7fffffff) % numPartitions
+//
+// This guarantees that a given key is always routed to the same partition as a
+// Java producer using the default partitioner, enabling cross-language partition
+// affinity. If the message key is nil a random partition is chosen.
+func NewMurmur2Partitioner(topic string) Partitioner {
+	return &murmur2Partitioner{random: NewRandomPartitioner(topic)}
+}
+
+func (p *murmur2Partitioner) Partition(message *ProducerMessage, numPartitions int32) (int32, error) {
+	if message.Key == nil {
+		return p.random.Partition(message, numPartitions)
+	}
+	bytes, err := message.Key.Encode()
+	if err != nil {
+		return -1, err
+	}
+	return int32(murmur2(bytes)&0x7fffffff) % numPartitions, nil
+}
+
+func (p *murmur2Partitioner) RequiresConsistency() bool {
+	return true
+}
+
+func (p *murmur2Partitioner) MessageRequiresConsistency(message *ProducerMessage) bool {
+	return message.Key != nil
+}

@@ -368,6 +368,10 @@ func (b *MockBroker) defaultRequestHandler(req *request) (res encoderWithHeader)
 		if !ok {
 			return nil
 		}
+		// always match the response version to the request version
+		if pb, ok := res.(protocolBody); ok {
+			pb.setVersion(req.body.version())
+		}
 		return res
 	case <-time.After(expectationTimeout):
 		return nil
@@ -412,7 +416,7 @@ func NewMockBrokerAddr(t TestReporter, brokerID int32, addr string) *MockBroker 
 	)
 
 	// retry up to 20 times if address already in use (e.g., if replacing broker which hasn't cleanly shutdown)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		listener, err = net.Listen("tcp", addr)
 		if err != nil {
 			if errors.Is(err, syscall.EADDRINUSE) {

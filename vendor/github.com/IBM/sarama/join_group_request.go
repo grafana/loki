@@ -57,6 +57,8 @@ type JoinGroupRequest struct {
 	// OrderedGroupProtocols contains an ordered list of protocols that the member
 	// supports.
 	OrderedGroupProtocols []*GroupProtocol
+	// Reason contains the reason why the member (re-)joins the group (KIP-800).
+	Reason *string
 }
 
 func (r *JoinGroupRequest) setVersion(v int16) {
@@ -111,6 +113,12 @@ func (r *JoinGroupRequest) encode(pe packetEncoder) error {
 		}
 	}
 
+	if r.Version >= 8 {
+		if err := pe.putNullableString(r.Reason); err != nil {
+			return err
+		}
+	}
+
 	pe.putEmptyTaggedFieldArray()
 	return nil
 }
@@ -150,18 +158,26 @@ func (r *JoinGroupRequest) decode(pd packetDecoder, version int16) (err error) {
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return nil
+	if n < 0 {
+		return errInvalidArrayLength
 	}
 
-	r.GroupProtocols = make(map[string][]byte)
-	for i := 0; i < n; i++ {
-		protocol := &GroupProtocol{}
-		if err := protocol.decode(pd); err != nil {
+	if n > 0 {
+		r.GroupProtocols = make(map[string][]byte)
+		for range n {
+			protocol := &GroupProtocol{}
+			if err := protocol.decode(pd); err != nil {
+				return err
+			}
+			r.GroupProtocols[protocol.Name] = protocol.Metadata
+			r.OrderedGroupProtocols = append(r.OrderedGroupProtocols, protocol)
+		}
+	}
+
+	if version >= 8 {
+		if r.Reason, err = pd.getNullableString(); err != nil {
 			return err
 		}
-		r.GroupProtocols[protocol.Name] = protocol.Metadata
-		r.OrderedGroupProtocols = append(r.OrderedGroupProtocols, protocol)
 	}
 
 	_, err = pd.getEmptyTaggedFieldArray()
@@ -184,7 +200,7 @@ func (r *JoinGroupRequest) headerVersion() int16 {
 }
 
 func (r *JoinGroupRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 6
+	return r.Version >= 0 && r.Version <= 8
 }
 
 func (r *JoinGroupRequest) isFlexible() bool {
@@ -197,6 +213,10 @@ func (r *JoinGroupRequest) isFlexibleVersion(version int16) bool {
 
 func (r *JoinGroupRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 8:
+		return V3_2_0_0
+	case 7:
+		return V2_5_0_0
 	case 6:
 		return V2_4_0_0
 	case 5:

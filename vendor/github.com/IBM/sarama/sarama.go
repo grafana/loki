@@ -97,7 +97,7 @@ var (
 
 	// PanicHandler is called for recovering from panics spawned internally to the library (and thus
 	// not recoverable by the caller's goroutine). Defaults to nil, which means panics are not recovered.
-	PanicHandler func(interface{})
+	PanicHandler func(any)
 
 	// MaxRequestSize is the maximum size (in bytes) of any request that Sarama will attempt to send. Trying
 	// to send a request larger than this will result in an PacketEncodingError. The default of 100 MiB is aligned
@@ -111,24 +111,34 @@ var (
 	// the size of responses they send. In particular, they can send arbitrarily large fetch responses to consumers
 	// (see https://issues.apache.org/jira/browse/KAFKA-2063).
 	MaxResponseSize int32 = 100 * 1024 * 1024
+
+	// MaxDecompressedBatchSize bounds the number of bytes a single compressed record
+	// batch may inflate to during consumer-side decompression. A small compressed payload
+	// can decompress into a much larger allocation (a "compression bomb"). When this is
+	// set and a batch decompresses to more than this many bytes, Sarama stops
+	// decompressing and returns ErrDecompressedBatchTooLarge instead of holding the full
+	// payload in memory.
+	//
+	// The default of 0 leaves decompression unbounded.
+	MaxDecompressedBatchSize int32 = 0
 )
 
 // StdLogger is used to log error messages.
 type StdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
+	Print(v ...any)
+	Printf(format string, v ...any)
+	Println(v ...any)
 }
 
 type debugLogger struct{}
 
-func (d *debugLogger) Print(v ...interface{}) {
+func (d *debugLogger) Print(v ...any) {
 	Logger.Print(v...)
 }
-func (d *debugLogger) Printf(format string, v ...interface{}) {
+func (d *debugLogger) Printf(format string, v ...any) {
 	Logger.Printf(format, v...)
 }
-func (d *debugLogger) Println(v ...interface{}) {
+func (d *debugLogger) Println(v ...any) {
 	Logger.Println(v...)
 }
 

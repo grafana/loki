@@ -55,7 +55,9 @@ func (a *AlterClientQuotasResponse) decode(pd packetDecoder, version int16) (err
 	if err != nil {
 		return err
 	}
-	if entryCount > 0 {
+	if entryCount < 0 {
+		return errInvalidArrayLength
+	} else if entryCount > 0 {
 		a.Entries = make([]AlterClientQuotasEntryResponse, entryCount)
 		for i := range a.Entries {
 			e := AlterClientQuotasEntryResponse{}
@@ -114,7 +116,7 @@ func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16)
 	}
 	if componentCount > 0 {
 		a.Entity = make([]QuotaEntityComponent, componentCount)
-		for i := 0; i < componentCount; i++ {
+		for i := range componentCount {
 			component := QuotaEntityComponent{}
 			if err := component.decode(pd, version); err != nil {
 				return err

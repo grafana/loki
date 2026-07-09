@@ -38,6 +38,9 @@ func (a *AlterConfigsRequest) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+	if resourceCount < 0 {
+		return errInvalidArrayLength
+	}
 
 	a.Resources = make([]*AlterConfigsResource, resourceCount)
 	for i := range a.Resources {
@@ -98,10 +101,13 @@ func (a *AlterConfigsResource) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	if n > 0 {
 		a.ConfigEntries = make(map[string]*string, n)
-		for i := 0; i < n; i++ {
+		for range n {
 			configKey, err := pd.getString()
 			if err != nil {
 				return err
