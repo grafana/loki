@@ -149,7 +149,13 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
+	// connCtx is scoped to this connection so goroutines started for it (e.g.
+	// workerLoop) stop when it closes, independent of any single message handler.
+	connCtx, cancelConn := context.WithCancel(ctx)
+	defer cancelConn()
+
 	wc := &workerConn{
+		ctx:  connCtx,
 		done: make(chan struct{}),
 		wake: make(chan struct{}, 1),
 	}
@@ -198,7 +204,7 @@ func (s *Scheduler) handleMessage(ctx context.Context, worker *workerConn, msg w
 	case wire.WorkerHelloMessage:
 		return s.handleWorkerHello(ctx, worker, msg)
 	case wire.WorkerReadyMessage:
-		return s.markWorkerReady(ctx, worker)
+		return s.markWorkerReady(worker)
 	case wire.TaskStatusMessage:
 		return s.handleTaskStatus(ctx, worker, msg)
 	case wire.StreamStatusMessage:
@@ -246,7 +252,7 @@ func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, m
 	return nil
 }
 
-func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) (err error) {
+func (s *Scheduler) markWorkerReady(worker *workerConn) (err error) {
 	phases := s.metrics.startHandler(wire.WorkerReadyMessage{}.Kind())
 	defer func() { phases.Done(handlerOutcome(err)) }()
 
@@ -264,7 +270,10 @@ func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) (er
 		nudgeSemaphore(worker.wake)
 	} else {
 		s.connectedWorkers[worker] = struct{}{}
-		go s.workerLoop(ctx, worker)
+		// workerLoop outlives this WorkerReady handler, so it runs under the
+		// connection context, not the handler's (which ends when the handler
+		// returns).
+		go s.workerLoop(worker.ctx, worker)
 	}
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.

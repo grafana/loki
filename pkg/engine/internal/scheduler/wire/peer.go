@@ -35,6 +35,17 @@ type Peer struct {
 
 	requestID    atomic.Uint64
 	sentRequests sync.Map // map[uint64]*request
+	inflight     sync.Map // map[uint64]*inflightHandler
+}
+
+// errDiscarded is the cancel cause set on a handler's context by a DiscardFrame.
+var errDiscarded = errors.New("message discarded by remote peer")
+
+// inflightHandler tracks an in-flight incoming message; the incoming
+// counterpart to [request].
+type inflightHandler struct {
+	ctx    context.Context // Canceled with errDiscarded when the message is discarded.
+	cancel context.CancelCauseFunc
 }
 
 // outgoingFrame wraps a Frame queued for sending with the metadata needed to
@@ -62,6 +73,10 @@ type incomingMessage struct {
 // Once Handler returns, the sending peer will be informed about the
 // message delivery status. If Handler returns an error, the error
 // message will be sent to the peer.
+//
+// ctx is scoped to this message: it is canceled when Handler returns or when
+// the peer discards the message. Work that must outlive Handler must not use
+// it.
 type Handler func(ctx context.Context, peer *Peer, message Message) error
 
 // Serve runs the peer, blocking until the provided context is canceled.
@@ -120,6 +135,10 @@ func (p *Peer) recvMessages(ctx context.Context) error {
 func (p *Peer) routeFrame(ctx context.Context, frame Frame) error {
 	switch frame := frame.(type) {
 	case MessageFrame:
+		// Register the in-flight entry before enqueueing so a DiscardFrame routed
+		// after it (in arrival order) can cancel the handler.
+		handlerCtx, cancel := context.WithCancelCause(ctx)
+		p.inflight.Store(frame.ID, &inflightHandler{ctx: handlerCtx, cancel: cancel})
 		return p.enqueueIncoming(ctx, frame)
 
 	case AckFrame:
@@ -153,7 +172,10 @@ func (p *Peer) routeFrame(ctx context.Context, frame Frame) error {
 		}
 
 	case DiscardFrame:
-		// TODO(rfratto): cancel handleMessage goroutine
+		// Cancel the handler; an unknown ID already finished, so it's a no-op.
+		if v, ok := p.inflight.Load(frame.ID); ok {
+			v.(*inflightHandler).cancel(errDiscarded)
+		}
 
 	default:
 		level.Warn(p.Logger).Log("msg", "unknown frame type", "type", reflect.TypeOf(frame).String())
@@ -193,9 +215,23 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 			return nil // Closed connection.
 		case queued := <-p.incoming:
 			frame := p.dequeueIncoming(queued)
-			p.processMessage(ctx, frame.ID, frame.Message)
+			p.handleMessage(ctx, frame.ID, frame.Message)
 		}
 	}
+}
+
+// handleMessage runs id's handler under its per-message context (so a
+// DiscardFrame can cancel it) and releases the in-flight entry afterward.
+func (p *Peer) handleMessage(ctx context.Context, id uint64, message Message) {
+	if v, ok := p.inflight.Load(id); ok {
+		h := v.(*inflightHandler)
+		ctx = h.ctx
+		defer func() {
+			p.inflight.Delete(id)
+			h.cancel(nil)
+		}()
+	}
+	p.processMessage(ctx, id, message)
 }
 
 func (p *Peer) handleOutgoing(ctx context.Context) error {
@@ -273,12 +309,27 @@ func (p *Peer) processMessage(ctx context.Context, id uint64, message Message) {
 	outcome := outcomeNack
 	defer func() { timer.Done(outcome) }()
 
+	// Drop a message discarded before the handler started.
+	if context.Cause(ctx) == errDiscarded {
+		outcome = outcomeDiscarded
+		return
+	}
+
 	if p.Handler == nil {
 		_ = p.enqueueFrame(ctx, NackFrame{ID: id, Error: Errorf(http.StatusNotImplemented, "not implemented")}, sendModeInternal)
 		return
 	}
 
-	switch err := p.Handler(ctx, p, message); err {
+	err := p.Handler(ctx, p, message)
+
+	// Skip the response if the message was discarded while the handler ran. A
+	// discard racing in just after this check still acks, but that ack is ignored.
+	if context.Cause(ctx) == errDiscarded {
+		outcome = outcomeDiscarded
+		return
+	}
+
+	switch err {
 	case nil:
 		outcome = outcomeAck
 		// TODO(rfratto): What should we do if this fails? Logs? Metrics?
