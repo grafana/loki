@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
@@ -53,8 +54,11 @@ type task struct {
 	wfRegion        *xcap.Region
 	runtimeTraceCtx context.Context
 
-	// Protected by [Scheduler.resourcesMut].
-	owner *workerConn
+	// owner is the worker the task is currently assigned to (nil if unassigned).
+	// It is an atomic pointer rather than being guarded by resourcesMut so that
+	// the per-dispatch finalizeAssignment path — which sets it — does not need
+	// the global write lock and can run concurrently with other readers.
+	owner atomic.Pointer[workerConn]
 }
 
 var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
@@ -174,20 +178,36 @@ func (t *task) MarkInterrupted() bool {
 	return true
 }
 
-// TryAssign calls doAssign, holding a mutex on the task to prevent concurrent
-// modification to t's state.
+// TryAssign calls doAssign to send the task's assignment to a worker.
 //
 // If doAssign returns nil, the assign time is recorded and TryAssign returns
-// nil. Otherwise, TryAssign returns the error from doAssign without making any
-// changes.
+// nil. Otherwise, TryAssign returns the error from doAssign without recording
+// the assign time.
 //
 // If the task is in a terminal state or has been interrupted, TryAssign
 // returns [errUnassignable] without calling doAssign.
+//
+// TryAssign deliberately does NOT hold t.mut for the duration of doAssign.
+// doAssign performs a blocking, network-round-trip send to the worker (up to
+// several seconds under load), and t.mut is also acquired by hot scheduler
+// paths — handleTaskStatus, finalizeAssignment, and Cancel — several of which
+// hold the global resourcesMut while calling t.SetState. Holding t.mut across
+// the send would therefore pin resourcesMut behind a single worker's send
+// latency and starve the dispatcher (prepareAssignment needs resourcesMut),
+// stalling all task dispatch.
+//
+// Releasing t.mut during the send is safe: a task that becomes terminal or
+// interrupted between the pre-check and the send is caught by the terminal
+// re-check in [Scheduler.finalizeAssignment] (which runs under resourcesMut
+// after TryAssign returns and cancels the assignment on the worker), and
+// callers already tolerate assignTime being unset when a worker responds
+// before the assignment is finalized.
 func (t *task) TryAssign(doAssign func() error) error {
-	t.mut.Lock()
-	defer t.mut.Unlock()
+	t.mut.RLock()
+	unassignable := t.status.State.Terminal() || t.interrupted
+	t.mut.RUnlock()
 
-	if t.status.State.Terminal() || t.interrupted {
+	if unassignable {
 		return errUnassignable
 	}
 
@@ -195,8 +215,29 @@ func (t *task) TryAssign(doAssign func() error) error {
 		return err
 	}
 
+	t.mut.Lock()
 	t.assignTime = time.Now()
+	t.mut.Unlock()
 	return nil
+}
+
+// markAssigned records wc as the task's owner unless the task has already
+// reached a terminal state, returning true if the task was marked assigned.
+//
+// Holding t.mut makes the terminal check and the owner store atomic with
+// respect to SetState, so a task that goes terminal concurrently (e.g. a fast
+// worker completing it, or a Cancel) is never left owned by a worker. This lets
+// finalizeAssignment run under resourcesMut.RLock instead of the global write
+// lock.
+func (t *task) markAssigned(wc *workerConn) bool {
+	t.mut.Lock()
+	defer t.mut.Unlock()
+
+	if t.status.State.Terminal() {
+		return false
+	}
+	t.owner.Store(wc)
+	return true
 }
 
 // RecordTerminalObservations records the scheduler-side per-task duration

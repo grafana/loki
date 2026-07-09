@@ -296,8 +296,20 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	var n notifier
 	defer n.Notify(ctx)
 
-	resourcesGuard := s.resourcesMut.Lock("handle_task_status")
-	defer resourcesGuard.Unlock()
+	// A read lock is sufficient here: handleTaskStatus only reads the
+	// resourcesMut-protected maps (s.tasks) and task.owner (which is only ever
+	// written under the full write lock, in finalizeAssignment). All mutations
+	// it performs are to per-task state (guarded by task.mut via SetState /
+	// RecordTerminalObservations) or per-worker state (guarded by worker.mut via
+	// Unassign), and status messages for a given task are serialized on a single
+	// connection's handler goroutine.
+	//
+	// Task status messages are the highest-frequency scheduler event; taking the
+	// write lock here would serialize every status update against dispatch
+	// (finalizeAssignment) and cancellation (Cancel), throttling the scheduler
+	// under load. Using a read lock lets status processing run concurrently.
+	resourcesGuard := s.resourcesMut.RLock("handle_task_status")
+	defer resourcesGuard.RUnlock()
 
 	task, found := s.tasks[msg.ID]
 	if !found {
@@ -309,7 +321,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		return err
 	} else if changed {
 		newState := msg.Status.State
-		if owner := task.owner; owner != nil && newState.Terminal() {
+		if owner := task.owner.Load(); owner != nil && newState.Terminal() {
 			owner.Unassign(task)
 		}
 
@@ -366,8 +378,16 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, 
 	var n notifier
 	defer n.Notify(ctx)
 
-	resourcesGuard := s.resourcesMut.Lock("handle_stream_status")
-	defer resourcesGuard.Unlock()
+	// A read lock is sufficient: stream state transitions are guarded by the
+	// per-stream stateMut (via changeStreamState -> setState), and we only read
+	// the resourcesMut-protected maps (s.streams, s.tasks) and task.owner (only
+	// ever written under the full write lock). Stream-status messages are the
+	// highest-frequency scheduler event during fan-in teardown; holding the
+	// write lock here serializes them against dispatch and cancellation and
+	// backs up the per-connection message goroutines. Using a read lock lets
+	// them run concurrently.
+	resourcesGuard := s.resourcesMut.RLock("handle_stream_status")
+	defer resourcesGuard.RUnlock()
 
 	stream, found := s.streams[msg.StreamID]
 	if !found {
@@ -387,13 +407,17 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 	}
 
 	// If we have a receiver, inform them about the change. This is a
-	// best-effort message so we don't need to wait for acknowledgement.
+	// best-effort message; we buffer it on the notifier so it is sent after the
+	// caller releases resourcesMut rather than blocking the lock on a full
+	// connection buffer.
 	receiver, found := s.tasks[target.taskReceiver]
-	if found && receiver.owner != nil {
-		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: target.inner.ULID,
-			State:    newState,
-		})
+	if found {
+		if owner := receiver.owner.Load(); owner != nil {
+			n.AddMessage(owner, wire.StreamStatusMessage{
+				StreamID: target.inner.ULID,
+				State:    newState,
+			})
+		}
 	}
 
 	// Inform the owner about the change.
@@ -587,12 +611,30 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 	}
 }
 
+// parkRetryInterval bounds how long a parked workerLoop waits before
+// re-attempting dispatch even without an explicit wake-up. See parkWorker.
+const parkRetryInterval = 100 * time.Millisecond
+
 // parkWorker blocks until the worker advertises freed capacity (a ready message
 // nudges worker.wake), the worker disconnects, or the scheduler shuts down. It
 // returns true if the assignment loop should resume, or false if it should
 // exit.
+//
+// A parked workerLoop is normally resumed by a WorkerReady (worker.wake) sent
+// when a worker thread frees. That readiness signal is edge-triggered and
+// demand-based (the worker only re-advertises after rejecting an assignment
+// with 429), which makes it possible to lose an edge: a parked workerLoop makes
+// no further dispatch attempts, so it can never trigger a new 429 to re-arm the
+// worker's readiness — leaving a worker with idle threads stranded and its tasks
+// undispatched. To guarantee liveness we also wake up periodically and
+// re-attempt dispatch; if the worker is genuinely full it simply returns 429 and
+// re-parks, and if it has freed capacity the assignment succeeds.
 func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
+	timer := time.NewTimer(parkRetryInterval)
+	defer timer.Stop()
+
 	hop := s.metrics.startAssignmentHop("park_worker_wait")
+
 	select {
 	case <-ctx.Done():
 		hop.Done(outcomeCanceled)
@@ -603,6 +645,8 @@ func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
 	case <-worker.wake:
 		hop.Done(outcomeReady)
 		return true
+	case <-timer.C:
+		return true
 	}
 }
 
@@ -611,34 +655,49 @@ func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
 //
 // Returns false if the queue is empty or if there are no ready workers.
 func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
-	resourcesGuard := s.resourcesMut.RLock("prepare_assignment")
-	defer resourcesGuard.RUnlock()
+	t, pos, ok := func() (*task, fair.Position, bool) {
+		resourcesGuard := s.resourcesMut.RLock("prepare_assignment")
+		defer resourcesGuard.RUnlock()
 
-	assignGuard := s.assignMut.Lock("prepare_assignment")
-	defer assignGuard.Unlock()
+		assignGuard := s.assignMut.Lock("prepare_assignment")
+		defer assignGuard.Unlock()
 
-	// clean up any terminal tasks at the front of the queue.
-	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
-		s.taskQueue.Pop()
-	}
+		// clean up any terminal tasks at the front of the queue.
+		//
+		// Read the state through State() (which holds task.mut) rather than
+		// touching task.status directly: the field is mutated concurrently by
+		// SetState under task.mut.
+		for s.taskQueue.Len() > 0 && s.peekTask().State().Terminal() {
+			s.taskQueue.Pop()
+		}
 
-	if len(s.connectedWorkers) == 0 || s.taskQueue.Len() == 0 {
+		if len(s.connectedWorkers) == 0 || s.taskQueue.Len() == 0 {
+			return nil, fair.Position{}, false
+		}
+
+		t, scope, pos := s.taskQueue.Pop()
+		if scope != nil {
+			// For now, we will treat every task as having an equal cost of 1.
+			//
+			// This provides some level of fairness, but not all tasks need the
+			// same amount of time to complete, so tenants running heavy queries
+			// do not get properly penalized.
+			//
+			// TODO(rfratto): Introduce a better cost estimate for tasks, which
+			// may need to include re-adjusting the scope after task completion
+			// if the cost estimate was wrong.
+			_ = s.taskQueue.AdjustScope(scope, 1)
+		}
+
+		return t, pos, true
+	}()
+
+	if !ok {
 		return taskAssignment{}, false
 	}
 
-	t, scope, pos := s.taskQueue.Pop()
-	if scope != nil {
-		// For now, we will treat every task as having an equal cost of 1.
-		//
-		// This provides some level of fairness, but not all tasks need the
-		// same amount of time to complete, so tenants running heavy queries
-		// do not get properly penalized.
-		//
-		// TODO(rfratto): Introduce a better cost estimate for tasks, which
-		// may need to include re-adjusting the scope after task completion
-		// if the cost estimate was wrong.
-		_ = s.taskQueue.AdjustScope(scope, 1)
-	}
+	guard := s.resourcesMut.Lock("prepare_assignment")
+	defer guard.Unlock()
 
 	msg := s.buildAssignMessage(t)
 	return taskAssignment{t: t, pos: pos, msg: msg}, true
@@ -665,7 +724,7 @@ func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 				continue
 			}
 
-			msg.StreamStates[rawSource.ULID] = source.state
+			msg.StreamStates[rawSource.ULID] = source.getState()
 		}
 	}
 
@@ -710,15 +769,21 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	hop := s.metrics.startAssignmentHop("finalize_assignment")
 	var pendingMsgs []pendingMessage
 
-	// Collect bookkeeping and messages under lock.
+	// Collect bookkeeping and messages under a read lock. A read lock is
+	// sufficient because everything here either reads the resourcesMut-protected
+	// maps (s.streams, s.tasks) or mutates state guarded by its own lock: the
+	// owner via task.markAssigned (task.mut) and the worker's task set via
+	// worker.Assign (worker.mut). Using the write lock here would serialize every
+	// dispatch — including the expensive per-source bind-message loop for
+	// fan-in root tasks — and starve concurrent readers, stalling dispatch.
 	func() {
-		resourcesGuard := s.resourcesMut.Lock("finalize_assignment")
-		defer resourcesGuard.Unlock()
+		resourcesGuard := s.resourcesMut.RLock("finalize_assignment")
+		defer resourcesGuard.RUnlock()
 
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
 		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
 
-		if t.State().Terminal() {
+		if !t.markAssigned(worker) {
 			// The task reached a terminal state between TryAssign and now. The
 			// worker may still have the assignment, so we tell it to not
 			// bother.
@@ -734,14 +799,16 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 
 		// Reconcile stream states: send updates for any that changed while sending.
 		for streamID, sentState := range sentStates {
-			if current, found := s.streams[streamID]; found && current.state != sentState {
-				pendingMsgs = append(pendingMsgs, pendingMessage{
-					peer: worker,
-					msg: wire.StreamStatusMessage{
-						StreamID: streamID,
-						State:    current.state,
-					},
-				})
+			if current, found := s.streams[streamID]; found {
+				if curState := current.getState(); curState != sentState {
+					pendingMsgs = append(pendingMsgs, pendingMessage{
+						peer: worker,
+						msg: wire.StreamStatusMessage{
+							StreamID: streamID,
+							State:    curState,
+						},
+					})
+				}
 			}
 		}
 
@@ -781,25 +848,33 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 // prepareBindMessage must be called while the resourcesMut lock is held.
 func (s *Scheduler) prepareBindMessage(check *stream) *pendingMessage {
 	sendingTask, hasSendingTask := s.tasks[check.taskSender]
-	if !hasSendingTask || sendingTask.owner == nil {
+	var sendingOwner *workerConn
+	if hasSendingTask {
+		sendingOwner = sendingTask.owner.Load()
+	}
+	if sendingOwner == nil {
 		// No sender, abort early.
 		return nil
 	}
 
 	receivingTask, hasReceivingTask := s.tasks[check.taskReceiver]
-	if hasReceivingTask && receivingTask.owner != nil {
+	var receivingOwner *workerConn
+	if hasReceivingTask {
+		receivingOwner = receivingTask.owner.Load()
+	}
+	if receivingOwner != nil {
 		// Bind the address of the receiving owner to the sender.
 		return &pendingMessage{
-			peer: sendingTask.owner,
+			peer: sendingOwner,
 			msg: wire.StreamBindMessage{
 				StreamID: check.inner.ULID,
-				Receiver: receivingTask.owner.RemoteAddr(),
+				Receiver: receivingOwner.RemoteAddr(),
 			},
 		}
 	} else if check.localReceiver != nil {
 		// We're listening for results ourselves; bind our address to the sender.
 		return &pendingMessage{
-			peer: sendingTask.owner,
+			peer: sendingOwner,
 			msg: wire.StreamBindMessage{
 				StreamID: check.inner.ULID,
 				Receiver: s.listener.Addr(),
@@ -1055,8 +1130,10 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		// canceled and it can stop processing it.
 		//
 		// This is a best-effort message, so we don't wait for acknowledgement.
-		if owner := registered.owner; owner != nil {
-			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+		// Buffer it on the notifier so the send happens after resourcesMut is
+		// released rather than blocking the lock on a full connection buffer.
+		if owner := registered.owner.Load(); owner != nil {
+			n.AddMessage(owner, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
 		registered.RecordTerminalObservations(time.Now())
@@ -1114,7 +1191,7 @@ func (s *Scheduler) unregisterManifestScope(manifest *workflow.Manifest) error {
 func (s *Scheduler) deleteTask(t *task) {
 	delete(s.tasks, t.inner.ULID)
 
-	if owner := t.owner; owner != nil {
+	if owner := t.owner.Load(); owner != nil {
 		owner.Unassign(t)
 	}
 }
@@ -1252,8 +1329,17 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	var n notifier
 	defer n.Notify(ctx)
 
-	resourcesGuard := s.resourcesMut.Lock("mark_pending")
-	defer resourcesGuard.Unlock()
+	// We intentionally do NOT hold s.resourcesMut here. markPending only mutates
+	// per-task state (guarded by each task's own mut via SetState) and builds
+	// local notifications; it never touches the resourcesMut-protected maps
+	// (s.tasks, s.streams) or task.owner.
+	//
+	// Holding resourcesMut would be actively harmful: the dispatcher assigns
+	// tasks concurrently via TryAssign, which holds a task's mut for the whole
+	// duration of the (up to 5s) SendMessage to a worker. If markPending held
+	// resourcesMut while SetState blocked on that same task's mut, it would pin
+	// the global resourcesMut behind a single worker's send latency and starve
+	// prepareAssignment (which needs resourcesMut.RLock), stalling all dispatch.
 
 	for _, task := range tasks {
 		if changed, _ := task.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
@@ -1282,8 +1368,18 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	var n notifier
 	defer n.Notify(ctx)
 
-	resourcesGuard := s.resourcesMut.Lock("cancel")
-	defer resourcesGuard.Unlock()
+	// A read lock is sufficient: Cancel only reads the resourcesMut-protected
+	// maps (s.tasks, s.streams) and task.owner (written only under the full
+	// write lock, in finalizeAssignment). Everything it mutates is per-task
+	// state (guarded by task.mut) or per-stream state (guarded by the stream's
+	// stateMut, via closeTaskSinks -> changeStreamState). During workflow
+	// teardown / short-circuit, Cancel is invoked in a storm (hundreds
+	// concurrently, from workflow event handlers on the connection goroutines);
+	// holding the write lock serializes them and starves the dispatcher's
+	// prepareAssignment read lock, stalling dispatch. A read lock lets them run
+	// concurrently.
+	resourcesGuard := s.resourcesMut.RLock("cancel")
+	defer resourcesGuard.RUnlock()
 
 	var errs []error
 
@@ -1310,7 +1406,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 
 		region := registered.wfRegion
 
-		if owner := registered.owner; owner != nil && registered.MarkInterrupted() {
+		if owner := registered.owner.Load(); owner != nil && registered.MarkInterrupted() {
 			// The task is currently running on a worker. We don't want to
 			// transition the task's state here so we can let the worker send
 			// final stats before acknowledging cancellation.
@@ -1319,7 +1415,12 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			// handleTaskStatus. MarkInterrupted makes the cancel message
 			// at most once: a redundant Cancel for an already-interrupted task
 			// is a no-op.
-			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
+			//
+			// Buffer the send on the notifier so it happens after resourcesMut is
+			// released: a short-circuit cancellation storm can otherwise back up
+			// a worker's connection buffer and stall the scheduler while the lock
+			// is held.
+			n.AddMessage(owner, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		} else if changed, _ := registered.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
 			// No worker is executing this task, so we transition the state
 			// directly as the scheduler is the source of truth.

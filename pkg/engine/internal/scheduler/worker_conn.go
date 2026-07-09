@@ -143,11 +143,12 @@ func (wc *workerConn) Assigned() []*task {
 }
 
 // Assign assigns a task to the worker.
+// Assign records that the task is tracked by this worker connection so it can
+// be cleaned up if the worker disconnects. The task's owner pointer is set
+// separately by [task.markAssigned] under the task's own mutex.
 func (wc *workerConn) Assign(assigned *task) {
 	wc.mut.Lock()
 	defer wc.mut.Unlock()
-
-	assigned.owner = wc
 
 	if wc.tasks == nil {
 		wc.tasks = make(map[*task]struct{})

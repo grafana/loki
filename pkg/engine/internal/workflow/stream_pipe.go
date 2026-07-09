@@ -44,7 +44,7 @@ func newEOFPipeline() eofPipeline { return eofPipeline{} }
 func newStreamPipe() *streamPipe {
 	return &streamPipe{
 		closed:  make(chan struct{}),
-		results: make(chan arrow.RecordBatch),
+		results: make(chan arrow.RecordBatch, 256),
 		errCond: make(chan struct{}),
 	}
 }
@@ -59,12 +59,16 @@ func (pipe *streamPipe) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return nil, ctx.Err()
 	case <-pipe.errCond:
 		return nil, pipe.err
-	case <-pipe.closed:
-		// Check to see if the pipeline has a more specific error before falling
-		// back to EOF.
+	//case <-pipe.closed:
+	//	// Check to see if the pipeline has a more specific error before falling
+	//	// back to EOF.
+	//	return nil, pipe.checkError(executor.EOF)
+	case rec, ok := <-pipe.results:
+		if ok {
+			return rec, nil
+		}
+
 		return nil, pipe.checkError(executor.EOF)
-	case rec := <-pipe.results:
-		return rec, nil
 	}
 }
 
@@ -108,5 +112,6 @@ func (pipe *streamPipe) SetError(err error) {
 func (pipe *streamPipe) Close() {
 	pipe.closeOnce.Do(func() {
 		close(pipe.closed)
+		close(pipe.results)
 	})
 }
