@@ -2179,6 +2179,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Alibabacloud Region to use.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -2187,6 +2191,13 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# Specify the RAM role name of the ECS instance. ECS RAM role authentication is
+# used only when neither access_key_id nor secret_access_key is configured and
+# requires signature_version=v4. If not set, the role name will be automatically
+# retrieved from the ECS instance metadata.
+# CLI flag: -<prefix>.oss.ram-role-name
+[ram_role_name: <string> | default = ""]
+
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 30]
@@ -2194,6 +2205,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 60]
+
+# The signature version to use for authenticating against OSS. Supported values
+# are: v1, v4. ECS RAM role authentication requires signature_version=v4.
+# CLI flag: -<prefix>.oss.signature-version
+[signature_version: <string> | default = "v1"]
 ```
 
 ### analytics
