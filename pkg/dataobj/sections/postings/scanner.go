@@ -9,8 +9,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/compute"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/memory"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // MatchedStreams is one logs section's result from a name and value scan.
@@ -47,7 +47,7 @@ func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
 // The Matched bitmaps in the result are allocated from alloc (a nil alloc uses
 // Go's built-in allocation). They outlive the scan, so the caller must not
 // reclaim alloc while the returned map is in use.
-func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]MatchedStreams, error) {
+func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef][]MatchedStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	valueCol := sectionColumn(s.sec, ColumnTypeLabelValue)
@@ -67,7 +67,7 @@ func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms 
 	pred := matchLabelsPredicate(kindCol, nameCol, valueCol, cms)
 
 	out := make(map[SectionRef][]MatchedStreams)
-	err := s.eachRow(ctx, pred, func(row Row) {
+	err := s.eachRow(ctx, pred, statsTracker, func(row Row) {
 		cands := byName[row.ColumnName]
 		if len(cands) == 0 {
 			return
@@ -122,7 +122,7 @@ func matchLabelsPredicate(kindCol, nameCol, valueCol *Column, cms []CompiledMatc
 // The Present and Matched bitmaps in the result are allocated from alloc (a nil
 // alloc uses Go's built-in allocation). They outlive the scan, so the caller
 // must not reclaim alloc while the returned map is in use.
-func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]LabelStreams, error) {
+func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef][]LabelStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	if kindCol == nil || nameCol == nil {
@@ -138,7 +138,7 @@ func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms
 	}
 
 	out := make(map[SectionRef][]LabelStreams)
-	err := s.eachRow(ctx, labelNamesPredicate(kindCol, nameCol, byName), func(row Row) {
+	err := s.eachRow(ctx, labelNamesPredicate(kindCol, nameCol, byName), statsTracker, func(row Row) {
 		cands := byName[row.ColumnName]
 		if len(cands) == 0 {
 			return
@@ -177,8 +177,8 @@ func labelNamesPredicate(kindCol, nameCol *Column, names map[string][]int) Predi
 	}
 }
 
-func (s *Scanner) eachRow(ctx context.Context, pred Predicate, fn func(Row)) error {
-	rr := NewRowReader(ctx, s.sec, []Predicate{pred})
+func (s *Scanner) eachRow(ctx context.Context, pred Predicate, statsTracker dataset.RowReaderStatsTracker, fn func(Row)) error {
+	rr := NewRowReader(ctx, s.sec, []Predicate{pred}, WithStatsTracker(statsTracker))
 	defer rr.Close()
 	for rr.Next() {
 		row := rr.At()
@@ -259,7 +259,7 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 // per-section (name,value) bloom hits. The second is the per-section set of
 // matcher names that occur as a stream label. Returns nil maps when the section
 // lacks the required columns.
-func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	bloomCol := sectionColumn(s.sec, ColumnTypeBloomFilter)
@@ -279,11 +279,9 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 	}
 
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
-	var bloomRowsRead int64
 	if pred := s.bloomMatchPredicate(kindCol, nameCol, bloomCol, matchers); pred != nil {
-		br := NewRowReader(ctx, s.sec, []Predicate{pred})
+		br := NewRowReader(ctx, s.sec, []Predicate{pred}, WithStatsTracker(statsTracker))
 		for br.Next() {
-			bloomRowsRead++
 			row := br.At()
 			p := byName[row.ColumnName]
 			if p == nil {
@@ -304,7 +302,6 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (
 		}
 		_ = br.Close()
 	}
-	xcap.RegionFromContext(ctx).Record(StatPostingsBloomRowsRead.Observe(bloomRowsRead))
 
 	// matchers are predicates from outside the stream selector, so a name may
 	// resolve to either a stream label or a parsed/metadata label. Report which
