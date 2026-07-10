@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/aliyun/credentials-go/credentials"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
@@ -19,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const NoSuchKeyErr = "NoSuchKey"
@@ -68,6 +71,7 @@ type Credentials struct {
 }
 
 type CredentialsProvider struct {
+	mu   sync.Mutex
 	cred credentials.Credential
 }
 
@@ -299,6 +303,7 @@ func (c *Credentials) GetSecurityToken() string {
 func (cp *CredentialsProvider) GetCredentials() oss.Credentials {
 	cred, err := cp.GetCredentialsE()
 	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to get OSS credentials", "err", err)
 		return &Credentials{}
 	}
 
@@ -306,6 +311,9 @@ func (cp *CredentialsProvider) GetCredentials() oss.Credentials {
 }
 
 func (cp *CredentialsProvider) GetCredentialsE() (oss.Credentials, error) {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+
 	cred, err := cp.cred.GetCredential()
 	if err != nil {
 		return nil, err
@@ -318,8 +326,8 @@ func (cp *CredentialsProvider) GetCredentialsE() (oss.Credentials, error) {
 	}, nil
 }
 
-func NewEcsCredentialsProvider(credential credentials.Credential) CredentialsProvider {
-	return CredentialsProvider{
+func NewEcsCredentialsProvider(credential credentials.Credential) *CredentialsProvider {
+	return &CredentialsProvider{
 		cred: credential,
 	}
 }
@@ -351,7 +359,7 @@ func buildRAMRoleProvider(roleName string) (oss.CredentialsProvider, []oss.Clien
 	provider := NewEcsCredentialsProvider(ecsCredential)
 
 	var opts []oss.ClientOption
-	opts = append(opts, oss.SetCredentialsProvider(&provider))
+	opts = append(opts, oss.SetCredentialsProvider(provider))
 
-	return &provider, opts, nil
+	return provider, opts, nil
 }
