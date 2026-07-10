@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
@@ -42,7 +41,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	if exists {
 		level.Info(c.logger).Log("msg", "LogMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
-		c.observeLogMerge(ctx, node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeShortCircuit}, time.Since(start))
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeShortCircuit}, time.Since(start))
 		return nil
 	}
 
@@ -52,7 +51,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	if len(sources) == 0 {
 		level.Info(c.logger).Log("msg", "LogMerge: no source log sections, nothing to compact", "tenant", node.Tenant)
-		c.observeLogMerge(ctx, node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil
 	}
 
@@ -87,7 +86,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	if stats.OutputObjects == 0 {
 		level.Info(c.logger).Log("msg", "LogMerge: no records to compact", "tenant", node.Tenant)
-		c.observeLogMerge(ctx, node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil
 	}
 
@@ -112,7 +111,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"sort_schema", strings.Join(node.SortSchema, ","),
 		"duration", time.Since(start),
 	)
-	c.observeLogMerge(ctx, node.Tenant, stats.logMergeObservedStats, time.Since(start))
+	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
 	return nil
 }
 
@@ -143,19 +142,7 @@ type logMergeStats struct {
 	logMergeObservedStats
 }
 
-func (c *Context) observeLogMerge(ctx context.Context, tenant string, stats logMergeObservedStats, duration time.Duration) {
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		region.Record(statLogMergeDuration.Observe(duration.Seconds()))
-		if stats.Outcome == logMergeOutcomeSuccess {
-			region.Record(statLogMergeSourceObjects.Observe(int64(stats.SourceObjects)))
-			region.Record(statLogMergeInputSections.Observe(int64(stats.InputSections)))
-			region.Record(statLogMergeOutputObjects.Observe(int64(stats.OutputObjects)))
-			region.Record(statLogMergeOutputStreams.Observe(int64(stats.OutputStreams)))
-			region.Record(statLogMergeOutputRecords.Observe(int64(stats.OutputRecords)))
-			region.Record(statLogMergeOutputBytesCompressed.Observe(stats.OutputBytesCompressed))
-			region.Record(statLogMergeOutputBytesUncompressed.Observe(stats.OutputBytesUncompressed))
-		}
-	}
+func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
 	if c.logMergeObserver != nil {
 		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
 	}
