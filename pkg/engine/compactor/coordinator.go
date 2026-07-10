@@ -234,20 +234,18 @@ func (c *coordinator) runTenantCycle(
 	if len(entries) == 1 {
 		result, stats, err := c.compactTenantLogs(ctx, tenant, window, entries[0])
 		tenantDuration := c.clock().Sub(tenantStart)
+		c.metrics.observeEntries(tenant, entries, c.clock())
 		switch {
 		case err != nil:
 			level.Warn(c.logger).Log("msg", "tenant log-compaction failed",
 				"tenant", tenant, "window", window, "err", err)
-			c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "failed", tenantDuration, compactionStats{})
 			return tenantCycleFailed
 		case result == tenantCycleConverged:
-			c.metrics.observeTenantCycle(tenant, "converged", tenantDuration, compactionStats{})
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "converged", tenantDuration, compactionStats{})
 			return tenantCycleConverged
 		default:
-			c.metrics.observeTenantCycle(tenant, "log_compacted", tenantDuration, stats)
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "compacted", tenantDuration, stats)
 			return tenantCycleLogCompacted
 		}
 	}
