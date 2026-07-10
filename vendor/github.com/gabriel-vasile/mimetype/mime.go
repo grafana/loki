@@ -1,7 +1,9 @@
 package mimetype
 
 import (
-	"mime"
+	stdmime "mime"
+	"slices"
+	"strings"
 
 	"github.com/gabriel-vasile/mimetype/internal/charset"
 	"github.com/gabriel-vasile/mimetype/internal/magic"
@@ -50,17 +52,15 @@ func (m *MIME) Parent() *MIME {
 func (m *MIME) Is(expectedMIME string) bool {
 	// Parsing is needed because some detected MIME types contain parameters
 	// that need to be stripped for the comparison.
-	expectedMIME, _, _ = mime.ParseMediaType(expectedMIME)
-	found, _, _ := mime.ParseMediaType(m.mime)
+	expectedMIME, _, _ = stdmime.ParseMediaType(expectedMIME)
+	found, _, _ := stdmime.ParseMediaType(m.mime)
 
 	if expectedMIME == found {
 		return true
 	}
 
-	for _, alias := range m.aliases {
-		if alias == expectedMIME {
-			return true
-		}
+	if slices.Contains(m.aliases, expectedMIME) {
+		return true
 	}
 
 	return false
@@ -103,20 +103,22 @@ func (m *MIME) match(in []byte, readLimit uint32) *MIME {
 		"text/html":  charset.FromHTML,
 		"text/xml":   charset.FromXML,
 	}
-	// ps holds optional MIME parameters.
-	ps := map[string]string{}
+	charset := ""
 	if f, ok := needsCharset[m.mime]; ok {
-		if cset := f(in); cset != "" {
-			ps["charset"] = cset
-		}
+		// The charset comes from BOM, from HTML headers, from XML headers.
+		// Limit the number of bytes searched for to 1024.
+		charset = f(in[:min(len(in), 1024)])
+	}
+	if m == root || charset == "" {
+		return m
 	}
 
-	return m.cloneHierarchy(ps)
+	return m.cloneHierarchy(charset)
 }
 
 // flatten transforms an hierarchy of MIMEs into a slice of MIMEs.
 func (m *MIME) flatten() []*MIME {
-	out := []*MIME{m}
+	out := []*MIME{m} //nolint:prealloc
 	for _, c := range m.children {
 		out = append(out, c.flatten()...)
 	}
@@ -124,11 +126,32 @@ func (m *MIME) flatten() []*MIME {
 	return out
 }
 
+// hierarchy returns an easy to read list of ancestors for m.
+// For example, application/json would return json>txt>root.
+func (m *MIME) hierarchy() string {
+	h := ""
+	for m := m; m != nil; m = m.Parent() {
+		e := strings.TrimPrefix(m.Extension(), ".")
+		if e == "" {
+			// There are some MIME without extensions. When generating the hierarchy,
+			// it would be confusing to use empty string as extension.
+			// Use the subtype instead; ex: application/x-executable -> x-executable.
+			e = strings.Split(m.String(), "/")[1]
+			if m.Is("application/octet-stream") {
+				// for octet-stream use root, because it's short and used in many places
+				e = "root"
+			}
+		}
+		h += ">" + e
+	}
+	return strings.TrimPrefix(h, ">")
+}
+
 // clone creates a new MIME with the provided optional MIME parameters.
-func (m *MIME) clone(ps map[string]string) *MIME {
+func (m *MIME) clone(charset string) *MIME {
 	clonedMIME := m.mime
-	if len(ps) > 0 {
-		clonedMIME = mime.FormatMediaType(m.mime, ps)
+	if charset != "" {
+		clonedMIME = m.mime + "; charset=" + charset
 	}
 
 	return &MIME{
@@ -140,11 +163,11 @@ func (m *MIME) clone(ps map[string]string) *MIME {
 
 // cloneHierarchy creates a clone of m and all its ancestors. The optional MIME
 // parameters are set on the last child of the hierarchy.
-func (m *MIME) cloneHierarchy(ps map[string]string) *MIME {
-	ret := m.clone(ps)
+func (m *MIME) cloneHierarchy(charset string) *MIME {
+	ret := m.clone(charset)
 	lastChild := ret
 	for p := m.Parent(); p != nil; p = p.Parent() {
-		pClone := p.clone(nil)
+		pClone := p.clone("")
 		lastChild.parent = pClone
 		lastChild = pClone
 	}
@@ -153,10 +176,11 @@ func (m *MIME) cloneHierarchy(ps map[string]string) *MIME {
 }
 
 func (m *MIME) lookup(mime string) *MIME {
-	for _, n := range append(m.aliases, m.mime) {
-		if n == mime {
-			return m
-		}
+	if mime == m.mime {
+		return m
+	}
+	if slices.Contains(m.aliases, mime) {
+		return m
 	}
 
 	for _, c := range m.children {
@@ -172,6 +196,7 @@ func (m *MIME) lookup(mime string) *MIME {
 // The sub-format will be detected if all the detectors in the parent chain return true.
 // The extension should include the leading dot, as in ".html".
 func (m *MIME) Extend(detector func(raw []byte, limit uint32) bool, mime, extension string, aliases ...string) {
+	mime, _, _ = stdmime.ParseMediaType(mime)
 	c := &MIME{
 		mime:      mime,
 		extension: extension,

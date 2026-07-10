@@ -5,26 +5,51 @@ import (
 	"encoding/binary"
 )
 
-var (
-	// Flac matches a Free Lossless Audio Codec file.
-	Flac = prefix([]byte("\x66\x4C\x61\x43\x00\x00\x00\x22"))
-	// Midi matches a Musical Instrument Digital Interface file.
-	Midi = prefix([]byte("\x4D\x54\x68\x64"))
-	// Ape matches a Monkey's Audio file.
-	Ape = prefix([]byte("\x4D\x41\x43\x20\x96\x0F\x00\x00\x34\x00\x00\x00\x18\x00\x00\x00\x90\xE3"))
-	// MusePack matches a Musepack file.
-	MusePack = prefix([]byte("MPCK"))
-	// Au matches a Sun Microsystems au file.
-	Au = prefix([]byte("\x2E\x73\x6E\x64"))
-	// Amr matches an Adaptive Multi-Rate file.
-	Amr = prefix([]byte("\x23\x21\x41\x4D\x52"))
-	// Voc matches a Creative Voice file.
-	Voc = prefix([]byte("Creative Voice File"))
-	// M3u matches a Playlist file.
-	M3u = prefix([]byte("#EXTM3U"))
-	// AAC matches an Advanced Audio Coding file.
-	AAC = prefix([]byte{0xFF, 0xF1}, []byte{0xFF, 0xF9})
-)
+// Flac matches a Free Lossless Audio Codec file.
+func Flac(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x66\x4C\x61\x43\x00\x00\x00\x22"))
+}
+
+// Midi matches a Musical Instrument Digital Interface file.
+func Midi(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x4D\x54\x68\x64"))
+}
+
+// Ape matches a Monkey's Audio file.
+func Ape(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x4D\x41\x43\x20\x96\x0F\x00\x00\x34\x00\x00\x00\x18\x00\x00\x00\x90\xE3"))
+}
+
+// MusePack matches a Musepack file.
+func MusePack(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("MPCK"))
+}
+
+// Au matches a Sun Microsystems au file.
+func Au(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x2E\x73\x6E\x64"))
+}
+
+// Amr matches an Adaptive Multi-Rate file.
+func Amr(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x23\x21\x41\x4D\x52"))
+}
+
+// Voc matches a Creative Voice file.
+func Voc(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("Creative Voice File"))
+}
+
+// M3U matches a Playlist file.
+func M3U(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("#EXTM3U\n")) ||
+		bytes.HasPrefix(raw, []byte("#EXTM3U\r\n"))
+}
+
+// AAC matches an Advanced Audio Coding file.
+func AAC(raw []byte, _ uint32) bool {
+	return len(raw) > 1 && ((raw[0] == 0xFF && raw[1] == 0xF1) || (raw[0] == 0xFF && raw[1] == 0xF9))
+}
 
 // Mp3 matches an mp3 file.
 func Mp3(raw []byte, limit uint32) bool {
