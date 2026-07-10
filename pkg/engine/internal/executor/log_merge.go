@@ -399,6 +399,8 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 	return w.stats, nil
 }
 
+// finalizeAndUpload appends the pending sections, flushes them into one compacted
+// log object, and uploads it to a deterministic key.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if w.lb.UncompressedSize() > 0 {
 		if err := w.builder.Append(w.lb); err != nil {
@@ -413,11 +415,12 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("flushing object: %w", err)
 	}
+	defer closer.Close()
+
 	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
-	size, upErr := w.c.uploadLogObject(ctx, path, obj)
-	_ = closer.Close()
-	if upErr != nil {
-		return fmt.Errorf("uploading %q: %w", path, upErr)
+	size, err := w.c.uploadLogObject(ctx, path, obj)
+	if err != nil {
+		return fmt.Errorf("uploading %q: %w", path, err)
 	}
 
 	level.Info(w.c.logger).Log(
