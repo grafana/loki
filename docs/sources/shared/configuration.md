@@ -6088,7 +6088,8 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 
 # Delimiter used to replace the default delimiter ':' in chunk IDs when storing
 # chunks. This is mainly intended when you run a MinIO instance on a Windows
-# machine. You should not change this value inflight.
+# machine. You must not change this value during operations, otherwise you may
+# not be able to read existing chunks from object storage.
 # CLI flag: -<prefix>.s3.chunk-delimiter
 [chunk_delimiter: <string> | default = ""]
 
