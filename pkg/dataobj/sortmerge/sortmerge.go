@@ -169,6 +169,8 @@ type sectionSequence struct {
 	remap   map[int64]int64
 }
 
+var _ loser.Sequence = (*sectionSequence)(nil)
+
 func (s *sectionSequence) Next() bool {
 	if !s.DatasetSequence.Next() {
 		return false
