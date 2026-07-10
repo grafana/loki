@@ -37,6 +37,18 @@ type RowReaderOptions struct {
 	// starts. To reduce read latency, this option should only be disabled when
 	// the entire Dataset is already held in memory.
 	Prefetch bool
+
+	// StatsTracker keeps track of the various reader internal stats.
+	StatsTracker RowReaderStatsTracker
+}
+
+type RowReaderStatsTracker interface {
+	OnColumnPredicateBuilt(column Column, stats ColumnReadPageStats)
+}
+
+type ColumnReadPageStats struct {
+	Total    uint64
+	Relevant uint64
 }
 
 // A RowReader reads [Row]s from a [Dataset].
@@ -839,6 +851,9 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		isStreamCol      = isStreamIDColumn(c)
 		prevPageIncluded bool // used for tracking avg run length
+
+		totalPages    = uint64(c.ColumnDesc().PagesCount)
+		relevantPages = uint64(0)
 	)
 
 	for result := range c.ListPages(ctx) {
@@ -866,6 +881,7 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		} else if minValue.IsNil() || maxValue.IsNil() {
 			// No stats, so we add the whole range.
 			ranges.Add(pageRange)
+			relevantPages++
 
 			if isStreamCol {
 				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
@@ -905,6 +921,7 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 
 		if include {
 			ranges.Add(pageRange)
+			relevantPages++
 
 			if isStreamCol {
 				region.Record(dataobj.StatStreamRelevantPages.Observe(1))
@@ -923,6 +940,10 @@ func (r *RowReader) buildColumnPredicateRanges(ctx context.Context, c Column, p 
 		}
 
 		prevPageIncluded = include
+	}
+
+	if r.opts.StatsTracker != nil {
+		r.opts.StatsTracker.OnColumnPredicateBuilt(c, ColumnReadPageStats{totalPages, relevantPages})
 	}
 
 	return ranges, nil
