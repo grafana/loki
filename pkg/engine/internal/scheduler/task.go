@@ -6,8 +6,9 @@ import (
 	"net/http"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
