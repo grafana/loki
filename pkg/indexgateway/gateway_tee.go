@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
@@ -40,7 +41,7 @@ type TeeGatewayClient struct {
 	logger                       log.Logger
 	requestDuration              *prometheus.HistogramVec
 	shadowRequestsDroppedCounter *prometheus.CounterVec
-	shadowSemaphore              chan struct{}
+	shadowSemaphore              *semaphore.Weighted
 }
 
 // NewTeeGatewayClient creates a TeeGatewayClient that fans out to both primary and secondary.
@@ -50,7 +51,7 @@ func NewTeeGatewayClient(primary, secondary series.GatewayClient, r prometheus.R
 		primary:         primary,
 		secondary:       secondary,
 		logger:          logger,
-		shadowSemaphore: make(chan struct{}, shadowConcurrencyLimit),
+		shadowSemaphore: semaphore.NewWeighted(shadowConcurrencyLimit),
 		requestDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
 			Name:                            "index_gateway_tee_request_duration_seconds",
@@ -82,10 +83,9 @@ func runTee[Req, Resp any](
 	req Req,
 	fn func(series.GatewayClient, context.Context, Req) (Resp, error),
 ) (Resp, error) {
-	select {
-	case t.shadowSemaphore <- struct{}{}:
+	if t.shadowSemaphore.TryAcquire(1) {
 		go func() {
-			defer func() { <-t.shadowSemaphore }()
+			defer t.shadowSemaphore.Release(1)
 			start := time.Now()
 			_, err := fn(t.secondary, context.WithoutCancel(ctx), req)
 			t.observe(operation, clientLabelSecondary, start, err)
@@ -93,7 +93,7 @@ func runTee[Req, Resp any](
 				level.Warn(t.logger).Log("msg", "tee index gateway request failed", "operation", operation, "err", err)
 			}
 		}()
-	default:
+	} else {
 		t.shadowRequestsDroppedCounter.WithLabelValues(operation).Inc()
 	}
 	start := time.Now()
