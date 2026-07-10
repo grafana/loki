@@ -393,12 +393,12 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, 
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
-	return s.changeStreamState(ctx, &n, stream, msg.State)
+	return s.changeStreamState(&n, stream, msg.State)
 }
 
 // changeStreamState updates the state of the target stream. changeStreamState
 // must be called while the resourcesMut lock is held.
-func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
+func (s *Scheduler) changeStreamState(n *notifier, target *stream, newState workflow.StreamState) error {
 	changed, err := target.setState(s.metrics, newState)
 	if err != nil {
 		return err

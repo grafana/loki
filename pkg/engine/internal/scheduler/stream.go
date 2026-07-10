@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/oklog/ulid/v2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
