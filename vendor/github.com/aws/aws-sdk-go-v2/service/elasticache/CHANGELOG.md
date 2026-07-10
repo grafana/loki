@@ -1,3 +1,20 @@
+# v1.55.0 (2026-07-06)
+
+* **Feature**: Add request serialization snapshot tests.
+
+# v1.54.5 (2026-07-01)
+
+* **Bug Fix**: Bump smithy-go to 1.27.3, fix JSON encorder for document.Number, endpoint host label format validation and CBOR union serialization on new serde
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.54.4 (2026-06-29)
+
+* **Documentation**: Updated documentation for the ApplyImmediately parameter in ModifyCacheCluster and ModifyReplicationGroup to clarify modification behavior.
+
+# v1.54.3 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.54.2 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
