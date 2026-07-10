@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	libraryVersion = "1.194.1"
+	libraryVersion = "1.198.0"
 	defaultBaseURL = "https://api.digitalocean.com/"
 	userAgent      = "godo/" + libraryVersion
 	mediaType      = "application/json"
@@ -79,6 +79,7 @@ type Client struct {
 	LoadBalancers       LoadBalancersService
 	Monitoring          MonitoringService
 	Security            SecurityService
+	Secrets             SecretsService
 	Nfs                 NfsService
 	NfsActions          NfsActionsService
 	OneClick            OneClickService
@@ -320,6 +321,7 @@ func NewClient(httpClient *http.Client) *Client {
 	c.LoadBalancers = &LoadBalancersServiceOp{client: c}
 	c.Monitoring = &MonitoringServiceOp{client: c}
 	c.Security = &SecurityServiceOp{client: c}
+	c.Secrets = &SecretsServiceOp{client: c}
 	c.Nfs = &NfsServiceOp{client: c}
 	c.NfsActions = &NfsActionsServiceOp{client: c}
 	c.VPCNATGateways = &VPCNATGatewaysServiceOp{client: c}
