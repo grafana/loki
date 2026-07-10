@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"dario.cat/mergo"
 	"github.com/go-kit/log"
@@ -362,7 +361,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 			// Cast [rulerconfig.RemoteWriteOverridesConfig] to [config.RemoteWriteConfig] so it can be used to merge with [clt].
 			// This can be done safely because the structs are identical.
-			casted := (*config.RemoteWriteConfig)(unsafe.Pointer(v))
+			casted := (*config.RemoteWriteConfig)(v)
 			// merge with override
 			if err := mergo.Merge(&clt, casted, mergo.WithOverride); err != nil {
 				return nil, fmt.Errorf("failed to apply remote write clients configs: %w", err)
