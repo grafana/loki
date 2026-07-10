@@ -1400,7 +1400,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		// still closes any associated streams.
 		prevState := registered.State()
 		if prevState.Terminal() {
-			s.closeTaskSinks(ctx, &n, registered)
+			s.closeTaskSinks(&n, registered)
 			continue
 		}
 
@@ -1452,7 +1452,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			})
 		}
 
-		s.closeTaskSinks(ctx, &n, registered)
+		s.closeTaskSinks(&n, registered)
 	}
 
 	if len(errs) > 0 {
@@ -1465,7 +1465,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 // closed) and queues stream-state notifications onto n.
 //
 // closeTaskSinks must be called while resourcesMut is held.
-func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
+func (s *Scheduler) closeTaskSinks(n *notifier, t *task) {
 	for _, sinks := range t.inner.Sinks {
 		for _, rawSink := range sinks {
 			sink, ok := s.streams[rawSink.ULID]
