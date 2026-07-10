@@ -3081,7 +3081,7 @@ func TestDistributorMaxInflightBytesLimit(t *testing.T) {
 	// Set the max inflight bytes to 1KB, the same request should be rejected.
 	d.cfg.MaxInflightBytes = 1024
 	_, err = d.Push(ctx, req)
-	require.ErrorIs(t, err, errServiceUnavailableOverloaded)
+	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
 
 }
 
