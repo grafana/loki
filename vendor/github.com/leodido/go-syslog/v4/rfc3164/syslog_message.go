@@ -8,29 +8,35 @@ import (
 )
 
 type syslogMessage struct {
-	prioritySet  bool // We explictly flag the setting of priority since its zero value is a valid priority by RFC 3164
-	timestampSet bool // We explictly flag the setting of timestamp since its zero value is a valid timestamp by RFC 3164
-	msgcountSet  bool
-	sequenceSet  bool
-	priority     uint8
-	msgcount     uint32
-	sequence     uint32
-	timestamp    time.Time
-	hostname     string
-	tag          string
-	content      string
-	message      string
+	prioritySet      bool // We explictly flag the setting of priority since its zero value is a valid priority by RFC 3164
+	timestampSet     bool // We explictly flag the setting of timestamp since its zero value is a valid timestamp by RFC 3164
+	msgcountSet      bool
+	sequenceSet      bool
+	priorityOptional bool
+	priority         uint8
+	msgcount         uint32
+	sequence         uint32
+	timestamp        time.Time
+	hostname         string
+	tag              string
+	content          string
+	message          string
 }
 
 func (sm *syslogMessage) minimal() bool {
-	return sm.prioritySet && common.ValidPriority(sm.priority)
+	if sm.prioritySet {
+		return common.ValidPriority(sm.priority)
+	}
+	return sm.priorityOptional && sm.timestampSet && sm.message != ""
 }
 
-// export is meant to be called on minimally-valid messages
-// thus it presumes priority and version values exists and are correct
+// export is meant to be called on minimally valid messages. PRI-derived fields
+// are populated only when PRI was parsed.
 func (sm *syslogMessage) export() *SyslogMessage {
 	out := &SyslogMessage{}
-	out.ComputeFromPriority(sm.priority)
+	if sm.prioritySet {
+		out.ComputeFromPriority(sm.priority)
+	}
 
 	if sm.msgcountSet {
 		out.MessageCounter = &sm.msgcount
@@ -62,4 +68,13 @@ func (sm *syslogMessage) export() *SyslogMessage {
 // SyslogMessage represents a RFC3164 syslog message.
 type SyslogMessage struct {
 	syslog.Base
+}
+
+// Valid reports whether the message has either a valid PRI or the structural
+// fields required for a parsed priorityless RFC3164 message.
+func (sm *SyslogMessage) Valid() bool {
+	if sm.Priority != nil {
+		return common.ValidPriority(*sm.Priority)
+	}
+	return sm.Timestamp != nil && sm.Message != nil
 }

@@ -57,6 +57,29 @@ func WithLocaleTimezone(loc *time.Location) syslog.MachineOption {
 // 	}
 // }
 
+// WithLenientDay tells the parser to accept 0-prefixed single-digit days in timestamps.
+//
+// By default the parser requires RFC 3164 compliant space-padded days (e.g., "Feb  5").
+// This option also accepts zero-padded days (e.g., "Feb 05"), which some devices produce.
+func WithLenientDay() syslog.MachineOption {
+	return func(m syslog.Machine) syslog.Machine {
+		m.(*machine).WithLenientDay()
+		return m
+	}
+}
+
+// WithEmbeddedNewlines tells the parser to accept newline characters (LF, CR) inside the MSG field.
+//
+// By default the RFC 3164 parser treats newlines as message terminators.
+// Enable this when using octet-counting framing (RFC 5425) where message boundaries
+// are determined by the length prefix, making embedded newlines unambiguous.
+func WithEmbeddedNewlines() syslog.MachineOption {
+	return func(m syslog.Machine) syslog.Machine {
+		m.(*machine).WithEmbeddedNewlines()
+		return m
+	}
+}
+
 // WithRFC3339 tells the parser to look for RFC3339 timestamps, too.
 //
 // It tells the parser to accept also RFC3339 timestamps even if they are not in the RFC3164 timestamp part.
@@ -198,6 +221,17 @@ func WithSequenceNumber() syslog.MachineOption {
 func WithCiscoHostname() syslog.MachineOption {
 	return func(m syslog.Machine) syslog.Machine {
 		m.(*machine).WithCiscoHostname()
+		return m
+	}
+}
+
+// WithOptionalPriority tells the parser to accept an otherwise valid RFC3164
+// message without a PRI prefix.
+//
+// Priority, facility, and severity are nil when PRI is absent.
+func WithOptionalPriority() syslog.MachineOption {
+	return func(m syslog.Machine) syslog.Machine {
+		m.(*machine).WithOptionalPriority()
 		return m
 	}
 }

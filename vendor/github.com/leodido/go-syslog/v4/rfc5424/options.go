@@ -27,3 +27,14 @@ func WithCompliantMsg() syslog.MachineOption {
 		return m
 	}
 }
+
+// WithOptionalPriority tells the parser to accept an otherwise valid RFC5424
+// message without a PRI prefix.
+//
+// Priority, facility, and severity are nil when PRI is absent.
+func WithOptionalPriority() syslog.MachineOption {
+	return func(m syslog.Machine) syslog.Machine {
+		m.(*machine).WithOptionalPriority()
+		return m
+	}
+}

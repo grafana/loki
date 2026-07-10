@@ -1491,9 +1491,10 @@ github.com/knadh/koanf/v2
 ## explicit; go 1.11
 github.com/kylelemons/godebug/diff
 github.com/kylelemons/godebug/pretty
-# github.com/leodido/go-syslog/v4 v4.3.0
-## explicit; go 1.21
+# github.com/leodido/go-syslog/v4 v4.6.0
+## explicit; go 1.22
 github.com/leodido/go-syslog/v4
+github.com/leodido/go-syslog/v4/auto
 github.com/leodido/go-syslog/v4/ciscoios
 github.com/leodido/go-syslog/v4/common
 github.com/leodido/go-syslog/v4/nontransparent
@@ -3263,5 +3264,5 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20251126142931-6f9f62ab6f86
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 # github.com/grafana/loki/pkg/push => ./pkg/push
-# github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.3.0
+# github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
