@@ -173,9 +173,10 @@ limits_config:
     [log_attributes: <list of attributes_configs>]
   
   attributes_config:
-    # Configures action to take on matching Attributes. It allows one of
-    # [structured_metadata, drop] for all Attribute types. It additionally allows
-    # index_label action for Resource Attributes
+    # Configures the action to take on matching attributes.
+    # Supported actions for all attribute types: [structured_metadata, drop].
+    # The index_label action is also supported for resource and log attributes.
+    # Avoid using high-cardinality attributes as index labels, especially for log attributes.
     [action: <string> | default = ""]
   
     # List of attributes to configure how to store them or drop them altogether

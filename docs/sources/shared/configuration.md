@@ -2252,9 +2252,10 @@ Configuration for `analytics`.
 Define actions for matching OpenTelemetry (OTEL) attributes.
 
 ```yaml
-# Configures action to take on matching attributes. It allows one of
-# [structured_metadata, drop] for all attribute types. It additionally allows
-# index_label action for resource attributes
+# Configures the action to take on matching attributes.
+# Supported actions for all attribute types: [structured_metadata, drop].
+# The index_label action is also supported for resource and log attributes.
+# Avoid using high-cardinality attributes as index labels, especially for log attributes.
 [action: <string> | default = ""]
 
 # List of attributes to configure how to store them or drop them altogether
