@@ -28,6 +28,7 @@ func Plan(
 	sections []*compactionv2pb.SectionRef,
 	tenant string,
 	k int,
+	sortSchema []string,
 ) []*compactionv2pb.TaskSpec {
 	_ = ctx
 	if k <= 0 {
@@ -54,8 +55,9 @@ func Plan(
 	for start := 0; start < len(runs); start += k {
 		end := min(start+k, len(runs))
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
-			Tenant: tenant,
-			Runs:   runs[start:end],
+			Tenant:     tenant,
+			Runs:       runs[start:end],
+			SortSchema: sortSchema,
 		})
 	}
 	return tasks

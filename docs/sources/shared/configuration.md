@@ -1614,6 +1614,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
+    # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
+    # by the coordinator. 0 means unlimited.
+    # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
+    [logs_max_running_compaction_tasks: <int> | default = 16]
+
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]

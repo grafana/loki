@@ -13,6 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -89,6 +90,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 			Enabled:                   true,
 			PollingInterval:           5 * time.Minute,
 			MaxRunsPerTask:            2,
+			LogMaxRunsPerTask:         2,
 			ToCConsolidateTimeout:     30 * time.Second,
 			MaxRunningCompactionTasks: 4,
 			PlanVersion:               1,
@@ -105,30 +107,6 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 
 // fixedClock returns a clock function pinned to t.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
-
-// TestRunCycle_SkipsConvergedTenants verifies the <=1 gate: a tenant whose ToC
-// slice has length ≤ 1 is short-circuited. Nothing flows into the runner or the
-// replacer for that tenant.
-func TestRunCycle_SkipsConvergedTenants(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
-
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"single": {
-			{path: "indexes/aa/idx-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
-		},
-	})
-
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
-
-	c.runCycle(ctx)
-
-	require.Empty(t, runner.snapshot(), "no Phase 1 dispatch for converged tenant")
-	require.Empty(t, replacer.snapshot(), "no Phase 2 ToC swap for converged tenant")
-}
 
 // TestRunCycle_FansOutPhase1ThenCommitsPhase2 verifies the full per-tenant
 // shape: K=2 with 3 indexes produces ⌈3/2⌉ = 2 IndexMerge plans, then one
@@ -309,4 +287,89 @@ func TestRunCycle_NoToC(t *testing.T) {
 
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
+}
+
+func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+
+	// Two disjoint-time label tuples chain into 1 run -> 1 task (K=2).
+	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "service_name",
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 30, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
+	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+	require.Equal(t, tenantCycleLogCompacted, result)
+
+	dispatches := runner.snapshot()
+	require.Len(t, dispatches, 1, "one run -> one task -> one LogMerge plan")
+	require.Equal(t, []string{"compaction", "log-merge"}, dispatches[0].opts.Actor)
+
+	root, err := dispatches[0].plan.Root()
+	require.NoError(t, err)
+	node, ok := root.(*physical.LogMerge)
+	require.True(t, ok)
+	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+	require.NotEmpty(t, node.OutputIndexPath)
+
+	require.Empty(t, replacer.snapshot(), "no TOC swap on the log path")
+}
+
+func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/other-tenant"
+
+	// Index has a stats section (so it flushes) but for a DIFFERENT tenant;
+	// "acme" gets zero refs -> no tasks -> converged.
+	buildIndexWithStats(ctx, t, bucket, "other", convergedPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
+	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+	require.Equal(t, tenantCycleConverged, result)
+	require.Empty(t, runner.snapshot())
+}
+
+func TestRunCycle_ConvergedTenantTriggersLogCompaction(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+
+	buildIndexWithStats(ctx, t, bucket, "solo", convergedPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+	})
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"solo": {{path: convergedPath, start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)}},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	c.runCycle(ctx)
+
+	require.Len(t, runner.snapshot(), 1, "converged tenant now dispatches a LogMerge plan")
+	require.Empty(t, replacer.snapshot(), "no TOC swap on the log path")
 }
