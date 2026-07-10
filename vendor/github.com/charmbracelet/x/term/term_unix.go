@@ -19,7 +19,7 @@ func isTerminal(fd uintptr) bool {
 func makeRaw(fd uintptr) (*State, error) {
 	termios, err := unix.IoctlGetTermios(int(fd), ioctlReadTermios)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
 	oldState := State{state{Termios: *termios}}
@@ -34,7 +34,7 @@ func makeRaw(fd uintptr) (*State, error) {
 	termios.Cc[unix.VMIN] = 1
 	termios.Cc[unix.VTIME] = 0
 	if err := unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
 	return &oldState, nil
@@ -45,26 +45,26 @@ func setState(fd uintptr, state *State) error {
 	if state != nil {
 		termios = &state.Termios
 	}
-	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios)
+	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios) //nolint:wrapcheck
 }
 
 func getState(fd uintptr) (*State, error) {
 	termios, err := unix.IoctlGetTermios(int(fd), ioctlReadTermios)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
 	return &State{state{Termios: *termios}}, nil
 }
 
 func restore(fd uintptr, state *State) error {
-	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &state.Termios)
+	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &state.Termios) //nolint:wrapcheck
 }
 
 func getSize(fd uintptr) (width, height int, err error) {
 	ws, err := unix.IoctlGetWinsize(int(fd), unix.TIOCGWINSZ)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, err //nolint:wrapcheck
 	}
 	return int(ws.Col), int(ws.Row), nil
 }
@@ -73,13 +73,13 @@ func getSize(fd uintptr) (width, height int, err error) {
 type passwordReader int
 
 func (r passwordReader) Read(buf []byte) (int, error) {
-	return unix.Read(int(r), buf)
+	return unix.Read(int(r), buf) //nolint:wrapcheck
 }
 
 func readPassword(fd uintptr) ([]byte, error) {
 	termios, err := unix.IoctlGetTermios(int(fd), ioctlReadTermios)
 	if err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
 	newState := *termios
@@ -87,10 +87,10 @@ func readPassword(fd uintptr) ([]byte, error) {
 	newState.Lflag |= unix.ICANON | unix.ISIG
 	newState.Iflag |= unix.ICRNL
 	if err := unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &newState); err != nil {
-		return nil, err
+		return nil, err //nolint:wrapcheck
 	}
 
-	defer unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios)
+	defer unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios) //nolint:errcheck
 
 	return readPasswordLine(passwordReader(fd))
 }
