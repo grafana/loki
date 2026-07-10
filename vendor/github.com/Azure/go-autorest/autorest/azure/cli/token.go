@@ -47,7 +47,7 @@ type Token struct {
 
 const accessTokensJSON = "accessTokens.json"
 
-// ToADALToken converts an Azure CLI `Token`` to an `adal.Token``
+// ToADALToken converts an Azure CLI `Token“ to an `adal.Token“
 func (t Token) ToADALToken() (converted adal.Token, err error) {
 	tokenExpirationDate, err := ParseExpirationDate(t.ExpiresOn)
 	if err != nil {
