@@ -210,26 +210,40 @@ func TestTrialCircuitBreaker(t *testing.T) {
 	})
 
 	t.Run("doneFunc with previous term is skipped", func(t *testing.T) {
-		b := newTrialCircuitBreaker(time.Second, 3, 1, isAnyErr)
+		synctest.Test(t, func(t *testing.T) {
+			b := newTrialCircuitBreaker(time.Second, 2, 1, isAnyErr)
 
-		// If we pass an error to doneFunc, we expect the failure counter to be
-		// incremented.
-		ok, doneFunc := b.Allow()
-		require.True(t, ok)
-		doneFunc(errors.New("an error occurred"))
-		require.Equal(t, 1, b.failures)
+			// If we pass an error to doneFunc, we expect the failure counter to be
+			// incremented.
+			ok, doneFunc := b.Allow()
+			require.True(t, ok)
+			doneFunc(errors.New("an error occurred"))
+			require.Equal(t, 1, b.failures)
 
-		// If we repeat this, but advance the term, no increment should happen.
-		ok, doneFunc = b.Allow()
-		require.True(t, ok)
-		b.term++
-		doneFunc(errors.New("an error occurred"))
-		require.Equal(t, 1, b.failures)
+			// We keep this doneFunc around to show that it is skipped in later terms.
+			ok, lateDoneFunc := b.Allow()
+			require.True(t, ok)
 
-		// Now the term matches once more, the failure counter should be incremented.
-		ok, doneFunc = b.Allow()
-		require.True(t, ok)
-		doneFunc(errors.New("an error occurred"))
-		require.Equal(t, 2, b.failures)
+			// Open the circuit breaker.
+			ok, doneFunc = b.Allow()
+			require.True(t, ok)
+			doneFunc(errors.New("an error occurred"))
+			require.Equal(t, circuitBreakerOpen, b.state)
+
+			// Transition to half-open.
+			time.Sleep(2 * time.Second)
+			ok, doneFunc = b.Allow()
+			require.True(t, ok)
+			require.Equal(t, circuitBreakerHalfOpen, b.state)
+
+			// A failure should re-open the circuit breaker, but since lateDoneFunc is
+			// from a previous term, it is skipped.
+			lateDoneFunc(errors.New("an error occurred"))
+			require.Equal(t, circuitBreakerHalfOpen, b.state)
+
+			// A failure from the current term should re-open the circuit breaker.
+			doneFunc(errors.New("an error occurred"))
+			require.Equal(t, circuitBreakerOpen, b.state)
+		})
 	})
 }
