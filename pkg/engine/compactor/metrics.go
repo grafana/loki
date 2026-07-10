@@ -179,8 +179,6 @@ type workerMetrics struct {
 
 	logMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds         *prometheus.HistogramVec // tenant
-	logMergeSourceObjects           *prometheus.HistogramVec // tenant
-	logMergeOutputObjects           *prometheus.HistogramVec // tenant
 	logMergeOutputRecords           *prometheus.HistogramVec // tenant
 	logMergeOutputStreams           *prometheus.HistogramVec // tenant
 	logMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
@@ -211,16 +209,6 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Name:    "loki_dataobj_compaction_log_merge_duration_seconds",
 			Help:    "Wall-clock duration of a LogMerge task on the worker.",
 			Buckets: durationBuckets,
-		}, []string{labelTenant}),
-		logMergeSourceObjects: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_source_objects",
-			Help:    "Number of unique source data objects consumed by a successful LogMerge task (K).",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputObjects: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_objects",
-			Help:    "Number of compacted log objects written by a successful LogMerge task.",
-			Buckets: countBuckets,
 		}, []string{labelTenant}),
 		logMergeOutputRecords: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_records",
@@ -273,12 +261,6 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	m.logMergeDurationSeconds.WithLabelValues(tenant).Observe(duration.Seconds())
 	if stats.Outcome != "success" {
 		return
-	}
-	if stats.SourceObjects > 0 {
-		m.logMergeSourceObjects.WithLabelValues(tenant).Observe(float64(stats.SourceObjects))
-	}
-	if stats.OutputObjects > 0 {
-		m.logMergeOutputObjects.WithLabelValues(tenant).Observe(float64(stats.OutputObjects))
 	}
 	if stats.OutputRecords > 0 {
 		m.logMergeOutputRecords.WithLabelValues(tenant).Observe(float64(stats.OutputRecords))
