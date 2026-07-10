@@ -9,8 +9,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // SectionStreams holds the matching streams within one logs section
@@ -73,14 +75,17 @@ func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings
 		return nil, err
 	}
 
+	stats := newStatsTracker(len(sections))
+	defer stats.Report(ctx)
+
 	startNanos, endNanos := s.start.UnixNano(), s.end.UnixNano()
 
-	accums, err := s.eval(ctx, sections, compiledMatchers, compiledFilters, startNanos, endNanos)
+	accums, err := s.eval(ctx, sections, compiledMatchers, compiledFilters, startNanos, endNanos, stats)
 	if err != nil {
 		return nil, err
 	}
 
-	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, sections, accums)
+	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, sections, accums, stats)
 	if err != nil {
 		return nil, err
 	}
@@ -110,11 +115,12 @@ func (s *streamSelector) eval(
 	matchers []postings.CompiledMatcher,
 	filters []postings.CompiledMatcher,
 	startNanos, endNanos int64,
+	stats *statsTracker,
 ) (map[postings.SectionRef]*accum, error) {
 	accums := make(map[postings.SectionRef]*accum)
 
 	if len(matchers) > 0 {
-		if err := s.matchMatchers(ctx, sections, matchers, accums, startNanos, endNanos); err != nil {
+		if err := s.matchMatchers(ctx, sections, matchers, accums, startNanos, endNanos, stats); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -123,7 +129,7 @@ func (s *streamSelector) eval(
 	}
 
 	if len(filters) > 0 {
-		if err := s.matchFilters(ctx, sections, filters, accums, startNanos, endNanos); err != nil {
+		if err := s.matchFilters(ctx, sections, filters, accums, startNanos, endNanos, stats); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -144,14 +150,16 @@ func (s *streamSelector) matchMatchers(
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
+	stats *statsTracker,
 ) error {
 	perMatcherHits := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
 	for i := range perMatcherHits {
 		perMatcherHits[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for _, sec := range sections {
-		matches, err := postings.NewScanner(sec).MatchLabels(ctx, nil, cms)
+	for sID, sec := range sections {
+		sectionStats := stats.SectionLabelTracker(sID)
+		matches, err := postings.NewScanner(sec).MatchLabels(ctx, nil, cms, sectionStats)
 		if err != nil {
 			return err
 		}
@@ -187,6 +195,7 @@ func (s *streamSelector) matchFilters(
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
+	stats *statsTracker,
 ) error {
 	present := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
 	matched := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
@@ -195,8 +204,9 @@ func (s *streamSelector) matchFilters(
 		matched[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for _, sec := range sections {
-		streams, err := postings.NewScanner(sec).LabelStreams(ctx, nil, cms)
+	for sID, sec := range sections {
+		sectionStats := stats.SectionLabelTracker(sID)
+		streams, err := postings.NewScanner(sec).LabelStreams(ctx, nil, cms, sectionStats)
 		if err != nil {
 			return err
 		}
@@ -313,7 +323,7 @@ func (s *streamSelector) finalize(ref postings.SectionRef, acc *accum, startNano
 }
 
 // admitSections applies blooms and collects ambiguous names in a single pass.
-func (s *streamSelector) admitSections(ctx context.Context, sections []*postings.Section, accums map[postings.SectionRef]*accum) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
+func (s *streamSelector) admitSections(ctx context.Context, sections []*postings.Section, accums map[postings.SectionRef]*accum, stats *statsTracker) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
 	if len(s.equalPredicates) == 0 {
 		return nil, nil, nil
 	}
@@ -327,9 +337,10 @@ func (s *streamSelector) admitSections(ctx context.Context, sections []*postings
 	ambiguousHits := make([]map[postings.SectionRef]map[string]struct{}, len(sections))
 	g, ctx := errgroup.WithContext(ctx)
 	for i := range sections {
+		sectionStats := stats.SectionBloomTracker(i)
 		g.Go(func() error {
 			scanner := postings.NewScanner(sections[i])
-			matched, ambiguous, err := scanner.MatcherHits(ctx, s.equalPredicates)
+			matched, ambiguous, err := scanner.MatcherHits(ctx, s.equalPredicates, sectionStats)
 			if err != nil {
 				return err
 			}
@@ -462,4 +473,73 @@ func (s *streamSelector) ambiguousNames(acc *accum) []string {
 		}
 	}
 	return out
+}
+
+type statsTracker struct {
+	bySectionLabelReads map[int]*sectionStatsTracker
+	bySectionBloomReads map[int]*sectionStatsTracker
+}
+
+func newStatsTracker(sectionsCount int) *statsTracker {
+	return &statsTracker{
+		bySectionLabelReads: make(map[int]*sectionStatsTracker, sectionsCount),
+		bySectionBloomReads: make(map[int]*sectionStatsTracker, sectionsCount),
+	}
+}
+
+func (s *statsTracker) SectionLabelTracker(sID int) *sectionStatsTracker {
+	st, ok := s.bySectionLabelReads[sID]
+	if !ok {
+		st = &sectionStatsTracker{}
+		s.bySectionLabelReads[sID] = st
+	}
+	return st
+}
+
+func (s *statsTracker) SectionBloomTracker(sID int) *sectionStatsTracker {
+	st, ok := s.bySectionBloomReads[sID]
+	if !ok {
+		st = &sectionStatsTracker{}
+		s.bySectionBloomReads[sID] = st
+	}
+	return st
+}
+
+func (s *statsTracker) Report(ctx context.Context) {
+	region := xcap.RegionFromContext(ctx)
+
+	// "column_name" column stats
+	var (
+		labelColumnNameTotalPages    = uint64(0)
+		labelColumnNameRelevantPages = uint64(0)
+		bloomColumnNameTotalPages    = uint64(0)
+		bloomColumnNameRelevantPages = uint64(0)
+	)
+
+	for _, st := range s.bySectionLabelReads {
+		labelColumnNameTotalPages += st.columnNamePages.Total
+		labelColumnNameRelevantPages += st.columnNamePages.Relevant
+	}
+
+	for _, st := range s.bySectionBloomReads {
+		bloomColumnNameTotalPages += st.columnNamePages.Total
+		bloomColumnNameRelevantPages += st.columnNamePages.Relevant
+	}
+
+	region.Record(StatPostingsLabelColumnNameTotalPages.Observe(int64(labelColumnNameTotalPages)))
+	region.Record(StatPostingsLabelColumnNameRelevantPages.Observe(int64(labelColumnNameRelevantPages)))
+	region.Record(StatPostingsBloomColumnNameTotalPages.Observe(int64(bloomColumnNameTotalPages)))
+	region.Record(StatPostingsBloomColumnNameRelevantPages.Observe(int64(bloomColumnNameRelevantPages)))
+}
+
+type sectionStatsTracker struct {
+	columnNamePages dataset.ColumnReadPageStats
+}
+
+func (st *sectionStatsTracker) OnColumnPredicateBuilt(c dataset.Column, pages dataset.ColumnReadPageStats) {
+	if c.ColumnDesc().Type.Logical != postings.ColumnTypeColumnName.String() {
+		return
+	}
+	st.columnNamePages.Total = pages.Total
+	st.columnNamePages.Relevant += pages.Relevant
 }

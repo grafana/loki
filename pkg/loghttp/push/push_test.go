@@ -362,6 +362,7 @@ func TestParseRequest(t *testing.T) {
 
 			structuredMetadataBytesIngested.Reset()
 			bytesIngested.Reset()
+			expandedBytesIngested.Reset()
 			linesIngested.Reset()
 			if test.fakeLimits == nil {
 				test.fakeLimits = &fakeLimits{enabled: test.enableServiceDiscovery}
@@ -480,6 +481,15 @@ func TestParseRequest(t *testing.T) {
 					expectedStreamLabelsSize += len(lbs.String())
 				}
 				require.EqualValues(t, expectedStreamLabelsSize, stats.StreamLabelsSize)
+
+				// For non-OTLP (Loki) requests, TotalExpandedEntriesSize should equal the combined size of
+				// log lines and structured metadata bytes, since there are no resource/scope attributes to expand.
+				require.EqualValues(t, totalBytes, stats.TotalExpandedEntriesSize)
+				require.Equal(
+					t,
+					float64(totalBytes),
+					testutil.ToFloat64(expandedBytesIngested.WithLabelValues("fake", "loki")),
+				)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
@@ -490,6 +500,7 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
 				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "1" /* We use "1" here because fakeLimits.RetentionHoursFor returns "1" */, fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
 				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake", fmt.Sprintf("%t", test.aggregatedMetric), policy, "loki")))
+				require.Equal(t, float64(0), testutil.ToFloat64(expandedBytesIngested.WithLabelValues("fake", "loki")))
 			}
 		})
 	}

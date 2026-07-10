@@ -3457,6 +3457,25 @@ dataobj_tee:
   # used instead.
   # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
   [use_rendezvous_hashing: <boolean> | default = false]
+
+circuit_breaker:
+  # Enable circuit breakers.
+  # CLI flag: -distributor.circuit-breaker.enabled
+  [enabled: <boolean> | default = false]
+
+  # The open period.
+  # CLI flag: -distributor.circuit-breaker.open-period
+  [open_period: <duration> | default = 1s]
+
+  # The minimum number of successive failures required to open the circuit
+  # breaker.
+  # CLI flag: -distributor.circuit-breaker.min-failures
+  [min_failures: <int> | default = 1]
+
+  # The number of permitted trial requests in the half-open state. All requests
+  # must succeed to close the circuit breaker, any failure re-opens it.
+  # CLI flag: -distributor.circuit-breaker.permitted-trials
+  [permitted_trials: <int> | default = 1]
 ```
 
 ### etcd

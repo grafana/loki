@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -25,6 +26,10 @@ var (
 	_ ArrowRecordBatchReader = (*postingsIndexSectionsReader)(nil)
 	_ statsProvider          = (*postingsIndexSectionsReader)(nil)
 )
+
+// maxConcurrentSectionOpens caps how many postings sections are opened
+// concurrently in Open. Hardcoded for now.
+const maxConcurrentSectionOpens = 16
 
 // postingsResultSchema is the pointers-section Arrow schema the resolver's
 // results are serialized into, so the postings reader is a drop-in for the
@@ -119,17 +124,31 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		return fmt.Errorf("extracting org ID: %w", err)
 	}
 
-	var opened []*postings.Section
+	var matching []*dataobj.Section
 	for _, section := range r.obj.Sections() {
 		if section.Tenant != tenant || !postings.CheckSection(section) {
 			continue
 		}
-		sec, err := postings.Open(ctx, section)
-		if err != nil {
-			return fmt.Errorf("opening postings section: %w", err)
-		}
-		opened = append(opened, sec)
+		matching = append(matching, section)
 	}
+
+	opened := make([]*postings.Section, len(matching))
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrentSectionOpens)
+	for i, section := range matching {
+		g.Go(func() error {
+			sec, err := postings.Open(ctx, section)
+			if err != nil {
+				return fmt.Errorf("opening postings section: %w", err)
+			}
+			opened[i] = sec
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
 	r.openSections = opened
 	r.initialized = true
 	return nil
