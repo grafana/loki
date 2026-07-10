@@ -16,9 +16,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
-	promConfig "github.com/prometheus/common/config"
+	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/sigv4"
@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util/test"
@@ -56,13 +57,13 @@ var remoteURL, _ = url.Parse("http://remote-write")
 var backCompatCfg = Config{
 	RemoteWrite: RemoteWriteConfig{
 		AddOrgIDHeader: true,
-		Client: &config.RemoteWriteConfig{
-			URL: &promConfig.URL{URL: remoteURL},
-			QueueConfig: config.QueueConfig{
+		Client: &promconfig.RemoteWriteConfig{
+			URL: &commonconfig.URL{URL: remoteURL},
+			QueueConfig: promconfig.QueueConfig{
 				Capacity: defaultCapacity,
 			},
-			HTTPClientConfig: promConfig.HTTPClientConfig{
-				BasicAuth: &promConfig.BasicAuth{
+			HTTPClientConfig: commonconfig.HTTPClientConfig{
+				BasicAuth: &commonconfig.BasicAuth{
 					Password: "bar",
 					Username: "foo",
 				},
@@ -80,14 +81,14 @@ var backCompatCfg = Config{
 				},
 			},
 		},
-		Clients: map[string]config.RemoteWriteConfig{
+		Clients: map[string]promconfig.RemoteWriteConfig{
 			"default": {
-				URL: &promConfig.URL{URL: remoteURL},
-				QueueConfig: config.QueueConfig{
+				URL: &commonconfig.URL{URL: remoteURL},
+				QueueConfig: promconfig.QueueConfig{
 					Capacity: defaultCapacity,
 				},
-				HTTPClientConfig: promConfig.HTTPClientConfig{
-					BasicAuth: &promConfig.BasicAuth{
+				HTTPClientConfig: commonconfig.HTTPClientConfig{
+					BasicAuth: &commonconfig.BasicAuth{
 						Password: "bar",
 						Username: "foo",
 					},
@@ -115,14 +116,14 @@ var remoteURL2, _ = url.Parse("http://remote-write2")
 var cfg = Config{
 	RemoteWrite: RemoteWriteConfig{
 		AddOrgIDHeader: true,
-		Clients: map[string]config.RemoteWriteConfig{
+		Clients: map[string]promconfig.RemoteWriteConfig{
 			remote1: {
-				URL: &promConfig.URL{URL: remoteURL},
-				QueueConfig: config.QueueConfig{
+				URL: &commonconfig.URL{URL: remoteURL},
+				QueueConfig: promconfig.QueueConfig{
 					Capacity: defaultCapacity,
 				},
-				HTTPClientConfig: promConfig.HTTPClientConfig{
-					BasicAuth: &promConfig.BasicAuth{
+				HTTPClientConfig: commonconfig.HTTPClientConfig{
+					BasicAuth: &commonconfig.BasicAuth{
 						Password: "bar",
 						Username: "foo",
 					},
@@ -141,12 +142,12 @@ var cfg = Config{
 				},
 			},
 			remote2: {
-				URL: &promConfig.URL{URL: remoteURL2},
-				QueueConfig: config.QueueConfig{
+				URL: &commonconfig.URL{URL: remoteURL2},
+				QueueConfig: promconfig.QueueConfig{
 					Capacity: capacity,
 				},
-				HTTPClientConfig: promConfig.HTTPClientConfig{
-					BasicAuth: &promConfig.BasicAuth{
+				HTTPClientConfig: commonconfig.HTTPClientConfig{
+					BasicAuth: &commonconfig.BasicAuth{
 						Password: "bar2",
 						Username: "foo2",
 					},
@@ -233,9 +234,9 @@ func newFakeLimits() fakeLimits {
 	return fakeLimits{
 		limits: map[string]*validation.Limits{
 			enabledRWTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
-						QueueConfig: config.QueueConfig{Capacity: 987},
+						QueueConfig: promconfig.QueueConfig{Capacity: 987},
 					},
 				},
 			},
@@ -243,7 +244,7 @@ func newFakeLimits() fakeLimits {
 				RulerRemoteWriteDisabled: true,
 			},
 			additionalHeadersRWTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
 						Headers: map[string]string{
 							user.OrgIDHeaderName:                         "overridden",
@@ -256,14 +257,14 @@ func newFakeLimits() fakeLimits {
 				},
 			},
 			noHeadersRWTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
 						Headers: map[string]string{},
 					},
 				},
 			},
 			customRelabelsTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
 						WriteRelabelConfigs: []*relabel.Config{
 							{
@@ -283,14 +284,14 @@ func newFakeLimits() fakeLimits {
 			},
 			nilRelabelsTenant: {},
 			emptySliceRelabelsTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
 						WriteRelabelConfigs: []*relabel.Config{},
 					},
 				},
 			},
 			sigV4ConfigTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
 						SigV4Config: &sigv4.SigV4Config{
 							Region: sigV4TenantRegion,
@@ -299,18 +300,18 @@ func newFakeLimits() fakeLimits {
 				},
 			},
 			multiRemoteWriteTenant: {
-				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
 					remote1: {
-						QueueConfig:   config.QueueConfig{Capacity: 987},
+						QueueConfig:   promconfig.QueueConfig{Capacity: 987},
 						RemoteTimeout: model.Duration(42),
-						HTTPClientConfig: promConfig.HTTPClientConfig{
+						HTTPClientConfig: commonconfig.HTTPClientConfig{
 							BearerToken: "test-token",
 						},
 					},
 					remote2: {
-						QueueConfig:   config.QueueConfig{Capacity: 800},
+						QueueConfig:   promconfig.QueueConfig{Capacity: 800},
 						RemoteTimeout: model.Duration(10),
-						URL:           &promConfig.URL{URL: newRemoteURL2},
+						URL:           &commonconfig.URL{URL: newRemoteURL2},
 					},
 				},
 			},
@@ -504,20 +505,20 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 	assert.ElementsMatch(t, actualDurations, expectedDurations, "RemoteTimeouts do not match")
 
 	// First remote client's HTTPClientConfig is overrwritten
-	expected := []promConfig.HTTPClientConfig{
+	expected := []commonconfig.HTTPClientConfig{
 		{
 			BearerToken: "test-token",
-			BasicAuth: &promConfig.BasicAuth{
+			BasicAuth: &commonconfig.BasicAuth{
 				Password: "bar",
 				Username: "foo",
 			}},
 		{
-			BasicAuth: &promConfig.BasicAuth{
+			BasicAuth: &commonconfig.BasicAuth{
 				Password: "bar2",
 				Username: "foo2",
 			}},
 	}
-	actual := []promConfig.HTTPClientConfig{}
+	actual := []commonconfig.HTTPClientConfig{}
 	for _, rw := range tenantCfg.RemoteWrite {
 		actual = append(actual, rw.HTTPClientConfig)
 	}
@@ -525,12 +526,12 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 	assert.ElementsMatch(t, actual, expected, "HTTPClientConfig do not match")
 
 	// Second remote client's URL is overrwritten
-	expectedURLs := []promConfig.URL{
+	expectedURLs := []commonconfig.URL{
 		{URL: newRemoteURL2},
 		{URL: remoteURL},
 	}
 
-	actualURLs := []promConfig.URL{}
+	actualURLs := []commonconfig.URL{}
 	for _, rw := range tenantCfg.RemoteWrite {
 		actualURLs = append(actualURLs, *rw.URL)
 	}
@@ -628,7 +629,7 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
 	assert.Equal(t, "foo", tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Username)
-	assert.Equal(t, promConfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
+	assert.Equal(t, commonconfig.Secret("bar"), tenantCfg.RemoteWrite[0].HTTPClientConfig.BasicAuth.Password)
 
 	reg = setupRegistry(t, cfg, newFakeLimits())
 
@@ -636,22 +637,22 @@ func TestTenantRemoteWriteHTTPConfigMaintained(t *testing.T) {
 	require.NoError(t, err)
 
 	// HTTP client config is not currently overrideable, all tenants' configs should inherit base
-	expected := []promConfig.HTTPClientConfig{
+	expected := []commonconfig.HTTPClientConfig{
 		{
-			BasicAuth: &promConfig.BasicAuth{
+			BasicAuth: &commonconfig.BasicAuth{
 				Username: "foo",
-				Password: promConfig.Secret("bar"),
+				Password: commonconfig.Secret("bar"),
 			},
 		},
 		{
-			BasicAuth: &promConfig.BasicAuth{
+			BasicAuth: &commonconfig.BasicAuth{
 				Username: "foo2",
-				Password: promConfig.Secret("bar2"),
+				Password: commonconfig.Secret("bar2"),
 			},
 		},
 	}
 
-	actual := []promConfig.HTTPClientConfig{}
+	actual := []commonconfig.HTTPClientConfig{}
 	for _, rw := range tenantCfg.RemoteWrite {
 		actual = append(actual, rw.HTTPClientConfig)
 	}
@@ -763,10 +764,10 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 			AddOrgIDHeader:      true,
 			Enabled:             true,
 			ConfigRefreshPeriod: time.Hour,
-			Clients: map[string]config.RemoteWriteConfig{
+			Clients: map[string]promconfig.RemoteWriteConfig{
 				"default": {
-					URL: &promConfig.URL{URL: remoteWriteURL},
-					QueueConfig: config.QueueConfig{
+					URL: &commonconfig.URL{URL: remoteWriteURL},
+					QueueConfig: promconfig.QueueConfig{
 						Capacity:          10000,
 						MinShards:         4,
 						MaxShards:         8,
