@@ -9,62 +9,76 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"io"
 )
 
-// This operation is not supported for directory buckets.
+// Deletes a specific annotation from an Amazon S3 object. Use the
+// x-amz-object-if-match header to perform a conditional delete that only succeeds
+// if the object's ETag matches the provided value, preventing race conditions
+// during concurrent updates.
 //
-// Returns torrent files from a bucket. BitTorrent can save you bandwidth when
-// you're distributing large files.
+// Deleting an annotation is permanent. Annotations are not independently
+// versioned, so there is no delete marker or way to recover a deleted annotation.
 //
-// You can get torrent only for objects that are less than 5 GB in size, and that
-// are not encrypted using server-side encryption with a customer-provided
-// encryption key.
+// To use this operation, you must have the s3:DeleteObjectAnnotation permission.
+// If the object is protected by Object Lock in governance mode, you must also
+// include the x-amz-bypass-governance-retention header.
 //
-// To use GET, you must have READ access to the object.
+// Annotations are not supported by the following features: S3 Inventory Reports,
+// API Gateway, S3 Storage Lens, Amazon S3 File Gateway, Amazon FSx, S3 on
+// Outposts, and S3 Express One Zone (directory buckets).
 //
-// This functionality is not supported for Amazon S3 on Outposts.
+// The following operations are related to DeleteObjectAnnotation :
 //
-// The following action is related to GetObjectTorrent :
+// [PutObjectAnnotation]
 //
-// [GetObject]
+// [GetObjectAnnotation]
 //
-// You must URL encode any signed header values that contain spaces. For example,
-// if your header value is my file.txt , containing two spaces after my , you must
-// URL encode this value to my%20%20file.txt .
+// [ListObjectAnnotations]
 //
-// [GetObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
-func (c *Client) GetObjectTorrent(ctx context.Context, params *GetObjectTorrentInput, optFns ...func(*Options)) (*GetObjectTorrentOutput, error) {
+// [GetObjectAnnotation]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAnnotation.html
+// [ListObjectAnnotations]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectAnnotations.html
+// [PutObjectAnnotation]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObjectAnnotation.html
+func (c *Client) DeleteObjectAnnotation(ctx context.Context, params *DeleteObjectAnnotationInput, optFns ...func(*Options)) (*DeleteObjectAnnotationOutput, error) {
 	if params == nil {
-		params = &GetObjectTorrentInput{}
+		params = &DeleteObjectAnnotationInput{}
 	}
 
-	result, metadata, err := c.invokeOperation(ctx, "GetObjectTorrent", params, optFns, c.addOperationGetObjectTorrentMiddlewares)
+	result, metadata, err := c.invokeOperation(ctx, "DeleteObjectAnnotation", params, optFns, c.addOperationDeleteObjectAnnotationMiddlewares)
 	if err != nil {
 		return nil, err
 	}
 
-	out := result.(*GetObjectTorrentOutput)
+	out := result.(*DeleteObjectAnnotationOutput)
 	out.ResultMetadata = metadata
 	return out, nil
 }
 
-type GetObjectTorrentInput struct {
+type DeleteObjectAnnotationInput struct {
 
-	// The name of the bucket containing the object for which to get the torrent files.
+	// The name of the annotation to delete. Annotation names are UTF-8 encoded and
+	// cannot start with aws or s3 (case-insensitive).
+	//
+	// Length Constraints: Minimum length of 1. Maximum length of 512 bytes.
+	//
+	// This member is required.
+	AnnotationName *string
+
+	// The name of the bucket that contains the object.
 	//
 	// This member is required.
 	Bucket *string
 
-	// The object key for which to get the information.
+	// The object key.
 	//
 	// This member is required.
 	Key *string
 
-	// The account ID of the expected bucket owner. If the account ID that you provide
-	// does not match the actual owner of the bucket, the request fails with the HTTP
-	// status code 403 Forbidden (access denied).
+	// The account ID of the expected bucket owner.
 	ExpectedBucketOwner *string
+
+	// If specified, the operation only succeeds if the object's ETag matches the
+	// provided value.
+	ObjectIfMatch *string
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. If either the
@@ -77,19 +91,22 @@ type GetObjectTorrentInput struct {
 	// [Downloading Objects in Requester Pays Buckets]: https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html
 	RequestPayer types.RequestPayer
 
+	// The version ID of the object.
+	VersionId *string
+
 	noSmithyDocumentSerde
 }
 
-func (in *GetObjectTorrentInput) bindEndpointParams(p *EndpointParameters) {
+func (in *DeleteObjectAnnotationInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.Bucket = in.Bucket
 
 }
 
-type GetObjectTorrentOutput struct {
+type DeleteObjectAnnotationOutput struct {
 
-	// A Bencoded dictionary as defined by the BitTorrent specification
-	Body io.ReadCloser
+	// The version ID of the object that the annotation was deleted from.
+	ObjectVersionId *string
 
 	// If present, indicates that the requester was successfully charged for the
 	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
@@ -106,12 +123,12 @@ type GetObjectTorrentOutput struct {
 	noSmithyDocumentSerde
 }
 
-func (c *Client) addOperationGetObjectTorrentMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestxml_serializeOpGetObjectTorrent{}, middleware.After)
+func (c *Client) addOperationDeleteObjectAnnotationMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	err = stack.Serialize.Add(&awsRestxml_serializeOpDeleteObjectAnnotation{}, middleware.After)
 	if err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestxml_deserializeOpGetObjectTorrent{}, middleware.After)
+	err = stack.Deserialize.Add(&awsRestxml_deserializeOpDeleteObjectAnnotation{}, middleware.After)
 	if err != nil {
 		return err
 	}
@@ -134,6 +151,9 @@ func (c *Client) addOperationGetObjectTorrentMiddlewares(stack *middleware.Stack
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
+	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+		return err
+	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
 		return err
 	}
@@ -143,16 +163,16 @@ func (c *Client) addOperationGetObjectTorrentMiddlewares(stack *middleware.Stack
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
-	if err = addOpGetObjectTorrentValidationMiddleware(stack); err != nil {
+	if err = addOpDeleteObjectAnnotationValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetObjectTorrent"), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteObjectAnnotation"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addGetObjectTorrentUpdateEndpoint(stack, options); err != nil {
+	if err = addDeleteObjectAnnotationUpdateEndpoint(stack, options); err != nil {
 		return err
 	}
 	if err = addResponseErrorMiddleware(stack); err != nil {
@@ -179,27 +199,27 @@ func (c *Client) addOperationGetObjectTorrentMiddlewares(stack *middleware.Stack
 	return nil
 }
 
-func (v *GetObjectTorrentInput) bucket() (string, bool) {
+func (v *DeleteObjectAnnotationInput) bucket() (string, bool) {
 	if v.Bucket == nil {
 		return "", false
 	}
 	return *v.Bucket, true
 }
 
-// getGetObjectTorrentBucketMember returns a pointer to string denoting a provided
-// bucket member valueand a boolean indicating if the input has a modeled bucket
-// name,
-func getGetObjectTorrentBucketMember(input interface{}) (*string, bool) {
-	in := input.(*GetObjectTorrentInput)
+// getDeleteObjectAnnotationBucketMember returns a pointer to string denoting a
+// provided bucket member valueand a boolean indicating if the input has a modeled
+// bucket name,
+func getDeleteObjectAnnotationBucketMember(input interface{}) (*string, bool) {
+	in := input.(*DeleteObjectAnnotationInput)
 	if in.Bucket == nil {
 		return nil, false
 	}
 	return in.Bucket, true
 }
-func addGetObjectTorrentUpdateEndpoint(stack *middleware.Stack, options Options) error {
+func addDeleteObjectAnnotationUpdateEndpoint(stack *middleware.Stack, options Options) error {
 	return s3cust.UpdateEndpoint(stack, s3cust.UpdateEndpointOptions{
 		Accessor: s3cust.UpdateEndpointParameterAccessor{
-			GetBucketFromInput: getGetObjectTorrentBucketMember,
+			GetBucketFromInput: getDeleteObjectAnnotationBucketMember,
 		},
 		UsePathStyle:                   options.UsePathStyle,
 		UseAccelerate:                  options.UseAccelerate,

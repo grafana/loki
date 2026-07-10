@@ -4,8 +4,6 @@ package s3
 
 import (
 	"context"
-	"fmt"
-	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -340,6 +338,35 @@ type CopyObjectInput struct {
 	// [Using ACLs]: https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html
 	// [Controlling ownership of objects and disabling ACLs]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html
 	ACL types.ObjectCannedACL
+
+	// Specifies whether you want to copy annotations from the source object or
+	// exclude them. If this header isn't specified, COPY is the default behavior.
+	//
+	// Valid Values: COPY | EXCLUDE
+	//
+	// You can specify this directive as either an HTTP header (
+	// x-amz-object-annotation-directive ) or as a query string parameter. Use the
+	// query string form when generating presigned URLs that need to control annotation
+	// copy behavior.
+	//
+	// When set to COPY , you must have s3:GetObjectAnnotation permission on the
+	// source object and s3:PutObjectAnnotation permission on the destination. Each
+	// annotation copied is billed as a separate PUT request. If annotations on the
+	// source are modified during the copy, Amazon S3 returns a retryable error.
+	//
+	// For directory buckets, annotations are not supported. Use EXCLUDE to copy
+	// objects to directory buckets without errors. If you specify COPY for a
+	// directory bucket, the request returns HTTP 501 (Not Implemented).
+	//
+	// When you copy objects using multipart upload (for example, when the Amazon Web
+	// Services CLI or Amazon Web Services SDKs use Transfer Manager for objects larger
+	// than approximately 8 MB), annotations are not copied by default. To include
+	// annotations, specify --copy-props default in the Amazon Web Services CLI or the
+	// equivalent SDK configuration. With this opt-in, the SDK reads source
+	// annotations, completes the multipart upload, and then writes each annotation to
+	// the destination. Between the upload completion and the last annotation write,
+	// the destination object exists without all its annotations.
+	AnnotationDirective types.AnnotationDirective
 
 	// Specifies whether Amazon S3 should use an S3 Bucket Key for object encryption
 	// with server-side encryption using Key Management Service (KMS) keys (SSE-KMS).
@@ -948,9 +975,6 @@ type CopyObjectOutput struct {
 }
 
 func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
-		return err
-	}
 	err = stack.Serialize.Add(&awsRestxml_serializeOpCopyObject{}, middleware.After)
 	if err != nil {
 		return err
@@ -959,17 +983,8 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 	if err != nil {
 		return err
 	}
-	if err := addProtocolFinalizerMiddlewares(stack, options, "CopyObject"); err != nil {
-		return fmt.Errorf("add protocol finalizers: %v", err)
-	}
 
 	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addSetLoggerMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
 	if err = addComputeContentLength(stack); err != nil {
@@ -981,19 +996,7 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options, c); err != nil {
-		return err
-	}
-	if err = addRawResponseToMetadata(stack); err != nil {
-		return err
-	}
 	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = addSpanRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -1002,13 +1005,7 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
-	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
@@ -1020,13 +1017,10 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 	if err = addOpCopyObjectValidationMiddleware(stack); err != nil {
 		return err
 	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opCopyObject(options.Region), middleware.Before); err != nil {
+	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CopyObject"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addCopyObjectUpdateEndpoint(stack, options); err != nil {
@@ -1053,12 +1047,6 @@ func (c *Client) addOperationCopyObjectMiddlewares(stack *middleware.Stack, opti
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAttempt(stack, options); err != nil {
-		return err
-	}
 	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
@@ -1070,14 +1058,6 @@ func (v *CopyObjectInput) bucket() (string, bool) {
 		return "", false
 	}
 	return *v.Bucket, true
-}
-
-func newServiceMetadataMiddleware_opCopyObject(region string) *awsmiddleware.RegisterServiceMetadata {
-	return &awsmiddleware.RegisterServiceMetadata{
-		Region:        region,
-		ServiceID:     ServiceID,
-		OperationName: "CopyObject",
-	}
 }
 
 // getCopyObjectBucketMember returns a pointer to string denoting a provided
