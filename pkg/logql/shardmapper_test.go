@@ -2022,3 +2022,46 @@ func TestShardTopk(t *testing.T) {
 )`
 	require.Equal(t, expected, mappedExpr.Pretty(0))
 }
+
+// TestApproxTopkDownstreamRoundTrip is a regression test for
+// https://github.com/grafana/loki/issues/23150.
+//
+// When approx_topk is sharded, the shard mapper rewrites it into downstream
+// __count_min_sketch__ sub-queries. The query-frontend serializes each downstream
+// sub-query back to a LogQL string (see the queryrange downstreamer) before dispatching
+// it to the querier, which re-parses it. If __count_min_sketch__ is not lexable/parseable
+// the querier rejects it with "parse error at line 1, col 1: syntax error: unexpected
+// IDENTIFIER", which surfaces on the query-frontend as a 400.
+func TestApproxTopkDownstreamRoundTrip(t *testing.T) {
+	// The internal operator emitted by the shard mapper must round-trip through
+	// String() -> ParseExpr(), exactly as the downstreamer does on the wire.
+	for _, query := range []string{
+		`__count_min_sketch__(sum by (ip)(rate({foo="bar"}[5m])))`,
+		`__count_min_sketch__(sum(rate({foo="bar"}[5m])))`,
+	} {
+		expr, err := syntax.ParseExpr(query)
+		require.NoErrorf(t, err, "querier must be able to parse the sharded downstream sub-query %q", query)
+		require.Equal(t, query, expr.String())
+	}
+
+	// End-to-end: shard-map approx_topk and assert every downstream __count_min_sketch__
+	// sub-query re-parses, mirroring the query-frontend -> querier boundary.
+	m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxTopk})
+	_, _, mapped, err := m.Parse(syntax.MustParseExpr(`approx_topk(3, sum by (ip)(rate({foo="bar"}[5m])))`))
+	require.NoError(t, err)
+
+	var found int
+	mapped.Walk(func(e syntax.Expr) bool {
+		vec, ok := e.(*syntax.VectorAggregationExpr)
+		if !ok || vec.Operation != syntax.OpTypeCountMinSketch {
+			return true
+		}
+		found++
+		s := vec.String()
+		reparsed, err := syntax.ParseExpr(s)
+		require.NoErrorf(t, err, "querier must be able to re-parse downstream sub-query %q", s)
+		require.Equal(t, s, reparsed.String())
+		return true
+	})
+	require.Positive(t, found, "expected the shard mapper to produce __count_min_sketch__ downstreams")
+}

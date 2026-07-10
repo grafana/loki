@@ -127,6 +127,12 @@ var functionTokens = map[string]int{
 
 	OpTypeApproxTopK: APPROX_TOPK,
 
+	// Internal operator produced by the approx_topk shard mapper (see shardmapper.go).
+	// The query-frontend serializes sharded downstream sub-queries back to a string
+	// (queryrange downstreamer), so __count_min_sketch__ must be lexable/parseable for
+	// the querier to accept it. Without this it fails with "unexpected IDENTIFIER".
+	OpTypeCountMinSketch: COUNT_MIN_SKETCH,
+
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
 	OpConvDuration:        DURATION_CONV,
