@@ -167,6 +167,7 @@ type sectionSequence struct {
 	logs.DatasetSequence
 	section *logs.Section
 	remap   map[int64]int64
+	err     error
 }
 
 var _ loser.Sequence = (*sectionSequence)(nil)
@@ -184,8 +185,17 @@ func (s *sectionSequence) Next() bool {
 	}
 	if g, ok := s.remap[row.Values[0].Int64()]; ok {
 		row.Values[0] = dataset.Int64Value(g)
+	} else {
+		s.err = fmt.Errorf("sort merge: logs record references stream ID %d absent from stream remap", row.Values[0].Int64())
 	}
 	return true
+}
+
+func (s *sectionSequence) At() result.Result[dataset.Row] {
+	if s.err != nil {
+		return result.Error[dataset.Row](s.err)
+	}
+	return s.DatasetSequence.At()
 }
 
 func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
