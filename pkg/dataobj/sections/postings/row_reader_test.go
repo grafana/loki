@@ -260,6 +260,60 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	require.Equal(t, 0, countMatches("absent-value"))
 }
 
+func TestRowReader_NotBloomMatchPredicate(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+	ts := time.Unix(0, 0).UTC()
+
+	b.PrepareBloomColumn("/obj", 0, "pod", 1000)
+	require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		Value:            "foo",
+		StreamID:         1,
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	}))
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	bloomCol := getSectionColumn(t, sec, postings.ColumnTypeBloomFilter)
+	require.NotNil(t, bloomCol)
+
+	countMatches := func(value string) int {
+		rr := postings.NewRowReader(ctx, sec, []postings.Predicate{
+			postings.NotPredicate{Inner: postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}},
+		})
+		defer func() { _ = rr.Close() }()
+		var got int
+		for rr.Next() {
+			got++
+		}
+		require.NoError(t, rr.Err())
+		return got
+	}
+
+	require.Equal(t, 0, countMatches("foo"))
+	require.Equal(t, 1, countMatches("absent-value"))
+}
+
 // TestRowReader_RegexMatchPredicate verifies RegexMatchPredicate filters rows
 // to only those matching a target regex.
 func TestRowReader_RegexMatchPredicate(t *testing.T) {
@@ -333,4 +387,59 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 
 	require.Equal(t, 2, countMatches("foo.*")) // foobar, foo
 	require.Equal(t, 0, countMatches("nope.*"))
+}
+
+func TestRowReader_NotRegexMatchPredicate(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
+	ts := time.Unix(0, 0).UTC()
+
+	for i, lv := range []string{"foobar", "baz", "foo"} {
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath:       "/obj",
+			SectionIndex:     0,
+			ColumnName:       "pod",
+			LabelValue:       lv,
+			StreamID:         int64(i + 1),
+			Timestamp:        ts,
+			UncompressedSize: 100,
+		})
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	lvCol := getSectionColumn(t, sec, postings.ColumnTypeLabelValue)
+	require.NotNil(t, lvCol)
+
+	re, err := labels.NewFastRegexMatcher("foo.*")
+	require.NoError(t, err)
+
+	rr := postings.NewRowReader(ctx, sec, []postings.Predicate{
+		postings.NotPredicate{Inner: postings.RegexMatchPredicate{Column: lvCol, Matcher: re}},
+	})
+	defer func() { _ = rr.Close() }()
+
+	var got []string
+	for rr.Next() {
+		got = append(got, rr.At().LabelValue)
+	}
+	require.NoError(t, rr.Err())
+
+	require.Equal(t, []string{"baz"}, got)
 }
