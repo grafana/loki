@@ -1473,7 +1473,7 @@ func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
 				continue
 			}
 
-			_ = s.changeStreamState(ctx, n, sink, workflow.StreamStateClosed)
+			_ = s.changeStreamState(n, sink, workflow.StreamStateClosed)
 		}
 	}
 }
