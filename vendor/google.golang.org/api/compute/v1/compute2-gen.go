@@ -17112,6 +17112,22 @@ func (r *ForwardingRulesService) Get(project string, region string, forwardingRu
 	return c
 }
 
+// View sets the optional parameter "view":
+//
+// Possible values:
+//
+//	"BASIC" - The default view of a ForwardingRule, which includes the basic
+//
+// fields.
+//
+//	"FULL" - The full view, including the ForwardingRule.`attached_extensions`
+//
+// field.
+func (c *ForwardingRulesGetCall) View(view string) *ForwardingRulesGetCall {
+	c.urlParams_.Set("view", view)
+	return c
+}
+
 // Fields allows partial responses to be retrieved. See
 // https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
 // details.
@@ -20322,6 +20338,22 @@ func (r *GlobalForwardingRulesService) Get(project string, forwardingRule string
 	c := &GlobalForwardingRulesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.project = project
 	c.forwardingRule = forwardingRule
+	return c
+}
+
+// View sets the optional parameter "view":
+//
+// Possible values:
+//
+//	"BASIC" - The default view of a ForwardingRule, which includes the basic
+//
+// fields.
+//
+//	"FULL" - The full view, including the ForwardingRule.`attached_extensions`
+//
+// field.
+func (c *GlobalForwardingRulesGetCall) View(view string) *GlobalForwardingRulesGetCall {
+	c.urlParams_.Set("view", view)
 	return c
 }
 
