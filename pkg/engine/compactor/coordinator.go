@@ -184,6 +184,9 @@ func (c *coordinator) runCycle(ctx context.Context) {
 		}
 	}
 
+	if compacted == 0 && failed == 0 && logCompacted > 0 {
+		cycleOutcome = "log_compacted"
+	}
 	c.metrics.observeCycle(cycleOutcome, duration)
 
 	//TODO(twhitney): will want a metric for this
@@ -272,9 +275,10 @@ type compactionStats struct {
 }
 
 // compactTenantLogs plans and dispatches log-merge tasks for a window with a
-// converged index. It reads the index's stats sections, forms runs, and
-// dispatches one LogMerge plan per task. Returns tenantCycleConverged when
-// there is no log work, tenantCycleLogCompacted when plans were dispatched.
+// converged index. It dispatches LogMerge tasks, then swaps the ToC. Returns
+// tenantCycleConverged when the window is terminal (no work) or the ToC swap is
+// a race-loss / already-converged no-op, tenantCycleLogCompacted when the swap
+// succeeds, and tenantCycleFailed on error.
 func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
@@ -286,12 +290,14 @@ func (c *coordinator) compactTenantLogs(
 		return tenantCycleFailed, fmt.Errorf("reading log section refs: %w", err)
 	}
 
-	tasks := v2.Plan(ctx, sections, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
-	if len(tasks) == 0 {
-		level.Debug(c.logger).Log("msg", "log-compaction: no tasks",
+	runs := v2.CalculateRuns(sections)
+	if v2.IsTerminal(runs, uint64(c.cfg.LogMinCompactionSize)) {
+		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
 			"tenant", tenant, "window", window)
 		return tenantCycleConverged, nil
 	}
+
+	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
 	var pathBuilder indexMergePath
 	var idBuf bytes.Buffer
@@ -318,8 +324,32 @@ func (c *coordinator) compactTenantLogs(
 		return tenantCycleFailed, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
-	level.Info(c.logger).Log("msg", "log-compaction dispatched",
-		"tenant", tenant, "window", window, "tasks", len(tasks))
+	oldPaths := []string{converged.Path}
+	newEntries := makeTocEntries(tasks, outputs)
+
+	level.Debug(c.logger).Log("msg", "log-compacted",
+		"tenant", tenant, "window", window,
+		"dry_run", c.cfg.DryRun,
+		"tasks", len(tasks),
+		"removed_index", converged.Path,
+		"added_indexes", strings.Join(outputs, ","),
+	)
+
+	if c.cfg.DryRun {
+		return tenantCycleLogCompacted, nil
+	}
+
+	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
+	defer cancel()
+	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	if err != nil {
+		return tenantCycleFailed, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
+	}
+	if !swapped {
+		level.Debug(c.logger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
+			"tenant", tenant, "window", window)
+		return tenantCycleConverged, nil
+	}
 	return tenantCycleLogCompacted, nil
 }
 
@@ -336,7 +366,8 @@ func (c *coordinator) compactTenant(
 ) (compactionStats, error) {
 	// Plan.
 	sections := sectionRefsFor(entries)
-	tasks := v2.Plan(ctx, sections, tenant, c.cfg.MaxRunsPerTask, nil)
+	runs := v2.CalculateRuns(sections)
+	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	if len(tasks) == 0 {
 		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
 			"tenant", tenant, "window", window)
