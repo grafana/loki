@@ -648,7 +648,16 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 
 	var reader ArrowRecordBatchReader
 	flow := flowStreams
-	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
+
+	hasPostings := hasPostingsSection(idxObj, tenant)
+	level.Warn(utillog.WithContext(ctx, m.logger)).Log(
+		"msg", "DEBUG index sections reader",
+		"m.readPostingsSections", m.readPostingsSections,
+		"hasPostings", hasPostings,
+		"idxObj", idxObj,
+		"tenant", tenant,
+	)
+	if m.readPostingsSections && hasPostings {
 		flow = flowPostings
 		reader = newPostingsIndexSectionsReader(
 			m.logger,
