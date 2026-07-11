@@ -287,7 +287,7 @@ func (c *conversion) Convert(rows []Row) (int, error) {
 					columnValues[i] = ZeroValue(conv.targetKind)
 				}
 
-				columnValues[i].columnIndex = ^int16(columnIndex)
+				columnValues[i].columnIndex = ^uint16(columnIndex)
 			}
 		}
 
@@ -440,7 +440,7 @@ func Convert(to, from Node) (conv Conversion, err error) {
 		// Determine sourceIndex: use the source column index (which may be a
 		// sibling's index if the column is missing but has a sibling).
 		// For missing columns without siblings, sourceColumn.columnIndex will
-		// be -1 (from the initial lookup returning an empty leafColumn).
+		// be math.MaxUint16 (from the initial lookup returning an empty leafColumn).
 		sourceIndex := int(sourceColumn.columnIndex)
 		// Only set to -1 if truly missing AND no sibling was found
 		if isMissingColumn && sourceColumn.node == nil {
@@ -477,7 +477,7 @@ func isDirectLevelMapping(levels []byte) bool {
 
 // findAdjacentColumnChunk finds a sibling column at the same repetition depth
 // Returns nil if no suitable adjacent column exists
-func findAdjacentColumnChunk(schema *Schema, targetColumnIndex int16, columns []ColumnChunk, sourceMapping columnMapping) ColumnChunk {
+func findAdjacentColumnChunk(schema *Schema, targetColumnIndex uint16, columns []ColumnChunk, sourceMapping columnMapping) ColumnChunk {
 	var targetLeaf leafColumn
 	targetFound := false
 
@@ -550,12 +550,12 @@ func ConvertRowGroup(rowGroup RowGroup, conv Conversion) RowGroup {
 		isMissing := sourceColumn.node == nil
 
 		if !isMissing {
-			if i == int16(j) {
+			if i == uint16(j) {
 				columns[i] = rowGroupColumns[j]
 			} else {
 				columns[i] = &convertedColumnChunk{
 					chunk:             rowGroupColumns[j],
-					targetColumnIndex: ^int16(i),
+					targetColumnIndex: ^i,
 				}
 			}
 		}
@@ -628,7 +628,7 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 		i := leaf.columnIndex
 		missing[i] = missingColumnChunk{
 			typ:                rowGroupColumns[i].Type(),
-			column:             int16(i),
+			column:             i,
 			numRows:            numRows,
 			numValues:          numRows,
 			numNulls:           numRows,
@@ -657,7 +657,7 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 
 type missingColumnChunk struct {
 	typ                Type
-	column             int16
+	column             uint16
 	numRows            int64
 	numValues          int64
 	numNulls           int64
@@ -777,7 +777,7 @@ func (r *missingPageValues) ReadValues(values []Value) (int, error) {
 	return n, err
 }
 
-func (r *missingPageValues) readWithoutAdjacent(values []Value, typ Type, columnIndex int16) (int, error) {
+func (r *missingPageValues) readWithoutAdjacent(values []Value, typ Type, columnIndex uint16) (int, error) {
 	// For fields without siblings, assume one value per row
 	// Definition level depends on whether field is required or optional
 	isRequired := r.page.maxDefinitionLevel == 0
@@ -813,7 +813,7 @@ func (r *missingPageValues) readWithoutAdjacent(values []Value, typ Type, column
 	return len(values), nil
 }
 
-func (r *missingPageValues) readWithAdjacent(values []Value, typ Type, columnIndex int16) (int, error) {
+func (r *missingPageValues) readWithAdjacent(values []Value, typ Type, columnIndex uint16) (int, error) {
 	// Determine if this missing column is required or optional
 	isRequired := r.page.maxDefinitionLevel == 0
 	totalRead := 0
@@ -953,7 +953,7 @@ func (c *convertedRows) SeekToRow(rowIndex int64) error {
 // columnIndex in values read from the chunk.
 type convertedColumnChunk struct {
 	chunk             ColumnChunk
-	targetColumnIndex int16 // XOR-encoded column index (^int16(columnIndex))
+	targetColumnIndex uint16 // XOR-encoded column index (^uint16(columnIndex))
 }
 
 func (c *convertedColumnChunk) Type() Type {
@@ -990,7 +990,7 @@ func (c *convertedColumnChunk) BloomFilter() BloomFilter {
 // convertedPages wraps Pages to return convertedPage instances.
 type convertedPages struct {
 	pages             Pages
-	targetColumnIndex int16
+	targetColumnIndex uint16
 }
 
 func (p *convertedPages) ReadPage() (Page, error) {
@@ -1015,7 +1015,7 @@ func (p *convertedPages) Close() error {
 // convertedPage wraps a Page to return a convertedValueReader.
 type convertedPage struct {
 	page              Page
-	targetColumnIndex int16
+	targetColumnIndex uint16
 }
 
 func (p *convertedPage) Type() Type {
@@ -1097,7 +1097,7 @@ var (
 // convertedValueReader wraps a ValueReader to rewrite columnIndex in values.
 type convertedValueReader struct {
 	reader            ValueReader
-	targetColumnIndex int16
+	targetColumnIndex uint16
 }
 
 func (r *convertedValueReader) ReadValues(values []Value) (int, error) {

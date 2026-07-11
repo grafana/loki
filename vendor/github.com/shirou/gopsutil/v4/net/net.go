@@ -286,12 +286,25 @@ func IOCountersByFile(pernic bool, filename string) ([]IOCountersStat, error) {
 	return IOCountersByFileWithContext(context.Background(), pernic, filename)
 }
 
-// ProtoCounters returns network statistics for the entire system
+// ProtoCounters returns network statistics for the entire system.
 // If protocols is empty then all protocols are returned, otherwise
 // just the protocols in the list are returned.
+//
 // Available protocols:
 // [ip,icmp,icmpmsg,tcp,udp,udplite]
-// Not Implemented for FreeBSD, Windows, OpenBSD, Darwin
+//
+// Key naming contract:
+// The keys of the returned Stats map use MIB-II (RFC 1213) identifier
+// names — e.g. "InSegs", "OutSegs", "RetransSegs", "ActiveOpens",
+// "InDatagrams", "NoPorts". This contract was established by the
+// original Linux implementation, which sources its keys from
+// /proc/net/snmp (whose headers are MIB-II names). Per-platform
+// implementations are expected to map their native counter sources
+// (e.g. AIX `netstat -s`, BSD sysctl) to these MIB-II names.
+// Native counters that have no MIB-II equivalent are not exposed
+// through this API.
+//
+// Not Implemented for FreeBSD, Windows, OpenBSD, Darwin, Solaris.
 func ProtoCounters(protocols []string) ([]ProtoCountersStat, error) {
 	return ProtoCountersWithContext(context.Background(), protocols)
 }

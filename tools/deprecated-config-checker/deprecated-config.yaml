@@ -13,7 +13,6 @@
 #       _msg: "Use tsdb (preferred) or boltdb-shipper instead."
 #
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
-legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
 
 ruler:
   remote_write:
@@ -22,9 +21,6 @@ ruler:
 index_gateway:
   ring:
     replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."
-
-chunk_store_config:
-  write_dedupe_cache_config: "Write dedupe cache is deprecated along with deprecated index types. Consider using TSDB index which does not require a write dedupe cache."
 
 kafka_config:
   address: "Use reader_config.address or writer_config.address instead."
@@ -45,8 +41,6 @@ limits_config:
   ruler_remote_write_queue_max_backoff: "Use ruler_remote_write_config instead."
   ruler_remote_write_queue_retry_on_ratelimit: "Use ruler_remote_write_config instead."
   ruler_remote_write_sigv4_config: "Use ruler_remote_write_config instead."
-  per_tenant_override_config: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.file"
-  per_tenant_override_period: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.period"
 
 server:
   grpc_server_stats_tracking_enabled: "Deprecated, currently doesn't do anything, will be removed in a future version."

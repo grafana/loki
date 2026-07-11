@@ -5,19 +5,14 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	dto "github.com/prometheus/client_model/go"
-	"github.com/prometheus/common/expfmt"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/v3/integration/client"
 	"github.com/grafana/loki/v3/integration/cluster"
@@ -905,7 +900,6 @@ func TestCategorizedLabels(t *testing.T) {
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
 			"-target=index-gateway",
-			"-store.index-cache-read.embedded-cache.enabled=true",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -1177,59 +1171,4 @@ func TestCategorizedLabels(t *testing.T) {
 			assert.ElementsMatch(t, expectedEncodingFlags, resp.Data.EncodingFlags)
 		})
 	}
-}
-
-func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
-	return getValueFromMetricFamilyWithFunc(mf, lbs[0], func(m *dto.Metric) float64 { return m.Counter.GetValue() })
-}
-
-func getValueFromMetricFamilyWithFunc[R any](mf *dto.MetricFamily, lbs *dto.LabelPair, f func(*dto.Metric) R) R {
-	eq := func(e *dto.LabelPair) bool {
-		return e.GetName() == lbs.GetName() && e.GetValue() == lbs.GetValue()
-	}
-	var zero R
-	for _, m := range mf.Metric {
-		if !slices.ContainsFunc(m.GetLabel(), eq) {
-			continue
-		}
-		return f(m)
-	}
-	return zero
-}
-
-func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
-	parser := expfmt.NewTextParser(model.UTF8Validation)
-	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
-	require.NoError(t, err)
-
-	lbs := []*dto.LabelPair{
-		{
-			Name:  proto.String("cache"),
-			Value: proto.String(e.cacheName),
-		},
-	}
-
-	mf, found := mfs["loki_embeddedcache_added_new_total"]
-	require.True(t, found)
-	require.Equal(t, e.added, getValueFromMF(mf, lbs))
-
-	lbs = []*dto.LabelPair{
-		{
-			Name:  proto.String("name"),
-			Value: proto.String(e.cacheName),
-		},
-	}
-
-	gets, found := mfs["loki_cache_fetched_keys"]
-	require.True(t, found)
-
-	hits, found := mfs["loki_cache_hits"]
-	require.True(t, found)
-	require.Equal(t, e.misses, getValueFromMF(gets, lbs)-getValueFromMF(hits, lbs))
-}
-
-type expectedCacheState struct {
-	cacheName string
-	misses    float64
-	added     float64
 }

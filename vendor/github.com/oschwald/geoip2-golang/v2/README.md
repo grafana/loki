@@ -35,8 +35,6 @@ Version 2.0 includes several major improvements:
 - **Data Validation**: New `HasData()` method to easily check if data was found
 - **Structured Names**: Replaced `map[string]string` with typed `Names` struct
   for better performance
-- **Go 1.24 Support**: Uses `omitzero` JSON tags to match MaxMind database
-  behavior
 
 ## Migration
 
@@ -103,7 +101,7 @@ func main() {
 
 ## Requirements
 
-- Go 1.24 or later
+- Go 1.25 or later
 - MaxMind GeoIP2 or GeoLite2 database files (.mmdb format)
 
 ## Getting Database Files

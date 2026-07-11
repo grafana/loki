@@ -104,6 +104,50 @@ const (
 	KindLabel PostingKind = 1
 )
 
+// LabelEntry represents an aggregated label posting entry that can be
+// appended directly to a Builder without going through the per-observation
+// aggregation path.
+type LabelEntry struct {
+	// ObjectPath is the path of the data object that originated this posting.
+	ObjectPath string
+	// SectionIndex is the index of the logs section within ObjectPath.
+	SectionIndex int64
+	// ColumnName is the name of the labels column being indexed.
+	ColumnName string
+	// LabelValue is the value of the label.
+	LabelValue string
+	// StreamIDBitmap is the raw bytes of the stream ID bitmap (LSB-encoded).
+	StreamIDBitmap []byte
+	// MinTimestamp is the minimum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MinTimestamp int64
+	// MaxTimestamp is the maximum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MaxTimestamp int64
+	// UncompressedSize is the total uncompressed size in bytes.
+	UncompressedSize int64
+}
+
+// BloomEntry represents an aggregated bloom posting entry that can be
+// appended directly to a Builder without going through the per-observation
+// aggregation path.
+type BloomEntry struct {
+	// ObjectPath is the path of the data object that originated this posting.
+	ObjectPath string
+	// SectionIndex is the index of the logs section within ObjectPath.
+	SectionIndex int64
+	// ColumnName is the name of the metadata column being indexed.
+	ColumnName string
+	// BloomFilter is the marshaled bloom filter bytes.
+	BloomFilter []byte
+	// StreamIDBitmap is the raw bytes of the stream ID bitmap (LSB-encoded).
+	StreamIDBitmap []byte
+	// MinTimestamp is the minimum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MinTimestamp int64
+	// MaxTimestamp is the maximum timestamp of the records in this posting (unix nanoseconds since epoch).
+	MaxTimestamp int64
+	// UncompressedSize is the total uncompressed size in bytes.
+	UncompressedSize int64
+}
+
 // Section represents an opened postings section.
 type Section struct {
 	inner   *columnar.Section

@@ -1,5 +1,59 @@
 # Changes
 
+## Unreleased
+
+- Reduced reflection decoding time and memory allocations. A city-lookup benchmark
+  decoding a geoip2-style result allocates 20% fewer bytes (saving 48 B/op) and
+  2 fewer heap allocations per lookup when utilizing pointer-heavy destination
+  structures.
+- Optimized map key decoding by adding a fast path for pointer keys, improving
+  general lookup throughput by 2.7% to 6.4%.
+- Optimized tree traversal for IPv6 lookups, resulting in an ~8.8% speedup.
+- Fixed pointer-to-pointer chains in malformed database data so decoder entry
+  points reject them consistently instead of following invalid chains.
+- Reduced memory mapping overhead and system allocations when invoking `OpenBytes`
+  and `NetworksWithin`.
+- Cleaned up, simplified, and deduplicated internal decoder and reader structures,
+  removing deprecated type assertion workarounds and unused helper functions.
+
+## 2.3.0 - 2026-05-17
+
+- This module now targets Go 1.25+.
+- Reduced reflection decoding time and heap allocations on the hot path. A
+  city-lookup benchmark decoding a geoip2-style result runs about 15% faster
+  and allocates about 39% fewer bytes per lookup compared to 2.2.0.
+- Specialized the IPv4 search-tree walk for 24-, 28-, and 32-bit record
+  sizes to skip the IPv6 prefix when looking up IPv4 addresses.
+- Decoding into a non-nil slice with sufficient capacity now reuses the
+  caller's backing array instead of allocating a fresh slice, matching
+  `encoding/json` semantics. Callers that share slice headers across
+  `Decode` calls should be aware that the backing memory is now mutated.
+- Reduced contention under concurrent lookups by switching the internal string
+  cache to a lock-free design.
+
+## 2.2.0 - 2026-04-26
+
+- Improved reflection decoding performance by skipping `Unmarshaler` checks for
+  destination types that cannot implement the interface.
+- Fixed verifier search-tree size arithmetic to match the reader's safe
+  multiplication order instead of using an overflow-prone equivalent formula.
+- Fixed unsigned bounds checks in search-tree node reads and traversal so very
+  short malformed buffers return errors instead of underflowing the bounds
+  calculation.
+- Fixed the reflection decoder so pointer fields are not allocated when
+  decoding fails with a type mismatch.
+- Fixed `Result.Prefix()` to use the reader's measured IPv4 subtree depth
+  instead of assuming IPv4 records always start at bit 96 in IPv6 databases.
+- Fixed reflection decoding of negative `int32` values into unsigned Go fields
+  so it now returns a type error instead of wrapping them to large integers.
+- Fixed lookups that followed malformed search-tree pointers past the data
+  section so they now fail during `Lookup` instead of surfacing a deferred
+  decode error.
+- An error is returned when a `maxminddb` struct tag is clearly invalid (non
+  UTF-8) instead of silently ignoring validation failures.
+- Increased internal string cache size to 4096 entries to reduce cache thrashing
+  and improve concurrent performance.
+
 ## 2.1.1 - 2025-11-26
 
 - Fixed `runtime.AddCleanup` misuse that prevented the memory-mapped file from
@@ -59,12 +113,12 @@
 
 ## 2.0.0-beta.7 - 2025-07-07
 
-* Update capitalization of "uint" in `ReadUInt*` to match `KindUint*` as well
+- Update capitalization of "uint" in `ReadUInt*` to match `KindUint*` as well
   as the Go standard library.
 
 ## 2.0.0-beta.6 - 2025-07-07
 
-* Invalid release with no code changes.
+- Invalid release with no code changes.
 
 ## 2.0.0-beta.5 - 2025-07-06
 

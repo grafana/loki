@@ -12,10 +12,10 @@ import (
 type floatPage struct {
 	typ         Type
 	values      memory.SliceBuffer[float32]
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newFloatPage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *floatPage {
+func newFloatPage(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *floatPage {
 	return &floatPage{
 		typ:         typ,
 		values:      memory.SliceBufferFrom(values.Float()[:numValues]),

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -56,6 +57,11 @@ type workerConn struct {
 	// Peer connection to the worker.
 	*wire.Peer
 
+	// ctx is scoped to the lifetime of the connection. Long-lived goroutines
+	// started from a message handler (whose own context ends when the handler
+	// returns) must run under this instead.
+	ctx context.Context
+
 	// mutex of the worker. Protects all fields.
 	mut sync.RWMutex
 
@@ -69,6 +75,11 @@ type workerConn struct {
 	// done is closed when the worker connection is closed. It is used to signal
 	// worker goroutines to exit.
 	done chan struct{}
+
+	// wake un-parks the worker's assignment loop after it has parked on a 429.
+	// A WorkerReady received while the loop is already running nudges this
+	// channel to signal that the worker has freed a thread.
+	wake chan struct{}
 }
 
 // Type returns the type of the worker connection.

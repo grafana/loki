@@ -89,30 +89,24 @@ var mockedMetastoreSections = []*metastore.DataobjSectionDescriptor{
 			ObjectPath: "objects/00/0000000000.dataobj",
 			SectionIdx: 0,
 		},
-		StreamIDs: []int64{1, 3, 5, 7, 9},
-		RowCount:  1000,
-		Size:      1 << 10,
-		Start:     time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
-		End:       time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-		AmbiguousPredicatesByStream: map[int64][]string{
-			1: {"app", "one", "foo", "bar"},
-			2: {"app", "two", "foo", "bar"},
-		},
+		StreamIDs:           []int64{1, 3, 5, 7, 9},
+		RowCount:            1000,
+		Size:                1 << 10,
+		Start:               time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		End:                 time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		AmbiguousPredicates: []string{"app", "one", "foo", "bar", "two"},
 	},
 	{
 		SectionKey: metastore.SectionKey{
 			ObjectPath: "objects/00/0000000000.dataobj",
 			SectionIdx: 1,
 		},
-		StreamIDs: []int64{1, 3, 5, 7, 9},
-		RowCount:  1000,
-		Size:      1 << 10,
-		Start:     time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
-		End:       time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
-		AmbiguousPredicatesByStream: map[int64][]string{
-			1: {"app", "one", "foo", "bar"},
-			2: {"app", "two", "foo", "bar"},
-		},
+		StreamIDs:           []int64{1, 3, 5, 7, 9},
+		RowCount:            1000,
+		Size:                1 << 10,
+		Start:               time.Date(2025, time.January, 1, 0, 30, 0, 0, time.UTC),
+		End:                 time.Date(2025, time.January, 1, 1, 0, 0, 0, time.UTC),
+		AmbiguousPredicates: []string{"app", "one", "foo", "bar", "two"},
 	},
 }
 
@@ -210,19 +204,18 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			query:   `sum(count_over_time({app="foo"} | detected_level="error" | json | logfmt | drop __error__,__error_details__[1m]))`,
 			expected: `
 VectorAggregation operation=sum group_by=()
-└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
-    └── Parallelize
-        └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
-            └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
-                └── Compat src=parsed dst=parsed collisions=(label, metadata)
-                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
-                        └── Compat src=parsed dst=parsed collisions=(label, metadata)
-                            └── Projection all=true expand=(PARSE_JSON(builtin.message, [], false, false))
-                                └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
-                                    └── Compat src=metadata dst=metadata collisions=(label)
-                                        └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.detected_level, "error")
-                                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.detected_level, "error")
+└── Parallelize
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s group_by=()
+        └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
+            └── Compat src=parsed dst=parsed collisions=(label, metadata)
+                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
+                    └── Compat src=parsed dst=parsed collisions=(label, metadata)
+                        └── Projection all=true expand=(PARSE_JSON(builtin.message, [], false, false))
+                            └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
+                                └── Compat src=metadata dst=metadata collisions=(label)
+                                    └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() predicate[0]=EQ(metadata.detected_level, "error")
+                                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() predicate[0]=EQ(metadata.detected_level, "error")
 `,
 		},
 		{

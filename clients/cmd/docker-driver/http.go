@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/docker/docker/daemon/logger"
-	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/go-plugins-helpers/sdk"
+	"github.com/moby/moby/v2/daemon/logger"
+	"github.com/moby/moby/v2/pkg/ioutils"
 )
 
 type StartLoggingRequest struct {

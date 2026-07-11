@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/docker/docker/daemon/logger"
+	"github.com/moby/moby/v2/daemon/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -67,13 +67,13 @@ var pipelineString = `
 `
 var pipeline = PipelineConfig{
 	PipelineStages: []interface{}{
-		map[interface{}]interface{}{
-			"regex": map[interface{}]interface{}{
+		map[string]interface{}{
+			"regex": map[string]interface{}{
 				"expression": "(level|lvl|severity)=(?P<level>\\w+)",
 			},
 		},
-		map[interface{}]interface{}{
-			"labels": map[interface{}]interface{}{
+		map[string]interface{}{
+			"labels": map[string]interface{}{
 				"level": nil,
 			},
 		},

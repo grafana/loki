@@ -2,7 +2,6 @@ package stages
 
 import (
 	"strings"
-	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -51,7 +50,6 @@ type cri struct {
 	partialLines map[model.Fingerprint]Entry
 	cfg          *CriConfig
 	base         *Pipeline
-	lock         sync.Mutex
 }
 
 // implement Stage interface

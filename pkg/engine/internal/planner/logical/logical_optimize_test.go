@@ -67,6 +67,53 @@ RETURN %25
 	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
 }
 
+func TestOptimizer_Report(t *testing.T) {
+	tests := []struct {
+		name           string
+		query          string
+		wantApplicable bool
+	}{
+		{
+			name:           "regex line filter is simplified",
+			query:          `{job="loki"} |~ "error|fatal"`,
+			wantApplicable: true,
+		},
+		{
+			name:           "no regex to simplify",
+			query:          `{job="loki"} |= "error"`,
+			wantApplicable: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, err := logql.NewLiteralParams(
+				tt.query,
+				time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+				time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+				0 /* step */, 0, /* duration */
+				logproto.BACKWARD,
+				1000,
+				[]string{"0_of_1"},
+				nil,
+			)
+			require.NoError(t, err)
+
+			p, err := BuildPlan(context.Background(), params)
+			require.NoError(t, err)
+
+			var opt Optimizer
+			err = opt.Optimize(p)
+			require.NoError(t, err)
+			require.Equal(t, []PassFiring{{
+				Name:       "SimplifyRegex",
+				Applicable: tt.wantApplicable,
+				Succeeded:  true,
+			}}, opt.Report())
+		})
+	}
+}
+
 func Test_simplifyRegexPass_IgnoreStreamSelector(t *testing.T) {
 	// See comment in logical_optimize.go for why stream selectors can't have
 	// regex simplification rules applied yet.

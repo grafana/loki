@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,40 +20,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-func TestFactoryStop(t *testing.T) {
-	var (
-		cfg          Config
-		storeConfig  config.ChunkStoreConfig
-		schemaConfig config.SchemaConfig
-		defaults     validation.Limits
-	)
-	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
-	schemaConfig.Configs = []config.PeriodConfig{
-		{
-			From:      config.DayTime{Time: model.Time(0)},
-			IndexType: "inmemory",
-			Schema:    "v11",
-			RowShards: 16,
-		},
-		{
-			From:      config.DayTime{Time: model.Time(1)},
-			IndexType: "inmemory",
-			Schema:    "v9",
-		},
-	}
-
-	limits, err := validation.NewOverrides(defaults, nil)
-	require.NoError(t, err)
-	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
-	require.NoError(t, err)
-
-	store.Stop()
-}
-
 func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// config for BoltDB Shipper
 	shipperCfg := indexshipper.Config{}
 	flagext.DefaultValues(&shipperCfg)
 	shipperCfg.ActiveIndexDirectory = path.Join(tempDir, "index")
@@ -189,55 +156,61 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 }
 
 func TestNewObjectClient_prefixing(t *testing.T) {
-	t.Run("no prefix", func(t *testing.T) {
+	newFSCfg := func(t *testing.T) Config {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
+		cfg.FSConfig = local.FSConfig{Directory: t.TempDir()}
+		return cfg
+	}
 
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
-		require.NoError(t, err)
+	for _, testCase := range []struct {
+		name             string
+		prefix           string
+		expectedPrefix   string
+		isPrefixedClient bool
+		useThanosClient  bool
+	}{
+		{
+			name:             "no prefix",
+			prefix:           "",
+			isPrefixedClient: false,
+		},
+		{
+			name:             "prefix with trailing slash",
+			prefix:           "my/prefix/",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+		{
+			name:             "prefix without trailing slash",
+			prefix:           "my/prefix",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+		{
+			name:             "prefix with leading and trailing slash",
+			prefix:           "/my/prefix/",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			cfg := newFSCfg(t)
+			cfg.ObjectPrefix = testCase.prefix
+			cfg.UseThanosObjstore = testCase.useThanosClient
 
-		_, ok := objectClient.(client.PrefixedObjectClient)
-		assert.False(t, ok)
-	})
+			objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
+			require.NoError(t, err)
 
-	t.Run("prefix with trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
-		cfg.ObjectPrefix = "my/prefix/"
-
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
-
-	t.Run("prefix without trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
-		cfg.ObjectPrefix = "my/prefix"
-
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
-
-	t.Run("prefix with starting and trailing /", func(t *testing.T) {
-		var cfg Config
-		flagext.DefaultValues(&cfg)
-		cfg.ObjectPrefix = "/my/prefix/"
-
-		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
+			prefixed, ok := objectClient.(client.PrefixedObjectClient)
+			if testCase.isPrefixedClient {
+				assert.True(t, ok)
+				assert.Equal(t, testCase.expectedPrefix, prefixed.GetPrefix())
+			} else {
+				require.False(t, ok)
+			}
+		})
+	}
 }
 
 // // DefaultSchemaConfig creates a simple schema config for testing

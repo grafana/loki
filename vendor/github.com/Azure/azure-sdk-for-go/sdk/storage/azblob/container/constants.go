@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -27,6 +24,7 @@ const (
 	AccessTierP70     AccessTier = generated.AccessTierP70
 	AccessTierP80     AccessTier = generated.AccessTierP80
 	AccessTierPremium AccessTier = generated.AccessTierPremium
+	AccessTierSmart   AccessTier = generated.AccessTierSmart
 )
 
 // PossibleAccessTierValues returns the possible values for the AccessTier const type.
@@ -51,11 +49,14 @@ func PossiblePublicAccessTypeValues() []PublicAccessType {
 type SKUName = generated.SKUName
 
 const (
-	SKUNameStandardLRS   SKUName = generated.SKUNameStandardLRS
-	SKUNameStandardGRS   SKUName = generated.SKUNameStandardGRS
-	SKUNameStandardRAGRS SKUName = generated.SKUNameStandardRAGRS
-	SKUNameStandardZRS   SKUName = generated.SKUNameStandardZRS
-	SKUNamePremiumLRS    SKUName = generated.SKUNamePremiumLRS
+	SKUNameStandardLRS    SKUName = generated.SKUNameStandardLRS
+	SKUNameStandardGRS    SKUName = generated.SKUNameStandardGRS
+	SKUNameStandardRAGRS  SKUName = generated.SKUNameStandardRAGRS
+	SKUNameStandardZRS    SKUName = generated.SKUNameStandardZRS
+	SKUNamePremiumLRS     SKUName = generated.SKUNamePremiumLRS
+	SKUNamePremiumZRS     SKUName = generated.SKUNamePremiumZRS
+	SKUNameStandardGZRS   SKUName = generated.SKUNameStandardGZRS
+	SKUNameStandardRAGZRS SKUName = generated.SKUNameStandardRAGZRS
 )
 
 // PossibleSKUNameValues returns the possible values for the SKUName const type.
@@ -97,8 +98,10 @@ func PossibleBlobTypeValues() []BlobType {
 type ArchiveStatus = generated.ArchiveStatus
 
 const (
-	ArchiveStatusRehydratePendingToCool ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
-	ArchiveStatusRehydratePendingToHot  ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
+	ArchiveStatusRehydratePendingToCool  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
+	ArchiveStatusRehydratePendingToHot   ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
+	ArchiveStatusRehydratePendingToCold  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCold
+	ArchiveStatusRehydratePendingToSmart ArchiveStatus = generated.ArchiveStatusRehydratePendingToSmart
 )
 
 // PossibleArchiveStatusValues returns the possible values for the ArchiveStatus const type.

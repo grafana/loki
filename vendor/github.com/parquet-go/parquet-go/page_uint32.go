@@ -11,10 +11,10 @@ import (
 type uint32Page struct {
 	typ         Type
 	values      memory.SliceBuffer[uint32]
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newUint32Page(typ Type, columnIndex int16, numValues int32, values encoding.Values) *uint32Page {
+func newUint32Page(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *uint32Page {
 	return &uint32Page{
 		typ:         typ,
 		values:      memory.SliceBufferFrom(values.Uint32()[:numValues]),

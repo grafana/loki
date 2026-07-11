@@ -3,13 +3,12 @@ package metastore
 import (
 	"bytes"
 	"context"
-	stderrors "errors"
+	"errors"
+	"fmt"
 	"io"
 	"time"
 
 	"github.com/grafana/dskit/backoff"
-	"github.com/pkg/errors"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -37,17 +36,19 @@ var replaceBackoffConfig = backoff.Config{
 // errReplaceNoOp is a sentinel returned from the GetAndReplace callback to
 // signal "do not write". It is consumed by replaceIndexPointers and converted
 // to (false, nil); it never escapes the package.
-var errReplaceNoOp = stderrors.New("replace-index-pointers: no-op")
+var errReplaceNoOp = errors.New("replace-index-pointers: no-op")
 
 // ReplaceIndexPointers atomically swaps a set of index pointers in the
 // ToC for the given window. For the target tenant, every row in oldPaths
 // is removed and every entry in newEntries is added; all other tenants'
 // entries are preserved unchanged.
 //
-// Returns (true, nil) if the swap was applied, (false, nil) if no oldPaths
-// were still present in the target tenant's current section (race-loss /
-// already-converged case, or the ToC is missing entirely), or (false, err)
-// on any error including retry exhaustion.
+// Returns (true, nil) if the swap was applied.
+// Returns (false, nil) if there's nothing to do, examples are:
+// - both oldPaths and newEntries are empty
+// - oldPaths do not exist in TOC (race-loss)
+// - TOC doesn't exist
+// Returns (false, error) if an error happened (including retry exhaustion).
 //
 // Race-loss is detected on an ANY-match basis: if ANY oldPath is still
 // present in the target tenant's current section, the swap proceeds and
@@ -74,14 +75,18 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	oldPaths []string,
 	newEntries []TableOfContentsEntry,
 ) (bool, error) {
-	// Deterministic fast-path: with no oldPaths to remove, the call would always
-	// converge to a sentinel-aborted no-op inside the callback. Returning here
-	// makes the no-op behavior independent of bucket availability so callers can
-	// rely on (false, nil) without error-handling for transient storage issues.
-	if len(oldPaths) == 0 {
+	oldEmpty := len(oldPaths) == 0
+	newEmpty := len(newEntries) == 0
+	switch {
+	case oldEmpty && newEmpty:
 		return false, nil
+	case oldEmpty && !newEmpty:
+		return false, errors.New("replace-index-pointers: no new entries")
+	case !oldEmpty && newEmpty:
+		return false, errors.New("replace-index-pointers: no old entries")
+	default:
+		return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 	}
-	return m.replaceIndexPointers(ctx, window, tenant, oldPaths, newEntries, replaceBackoffConfig)
 }
 
 // replaceIndexPointers is the internal entrypoint that accepts an explicit
@@ -119,7 +124,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 				var rerr error
 				existingBytes, rerr = io.ReadAll(existing)
 				if rerr != nil {
-					return nil, errors.Wrap(rerr, "reading existing ToC")
+					return nil, fmt.Errorf("reading existing ToC: %w", rerr)
 				}
 			}
 
@@ -132,7 +137,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			obj, oerr := dataobj.FromReaderAt(bytes.NewReader(existingBytes), int64(len(existingBytes)))
 			if oerr != nil {
-				return nil, errors.Wrap(oerr, "parsing existing ToC")
+				return nil, fmt.Errorf("parsing existing ToC: %w", oerr)
 			}
 
 			// Pass 1: detect whether any oldPaths are still present in the target tenant.
@@ -150,7 +155,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			// Pass 2: rebuild ToC, dropping target tenant's oldPaths and appending newEntries.
 			builder, berr := indexobj.NewBuilder(tocBuilderCfg, nil)
 			if berr != nil {
-				return nil, errors.Wrap(berr, "creating ToC builder")
+				return nil, fmt.Errorf("creating ToC builder: %w", berr)
 			}
 
 			if err := replayFiltered(ctx, obj, builder, tenant, oldSet); err != nil {
@@ -159,49 +164,32 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 
 			for _, e := range newEntries {
 				if err := builder.AppendIndexPointer(tenant, e.Path, e.StartTime, e.EndTime); err != nil {
-					return nil, errors.Wrap(err, "appending new ToC entry")
+					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}
 			}
 
 			newObj, closer, ferr := builder.Flush()
 			if ferr != nil {
-				// Full drain: every row in every section was filtered out and
-				// no newEntries were appended, so the rebuilt ToC would be
-				// empty. Treat this as a successful swap and abort the
-				// conditional PUT — leaving the existing ToC in place is
-				// acceptable here because the original entries are gone in
-				// the caller's view and a future cycle will replace the ToC
-				// when fresh content arrives. A full-drain ToC delete would
-				// be a separate primitive.
-				if stderrors.Is(ferr, indexobj.ErrBuilderEmpty) {
-					swapped = true
-					return nil, errReplaceNoOp
-				}
-				return nil, errors.Wrap(ferr, "flushing rebuilt ToC")
+				return nil, fmt.Errorf("flushing rebuilt ToC: %w", ferr)
 			}
 			reader, rerr := newObj.Reader(ctx)
 			if rerr != nil {
 				_ = closer.Close()
-				return nil, errors.Wrap(rerr, "opening rebuilt ToC reader")
-			}
-			newBytes, rerr := io.ReadAll(reader)
-			closeErr := stderrors.Join(reader.Close(), closer.Close())
-			if rerr != nil {
-				return nil, errors.Wrap(rerr, "reading rebuilt ToC")
-			}
-			if closeErr != nil {
-				return nil, errors.Wrap(closeErr, "closing rebuilt ToC")
+				return nil, fmt.Errorf("opening rebuilt ToC reader: %w", rerr)
 			}
 			swapped = true
-			return objstore.NopCloserWithSize(bytes.NewReader(newBytes)), nil
+			return &wrappedReadCloser{
+				rc: reader,
+				OnClose: func() error {
+					return errors.Join(reader.Close(), closer.Close())
+				},
+			}, nil
 		})
 
 		if err == nil {
 			return swapped, nil
 		}
-		if stderrors.Is(err, errReplaceNoOp) {
-			// swapped is true only in the full-drain path; all other sentinel
-			// callers (missing ToC, zero-match race-loss) leave it false.
+		if errors.Is(err, errReplaceNoOp) {
 			return swapped, nil
 		}
 		lastErr = err
@@ -225,11 +213,11 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, old
 		}
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
-			return false, errors.Wrap(err, "opening section")
+			return false, fmt.Errorf("opening section: %w", err)
 		}
 		reader.Reset(sec)
 		if err := reader.Open(ctx); err != nil {
-			return false, errors.Wrap(err, "opening row reader")
+			return false, fmt.Errorf("opening row reader: %w", err)
 		}
 		for {
 			n, err := reader.Read(ctx, buf)
@@ -242,7 +230,7 @@ func scanForMatches(ctx context.Context, obj *dataobj.Object, tenant string, old
 				break
 			}
 			if err != nil {
-				return false, errors.Wrap(err, "reading rows")
+				return false, fmt.Errorf("reading rows: %w", err)
 			}
 		}
 	}
@@ -258,12 +246,12 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
-			return errors.Wrap(err, "opening section")
+			return fmt.Errorf("opening section: %w", err)
 		}
 		sectionTenant := section.Tenant
 		reader.Reset(sec)
 		if err := reader.Open(ctx); err != nil {
-			return errors.Wrap(err, "opening row reader")
+			return fmt.Errorf("opening row reader: %w", err)
 		}
 		for {
 			n, err := reader.Read(ctx, buf)
@@ -274,14 +262,14 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 					}
 				}
 				if aerr := builder.AppendIndexPointer(sectionTenant, buf[i].Path, buf[i].StartTs, buf[i].EndTs); aerr != nil {
-					return errors.Wrap(aerr, "replaying index pointer")
+					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
-				return errors.Wrap(err, "reading rows")
+				return fmt.Errorf("reading rows: %w", err)
 			}
 		}
 	}

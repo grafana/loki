@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -1373,6 +1375,181 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestScheduler_assignmentMetricsUseBoundedLabels(t *testing.T) {
+	sched := newTestScheduler(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+
+	conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	messages := make(chan wire.Message, 10)
+	peer := wire.Peer{
+		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
+		Conn:    conn,
+		Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case messages <- message:
+				return nil
+			}
+		},
+	}
+	go func() { _ = peer.Serve(ctx) }()
+
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+
+	exampleTask := &workflow.Task{ULID: ulid.Make()}
+	manifest := &workflow.Manifest{
+		Tasks:              []*workflow.Task{exampleTask},
+		StreamEventHandler: nopStreamHandler,
+		TaskEventHandler:   nopTaskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
+	require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
+
+WaitAssign:
+	for {
+		select {
+		case <-ctx.Done():
+			require.Fail(t, "timed out before assignment")
+		case msg := <-messages:
+			switch msg := msg.(type) {
+			case wire.WorkerSubscribeMessage:
+				continue
+			case wire.TaskAssignMessage:
+				require.Equal(t, exampleTask.ULID, msg.Task.ULID)
+				break WaitAssign
+			default:
+				require.Failf(t, "unexpected message", "unexpected message type %T", msg)
+			}
+		}
+	}
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal.WithLabelValues(outcomeSuccess.String())) == 1
+	}, 5*time.Second, 10*time.Millisecond, "successful assignment attempt should be recorded")
+
+	requireMetricLabelsBounded(t, sched.metrics.reg, "loki_engine_scheduler_handler_phase_seconds", map[string]map[string]struct{}{
+		"message_type": stringSet(wire.WorkerHelloMessage{}.Kind().String(), wire.WorkerReadyMessage{}.Kind().String()),
+		"phase":        stringSet(phaseTotal),
+		"outcome":      stringSet(outcomeAck),
+	})
+	// assignment_hop_seconds now carries every worker-loop phase too, including
+	// the wait_assignment and error_requeue phases folded in from the removed
+	// worker_loop_phase_seconds_total counter.
+	requireMetricLabelsBounded(t, sched.metrics.reg, "loki_engine_scheduler_assignment_hop_seconds", map[string]map[string]struct{}{
+		"phase": stringSet(
+			"worker_ready_handler", "prepare_assignment", "tasks_ch_handoff_wait",
+			"wait_assignment", "taskassign_roundtrip", "error_requeue",
+			"finalize_assignment", "park_worker_wait",
+		),
+		"outcome": stringSet(
+			outcomeAck, outcomeNack, outcomeSuccess, outcomeEmpty, outcomeAssigned,
+			outcomeCanceled, outcomeConnClosed, outcomeReady, outcomeUnassignable,
+			outcomeNack429, outcomeTimeout, outcomeSendError,
+		),
+	})
+
+	// The handler-phase helper must actually emit the total phase for a handled
+	// message, not just keep its labels bounded.
+	require.GreaterOrEqual(t, histogramSampleCount(t, sched.metrics.reg, "loki_engine_scheduler_handler_phase_seconds", map[string]string{
+		"message_type": wire.WorkerReadyMessage{}.Kind().String(),
+		"phase":        phaseTotal.String(),
+		"outcome":      outcomeAck.String(),
+	}), uint64(1), "WorkerReady handler should record a total phase")
+}
+
+// TestScheduler_workerParkOnBackoff verifies that a 429 from a worker parks the
+// worker's assignment loop, and that a subsequent ready message resumes assignment of
+// the requeued task.
+func TestScheduler_workerParkOnBackoff(t *testing.T) {
+	sched := newTestScheduler(t)
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+
+	conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// reject controls whether the worker NACKs assignments with a 429.
+	var reject atomic.Bool
+	reject.Store(true)
+
+	assigns := make(chan *workflow.Task, 10)
+
+	peer := wire.Peer{
+		Logger:  log.NewNopLogger(),
+		Metrics: wire.NewMetrics(),
+		Conn:    conn,
+		Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+			if msg, ok := message.(wire.TaskAssignMessage); ok {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case assigns <- msg.Task:
+				}
+				if reject.Load() {
+					return wire.Errorf(http.StatusTooManyRequests, "no threads available")
+				}
+			}
+			return nil
+		},
+	}
+	go func() { _ = peer.Serve(ctx) }()
+
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+
+	exampleTask := &workflow.Task{ULID: ulid.Make()}
+	manifest := &workflow.Manifest{
+		Tasks:              []*workflow.Task{exampleTask},
+		StreamEventHandler: nopStreamHandler,
+		TaskEventHandler:   nopTaskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
+	require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
+
+	// First attempt: the worker NACKs with a 429.
+	select {
+	case <-ctx.Done():
+		require.Fail(t, "timed out before first assignment attempt")
+	case got := <-assigns:
+		require.Equal(t, exampleTask.ULID, got.ULID)
+	}
+
+	// After the 429 the scheduler should record a backoff but keep the worker
+	// in the ready set: the loop parks rather than being torn down.
+	require.Eventually(t, func() bool {
+		if testutil.ToFloat64(sched.metrics.backoffsTotal) < 1 {
+			return false
+		}
+		guard := sched.assignMut.RLock("collector_assign_stats")
+		defer guard.RUnlock()
+		return len(sched.connectedWorkers) == 1
+	}, 5*time.Second, 10*time.Millisecond, "worker should remain ready (loop parks, not torn down) after a 429")
+	require.Equal(t, 1.0, testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal), "one failed and requeued attempt should be counted once")
+	require.Equal(t, 1.0, testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal.WithLabelValues(outcomeNack429.String())), "failed attempt should keep its send outcome")
+
+	// Now accept assignments and signal a freed thread. The parked loop should
+	// resume and re-assign the requeued task.
+	reject.Store(false)
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+
+	select {
+	case <-ctx.Done():
+		require.Fail(t, "timed out before requeued task was reassigned")
+	case got := <-assigns:
+		require.Equal(t, exampleTask.ULID, got.ULID, "requeued task should be reassigned once the worker readies again")
+	}
 }
 
 func newTestScheduler(t *testing.T) *Scheduler {

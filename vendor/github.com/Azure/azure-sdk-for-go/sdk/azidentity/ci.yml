@@ -29,13 +29,13 @@ extends:
           SubscriptionConfigurations:
             - $(sub-config-identity-test-resources)
       EnableRaceDetector: true
-      Location: westus2
-      RunLiveTests: true
+      Location: westus3
       ServiceDirectory: azidentity
       UsePipelineProxy: false
 
       ${{ if endsWith(variables['Build.DefinitionName'], 'weekly') }}:
         PersistOidcToken: true
+        RunLiveTests: true
         MatrixConfigs:
           - Name: managed_identity_matrix
             GenerateVMJobs: true

@@ -840,7 +840,6 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 		"--logs.rules.read-only=true",
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
 		"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 		"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 		"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1037,7 +1036,6 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
 				"--tls.client-auth-type=NoClientCert",
-				"--tls.min-version=VersionTLS12",
 				"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 				"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1202,7 +1200,6 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
 				"--tls.client-auth-type=NoClientCert",
-				"--tls.min-version=VersionTLS12",
 				"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 				"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1448,8 +1445,8 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb)
 	require.Equal(t, "abcd-gateway", pdb.Name)
 	require.Equal(t, "efgh", pdb.Namespace)
-	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.NotNil(t, pdb.Spec.MaxUnavailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MaxUnavailable.IntVal)
 	require.EqualValues(t, ComponentLabels(LabelGatewayComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 
@@ -1605,4 +1602,243 @@ func TestBuildGateway_ExternalAccessControl(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildGateway_PassthroughMode_DeploymentArgs(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+
+	dpl := objs[0].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+	require.Len(t, dpl.Spec.Template.Spec.Containers, 1)
+
+	c := dpl.Spec.Template.Spec.Containers[0]
+
+	require.Contains(t, c.Args, "-listen-addr=:8080")
+	require.Contains(t, c.Args, "-admin-addr=:8081")
+	require.Contains(t, c.Args, "-loki-distributor-endpoint=http://abcd-distributor-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-loki-query-frontend-endpoint=http://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
+
+	require.NotContains(t, c.Args, "-default-tenant")
+}
+
+func TestBuildGateway_PassthroughMode_WithDefaultTenant(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+				Passthrough: &lokiv1.PassthroughTenantSpec{
+					DefaultTenant: "my-default-tenant",
+				},
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+
+	dpl := objs[0].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+
+	c := dpl.Spec.Template.Spec.Containers[0]
+	require.Contains(t, c.Args, "-default-tenant=my-default-tenant")
+}
+
+func TestBuildGateway_PassthroughMode_WithHTTPEncryption(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+			HTTPEncryption:   true,
+			TLSProfile:       string(configv1.TLSProfileOldType),
+		},
+		TLSProfile: TLSProfileSpec{
+			MinTLSVersion: "VersionTLS12",
+			Ciphers:       []string{"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"},
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+				Passthrough: &lokiv1.PassthroughTenantSpec{
+					CA: &lokiv1.ValueReference{
+						Key:           "ca.crt",
+						ConfigMapName: "client-ca-bundle",
+					},
+				},
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+
+	dpl := objs[0].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+
+	c := dpl.Spec.Template.Spec.Containers[0]
+
+	// Verify HTTPS upstream endpoints
+	require.Contains(t, c.Args, "-loki-distributor-endpoint=https://abcd-distributor-http.efgh.svc.cluster.local:3100")
+	require.Contains(t, c.Args, "-loki-query-frontend-endpoint=https://abcd-query-frontend-http.efgh.svc.cluster.local:3100")
+
+	// Verify TLS args are present
+	require.Contains(t, c.Args, "-tls-cert-file=/var/run/tls/http/server/tls.crt")
+	require.Contains(t, c.Args, "-tls-key-file=/var/run/tls/http/server/tls.key")
+	require.Contains(t, c.Args, "-tls-client-auth=RequireAndVerifyClientCert")
+	require.Contains(t, c.Args, "-tls-client-ca-file=/var/run/ca/client/ca.crt")
+	require.Contains(t, c.Args, "-tls-min-version=VersionTLS12")
+	require.Contains(t, c.Args, "-tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+
+	// Verify upstream TLS args
+	require.Contains(t, c.Args, "-loki-ca-file=/var/run/ca/upstream/service-ca.crt")
+	require.Contains(t, c.Args, "-loki-cert-file=/var/run/tls/http/upstream/tls.crt")
+	require.Contains(t, c.Args, "-loki-key-file=/var/run/tls/http/upstream/tls.key")
+
+	// Verify probes use HTTPS
+	require.Equal(t, corev1.URISchemeHTTPS, c.ReadinessProbe.HTTPGet.Scheme)
+	require.Equal(t, corev1.URISchemeHTTPS, c.LivenessProbe.HTTPGet.Scheme)
+}
+
+func TestBuildGateway_PassthroughMode_HasNodeSelector(t *testing.T) {
+	toleration := []corev1.Toleration{
+		{
+			Key:      "foo",
+			Operator: corev1.TolerationOpEqual,
+			Value:    "bar",
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+	}
+	selector := map[string]string{
+		"foo": "bar",
+	}
+
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas:     rand.Int31(),
+					NodeSelector: selector,
+					Tolerations:  toleration,
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+
+	dpl := objs[0].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+	require.Equal(t, dpl.Spec.Template.Spec.NodeSelector, selector)
+	require.ElementsMatch(t, dpl.Spec.Template.Spec.Tolerations, toleration)
+}
+
+func TestBuildGateway_PassthroughMode_TopologySpreadConstraint(t *testing.T) {
+	opts := Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		Gates: configv1.FeatureGates{
+			LokiStackGateway: true,
+		},
+		Stack: lokiv1.LokiStackSpec{
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     2,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     1,
+					},
+				},
+				Factor: 1,
+			},
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Passthrough,
+			},
+		},
+		Timeouts: defaultTimeoutConfig,
+	}
+
+	objs, err := BuildGateway(opts)
+	require.NoError(t, err)
+
+	dpl := objs[0].(*appsv1.Deployment)
+	require.NotNil(t, dpl)
+	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           2,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "lokistack-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           1,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "lokistack-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+	})
 }

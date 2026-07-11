@@ -5,7 +5,8 @@ on:
     types:
       - released
 
-  workflow_dispatch: # for manual testing
+permissions:
+  contents: read
 
 jobs:
   weekly-release-pr:
@@ -18,16 +19,12 @@ jobs:
       RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
       BUILD_IN_CONTAINER: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - uses: gabe565/setup-helm-docs-action@d5c35bdc9133cfbea3b671acadf50a29029e87c2 # v1.0.4
-        with:
-          version: v1.11.2
-
       - name: Generate GitHub App Token
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
+        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: loki-gh-app
 
@@ -37,7 +34,7 @@ jobs:
           bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
           title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"

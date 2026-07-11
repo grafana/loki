@@ -14,8 +14,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                hiddenRows:: [
                                  'Cassandra',
-                                 if $._config.ssd.enabled then 'Ingester',
-                                 if !$._config.ssd.enabled then 'Backend Path',
+                                 'Backend Path',
                                  if !$._config.operational.memcached then 'Memcached',
                                  if !$._config.operational.consul then 'Consul',
                                  if !$._config.operational.bigTable then 'Big Table',
@@ -34,32 +33,30 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                jobMatchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                                  distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                                 then [utils.selector.re('job', '($namespace)/(distributor|loki-single-binary)')]
+                                 else [utils.selector.re('job', '($namespace)/distributor')],
                                  ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                                 then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
+                                 else [utils.selector.re('job', '($namespace)/(ingester.*|partition-ingester.*)')],
                                  querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                                 then [utils.selector.re('job', '($namespace)/(querier|loki-single-binary)')]
+                                 else [utils.selector.re('job', '($namespace)/querier')],
                                  queryFrontend: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
-                                 backend: [utils.selector.re('job', '($namespace)/%s-backend' % $._config.ssd.pod_prefix_matcher)],
+                                 then [utils.selector.re('job', '($namespace)/(query-frontend|loki-single-binary)')]
+                                 else [utils.selector.re('job', '($namespace)/query-frontend')],
                                },
 
                                podMatchers:: {
                                  cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
                                  distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
+                                 then [utils.selector.re('pod', '(distributor|loki-single-binary)')]
+                                 else [utils.selector.re('pod', 'distributor.*')],
                                  ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                                 then [utils.selector.re('pod', '(partition-ingester.*|ingester.*|loki-single-binary)')]
+                                 else [utils.selector.re('pod', '(ingester.*|partition-ingester.*)')],
                                  querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
-                                 backend: [utils.selector.re('pod', '%s-backend.*' % $._config.ssd.pod_prefix_matcher)],
+                                 then [utils.selector.re('pod', '(querier|loki-single-binary)')]
+                                 else [utils.selector.re('pod', 'querier.*')],
                                },
                              }
                              + lokiOperational + {
@@ -116,21 +113,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      $._config.per_cluster_label + '="$cluster",',
                                      ''
                                    ),
-
-                               local replaceBackendMatchers(expr) =
-                                 std.strReplace(
-                                   std.strReplace(
-                                     std.strReplace(
-                                       expr,
-                                       $._config.per_instance_label + '=~"backend.*"',
-                                       matcherStr('backend', matcher='pod', sep='')
-                                     ),
-                                     'job="$namespace/backend",',
-                                     matcherStr('backend')
-                                   ),
-                                   'job="$namespace/backend"',
-                                   std.rstripChars(matcherStr('backend'), ',')
-                                 ),
 
                                local replaceQuerierMatchers(expr) =
                                  std.strReplace(
@@ -199,10 +181,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  ),
 
                                local replaceAllMatchers(expr) =
-                                 replaceBackendMatchers(
-                                   replaceQuerierMatchers(
-                                     replaceMatchers(expr)
-                                   )
+                                 replaceQuerierMatchers(
+                                   replaceMatchers(expr)
                                  ),
 
                                local selectDatasource(ds) =
@@ -269,10 +249,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      for sp in p.panels
                                      if !(isPanelHidden(sp.title))
                                    ] else [],
-                                   title: if !($._config.ssd.enabled && p.type == 'row') then p.title else
-                                     if p.title == 'Distributor' then 'Write Path'
-                                     else if p.title == 'Querier' then 'Read Path'
-                                     else p.title,
+                                   title: p.title,
                                  }
                                  for p in super.panels
                                  if !(p.type == 'row' && isRowHidden(p.title)) && !(isPanelHidden(p.title))

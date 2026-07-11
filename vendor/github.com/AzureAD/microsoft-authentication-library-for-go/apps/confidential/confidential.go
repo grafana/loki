@@ -359,7 +359,7 @@ func New(authority, clientID string, cred Credential, options ...Option) (Client
 
 // authCodeURLOptions contains options for AuthCodeURL
 type authCodeURLOptions struct {
-	claims, loginHint, tenantID, domainHint string
+	claims, loginHint, tenantID, domainHint, prompt string
 }
 
 // AuthCodeURLOption is implemented by options for AuthCodeURL
@@ -369,7 +369,7 @@ type AuthCodeURLOption interface {
 
 // AuthCodeURL creates a URL used to acquire an authorization code. Users need to call CreateAuthorizationCodeURLParameters and pass it in.
 //
-// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID]
+// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID], [WithPrompt]
 func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, scopes []string, opts ...AuthCodeURLOption) (string, error) {
 	o := authCodeURLOptions{}
 	if err := options.ApplyOptions(&o, opts); err != nil {
@@ -382,6 +382,7 @@ func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string,
 	ap.Claims = o.claims
 	ap.LoginHint = o.loginHint
 	ap.DomainHint = o.domainHint
+	ap.Prompt = o.prompt
 	return cca.base.AuthCodeURL(ctx, clientID, redirectURI, scopes, ap)
 }
 
@@ -422,6 +423,29 @@ func WithDomainHint(domain string) interface {
 				switch t := a.(type) {
 				case *authCodeURLOptions:
 					t.domainHint = domain
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithPrompt adds prompt query parameter in the auth url.
+func WithPrompt(prompt shared.Prompt) interface {
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *authCodeURLOptions:
+					t.prompt = prompt.String()
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
 				}

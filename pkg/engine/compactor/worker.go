@@ -10,19 +10,25 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // WorkerParams collects the constructor arguments for NewWorker.
 type WorkerParams struct {
 	Config WorkerConfig
 
-	Bucket    objstore.Bucket
-	Metastore metastore.Metastore // may be nil in tests where no task ever arrives
+	Bucket       objstore.Bucket
+	Metastore    metastore.Metastore // may be nil in tests where no task ever arrives
+	ScratchStore scratch.Store
 
 	Logger     log.Logger
 	Registerer prometheus.Registerer
+
+	// IndexobjCfg controls index object construction parameters.
+	IndexobjCfg logsobj.BuilderBaseConfig
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
@@ -41,6 +47,9 @@ type Worker struct {
 func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Bucket == nil {
 		return nil, errors.New("dataobj compaction worker: bucket is required")
+	}
+	if params.ScratchStore == nil {
+		return nil, errors.New("dataobj compaction worker: scratch store is required")
 	}
 	if params.Config.SchedulerLookupAddress == "" {
 		return nil, errors.New("dataobj compaction worker: scheduler_lookup_address is required")
@@ -70,10 +79,13 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, fmt.Errorf("dataobj compaction worker: resolve worker advertise address: %w", err)
 	}
 
+	wm := newWorkerMetrics(registerer)
+
 	inner, err := engine.NewWorker(engine.WorkerParams{
-		Logger:    log.With(logger, "component", "dataobj-compaction-worker"),
-		Bucket:    params.Bucket,
-		Metastore: params.Metastore,
+		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
+		Bucket:       params.Bucket,
+		Metastore:    params.Metastore,
+		ScratchStore: params.ScratchStore,
 		Config: engine.WorkerConfig{
 			WorkerThreads:           params.Config.WorkerThreads,
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
@@ -87,6 +99,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint:      params.Config.Endpoint,
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
+		IndexobjCfg:        params.IndexobjCfg,
+		IndexMergeObserver: wm,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

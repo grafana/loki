@@ -19,6 +19,45 @@ func (AnalyticsS3ExportFileFormat) Values() []AnalyticsS3ExportFileFormat {
 	}
 }
 
+type AnnotationConfigurationState string
+
+// Enum values for AnnotationConfigurationState
+const (
+	AnnotationConfigurationStateEnabled  AnnotationConfigurationState = "ENABLED"
+	AnnotationConfigurationStateDisabled AnnotationConfigurationState = "DISABLED"
+)
+
+// Values returns all known values for AnnotationConfigurationState. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (AnnotationConfigurationState) Values() []AnnotationConfigurationState {
+	return []AnnotationConfigurationState{
+		"ENABLED",
+		"DISABLED",
+	}
+}
+
+type AnnotationDirective string
+
+// Enum values for AnnotationDirective
+const (
+	AnnotationDirectiveCopy    AnnotationDirective = "COPY"
+	AnnotationDirectiveExclude AnnotationDirective = "EXCLUDE"
+)
+
+// Values returns all known values for AnnotationDirective. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (AnnotationDirective) Values() []AnnotationDirective {
+	return []AnnotationDirective{
+		"COPY",
+		"EXCLUDE",
+	}
+}
+
 type ArchiveStatus string
 
 // Enum values for ArchiveStatus
@@ -275,6 +314,11 @@ const (
 	ChecksumAlgorithmSha1      ChecksumAlgorithm = "SHA1"
 	ChecksumAlgorithmSha256    ChecksumAlgorithm = "SHA256"
 	ChecksumAlgorithmCrc64nvme ChecksumAlgorithm = "CRC64NVME"
+	ChecksumAlgorithmSha512    ChecksumAlgorithm = "SHA512"
+	ChecksumAlgorithmMd5       ChecksumAlgorithm = "MD5"
+	ChecksumAlgorithmXxhash64  ChecksumAlgorithm = "XXHASH64"
+	ChecksumAlgorithmXxhash3   ChecksumAlgorithm = "XXHASH3"
+	ChecksumAlgorithmXxhash128 ChecksumAlgorithm = "XXHASH128"
 )
 
 // Values returns all known values for ChecksumAlgorithm. Note that this can be
@@ -288,6 +332,11 @@ func (ChecksumAlgorithm) Values() []ChecksumAlgorithm {
 		"SHA1",
 		"SHA256",
 		"CRC64NVME",
+		"SHA512",
+		"MD5",
+		"XXHASH64",
+		"XXHASH3",
+		"XXHASH128",
 	}
 }
 
@@ -454,6 +503,9 @@ const (
 	EventS3ObjectTagging                                Event = "s3:ObjectTagging:*"
 	EventS3ObjectTaggingPut                             Event = "s3:ObjectTagging:Put"
 	EventS3ObjectTaggingDelete                          Event = "s3:ObjectTagging:Delete"
+	EventS3ObjectAnnotation                             Event = "s3:ObjectAnnotation:*"
+	EventS3ObjectAnnotationPut                          Event = "s3:ObjectAnnotation:Put"
+	EventS3ObjectAnnotationDelete                       Event = "s3:ObjectAnnotation:Delete"
 )
 
 // Values returns all known values for Event. Note that this can be expanded in
@@ -489,6 +541,9 @@ func (Event) Values() []Event {
 		"s3:ObjectTagging:*",
 		"s3:ObjectTagging:Put",
 		"s3:ObjectTagging:Delete",
+		"s3:ObjectAnnotation:*",
+		"s3:ObjectAnnotation:Put",
+		"s3:ObjectAnnotation:Delete",
 	}
 }
 

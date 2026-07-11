@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check-commit:
     runs-on: ubuntu-latest
@@ -20,7 +23,7 @@ jobs:
 
       - name: Generate GitHub App Token
         id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0 # create-github-app-token/v0.2.2
+        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: loki-gh-app
 
@@ -33,7 +36,7 @@ jobs:
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           ref: main
           path: "release"

@@ -1,6 +1,37 @@
 # Changes
 
 
+## [1.63.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.62.2...storage/v1.63.0) (2026-06-25)
+
+
+### Features
+
+* **go:** Add full object checksum for negative offsets &gt; size ([#20026](https://github.com/googleapis/google-cloud-go/issues/20026)) ([a04d980](https://github.com/googleapis/google-cloud-go/commit/a04d9809f8897195d796f4323d36e6880c0e02e8))
+* **storage:** Add client feature tracking in HTTP client ([#14691](https://github.com/googleapis/google-cloud-go/issues/14691)) ([319cc4c](https://github.com/googleapis/google-cloud-go/commit/319cc4c868f17196249d51faaecf91e58876ddba))
+* **storage:** App Centric Observability ([#14685](https://github.com/googleapis/google-cloud-go/issues/14685)) ([c3273bb](https://github.com/googleapis/google-cloud-go/commit/c3273bbf15b0d093dbb4e0bc62d22d26f273dbe5))
+* **storage:** Read checksums in gRPC partial reads ([#14586](https://github.com/googleapis/google-cloud-go/issues/14586)) ([d29f68a](https://github.com/googleapis/google-cloud-go/commit/d29f68afa17d1b874c374c97642afaaf0958a929))
+* **storage:** Support deleteSourceObjects option in object compose ([#14704](https://github.com/googleapis/google-cloud-go/issues/14704)) ([0d2d680](https://github.com/googleapis/google-cloud-go/commit/0d2d68046cae33909028c0c116c4743f72cc00f5))
+* Update API sources and regenerate ([#14701](https://github.com/googleapis/google-cloud-go/issues/14701)) ([a9b7921](https://github.com/googleapis/google-cloud-go/commit/a9b7921551e9c1535496731da53e880e9e364efa))
+
+## [1.62.3](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.62.3) (2026-06-03)
+
+### Bug Fixes
+
+* **storage:** Add server closed idle connection to retriable errors ([#14594](https://github.com/googleapis/google-cloud-go/issues/14594)) ([a6bd392](https://github.com/googleapis/google-cloud-go/commit/a6bd39257d261f74680c909c24102ca6f69989b9))
+* **storage:** Fix race condition during retries in gRPC writer ([#14649](https://github.com/googleapis/google-cloud-go/issues/14649)) ([c781a75](https://github.com/googleapis/google-cloud-go/commit/c781a7535f87377bb7d0b47fc82ad0bb330faf29))
+
+## [1.62.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.62.2) (2026-05-18)
+
+### Features
+
+* enable open telemetry attrs (#14426) ([74eab64](https://github.com/googleapis/google-cloud-go/commit/74eab64d1b4e22d8c79b0de4e5fc9a36bc4c6c19))
+
+### Bug Fixes
+
+* Set default chunkRetryDeadline to 32s in NewWriterFromAppendableObject (#14458) ([ec7c7d6](https://github.com/googleapis/google-cloud-go/commit/ec7c7d66eb0bf6e52a3ae1f529cb8e5de6f8dc86))
+* refactor userProject metadata propagation in ListObjects  (#14533) ([fbb543e](https://github.com/googleapis/google-cloud-go/commit/fbb543e3bb0d9b45c8e9aa167b6551c154f23169))
+* restore metadata operations timeout in gRPC (#14575) ([275ff56](https://github.com/googleapis/google-cloud-go/commit/275ff562aee8c0201b9e5bf2913bb85bcdbe947a))
+
 ## [1.62.1](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.62.1) (2026-04-13)
 
 ### Bug Fixes
@@ -69,6 +100,12 @@
 ### Documentation
 
 * Update documentation for `BidiReadObject`, `ReadObjectRequest`, and `ObjectContexts` ([611f239](https://github.com/googleapis/google-cloud-go/commit/611f239219225fb03f6475c7238f497a349961e2))
+
+## [1.59.3](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.3) (2026-05-05)
+
+### Bug Fixes
+
+* handle MRD hang corner case (#14509) ([1ca3b6f](https://github.com/googleapis/google-cloud-go/commit/1ca3b6f02d35f87c336e34358e16985557c7fd58))
 
 ## [1.59.2](https://github.com/googleapis/google-cloud-go/releases/tag/storage%2Fv1.59.2) (2026-01-28)
 

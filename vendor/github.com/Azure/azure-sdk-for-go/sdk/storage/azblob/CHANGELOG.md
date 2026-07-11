@@ -1,5 +1,74 @@
 # Release History
 
+## 1.8.0 (2026-06-15)
+
+### Features Added
+* Includes all features from `1.8.0-beta.1` and `1.8.0-beta.2`
+
+## 1.8.0-beta.2 (2026-06-03)
+
+### Features Added
+* Added support for the `Expect: 100-continue` HTTP header on requests with a body. The new `ExpectContinueBehavior` field on `ClientOptions` configures the
+  behavior via `ExpectContinueOptions`. By default (`ExpectContinueModeApplyOnThrottle`) the header is sent for one minute after a 429, 500, or 503 response
+  is received; the interval can be overridden via `ExpectContinueOptions.ThrottleInterval`. Other modes are `ExpectContinueModeOn` (always send) and
+  `ExpectContinueModeOff` (never send). Set the environment variable `AZURE_STORAGE_DISABLE_EXPECT_CONTINUE_HEADER=true` to disable the feature regardless of
+  `ClientOptions`.
+
+## 1.7.0 (2026-05-14)
+
+### Features Added
+* Includes all features from `1.7.0-beta.1`
+
+## 1.8.0-beta.1 (2026-05-05)
+
+### Features Added
+* Added support for service version 2026-06-06.
+* Added support for Blob Smart Tier.
+
+## 1.7.0-beta.1 (2026-04-23)
+
+### Features Added
+* Added support for service version 2026-04-06.
+* Added support for Delete Blob Conditional Tier.
+* Added support for Server-side Encryption Rekeying.
+* Added cross-tenant support for Principal-Bound User Delegation SAS.
+* Added support for Dynamic User Delegation SAS.
+
+### Bugs Fixed
+* Added support for error code `IncrementalCopyOfEarlierSnapshotNotAllowed`. This replaces `IncrementalCopyOfEralierVersionSnapshotNotAllowed` which has been deprecated.
+* Added support for missing SKU name values.
+
+## 1.6.4 (2026-01-12)
+
+### Features Added
+* Added support for the StartFrom parameter on `BlobContainerClient.listBlobs()` and `BlobContainerClient.listBlobsByHierarchy()` APIs. 
+* Added support for conditional headers on `BlobClientBase.getTags()` and `BlobClientBase.setTags()` APIs.
+
+### Other Changes
+* Added support for service version 2026-02-06.
+
+## 1.6.3 (2025-10-16)
+
+### Other Changes
+* Updated service version to `2025-11-05`
+* Updated `azidentity` version to `1.13.0`
+* Updated `azcore` version to `1.19.1`
+
+## 1.6.2 (2025-07-23)
+
+### Other Changes
+* Updated `azcore` version to `1.18.1`
+
+## 1.6.2-beta.2 (2025-07-08)
+
+### Other Changes
+* Updated `azidentity` version to `1.10.1`
+
+## 1.6.2-beta.1 (2025-05-08)
+
+### Features Added
+* Add support for x-ms-file-request-intent header for blob copy APIs.
+
 ## 1.6.1 (2025-04-16)
 
 ### Bugs Fixed

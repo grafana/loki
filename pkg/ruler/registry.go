@@ -3,7 +3,9 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"maps"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +26,7 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/sigv4"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
@@ -37,6 +39,7 @@ type walRegistry struct {
 
 	metrics     *storageRegistryMetrics
 	overridesMu sync.Mutex
+	refreshMu   sync.Mutex
 
 	config         Config
 	overrides      RulesLimits
@@ -57,7 +60,19 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 		return nullRegistry{}
 	}
 
-	manager := createInstanceManager(logger, reg, overrides)
+	// Wipe the WAL directory before any per-tenant storage is opened. This runs
+	// exactly once per ruler startup (newWALRegistry is called once), unlike the
+	// per-tenant wal.NewStorage which is re-invoked whenever a tenant instance
+	// restarts. Because the WAL is always discarded here, there is nothing to
+	// replay when the per-tenant storage is later opened.
+	level.Info(logger).Log("msg", "wiping ruler WAL directory on startup", "dir", config.WAL.Dir)
+	if err := os.RemoveAll(config.WAL.Dir); err != nil {
+		// Non-fatal: a failed wipe just leaves stale data on disk, so we log and
+		// continue rather than blocking ruler startup.
+		level.Error(logger).Log("msg", "failed to wipe ruler WAL directory on startup", "dir", config.WAL.Dir, "err", err)
+	}
+
+	manager := createInstanceManager(logger, reg)
 
 	return &walRegistry{
 		logger:    logger,
@@ -75,11 +90,10 @@ func newWALRegistry(logger log.Logger, reg prometheus.Registerer, config Config,
 	}
 }
 
-func createInstanceManager(logger log.Logger, reg prometheus.Registerer, overrides RulesLimits) *instance.BasicManager {
+func createInstanceManager(logger log.Logger, reg prometheus.Registerer) *instance.BasicManager {
 	tenantManager := &tenantWALManager{
-		reg:       reg,
-		logger:    log.With(logger, "manager", "tenant-wal"),
-		overrides: overrides,
+		reg:    reg,
+		logger: log.With(logger, "manager", "tenant-wal"),
 	}
 
 	return instance.NewBasicManager(instance.BasicManagerConfig{
@@ -154,9 +168,14 @@ func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
 	// we should reconfigure the storage whenever this appender is requested, but since
 	// this can request an appender very often, we hide this behind a gate
 	now := time.Now()
-	if r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod)) {
+	r.refreshMu.Lock()
+	shouldRefresh := r.lastUpdateTime.Before(now.Add(-r.config.RemoteWrite.ConfigRefreshPeriod))
+	if shouldRefresh {
 		r.lastUpdateTime = now
+	}
+	r.refreshMu.Unlock()
 
+	if shouldRefresh {
 		level.Debug(r.logger).Log("user", tenant, "msg", "refreshing remote-write configuration")
 		r.configureTenantStorage(tenant)
 	}
@@ -207,8 +226,10 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 	if rwCfg.Enabled {
 		for id := range r.config.RemoteWrite.Clients {
 			clt := rwCfg.Clients[id]
-			if rwCfg.Clients[id].Headers == nil {
+			if clt.Headers == nil {
 				clt.Headers = make(map[string]string)
+			} else {
+				clt.Headers = maps.Clone(clt.Headers)
 			}
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
@@ -266,7 +287,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 
 		// overwrite, do not merge
 		if v := r.overrides.RulerRemoteWriteHeaders(tenant); v != nil {
-			clt.Headers = v
+			clt.Headers = maps.Clone(v)
 		}
 
 		relabelConfigs, err := r.createRelabelConfigs(tenant)
@@ -328,7 +349,7 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 		if v := r.overrides.RulerRemoteWriteConfig(tenant, id); v != nil {
 			// overwrite, do not merge
 			if v.Headers != nil {
-				clt.Headers = v.Headers
+				clt.Headers = maps.Clone(v.Headers)
 			}
 
 			// if any relabel configs are defined for a tenant, override all base relabel configs,
@@ -455,9 +476,8 @@ type readyChecker interface {
 }
 
 type tenantWALManager struct {
-	logger    log.Logger
-	reg       prometheus.Registerer
-	overrides RulesLimits
+	logger log.Logger
+	reg    prometheus.Registerer
 }
 
 func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInstance, error) {
@@ -465,14 +485,8 @@ func (t *tenantWALManager) newInstance(c instance.Config) (instance.ManagedInsta
 		"tenant": c.Tenant,
 	}, t.reg)
 
-	// Get the per-tenant setting for WAL replay from overrides
-	enableReplay := true // Default to true for backward compatibility
-	if t.overrides != nil {
-		enableReplay = t.overrides.RulerEnableWALReplay(c.Tenant)
-	}
-
 	// create the instance with our custom walFactory
-	return instance.New(reg, c, wal.NewMetrics(reg), t.logger, enableReplay)
+	return instance.New(reg, c, wal.NewMetrics(reg), t.logger)
 }
 
 type storageRegistryMetrics struct {

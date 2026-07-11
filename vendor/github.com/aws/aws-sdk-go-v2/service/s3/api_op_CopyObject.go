@@ -341,6 +341,35 @@ type CopyObjectInput struct {
 	// [Controlling ownership of objects and disabling ACLs]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html
 	ACL types.ObjectCannedACL
 
+	// Specifies whether you want to copy annotations from the source object or
+	// exclude them. If this header isn't specified, COPY is the default behavior.
+	//
+	// Valid Values: COPY | EXCLUDE
+	//
+	// You can specify this directive as either an HTTP header (
+	// x-amz-object-annotation-directive ) or as a query string parameter. Use the
+	// query string form when generating presigned URLs that need to control annotation
+	// copy behavior.
+	//
+	// When set to COPY , you must have s3:GetObjectAnnotation permission on the
+	// source object and s3:PutObjectAnnotation permission on the destination. Each
+	// annotation copied is billed as a separate PUT request. If annotations on the
+	// source are modified during the copy, Amazon S3 returns a retryable error.
+	//
+	// For directory buckets, annotations are not supported. Use EXCLUDE to copy
+	// objects to directory buckets without errors. If you specify COPY for a
+	// directory bucket, the request returns HTTP 501 (Not Implemented).
+	//
+	// When you copy objects using multipart upload (for example, when the Amazon Web
+	// Services CLI or Amazon Web Services SDKs use Transfer Manager for objects larger
+	// than approximately 8 MB), annotations are not copied by default. To include
+	// annotations, specify --copy-props default in the Amazon Web Services CLI or the
+	// equivalent SDK configuration. With this opt-in, the SDK reads source
+	// annotations, completes the multipart upload, and then writes each annotation to
+	// the destination. Between the upload completion and the last annotation write,
+	// the destination object exists without all its annotations.
+	AnnotationDirective types.AnnotationDirective
+
 	// Specifies whether Amazon S3 should use an S3 Bucket Key for object encryption
 	// with server-side encryption using Key Management Service (KMS) keys (SSE-KMS).
 	// If a target object uses SSE-KMS, you can enable an S3 Bucket Key for the object.

@@ -3,6 +3,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   operator-hub-prod-release:
     if: startsWith(github.event.release.tag_name, 'operator/')

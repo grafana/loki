@@ -17,7 +17,7 @@ type be128Dictionary struct {
 	table *hashprobe.Uint128Table
 }
 
-func newBE128Dictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *be128Dictionary {
+func newBE128Dictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *be128Dictionary {
 	return &be128Dictionary{
 		be128Page: be128Page{
 			typ:         typ,

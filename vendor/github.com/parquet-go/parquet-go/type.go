@@ -239,6 +239,7 @@ var (
 	FloatType     Type = floatType{}
 	DoubleType    Type = doubleType{}
 	ByteArrayType Type = byteArrayType{}
+	NullType      Type = &nullType{}
 )
 
 // In the current parquet version supported by this library, only type-defined

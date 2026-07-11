@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -12,12 +9,26 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo"
 	msal "github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
 )
+
+// tsgAnchors maps credential type names to sections of the troubleshooting
+// guide at https://aka.ms/azsdk/go/identity/troubleshoot
+var tsgAnchors = map[string]string{
+	credNameAzureCLI:          "azure-cli",
+	credNameAzureDeveloperCLI: "azd",
+	credNameAzurePipelines:    "apc",
+	credNameAzurePowerShell:   "azure-pwsh",
+	credNameCert:              "client-cert",
+	credNameManagedIdentity:   "managed-id",
+	credNameSecret:            "client-secret",
+	credNameWorkloadIdentity:  "workload",
+}
 
 // getResponseFromError retrieves the response carried by
 // an AuthenticationFailedError or MSAL CallErr, if any
@@ -61,8 +72,19 @@ func newAuthenticationFailedErrorFromMSAL(credType string, err error) error {
 
 // Error implements the error interface. Note that the message contents are not contractual and can change over time.
 func (e *AuthenticationFailedError) Error() string {
+	link := ""
+	if anchor, ok := tsgAnchors[e.credType]; ok {
+		link = "To troubleshoot, visit https://aka.ms/azsdk/go/identity/troubleshoot#" + anchor
+	}
 	if e.RawResponse == nil || e.omitResponse {
-		return e.credType + ": " + e.message
+		if link != "" {
+			prefix := " "
+			if !strings.HasSuffix(e.message, ".") {
+				prefix = ". "
+			}
+			link = prefix + link
+		}
+		return e.credType + ": " + e.message + link
 	}
 	msg := &bytes.Buffer{}
 	fmt.Fprintf(msg, "%s authentication failed. %s\n", e.credType, e.message)
@@ -88,29 +110,10 @@ func (e *AuthenticationFailedError) Error() string {
 	default:
 		fmt.Fprint(msg, "Response contained no body")
 	}
-	fmt.Fprintln(msg, "\n--------------------------------------------------------------------------------")
-	var anchor string
-	switch e.credType {
-	case credNameAzureCLI:
-		anchor = "azure-cli"
-	case credNameAzureDeveloperCLI:
-		anchor = "azd"
-	case credNameAzurePipelines:
-		anchor = "apc"
-	case credNameCert:
-		anchor = "client-cert"
-	case credNameAzurePowerShell:
-		anchor = "azure-pwsh"
-	case credNameSecret:
-		anchor = "client-secret"
-	case credNameManagedIdentity:
-		anchor = "managed-id"
-	case credNameWorkloadIdentity:
-		anchor = "workload"
+	if link != "" {
+		link = "\n" + link
 	}
-	if anchor != "" {
-		fmt.Fprintf(msg, "To troubleshoot, visit https://aka.ms/azsdk/go/identity/troubleshoot#%s", anchor)
-	}
+	fmt.Fprint(msg, "\n--------------------------------------------------------------------------------"+link)
 	return msg.String()
 }
 

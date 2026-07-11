@@ -39,8 +39,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"go.yaml.in/yaml/v4"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -88,7 +88,6 @@ type ruleLimits struct {
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	alertManagerConfig   map[string]*config.AlertManagerConfig
-	enableWALReplay      bool
 }
 
 func (r ruleLimits) RulerTenantShardSize(_ string) int {
@@ -105,10 +104,6 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 
 func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManagerConfig {
 	return r.alertManagerConfig[tenantID]
-}
-
-func (r ruleLimits) RulerEnableWALReplay(_ string) bool {
-	return r.enableWALReplay
 }
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
@@ -144,7 +139,7 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(q)
 
-	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15, enableWALReplay: true}, reg
+	return engine, queryable, pusher, l, ruleLimits{maxRuleGroups: 20, maxRulesPerRuleGroup: 15}, reg
 }
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {

@@ -4,7 +4,7 @@ var (
 	tsdbShipperSchemaConfigTemplate = `
 schema_config:
   configs:
-    - from: {{.curPeriodStart}}
+    - from: "{{.curPeriodStart}}"
       store: tsdb
       object_store: filesystem
       schema: {{.schemaVer}}
@@ -15,7 +15,7 @@ schema_config:
 	additionalTSDBShipperSchemaConfigTemplate = `
 schema_config:
   configs:
-    - from: {{.additionalPeriodStart}}
+    - from: "{{.additionalPeriodStart}}"
       store: tsdb
       object_store: store-1
       schema: {{.schemaVer}}

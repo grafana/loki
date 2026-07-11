@@ -29,10 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-type bloomStatsProvider interface {
-	totalReadRows() uint64
-}
-
 // indexSectionsReader combines pointer scanning and bloom filtering into a single reader.
 // It reads section pointers matching stream matchers and time range, then applies
 // bloom filter predicates to further filter the results.
@@ -47,6 +43,13 @@ type indexSectionsReader struct {
 
 	// Bloom filter predicates (will be filtered to remove stream labels after streams are resolved)
 	predicates []*labels.Matcher
+
+	// predicateNames holds the label names of every predicate, regardless of
+	// match type. It is used to decide which stream-label columns to read so
+	// that label filters of any match type (=, !=, =~, !~) are recognized as
+	// stream labels during disambiguation. Bloom filtering still only uses the
+	// equality-only predicates above.
+	predicateNames map[string]struct{}
 
 	batchSize int
 
@@ -64,7 +67,8 @@ type indexSectionsReader struct {
 	pointersReaderIdx int
 
 	// Stats
-	bloomRowsRead uint64
+	bloomRowsRead            uint64
+	pointerSectionProductive []bool
 
 	// readSpan for recording observations, it is created once during init.
 	readSpan *xcap.Span
@@ -72,7 +76,7 @@ type indexSectionsReader struct {
 
 var (
 	_ ArrowRecordBatchReader = (*indexSectionsReader)(nil)
-	_ bloomStatsProvider     = (*indexSectionsReader)(nil)
+	_ statsProvider          = (*indexSectionsReader)(nil)
 )
 
 func newIndexSectionsReader(
@@ -83,9 +87,12 @@ func newIndexSectionsReader(
 	predicates []*labels.Matcher,
 	batchSize int,
 ) *indexSectionsReader {
-	// Only keep equal predicates for bloom filtering
+	// Only keep equal predicates for bloom filtering, but track every predicate
+	// name so non-equality label filters are still recognized as stream labels.
 	var equalPredicates []*labels.Matcher
+	predicateNames := make(map[string]struct{}, len(predicates))
 	for _, p := range predicates {
+		predicateNames[p.Name] = struct{}{}
 		if p.Type == labels.MatchEqual {
 			equalPredicates = append(equalPredicates, p)
 		}
@@ -100,6 +107,7 @@ func newIndexSectionsReader(
 		obj:                obj,
 		matchers:           matchers,
 		predicates:         equalPredicates,
+		predicateNames:     predicateNames,
 		batchSize:          batchSize,
 		start:              start,
 		end:                end,
@@ -119,6 +127,7 @@ func (r *indexSectionsReader) Open(ctx context.Context) error {
 		return err
 	}
 
+	r.pointerSectionProductive = make([]bool, len(r.pointersReaders))
 	r.initialized = true
 	return nil
 }
@@ -128,6 +137,9 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 		return nil
 	}
 
+	ctx, sp := xcap.StartSpan(ctx, tracer, "metastore.indexSectionsReader.Open")
+	defer sp.End()
+
 	targetTenant, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return fmt.Errorf("extracting org ID: %w", err)
@@ -135,10 +147,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 
 	sStart, sEnd := r.scalarTimestamps()
 
-	predicateKeys := make(map[string]struct{}, len(r.predicates))
-	for _, predicate := range r.predicates {
-		predicateKeys[predicate.Name] = struct{}{}
-	}
+	predicateKeys := r.predicateNames
 
 	var (
 		unopenedStreams  []*dataobj.Section
@@ -197,6 +206,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 				}
 
 				r.pointersReaders[i] = pointersReader
+				sp.Record(StatMetastorePointerSectionsOpened.Observe(1))
 				return nil
 			})
 
@@ -459,7 +469,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
-		region.Record(xcap.StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
+		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
 	for _, sr := range r.streamsReaders {
@@ -512,7 +522,7 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		}
 	}
 
-	region.Record(xcap.StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
+	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
@@ -572,7 +582,7 @@ func (r *indexSectionsReader) addLabelNamesForStream(streamID int64, names []str
 // section.
 func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
 	defer func(start time.Time) {
-		r.readSpan.Record(xcap.StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
+		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
 	}(time.Now())
 
 	for r.pointersReaderIdx < len(r.pointersReaders) {
@@ -599,7 +609,11 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 				return nil, err
 			}
 			if matchedRows > 0 {
-				r.readSpan.Record(xcap.StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
+				if !r.pointerSectionProductive[r.pointersReaderIdx] {
+					r.pointerSectionProductive[r.pointersReaderIdx] = true
+					r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
+				}
+				r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
 				r.bloomRowsRead += uint64(matchedRows)
 				return filteredRec, nil
 			}
@@ -893,4 +907,12 @@ func (r *indexSectionsReader) buildKeepBitmask(rec arrow.RecordBatch, matchedSec
 
 func (r *indexSectionsReader) totalReadRows() uint64 {
 	return r.bloomRowsRead
+}
+
+// stats reports per-object read stats.
+func (r *indexSectionsReader) stats() readerStats {
+	return readerStats{
+		Initialized: r.initialized,
+		ReadRows:    r.totalReadRows(),
+	}
 }

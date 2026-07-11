@@ -22,7 +22,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/queue/fair"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -53,13 +54,13 @@ type Scheduler struct {
 	// Current set of connections, used for collecting metrics.
 	connections sync.Map // map[*workerConn]struct{}
 
-	resourcesMut sync.RWMutex
+	resourcesMut obslock.RWMutex
 	streams      map[ulid.ULID]*stream // All known streams (regardless of state)
 	tasks        map[ulid.ULID]*task   // All known tasks (regardless of state)
 
-	assignMut    sync.RWMutex
-	taskQueue    fair.Queue[*task]
-	readyWorkers map[*workerConn]struct{}
+	assignMut        obslock.RWMutex
+	taskQueue        fair.Queue[*task]
+	connectedWorkers map[*workerConn]struct{}
 
 	assignSema chan struct{}       // assignSema signals that task assignment is ready.
 	tasksCh    chan taskAssignment // channel for sending task assignments to worker routines.
@@ -95,7 +96,7 @@ func New(config Config) (*Scheduler, error) {
 		streams: make(map[ulid.ULID]*stream),
 		tasks:   make(map[ulid.ULID]*task),
 
-		readyWorkers: make(map[*workerConn]struct{}),
+		connectedWorkers: make(map[*workerConn]struct{}),
 
 		assignSema: make(chan struct{}, 1),
 		tasksCh:    make(chan taskAssignment),
@@ -104,6 +105,8 @@ func New(config Config) (*Scheduler, error) {
 	}
 
 	s.metrics = newMetrics()
+	s.resourcesMut.Init("resourcesMut", s.metrics.lock)
+	s.assignMut.Init("assignMut", s.metrics.lock)
 	s.collector = newCollector(s)
 
 	return s, nil
@@ -146,7 +149,16 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	logger := log.With(s.logger, "remote_addr", conn.RemoteAddr())
 	level.Info(logger).Log("msg", "handling connection")
 
-	wc := &workerConn{done: make(chan struct{})}
+	// connCtx is scoped to this connection so goroutines started for it (e.g.
+	// workerLoop) stop when it closes, independent of any single message handler.
+	connCtx, cancelConn := context.WithCancel(ctx)
+	defer cancelConn()
+
+	wc := &workerConn{
+		ctx:  connCtx,
+		done: make(chan struct{}),
+		wake: make(chan struct{}, 1),
+	}
 
 	s.connections.Store(wc, struct{}{})
 	defer s.connections.Delete(wc)
@@ -162,21 +174,7 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 		Buffer: 128,
 
 		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
-			switch msg := msg.(type) {
-			case wire.StreamDataMessage:
-				return s.handleStreamData(ctx, wc, msg)
-			case wire.WorkerHelloMessage:
-				return s.handleWorkerHello(ctx, wc, msg)
-			case wire.WorkerReadyMessage:
-				return s.markWorkerReady(ctx, wc)
-			case wire.TaskStatusMessage:
-				return s.handleTaskStatus(ctx, wc, msg)
-			case wire.StreamStatusMessage:
-				return s.handleStreamStatus(ctx, wc, msg)
-
-			default:
-				return fmt.Errorf("unsupported message kind %q", msg.Kind())
-			}
+			return s.handleMessage(ctx, wc, msg)
 		},
 	}
 
@@ -185,10 +183,10 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	// Handle communication with the peer until the context is canceled or some
 	// error occurs.
 	err := peer.Serve(ctx)
-	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
-		level.Warn(logger).Log("msg", "serve error", "err", err)
-	} else {
+	if ctx.Err() != nil || errors.Is(err, wire.ErrConnClosed) {
 		level.Debug(logger).Log("msg", "connection closed")
+	} else if err != nil {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
 	}
 
 	// Signal any worker routines associated with this connection to exit.
@@ -199,13 +197,35 @@ func (s *Scheduler) handleConn(ctx context.Context, conn wire.Conn) {
 	s.removeWorker(ctx, wc, err)
 }
 
-func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) error {
+func (s *Scheduler) handleMessage(ctx context.Context, worker *workerConn, msg wire.Message) (err error) {
+	switch msg := msg.(type) {
+	case wire.StreamDataMessage:
+		return s.handleStreamData(ctx, worker, msg)
+	case wire.WorkerHelloMessage:
+		return s.handleWorkerHello(ctx, worker, msg)
+	case wire.WorkerReadyMessage:
+		return s.markWorkerReady(worker)
+	case wire.TaskStatusMessage:
+		return s.handleTaskStatus(ctx, worker, msg)
+	case wire.StreamStatusMessage:
+		return s.handleStreamStatus(ctx, worker, msg)
+	default:
+		phases := s.metrics.startHandler(msg.Kind())
+		defer func() { phases.Done(handlerOutcome(err)) }()
+		return fmt.Errorf("unsupported message kind %q", msg.Kind())
+	}
+}
+
+func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, msg wire.StreamDataMessage) (err error) {
+	phases := s.metrics.startHandler(msg.Kind())
+	defer func() { phases.Done(handlerOutcome(err)) }()
+
 	if err := worker.MarkDataPlane(); err != nil {
 		return err
 	}
 
-	s.resourcesMut.RLock()
-	defer s.resourcesMut.RUnlock()
+	resourcesGuard := s.resourcesMut.RLock("handle_stream_data")
+	defer resourcesGuard.RUnlock()
 
 	registered, found := s.streams[msg.StreamID]
 	if !found {
@@ -214,10 +234,15 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 		return fmt.Errorf("scheduler is not listening for data for stream %s", msg.StreamID)
 	}
 
-	return registered.localReceiver.Write(ctx, msg.Data)
+	return phases.Region("downstream_write", func() error {
+		return registered.localReceiver.Write(ctx, msg.Data)
+	})
 }
 
-func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, msg wire.WorkerHelloMessage) error {
+func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, msg wire.WorkerHelloMessage) (err error) {
+	phases := s.metrics.startHandler(msg.Kind())
+	defer func() { phases.Done(handlerOutcome(err)) }()
+
 	if err := worker.HandleHello(msg); err != nil {
 		return err
 	}
@@ -227,24 +252,29 @@ func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, m
 	return nil
 }
 
-func (s *Scheduler) markWorkerReady(ctx context.Context, worker *workerConn) error {
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+func (s *Scheduler) markWorkerReady(worker *workerConn) (err error) {
+	phases := s.metrics.startHandler(wire.WorkerReadyMessage{}.Kind())
+	defer func() { phases.Done(handlerOutcome(err)) }()
+
+	hop := s.metrics.startAssignmentHop("worker_ready_handler")
+	defer func() { hop.Done(handlerOutcome(err)) }()
+
+	assignGuard := s.assignMut.Lock("mark_worker_ready")
+	defer assignGuard.Unlock()
 
 	if err := worker.MarkReady(); err != nil {
 		return err
 	}
-	s.readyWorkers[worker] = struct{}{}
 
-	// Spawn a goroutine that assigns tasks to this worker by reading
-	// from the tasksCh. The goroutine exits on 429/error/disconnect.
-	//
-	// It's possible for this to launch multiple goroutines if the worker
-	// (incorrectly) sends more than one ready message. If this happens
-	// the worker basically gets a higher weight towards task assignment
-	// as more than a single routine is picking from the shared channel.
-	// But backpressure would still work as expected if worker can't keep up.
-	go s.workerLoop(ctx, worker)
+	if _, exists := s.connectedWorkers[worker]; exists {
+		nudgeSemaphore(worker.wake)
+	} else {
+		s.connectedWorkers[worker] = struct{}{}
+		// workerLoop outlives this WorkerReady handler, so it runs under the
+		// connection context, not the handler's (which ends when the handler
+		// returns).
+		go s.workerLoop(worker.ctx, worker)
+	}
 
 	// Wake [Scheduler.runAssignLoop] so it feeds tasks into tasksCh.
 	if s.taskQueue.Len() > 0 {
@@ -264,7 +294,10 @@ func nudgeSemaphore(sema chan struct{}) {
 	}
 }
 
-func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) error {
+func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) (err error) {
+	phases := s.metrics.startHandler(msg.Kind())
+	defer func() { phases.Done(handlerOutcome(err)) }()
+
 	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
@@ -272,8 +305,8 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("handle_task_status")
+	defer resourcesGuard.Unlock()
 
 	task, found := s.tasks[msg.ID]
 	if !found {
@@ -331,7 +364,10 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	return nil
 }
 
-func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) error {
+func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) (err error) {
+	phases := s.metrics.startHandler(msg.Kind())
+	defer func() { phases.Done(handlerOutcome(err)) }()
+
 	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
 	}
@@ -339,8 +375,8 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, 
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("handle_stream_status")
+	defer resourcesGuard.Unlock()
 
 	stream, found := s.streams[msg.StreamID]
 	if !found {
@@ -392,11 +428,11 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("remove_worker")
+	defer resourcesGuard.Unlock()
 
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("remove_worker")
+	defer assignGuard.Unlock()
 
 	for _, task := range worker.Assigned() {
 		wasInterrupted := task.Interrupted()
@@ -450,7 +486,7 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	}
 
 	// Remove the worker from the ready list, if it exists.
-	delete(s.readyWorkers, worker)
+	delete(s.connectedWorkers, worker)
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -468,25 +504,30 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 	level.Debug(s.logger).Log("msg", "performing task assignment")
 
 	for ctx.Err() == nil {
+		prepare := s.metrics.startAssignmentHop("prepare_assignment")
 		assignment, ok := s.prepareAssignment()
+		prepareOutcome := outcomeSuccess
+		if !ok {
+			prepareOutcome = outcomeEmpty
+		}
+		prepare.Done(prepareOutcome)
 		if !ok {
 			return
 		}
 
 		// Send the task to a waiting worker goroutine. This blocks until a
 		// worker is available, providing natural backpressure.
+		handoff := s.metrics.startAssignmentHop("tasks_ch_handoff_wait")
 		select {
 		case <-ctx.Done():
+			handoff.Done(outcomeCanceled)
 			return
 		case s.tasksCh <- assignment:
+			handoff.Done(outcomeSuccess)
 		}
 	}
 }
 
-// workerLoop assigns tasks to a single worker by reading from the
-// shared tasksCh. It continues assigning until the worker NACKs, an error
-// occurs, or the connection is closed.
-//
 // TODO(ashwanth): When there is only a single worker (say single-binary)
 // all assignments go through a single workerLoop. Because SendMessage blocks
 // until the worker ACKs, the per-task round-trip overhead adds up
@@ -495,12 +536,16 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 	for {
 		var assignment taskAssignment
 
+		waitAssignment := s.metrics.startAssignmentHop("wait_assignment")
 		select {
 		case <-ctx.Done():
+			waitAssignment.Done(outcomeCanceled)
 			return
 		case <-worker.done:
+			waitAssignment.Done(outcomeConnClosed)
 			return
 		case assignment = <-s.tasksCh:
+			waitAssignment.Done(outcomeAssigned)
 		}
 
 		level.Debug(s.logger).Log("msg", "assigning task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr())
@@ -509,6 +554,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		// fast-responding worker can't race with the post-assignment
 		// bookkeeping in finalizeAssignment. On success it also records the
 		// assignment timestamp on the task before releasing mut.
+		roundtrip := s.metrics.startAssignmentHop("taskassign_roundtrip")
 		err := assignment.t.TryAssign(func() error {
 			// TODO(rfratto): allow assignment timeout to be configurable.
 			sendCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -516,25 +562,26 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 			return worker.SendMessage(sendCtx, assignment.msg)
 		})
+		attemptOutcome := assignmentAttemptOutcome(err)
+		roundtrip.Done(attemptOutcome)
+		s.metrics.incAssignmentAttempt(attemptOutcome)
 
 		if err != nil && errors.Is(err, errUnassignable) {
 			// Task is already in a terminal state or has been interrupted,
 			// so we can skip the send and move on to the next task.
 			continue
 		} else if err != nil {
-			// Generic error.
+			// Generic error: restore the task to its original queue position.
+			requeue := s.metrics.startAssignmentHop("error_requeue")
 			s.requeueTask(assignment.t, assignment.pos)
+			requeue.Done(attemptOutcome)
 
-			// if its 429, remove from ready workers and fire subscribe request.
 			if isTooManyRequestsError(err) {
-				s.assignMut.Lock()
-				delete(s.readyWorkers, worker)
-				s.assignMut.Unlock()
-
 				s.metrics.backoffsTotal.Inc()
-				s.workerSubscribe(ctx, worker)
-
-				return
+				if resume := s.parkWorker(ctx, worker); !resume {
+					return
+				}
+				continue
 			}
 
 			level.Warn(s.logger).Log("msg", "failed to assign task", "id", assignment.msg.Task.ULID, "conn", worker.RemoteAddr(), "err", err)
@@ -549,23 +596,42 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 	}
 }
 
+// parkWorker blocks until the worker advertises freed capacity (a ready message
+// nudges worker.wake), the worker disconnects, or the scheduler shuts down. It
+// returns true if the assignment loop should resume, or false if it should
+// exit.
+func (s *Scheduler) parkWorker(ctx context.Context, worker *workerConn) bool {
+	hop := s.metrics.startAssignmentHop("park_worker_wait")
+	select {
+	case <-ctx.Done():
+		hop.Done(outcomeCanceled)
+		return false
+	case <-worker.done:
+		hop.Done(outcomeConnClosed)
+		return false
+	case <-worker.wake:
+		hop.Done(outcomeReady)
+		return true
+	}
+}
+
 // prepareAssignment pops the next task from the queue and prepares the
 // TaskAssignMessage to send to the worker.
 //
 // Returns false if the queue is empty or if there are no ready workers.
 func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
-	s.resourcesMut.RLock()
-	defer s.resourcesMut.RUnlock()
+	resourcesGuard := s.resourcesMut.RLock("prepare_assignment")
+	defer resourcesGuard.RUnlock()
 
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("prepare_assignment")
+	defer assignGuard.Unlock()
 
 	// clean up any terminal tasks at the front of the queue.
 	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
 		s.taskQueue.Pop()
 	}
 
-	if len(s.readyWorkers) == 0 || s.taskQueue.Len() == 0 {
+	if len(s.connectedWorkers) == 0 || s.taskQueue.Len() == 0 {
 		return taskAssignment{}, false
 	}
 
@@ -618,8 +684,8 @@ func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 // requeueTask re-inserts a task at its original position after a failed
 // assignment, undoing the scope cost adjustment.
 func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("requeue_task")
+	defer assignGuard.Unlock()
 
 	if t.State().Terminal() {
 		return
@@ -629,9 +695,10 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	// Undo the scope cost that was applied when the task was popped.
 	_ = s.taskQueue.AdjustScope(t.scope, -1)
 
+	t.MarkRequeued()
 	s.metrics.requeueTotal.Inc()
 
-	if len(s.readyWorkers) > 0 {
+	if len(s.connectedWorkers) > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
@@ -649,12 +716,16 @@ type pendingMessage struct {
 
 // finalizeAssignment completes the assignment of the task to the worker.
 func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentStates map[ulid.ULID]workflow.StreamState) {
+	hop := s.metrics.startAssignmentHop("finalize_assignment")
 	var pendingMsgs []pendingMessage
 
 	// Collect bookkeeping and messages under lock.
 	func() {
-		s.resourcesMut.Lock()
-		defer s.resourcesMut.Unlock()
+		resourcesGuard := s.resourcesMut.Lock("finalize_assignment")
+		defer resourcesGuard.Unlock()
+
+		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
+		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
 
 		if t.State().Terminal() {
 			// The task reached a terminal state between TryAssign and now. The
@@ -665,18 +736,9 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		}
 
 		worker.Assign(t)
-		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
-		queueDuration := assignTime.Sub(t.QueueTime())
-		s.metrics.taskQueueSeconds.Observe(queueDuration.Seconds())
-		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueDuration.Nanoseconds()))
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
-			t.wfRegion.Record(xcap.StatTaskMaxQueueDuration.Observe(queueDuration.Seconds()))
-
-			// Record time from task creation until this task assignment.
-			assignmentTailDuration := assignTime.Sub(t.createTime).Seconds()
-			t.wfRegion.Record(xcap.StatTaskAssignmentTailDuration.Observe(assignmentTailDuration))
 		}
 
 		// Reconcile stream states: send updates for any that changed while sending.
@@ -719,6 +781,7 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 	for _, p := range pendingMsgs {
 		_ = p.peer.SendMessageAsync(ctx, p.msg)
 	}
+	hop.Done(outcomeSuccess)
 }
 
 // prepareBindMessage prepares a StreamBindMessage for the given stream if both
@@ -765,6 +828,21 @@ func isTooManyRequestsError(err error) bool {
 	return errors.As(err, &wireError) && wireError.Code == http.StatusTooManyRequests
 }
 
+func assignmentAttemptOutcome(err error) metrictimer.Outcome {
+	switch {
+	case err == nil:
+		return outcomeSuccess
+	case errors.Is(err, errUnassignable):
+		return outcomeUnassignable
+	case isTooManyRequestsError(err):
+		return outcomeNack429
+	case errors.Is(err, context.DeadlineExceeded):
+		return outcomeTimeout
+	default:
+		return outcomeSendError
+	}
+}
+
 // workerSubscribe sends a WorkerSubscribe message to the provided worker. The
 // worker will eventually send a WorkerReady message in response.
 func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
@@ -795,8 +873,8 @@ func (s *Scheduler) RegisterManifest(ctx context.Context, manifest *workflow.Man
 		return err
 	}
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("register_manifest")
+	defer resourcesGuard.Unlock()
 
 	var errs []error
 
@@ -913,8 +991,8 @@ NextTask:
 func (s *Scheduler) registerManifestScope(manifest *workflow.Manifest) (fair.Scope, error) {
 	scope := manifestScope(manifest)
 
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("register_manifest_scope")
+	defer assignGuard.Unlock()
 
 	if err := s.taskQueue.RegisterScope(scope); err != nil {
 		return nil, err
@@ -948,8 +1026,8 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		level.Warn(s.logger).Log("msg", "failed unregistering queue scope", "id", manifest.ID, "err", err)
 	}
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("unregister_manifest")
+	defer resourcesGuard.Unlock()
 
 	var errs []error
 
@@ -1031,8 +1109,8 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 func (s *Scheduler) unregisterManifestScope(manifest *workflow.Manifest) error {
 	scope := manifestScope(manifest)
 
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("unregister_manifest_scope")
+	defer assignGuard.Unlock()
 
 	if err := s.taskQueue.UnregisterScope(scope); err != nil {
 		return err
@@ -1056,8 +1134,8 @@ func (s *Scheduler) Listen(ctx context.Context, writer workflow.RecordWriter, st
 	var pending *pendingMessage
 
 	err := func() error {
-		s.resourcesMut.Lock()
-		defer s.resourcesMut.Unlock()
+		resourcesGuard := s.resourcesMut.Lock("listen")
+		defer resourcesGuard.Unlock()
 
 		registered, found := s.streams[stream.ULID]
 		if !found {
@@ -1135,8 +1213,8 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 // findTasks gets a list of [task] from workflow tasks. Returns an error if any
 // of the tasks weren't recognized.
 func (s *Scheduler) findTasks(tasks []*workflow.Task) ([]*task, error) {
-	s.resourcesMut.RLock()
-	defer s.resourcesMut.RUnlock()
+	resourcesGuard := s.resourcesMut.RLock("find_tasks")
+	defer resourcesGuard.RUnlock()
 
 	res := make([]*task, 0, len(tasks))
 
@@ -1157,8 +1235,8 @@ func (s *Scheduler) findTasks(tasks []*workflow.Task) ([]*task, error) {
 }
 
 func (s *Scheduler) enqueueTasks(tasks []*task) {
-	s.assignMut.Lock()
-	defer s.assignMut.Unlock()
+	assignGuard := s.assignMut.Lock("enqueue_tasks")
+	defer assignGuard.Unlock()
 
 	for _, task := range tasks {
 		// Ignore tasks that aren't in the initial state (created). This
@@ -1169,13 +1247,12 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 		}
 
 		task.MarkQueued()
-		task.region.Record(schedulerstat.TaskStagingDuration.Observe(task.QueueTime().Sub(task.createTime).Nanoseconds()))
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}
 	}
 
-	if len(s.readyWorkers) > 0 && s.taskQueue.Len() > 0 {
+	if len(s.connectedWorkers) > 0 && s.taskQueue.Len() > 0 {
 		nudgeSemaphore(s.assignSema)
 	}
 }
@@ -1184,8 +1261,8 @@ func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("mark_pending")
+	defer resourcesGuard.Unlock()
 
 	for _, task := range tasks {
 		if changed, _ := task.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
@@ -1214,8 +1291,8 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	var n notifier
 	defer n.Notify(ctx)
 
-	s.resourcesMut.Lock()
-	defer s.resourcesMut.Unlock()
+	resourcesGuard := s.resourcesMut.Lock("cancel")
+	defer resourcesGuard.Unlock()
 
 	var errs []error
 

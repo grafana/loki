@@ -7,6 +7,19 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC2250,SC1091
 source "${script_dir}/common.sh"
 
+install_crane() {
+  local version="v0.21.6"
+  local tmp
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${version}/go-containerregistry_Linux_x86_64.tar.gz" \
+    | tar -xzf - -C "${tmp}" crane
+  export PATH="${tmp}:${PATH}"
+}
+
+if ! command -v crane &>/dev/null; then
+  install_crane
+fi
+
 # Uses docker hub image tags to figure out what is the latest image tag
 find_latest_image_tag() {
   local docker_hub_repo=$1
@@ -107,8 +120,6 @@ else
     --regexp-extended \
     "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}/g" production/helm/loki/CHANGELOG.md
 fi
-
-make TTY='' helm-docs
 
 # shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"

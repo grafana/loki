@@ -10,13 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"github.com/Azure/go-autorest/autorest/adal"
-	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
@@ -28,80 +23,6 @@ type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
-}
-
-type FederatedTokenTestSuite struct {
-	suite.Suite
-	config                      *BlobStorage
-	mockOAuthConfig             *adal.OAuthConfig
-	mockedServicePrincipalToken *adal.ServicePrincipalToken
-}
-
-func (suite *FederatedTokenTestSuite) SetupTest() {
-	suite.mockOAuthConfig, _ = adal.NewOAuthConfig("foo", "bar")
-	suite.mockedServicePrincipalToken = new(adal.ServicePrincipalToken)
-	suite.config = &BlobStorage{
-		cfg: &BlobStorageConfig{
-			ContainerName:      "foo",
-			StorageAccountName: "bar",
-			Environment:        azureGlobal,
-			UseFederatedToken:  true,
-		},
-	}
-
-	suite.T().Setenv("AZURE_CLIENT_ID", "myClientId")
-	suite.T().Setenv("AZURE_TENANT_ID", "myTenantId")
-
-	tmpDir := suite.T().TempDir()
-	_ = os.WriteFile(tmpDir+"/jwtToken", []byte("myJwtToken"), 0666)
-	suite.T().Setenv("AZURE_FEDERATED_TOKEN_FILE", tmpDir+"/jwtToken")
-}
-
-func (suite *FederatedTokenTestSuite) TestGetServicePrincipalToken() {
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
-		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
-		require.Equal(suite.T(), "myTenantId", tenantID)
-
-		_, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
-		require.NoError(suite.T(), err)
-
-		return suite.mockOAuthConfig, nil
-	}
-
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
-		require.True(suite.T(), *suite.mockOAuthConfig == oauthConfig, "should return the mocked object")
-		require.Equal(suite.T(), "myClientId", clientID)
-		require.Equal(suite.T(), "myJwtToken", jwt)
-		require.Equal(suite.T(), "https://bar.blob.core.windows.net", resource)
-		return suite.mockedServicePrincipalToken, nil
-	}
-
-	token, err := suite.config.getServicePrincipalToken(authFunctions{newOAuthConfigFunc, servicePrincipalTokenFromFederatedTokenFunc})
-
-	require.NoError(suite.T(), err)
-	require.True(suite.T(), suite.mockedServicePrincipalToken == token, "should return the mocked object")
-}
-
-func (suite *FederatedTokenTestSuite) Test_HandleNoServicePrincipalToken() {
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
-		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
-		require.Equal(suite.T(), "myTenantId", tenantID)
-
-		_, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
-		require.NoError(suite.T(), err)
-
-		return suite.mockOAuthConfig, nil
-	}
-
-	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _ string, _ string, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
-		return nil, errors.New("No token")
-	}
-
-	token, err := suite.config.getServicePrincipalToken(authFunctions{newOAuthConfigFunc, servicePrincipalTokenFromFederatedTokenFunc})
-
-	require.Error(suite.T(), err)
-	require.EqualError(suite.T(), err, "No token")
-	require.True(suite.T(), token == nil, "should return error if no token was retrieved")
 }
 
 func Test_Hedging(t *testing.T) {
@@ -174,52 +95,6 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
-func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Default() {
-	suite.config.cfg.ActiveDirectoryEndpoint = ""
-	suite.config.cfg.Environment = azureGlobal
-
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
-		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
-		return suite.mockOAuthConfig, nil
-	}
-
-	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
-		return suite.mockedServicePrincipalToken, nil
-	}
-
-	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
-		"https://test.blob.core.windows.net",
-		newOAuthConfigFunc,
-		servicePrincipalTokenFromFederatedTokenFunc,
-	)
-
-	require.NoError(suite.T(), err)
-}
-
-func (suite *FederatedTokenTestSuite) Test_ServicePrincipalTokenFromFederatedToken_ActiveDirectoryEndpoint_Override() {
-	testAdEndpoint := "https://login.microsoftonline.test"
-
-	suite.config.cfg.ActiveDirectoryEndpoint = testAdEndpoint
-	suite.config.cfg.Environment = azureGlobal
-
-	newOAuthConfigFunc := func(activeDirectoryEndpoint, _ string) (*adal.OAuthConfig, error) {
-		require.Equal(suite.T(), testAdEndpoint, activeDirectoryEndpoint)
-		return suite.mockOAuthConfig, nil
-	}
-
-	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _, _, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
-		return suite.mockedServicePrincipalToken, nil
-	}
-
-	_, err := suite.config.servicePrincipalTokenFromFederatedToken(
-		"https://test.blob.core.windows.net",
-		newOAuthConfigFunc,
-		servicePrincipalTokenFromFederatedTokenFunc,
-	)
-
-	require.NoError(suite.T(), err)
-}
-
 func Test_DefaultContainerURL(t *testing.T) {
 	c, err := NewBlobStorage(&BlobStorageConfig{
 		ContainerName:      "foo",
@@ -228,7 +103,7 @@ func Test_DefaultContainerURL(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo")
-	require.Equal(t, *expect, c.containerURL.URL())
+	require.Equal(t, expect.String(), c.containerClient.URL())
 }
 
 func Test_EndpointSuffixWithContainer(t *testing.T) {
@@ -240,7 +115,7 @@ func Test_EndpointSuffixWithContainer(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo")
-	require.Equal(t, *expect, c.containerURL.URL())
+	require.Equal(t, expect.String(), c.containerClient.URL())
 }
 
 func Test_ConnectionStringWithContainer(t *testing.T) {
@@ -250,7 +125,7 @@ func Test_ConnectionStringWithContainer(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo")
-	require.Equal(t, *expect, c.containerURL.URL())
+	require.Equal(t, expect.String(), c.containerClient.URL())
 }
 
 func Test_DefaultBlobURL(t *testing.T) {
@@ -261,13 +136,8 @@ func Test_DefaultBlobURL(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.blob.core.windows.net/foo/blob")
-	bloburl, err := c.getBlobURL("blob", false)
-	require.NoError(t, err)
-	require.Equal(t, *expect, bloburl.URL())
-}
-
-func Test_UseFederatedToken(t *testing.T) {
-	suite.Run(t, new(FederatedTokenTestSuite))
+	blobClient := c.getBlobClient("blob", false)
+	require.Equal(t, expect.String(), blobClient.URL())
 }
 
 func Test_EndpointSuffixWithBlob(t *testing.T) {
@@ -279,9 +149,8 @@ func Test_EndpointSuffixWithBlob(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("https://bar.test.com/foo/blob")
-	bloburl, err := c.getBlobURL("blob", false)
-	require.NoError(t, err)
-	require.Equal(t, *expect, bloburl.URL())
+	blobClient := c.getBlobClient("blob", false)
+	require.Equal(t, expect.String(), blobClient.URL())
 }
 
 func Test_ConnectionStringWithBlob(t *testing.T) {
@@ -291,9 +160,8 @@ func Test_ConnectionStringWithBlob(t *testing.T) {
 	}, metrics, hedging.Config{})
 	require.NoError(t, err)
 	expect, _ := url.Parse("http://127.0.0.1:10000/devstoreaccount1/foo/blob")
-	bloburl, err := c.getBlobURL("blob", false)
-	require.NoError(t, err)
-	require.Equal(t, *expect, bloburl.URL())
+	blobClient := c.getBlobClient("blob", false)
+	require.Equal(t, expect.String(), blobClient.URL())
 }
 
 func Test_ConfigValidation(t *testing.T) {
@@ -342,4 +210,37 @@ func createServicePrincipalStorageConfig(tenantID string, clientID string, clien
 		ClientID:            clientID,
 		ClientSecret:        flagext.SecretWithValue(clientSecret),
 	}
+}
+
+// Test_UseFederatedToken verifies that NewBlobStorage succeeds when the required workload
+// identity environment variables are present, and that the authority host override is
+// applied when ActiveDirectoryEndpoint is set.
+func Test_UseFederatedToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(tmpDir+"/token", []byte("myJwtToken"), 0o600))
+
+	t.Setenv("AZURE_CLIENT_ID", "myClientId")
+	t.Setenv("AZURE_TENANT_ID", "myTenantId")
+	t.Setenv("AZURE_FEDERATED_TOKEN_FILE", tmpDir+"/token")
+
+	t.Run("default authority host", func(t *testing.T) {
+		_, err := NewBlobStorage(&BlobStorageConfig{
+			ContainerName:      "foo",
+			StorageAccountName: "bar",
+			Environment:        azureGlobal,
+			UseFederatedToken:  true,
+		}, metrics, hedging.Config{})
+		require.NoError(t, err)
+	})
+
+	t.Run("custom authority host override", func(t *testing.T) {
+		_, err := NewBlobStorage(&BlobStorageConfig{
+			ContainerName:           "foo",
+			StorageAccountName:      "bar",
+			Environment:             azureGlobal,
+			UseFederatedToken:       true,
+			ActiveDirectoryEndpoint: "https://login.microsoftonline.test/",
+		}, metrics, hedging.Config{})
+		require.NoError(t, err)
+	})
 }

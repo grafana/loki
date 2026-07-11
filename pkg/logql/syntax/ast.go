@@ -60,8 +60,8 @@ func (LabelFmtExpr) isExpr()               {}
 func (JSONExpressionParserExpr) isExpr()   {}
 func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
-func (OffsetExpr) isExpr()                 {}
-func (UnwrapExpr) isExpr()                 {}
+func (OffsetExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
+func (UnwrapExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
 func (MultiVariantExpr) isExpr()           {}
 
 // LogSelectorExpr is a expression filtering and returning logs.
@@ -77,7 +77,7 @@ type LogSelectorExpr interface {
 
 func (MatchersExpr) isLogSelectorExpr()   {}
 func (PipelineExpr) isLogSelectorExpr()   {}
-func (MultiStageExpr) isLogSelectorExpr() {}
+func (MultiStageExpr) isLogSelectorExpr() {} //nolint:unused // sealed-interface marker
 func (LiteralExpr) isLogSelectorExpr()    {}
 func (VectorExpr) isLogSelectorExpr()     {}
 
@@ -2407,6 +2407,62 @@ func ReducesLabels(e Expr) (conflict bool) {
 					conflict = true
 					break
 				}
+			}
+		}
+		return true
+	})
+	return
+}
+
+// IsAdditiveRangeOp reports whether a range aggregation op is additive across
+// shards: combining per-shard partial results by addition yields the true
+// global result. The additive set matches the operations in [rangeMergeMap]
+// (in the shardmapper) that map to [OpTypeSum] as their cross-shard combiner.
+//
+// Additive: count_over_time, rate, bytes_over_time, bytes_rate, sum_over_time.
+// Non-additive: max_over_time, min_over_time, avg_over_time, quantile_over_time,
+// stddev_over_time, stdvar_over_time, first_over_time, last_over_time,
+// absent_over_time, rate_counter. For non-additive ops, an outer `sum` must not
+// opaquely push down into per-shard `sum(<op>)` when downstream stages can
+// collapse the same output labelset across shards, because the cross-shard
+// combiner then adds where it should max/min/re-avg/etc.
+func IsAdditiveRangeOp(op string) bool {
+	switch op {
+	case OpRangeTypeCount, OpRangeTypeRate, OpRangeTypeBytes, OpRangeTypeBytesRate, OpRangeTypeSum:
+		return true
+	}
+	return false
+}
+
+// HasNonAdditiveAggr reports whether e contains any aggregation whose
+// operation is non-additive across shards (see [IsAdditiveRangeOp]), or a
+// nested [VectorAggregationExpr] that is non-additive under an outer sum.
+//
+// Used by the shard mapper's [OpTypeSum] case together with [ReducesLabels]
+// to detect queries whose opaque per-shard sum-pushdown would inflate the
+// result: label reduction can produce the same output labelset on multiple
+// shards, and outer sum is the wrong combiner for non-additive per-shard
+// partial values.
+//
+// Nested vector aggregations considered non-additive here are limited to
+// [OpTypeAvg]. sum/count are additive across shards. min/max are already
+// rejected by the outer sum's own Shardable check when nested as its direct
+// child (see [VectorAggregationExpr.Shardable] OpTypeSum branch). Other
+// non-additive vector ops (stddev/stdvar/topk/bottomk) are absent from
+// [shardableOps], so the outer expression becomes unshardable and this
+// helper is not reached for them.
+func HasNonAdditiveAggr(e Expr) (found bool) {
+	e.Walk(func(node Expr) bool {
+		switch n := node.(type) {
+		case *RangeAggregationExpr:
+			if !IsAdditiveRangeOp(n.Operation) {
+				found = true
+				return false
+			}
+		case *VectorAggregationExpr:
+			if n.Operation == OpTypeAvg {
+				found = true
+				return false
 			}
 		}
 		return true

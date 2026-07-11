@@ -15,7 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	yaml "gopkg.in/yaml.v2"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -146,9 +146,11 @@ type PeriodConfig struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type plain PeriodConfig
-	err := unmarshal((*plain)(cfg))
+func (cfg *PeriodConfig) UnmarshalYAML(value *yaml.Node) error {
+	type raw PeriodConfig
+	// We always want strict config parsing
+	// See https://github.com/yaml/go-yaml/issues/321 and https://github.com/yaml/go-yaml/pull/332
+	err := value.Load((*raw)(cfg), yaml.WithKnownFields(true))
 	if err != nil {
 		return err
 	}
@@ -192,9 +194,9 @@ func (d DayTime) MarshalYAML() (interface{}, error) {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (d *DayTime) UnmarshalYAML(value *yaml.Node) error {
 	var from string
-	if err := unmarshal(&from); err != nil {
+	if err := value.Decode(&from); err != nil {
 		return err
 	}
 	t, err := time.Parse("2006-01-02", from)
@@ -297,7 +299,7 @@ func (cfg *SchemaConfig) loadFromFile() error {
 	}
 
 	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
+	decoder.KnownFields(true)
 	return decoder.Decode(&cfg)
 }
 
@@ -422,9 +424,21 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	switch {
 	case sver <= 12:
 		return index.FormatV2, nil
-	default: // for v13 and above
+	case sver == 14:
+		return index.FormatV4, nil
+	default:
 		return index.FormatV3, nil
 	}
+}
+
+// SupportsIngestedAt reports whether this period persists the per-chunk
+// IngestedAt timestamp (TSDB index FormatV4, schema v14).
+func (cfg *PeriodConfig) SupportsIngestedAt() bool {
+	if cfg.IndexType != types.IndexTypeTSDB {
+		return false
+	}
+	format, err := cfg.TSDBFormat()
+	return err == nil && format >= index.FormatV4
 }
 
 // Validate the period config.
@@ -447,7 +461,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12, 13:
+	case 10, 11, 12, 13, 14:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -503,14 +517,14 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
 		PathPrefix string         `yaml:"path_prefix"`
 		Prefix     string         `yaml:"prefix"`
 		Period     model.Duration `yaml:"period"`
 		Tags       Tags           `yaml:"tags"`
 	}{}
-	if err := unmarshal(&g); err != nil {
+	if err := value.Decode(&g); err != nil {
 		return err
 	}
 
@@ -563,13 +577,13 @@ type PeriodicTableConfig struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`
 		Tags   Tags           `yaml:"tags"`
 	}{}
-	if err := unmarshal(&g); err != nil {
+	if err := value.Decode(&g); err != nil {
 		return err
 	}
 
@@ -702,6 +716,16 @@ func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
 		}
 	}
 	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
+// SupportsIngestedAtForTime reports whether the schema active at time t persists
+// the per-chunk IngestedAt timestamp (TSDB index FormatV4, schema v14).
+func (cfg SchemaConfig) SupportsIngestedAtForTime(t model.Time) bool {
+	p, err := cfg.SchemaForTime(t)
+	if err != nil {
+		return false
+	}
+	return p.SupportsIngestedAt()
 }
 
 // TableFor calculates the table shard for a given point in time.

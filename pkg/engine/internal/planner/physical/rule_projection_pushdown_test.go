@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func TestProjectionPushdown(t *testing.T) {
@@ -57,6 +59,117 @@ func TestProjectionPushdown(t *testing.T) {
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 				},
 				Projections: projected,
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("range aggregation empty by() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: false,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.True(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			projected := []ColumnExpression{&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}}
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Projections: projected, // Only Timestamp is required by the RangeAggregation.
+			})
+
+			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("range aggregation empty without() grouping -> scanset", func(t *testing.T) {
+		grouping := Grouping{
+			Columns: []ColumnExpression{},
+			Without: true,
+		}
+
+		plan := &Plan{}
+		{
+			scanset := plan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				Operation: types.RangeAggregationTypeCount,
+				Grouping:  grouping,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
+		}
+
+		// apply optimisations
+		optimizations := []*Optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := NewOptimizer(plan, optimizations)
+		firings := o.Optimize(plan.Roots()[0])
+		require.False(t, firings["projection pushdown"])
+
+		expectedPlan := &Plan{}
+		{
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				// Nothing is projected because the RangeAggregation requires all columns.
 			})
 
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
@@ -232,6 +345,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 		buildLogical                   func() logical.Value
 		expectedParseKeysRequested     []string
 		expectedDataObjScanProjections []string
+		// expectedDataObjScanProjectionRefs, when non-nil, additionally
+		// asserts the scan's projections as (name, type) pairs. Use this
+		// when the case is sensitive to a column's type (e.g. a parsed
+		// field name colliding with a builtin column of the same name).
+		// Order is not asserted; the runner sorts before comparing.
+		expectedDataObjScanProjectionRefs []types.ColumnRef
 	}{
 		{
 			name: "requested keys remain empty when no operations need parsed fields",
@@ -316,6 +435,133 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				builder = builder.Select(ambiguousFilter)
 
 				return builder.Value()
+			},
+		},
+		{
+			name: "RangeAggregation with GroupBy on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | regexp "(?P<referrer>[^ ]+)" [5m]) by (referrer)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<referrer>[^ ]+)")
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "referrer", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			// Regexp has no requestedKeys; we only assert the scan projections.
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"message", "referrer", "timestamp"},
+		},
+		{
+			name: "Filter on regexp named-capture output",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | regexp "(?P<lvl>[^ ]+)" | lvl="error" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.ParseRegexp("(?P<lvl>[^ ]+)")
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("lvl", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     nil,
+			expectedDataObjScanProjections: []string{"app", "lvl", "message", "timestamp"},
+		},
+		{
+			name: "Filter on parsed field that collides with builtin (message)",
+			buildLogical: func() logical.Value {
+				// sum by (app) (count_over_time({app="test"} | json | message="hello" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("message", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("hello"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"message"},
+			expectedDataObjScanProjections: []string{"app", "message", "timestamp"},
+			expectedDataObjScanProjectionRefs: []types.ColumnRef{
+				{Column: "app", Type: types.ColumnTypeLabel},
+				// Critical: the [Builtin] `message` must survive so the
+				// scan loads the raw log line for the JSON parser to
+				// consume. Pre-fix (name-only dedup) this entry was
+				// silently dropped in favour of the earlier-added
+				// [Ambiguous] entry.
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				// The [Ambiguous] `message` (from the [Filter]) also
+				// survives dedup since it has a different type; the
+				// scan silently ignores it (no metadata column of that
+				// name in this data) so it costs nothing.
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+				{Column: "timestamp", Type: types.ColumnTypeBuiltin},
 			},
 		},
 		{
@@ -406,6 +652,153 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			expectedDataObjScanProjections: []string{"code", "duration", "message", "status", "timestamp"},
 		},
 		{
+			// Regression test for the collision-renamed "_extracted" bug: a parsed
+			// field that collides with a stream label is referenced downstream
+			// as "namespace_extracted" (e.g. json "namespace" vs the "namespace" stream label).
+			// The parser only sees real json keys, so we must
+			// also request the de-suffixed source key "namespace"; otherwise nothing
+			// is extracted and group-by on the "_extracted" name silently drops to
+			// null (returning 0 in v2 while v1 returns the correct value).
+			name: "GroupBy on collision-renamed _extracted label requests the source key",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | json [5m]) by (namespace_extracted)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "namespace_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested: []string{"namespace", "namespace_extracted"},
+			// "namespace" is also projected so the colliding label/metadata is loaded
+			// and ColumnCompat can rename the parsed value to "namespace_extracted".
+			expectedDataObjScanProjections: []string{"message", "namespace", "namespace_extracted", "timestamp"},
+		},
+		{
+			// Same fix from the label-filter side, combined with a clean group-by
+			// column: the "_extracted" filter column also contributes its source key,
+			// while the clean group-by column is left untouched.
+			name: "Filter on _extracted label plus clean GroupBy requests both source and clean keys",
+			buildLogical: func() logical.Value {
+				// sum by (component) (count_over_time({app="test"} | json | name_extracted="x" [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.Select(&logical.BinOp{
+					Left:  logical.NewColumnRef("name_extracted", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("x"),
+					Op:    types.BinaryOpEq,
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "component", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"component", "name", "name_extracted"},
+			expectedDataObjScanProjections: []string{"component", "message", "name", "name_extracted", "timestamp"},
+		},
+		{
+			// Edge case: a column literally named "_extracted" must not produce an
+			// empty source key (CutSuffix yields ""), which would request every key.
+			name: "GroupBy on bare _extracted does not request an empty key",
+			buildLogical: func() logical.Value {
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"_extracted"},
+			expectedDataObjScanProjections: []string{"_extracted", "message", "timestamp"},
+		},
+		{
+			// Edge case: a doubly-suffixed name (nested collision) strips exactly one
+			// level, requesting "foo_extracted" as the source.
+			name: "GroupBy on double-suffixed _extracted strips only one level",
+			buildLogical: func() logical.Value {
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseJSON, false, false)
+				builder = builder.RangeAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "foo_extracted_extracted", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"foo_extracted", "foo_extracted_extracted"},
+			expectedDataObjScanProjections: []string{"foo_extracted", "foo_extracted_extracted", "message", "timestamp"},
+		},
+		{
 			name: "log query should request all keys even with filters",
 			buildLogical: func() logical.Value {
 				// Create a logical plan that represents a log query:
@@ -436,6 +829,123 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 
 				return builder.Value()
 			},
+		},
+		{
+			name: "line_format template fields are added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (app) (sum_over_time({app="test"} | logfmt | line_format "{{.mint}}" | regexp "(?P<val>\d+)" | unwrap val [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLinefmt, logical.NewLiteral("{{.mint}}"))
+				builder = builder.ParseRegexp(`(?P<val>\d+)`)
+				builder = builder.Cast("val", types.UnaryOpCastFloat)
+				builder = builder.ProjectDrop(&logical.ColumnRef{
+					Ref: types.ColumnRef{Column: "val", Type: types.ColumnTypeAmbiguous},
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeSum,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"mint", "val"},
+			expectedDataObjScanProjections: []string{"app", "message", "mint", "timestamp", "val"},
+		},
+		{
+			name: "label_format rename source is added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (msg_new) (count_over_time({app="test"} | logfmt | label_format msg_new=msg [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLabelfmt, logical.NewLiteral([]log.LabelFmt{
+					log.NewRenameLabelFmt("msg_new", "msg"),
+				}))
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "msg_new", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"msg", "msg_new"},
+			expectedDataObjScanProjections: []string{"message", "msg", "msg_new", "timestamp"},
+		},
+		{
+			name: "label_format template fields are added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (tag) (count_over_time({app="test"} | logfmt | label_format tag=`x{{.error}}y` [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLabelfmt, logical.NewLiteral([]log.LabelFmt{
+					log.NewTemplateLabelFmt("tag", "x{{.error}}y"),
+				}))
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "tag", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"error", "tag"},
+			expectedDataObjScanProjections: []string{"error", "message", "tag", "timestamp"},
 		},
 	}
 
@@ -468,33 +978,53 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			optimizedPlan, err := planner.Optimize(physicalPlan)
 			require.NoError(t, err)
 
-			var projectionNode *Projection
+			// Collect ALL Projection nodes rather than the last one iterated
+			// (map iteration order is non-deterministic), and find the one
+			// carrying the parse (JSON / logfmt) VariadicExpr — that's the
+			// node whose requestedKeys we assert on. A pipeline can have
+			// several Projection nodes (parser + line_format + regexp +
+			// cast + drop each become one) so picking the last-iterated
+			// makes the assertion flaky when more than one is present.
+			var projectionNodes []*Projection
 			projections := map[string]struct{}{}
+			projectionRefs := map[types.ColumnRef]struct{}{}
 			for node := range optimizedPlan.graph.Nodes() {
 				if pn, ok := node.(*Projection); ok {
-					projectionNode = pn
+					projectionNodes = append(projectionNodes, pn)
 					continue
 				}
 				if pn, ok := node.(*ScanSet); ok {
 					for _, colExpr := range pn.Projections {
 						expr := colExpr.(*ColumnExpr)
 						projections[expr.Ref.Column] = struct{}{}
+						projectionRefs[expr.Ref] = struct{}{}
 					}
 				}
 			}
 
-			require.NotNil(t, projectionNode, "Projection not found in plan")
+			require.NotEmpty(t, projectionNodes, "Projection not found in plan")
 			var requestedKeys *LiteralExpr
-			for _, expr := range projectionNode.Expressions {
-				switch expr := expr.(type) {
-				case *VariadicExpr:
-					// Parse expressions: [sourceCol, requestedKeys, strict, keepEmpty]
-					// We want the requestedKeys (index 1)
-					if len(expr.Expressions) >= 2 {
-						if e, ok := expr.Expressions[1].(*LiteralExpr); ok {
+			for _, projectionNode := range projectionNodes {
+				for _, expr := range projectionNode.Expressions {
+					ve, ok := expr.(*VariadicExpr)
+					if !ok {
+						continue
+					}
+					// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
+					// parser's arg index 1 is the pattern literal (a StringLiteral),
+					// not a requested-keys list — interpreting it as requestedKeys
+					// would falsely fail the literal-type assertion below.
+					if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
+						continue
+					}
+					if len(ve.Expressions) >= 2 {
+						if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
 							requestedKeys = e
 						}
 					}
+				}
+				if requestedKeys != nil {
+					break
 				}
 			}
 
@@ -522,6 +1052,175 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			}
 			sort.Strings(projectionArr)
 			require.Equal(t, tt.expectedDataObjScanProjections, projectionArr)
+
+			// Optional stricter assertion: also verify each projection's
+			// [types.ColumnType]. This catches "same name kept, wrong
+			// type" regressions that the name-only slice above cannot
+			// distinguish — e.g. a parsed field colliding with a builtin.
+			if tt.expectedDataObjScanProjectionRefs != nil {
+				gotRefs := make([]types.ColumnRef, 0, len(projectionRefs))
+				for r := range projectionRefs {
+					gotRefs = append(gotRefs, r)
+				}
+				sort.Slice(gotRefs, func(i, j int) bool {
+					if gotRefs[i].Column != gotRefs[j].Column {
+						return gotRefs[i].Column < gotRefs[j].Column
+					}
+					return gotRefs[i].Type < gotRefs[j].Type
+				})
+				wantRefs := slices.Clone(tt.expectedDataObjScanProjectionRefs)
+				sort.Slice(wantRefs, func(i, j int) bool {
+					if wantRefs[i].Column != wantRefs[j].Column {
+						return wantRefs[i].Column < wantRefs[j].Column
+					}
+					return wantRefs[i].Type < wantRefs[j].Type
+				})
+				require.Equal(t, wantRefs, gotRefs)
+			}
+		})
+	}
+}
+
+func TestAddUniqueColumnExpr(t *testing.T) {
+	col := func(name string, typ types.ColumnType) *ColumnExpr {
+		return &ColumnExpr{Ref: types.ColumnRef{Column: name, Type: typ}}
+	}
+
+	refs := func(projections []ColumnExpression) []types.ColumnRef {
+		var out []types.ColumnRef
+		for _, p := range projections {
+			if pe, ok := p.(*ColumnExpr); ok {
+				out = append(out, pe.Ref)
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Column != out[j].Column {
+				return out[i].Column < out[j].Column
+			}
+			return out[i].Type < out[j].Type
+		})
+		return out
+	}
+
+	tests := []struct {
+		name     string
+		start    []ColumnExpression
+		add      []*ColumnExpr
+		expected []types.ColumnRef
+	}{
+		{
+			name:  "Ambiguous added first absorbs Label added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Label already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added first absorbs Metadata added second",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeAmbiguous),
+				col("trace_id", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous added last absorbs Metadata already present",
+			start: nil,
+			add: []*ColumnExpr{
+				col("trace_id", types.ColumnTypeMetadata),
+				col("trace_id", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "trace_id", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Ambiguous absorbs both Label and Metadata with same name at once",
+			start: nil,
+			add: []*ColumnExpr{
+				col("foo", types.ColumnTypeLabel),
+				col("foo", types.ColumnTypeMetadata),
+				col("foo", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				{Column: "foo", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Builtin coexists with Ambiguous of same name (PR #22907 case)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("message", types.ColumnTypeBuiltin),
+				col("message", types.ColumnTypeAmbiguous),
+			},
+			expected: []types.ColumnRef{
+				// Sorted by type ordinal: Builtin (1) < Ambiguous (5).
+				{Column: "message", Type: types.ColumnTypeBuiltin},
+				{Column: "message", Type: types.ColumnTypeAmbiguous},
+			},
+		},
+		{
+			name:  "Label and Metadata with same name coexist (different storage sections)",
+			start: nil,
+			add: []*ColumnExpr{
+				col("status", types.ColumnTypeLabel),
+				col("status", types.ColumnTypeMetadata),
+			},
+			expected: []types.ColumnRef{
+				{Column: "status", Type: types.ColumnTypeLabel},
+				{Column: "status", Type: types.ColumnTypeMetadata},
+			},
+		},
+		{
+			name:  "Exact duplicate (name, type) is skipped",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeLabel),
+				col("level", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeLabel},
+			},
+		},
+		{
+			name:  "Different names never absorb each other",
+			start: nil,
+			add: []*ColumnExpr{
+				col("level", types.ColumnTypeAmbiguous),
+				col("service", types.ColumnTypeLabel),
+			},
+			expected: []types.ColumnRef{
+				{Column: "level", Type: types.ColumnTypeAmbiguous},
+				{Column: "service", Type: types.ColumnTypeLabel},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projections := tt.start
+			for _, c := range tt.add {
+				projections, _ = addUniqueColumnExpr(projections, c)
+			}
+			require.Equal(t, tt.expected, refs(projections))
 		})
 	}
 }
