@@ -19,11 +19,14 @@ import (
 )
 
 var (
-	errUnimplemented     = errors.New("query contains unimplemented features")
-	unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
+	errUnimplemented = errors.New("query contains unimplemented features")
 
 	tracer = otel.Tracer("pkg/engine/internal/planner/logical")
 )
+
+func unimplementedFeature(s string) error {
+	return fmt.Errorf("%w: %s", errUnimplemented, s)
+}
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -88,10 +91,20 @@ func buildPlanForLogQuery(
 	expr.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.MatchersExpr:
-			selector = convertLabelMatchers(e.Matchers())
+			val, innerErr := convertLabelMatchers(e.Matchers())
+			if innerErr != nil {
+				err = innerErr
+				return false
+			}
+			selector = val
 			return true
 		case *syntax.LineFilterExpr:
-			predicates = append(predicates, convertLineFilterExpr(e))
+			val, innerErr := convertLineFilterExpr(e)
+			if innerErr != nil {
+				err = innerErr
+				return false
+			}
+			predicates = append(predicates, val)
 			// We do not want to traverse the AST further down, because line filter expressions can be nested,
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
@@ -218,10 +231,10 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
 				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
+				err = unimplementedFeature(fmt.Sprintf("log parser %q", e.Op))
 				return false
 			default:
-				err = errUnimplemented
+				err = unimplementedFeature(fmt.Sprintf("log parser %q", e.Op))
 				return false
 			}
 		case *syntax.LabelFilterExpr:
@@ -237,7 +250,7 @@ func buildPlanForLogQuery(
 			}
 			return true
 		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
-			err = errUnimplemented
+			err = unimplementedFeature(fmt.Sprintf("expression parser %T", e))
 			return false // do not traverse children
 		case *syntax.LineFmtExpr:
 			hasFmtExpr = true
@@ -267,7 +280,7 @@ func buildPlanForLogQuery(
 
 			return true
 		default:
-			err = errUnimplemented
+			err = unimplementedFeature(fmt.Sprintf("log pipeline stage %T", e))
 			return false // do not traverse children
 		}
 	})
@@ -288,7 +301,7 @@ func buildPlanForLogQuery(
 func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Value, error) {
 	// offsets are not yet supported.
 	if e.Left.Offset != 0 {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature("range aggregation with offset")
 	}
 
 	logSelectorExpr, err := e.Selector()
@@ -319,7 +332,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 		case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
 			unwrapOperation = types.UnaryOpCastDuration
 		default:
-			return nil, errUnimplemented
+			return nil, unimplementedFeature(fmt.Sprintf("unwrap conversion operation %q", e.Left.Unwrap.Operation))
 		}
 
 		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
@@ -371,7 +384,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
 		}
 	default:
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("range aggregation operation %q", e.Operation))
 	}
 
 	builder = builder.RangeAggregation(
@@ -398,7 +411,7 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, wc *walkContext) (Va
 
 	vecAggType := convertVectorAggregationType(e.Operation)
 	if vecAggType == types.VectorAggregationTypeInvalid {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("vector aggregation operation %q", e.Operation))
 	}
 
 	return &VectorAggregation{
@@ -436,13 +449,13 @@ func walkBinOp(e *syntax.BinOpExpr, wc *walkContext) (Value, error) {
 
 	op := convertBinaryArithmeticOp(e.Op)
 	if op == types.BinaryOpInvalid {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature(fmt.Sprintf("binary operator %q", e.Op))
 	}
 
 	// this is to check that there is only one non-literal input on either side, otherwise it is not implemented yet.
 	// TODO remove when inner joins on timestamp are implemented
 	if hasNonMathExpressionChild(left) && hasNonMathExpressionChild(right) {
-		return nil, errUnimplemented
+		return nil, unimplementedFeature("binary operation between two non-scalar expressions")
 	}
 
 	return &BinOp{
@@ -474,7 +487,7 @@ func walk(e syntax.Expr, wc *walkContext) (Value, error) {
 		return walkLiteral(e, wc)
 	}
 
-	return nil, errUnimplemented
+	return nil, unimplementedFeature(fmt.Sprintf("sample expression %T", e))
 }
 
 func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params logql.Params, deletes []*deletion.Request) (Value, error) {
@@ -485,14 +498,19 @@ func buildPlanForSampleQuery(ctx context.Context, e syntax.SampleExpr, params lo
 	})
 }
 
-func convertLabelMatchers(matchers []*labels.Matcher) Value {
+func convertLabelMatchers(matchers []*labels.Matcher) (Value, error) {
 	var value *BinOp
 
 	for i, matcher := range matchers {
+		op, err := convertMatcherType(matcher.Type)
+		if err != nil {
+			return nil, err
+		}
+
 		expr := &BinOp{
 			Left:  NewColumnRef(matcher.Name, types.ColumnTypeLabel),
 			Right: NewLiteral(matcher.Value),
-			Op:    convertMatcherType(matcher.Type),
+			Op:    op,
 		}
 		if i == 0 {
 			value = expr
@@ -505,7 +523,7 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 		}
 	}
 
-	return value
+	return value, nil
 }
 
 func convertVectorAggregationType(op string) types.VectorAggregationType {
@@ -525,27 +543,34 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	}
 }
 
-func convertMatcherType(t labels.MatchType) types.BinaryOp {
+func convertMatcherType(t labels.MatchType) (types.BinaryOp, error) {
 	switch t {
 	case labels.MatchEqual:
-		return types.BinaryOpEq
+		return types.BinaryOpEq, nil
 	case labels.MatchNotEqual:
-		return types.BinaryOpNeq
+		return types.BinaryOpNeq, nil
 	case labels.MatchRegexp:
-		return types.BinaryOpMatchRe
+		return types.BinaryOpMatchRe, nil
 	case labels.MatchNotRegexp:
-		return types.BinaryOpNotMatchRe
+		return types.BinaryOpNotMatchRe, nil
 	}
-	return types.BinaryOpInvalid
+	return types.BinaryOpInvalid, unimplementedFeature(fmt.Sprintf("unsupported matcher type %s", t))
 }
 
-func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
-	current := convertLineFilter(expr.LineFilter)
+func convertLineFilterExpr(expr *syntax.LineFilterExpr) (Value, error) {
+	current, err := convertLineFilter(expr.LineFilter)
+	if err != nil {
+		return nil, err
+	}
 
 	if expr.Or != nil {
+		right, err := convertLineFilterExpr(expr.Or)
+		if err != nil {
+			return nil, err
+		}
 		current = &BinOp{
 			Left:  current,
-			Right: convertLineFilterExpr(expr.Or),
+			Right: right,
 			Op:    types.BinaryOpOr,
 		}
 	}
@@ -555,22 +580,31 @@ func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 		if expr.IsOrChild {
 			op = types.BinaryOpOr
 		}
+		left, err := convertLineFilterExpr(expr.Left)
+		if err != nil {
+			return nil, err
+		}
 		return &BinOp{
-			Left:  convertLineFilterExpr(expr.Left),
+			Left:  left,
 			Right: current,
 			Op:    op,
-		}
+		}, nil
 	}
 
-	return current
+	return current, nil
 }
 
-func convertLineFilter(filter syntax.LineFilter) Value {
+func convertLineFilter(filter syntax.LineFilter) (Value, error) {
+	op, err := convertLineMatchType(filter.Ty)
+	if err != nil {
+		return nil, err
+	}
+
 	return &BinOp{
 		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
-		Op:    convertLineMatchType(filter.Ty),
-	}
+		Op:    op,
+	}, nil
 }
 
 func convertBinaryArithmeticOp(op string) types.BinaryOp {
@@ -592,22 +626,23 @@ func convertBinaryArithmeticOp(op string) types.BinaryOp {
 	}
 }
 
-func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
+func convertLineMatchType(op log.LineMatchType) (types.BinaryOp, error) {
 	switch op {
 	case log.LineMatchEqual:
-		return types.BinaryOpMatchSubstr
+		return types.BinaryOpMatchSubstr, nil
 	case log.LineMatchNotEqual:
-		return types.BinaryOpNotMatchSubstr
+		return types.BinaryOpNotMatchSubstr, nil
 	case log.LineMatchRegexp:
-		return types.BinaryOpMatchRe
+		return types.BinaryOpMatchRe, nil
 	case log.LineMatchNotRegexp:
-		return types.BinaryOpNotMatchRe
-	case log.LineMatchPattern:
-		return types.BinaryOpMatchPattern
-	case log.LineMatchNotPattern:
-		return types.BinaryOpNotMatchPattern
+		return types.BinaryOpNotMatchRe, nil
+	// TODO Match patterns are not supported per pkg/engine/internal/executor/dataobjscan_predicate.go:392
+	//case log.LineMatchPattern:
+	//	return types.BinaryOpMatchPattern
+	//case log.LineMatchNotPattern:
+	//	return types.BinaryOpNotMatchPattern, nil
 	default:
-		panic("invalid match type")
+		return types.BinaryOpInvalid, unimplementedFeature(fmt.Sprintf("unsupported line match type %s", op))
 	}
 }
 
@@ -801,10 +836,19 @@ func buildDeletePredicates(ctx context.Context, deletes []*deletion.Request, par
 				// [PipelineExpr] is a container for other expressions, nothing to do here.
 				return true
 			case *syntax.MatchersExpr:
-				selector = convertLabelMatchers(e.Matchers())
+				val, innerErr := convertLabelMatchers(e.Matchers())
+				if innerErr != nil {
+					err = innerErr
+					return false
+				}
+				selector = val
 				return true
 			case *syntax.LineFilterExpr:
-				addFilter(convertLineFilterExpr(e))
+				val, innerErr := convertLineFilterExpr(e)
+				if innerErr != nil {
+					err = innerErr
+				}
+				addFilter(val)
 				return true
 			case *syntax.LabelFilterExpr:
 				val, innerErr := convertLabelFilter(e.LabelFilterer)

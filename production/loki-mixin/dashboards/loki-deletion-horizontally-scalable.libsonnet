@@ -8,14 +8,14 @@ local grafana = import 'grafonnet/grafana.libsonnet';
   then $._config.per_instance_label + '=~".*compactor-worker.*"'
   else 'container="compactor-worker"',
   local worker_job_matcher = if $._config.meta_monitoring.enabled
-  then '".*compactor-worker"' % $._config.ssd.pod_prefix_matcher
+  then '".*compactor-worker"'
   else 'compactor-worker',
 
   local compactor_pod_matcher = if $._config.meta_monitoring.enabled
-  then $._config.per_instance_label + '=~"(.*compactor.*|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  then $._config.per_instance_label + '=~"(.*compactor.*|loki-single-binary)"'
   else 'container="compactor"',
   local compactor_job_matcher = if $._config.meta_monitoring.enabled
-  then '"(.*compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
+  then '"(.*compactor|loki-single-binary)"'
   else 'compactor',
 
   _config+:: {

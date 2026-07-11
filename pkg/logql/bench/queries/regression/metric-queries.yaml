@@ -1,6 +1,22 @@
 # yaml-language-server: $schema=../schema.json
 ---
 queries:
+  - description: Aggregation by value column
+    query: sum by (value) (min_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - min_over_time
+      - logfmt
+      - duration-conversion
+    notes: Vector aggregation by value column which collides with an internal numerical `value` column.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - duration
   - description: Sum over time with duration conversion
     query: sum(sum_over_time(${SELECTOR} | logfmt | duration != "" | unwrap duration(duration) [${RANGE}]))
     kind: metric
@@ -246,3 +262,204 @@ queries:
       log_format: logfmt
       detected_fields:
         - level
+  - description: Count with label equality filter on parsed field that is null on some rows
+    query: count_over_time(${SELECTOR} | logfmt | error="" [${RANGE}])
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label-filter
+      - absent-field
+    notes: >
+      Regression for the v2 filter null-coercion fix. The "error" logfmt field
+      is only emitted for error-level lines, so its parsed column is null on
+      every non-error row. LogQL says an absent label compares as "" (matching
+      v1); pre-fix the v2 engine short-circuited any filter on a null column to
+      false, so this count was 0 while v1 returned the count of non-error rows.
+      Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
+  - description: Group by a label_format-renamed source field
+    query: sum by (msg) (count_over_time(${SELECTOR} | logfmt | label_format msg_label=msg [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - rename
+      - grouping
+    notes: >
+      Regression for the v2 label_format rename source-drop fix. `label_format
+      msg_label=msg` is a rename, so the source label `msg` must be removed
+      (matching v1's LabelsBuilder.Del, which deletes the name from every label
+      category). Grouping by `msg` after the rename must therefore collapse to a
+      single series whose `msg` is absent. Pre-fix the v2 engine kept the parsed
+      source column `msg` (the projection only dropped rename sources of type
+      stream-label, not parsed/metadata), so this produced one series per distinct
+      msg value instead of the single v1 series. Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg
+  - description: label_format renders null parsed field as empty, not "(null)"
+    query: sum by (tag) (count_over_time(${SELECTOR} | logfmt | error=~`(?i).*.*` | label_format tag=`x{{.error}}y` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - sum
+      - count_over_time
+      - logfmt
+      - label_format
+      - absent-field
+    notes: >
+      Regression for the v2 null-rendering fix. The "error" logfmt field is only
+      emitted for error-level lines, so its parsed column is null on every
+      non-error row. Pre-fix the v2 engine rendered `{{.error}}` as the literal
+      "(null)" (Arrow's NullValueStr), producing an extra tag="x(null)y" series
+      that v1 never emits (v1 renders missing labels as ""). The
+      series label set and per-series counts must match v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - error
+  - description: Group by a regexp named-capture output
+    query: sum by (word) (count_over_time(${SELECTOR} | regexp `^(?P<word>\S+)` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - regexp
+      - grouping
+      - named-capture
+    notes: >
+      Regression for the v2 projection-pushdown fix. The regexp parser's
+      source column (the builtin `message`) was never projected to the
+      scan, so the parser saw null lines and every named-capture group
+      collapsed to the empty value — v2 returned a single empty series
+      with a constant per-bucket count while v1 returned one series per
+      distinct first token. Left format-agnostic on purpose so the entry
+      runs against every generator (json, logfmt, unstructured) — the
+      pattern `^\S+` matches any non-empty line. The series label set
+      and per-series counts must match v1.
+  - description: Group by a regexp named-capture whose name collides with the builtin `message`
+    query: sum by (message) (count_over_time(${SELECTOR} | regexp `^(?P<message>\S+)` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - regexp
+      - grouping
+      - named-capture
+      - builtin-collision
+    notes: >
+      Regression for the projection-dedup-by-(name,type) fix plus the
+      paranoid-mode assertion fix that skips builtin columns in
+      CheckLabelValuesDuplicates. The regexp captures a field named
+      `message`, whose short name collides with the builtin `message`
+      column (the raw log line). Both survive projection dedup: the
+      builtin because the regexp parser needs it as source; the parsed
+      because the outer `sum by (message)` references it. In paranoid
+      mode (enabled by these bench tests) the pre-fix assertion panicked
+      on the shared short name; post-fix it skips the builtin (which
+      routes to entry.Line, not labels) and only counts the parsed
+      column, so the assertion passes. The `by (message)` grouping must
+      bind to the parsed capture (matching v1's parsed-label semantics —
+      v1 has no builtin `message` label), not to the raw log line. The
+      series label set and per-series counts must match v1.
+  - description: Unwrap a value extracted from line_format template output
+    query: sum by (level) (sum_over_time(${SELECTOR} | logfmt | line_format `{{.bytes}}` | regexp `(?P<val>\d+)` | unwrap val [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - unwrap
+      - sum_over_time
+      - logfmt
+      - line_format
+      - regexp
+      - grouping
+    notes: >
+      Regression for the v2 line_format projection-pushdown fix. The
+      `line_format "{{.bytes}}"` template references `bytes`, which is
+      not consumed by any downstream filter or grouping (the downstream
+      `regexp` produces `val` and the group-by uses stream label
+      `level`). Pre-fix, projection pushdown narrowed logfmt's
+      requestedKeys to `[val]` (plus stream columns), so logfmt never
+      extracted `bytes`, `line_format` rendered "" via missingkey=zero,
+      `regexp` matched nothing, and `unwrap val` produced empty. Post-fix
+      the template's referenced fields are added to logfmt's
+      requestedKeys and per-level sums match v1. Must equal v1.
+    requires:
+      log_format: logfmt
+      unwrappable_fields:
+        - bytes
+      detected_fields:
+        - level
+  - description: Group by a label_format-renamed destination whose source is only known via the rename
+    query: sum by (msg_new) (count_over_time(${SELECTOR} | logfmt | label_format msg_new=msg [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - rename
+      - grouping
+    notes: >
+      Regression for the v2 label_format projection-pushdown fix. The
+      pipeline renames `msg` to `msg_new` and the outer aggregation
+      groups on the destination `msg_new`. Nothing else references the
+      source `msg`. Pre-fix, projection pushdown asked logfmt for
+      `msg_new` (which isn't a real logfmt key) and never asked for the
+      rename source `msg`, so logfmt extracted nothing, the rename
+      produced null, and grouping collapsed to a single empty series.
+      Post-fix, `handleParseLabelfmt` adds the rename source to
+      requestedKeys so `msg` is extracted and per-msg series match v1.
+      Must equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg
+  - description: label_format template field ref not pinned by any filter or grouping
+    query: sum by (tag) (count_over_time(${SELECTOR} | logfmt | label_format tag=`x{{.msg}}y` [${RANGE}]))
+    kind: metric
+    time_range:
+      length: 24h
+      step: 1m
+    tags:
+      - count_over_time
+      - logfmt
+      - label_format
+      - template
+      - grouping
+    notes: >
+      Companion to the label_format rename regression above, exercising
+      the template branch of `handleParseLabelfmt`. The template
+      references `msg` but no filter or grouping pins it. Pre-fix,
+      logfmt was asked only for `tag` (not a real key) and never
+      extracted `msg`, so the template rendered `"xy"` via
+      missingkey=zero and every stream collapsed onto a single
+      `tag="xy"` series. Post-fix, the template's referenced fields are
+      added to logfmt's requestedKeys and per-msg series match v1. Must
+      equal v1.
+    requires:
+      log_format: logfmt
+      detected_fields:
+        - msg

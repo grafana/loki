@@ -443,6 +443,31 @@ func (w *gRPCWriter) writeLoop(ctx context.Context) error {
 	defer cancel()
 	w.streamSender.connect(ctx, bscs, w.settings.gax...)
 
+	// Drain any initial completions (like QueryWriteStatus results).
+Loop:
+	for {
+		select {
+		case c, ok := <-completions:
+			if !ok {
+				return w.streamSender.err()
+			}
+			w.handleCompletion(c)
+		default:
+			break Loop
+		}
+	}
+
+	if w.bufFlushedIdx > 0 {
+		copy(w.buf, w.buf[w.bufFlushedIdx:])
+		w.buf = w.buf[:len(w.buf)-w.bufFlushedIdx]
+		w.bufBaseOffset += int64(w.bufFlushedIdx)
+		w.bufUnsentIdx -= w.bufFlushedIdx
+		if w.bufUnsentIdx < 0 {
+			w.bufUnsentIdx = 0
+		}
+		w.bufFlushedIdx = -1
+	}
+
 	// Send any full quantum in w.buf, possibly including a flush
 	if err := w.withCommandRetryDeadline(func() error {
 		sentOffset, ok := w.sendBufferToTarget(chcs, w.buf, w.bufBaseOffset, cap(w.buf),
@@ -591,6 +616,26 @@ func (c *gRPCWriterCommandWrite) handle(w *gRPCWriter, cs gRPCWriterCommandHandl
 		return nil
 	}
 
+	if !c.hasStarted {
+		c.initialOffset = w.bufBaseOffset + int64(len(w.buf))
+		c.hasStarted = true
+	} else {
+		// Retrying this command; check if server has persisted some bytes of this command's payload.
+		bytesPersisted := w.bufBaseOffset - c.initialOffset
+		if bytesPersisted > 0 {
+			if int64(len(c.p)) < bytesPersisted {
+				bytesPersisted = int64(len(c.p))
+			}
+			c.p = c.p[bytesPersisted:]
+			c.initialOffset = w.bufBaseOffset
+
+			if len(c.p) == 0 {
+				c.markDone()
+				return nil
+			}
+		}
+	}
+
 	// Zero-Copy send.
 	if w.forceOneShot {
 		err := c.zeroCopyWrite(w, cs)
@@ -650,6 +695,7 @@ func (c *gRPCWriterCommandWrite) handle(w *gRPCWriter, cs gRPCWriterCommandHandl
 	w.buf = w.buf[:wblen+toNextWriteQuantum]
 	copied := copy(w.buf[wblen:], c.p)
 	c.p = c.p[copied:]
+	c.initialOffset += int64(copied)
 	firstFullBufFromCmd := cap(w.buf) - len(w.buf)
 
 	sending := w.buf[w.bufUnsentIdx:]
@@ -674,6 +720,7 @@ func (c *gRPCWriterCommandWrite) handle(w *gRPCWriter, cs gRPCWriterCommandHandl
 			trim = len(c.p)
 		}
 		c.p = c.p[trim:]
+		c.initialOffset += int64(trim)
 		cmdBaseOffset = bufTail
 	}
 	offset := cmdBaseOffset

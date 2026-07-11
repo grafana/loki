@@ -20,6 +20,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -62,6 +63,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
 		otlpConfig          OTLPConfig
+		discoverServiceName []string
 	}{
 		{
 			name: "no logs",
@@ -225,6 +227,58 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 					},
 				},
 				StreamLabelsSize:                  47,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+			},
+		},
+		{
+			name:       "service.name not defined and discovery candidate is empty",
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
+			discoverServiceName: []string{
+				"container_name",
+			},
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("container.name", "")
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{container_name="", service_name="unknown_service"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
+							},
+						},
+					},
+				},
+			},
+			expectedStats: Stats{
+				PolicyNumLines: map[string]int64{
+					"others": 1,
+				},
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
+				},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"others": {
+						time.Hour: nil,
+					},
+				},
+				StreamLabelsSize:                  41,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
@@ -587,6 +641,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			discoverServiceName := defaultServiceDetection
+			if tc.discoverServiceName != nil {
+				discoverServiceName = tc.discoverServiceName
+			}
+
 			stats := NewPushStats()
 			tracker := NewMockTracker()
 			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
@@ -603,7 +662,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				"foo",
 				tc.otlpConfig,
 				nil,
-				defaultServiceDetection,
+				discoverServiceName,
 				tracker,
 				stats,
 				log.NewNopLogger(),
@@ -612,7 +671,17 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
-			require.Equal(t, tc.expectedStats, *stats)
+
+			// TotalExpandedEntriesSize is the size of each entry after resource/scope attributes have been
+			// merged into its structured metadata, which is exactly what expectedPushRequest's entries already
+			// contain.
+			expectedStats := tc.expectedStats
+			for _, stream := range tc.expectedPushRequest.Streams {
+				for i := range stream.Entries {
+					expectedStats.TotalExpandedEntriesSize += int64(util.EntryTotalSize(&stream.Entries[i]))
+				}
+			}
+			require.Equal(t, expectedStats, *stats)
 
 			totalBytes := 0.0
 			for _, policyMapping := range stats.LogLinesBytes {

@@ -142,7 +142,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
 				// Append all the tenant time ranges that overlap with the current Table of Contents window.
 				for _, timeRange := range tenantTimeRanges {
-					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && timeRange.MaxTime.After(tocTimeRange.MinTime) {
+					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
 						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
 						if err != nil {
 							return nil, errors.Wrap(err, "appending index pointer")

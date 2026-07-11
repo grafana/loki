@@ -10,8 +10,9 @@ import "github.com/grafana/loki/v3/pkg/xcap"
 
 var (
 	// TaskStagingDuration is the time (in nanoseconds) a task spent staged
-	// between scheduler registration and being enqueued for assignment. Not
-	// recorded for tasks that never reached the queue.
+	// between scheduler registration and being enqueued for assignment. For
+	// a task that was never enqueued, this stat captures the entire duration
+	// from registration to terminal state.
 	TaskStagingDuration = xcap.NewStatisticInt64("scheduler.task.staging.duration", xcap.AggregationTypeSum)
 
 	// TaskQueueDuration is the time (in nanoseconds) a task spent enqueued before
@@ -24,6 +25,10 @@ var (
 	// never reached a worker.
 	TaskExecutionDuration = xcap.NewStatisticInt64("scheduler.task.execution.duration", xcap.AggregationTypeSum)
 
+	// TaskAssignmentRetries is the number of times a task was requeued after a
+	// failed assignment attempt before it reached a terminal state.
+	TaskAssignmentRetries = xcap.NewStatisticInt64("scheduler.task.assignment.retries", xcap.AggregationTypeSum)
+
 	// TaskTotalDuration is the total time (in nanoseconds) from scheduler
 	// registration to terminal state, regardless of which phases the task
 	// passed through.
@@ -33,4 +38,14 @@ var (
 	// sum of the partitions is a residual that indicates an unaccounted-for
 	// phase.
 	TaskTotalDuration = xcap.NewStatisticInt64("scheduler.task.duration", xcap.AggregationTypeSum)
+
+	// TaskFinishTime is the wall-clock time (Unix nanoseconds) at which the
+	// scheduler observed the task reach a terminal state. It is recorded once
+	// per task and rides the task's capture back to the workflow, which uses it
+	// to approximate the query's critical path.
+	//
+	// AggregationTypeMax keeps the latest observed finish time when captures are
+	// merged; the per-task read in the workflow is unaffected because each task
+	// records this stat exactly once.
+	TaskFinishTime = xcap.NewStatisticInt64("scheduler.task.finish.time", xcap.AggregationTypeMax)
 )

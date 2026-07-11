@@ -14,16 +14,24 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+type multiBuilder interface {
+	Append(tenant string, stream logproto.Stream, recTime time.Time) error
+	GetEstimatedSize() int
+	IsFull() bool
+	Reset()
+	GetBuilders() []builder
+}
+
 // A builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(tenant string, stream logproto.Stream, recTime time.Time) error
 	GetEstimatedSize() int
+	IsFull() bool
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	GetEarliestRecordTime() time.Time
@@ -32,13 +40,13 @@ type builder interface {
 
 // A flushCommitter allows mocking of flushes in tests.
 type flushCommitter interface {
-	Flush(ctx context.Context, builder builder, reason string, offset int64) error
+	Flush(ctx context.Context, builder []builder, reason string, offset int64) error
 }
 
 // A processor receives records and builds data objects from them.
 type processor struct {
 	*services.BasicService
-	builder        builder
+	builder        multiBuilder
 	decoder        *kafka.Decoder
 	records        chan *kgo.Record
 	flushCommitter flushCommitter
@@ -70,16 +78,12 @@ type processor struct {
 	// idle timeout. It must be reset after each flush.
 	lastAppend time.Time
 
-	// timePartitionedEstimates counts how many data objects we would build
-	// per flush with 12 hour windows.
-	timePartitionedEstimates map[time.Time]struct{}
-
 	metrics *metrics
 	logger  log.Logger
 }
 
 func newProcessor(
-	builder builder,
+	builder multiBuilder,
 	records chan *kgo.Record,
 	flushCommitter flushCommitter,
 	idleFlushTimeout time.Duration,
@@ -92,15 +96,14 @@ func newProcessor(
 		panic(err)
 	}
 	p := &processor{
-		builder:                  builder,
-		decoder:                  decoder,
-		records:                  records,
-		flushCommitter:           flushCommitter,
-		idleFlushTimeout:         idleFlushTimeout,
-		maxBuilderAge:            maxBuilderAge,
-		metrics:                  newMetrics(reg),
-		logger:                   logger,
-		timePartitionedEstimates: make(map[time.Time]struct{}),
+		builder:          builder,
+		decoder:          decoder,
+		records:          records,
+		flushCommitter:   flushCommitter,
+		idleFlushTimeout: idleFlushTimeout,
+		maxBuilderAge:    maxBuilderAge,
+		metrics:          newMetrics(reg),
+		logger:           logger,
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p
@@ -121,6 +124,8 @@ func (p *processor) stopping(_ error) error {
 	return nil
 }
 
+var errUnrecoverableFlush = fmt.Errorf("unrecoverable flush failure")
+
 func (p *processor) Run(ctx context.Context) error {
 	defer level.Info(p.logger).Log("msg", "stopped partition processor")
 	level.Info(p.logger).Log("msg", "started partition processor")
@@ -137,6 +142,11 @@ func (p *processor) Run(ctx context.Context) error {
 				return nil
 			}
 			if err := p.processRecord(ctx, rec); err != nil {
+				if errors.Is(err, errUnrecoverableFlush) {
+					// restarting to re-read Kafka records
+					level.Error(p.logger).Log("msg", "terminating after unrecoverable flush", "err", err)
+					return err
+				}
 				level.Error(p.logger).Log("msg", "failed to process record", "err", err)
 				p.observeRecordErr(rec)
 			}
@@ -144,6 +154,11 @@ func (p *processor) Run(ctx context.Context) error {
 			// This partition is idle, flush it.
 			p.metrics.setConsumptionLag(0)
 			if _, err := p.idleFlush(ctx); err != nil {
+				if errors.Is(err, errUnrecoverableFlush) {
+					// restarting to re-read Kafka records
+					level.Error(p.logger).Log("msg", "terminating after unrecoverable idle flush", "err", err)
+					return err
+				}
 				level.Error(p.logger).Log("msg", "failed to idle flush", "err", err)
 			}
 		}
@@ -155,10 +170,6 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 	// consumption lag, the age of the data object builder, etc.
 	now := time.Now()
 	p.observeRecord(rec, now)
-
-	// Find the 12 hour window.
-	window := rec.Timestamp.UTC().Truncate(12 * time.Hour)
-	p.timePartitionedEstimates[window] = struct{}{}
 
 	// Try to decode the stream in the record.
 	tenant := string(rec.Key)
@@ -174,17 +185,16 @@ func (p *processor) processRecord(ctx context.Context, rec *kgo.Record) error {
 		}
 	}
 
-	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
-		if !errors.Is(err, logsobj.ErrBuilderFull) {
-			return fmt.Errorf("failed to append stream: %w", err)
-		}
+	if p.builder.IsFull() {
 		if err := p.flush(ctx, flushReasonBuilderFull); err != nil {
-			return fmt.Errorf("failed to flush and commit: %w", err)
-		}
-		if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
-			return fmt.Errorf("failed to append stream after flushing: %w", err)
+			return fmt.Errorf("failed to flush: %w", err)
 		}
 	}
+
+	if err := p.builder.Append(tenant, stream, rec.Timestamp); err != nil {
+		return fmt.Errorf("failed to append stream: %w", err)
+	}
+	p.metrics.sizeEstimate.Set(float64(p.builder.GetEstimatedSize()))
 
 	if p.firstAppend.IsZero() {
 		p.firstAppend = now
@@ -233,13 +243,26 @@ func (p *processor) needsIdleFlush() bool {
 
 func (p *processor) flush(ctx context.Context, reason string) error {
 	defer func() {
-		// Reset the state to prepare for building the next data object.
+		// Reset the state to prepare for building the next data objects
 		p.firstAppend = time.Time{}
 		p.lastAppend = time.Time{}
-		clear(p.timePartitionedEstimates)
+		p.builder.Reset()
+		p.metrics.sizeEstimate.Set(0)
 	}()
-	p.metrics.timePartitionEstimate.Add(float64(len(p.timePartitionedEstimates)))
-	return p.flushCommitter.Flush(ctx, p.builder, reason, p.lastOffset)
+
+	timeWindowedBuilders := p.builder.GetBuilders()
+	p.metrics.timePartitionEstimate.Add(float64(len(timeWindowedBuilders)))
+	err := p.flushCommitter.Flush(ctx, timeWindowedBuilders, reason, p.lastOffset)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
+
+	// flush failed – in the worst case it failed after a builder was reset but before the
+	// data was uploaded to object storage.
+	return fmt.Errorf("%w: %w", errUnrecoverableFlush, err)
 }
 
 func (p *processor) observeRecord(rec *kgo.Record, now time.Time) {

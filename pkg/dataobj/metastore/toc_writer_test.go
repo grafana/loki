@@ -52,6 +52,49 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("append object whose time range sits exactly on a window boundary", func(t *testing.T) {
+		tenantID := "test"
+		builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+			TargetPageSize:          tocBuilderCfg.TargetPageSize,
+			TargetObjectSize:        tocBuilderCfg.TargetObjectSize,
+			TargetSectionSize:       tocBuilderCfg.TargetSectionSize,
+			BufferSize:              tocBuilderCfg.BufferSize,
+			SectionStripeMergeLimit: tocBuilderCfg.SectionStripeMergeLimit,
+		}, nil)
+		require.NoError(t, err)
+
+		bucket := newInMemoryBucket(t, unixTime(0), nil)
+
+		writer := newTableOfContentsWriter(t, bucket, builder)
+
+		// An object holding a single log at a 12h-aligned instant produces a
+		// zero-width time range sitting exactly on the ToC window boundary.
+		// The pointer must still land in that window; regressing the overlap
+		// check leaves the builder empty and WriteEntry retries forever, so we
+		// bound the context to fail fast rather than hang.
+		boundary := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+		require.Equal(t, boundary, boundary.Truncate(MetastoreWindowSize))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err = writer.WriteEntry(ctx, "testdata/metastore.obj", []multitenancy.TimeRange{
+			{
+				Tenant:  tenantID,
+				MinTime: boundary,
+				MaxTime: boundary,
+			},
+		})
+		require.NoError(t, err)
+
+		reader, err := bucket.Get(context.Background(), TableOfContentsPath(boundary))
+		require.NoError(t, err)
+		object, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		dobj, err := dataobj.FromReaderAt(bytes.NewReader(object), int64(len(object)))
+		require.NoError(t, err)
+		require.NotEmpty(t, dobj.Sections())
+	})
+
 	t.Run("append default to new top-level metastore v1", func(t *testing.T) {
 		tenantID := "test"
 		builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{

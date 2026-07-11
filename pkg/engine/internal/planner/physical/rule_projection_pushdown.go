@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 var _ rule = (*projectionPushdown)(nil)
@@ -64,12 +65,19 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 					projections = append(projections, e.Left.(ColumnExpression))
 				}
 			case *VariadicExpr:
-				if e.Op == types.VariadicOpParseJSON || e.Op == types.VariadicOpParseLogfmt {
+				switch e.Op {
+				case types.VariadicOpParseJSON, types.VariadicOpParseLogfmt:
 					projectionNodeChanged, projsToPropagate := r.handleParse(e, projections)
 					projections = append(projections, projsToPropagate...)
 					if projectionNodeChanged {
 						changed = true
 					}
+				case types.VariadicOpParseRegexp:
+					projections = append(projections, r.handleParseRegexp(e)...)
+				case types.VariadicOpParseLinefmt:
+					projections = append(projections, r.handleParseLinefmt(e)...)
+				case types.VariadicOpParseLabelfmt:
+					projections = append(projections, r.handleParseLabelfmt(e)...)
 				}
 			}
 		}
@@ -227,6 +235,88 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 	return changed, projections
 }
 
+// handleParseLinefmt returns the fields referenced by the line_format
+// template as Ambiguous column expressions, so an upstream parser
+// (logfmt / json) extracts them into the batch before line_format
+// consumes them. Without this, template lookups like {{.mint}}
+// silently render "" via missingkey=zero — breaking any subsequent
+// regexp/filter that needs the templated content.
+func (r *projectionPushdown) handleParseLinefmt(expr *VariadicExpr) []ColumnExpression {
+	if len(expr.Expressions) < 3 {
+		return nil
+	}
+	tmplLit, ok := expr.Expressions[2].(*LiteralExpr)
+	if !ok {
+		return nil
+	}
+	tmplStr, ok := tmplLit.Literal().Any().(string)
+	if !ok || tmplStr == "" {
+		return nil
+	}
+	formatter, err := log.NewFormatter(tmplStr)
+	if err != nil {
+		return nil
+	}
+	names := formatter.RequiredLabelNames()
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]ColumnExpression, 0, len(names))
+	for _, name := range names {
+		out = append(out, &ColumnExpr{Ref: types.ColumnRef{Column: name, Type: types.ColumnTypeAmbiguous}})
+	}
+	return out
+}
+
+// handleParseLabelfmt returns the columns referenced by label_format
+// stages as Ambiguous column expressions, so an upstream parser
+// (logfmt / json) extracts them into the batch before label_format
+// consumes them. Two forms feed into RequiredLabelNames():
+//   - rename: `label_format new=old` requires the source column `old`
+//     so the rename target has a value (the parser only sees real keys).
+//   - template: `label_format tag="{{.foo}}"` requires each field
+//     referenced by the Go template; missing ones silently render ""
+//     via missingkey=zero.
+func (r *projectionPushdown) handleParseLabelfmt(expr *VariadicExpr) []ColumnExpression {
+	if len(expr.Expressions) < 3 {
+		return nil
+	}
+	fmtLit, ok := expr.Expressions[2].(*LiteralExpr)
+	if !ok {
+		return nil
+	}
+	fmts, ok := fmtLit.Literal().Any().([]log.LabelFmt)
+	if !ok || len(fmts) == 0 {
+		return nil
+	}
+	formatter, err := log.NewLabelsFormatter(fmts)
+	if err != nil {
+		return nil
+	}
+	names := formatter.RequiredLabelNames()
+	if len(names) == 0 {
+		return nil
+	}
+	out := make([]ColumnExpression, 0, len(names))
+	for _, name := range names {
+		out = append(out, &ColumnExpr{Ref: types.ColumnRef{Column: name, Type: types.ColumnTypeAmbiguous}})
+	}
+	return out
+}
+
+// handleParseRegexp returns the regexp parser's source column so the scan
+// loads the line content the pattern is applied against.
+func (r *projectionPushdown) handleParseRegexp(expr *VariadicExpr) []ColumnExpression {
+	if len(expr.Expressions) < 1 {
+		return nil
+	}
+	sourceCol, ok := expr.Expressions[0].(*ColumnExpr)
+	if !ok {
+		return nil
+	}
+	return []ColumnExpression{sourceCol}
+}
+
 // parseExprs is a helper struct for unpacking and packing parse arguments from generic expressions.
 type parseExprs struct {
 	sourceColumnExpr  *ColumnExpr
@@ -318,15 +408,17 @@ func (r *projectionPushdown) isMetricQuery() bool {
 	return false
 }
 
+// deduplicateColumns removes duplicate column expressions from the list,
+// keying by (name, type) rather than name alone. See [addUniqueColumnExpr]
+// for why type matters at this layer.
 func (r *projectionPushdown) deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
-	seen := make(map[string]bool)
+	seen := make(map[types.ColumnRef]bool)
 	var result []ColumnExpression
 
 	for _, col := range columns {
 		if colExpr, ok := col.(*ColumnExpr); ok {
-			key := colExpr.Ref.Column
-			if !seen[key] {
-				seen[key] = true
+			if !seen[colExpr.Ref] {
+				seen[colExpr.Ref] = true
 				result = append(result, col)
 			}
 		}

@@ -172,6 +172,13 @@ func getPredicateSelectivity(p dataset.Predicate) selectivityScore {
 		// For custom functions, we cannot use the stats to estimate selectivity or to prune the rows.
 		// We might want these evaluated towards the end.
 		return selectivityScore(0.7)
+
+	case dataset.FalsePredicate:
+		return noMatchSelectivity
+
+	case dataset.TruePredicate:
+		return matchAllSelectivity
+
 	default:
 		panic(fmt.Sprintf("unknown predicate type: %T", p))
 	}

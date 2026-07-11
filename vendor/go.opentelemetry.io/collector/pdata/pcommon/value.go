@@ -4,11 +4,13 @@
 package pcommon // import "go.opentelemetry.io/collector/pdata/pcommon"
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 
 	"go.opentelemetry.io/collector/pdata/internal"
 )
@@ -401,26 +403,47 @@ func (v Value) AsString() string {
 		return strconv.FormatInt(v.Int(), 10)
 
 	case ValueTypeMap:
-		jsonStr, _ := json.Marshal(v.Map().AsRaw())
-		return string(jsonStr)
+		return marshalJSONNoHTMLEscape(v.Map().AsRaw())
 
 	case ValueTypeBytes:
 		return base64.StdEncoding.EncodeToString(*v.Bytes().getOrig())
 
 	case ValueTypeSlice:
-		jsonStr, _ := json.Marshal(v.Slice().AsRaw())
-		return string(jsonStr)
+		return marshalJSONNoHTMLEscape(v.Slice().AsRaw())
 
 	default:
 		return fmt.Sprintf("<Unknown OpenTelemetry attribute value type %q>", v.Type())
 	}
 }
 
+// marshalJSONNoHTMLEscape marshals v as JSON without HTML-escaping "<", ">",
+// and "&". This matches the behavior of AsString for ValueTypeStr (which
+// returns the raw string) and keeps structured values (maps, slices) free
+// of escape sequences like "\u003c" that are only meaningful in HTML contexts.
+func marshalJSONNoHTMLEscape(v any) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	// Encode cannot fail for the map/slice values produced by AsRaw(), which
+	// only contain primitive types, so the error is intentionally ignored —
+	// consistent with the json.Marshal calls it replaces.
+	_ = enc.Encode(v)
+	// json.Encoder.Encode always appends a trailing newline; strip it so the
+	// output matches json.Marshal.
+	return strings.TrimRight(buf.String(), "\n")
+}
+
 // See https://cs.opensource.google/go/go/+/refs/tags/go1.17.7:src/encoding/json/encode.go;l=585.
 // This allows us to avoid using reflection.
 func float64AsString(f float64) string {
-	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return "json: unsupported value: " + strconv.FormatFloat(f, 'g', -1, 64)
+	if math.IsNaN(f) {
+		return "NaN"
+	}
+	if math.IsInf(f, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(f, -1) {
+		return "-Infinity"
 	}
 
 	// Convert as if by ES6 number to string conversion.

@@ -589,7 +589,7 @@ func (ko *Koanf) Bools(path string) []bool {
 		}
 		return out
 	case []bool:
-		return out
+		return v
 	}
 	return nil
 }

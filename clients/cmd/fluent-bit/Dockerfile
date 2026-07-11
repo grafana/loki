@@ -1,4 +1,4 @@
-FROM golang:1.26.3-bookworm AS builder
+FROM golang:1.26.4-bookworm AS builder
 
 COPY . /src
 
@@ -14,7 +14,7 @@ RUN go build \
     -o clients/cmd/fluent-bit/out_grafana_loki.so \
     /src/clients/cmd/fluent-bit
 
-FROM fluent/fluent-bit:5.0.6@sha256:1abcf78fe8c9dee0c57fc2199693370a5a1f84e0af4716beddcd153b40cbbbb1
+FROM fluent/fluent-bit:5.0.8@sha256:4468d776acbde3ea11ec53f3bef29f798affef23acbb40a277ac8f839ab22f3d
 
 COPY --from=builder /src/clients/cmd/fluent-bit/out_grafana_loki.so /fluent-bit/bin
 COPY clients/cmd/fluent-bit/fluent-bit.conf /fluent-bit/etc/fluent-bit.conf

@@ -533,7 +533,13 @@ func (c *cachedListOpObjectClient) Stop() {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
+	// Stop is idempotent: closing c.done twice would panic.
+	select {
+	case <-c.done:
+		return
+	default:
+	}
+
 	close(c.done)
-	c.cache = nil
 	c.ObjectClient.Stop()
 }

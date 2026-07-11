@@ -4,9 +4,10 @@ env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
-  IMAGE_PREFIX: "grafana"
+  IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+  PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "e1624a406cd0ce5aa48d33db2c9986360c5de7f6"
+  RELEASE_LIB_REF: "a02bbf94332600fbf72b9258861b32c4559cd134"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -57,12 +58,13 @@ jobs:
     - name: "download binaries"
       run: |
         echo "downloading binaries to $(pwd)/dist"
+        mkdir -p dist
         gcloud artifacts generic download \
           --project="grafanalabs-dev" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
           --location="us" \
           --package=binaries \
-          --version=${{ github.sha }} \
+          --version=$(echo ${SHA} | tr -d '"') \
           --destination=dist/
       working-directory: "release"
     - env:
@@ -94,13 +96,19 @@ jobs:
       name: "create release"
       run: |
         yarn install
-        yarn exec -- release-please github-release \
+        output=$(yarn exec -- release-please github-release \
           --draft \
           --release-type simple \
           --repo-url "${{ env.RELEASE_REPO }}" \
           --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
           --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
-          --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
+          --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')" \
+          --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
+        echo "$output"
+        if [[ "$output" == "[]" || -z "$output" ]]; then
+          echo "::error::release-please did not create a release"
+          exit 1
+        fi
       working-directory: "lib"
     - env:
         GH_TOKEN: "${{ steps.get_github_app_token.outputs.token }}"
@@ -111,7 +119,7 @@ jobs:
         gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
     - env:
-        path: "release/dist"
+        path: "dist"
       if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
       run: |
@@ -120,7 +128,7 @@ jobs:
           --project="grafanalabs-global" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
           --location="us" \
-          --source-directory=${{ env.path }}, \
+          --source-directory=${{ env.path }} \
           --package=binaries \
           --version=${{ github.sha }}
       working-directory: "release"
@@ -203,55 +211,6 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-  publishDockerPlugins:
-    needs:
-    - "createRelease"
-    permissions:
-      id-token: "write"
-    runs-on: "ubuntu-x64"
-    steps:
-    - name: "pull release library code"
-      uses: "actions/checkout@v4"
-      with:
-        path: "lib"
-        persist-credentials: false
-        ref: "${{ env.RELEASE_LIB_REF }}"
-        repository: "grafana/loki-release"
-    - name: "pull code to release"
-      uses: "actions/checkout@v4"
-      with:
-        path: "release"
-        persist-credentials: false
-        repository: "${{ env.RELEASE_REPO }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - name: "Login to DockerHub"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
-    - name: "Login to GAR"
-      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
-    - env:
-        SHA: "${{ needs.createRelease.outputs.sha }}"
-      name: "download and prepare plugins"
-      run: |
-        echo "downloading plugins to $(pwd)/plugins"
-        gcloud artifacts generic download \
-          --project="grafanalabs-dev" \
-          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
-          --location="us" \
-          --package=plugins \
-          --version=${{ github.sha }} \
-          --destination=plugins/
-        mkdir -p "release/clients/cmd/docker-driver"
-    - name: "publish docker driver"
-      uses: "./lib/actions/push-images"
-      with:
-        buildDir: "release/clients/cmd/docker-driver"
-        imageDir: "plugins"
-        imagePrefix: "${{ env.IMAGE_PREFIX }}"
-        isLatest: "${{ needs.createRelease.outputs.isLatest }}"
-        isPlugin: true
   publishImages:
     needs:
     - "createRelease"
@@ -270,21 +229,22 @@ jobs:
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
     - name: "set up docker buildx"
       uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - name: "Login to DockerHub"
-      uses: "grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7"
     - name: "Login to GAR"
       uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      with:
+        registry: "us-docker.pkg.dev"
     - env:
         SHA: "${{ needs.createRelease.outputs.sha }}"
       name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
+        mkdir -p images
         gcloud artifacts generic download \
           --project="grafanalabs-dev" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
           --location="us" \
           --package=images \
-          --version=${{ github.sha }} \
+          --version=$(echo ${SHA} | tr -d '"') \
           --destination=images/
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
@@ -296,7 +256,6 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
-    - "publishDockerPlugins"
     outputs:
       name: "${{ needs.createRelease.outputs.name }}"
     permissions:

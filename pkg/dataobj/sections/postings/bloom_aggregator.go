@@ -3,6 +3,7 @@ package postings
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -58,6 +59,8 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 type bloomAggregator struct {
 	entries       map[bloomPostingKey]*bloomPostingEntry
 	estimatedSize int
+	minTimestamp  time.Time
+	maxTimestamp  time.Time
 }
 
 // newBloomAggregator creates a new bloomAggregator.
@@ -132,22 +135,44 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	}
 	entry.UncompressedSize += obs.UncompressedSize
 
+	ts := obs.Timestamp.UTC()
+	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
+		a.minTimestamp = ts
+	}
+	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
+		a.maxTimestamp = ts
+	}
+
 	return nil
 }
 
-// Entries returns all aggregated entries. Bitmap normalization (padding to
-// equal length) is NOT done here; the caller (columnarEncode) handles it
-// across both label and bloom entries.
-func (a *bloomAggregator) Entries() []*bloomPostingEntry {
+// Entries returns all aggregated entries converted to public type. Bitmap
+// normalization (padding to equal length) is NOT done here. Returns an error if
+// any bloom filter fails to marshal.
+func (a *bloomAggregator) Entries() ([]BloomEntry, error) {
 	if len(a.entries) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	result := make([]*bloomPostingEntry, 0, len(a.entries))
+	result := make([]BloomEntry, 0, len(a.entries))
 	for _, entry := range a.entries {
-		result = append(result, entry)
+		bloomBytes, err := entry.BloomBytes()
+		if err != nil {
+			return nil, fmt.Errorf("marshaling bloom filter for %q section %d column %q: %w",
+				entry.ObjectPath, entry.SectionIndex, entry.ColumnName, err)
+		}
+		result = append(result, BloomEntry{
+			ObjectPath:       entry.ObjectPath,
+			SectionIndex:     entry.SectionIndex,
+			ColumnName:       entry.ColumnName,
+			BloomFilter:      bloomBytes,
+			StreamIDBitmap:   entry.BitmapBytes(),
+			MinTimestamp:     entry.MinTimestamp,
+			MaxTimestamp:     entry.MaxTimestamp,
+			UncompressedSize: entry.UncompressedSize,
+		})
 	}
-	return result
+	return result, nil
 }
 
 // BloomBytes marshals and returns the bloom filter bytes for a specific column.
@@ -171,8 +196,16 @@ func (a *bloomAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// TimeRange returns the minimum and maximum observation timestamp seen by the
+// aggregator. It returns zero time.Time values when nothing has been observed.
+func (a *bloomAggregator) TimeRange() (time.Time, time.Time) {
+	return a.minTimestamp, a.maxTimestamp
+}
+
 // Reset clears all accumulated state including prepared columns.
 func (a *bloomAggregator) Reset() {
 	a.entries = make(map[bloomPostingKey]*bloomPostingEntry)
 	a.estimatedSize = 0
+	a.minTimestamp = time.Time{}
+	a.maxTimestamp = time.Time{}
 }

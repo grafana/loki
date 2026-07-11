@@ -46,6 +46,10 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Batching{}
 	case *physical.Cache:
 		n.Kind = &Node_Cache{}
+	case *physical.IndexMerge:
+		n.Kind = &Node_IndexMerge{}
+	case *physical.LogMerge:
+		n.Kind = &Node_LogMerge{}
 	default:
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
@@ -570,6 +574,55 @@ func (n *Cache) UnmarshalPhysical(from physical.Node) error {
 		CacheName:             cache.CacheName,
 		MaxCacheableSizeBytes: cache.MaxSizeBytes,
 		Compression:           cache.Compression,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	n.IndexMerge = new(IndexMerge)
+	return n.IndexMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
+	indexMerge, ok := from.(*physical.IndexMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = IndexMerge{
+		Tenant:                  indexMerge.Tenant,
+		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
+		Runs:                    copyRunRefs(indexMerge.Runs),
+		OutputIndexPath:         indexMerge.OutputIndexPath,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_LogMerge) UnmarshalPhysical(from physical.Node) error {
+	n.LogMerge = new(LogMerge)
+	return n.LogMerge.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
+	logMerge, ok := from.(*physical.LogMerge)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = LogMerge{
+		Tenant:                  logMerge.Tenant,
+		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
+		Runs:                    copyRunRefs(logMerge.Runs),
+		SortSchema:              logMerge.SortSchema,
+		OutputIndexPath:         logMerge.OutputIndexPath,
 	}
 	return nil
 }

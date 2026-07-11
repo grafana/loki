@@ -5,8 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 )
@@ -53,22 +51,22 @@ func (c *metricVec) With(labels model.LabelSet) prometheus.Metric {
 	var ok bool
 	var metric prometheus.Metric
 	if metric, ok = c.metrics[fp]; !ok {
-		metric = c.factory(util.ModelLabelSetToMap(cleanLabels(labels)))
+		metric = c.factory(cleanLabels(labels))
 		c.metrics[fp] = metric
 	}
 	return metric
 }
 
 // cleanLabels removes labels whose label name is not a valid prometheus one, or has the reserved `__` prefix.
-func cleanLabels(set model.LabelSet) model.LabelSet {
-	out := make(model.LabelSet, len(set))
+func cleanLabels(set model.LabelSet) map[string]string {
+	out := make(map[string]string, len(set))
 	for k, v := range set {
 		// Performing the same label validity check the prometheus go client library does.
 		// https://github.com/prometheus/client_golang/blob/618194de6ad3db637313666104533639011b470d/prometheus/labels.go#L85
 		if !model.UTF8Validation.IsValidLabelName(string(k)) || strings.HasPrefix(string(k), "__") {
 			continue
 		}
-		out[k] = v
+		out[string(k)] = string(v)
 	}
 	return out
 }

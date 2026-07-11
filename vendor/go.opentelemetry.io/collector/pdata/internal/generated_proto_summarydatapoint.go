@@ -217,7 +217,7 @@ func (orig *SummaryDataPoint) UnmarshalJSON(iter *json.Iterator) {
 		case "flags":
 			orig.Flags = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

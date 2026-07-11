@@ -25,10 +25,8 @@ else
 DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
-# Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.3
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
+# Ensure you run `make update-go-version` after changing this
+GO_VERSION         := 1.26.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -115,7 +113,7 @@ define run_in_container
 			fi; \
 		fi))
 
-	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
 		-f loki-build-image/Dockerfile \
 		-t $(MAKEFILE_IMAGE) \
 		.
@@ -126,6 +124,7 @@ define run_in_container
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		$(GIT_MOUNT) \
+		--user $(shell whoami) \
 		--entrypoint /usr/bin/make \
 		-e SRC_DIR=/src/loki \
 		-e BUILD_IN_CONTAINER=false \
@@ -150,6 +149,7 @@ help: ## Display this help
 .PHONY: clean clean-protos
 .PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
+.PHONY: goversion update-go-version
 
 #############
 # Variables #
@@ -191,6 +191,13 @@ binfmt:
 ################
 # Main Targets #
 ################
+
+goversion:
+	@echo $(GO_VERSION)
+
+update-go-version: goversion release-workflows
+	@tools/go-version-bump.sh $(GO_VERSION)
+
 all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
@@ -263,9 +270,6 @@ production/helm/loki/src/helm-test/helm-test:
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
 
-helm-docs: ## generate reference documentation
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
-
 #################
 # Loki-QueryTee #
 #################
@@ -290,7 +294,6 @@ cmd/lokitool/lokitool:
 
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
-MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 loki-mixin: ## compile the loki mixin
@@ -300,16 +303,11 @@ else
 	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
-
-	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
-	@cd $(MIXIN_PATH) && jb install
-	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
-	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
@@ -643,11 +641,6 @@ loki-operator-image: ## build the operator docker image
 # Documentation #
 #################
 
-documentation-helm-reference-check:
-	@echo "Checking diff"
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
-	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
-
 ########
 # Misc #
 ########
@@ -853,10 +846,13 @@ update-loki-release-sha:
 
 .PHONY: flake-update
 flake-update:
-	@docker run -v $(CURDIR):/loki \
+	@docker run --rm --tty --interactive \
+		--volume $(shell pwd):/loki \
 		--workdir /loki \
+		--entrypoint bash \
 		nixos/nix \
-		nix \
-		--extra-experimental-features nix-command \
-		--extra-experimental-features flakes \
-		flake update
+		-c "\
+	    git config --global --add safe.directory /loki && \
+      nix --extra-experimental-features nix-command --extra-experimental-features flakes \
+			    flake update \
+		"

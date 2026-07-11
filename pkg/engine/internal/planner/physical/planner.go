@@ -9,6 +9,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
+	internalerrors "github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -91,6 +92,17 @@ type Planner struct {
 	context *Context
 	catalog Catalog
 	plan    *Plan
+
+	// firedRules holds the rule firings from the most recent call to
+	// Optimize, so callers can surface them as observability without changing
+	// the Optimize signature.
+	firedRules map[string]bool
+}
+
+// FiredRules returns the rule firings recorded by the most recent call to
+// [Planner.Optimize]. It returns nil if Optimize has not been called.
+func (p *Planner) FiredRules() map[string]bool {
+	return p.firedRules
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -224,15 +236,9 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 	p.plan.graph.Add(scanSet)
 
 	for _, dataObj := range dataObjs {
-		// TODO: Labels are tracked per stream in the dataObj so that this can eventually be smarter.
-		// If we track labels per stream in the ScanTarget, and disambiguate per streamID when
-		// actually scanning, we can be more precise. For now we just disambiguate columns as metadata
-		// when they aren't in any of the label sets seen for this query.
 		ambiguousLbls := map[string]struct{}{}
-		for _, lbls := range dataObj.PredicatesInStreams {
-			for _, lbl := range lbls {
-				ambiguousLbls[lbl] = struct{}{}
-			}
+		for _, lbl := range dataObj.AmbiguousPredicates {
+			ambiguousLbls[lbl] = struct{}{}
 		}
 
 		lblNames := make([]string, 0, len(ambiguousLbls))
@@ -749,6 +755,7 @@ func disambiguateExpression(expr Expression, conflictingLabels []string) (Expres
 // Optimize runs optimization passes over the plan, modifying it
 // if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+	p.firedRules = nil
 	for i, root := range plan.Roots() {
 		optimizations := []*Optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
@@ -776,10 +783,46 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			),
 		}
 		optimizer := NewOptimizer(plan, optimizations)
-		optimizer.Optimize(root)
+		fired := optimizer.Optimize(root)
+		if p.firedRules == nil {
+			p.firedRules = fired
+		} else {
+			for name, applied := range fired {
+				p.firedRules[name] = p.firedRules[name] || applied
+			}
+		}
 		if i == 1 {
 			return nil, errors.New("physical plan must only have exactly one root node")
 		}
 	}
+
+	if err := validateDataObjScanPredicates(plan); err != nil {
+		return nil, err
+	}
+
 	return plan, nil
+}
+
+// validateDataObjScanPredicates walks the plan and verifies that every
+// predicate attached to a [DataObjScan] node can be evaluated by the executor,
+// calling [validateLogsPredicate] on each. Errors are wrapped with
+// [internalerrors.ErrNotSupported], so an unsupported predicate surfaces at
+// planning time and triggers the existing fallback path instead of failing at
+// query execution.
+func validateDataObjScanPredicates(plan *Plan) error {
+	for _, root := range plan.Roots() {
+		scans := findMatchingNodes(plan, root, func(n Node) bool {
+			_, ok := n.(*DataObjScan)
+			return ok
+		})
+		for _, n := range scans {
+			scan := n.(*DataObjScan)
+			for _, pred := range scan.Predicates {
+				if err := validateLogsPredicate(pred); err != nil {
+					return fmt.Errorf("%w: unsupported predicate on data object scan: %w", internalerrors.ErrNotSupported, err)
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -104,9 +104,6 @@ func ParseWithMetadata(orgIDs string) (tenantID string, m Metadata, err error) {
 	if err := ValidTenantID(tenantID); err != nil {
 		return "", Metadata{}, err
 	}
-	if err := ValidMetadata(metadataString); err != nil {
-		return "", Metadata{}, err
-	}
 	var nextOrgID string
 	for hasMoreIDs {
 		nextOrgID, remaining, hasMoreIDs = stringsCut(remaining, tenantIDsSeparator)

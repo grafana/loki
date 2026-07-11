@@ -126,6 +126,7 @@ storage_config:
     s3forcepathstyle: true
     insecure: true
     endpoint: minio:9000
+    region: minio
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache
