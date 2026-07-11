@@ -2389,8 +2389,26 @@ type DaemonTaskDefinition struct {
 	// The name of a family that this daemon task definition is registered to.
 	Family *string
 
+	// The IPC namespace mode for the daemon. The valid values are none and shared .
+	// The default is none .
+	//
+	// If none is specified or no value is provided, the daemon runs with its own IPC
+	// namespace, isolated from other tasks. If shared is specified, the daemon joins
+	// the host IPC namespace, making it accessible to non-daemon tasks that use
+	// ipcMode: "host" or other daemons that use ipcMode: "shared" .
+	IpcMode DaemonIpcMode
+
 	// The amount of memory (in MiB) used by the daemon task.
 	Memory *string
+
+	// The PID namespace mode for the daemon. The valid values are none and shared .
+	// The default is none .
+	//
+	// If none is specified or no value is provided, the daemon runs with its own PID
+	// namespace, isolated from other tasks. If shared is specified, the daemon joins
+	// the host PID namespace, making it accessible to non-daemon tasks that use
+	// pidMode: "host" or other daemons that use pidMode: "shared" .
+	PidMode DaemonPidMode
 
 	// The Unix timestamp for the time when the daemon task definition was registered.
 	RegisteredAt *time.Time
@@ -2651,6 +2669,17 @@ type DeploymentCircuitBreaker struct {
 	// This member is required.
 	Rollback bool
 
+	// Specifies whether the deployment circuit breaker resets its failure count when
+	// a task reaches a healthy state. When set to true , a task that reaches a healthy
+	// state resets the failure count to 0 . When set to false , Amazon ECS does not
+	// reset the failure count. The default is true .
+	ResetOnHealthyTask *bool
+
+	// The threshold configuration that controls when the deployment circuit breaker
+	// triggers. The type and value together determine how many task failures are
+	// tolerated before the circuit breaker activates.
+	ThresholdConfiguration *ThresholdConfiguration
+
 	noSmithyDocumentSerde
 }
 
@@ -2687,8 +2716,8 @@ type DeploymentConfiguration struct {
 	// [Rolling update]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html
 	DeploymentCircuitBreaker *DeploymentCircuitBreaker
 
-	// An array of deployment lifecycle hook objects to run custom logic at specific
-	// stages of the deployment lifecycle.
+	// An array of deployment lifecycle hook objects to run custom logic or pause the
+	// deployment at specific stages of the deployment lifecycle.
 	LifecycleHooks []DeploymentLifecycleHook
 
 	// Configuration for linear deployment strategy. Only valid when the deployment
@@ -2931,8 +2960,9 @@ type DeploymentEphemeralStorage struct {
 	noSmithyDocumentSerde
 }
 
-// A deployment lifecycle hook runs custom logic at specific stages of the
-// deployment process. Currently, you can use Lambda functions as hook targets.
+// A deployment lifecycle hook runs custom logic or pauses the deployment at
+// specific stages of the deployment process. You can use Lambda functions or pause
+// hooks as hook targets.
 //
 // For more information, see [Lifecycle hooks for Amazon ECS service deployments] in the Amazon Elastic Container Service Developer
 // Guide.
@@ -2940,14 +2970,14 @@ type DeploymentEphemeralStorage struct {
 // [Lifecycle hooks for Amazon ECS service deployments]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-lifecycle-hooks.html
 type DeploymentLifecycleHook struct {
 
-	// Use this field to specify custom parameters that Amazon ECS will pass to your
-	// hook target invocations (such as a Lambda function).
+	// Use this field to specify custom parameters that Amazon ECS passes to your
+	// Lambda function on each invocation. This field is not used for PAUSE hooks.
 	HookDetails document.Interface
 
-	// The Amazon Resource Name (ARN) of the hook target. Currently, only Lambda
-	// function ARNs are supported.
+	// The Amazon Resource Name (ARN) of the hook target. For AWS_LAMBDA hooks, this
+	// is the Lambda function ARN. This field is not applicable for PAUSE hooks.
 	//
-	// You must provide this parameter when configuring a deployment lifecycle hook.
+	// You must provide this parameter when configuring an AWS_LAMBDA lifecycle hook.
 	HookTargetArn *string
 
 	// The lifecycle stages at which to run the hook. Choose from these valid values:
@@ -2988,10 +3018,18 @@ type DeploymentLifecycleHook struct {
 	//
 	// You can use a lifecycle hook for this stage.
 	//
+	//   - PRE_PRODUCTION_TRAFFIC_SHIFT
+	//
+	// Occurs before production traffic shift. For linear and canary deployments, this
+	//   stage is invoked before every traffic shift step.
+	//
+	// You can use a lifecycle hook for this stage.
+	//
 	//   - PRODUCTION_TRAFFIC_SHIFT
 	//
 	// Production traffic is shifting to the green service revision. The green service
-	//   revision is migrating from 0% to 100% of production traffic.
+	//   revision is migrating from 0% to 100% of production traffic. For linear and
+	//   canary deployments, this stage is invoked at every traffic shift step.
 	//
 	// You can use a lifecycle hook for this stage.
 	//
@@ -3000,6 +3038,10 @@ type DeploymentLifecycleHook struct {
 	// The production traffic shift is complete.
 	//
 	// You can use a lifecycle hook for this stage.
+	//
+	// PAUSE hooks cannot be configured at TEST_TRAFFIC_SHIFT or
+	// PRODUCTION_TRAFFIC_SHIFT stages. These stages are only valid for AWS_LAMBDA
+	// hooks.
 	//
 	// You must provide this parameter when configuring a deployment lifecycle hook.
 	LifecycleStages []DeploymentLifecycleHookStage
@@ -3047,11 +3089,8 @@ type DeploymentLifecycleHookDetail struct {
 	// ContinueServiceDeployment to continue or roll back a paused deployment.
 	HookId *string
 
-	// The status of the lifecycle hook. Valid values depend on the hook type:
-	//
-	//   - For AWS_LAMBDA hooks: IN_PROGRESS , SUCCEEDED , FAILED , and TIMED_OUT .
-	//
-	//   - For PAUSE hooks: AWAITING_ACTION , SUCCEEDED , FAILED , and TIMED_OUT .
+	// The status of the lifecycle hook. Valid values include AWAITING_ACTION ,
+	// IN_PROGRESS , SUCCEEDED , FAILED , and TIMED_OUT .
 	Status DeploymentLifecycleHookStatus
 
 	// The Amazon Resource Name (ARN) of the hook target. For AWS_LAMBDA hooks, this
@@ -3078,10 +3117,14 @@ type DeploymentLifecycleHookTimeoutConfiguration struct {
 	//   - CONTINUE - Proceeds the deployment to the next lifecycle stage.
 	//
 	//   - ROLLBACK - Rolls back the deployment to the previous service revision.
+	//
+	// Default: ROLLBACK
 	Action DeploymentLifecycleHookAction
 
 	// The number of minutes Amazon ECS waits for the lifecycle hook to complete
 	// before taking the timeout action.
+	//
+	// Default: 1440 (24 hours)
 	TimeoutInMinutes *int32
 
 	noSmithyDocumentSerde
@@ -3566,6 +3609,11 @@ type ExpressGatewayServiceConfiguration struct {
 
 	// The ARN of the service revision.
 	ServiceRevisionArn *string
+
+	// The ARN of the task definition used by this service revision. This is present
+	// for all Express services and reflects the task definition in use, whether
+	// managed by Amazon ECS or provided by the customer.
+	TaskDefinitionArn *string
 
 	// The ARN of the task role for the service revision.
 	TaskRoleArn *string
@@ -5421,6 +5469,36 @@ type MemoryMiBRequest struct {
 	noSmithyDocumentSerde
 }
 
+// The configuration for a specific set of metrics to collect for a service.
+type MetricConfiguration struct {
+
+	// The list of metric names to configure. The supported metric names are
+	// CPUUtilization and MemoryUtilization .
+	//
+	// This member is required.
+	MetricNames []string
+
+	// The resolution, in seconds, at which to collect the metrics. The valid values
+	// are 20 and 60 .
+	//
+	// This member is required.
+	ResolutionSeconds *int32
+
+	noSmithyDocumentSerde
+}
+
+// The optional monitoring configuration for a service, which defines the
+// resolution for the service-level CPUUtilization and MemoryUtilization Amazon
+// CloudWatch metrics. When not specified, Amazon ECS uses the default resolution
+// of 60 seconds.
+type MonitoringConfiguration struct {
+
+	// The list of metric configurations for the service monitoring.
+	MetricConfigurations []MetricConfiguration
+
+	noSmithyDocumentSerde
+}
+
 // The details for a volume mount point that's used in a container definition.
 type MountPoint struct {
 
@@ -6018,6 +6096,26 @@ type RuntimePlatform struct {
 
 	// The operating system.
 	OperatingSystemFamily OSFamily
+
+	noSmithyDocumentSerde
+}
+
+// The runtime platform that Amazon ECS applies to a service revision. This value
+// overrides the runtime platform specified in the task definition. You can't set
+// this value.
+type RuntimePlatformOverride struct {
+
+	// The CPU architecture that tasks in this service revision run on. This value
+	// might differ from the architecture declared in the task definition—for example,
+	// when Amazon ECS detects an architecture mismatch during an Amazon ECS Express
+	// deployment and runs tasks on a different architecture. You can't set this value.
+	//
+	// Valid values:
+	//
+	//   - X86_64 - The x86 64-bit architecture.
+	//
+	//   - ARM64 - The 64-bit ARM architecture.
+	CpuArchitecture *string
 
 	noSmithyDocumentSerde
 }
@@ -6778,10 +6876,16 @@ type ServiceDeployment struct {
 	// The test traffic shift is complete. The green service revision handles 100% of
 	//   the test traffic.
 	//
+	//   - PRE_PRODUCTION_TRAFFIC_SHIFT
+	//
+	// Occurs before production traffic shift. For linear and canary deployments, this
+	//   stage is invoked before every traffic shift step.
+	//
 	//   - PRODUCTION_TRAFFIC_SHIFT
 	//
 	// Production traffic is shifting to the green service revision. The green service
-	//   revision is migrating from 0% to 100% of production traffic.
+	//   revision is migrating from 0% to 100% of production traffic. For linear and
+	//   canary deployments, this stage is invoked at every traffic shift step.
 	//
 	//   - POST_PRODUCTION_TRAFFIC_SHIFT
 	//
@@ -7194,8 +7298,19 @@ type ServiceRevision struct {
 	// The load balancers the service revision uses.
 	LoadBalancers []LoadBalancer
 
+	// The optional monitoring configuration for the service, which defines the
+	// resolution for the service-level CPUUtilization and MemoryUtilization Amazon
+	// CloudWatch metrics. When not specified, Amazon ECS uses the default resolution
+	// of 60 seconds.
+	Monitoring *MonitoringConfiguration
+
 	// The network configuration for a task or service.
 	NetworkConfiguration *NetworkConfiguration
+
+	// The effective runtime overrides that Amazon ECS applies to this service
+	// revision. This value is present only when Amazon ECS detects a difference
+	// between the task definition and the actual runtime configuration.
+	Overrides *ServiceRevisionOverrides
 
 	// The platform family the service revision uses.
 	PlatformFamily *string
@@ -7254,6 +7369,18 @@ type ServiceRevisionLoadBalancer struct {
 	// The Amazon Resource Name (ARN) of the target group associated with the service
 	// revision.
 	TargetGroupArn *string
+
+	noSmithyDocumentSerde
+}
+
+// Contains the runtime overrides that Amazon ECS automatically applies to a
+// service revision when the effective runtime configuration differs from the task
+// definition. This value is read-only.
+type ServiceRevisionOverrides struct {
+
+	// The runtime platform override that Amazon ECS automatically applies to the
+	// service revision. You can't set this value.
+	RuntimePlatform *RuntimePlatformOverride
 
 	noSmithyDocumentSerde
 }
@@ -8384,6 +8511,33 @@ type TaskVolumeConfiguration struct {
 	// one volume created for each task. The Amazon EBS volumes are visible in your
 	// account in the Amazon EC2 console once they are created.
 	ManagedEBSVolume *TaskManagedEBSVolumeConfiguration
+
+	noSmithyDocumentSerde
+}
+
+// Defines the failure threshold that the deployment circuit breaker uses to
+// monitor a deployment. The type and value together determine the number of task
+// failures that are tolerated before the circuit breaker triggers.
+//
+// By default, the threshold configuration uses a type of BOUNDED_PERCENT with a
+// value of 50 .
+type ThresholdConfiguration struct {
+
+	// Determines how Amazon ECS uses value to calculate the failure threshold. For
+	// the percentage types ( BOUNDED_PERCENT and UNBOUNDED_PERCENT ), Amazon ECS
+	// multiplies value by the latest service desired count. For COUNT , Amazon ECS
+	// uses value directly as the threshold. The default is BOUNDED_PERCENT .
+	//
+	// This member is required.
+	Type ThresholdType
+
+	// Specifies the integer that Amazon ECS uses to calculate the failure threshold.
+	// When type is COUNT , this value is the failure threshold itself. When type is a
+	// percentage type, Amazon ECS multiplies this value by the latest service desired
+	// count to produce the failure threshold. The default is 50 .
+	//
+	// This member is required.
+	Value int32
 
 	noSmithyDocumentSerde
 }
