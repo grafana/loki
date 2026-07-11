@@ -260,10 +260,10 @@ func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, sortOrder strin
 	t.Helper()
 
 	if len(schemaLabels) > 0 {
-		aKey, err := computeSortKey(a.labels, schemaLabels)
+		aKey, err := ComputeSortKey(a.labels, schemaLabels)
 		require.NoError(t, err)
 
-		bKey, err := computeSortKey(b.labels, schemaLabels)
+		bKey, err := ComputeSortKey(b.labels, schemaLabels)
 		require.NoError(t, err)
 
 		if res := cmp.Compare(aKey, bKey); res != 0 {

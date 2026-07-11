@@ -284,10 +284,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	}
 	gotrace.Log(ctx, "physical_planning", "done")
 
-	// Enable admission lanes only for log queries
-	useAdmissionLanes := !isMetricQuery(params.GetExpression())
-
-	wf, err := q.Prepare(ctx, physicalPlan, useAdmissionLanes)
+	wf, err := q.Prepare(ctx, physicalPlan)
 	if err != nil {
 		e.metrics.query.subqueries.WithLabelValues(statusFailure, q.queryType).Inc()
 		e.metrics.query.stageFailures.WithLabelValues(stagePrepare, statusFailure, q.queryType).Inc()
@@ -650,9 +647,7 @@ func (e *Engine) metastoreSectionsResolver(ctx context.Context, parent *query, l
 			return nil, err
 		}
 
-		// Disable admission lanes for metastore queries
-		useAdmissionLanes := false
-		wf, err := q.Prepare(ctx, plan, useAdmissionLanes)
+		wf, err := q.Prepare(ctx, plan)
 		if err != nil {
 			q.RecordError(ctx, err)
 			return nil, fmt.Errorf("index query: build workflow: %w", err)

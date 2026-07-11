@@ -3062,4 +3062,27 @@ func TestConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestDistributorMaxInflightBytesLimit(t *testing.T) {
+	validationLimits := &validation.Limits{}
+	flagext.DefaultValues(validationLimits)
+	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+	d := distributors[0]
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{{
+				Timestamp: time.Now(),
+				Line:      strings.Repeat("a", 1025),
+			}},
+		}},
+	}
+	_, err := d.Push(ctx, req)
+	require.NoError(t, err)
+	// Set the max inflight bytes to 1KB, the same request should be rejected.
+	d.cfg.MaxInflightBytes = 1024
+	_, err = d.Push(ctx, req)
+	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
+
+}
+
 func ptr[T any](v T) *T { return &v }

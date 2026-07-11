@@ -44,6 +44,13 @@ type indexSectionsReader struct {
 	// Bloom filter predicates (will be filtered to remove stream labels after streams are resolved)
 	predicates []*labels.Matcher
 
+	// predicateNames holds the label names of every predicate, regardless of
+	// match type. It is used to decide which stream-label columns to read so
+	// that label filters of any match type (=, !=, =~, !~) are recognized as
+	// stream labels during disambiguation. Bloom filtering still only uses the
+	// equality-only predicates above.
+	predicateNames map[string]struct{}
+
 	batchSize int
 
 	// Reader state
@@ -80,9 +87,12 @@ func newIndexSectionsReader(
 	predicates []*labels.Matcher,
 	batchSize int,
 ) *indexSectionsReader {
-	// Only keep equal predicates for bloom filtering
+	// Only keep equal predicates for bloom filtering, but track every predicate
+	// name so non-equality label filters are still recognized as stream labels.
 	var equalPredicates []*labels.Matcher
+	predicateNames := make(map[string]struct{}, len(predicates))
 	for _, p := range predicates {
+		predicateNames[p.Name] = struct{}{}
 		if p.Type == labels.MatchEqual {
 			equalPredicates = append(equalPredicates, p)
 		}
@@ -97,6 +107,7 @@ func newIndexSectionsReader(
 		obj:                obj,
 		matchers:           matchers,
 		predicates:         equalPredicates,
+		predicateNames:     predicateNames,
 		batchSize:          batchSize,
 		start:              start,
 		end:                end,
@@ -136,10 +147,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 
 	sStart, sEnd := r.scalarTimestamps()
 
-	predicateKeys := make(map[string]struct{}, len(r.predicates))
-	for _, predicate := range r.predicates {
-		predicateKeys[predicate.Name] = struct{}{}
-	}
+	predicateKeys := r.predicateNames
 
 	var (
 		unopenedStreams  []*dataobj.Section

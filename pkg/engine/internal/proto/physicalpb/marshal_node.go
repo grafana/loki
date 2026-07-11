@@ -2,6 +2,7 @@ package physicalpb
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/oklog/ulid/v2"
 
@@ -490,12 +491,13 @@ func copyRunRefs(in []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 				continue
 			}
 			sections[j] = &compactionv2pb.SectionRef{
-				ObjectPath:   s.ObjectPath,
-				SectionIndex: s.SectionIndex,
-				MinKey:       s.MinKey,
-				MaxKey:       s.MaxKey,
-				MinTimestamp: s.MinTimestamp,
-				MaxTimestamp: s.MaxTimestamp,
+				ObjectPath:       s.ObjectPath,
+				SectionIndex:     s.SectionIndex,
+				MinKey:           slices.Clone(s.MinKey),
+				MaxKey:           slices.Clone(s.MaxKey),
+				MinTimestamp:     s.MinTimestamp,
+				MaxTimestamp:     s.MaxTimestamp,
+				UncompressedSize: s.UncompressedSize,
 			}
 		}
 		runs[i] = &compactionv2pb.RunRef{Sections: sections}
@@ -511,12 +513,11 @@ func (n *Node_LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error)
 // MarshalPhysical converts a protobuf LogMerge into a physical plan node.
 func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.LogMerge{
-		NodeID:           nodeID,
-		Tenant:           n.Tenant,
-		ToCWindowStart:   n.TocWindowStartUnixNanos,
-		Runs:             copyRunRefs(n.Runs),
-		SourceIndexPaths: n.SourceIndexPaths,
-		SortSchema:       n.SortSchema,
-		OutputIndexPath:  n.OutputIndexPath,
+		NodeID:          nodeID,
+		Tenant:          n.Tenant,
+		ToCWindowStart:  n.TocWindowStartUnixNanos,
+		Runs:            copyRunRefs(n.Runs),
+		SortSchema:      n.SortSchema,
+		OutputIndexPath: n.OutputIndexPath,
 	}, nil
 }

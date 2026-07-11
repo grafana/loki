@@ -24,7 +24,7 @@ type coordinatorMetrics struct {
 	cyclesTotal *prometheus.CounterVec // outcome=toc_not_found|index_load_err|no_indexes|converged|compaction_failed|compacted_with_failures|compacted
 
 	// tenantCyclesTotal counts per-tenant cycle outcomes.
-	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
+	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|log_compacted|converged|failed, tenant
 
 	// indexesRemovedTotal counts source indexes removed by compaction
 	// (cumulative). Use with indexesAddedTotal to compute net reduction:
@@ -68,7 +68,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
-			Help: "Per-tenant cycle outcomes. compacted = ran compaction successfully, converged = had <= 1 index (no work), failed = compaction returned error.",
+			Help: "Per-tenant cycle outcomes. compacted = ran index compaction successfully, log_compacted = converged window dispatched log-merge tasks, converged = no index or single index with no log-merge work, failed = cycle returned error.",
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
