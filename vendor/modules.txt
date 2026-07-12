@@ -659,6 +659,10 @@ github.com/charmbracelet/x/cellbuf
 # github.com/charmbracelet/x/term v0.2.1
 ## explicit; go 1.18
 github.com/charmbracelet/x/term
+# github.com/clipperhouse/uax29/v2 v2.2.0
+## explicit; go 1.18
+github.com/clipperhouse/uax29/v2/graphemes
+github.com/clipperhouse/uax29/v2/internal/iterators
 # github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2
 ## explicit; go 1.24.6
 github.com/cncf/xds/go/udpa/annotations
@@ -1491,8 +1495,8 @@ github.com/mattn/go-isatty
 # github.com/mattn/go-localereader v0.0.1
 ## explicit
 github.com/mattn/go-localereader
-# github.com/mattn/go-runewidth v0.0.16
-## explicit; go 1.9
+# github.com/mattn/go-runewidth v0.0.24
+## explicit; go 1.20
 github.com/mattn/go-runewidth
 # github.com/mdlayher/socket v0.5.1
 ## explicit; go 1.20
