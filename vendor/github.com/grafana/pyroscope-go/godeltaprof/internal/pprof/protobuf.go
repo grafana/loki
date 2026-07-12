@@ -19,14 +19,14 @@ func (b *protobuf) varint(x uint64) {
 	b.data = append(b.data, byte(x))
 }
 
-func (b *protobuf) length(tag int, len int) {
-	b.varint(uint64(tag)<<3 | 2)
-	b.varint(uint64(len))
+func (b *protobuf) length(tag int, l int) {
+	b.varint(uint64(tag)<<3 | 2) //nolint:gosec
+	b.varint(uint64(l))          //nolint:gosec
 }
 
 func (b *protobuf) uint64(tag int, x uint64) {
 	// append varint to b.data
-	b.varint(uint64(tag)<<3 | 0)
+	b.varint(uint64(tag) << 3) //nolint:gosec
 	b.varint(x)
 }
 
@@ -43,6 +43,7 @@ func (b *protobuf) uint64s(tag int, x []uint64) {
 		copy(b.tmp[:], b.data[n2:n3])
 		copy(b.data[n1+(n3-n2):], b.data[n1:n2])
 		copy(b.data[n1:], b.tmp[:n3-n2])
+
 		return
 	}
 	for _, u := range x {
@@ -58,7 +59,7 @@ func (b *protobuf) uint64Opt(tag int, x uint64) {
 }
 
 func (b *protobuf) int64(tag int, x int64) {
-	u := uint64(x)
+	u := uint64(x) //nolint:gosec
 	b.uint64(tag, u)
 }
 
@@ -74,7 +75,7 @@ func (b *protobuf) int64s(tag int, x []int64) {
 		// Use packed encoding
 		n1 := len(b.data)
 		for _, u := range x {
-			b.varint(uint64(u))
+			b.varint(uint64(u)) //nolint:gosec
 		}
 		n2 := len(b.data)
 		b.length(tag, n2-n1)
@@ -82,6 +83,7 @@ func (b *protobuf) int64s(tag int, x []int64) {
 		copy(b.tmp[:], b.data[n2:n3])
 		copy(b.data[n1+(n3-n2):], b.data[n1:n2])
 		copy(b.data[n1:], b.tmp[:n3-n2])
+
 		return
 	}
 	for _, u := range x {
@@ -100,13 +102,6 @@ func (b *protobuf) strings(tag int, x []string) {
 	}
 }
 
-func (b *protobuf) stringOpt(tag int, x string) {
-	if x == "" {
-		return
-	}
-	b.string(tag, x)
-}
-
 func (b *protobuf) bool(tag int, x bool) {
 	if x {
 		b.uint64(tag, 1)
@@ -115,17 +110,11 @@ func (b *protobuf) bool(tag int, x bool) {
 	}
 }
 
-func (b *protobuf) boolOpt(tag int, x bool) {
-	if x == false {
-		return
-	}
-	b.bool(tag, x)
-}
-
 type msgOffset int
 
 func (b *protobuf) startMessage() msgOffset {
 	b.nest++
+
 	return msgOffset(len(b.data))
 }
 
