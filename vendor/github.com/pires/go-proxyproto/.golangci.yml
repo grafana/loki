@@ -1,0 +1,35 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - copyloopvar
+    - goconst
+    - godot
+    - gosec
+    - modernize
+    - misspell
+    - revive
+    - unconvert
+    - usestdlibvars
+  settings:
+    goconst:
+      # Newer goconst versions default ignore-calls to false, which flags
+      # idiomatic call-argument strings such as t.Fatalf("err: %v", err) and
+      # net.Dial("tcp", addr). Restore the prior default so only genuinely
+      # repeated constant values are reported.
+      ignore-calls: true
+
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

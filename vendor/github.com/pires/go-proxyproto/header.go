@@ -1,5 +1,5 @@
 // Package proxyproto implements Proxy Protocol (v1 and v2) parser and writer, as per specification:
-// https://www.haproxy.org/download/2.3/doc/proxy-protocol.txt
+// https://www.haproxy.org/download/3.4/doc/proxy-protocol.txt
 package proxyproto
 
 import (
@@ -11,27 +11,51 @@ import (
 	"time"
 )
 
+// Network names for Unix-domain addresses, matching net.UnixAddr.Net values.
+// The net package exposes no constants for these.
+const (
+	networkUnix     = "unix"
+	networkUnixgram = "unixgram"
+)
+
 var (
-	// Protocol
+	// SIGV1 is the signature for PROXY protocol v1.
 	SIGV1 = []byte{'\x50', '\x52', '\x4F', '\x58', '\x59'}
+	// SIGV2 is the signature for PROXY protocol v2.
 	SIGV2 = []byte{'\x0D', '\x0A', '\x0D', '\x0A', '\x00', '\x0D', '\x0A', '\x51', '\x55', '\x49', '\x54', '\x0A'}
 
-	ErrCantReadVersion1Header               = errors.New("proxyproto: can't read version 1 header")
-	ErrVersion1HeaderTooLong                = errors.New("proxyproto: version 1 header must be 107 bytes or less")
-	ErrLineMustEndWithCrlf                  = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
-	ErrCantReadProtocolVersionAndCommand    = errors.New("proxyproto: can't read proxy protocol version and command")
-	ErrCantReadAddressFamilyAndProtocol     = errors.New("proxyproto: can't read address family or protocol")
-	ErrCantReadLength                       = errors.New("proxyproto: can't read length")
-	ErrCantResolveSourceUnixAddress         = errors.New("proxyproto: can't resolve source Unix address")
-	ErrCantResolveDestinationUnixAddress    = errors.New("proxyproto: can't resolve destination Unix address")
-	ErrNoProxyProtocol                      = errors.New("proxyproto: proxy protocol signature not present")
-	ErrUnknownProxyProtocolVersion          = errors.New("proxyproto: unknown proxy protocol version")
+	// ErrCantReadVersion1Header indicates a v1 header could not be read.
+	ErrCantReadVersion1Header = errors.New("proxyproto: can't read version 1 header")
+	// ErrVersion1HeaderTooLong indicates a v1 header is too long.
+	ErrVersion1HeaderTooLong = errors.New("proxyproto: version 1 header must be 107 bytes or less")
+	// ErrLineMustEndWithCrlf indicates a v1 header is invalid, must end with \r\n.
+	ErrLineMustEndWithCrlf = errors.New("proxyproto: version 1 header is invalid, must end with \\r\\n")
+	// ErrCantReadProtocolVersionAndCommand indicates a protocol version and command could not be read.
+	ErrCantReadProtocolVersionAndCommand = errors.New("proxyproto: can't read proxy protocol version and command")
+	// ErrCantReadAddressFamilyAndProtocol indicates an address family and protocol could not be read.
+	ErrCantReadAddressFamilyAndProtocol = errors.New("proxyproto: can't read address family or protocol")
+	// ErrCantReadLength indicates a length could not be read.
+	ErrCantReadLength = errors.New("proxyproto: can't read length")
+	// ErrCantResolveSourceUnixAddress indicates a source Unix address could not be resolved.
+	ErrCantResolveSourceUnixAddress = errors.New("proxyproto: can't resolve source Unix address")
+	// ErrCantResolveDestinationUnixAddress indicates a destination Unix address could not be resolved.
+	ErrCantResolveDestinationUnixAddress = errors.New("proxyproto: can't resolve destination Unix address")
+	// ErrNoProxyProtocol indicates a proxy protocol signature is not present.
+	ErrNoProxyProtocol = errors.New("proxyproto: proxy protocol signature not present")
+	// ErrUnknownProxyProtocolVersion indicates an unknown proxy protocol version.
+	ErrUnknownProxyProtocolVersion = errors.New("proxyproto: unknown proxy protocol version")
+	// ErrUnsupportedProtocolVersionAndCommand indicates an unsupported protocol version and command.
 	ErrUnsupportedProtocolVersionAndCommand = errors.New("proxyproto: unsupported proxy protocol version and command")
-	ErrUnsupportedAddressFamilyAndProtocol  = errors.New("proxyproto: unsupported address family and protocol")
-	ErrInvalidLength                        = errors.New("proxyproto: invalid length")
-	ErrInvalidAddress                       = errors.New("proxyproto: invalid address")
-	ErrInvalidPortNumber                    = errors.New("proxyproto: invalid port number")
-	ErrSuperfluousProxyHeader               = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
+	// ErrUnsupportedAddressFamilyAndProtocol indicates an unsupported address family and protocol.
+	ErrUnsupportedAddressFamilyAndProtocol = errors.New("proxyproto: unsupported address family and protocol")
+	// ErrInvalidLength indicates an invalid length.
+	ErrInvalidLength = errors.New("proxyproto: invalid length")
+	// ErrInvalidAddress indicates an invalid address.
+	ErrInvalidAddress = errors.New("proxyproto: invalid address")
+	// ErrInvalidPortNumber indicates an invalid port number.
+	ErrInvalidPortNumber = errors.New("proxyproto: invalid port number")
+	// ErrSuperfluousProxyHeader indicates an upstream connection sent a PROXY header but isn't allowed to send one.
+	ErrSuperfluousProxyHeader = errors.New("proxyproto: upstream connection sent PROXY header but isn't allowed to send one")
 )
 
 // Header is the placeholder for proxy protocol header.
@@ -61,31 +85,50 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	}
 	switch sourceAddr := sourceAddr.(type) {
 	case *net.TCPAddr:
-		if _, ok := destAddr.(*net.TCPAddr); !ok {
+		// Both ends must be the same Addr type; bind destAddr to read its IP below.
+		destAddr, ok := destAddr.(*net.TCPAddr)
+		if !ok {
 			break
 		}
-		if len(sourceAddr.IP.To4()) == net.IPv4len {
+		// Pick the family from BOTH addresses, not just the source: use v4 only
+		// when both are IPv4, otherwise fall back to v6 (the v4 side is then
+		// serialized as a v4-mapped IPv6, ::ffff:x.x.x.x). The previous
+		// source-only check mislabeled a v4-source/v6-dest pair as TCPv4 and then
+		// failed in formatVersion1.
+		switch {
+		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = TCPv4
-		} else if len(sourceAddr.IP) == net.IPv6len {
+		case sourceAddr.IP.To16() != nil && destAddr.IP.To16() != nil:
 			h.TransportProtocol = TCPv6
 		}
 	case *net.UDPAddr:
-		if _, ok := destAddr.(*net.UDPAddr); !ok {
+		destAddr, ok := destAddr.(*net.UDPAddr)
+		if !ok {
 			break
 		}
-		if len(sourceAddr.IP.To4()) == net.IPv4len {
+		// Same both-ends family selection as TCP above.
+		switch {
+		case sourceAddr.IP.To4() != nil && destAddr.IP.To4() != nil:
 			h.TransportProtocol = UDPv4
-		} else if len(sourceAddr.IP) == net.IPv6len {
+		case sourceAddr.IP.To16() != nil && destAddr.IP.To16() != nil:
 			h.TransportProtocol = UDPv6
 		}
 	case *net.UnixAddr:
-		if _, ok := destAddr.(*net.UnixAddr); !ok {
+		destAddr, ok := destAddr.(*net.UnixAddr)
+		if !ok {
+			break
+		}
+		// Both ends must agree on stream vs datagram: there is no meaningful
+		// connection mixing the two, so a mismatched pair stays UNSPEC rather than
+		// being labeled with the source's flavor alone. Mirrors the both-ends
+		// family selection used for TCP/UDP above.
+		if sourceAddr.Net != destAddr.Net {
 			break
 		}
 		switch sourceAddr.Net {
-		case "unix":
+		case networkUnix:
 			h.TransportProtocol = UnixStream
-		case "unixgram":
+		case networkUnixgram:
 			h.TransportProtocol = UnixDatagram
 		}
 	}
@@ -97,6 +140,7 @@ func HeaderProxyFromAddrs(version byte, sourceAddr, destAddr net.Addr) *Header {
 	return h
 }
 
+// TCPAddrs returns TCP source/destination addresses if the header is stream-based.
 func (header *Header) TCPAddrs() (sourceAddr, destAddr *net.TCPAddr, ok bool) {
 	if !header.TransportProtocol.IsStream() {
 		return nil, nil, false
@@ -106,6 +150,7 @@ func (header *Header) TCPAddrs() (sourceAddr, destAddr *net.TCPAddr, ok bool) {
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// UDPAddrs returns UDP source/destination addresses if the header is datagram-based.
 func (header *Header) UDPAddrs() (sourceAddr, destAddr *net.UDPAddr, ok bool) {
 	if !header.TransportProtocol.IsDatagram() {
 		return nil, nil, false
@@ -115,6 +160,7 @@ func (header *Header) UDPAddrs() (sourceAddr, destAddr *net.UDPAddr, ok bool) {
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// UnixAddrs returns UNIX source/destination addresses if the header is UNIX-based.
 func (header *Header) UnixAddrs() (sourceAddr, destAddr *net.UnixAddr, ok bool) {
 	if !header.TransportProtocol.IsUnix() {
 		return nil, nil, false
@@ -124,24 +170,26 @@ func (header *Header) UnixAddrs() (sourceAddr, destAddr *net.UnixAddr, ok bool) 
 	return sourceAddr, destAddr, sourceOK && destOK
 }
 
+// IPs returns source/destination IPs for TCP/UDP headers.
 func (header *Header) IPs() (sourceIP, destIP net.IP, ok bool) {
 	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
 		return sourceAddr.IP, destAddr.IP, true
-	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
-		return sourceAddr.IP, destAddr.IP, true
-	} else {
-		return nil, nil, false
 	}
+	if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.IP, destAddr.IP, true
+	}
+	return nil, nil, false
 }
 
+// Ports returns source/destination ports for TCP/UDP headers.
 func (header *Header) Ports() (sourcePort, destPort int, ok bool) {
 	if sourceAddr, destAddr, ok := header.TCPAddrs(); ok {
 		return sourceAddr.Port, destAddr.Port, true
-	} else if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
-		return sourceAddr.Port, destAddr.Port, true
-	} else {
-		return 0, 0, false
 	}
+	if sourceAddr, destAddr, ok := header.UDPAddrs(); ok {
+		return sourceAddr.Port, destAddr.Port, true
+	}
+	return 0, 0, false
 }
 
 // EqualTo returns true if headers are equivalent, false otherwise.
@@ -166,8 +214,17 @@ func (header *Header) EqualsTo(otherHeader *Header) bool {
 	if header.Command == LOCAL {
 		return true
 	}
-	return header.SourceAddr.String() == otherHeader.SourceAddr.String() &&
-		header.DestinationAddr.String() == otherHeader.DestinationAddr.String()
+	return addrsEqual(header.SourceAddr, otherHeader.SourceAddr) &&
+		addrsEqual(header.DestinationAddr, otherHeader.DestinationAddr)
+}
+
+// addrsEqual compares two net.Addr by their rendered form, without panicking
+// when either side is nil (hand-built PROXY headers may lack addresses).
+func addrsEqual(a, b net.Addr) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.String() == b.String()
 }
 
 // WriteTo renders a proxy protocol header in a format and writes it to an io.Writer.
@@ -177,7 +234,7 @@ func (header *Header) WriteTo(w io.Writer) (int64, error) {
 		return 0, err
 	}
 
-	return bytes.NewBuffer(buf).WriteTo(w)
+	return bytes.NewReader(buf).WriteTo(w)
 }
 
 // Format renders a proxy protocol header in a format to write over the wire.
@@ -256,6 +313,17 @@ func Read(reader *bufio.Reader) (*Header, error) {
 
 // ReadTimeout acts as Read but takes a timeout. If that timeout is reached, it's assumed
 // there's no proxy protocol header.
+//
+// Deprecated: ReadTimeout cannot cancel the read it starts. It only receives a
+// *bufio.Reader, so on timeout it has no way to set a deadline on or close the
+// underlying connection: the goroutine it spawns stays blocked in Read, peeking
+// at the stalled connection, until the peer sends data or the connection is
+// closed elsewhere. Each timed-out call therefore leaks that goroutine and the
+// connection's file descriptor. Use ReadHeaderTimeout instead, which also takes
+// the net.Conn and sets a real read deadline so the read is actually cancelled
+// on timeout; or wrap the connection with NewConn or a Listener and configure
+// the header timeout via the SetReadHeaderTimeout option or
+// Listener.ReadHeaderTimeout.
 func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (*Header, error) {
 	type header struct {
 		h *Header
@@ -277,4 +345,38 @@ func ReadTimeout(reader *bufio.Reader, timeout time.Duration) (*Header, error) {
 	case <-timer.C:
 		return nil, ErrNoProxyProtocol
 	}
+}
+
+// ReadHeaderTimeout reads the PROXY protocol header from conn, giving up after
+// timeout. It is the cancellable replacement for the deprecated ReadTimeout:
+// because it is given the net.Conn, it sets a read deadline so a stalled read is
+// actually interrupted instead of leaking a blocked goroutine and the
+// connection's file descriptor. If the timeout is reached it returns
+// ErrNoProxyProtocol, assuming no header is present.
+//
+// reader must be buffered over conn (for example bufio.NewReader(conn)); it is
+// used for the header read so that any bytes buffered past the header remain
+// available for the caller to read afterwards. A timeout <= 0 reads without a
+// deadline.
+//
+// ReadHeaderTimeout overwrites conn's read deadline and restores the zero (no)
+// deadline before returning; re-apply your own read deadline afterwards if you
+// had one set.
+func ReadHeaderTimeout(conn net.Conn, reader *bufio.Reader, timeout time.Duration) (*Header, error) {
+	if timeout > 0 {
+		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return nil, err
+		}
+		// Best-effort restore of the zero deadline. A failure here (e.g. the
+		// peer has already closed) must not mask a header we parsed, so the
+		// error is intentionally ignored; the header/err from Read is
+		// authoritative.
+		defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
+	}
+
+	header, err := Read(reader)
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		return nil, ErrNoProxyProtocol
+	}
+	return header, err
 }
