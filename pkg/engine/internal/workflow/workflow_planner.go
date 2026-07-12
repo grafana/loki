@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -825,11 +826,20 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		shardedPlan := templateTask.Fragment.Graph().Clone()
 		shardedPlan.Inject(shardableNode, shard)
 		shardedPlan.Eliminate(shardableNode)
+		shardTemplateSources := maps.Clone(templateTask.Sources)
+		// Without this next step, nodes other than the shardable node are reused between tasks.
+		// This causes an issue with time range clamping, where the clamped time range could
+		// accidentally be copied between tasks.
+		// For example, if we have a RangeAggregation with a Parallelize child, and the Parallelize
+		// has a child ScanSet with multiple ScanTargets, we will end up with one task per ScanTarget.
+		// If the ScanTarget includes a predicate that clamps the time range, we need to make sure
+		// only the RangeAggregation for that specific ScanTarget is also clamped.
+		shardedPlan, shardTemplateSources = DeepClone(shardedPlan, shardTemplateSources)
 
 		// The sources of the template task need to be replaced with new unique
 		// streams.
-		shardSources := make(map[physical.Node][]*Stream, len(templateTask.Sources))
-		for node, templateStreams := range templateTask.Sources {
+		shardSources := make(map[physical.Node][]*Stream, len(shardTemplateSources))
+		for node, templateStreams := range shardTemplateSources {
 			shardStreams := make([]*Stream, 0, len(templateStreams))
 
 			for _, templateStream := range templateStreams {
@@ -887,6 +897,47 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 
 	p.graph.Eliminate(templateTask)
 	return partitions, nil
+}
+
+// DeepClone returns a deep clone of the graph: nodes in the graph are
+// each cloned themselves. It also updates templateSources to point to the cloned nodes.
+func DeepClone(g *dag.Graph[physical.Node], templateSources map[physical.Node][]*Stream) (*dag.Graph[physical.Node], map[physical.Node][]*Stream) {
+	// Create a mapping from original nodes to cloned nodes
+	nodeCloneMap := make(map[physical.Node]physical.Node)
+	clonedTemplateSources := map[physical.Node][]*Stream{}
+	// First pass: clone all nodes
+	for node := range g.Nodes() {
+		nodeCloneMap[node] = node.Clone()
+	}
+
+	for node := range templateSources {
+		clonedNode := nodeCloneMap[node]
+		clonedTemplateSources[clonedNode] = templateSources[node]
+	}
+
+	// Create a new graph with cloned nodes and edges
+	newGraph := &dag.Graph[physical.Node]{}
+
+	// Add all cloned nodes
+	for _, clonedNode := range nodeCloneMap {
+		newGraph.Add(clonedNode)
+	}
+
+	// Add edges between cloned nodes
+	for origNode, clonedNode := range nodeCloneMap {
+		for _, origParent := range g.Parents(origNode) {
+			clonedParent := nodeCloneMap[origParent]
+			err := newGraph.AddEdge(dag.Edge[physical.Node]{
+				Parent: clonedParent,
+				Child:  clonedNode,
+			})
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	return newGraph, clonedTemplateSources
 }
 
 // findShardableNode finds the first node in the graph that can be split into

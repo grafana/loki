@@ -69,8 +69,9 @@ func Test_planWorkflow(t *testing.T) {
 				MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
 			})
 			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{
-				Start: time.Unix(30, 0).UTC(),
+				Start: time.Unix(45, 0).UTC(),
 				End:   time.Unix(45, 0).UTC(),
+				Range: 5 * time.Second,
 			})
 		)
 
@@ -86,9 +87,9 @@ func Test_planWorkflow(t *testing.T) {
 
 		expectOuptut := strings.TrimSpace(`
 ┌ Task 00000000000000000000000001
-│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│ @max_time_range start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z
 │
-│ RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ RangeAggregation operation=invalid start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z step=0s range=5s group_by=()
 │ └── DataObjScan location= streams=0 section_id=0 projections=()
 │         └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -108,8 +109,9 @@ func Test_planWorkflow(t *testing.T) {
 				MaxTimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
 			})
 			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{
-				Start: time.Unix(30, 0).UTC(),
+				Start: time.Unix(45, 0).UTC(),
 				End:   time.Unix(45, 0).UTC(),
+				Range: 5 * time.Second,
 			})
 			vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
 		)
@@ -129,18 +131,18 @@ func Test_planWorkflow(t *testing.T) {
 
 		expectOuptut := strings.TrimSpace(`
 ┌ Task 00000000000000000000000001
-│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│ @max_time_range start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ └── VectorAggregation operation=invalid group_by=()
 │         └── @source stream=00000000000000000000000003
 └
 ┌ Task 00000000000000000000000002
-│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│ @max_time_range start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000003
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z step=0s range=5s group_by=()
 │     └── DataObjScan location= streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -164,19 +166,19 @@ func Test_planWorkflow(t *testing.T) {
 
 			expectOutput := strings.TrimSpace(`
 ┌ Task 00000000000000000000000001
-│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│ @max_time_range start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z
 │
 │ Batching batch_size=500
 │ └── VectorAggregation operation=invalid group_by=()
 │         └── @source stream=00000000000000000000000003
 └
 ┌ Task 00000000000000000000000002
-│ @max_time_range start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
+│ @max_time_range start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=0dbee591f4bc143d key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:30Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=ef674192a78df370 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:45Z,end=1970-01-01T00:00:45Z,step=0s,range=5s,grouping=by=[],max_series=0} |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │ │   └── @sink stream=00000000000000000000000003
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:45Z end=1970-01-01T00:00:45Z step=0s range=5s group_by=()
 │         └── Cache max_cacheable_size=0 B hashed_key=309bb327739e663a key= |>>| DataObjScan{location=,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │             └── DataObjScan location= streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
@@ -198,6 +200,7 @@ func Test_planWorkflow(t *testing.T) {
 			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{
 				Start: time.Unix(5, 0).UTC(),
 				End:   time.Unix(45, 0).UTC(),
+				Step:  1 * time.Second,
 			})
 
 			parallelize = physicalGraph.Add(&physical.Parallelize{})
@@ -272,7 +275,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000006
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         ├── @source stream=00000000000000000000000007
 │         ├── @source stream=00000000000000000000000008
 │         └── @source stream=00000000000000000000000009
@@ -338,7 +341,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000006
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         ├── @source stream=00000000000000000000000007
 │         ├── @source stream=00000000000000000000000008
 │         └── @source stream=00000000000000000000000009
@@ -399,6 +402,7 @@ func Test_planWorkflow(t *testing.T) {
 				Operation: types.RangeAggregationTypeCount,
 				Start:     time.Unix(5, 0).UTC(),
 				End:       time.Unix(45, 0).UTC(),
+				Step:      1 * time.Second,
 			})
 			scanSet = physicalGraph.Add(&physical.ScanSet{
 				Targets: []*physical.ScanTarget{
@@ -447,7 +451,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000004
-│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │     └── DataObjScan location=a streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -456,7 +460,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000005
-│ └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │     └── DataObjScan location=b streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
@@ -490,10 +494,10 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=502e8c56ecf762f4 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=4c463f6e88e74e37 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:10Z,end=1970-01-01T00:00:45Z,step=1s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │ │   └── @sink stream=00000000000000000000000004
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         └── Cache max_cacheable_size=0 B hashed_key=4a6082f4d1b54ead key= |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │             └── DataObjScan location=a streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
@@ -501,10 +505,10 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=9888d9ec9f19e11e key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=e477afcf7e12a402 key= |>>| Batching |>>| RangeAggregation{operation=count,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=1s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000005
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=count start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=count start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         └── Cache max_cacheable_size=0 B hashed_key=57460db08f81adaf key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │             └── DataObjScan location=b streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
@@ -592,6 +596,7 @@ func Test_planWorkflow(t *testing.T) {
 			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{
 				Start: time.Unix(5, 0).UTC(),
 				End:   time.Unix(45, 0).UTC(),
+				Step:  1 * time.Second,
 			})
 
 			parallelize = physicalGraph.Add(&physical.Parallelize{})
@@ -656,7 +661,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000005
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │     └── DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=LTE(builtin.timestamp, 1970-01-01T00:00:50Z)
 │             └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 └
@@ -665,7 +670,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000006
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │     └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GTE(builtin.timestamp, 1970-01-01T00:00:20Z)
 │             └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 └
@@ -674,7 +679,7 @@ func Test_planWorkflow(t *testing.T) {
 │
 │ Batching batch_size=500
 │ │   └── @sink stream=00000000000000000000000007
-│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│ └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:40Z step=1s range=0s group_by=()
 │     └── DataObjScan location=c streams=0 section_id=0 projections=()
 │             └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:40Z
 └
@@ -705,10 +710,10 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000002
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=beb71f7dcfcd7095 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[LTE(builtin.timestamp, 1970-01-01T00:00:50Z)],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=ee1d9235ba4435ca key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:10Z,end=1970-01-01T00:00:45Z,step=1s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[LTE(builtin.timestamp, 1970-01-01T00:00:50Z)],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │ │   └── @sink stream=00000000000000000000000005
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:10Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         └── Cache max_cacheable_size=1.0 MiB hashed_key=cfbb813ac32eac14 key= |>>| DataObjScan{location=a,section=0,stream_ids=[],projections=[],predicates=[LTE(builtin.timestamp, 1970-01-01T00:00:50Z)],max_time_range_start=1970-01-01T00:00:10Z,max_time_range_end=1970-01-01T00:00:50Z}
 │             └── DataObjScan location=a streams=0 section_id=0 projections=() predicate[0]=LTE(builtin.timestamp, 1970-01-01T00:00:50Z)
 │                     └── @max_time_range start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
@@ -716,10 +721,10 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000003
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=edb84a0ddd883413 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GTE(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=d655f6aeb79a696f key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:20Z,end=1970-01-01T00:00:45Z,step=1s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GTE(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │ │   └── @sink stream=00000000000000000000000006
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:20Z end=1970-01-01T00:00:45Z step=1s range=0s group_by=()
 │         └── Cache max_cacheable_size=1.0 MiB hashed_key=ec866af4d1638d82 key= |>>| DataObjScan{location=b,section=0,stream_ids=[],projections=[],predicates=[GTE(builtin.timestamp, 1970-01-01T00:00:20Z)],max_time_range_start=1970-01-01T00:00:20Z,max_time_range_end=1970-01-01T00:01:00Z}
 │             └── DataObjScan location=b streams=0 section_id=0 projections=() predicate[0]=GTE(builtin.timestamp, 1970-01-01T00:00:20Z)
 │                     └── @max_time_range start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
@@ -727,10 +732,10 @@ func Test_planWorkflow(t *testing.T) {
 ┌ Task 00000000000000000000000004
 │ @max_time_range start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 │
-│ Cache max_cacheable_size=1.0 MiB hashed_key=ea0acf82724b9cfa key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:45Z,step=0s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=c,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:00Z,max_time_range_end=1970-01-01T00:00:40Z}
+│ Cache max_cacheable_size=1.0 MiB hashed_key=dbac9fd6ade51872 key= |>>| Batching |>>| RangeAggregation{operation=invalid,start=1970-01-01T00:00:05Z,end=1970-01-01T00:00:40Z,step=1s,range=0s,grouping=by=[],max_series=0} |>>| DataObjScan{location=c,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:00Z,max_time_range_end=1970-01-01T00:00:40Z}
 │ │   └── @sink stream=00000000000000000000000007
 │ └── Batching batch_size=500
-│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s group_by=()
+│     └── RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:40Z step=1s range=0s group_by=()
 │         └── Cache max_cacheable_size=1.0 MiB hashed_key=acadc504b7eeee93 key= |>>| DataObjScan{location=c,section=0,stream_ids=[],projections=[],predicates=[],max_time_range_start=1970-01-01T00:00:00Z,max_time_range_end=1970-01-01T00:00:40Z}
 │             └── DataObjScan location=c streams=0 section_id=0 projections=()
 │                     └── @max_time_range start=1970-01-01T00:00:00Z end=1970-01-01T00:00:40Z
@@ -742,6 +747,62 @@ func Test_planWorkflow(t *testing.T) {
 		})
 	})
 
+}
+
+func Test_planWorkflow_ParallelizeWithTemplateSources_KeysSourcesToShardFragment(t *testing.T) {
+	var physicalGraph dag.Graph[physical.Node]
+
+	var (
+		vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
+
+		outerParallelize = physicalGraph.Add(&physical.Parallelize{})
+		merge            = physicalGraph.Add(&physical.Merge{})
+
+		innerParallelize = physicalGraph.Add(&physical.Parallelize{})
+		innerScanSet     = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "inner-a"}},
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "inner-b"}},
+			},
+		})
+		outerScanSet = physicalGraph.Add(&physical.ScanSet{
+			Targets: []*physical.ScanTarget{
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "outer-a"}},
+				{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "outer-b"}},
+			},
+		})
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: outerParallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: outerParallelize, Child: merge})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: merge, Child: innerParallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: innerParallelize, Child: innerScanSet})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: merge, Child: outerScanSet})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	graph, err := planWorkflow(t.Context(), "", physicalPlan, cacheParams{}, log.NewNopLogger())
+	require.NoError(t, err)
+
+	var mergeTasks int
+	for _, root := range graph.Roots() {
+		_ = graph.Walk(root, func(task *Task) error {
+			fragmentRoot, err := task.Fragment.Root()
+			require.NoError(t, err)
+
+			if _, ok := fragmentRoot.(*physical.Merge); !ok {
+				return nil
+			}
+
+			mergeTasks++
+			require.Len(t, task.Sources, 1)
+			_, ok := task.Sources[fragmentRoot]
+			require.True(t, ok, "merge task sources must be keyed by its fragment root node")
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	require.Equal(t, 2, mergeTasks)
 }
 
 // requireUniqueStreams asserts that for each stream found in g, that stream has
