@@ -537,6 +537,16 @@ endif
 
 protos: clean-protos $(PROTO_GOS) wiresmith-protos
 
+# Installs the wiresmith compiler at the version pinned in go.mod, so
+# wiresmith-protos works on a bare CI runner or a fresh clone with no manual
+# install step. Always re-installs rather than checking PATH first, so a
+# go.mod bump can't silently run against a stale local binary; go install is
+# near-instant once that version is in the build cache.
+.PHONY: wiresmith-bin
+wiresmith-bin:
+	@version="$$(go list -m -f '{{.Version}}' github.com/grafana/wiresmith)"; \
+	go install "github.com/grafana/wiresmith/cmd/wiresmith@$$version"
+
 # wiresmith walks the entire --proto_path tree and enforces a single
 # go_package per proto package across the whole walk, so it cannot point at
 # the repo root (vendored duplicates of push.proto and the repeated proto
@@ -544,7 +554,7 @@ protos: clean-protos $(PROTO_GOS) wiresmith-protos
 # migrated protos are staged into a temp tree that mirrors the repo layout
 # (so `import "pkg/..."` paths resolve) and generation is scoped to them.
 .PHONY: wiresmith-protos
-wiresmith-protos: clean-wiresmith-protos
+wiresmith-protos: wiresmith-bin clean-wiresmith-protos
 	for group in $(WIRESMITH_PROTO_GROUPS); do \
 		imports=""; mflags=""; \
 		case $$group in \
