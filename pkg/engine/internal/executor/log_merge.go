@@ -454,7 +454,6 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("flushing object: %w", err)
 	}
-	defer closer.Close()
 
 	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
 
