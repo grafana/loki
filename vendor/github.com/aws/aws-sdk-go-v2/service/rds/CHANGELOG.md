@@ -1,3 +1,16 @@
+# v1.120.0 (2026-07-06)
+
+* **Feature**: Add request serialization snapshot tests.
+
+# v1.119.5 (2026-07-01)
+
+* **Bug Fix**: Bump smithy-go to 1.27.3, fix JSON encorder for document.Number, endpoint host label format validation and CBOR union serialization on new serde
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.119.4 (2026-06-29)
+
+* No change notes available for this release.
+
 # v1.119.3 (2026-06-15)
 
 * **Documentation**: Adding support for RDS SQL Server BYOM and DB2 Community Edition
