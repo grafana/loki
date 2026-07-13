@@ -268,6 +268,14 @@ func (this *Node) Equal(that interface{}) bool {
 			if !v.IndexMerge.Equal(v2.IndexMerge) {
 				return false
 			}
+		case *Node_LogMerge:
+			v2, ok := that1.Kind.(*Node_LogMerge)
+			if !ok {
+				return false
+			}
+			if !v.LogMerge.Equal(v2.LogMerge) {
+				return false
+			}
 		default:
 			return false
 		}
@@ -906,6 +914,53 @@ func (this *IndexMerge) Equal(that interface{}) bool {
 	return true
 }
 
+func (this *LogMerge) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LogMerge)
+	if !ok {
+		that2, ok := that.(LogMerge)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Tenant != that1.Tenant {
+		return false
+	}
+	if this.TocWindowStartUnixNanos != that1.TocWindowStartUnixNanos {
+		return false
+	}
+	if len(this.Runs) != len(that1.Runs) {
+		return false
+	}
+	for i := range this.Runs {
+		if !this.Runs[i].Equal(that1.Runs[i]) {
+			return false
+		}
+	}
+	if len(this.SortSchema) != len(that1.SortSchema) {
+		return false
+	}
+	for i := range this.SortSchema {
+		if this.SortSchema[i] != that1.SortSchema[i] {
+			return false
+		}
+	}
+	if this.OutputIndexPath != that1.OutputIndexPath {
+		return false
+	}
+	return true
+}
+
 func (this *Cache) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -1118,6 +1173,8 @@ func (this *Node) Compare(that interface{}) int {
 			thisIdx = 14
 		case *Node_IndexMerge:
 			thisIdx = 15
+		case *Node_LogMerge:
+			thisIdx = 16
 		}
 		thatIdx := -1
 		switch that1.Kind.(type) {
@@ -1153,6 +1210,8 @@ func (this *Node) Compare(that interface{}) int {
 			thatIdx = 14
 		case *Node_IndexMerge:
 			thatIdx = 15
+		case *Node_LogMerge:
+			thatIdx = 16
 		}
 		if thisIdx != thatIdx {
 			if thisIdx < thatIdx {
@@ -1256,6 +1315,12 @@ func (this *Node) Compare(that interface{}) int {
 				v2 := that1.Kind.(*Node_IndexMerge)
 				_ = v2
 				if c := v.IndexMerge.Compare(v2.IndexMerge); c != 0 {
+					return c
+				}
+			case *Node_LogMerge:
+				v2 := that1.Kind.(*Node_LogMerge)
+				_ = v2
+				if c := v.LogMerge.Compare(v2.LogMerge); c != 0 {
 					return c
 				}
 			}
@@ -2132,6 +2197,77 @@ func (this *IndexMerge) Compare(that interface{}) int {
 	for i := range this.Runs {
 		if c := this.Runs[i].Compare(that1.Runs[i]); c != 0 {
 			return c
+		}
+	}
+	if this.OutputIndexPath != that1.OutputIndexPath {
+		if this.OutputIndexPath < that1.OutputIndexPath {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
+func (this *LogMerge) Compare(that interface{}) int {
+	if that == nil {
+		if this == nil {
+			return 0
+		}
+		return 1
+	}
+
+	that1, ok := that.(*LogMerge)
+	if !ok {
+		that2, ok := that.(LogMerge)
+		if ok {
+			that1 = &that2
+		} else {
+			return 1
+		}
+	}
+	if that1 == nil {
+		if this == nil {
+			return 0
+		}
+		return 1
+	} else if this == nil {
+		return -1
+	}
+	if this.Tenant != that1.Tenant {
+		if this.Tenant < that1.Tenant {
+			return -1
+		}
+		return 1
+	}
+	if this.TocWindowStartUnixNanos != that1.TocWindowStartUnixNanos {
+		if this.TocWindowStartUnixNanos < that1.TocWindowStartUnixNanos {
+			return -1
+		}
+		return 1
+	}
+	if len(this.Runs) != len(that1.Runs) {
+		if len(this.Runs) < len(that1.Runs) {
+			return -1
+		}
+		return 1
+	}
+	for i := range this.Runs {
+		if c := this.Runs[i].Compare(that1.Runs[i]); c != 0 {
+			return c
+		}
+	}
+	if len(this.SortSchema) != len(that1.SortSchema) {
+		if len(this.SortSchema) < len(that1.SortSchema) {
+			return -1
+		}
+		return 1
+	}
+	for i := range this.SortSchema {
+		if this.SortSchema[i] != that1.SortSchema[i] {
+			if this.SortSchema[i] < that1.SortSchema[i] {
+				return -1
+			}
+			return 1
 		}
 	}
 	if this.OutputIndexPath != that1.OutputIndexPath {

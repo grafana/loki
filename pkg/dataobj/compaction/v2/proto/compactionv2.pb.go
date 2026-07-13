@@ -28,12 +28,13 @@ import (
 // The composite sort key compared across sections is (min_key, min_timestamp)
 // and (max_key, max_timestamp) -- label tuple first, then timestamp.
 type SectionRef struct {
-	ObjectPath   string   `protobuf:"bytes,1,opt,name=object_path,json=objectPath,proto3" json:"object_path"`
-	SectionIndex int32    `protobuf:"varint,2,opt,name=section_index,json=sectionIndex,proto3" json:"section_index"`
-	MinKey       []string `protobuf:"bytes,3,rep,name=min_key,json=minKey,proto3" json:"min_key"`
-	MaxKey       []string `protobuf:"bytes,4,rep,name=max_key,json=maxKey,proto3" json:"max_key"`
-	MinTimestamp int64    `protobuf:"varint,5,opt,name=min_timestamp,json=minTimestamp,proto3" json:"min_timestamp"`
-	MaxTimestamp int64    `protobuf:"varint,6,opt,name=max_timestamp,json=maxTimestamp,proto3" json:"max_timestamp"`
+	ObjectPath       string   `protobuf:"bytes,1,opt,name=object_path,json=objectPath,proto3" json:"object_path"`
+	SectionIndex     int64    `protobuf:"varint,2,opt,name=section_index,json=sectionIndex,proto3" json:"section_index"`
+	MinKey           []string `protobuf:"bytes,3,rep,name=min_key,json=minKey,proto3" json:"min_key"`
+	MaxKey           []string `protobuf:"bytes,4,rep,name=max_key,json=maxKey,proto3" json:"max_key"`
+	MinTimestamp     int64    `protobuf:"varint,5,opt,name=min_timestamp,json=minTimestamp,proto3" json:"min_timestamp"`
+	MaxTimestamp     int64    `protobuf:"varint,6,opt,name=max_timestamp,json=maxTimestamp,proto3" json:"max_timestamp"`
+	UncompressedSize int64    `protobuf:"varint,7,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size"`
 }
 
 // RunRef is one pile: a sorted, non-overlapping section sequence.
@@ -43,8 +44,9 @@ type RunRef struct {
 
 // TaskSpec is one K-way merge task: K piles bundled together for one worker.
 type TaskSpec struct {
-	Tenant string   `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
-	Runs   []RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
+	Tenant     string   `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant"`
+	Runs       []RunRef `protobuf:"bytes,2,rep,name=runs,proto3" json:"runs"`
+	SortSchema []string `protobuf:"bytes,3,rep,name=sort_schema,json=sortSchema,proto3" json:"sort_schema"`
 }
 
 func (m *SectionRef) Reset() {
@@ -78,7 +80,7 @@ func (m *SectionRef) GetObjectPath() string {
 	return ""
 }
 
-func (m *SectionRef) GetSectionIndex() int32 {
+func (m *SectionRef) GetSectionIndex() int64 {
 	if m != nil {
 		return m.SectionIndex
 	}
@@ -113,6 +115,13 @@ func (m *SectionRef) GetMaxTimestamp() int64 {
 	return 0
 }
 
+func (m *SectionRef) GetUncompressedSize() int64 {
+	if m != nil {
+		return m.UncompressedSize
+	}
+	return 0
+}
+
 func (m *RunRef) GetSections() []SectionRef {
 	if m != nil {
 		return m.Sections
@@ -130,6 +139,13 @@ func (m *TaskSpec) GetTenant() string {
 func (m *TaskSpec) GetRuns() []RunRef {
 	if m != nil {
 		return m.Runs
+	}
+	return nil
+}
+
+func (m *TaskSpec) GetSortSchema() []string {
+	if m != nil {
+		return m.SortSchema
 	}
 	return nil
 }
@@ -157,6 +173,9 @@ func (m *SectionRef) Size() int {
 	if m.MaxTimestamp != 0 {
 		n += 1 + protowire.SizeVarint(uint64(m.MaxTimestamp))
 	}
+	if m.UncompressedSize != 0 {
+		n += 1 + protowire.SizeVarint(uint64(m.UncompressedSize))
+	}
 	return n
 }
 
@@ -183,6 +202,9 @@ func (m *TaskSpec) Size() int {
 	for i := range m.Runs {
 		s := m.Runs[i].Size()
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
+	}
+	for _, v := range m.SortSchema {
+		n += 1 + protowire.SizeVarint(uint64(len(v))) + len(v)
 	}
 	return n
 }
@@ -216,6 +238,11 @@ func (m *SectionRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		return 0, nil
 	}
 	i := len(dAtA)
+	if m.UncompressedSize != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.UncompressedSize))
+		i--
+		dAtA[i] = 0x38
+	}
 	if m.MaxTimestamp != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxTimestamp))
 		i--
@@ -346,6 +373,18 @@ func (m *TaskSpec) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		return 0, nil
 	}
 	i := len(dAtA)
+	for iNdEx := len(m.SortSchema) - 1; iNdEx >= 0; iNdEx-- {
+		i -= len(m.SortSchema[iNdEx])
+		copy(dAtA[i:], m.SortSchema[iNdEx])
+		if len(m.SortSchema[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.SortSchema[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SortSchema[iNdEx])))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
 	for iNdEx := len(m.Runs) - 1; iNdEx >= 0; iNdEx-- {
 		size, err := m.Runs[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -568,7 +607,7 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 					break
 				}
 			}
-			m.SectionIndex = int32(v)
+			m.SectionIndex = int64(v)
 		case 3: // min_key
 			if wireType != 2 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
@@ -715,6 +754,34 @@ func (m *SectionRef) unmarshal(dAtA []byte, depth int) error {
 				}
 			}
 			m.MaxTimestamp = int64(v)
+		case 7: // uncompressed_size
+			if wireType != 0 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return fmt.Errorf("proto: integer overflow")
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					if shift == 63 && b > 1 {
+						return fmt.Errorf("proto: varint overflow")
+					}
+					break
+				}
+			}
+			m.UncompressedSize = int64(v)
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
@@ -928,6 +995,7 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 	if l >= 256 && depth >= 0 {
 		var preIdx int
 		var field2count int
+		var field3count int
 		for preIdx < l {
 			var preWire uint64
 			for shift := uint(0); ; shift += 7 {
@@ -946,6 +1014,8 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			switch preNum {
 			case 2:
 				field2count++
+			case 3:
+				field3count++
 			}
 			switch preTyp {
 			case 0:
@@ -987,6 +1057,14 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			}
 			if len(m.Runs) == 0 && cap(m.Runs) < c {
 				m.Runs = make([]RunRef, 0, c)
+			}
+		}
+		if c := field3count; c > 0 {
+			if c > preCapMax {
+				c = preCapMax
+			}
+			if len(m.SortSchema) == 0 && cap(m.SortSchema) < c {
+				m.SortSchema = make([]string, 0, c)
 			}
 		}
 	}
@@ -1109,6 +1187,51 @@ func (m *TaskSpec) unmarshal(dAtA []byte, depth int) error {
 			if err := m.Runs[len(m.Runs)-1].unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 3: // sort_schema
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SortSchema = append(m.SortSchema, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)

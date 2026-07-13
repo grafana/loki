@@ -241,6 +241,12 @@ type Node_IndexMerge struct {
 
 func (*Node_IndexMerge) isNode_Kind() {}
 
+type Node_LogMerge struct {
+	LogMerge LogMerge `protobuf:"bytes,18,opt,name=log_merge,json=logMerge,proto3,oneof" json:"log_merge,omitempty"`
+}
+
+func (*Node_LogMerge) isNode_Kind() {}
+
 type ScanTarget_Kind interface {
 	isScanTarget_Kind()
 }
@@ -444,6 +450,16 @@ type IndexMerge struct {
 	OutputIndexPath         string         `protobuf:"bytes,4,opt,name=output_index_path,json=outputIndexPath,proto3" json:"output_index_path,omitempty"`
 }
 
+// LogMerge represents one K-way sort-merge task over LOG sections
+// for a single tenant within one ToC window.
+type LogMerge struct {
+	Tenant                  string         `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	TocWindowStartUnixNanos int64          `protobuf:"varint,2,opt,name=toc_window_start_unix_nanos,json=tocWindowStartUnixNanos,proto3" json:"toc_window_start_unix_nanos,omitempty"`
+	Runs                    []proto.RunRef `protobuf:"bytes,3,rep,name=runs,proto3" json:"runs,omitempty"`
+	SortSchema              []string       `protobuf:"bytes,4,rep,name=sort_schema,json=sortSchema,proto3" json:"sort_schema,omitempty"`
+	OutputIndexPath         string         `protobuf:"bytes,5,opt,name=output_index_path,json=outputIndexPath,proto3" json:"output_index_path,omitempty"`
+}
+
 // Cache controls Task-level caching.
 // The Cache pipeline will check the key against the cache identified by the `cache_name` field.
 // The cache stores all record batches produced by the inner pipeline.
@@ -634,6 +650,14 @@ func (m *IndexMerge) Reset() {
 }
 func (*IndexMerge) ProtoMessage() {}
 
+func (m *LogMerge) Reset() {
+	if m == nil {
+		return
+	}
+	*m = LogMerge{}
+}
+func (*LogMerge) ProtoMessage() {}
+
 func (m *Cache) Reset() {
 	if m == nil {
 		return
@@ -800,6 +824,13 @@ func (m *Node) GetCache() *Cache {
 func (m *Node) GetIndexMerge() *IndexMerge {
 	if x, ok := m.GetKind().(*Node_IndexMerge); ok {
 		return &x.IndexMerge
+	}
+	return nil
+}
+
+func (m *Node) GetLogMerge() *LogMerge {
+	if x, ok := m.GetKind().(*Node_LogMerge); ok {
+		return &x.LogMerge
 	}
 	return nil
 }
@@ -1154,6 +1185,41 @@ func (m *IndexMerge) GetOutputIndexPath() string {
 	return ""
 }
 
+func (m *LogMerge) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
+}
+
+func (m *LogMerge) GetTocWindowStartUnixNanos() int64 {
+	if m != nil {
+		return m.TocWindowStartUnixNanos
+	}
+	return 0
+}
+
+func (m *LogMerge) GetRuns() []proto.RunRef {
+	if m != nil {
+		return m.Runs
+	}
+	return nil
+}
+
+func (m *LogMerge) GetSortSchema() []string {
+	if m != nil {
+		return m.SortSchema
+	}
+	return nil
+}
+
+func (m *LogMerge) GetOutputIndexPath() string {
+	if m != nil {
+		return m.OutputIndexPath
+	}
+	return ""
+}
+
 func (m *Cache) GetKey() string {
 	if m != nil {
 		return m.Key
@@ -1288,6 +1354,9 @@ func (m *Node) Size() int {
 		n += 2 + protowire.SizeVarint(uint64(s)) + s
 	case *Node_IndexMerge:
 		s := v.IndexMerge.Size()
+		n += 2 + protowire.SizeVarint(uint64(s)) + s
+	case *Node_LogMerge:
+		s := v.LogMerge.Size()
 		n += 2 + protowire.SizeVarint(uint64(s)) + s
 	}
 	return n
@@ -1621,6 +1690,30 @@ func (m *IndexMerge) Size() int {
 	return n
 }
 
+func (m *LogMerge) Size() int {
+	if m == nil {
+		return 0
+	}
+	var n int
+	if len(m.Tenant) > 0 {
+		n += 1 + protowire.SizeVarint(uint64(len(m.Tenant))) + len(m.Tenant)
+	}
+	if m.TocWindowStartUnixNanos != 0 {
+		n += 1 + protowire.SizeVarint(uint64(m.TocWindowStartUnixNanos))
+	}
+	for i := range m.Runs {
+		s := m.Runs[i].Size()
+		n += 1 + protowire.SizeVarint(uint64(s)) + s
+	}
+	for _, v := range m.SortSchema {
+		n += 1 + protowire.SizeVarint(uint64(len(v))) + len(v)
+	}
+	if len(m.OutputIndexPath) > 0 {
+		n += 1 + protowire.SizeVarint(uint64(len(m.OutputIndexPath))) + len(m.OutputIndexPath)
+	}
+	return n
+}
+
 func (m *Cache) Size() int {
 	if m == nil {
 		return 0
@@ -1844,6 +1937,22 @@ func (m *Node) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	switch v := m.Kind.(type) {
+	case *Node_LogMerge:
+		size, err := v.LogMerge.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x01
+		i--
+		dAtA[i] = 0x92
 	case *Node_IndexMerge:
 		size, err := v.IndexMerge.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -3151,6 +3260,94 @@ func (m *IndexMerge) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i--
 		} else {
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.OutputIndexPath)))
+		}
+		i--
+		dAtA[i] = 0x22
+	}
+	for iNdEx := len(m.Runs) - 1; iNdEx >= 0; iNdEx-- {
+		size, err := m.Runs[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.TocWindowStartUnixNanos != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.TocWindowStartUnixNanos))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Tenant) > 0 {
+		i -= len(m.Tenant)
+		copy(dAtA[i:], m.Tenant)
+		if len(m.Tenant) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.Tenant))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Tenant)))
+		}
+		i--
+		dAtA[i] = 0x0a
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *LogMerge) Marshal() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.Size()
+	dAtA = make([]byte, size)
+	if size == 0 {
+		return dAtA, nil
+	}
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LogMerge) MarshalTo(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LogMerge) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	if len(m.OutputIndexPath) > 0 {
+		i -= len(m.OutputIndexPath)
+		copy(dAtA[i:], m.OutputIndexPath)
+		if len(m.OutputIndexPath) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.OutputIndexPath))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.OutputIndexPath)))
+		}
+		i--
+		dAtA[i] = 0x2a
+	}
+	for iNdEx := len(m.SortSchema) - 1; iNdEx >= 0; iNdEx-- {
+		i -= len(m.SortSchema[iNdEx])
+		copy(dAtA[i:], m.SortSchema[iNdEx])
+		if len(m.SortSchema[iNdEx]) <= 0x7F {
+			dAtA[i-1] = uint8(len(m.SortSchema[iNdEx]))
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.SortSchema[iNdEx])))
 		}
 		i--
 		dAtA[i] = 0x22
@@ -4676,6 +4873,58 @@ func (m *Node) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			m.Kind = &Node_IndexMerge{IndexMerge: msg}
+			iNdEx = postIndex
+		case 18: // log_merge
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			var msg LogMerge
+			if ov, ok := m.Kind.(*Node_LogMerge); ok {
+				msg = ov.LogMerge
+			}
+			if err := msg.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
+				return err
+			}
+			m.Kind = &Node_LogMerge{LogMerge: msg}
 			iNdEx = postIndex
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
@@ -8346,6 +8595,355 @@ func (m *IndexMerge) unmarshal(dAtA []byte, depth int) error {
 }
 
 func (m *IndexMerge) UnmarshalNoPrescan(dAtA []byte) error {
+	return m.unmarshal(dAtA, -1)
+}
+
+func (m *LogMerge) Unmarshal(b []byte) error {
+	return m.unmarshal(b, 0)
+}
+
+func (m *LogMerge) UnmarshalWithDepth(b []byte, depth int) error {
+	if depth < 0 {
+		depth = 0
+	}
+	return m.unmarshal(b, depth)
+}
+
+func (m *LogMerge) unmarshal(dAtA []byte, depth int) error {
+	if depth > protohelpers.MaxUnmarshalDepth {
+		return fmt.Errorf("exceeded max recursion depth")
+	}
+	l := len(dAtA)
+	iNdEx := 0
+	if l >= 256 && depth >= 0 {
+		var preIdx int
+		var field3count int
+		var field4count int
+		for preIdx < l {
+			var preWire uint64
+			for shift := uint(0); ; shift += 7 {
+				if preIdx >= l {
+					break
+				}
+				b := dAtA[preIdx]
+				preIdx++
+				preWire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			preNum := int32(preWire >> 3)
+			preTyp := int(preWire & 0x7)
+			switch preNum {
+			case 3:
+				field3count++
+			case 4:
+				field4count++
+			}
+			switch preTyp {
+			case 0:
+				for preIdx < l {
+					preIdx++
+					if dAtA[preIdx-1] < 0x80 {
+						break
+					}
+				}
+			case 1:
+				preIdx += 8
+			case 2:
+				var preLen uint64
+				for shift := uint(0); ; shift += 7 {
+					if preIdx >= l {
+						break
+					}
+					b := dAtA[preIdx]
+					preIdx++
+					preLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				preIdx += int(preLen)
+			case 5:
+				preIdx += 4
+			default:
+				preIdx = -1
+			}
+			if preIdx < 0 || preIdx > l {
+				break
+			}
+		}
+		preCapMax := l / 2
+		if c := field3count; c > 0 {
+			if c > preCapMax {
+				c = preCapMax
+			}
+			if len(m.Runs) == 0 && cap(m.Runs) < c {
+				m.Runs = make([]proto.RunRef, 0, c)
+			}
+		}
+		if c := field4count; c > 0 {
+			if c > preCapMax {
+				c = preCapMax
+			}
+			if len(m.SortSchema) == 0 && cap(m.SortSchema) < c {
+				m.SortSchema = make([]string, 0, c)
+			}
+		}
+	}
+	for iNdEx < l {
+		var wire uint64
+		if iNdEx < l && dAtA[iNdEx] < 0x80 {
+			wire = uint64(dAtA[iNdEx])
+			iNdEx++
+		} else {
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 35 {
+					return fmt.Errorf("proto: integer overflow")
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				wire |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		}
+		if wire>>3 < 1 || wire>>3 > 0x1FFFFFFF {
+			return fmt.Errorf("invalid field number")
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		switch fieldNum {
+		case 1: // tenant
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Tenant = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2: // toc_window_start_unix_nanos
+			if wireType != 0 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return fmt.Errorf("proto: integer overflow")
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					if shift == 63 && b > 1 {
+						return fmt.Errorf("proto: varint overflow")
+					}
+					break
+				}
+			}
+			m.TocWindowStartUnixNanos = int64(v)
+		case 3: // runs
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Runs = append(m.Runs, proto.RunRef{})
+			if err := m.Runs[len(m.Runs)-1].UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4: // sort_schema
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SortSchema = append(m.SortSchema, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 5: // output_index_path
+			if wireType != 2 {
+				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+				if err != nil {
+					return err
+				}
+				iNdEx += n
+				continue
+			}
+			var byteLen uint64
+			if iNdEx < l && dAtA[iNdEx] < 0x80 {
+				byteLen = uint64(dAtA[iNdEx])
+				iNdEx++
+			} else {
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return fmt.Errorf("proto: integer overflow")
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					byteLen |= uint64(b&0x7F) << shift
+					if b < 0x80 {
+						if shift == 63 && b > 1 {
+							return fmt.Errorf("proto: varint overflow")
+						}
+						break
+					}
+				}
+			}
+			if byteLen > uint64(math.MaxInt) {
+				return io.ErrUnexpectedEOF
+			}
+			intByteLen := int(byteLen)
+			postIndex := iNdEx + intByteLen
+			if postIndex < 0 {
+				return fmt.Errorf("proto: negative length")
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.OutputIndexPath = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
+			if err != nil {
+				return err
+			}
+			iNdEx += n
+		}
+	}
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+func (m *LogMerge) UnmarshalNoPrescan(dAtA []byte) error {
 	return m.unmarshal(dAtA, -1)
 }
 

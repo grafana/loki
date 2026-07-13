@@ -69,6 +69,9 @@ func (this *SectionRef) Equal(that interface{}) bool {
 	if this.MaxTimestamp != that1.MaxTimestamp {
 		return false
 	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		return false
+	}
 	return true
 }
 
@@ -129,6 +132,14 @@ func (this *TaskSpec) Equal(that interface{}) bool {
 	}
 	for i := range this.Runs {
 		if !this.Runs[i].Equal(that1.Runs[i]) {
+			return false
+		}
+	}
+	if len(this.SortSchema) != len(that1.SortSchema) {
+		return false
+	}
+	for i := range this.SortSchema {
+		if this.SortSchema[i] != that1.SortSchema[i] {
 			return false
 		}
 	}
@@ -208,6 +219,12 @@ func (this *SectionRef) Compare(that interface{}) int {
 	}
 	if this.MaxTimestamp != that1.MaxTimestamp {
 		if this.MaxTimestamp < that1.MaxTimestamp {
+			return -1
+		}
+		return 1
+	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		if this.UncompressedSize < that1.UncompressedSize {
 			return -1
 		}
 		return 1
@@ -294,6 +311,20 @@ func (this *TaskSpec) Compare(that interface{}) int {
 	for i := range this.Runs {
 		if c := this.Runs[i].Compare(that1.Runs[i]); c != 0 {
 			return c
+		}
+	}
+	if len(this.SortSchema) != len(that1.SortSchema) {
+		if len(this.SortSchema) < len(that1.SortSchema) {
+			return -1
+		}
+		return 1
+	}
+	for i := range this.SortSchema {
+		if this.SortSchema[i] != that1.SortSchema[i] {
+			if this.SortSchema[i] < that1.SortSchema[i] {
+				return -1
+			}
+			return 1
 		}
 	}
 	return 0
