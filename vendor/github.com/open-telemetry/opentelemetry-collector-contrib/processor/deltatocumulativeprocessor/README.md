@@ -4,7 +4,6 @@
 The Delta to Cumulative Processor (`deltatocumulativeprocessor`) converts metrics from delta temporality to
 cumulative, by accumulating samples in memory.
 
-
 | Status        |           |
 | ------------- |-----------|
 | Stability     | [alpha]: metrics   |

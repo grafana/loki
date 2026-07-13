@@ -58,6 +58,13 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
+	// DataBucket reads source log objects during LogMerge compaction. Unlike
+	// Bucket (which the compaction wiring prefixes with the index-storage
+	// prefix for index I/O and ToC), source log objects are stored at the
+	// unprefixed dataobj root, so they must be read through this bucket.
+	// Optional; when nil the executor falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
@@ -82,6 +89,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		dataBucket:         cfg.DataBucket,
 		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
@@ -108,11 +116,12 @@ type Context struct {
 	batchSize     int64
 	prefetchBytes int64
 
-	logger    log.Logger
-	plan      *physical.Plan
-	evaluator *expressionEvaluator
-	bucket    objstore.Bucket
-	metastore metastore.Metastore
+	logger     log.Logger
+	plan       *physical.Plan
+	evaluator  *expressionEvaluator
+	bucket     objstore.Bucket
+	dataBucket objstore.Bucket
+	metastore  metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
@@ -181,7 +190,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// LogMerge ships with a stub executor that writes a zero-byte object at
 		// OutputPath. The real K-way merge over log sections lands in a later PR,
 		// after we ship IndeXMerge.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -280,7 +289,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p, logsSection.Columns())
+		conv, err := physical.BuildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -288,7 +297,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
-	if logsPredicatesAreUnsatisfiable(predicates) {
+	if physical.LogsPredicatesAreUnsatisfiable(predicates) {
 		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
 		return emptyPipeline()
 	}

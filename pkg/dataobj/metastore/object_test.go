@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"slices"
-	"sync"
 	"testing"
 	"time"
 
@@ -553,38 +552,68 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 	mstore := newTestObjectMetastore(bucket)
 
 	tests := []struct {
-		name                 string
-		matchers             []*labels.Matcher
-		predicates           []*labels.Matcher
-		start, end           time.Time
-		wantCount            int
-		wantLabelsByStreamID map[int64][]string // Expected stream ID -> labels mapping
+		name       string
+		matchers   []*labels.Matcher
+		predicates []*labels.Matcher
+		start, end time.Time
+		wantCount  int
+		wantLabels []string // Expected section-level ambiguous labels
 	}{
 		{
 			name: "no predicates doesn't return any labels",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			predicates:           nil,
-			start:                now.Add(-4 * time.Hour),
-			end:                  now.Add(time.Hour),
-			wantCount:            2,
-			wantLabelsByStreamID: nil,
+			predicates: nil,
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  2,
+			wantLabels: nil,
 		},
 		{
-			name: "ambiguous predicates returns predicate label names for the stream",
+			name: "ambiguous predicates returns predicate label names",
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 			},
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 			},
-			start:     now.Add(-4 * time.Hour),
-			end:       now.Add(time.Hour),
-			wantCount: 1,
-			wantLabelsByStreamID: map[int64][]string{
-				2: {"env"},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
+		},
+		{
+			// A non-equality label filter (e.g. `| env!="prod"`) references a
+			// stream label by name just like an equality filter. Its label name
+			// must be recognized as a stream label so the physical planner keeps
+			// it ambiguous instead of mistyping it as structured metadata and
+			// pushing it to the dataobj scan (which would drop all matching rows).
+			name: "not-equal predicate returns predicate label names",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
 			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+			},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
+		},
+		{
+			// Same as above but for a regex-match label filter (e.g. `| env=~"d.*"`).
+			name: "regex-match predicate returns predicate label names",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "env", "d.*"),
+			},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
 		},
 	}
 
@@ -594,22 +623,14 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, sectionsResp.Sections, tt.wantCount)
 
-			if tt.wantLabelsByStreamID != nil {
-				// Collect all stream ID -> labels mappings across all sections
-				gotLabelsByStreamID := make(map[int64][]string)
+			if tt.wantLabels != nil {
+				// Collect all labels across all sections
+				var gotLabels []string
 				for _, section := range sectionsResp.Sections {
-					for streamID, lbls := range section.AmbiguousPredicatesByStream {
-						gotLabelsByStreamID[streamID] = lbls
-					}
+					gotLabels = append(gotLabels, section.AmbiguousPredicates...)
 				}
 
-				// Verify each expected stream ID has the correct labels
-				require.Len(t, gotLabelsByStreamID, len(tt.wantLabelsByStreamID), "unexpected number of streams")
-				for streamID, wantLabels := range tt.wantLabelsByStreamID {
-					gotLabels, ok := gotLabelsByStreamID[streamID]
-					require.True(t, ok, "missing labels for stream ID %d", streamID)
-					require.Equal(t, wantLabels, gotLabels, "labels mismatch for stream ID %d", streamID)
-				}
+				require.ElementsMatch(t, tt.wantLabels, gotLabels, "labels mismatch")
 			}
 		})
 	}
@@ -744,9 +765,9 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	}
 }
 
-// TestDataobjSectionDescriptorMerge_NilMapPanic is a regression test for
-// https://github.com/grafana/loki/pull/21268
-func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
+// TestDataobjSectionDescriptorMerge_NilLabels verifies that merging labels into
+// a descriptor created with no ambiguous labels unions them in cleanly.
+func TestDataobjSectionDescriptorMerge_NilLabels(t *testing.T) {
 	ptr1 := pointers.SectionPointer{
 		Path:        "test-path",
 		Section:     0,
@@ -767,12 +788,9 @@ func TestDataobjSectionDescriptorMerge_NilMapPanic(t *testing.T) {
 	// Create descriptor with no ambiguous labels.
 	desc := NewSectionDescriptor(ptr1, nil)
 
-	// Before the fix this panicked with "assignment to entry in nil map".
-	require.NotPanics(t, func() {
-		desc.Merge(ptr2, []string{"env"})
-	})
+	desc.Merge(ptr2, []string{"env"})
 
-	require.Equal(t, []string{"env"}, desc.AmbiguousPredicatesByStream[ptr2.StreamIDRef])
+	require.ElementsMatch(t, []string{"env"}, desc.AmbiguousPredicates)
 }
 
 func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
@@ -807,7 +825,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 			BufferSize:              1024 * 1024,      // 1MB
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil, logsobj.NewBuilderMetrics())
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	logger := log.NewLogfmtLogger(os.Stdout)
@@ -829,81 +847,25 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 }
 
 func newTestObjectMetastore(bucket objstore.Bucket) *ObjectMetastore {
-	return NewObjectMetastore(bucket, Config{}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
+	return NewObjectMetastore(bucket, Config{ReadPostingsSections: true}, log.NewNopLogger(), NewObjectMetastoreMetrics(prometheus.NewRegistry()))
 }
 
-func TestIndexSectionsReader_ReaderSelection(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
-	uploadFixture := func(t *testing.T, obj *dataobj.Object) (objstore.Bucket, string) {
-		t.Helper()
-
-		bucket := objstore.NewInMemBucket()
-		up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
-		require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
-
-		path, err := up.Upload(context.Background(), obj)
-		require.NoError(t, err)
-		return bucket, path
-	}
-
-	tests := []struct {
-		name                 string
-		readPostingsSections bool
-		buildObj             func(*testing.T) *dataobj.Object
-		wantPostingsReader   bool
-	}{
-		{"flag off uses streams+pointers reader", false, buildCombinedFixture, false},
-		{"flag on with postings section uses postings reader", true, buildCombinedFixture, true},
-		{"flag on without postings section falls back to streams+pointers reader", true, buildStreamsPointersFixture, false},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			bucket, path := uploadFixture(t, tc.buildObj(t))
-			mstore := NewObjectMetastore(
-				bucket,
-				Config{ReadPostingsSections: tc.readPostingsSections},
-				log.NewNopLogger(),
-				NewObjectMetastoreMetrics(prometheus.NewRegistry()),
-			)
-
-			resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
-				IndexPath: path,
-				SectionsRequest: SectionsRequest{
-					Start:    now.Add(-4 * time.Hour),
-					End:      now.Add(-time.Hour),
-					Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
-				},
-			})
-			require.NoError(t, err)
-			t.Cleanup(resp.Reader.Close)
-
-			if tc.wantPostingsReader {
-				require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
-			} else {
-				require.IsType(t, &indexSectionsReader{}, resp.Reader)
-			}
-
-			// Both readers must resolve the same matching stream row.
-			require.NoError(t, resp.Reader.Open(ctx))
-			rec, err := resp.Reader.Read(ctx)
-			require.NoError(t, err)
-			require.NotNil(t, rec)
-			require.Equal(t, int64(1), rec.NumRows())
-		})
-	}
-}
-
-// fixtureBuildMu serializes indexobj fixture builds across parallel tests: concurrent Builder.Flush
-// calls race on the package-global defaultCompressionOptions.zstdWriter lazy init in
-// dataset/page_compress_writer.go (a pre-existing race the mutex sidesteps).
-var fixtureBuildMu sync.Mutex
-
-// newFixtureBuilder returns an indexobj.Builder configured for the reader fixtures.
-func newFixtureBuilder(t *testing.T) *indexobj.Builder {
+// uploadIndexObject uploads obj to a fresh in-memory bucket and returns a
+// metastore plus the object's path.
+func uploadIndexObject(t *testing.T, obj *dataobj.Object) (*ObjectMetastore, string) {
 	t.Helper()
+	bucket := objstore.NewInMemBucket()
+	up := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
+	require.NoError(t, up.RegisterMetrics(prometheus.NewPedanticRegistry()))
+	path, err := up.Upload(context.Background(), obj)
+	require.NoError(t, err)
+	return newTestObjectMetastore(bucket), path
+}
 
+// buildLegacyIndexObject builds an index object holding only streams+pointers
+// sections (no postings) for tenantID.
+func buildLegacyIndexObject(t *testing.T) *dataobj.Object {
+	t.Helper()
 	builder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,
 		TargetObjectSize:        10 * 1024 * 1024,
@@ -912,78 +874,107 @@ func newFixtureBuilder(t *testing.T) *indexobj.Builder {
 		SectionStripeMergeLimit: 2,
 	}, nil)
 	require.NoError(t, err)
-	return builder
-}
 
-// flushFixture flushes builder under fixtureBuildMu (which guards the racy
-// zstdWriter lazy init reached from Flush; see fixtureBuildMu) and registers the
-// returned object's closer for cleanup.
-func flushFixture(t *testing.T, builder *indexobj.Builder) *dataobj.Object {
-	t.Helper()
+	_, err = builder.AppendStream(tenantID, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
 
-	fixtureBuildMu.Lock()
 	obj, closer, err := builder.Flush()
-	fixtureBuildMu.Unlock()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
 	return obj
 }
 
-func buildStreamsPointersFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
+func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	obj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+		{ObjectPath: "src-obj", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now.Add(-2 * time.Hour)},
+	})
+	defer closer()
+	m, path := uploadIndexObject(t, obj)
 
-	builder := newFixtureBuilder(t)
-
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
+	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+		IndexPath: path,
+		SectionsRequest: SectionsRequest{
+			Start:    now.Add(-4 * time.Hour),
+			End:      now,
+			Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+		},
 	})
 	require.NoError(t, err)
-	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
-
-	return flushFixture(t, builder)
+	require.IsType(t, &postingsIndexSectionsReader{}, unwrapReader(resp.Reader))
 }
 
-func buildCombinedFixture(t *testing.T) *dataobj.Object {
-	t.Helper()
+// unwrapReader returns the reader that IndexSectionsReader selected, unwrapping
+// the metrics decorator applied when read_postings_sections is enabled.
+func unwrapReader(r ArrowRecordBatchReader) ArrowRecordBatchReader {
+	if ir, ok := r.(*instrumentedReader); ok {
+		return ir.ArrowRecordBatchReader
+	}
+	return r
+}
 
-	builder := newFixtureBuilder(t)
+func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	m, path := uploadIndexObject(t, buildLegacyIndexObject(t))
 
-	_, err := builder.AppendStream(tenantID, streams.Stream{
-		ID:               1,
-		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}),
-		MinTimestamp:     now.Add(-3 * time.Hour),
-		MaxTimestamp:     now.Add(-2 * time.Hour),
-		UncompressedSize: 5,
-		Rows:             1,
+	resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+		IndexPath: path,
+		SectionsRequest: SectionsRequest{
+			Start:    now.Add(-4 * time.Hour),
+			End:      now,
+			Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+		},
 	})
 	require.NoError(t, err)
+	require.IsType(t, &indexSectionsReader{}, unwrapReader(resp.Reader))
+}
 
-	require.NoError(t, builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5))
+// TestCollectSections_PostingsAndLegacyParity builds the same logical stream
+// (app=foo, source test-path/section 0/stream 1) as both a postings index and a
+// legacy streams+pointers index, resolves each via the full IndexSectionsReader
+// -> CollectSections path, and asserts the resolved section identity matches.
+// RowCount/Size legitimately differ (the postings path does not carry them), so
+// parity is asserted on section identity, stream membership, and ambiguous
+// labels only.
+func TestCollectSections_PostingsAndLegacyParity(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")}
 
-	builder.ObserveLabelPosting(tenantID, postings.LabelObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "app",
-		LabelValue:       "foo",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
+	collect := func(obj *dataobj.Object) *DataobjSectionDescriptor {
+		t.Helper()
+		m, path := uploadIndexObject(t, obj)
+		resp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+			IndexPath: path,
+			SectionsRequest: SectionsRequest{
+				Start:    now.Add(-4 * time.Hour),
+				End:      now,
+				Matchers: matchers,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(resp.Reader.Close)
+		out, err := m.CollectSections(ctx, CollectSectionsRequest(resp))
+		require.NoError(t, err)
+		require.Len(t, out.SectionsResponse.Sections, 1)
+		return out.SectionsResponse.Sections[0]
+	}
+
+	postingsObj, closer := buildPostingsIndexObject(t, tenantID, []postings.LabelObservation{
+		{ObjectPath: "test-path", SectionIndex: 0, ColumnName: "app", LabelValue: "foo", StreamID: 1, Timestamp: now.Add(-3 * time.Hour)},
 	})
+	defer closer()
 
-	builder.PrepareBloomColumn(tenantID, "test-path", 0, "traceID", 1)
-	require.NoError(t, builder.ObserveBloomPosting(tenantID, postings.BloomObservation{
-		ObjectPath:       "test-path",
-		SectionIndex:     0,
-		ColumnName:       "traceID",
-		Value:            "abcd",
-		StreamID:         1,
-		Timestamp:        now.Add(-3 * time.Hour),
-		UncompressedSize: 5,
-	}))
+	postingsDesc := collect(postingsObj)
+	legacyDesc := collect(buildLegacyIndexObject(t))
 
-	return flushFixture(t, builder)
+	require.Equal(t, legacyDesc.SectionKey, postingsDesc.SectionKey)
+	require.ElementsMatch(t, legacyDesc.StreamIDs, postingsDesc.StreamIDs)
+	require.ElementsMatch(t, legacyDesc.AmbiguousPredicates, postingsDesc.AmbiguousPredicates)
 }

@@ -163,51 +163,54 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		return cfg
 	}
 
-	t.Run("no prefix", func(t *testing.T) {
-		cfg := newFSCfg(t)
+	for _, testCase := range []struct {
+		name             string
+		prefix           string
+		expectedPrefix   string
+		isPrefixedClient bool
+		useThanosClient  bool
+	}{
+		{
+			name:             "no prefix",
+			prefix:           "",
+			isPrefixedClient: false,
+		},
+		{
+			name:             "prefix with trailing slash",
+			prefix:           "my/prefix/",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+		{
+			name:             "prefix without trailing slash",
+			prefix:           "my/prefix",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+		{
+			name:             "prefix with leading and trailing slash",
+			prefix:           "/my/prefix/",
+			expectedPrefix:   "my/prefix/",
+			isPrefixedClient: true,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			cfg := newFSCfg(t)
+			cfg.ObjectPrefix = testCase.prefix
+			cfg.UseThanosObjstore = testCase.useThanosClient
 
-		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
-		require.NoError(t, err)
+			objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
+			require.NoError(t, err)
 
-		_, ok := objectClient.(client.PrefixedObjectClient)
-		assert.False(t, ok)
-	})
-
-	t.Run("prefix with trailing /", func(t *testing.T) {
-		cfg := newFSCfg(t)
-		cfg.ObjectPrefix = "my/prefix/"
-
-		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
-
-	t.Run("prefix without trailing /", func(t *testing.T) {
-		cfg := newFSCfg(t)
-		cfg.ObjectPrefix = "my/prefix"
-
-		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
-
-	t.Run("prefix with starting and trailing /", func(t *testing.T) {
-		cfg := newFSCfg(t)
-		cfg.ObjectPrefix = "/my/prefix/"
-
-		objectClient, err := NewObjectClient("filesystem", "test", cfg, cm)
-		require.NoError(t, err)
-
-		prefixed, ok := objectClient.(client.PrefixedObjectClient)
-		assert.True(t, ok)
-		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
-	})
+			prefixed, ok := objectClient.(client.PrefixedObjectClient)
+			if testCase.isPrefixedClient {
+				assert.True(t, ok)
+				assert.Equal(t, testCase.expectedPrefix, prefixed.GetPrefix())
+			} else {
+				require.False(t, ok)
+			}
+		})
+	}
 }
 
 // // DefaultSchemaConfig creates a simple schema config for testing

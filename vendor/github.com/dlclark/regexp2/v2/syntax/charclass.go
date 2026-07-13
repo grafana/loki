@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -85,6 +86,9 @@ var unicodeCategories = func() map[string]*unicode.RangeTable {
 		retVal[k] = unicode.Categories[v]
 	}
 	for k, v := range unicode.Properties {
+		retVal[k] = v
+	}
+	for k, v := range unicodeAliasCategories {
 		retVal[k] = v
 	}
 	return retVal
@@ -633,13 +637,66 @@ func (c *CharSet) addNegativeRanges(ranges []SingleRange) {
 	c.canonicalize()
 }
 
+func normalizeUnicodeCategoryAlias(catName string) string {
+	var b strings.Builder
+	b.Grow(len(catName))
+	for _, ch := range catName {
+		switch ch {
+		case '_', '-', ' ':
+			continue
+		default:
+			b.WriteRune(unicode.ToLower(ch))
+		}
+	}
+	return b.String()
+}
+
+func canonicalUnicodeCatName(catName string) (string, bool) {
+	if _, ok := unicodeCategories[catName]; ok {
+		return catName, true
+	}
+
+	normalized := normalizeUnicodeCategoryAlias(catName)
+	if canonical, ok := unicodeSupportedPropertyAliases[normalized]; ok {
+		return canonical, true
+	}
+	if canonical, ok := unicodeBarePropertyValueAliases[normalized]; ok {
+		return canonical, true
+	}
+
+	if eq := strings.IndexRune(catName, '='); eq >= 0 {
+		propName := catName[:eq]
+		valueName := catName[eq+1:]
+		prop, ok := unicodeSupportedPropertyAliases[normalizeUnicodeCategoryAlias(propName)]
+		if !ok {
+			return "", false
+		}
+		values := unicodeSupportedPropertyValueAliases[prop]
+		if values == nil {
+			return "", false
+		}
+		value, ok := values[normalizeUnicodeCategoryAlias(valueName)]
+		if !ok {
+			return "", false
+		}
+		canonical := prop + "=" + value
+		if _, ok := unicodeCategories[canonical]; ok {
+			return canonical, true
+		}
+	}
+
+	return "", false
+}
+
 func isValidUnicodeCat(catName string) bool {
-	_, ok := unicodeCategories[catName]
+	_, ok := canonicalUnicodeCatName(catName)
 	return ok
 }
 
 func (c *CharSet) addCategory(categoryName string, negate, caseInsensitive bool) {
-	if !isValidUnicodeCat(categoryName) {
+	var ok bool
+	categoryName, ok = canonicalUnicodeCatName(categoryName)
+	if !ok {
 		// unknown unicode category, script, or property "blah"
 		panic(fmt.Errorf("unknown unicode category, script, or property '%v'", categoryName))
 

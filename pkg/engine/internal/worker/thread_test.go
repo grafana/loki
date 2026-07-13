@@ -76,7 +76,7 @@ func TestThread_drainPipeline(t *testing.T) {
 
 	sink := &mockRecordSink{}
 	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
-	totalRows, err := th.drainPipeline(ctx, taskTypeLeaf, pipeline, []recordSink{sink}, log.NewNopLogger())
+	totalRows, err := th.drainPipeline(ctx, taskTypeLeaf, nil, pipeline, []recordSink{sink}, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Equal(t, 3, totalRows)
 
@@ -106,7 +106,7 @@ func TestThread_drainPipeline_RecordsPhasesOnFailure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
-			_, err := th.drainPipeline(t.Context(), taskTypeLeaf, tt.pipeline, nil, log.NewNopLogger())
+			_, err := th.drainPipeline(t.Context(), taskTypeLeaf, nil, tt.pipeline, nil, log.NewNopLogger())
 			require.Error(t, err)
 
 			require.Equal(t, 1, testutil.CollectAndCount(th.Metrics.taskOpenSeconds))
@@ -126,8 +126,8 @@ func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {
 		graph.Add(limitNode)
 
 		var (
-			closedStream = &workflow.Stream{ULID: ulid.Make(), TenantID: "test-tenant"}
-			openStream   = &workflow.Stream{ULID: ulid.Make(), TenantID: "test-tenant"}
+			closedStream = &workflow.Stream{ULID: ulid.Make()}
+			openStream   = &workflow.Stream{ULID: ulid.Make()}
 
 			closedSource = &streamSource{}
 			openSource   = &streamSource{}

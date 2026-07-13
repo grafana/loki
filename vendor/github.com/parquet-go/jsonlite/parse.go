@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/maphash"
+	"iter"
 	"strings"
 	"unsafe"
 )
@@ -135,6 +136,46 @@ func ParseMaxDepth(data string, maxDepth int) (*Value, error) {
 // Parse parses JSON data and returns a pointer to the root Value.
 // Returns an error if the JSON is malformed or empty.
 func Parse(data string) (*Value, error) { return ParseMaxDepth(data, DefaultMaxDepth) }
+
+// ParseSeq parses a sequence of JSON values from the input string.
+// It supports both JSON arrays (input starting with '[') and JSON Lines
+// (newline-separated values). Returns an iterator yielding each value.
+func ParseSeq(json string) iter.Seq2[*Value, error] {
+	return func(yield func(*Value, error) bool) {
+		token, _, ok := nextToken(json)
+		if !ok {
+			return
+		}
+		if token == "[" {
+			v, err := Parse(json)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			for elem := range v.Array {
+				if !yield(elem, nil) {
+					return
+				}
+			}
+			return
+		}
+		remaining := json
+		for {
+			v, rest, err := parseValue(remaining, DefaultMaxDepth)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(&v, nil) {
+				return
+			}
+			remaining = rest
+			if _, _, ok := nextToken(remaining); !ok {
+				return
+			}
+		}
+	}
+}
 
 // parseValue parses a JSON value from s.
 // Returns the parsed value, the remaining unparsed string, and any error.

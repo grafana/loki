@@ -49,7 +49,5 @@ sed --in-place \
   --regexp-extended \
   "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}/g" production/helm/loki/CHANGELOG.md
 
-make TTY='' helm-docs
-
 # shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"

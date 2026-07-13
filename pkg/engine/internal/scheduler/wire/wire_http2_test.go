@@ -498,7 +498,6 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}{
 		{"WorkerReadyMessage", wire.WorkerReadyMessage{}},
 		{"TaskCancelMessage", wire.TaskCancelMessage{}},
-		{"TaskFlagMessage", wire.TaskFlagMessage{Interruptible: true}},
 		{"TaskStatusMessage", wire.TaskStatusMessage{}},
 		{"TaskAssignMessage", wire.TaskAssignMessage{
 			Task: &workflow.Task{
@@ -507,12 +506,12 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 				Fragment: expectedPlan,
 				Sources: map[physical.Node][]*workflow.Stream{
 					compat: {
-						{ULID: ulid.Make(), TenantID: "fake"},
+						{ULID: ulid.Make()},
 					},
 				},
 				Sinks: map[physical.Node][]*workflow.Stream{
 					scanSet: {
-						{ULID: ulid.Make(), TenantID: "fake"},
+						{ULID: ulid.Make()},
 					},
 				},
 			},

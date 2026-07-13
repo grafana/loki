@@ -91,29 +91,43 @@ func (v *Value) Len() int {
 }
 
 // Int returns the value as a signed 64-bit integer.
+// Floating point numbers are truncated to their integer part.
 // Panics if the value is not a number or if parsing fails.
 func (v *Value) Int() int64 {
 	if v.Kind() != Number {
 		panic("jsonlite: Int called on non-number value")
 	}
-	i, err := strconv.ParseInt(v.json(), 10, 64)
+	s := v.json()
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err == nil {
+		return i
+	}
+	// Fall back to parsing as float and truncating
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		panic(err)
 	}
-	return i
+	return int64(f)
 }
 
 // Uint returns the value as an unsigned 64-bit integer.
+// Floating point numbers are truncated to their integer part.
 // Panics if the value is not a number or if parsing fails.
 func (v *Value) Uint() uint64 {
 	if v.Kind() != Number {
 		panic("jsonlite: Uint called on non-number value")
 	}
-	u, err := strconv.ParseUint(v.json(), 10, 64)
+	s := v.json()
+	u, err := strconv.ParseUint(s, 10, 64)
+	if err == nil {
+		return u
+	}
+	// Fall back to parsing as float and truncating
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		panic(err)
 	}
-	return u
+	return uint64(f)
 }
 
 // Float returns the value as a 64-bit floating point number.
@@ -372,6 +386,44 @@ func makeUnparsedObjectValue(json string) Value {
 // Returns the extended buffer.
 func (v *Value) Append(buf []byte) []byte { return append(buf, v.JSON()...) }
 
+// Size returns the number of bytes held in memory by the Value, including
+// the Value struct itself, any slice allocations for arrays/objects, and the
+// JSON bytes.
+//
+// For unparsed (lazy) arrays/objects, this returns only the current memory
+// usage (struct + JSON), not what it would be after parsing.
+func (v *Value) Size() int64 {
+	return int64(unsafe.Sizeof(*v)) + v.size() + int64(len(v.JSON()))
+}
+
+func (v *Value) size() int64 {
+	switch v.Kind() {
+	case Array:
+		if v.unparsed() {
+			return 0
+		}
+		values := unsafe.Slice((*Value)(v.p), v.len())
+		n := int64(len(values)) * int64(unsafe.Sizeof(Value{}))
+		for i := 1; i < len(values); i++ {
+			n += values[i].size()
+		}
+		return n
+	case Object:
+		if v.unparsed() {
+			return 0
+		}
+		fields := unsafe.Slice((*field)(v.p), v.len())
+		n := int64(len(fields)) * int64(unsafe.Sizeof(field{}))
+		n += int64(len(fields[0].k)) // hash table bytes
+		for i := 1; i < len(fields); i++ {
+			n += fields[i].v.size()
+		}
+		return n
+	default:
+		return 0
+	}
+}
+
 // Compact appends a compacted JSON representation of the value to buf by recursively
 // reconstructing it from the parsed structure. Unlike Append, this method does not
 // use cached JSON and always regenerates the output.
@@ -384,32 +436,16 @@ func (v *Value) Compact(buf []byte) []byte {
 		if v.unparsed() {
 			parsed = v.parse()
 		}
-		buf = append(buf, '[')
-		var count int
-		for elem := range parsed.Array {
-			if count > 0 {
-				buf = append(buf, ',')
-			}
-			buf = elem.Compact(buf)
-			count++
-		}
-		return append(buf, ']')
+		return AppendArray(buf, parsed.Array, func(b []byte, elem *Value) []byte {
+			return elem.Compact(b)
+		})
 	default:
 		parsed := v
 		if v.unparsed() {
 			parsed = v.parse()
 		}
-		buf = append(buf, '{')
-		var count int
-		for k, v := range parsed.Object {
-			if count > 0 {
-				buf = append(buf, ',')
-			}
-			buf = AppendQuote(buf, k)
-			buf = append(buf, ':')
-			buf = v.Compact(buf)
-			count++
-		}
-		return append(buf, '}')
+		return AppendObject(buf, parsed.Object, func(b []byte, elem *Value) []byte {
+			return elem.Compact(b)
+		})
 	}
 }

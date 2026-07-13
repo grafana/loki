@@ -148,7 +148,7 @@ func (orig *Status) UnmarshalJSON(iter *json.Iterator) {
 		case "code":
 			orig.Code = StatusCode(iter.ReadEnumValue(StatusCode_value))
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

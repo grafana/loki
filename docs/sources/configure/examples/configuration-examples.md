@@ -239,9 +239,19 @@ storage_config:
     cache_location: /loki/index_cache
   alibabacloud:
     bucket: <bucket>
+    # Alibabacloud region name.
+    # Required when signature_version=v4.
+    # region: <region>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
+    # Specify the RAM role name of the ECS instance. ECS RAM role authentication is used only 
+    # when neither access_key_id nor secret_access_key is configured and requires signature_version=v4. 
+    # If not set, the role name will be automatically retrieved from the ECS instance metadata.
+    # ram_role_name: <ram_role_name>
+    # The signature version to use for authenticating against OSS. Supported values are: v1, v4. 
+    # ECS RAM role authentication requires signature_version=v4.
+    # signature_version: <signature_version>
 
 ```
 
@@ -306,6 +316,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -335,6 +346,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -350,10 +362,10 @@ storage_config:
 
 ```yaml
 
-# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. 
+# This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage.
 # A trusted profile will be used for authenticating with COS. We can either pass
 # the trusted profile name or trusted profile ID along with the compute resource token file.
-# If we pass both trusted profile name and trusted profile ID it should be of 
+# If we pass both trusted profile name and trusted profile ID it should be of
 # the same trusted profile.
 # In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
@@ -371,6 +383,7 @@ schema_config:
         prefix: index_
 
 storage_config:
+  use_thanos_objstore: false # COS is not yet supported by Thanos storage client
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>

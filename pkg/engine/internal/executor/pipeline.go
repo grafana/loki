@@ -31,39 +31,6 @@ type Pipeline interface {
 	Close()
 }
 
-// WrappedPipeline represents a pipeline that wraps another pipeline.
-type WrappedPipeline interface {
-	Pipeline
-
-	// Unwrap returns the inner pipeline. Implementations must always return the
-	// same non-nil value representing the inner pipeline.
-	Unwrap() Pipeline
-}
-
-// Unwrap recursively unwraps the provided pipeline. [WrappedPipeline.Unwrap] is
-// invoked for each wrapped pipeline until the first non-wrapped pipeline is
-// reached.
-func Unwrap(p Pipeline) Pipeline {
-	for {
-		wrapped, ok := p.(WrappedPipeline)
-		if !ok {
-			return p
-		}
-		p = wrapped.Unwrap()
-	}
-}
-
-// Contributing time range would be anything less than `ts` if `lessThan` is true, or greater
-// than `ts` otherwise.
-type ContributingTimeRangeChangedHandler = func(ts time.Time, lessThan bool)
-
-// ContributingTimeRangeChangedNotifier is an optional interface that pipelines can implement
-// to notify others that they are interested only in inputs from some specific time range.
-type ContributingTimeRangeChangedNotifier interface {
-	// SubscribeToTimeRangeChanges adds a callback function to a list of listeners.
-	SubscribeToTimeRangeChanges(callback ContributingTimeRangeChangedHandler)
-}
-
 var (
 	errNotImplemented  = errors.New("pipeline not implemented")
 	errPipelineNotOpen = errors.New("pipeline not opened")
@@ -334,16 +301,16 @@ func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 	}
 
 	start := time.Now()
-	p.readSpan.Record(xcap.StatPipelineReadCalls.Observe(1))
+	p.readSpan.Record(StatPipelineReadCalls.Observe(1))
 
 	// Inject the span (implicitly links the associated region) into ctx.
 	ctx = xcap.ContextWithSpan(ctx, p.readSpan)
 
 	rec, err := p.inner.Read(ctx)
 	if rec != nil {
-		p.readSpan.Record(xcap.StatPipelineRowsOut.Observe(rec.NumRows()))
+		p.readSpan.Record(StatPipelineRowsOut.Observe(rec.NumRows()))
 	}
-	p.readSpan.Record(xcap.StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
+	p.readSpan.Record(StatPipelineReadDuration.Observe(time.Since(start).Seconds()))
 
 	return rec, err
 }
@@ -354,11 +321,6 @@ func (p *observedPipeline) Open(ctx context.Context) error {
 	defer span.End()
 
 	return p.inner.Open(ctx)
-}
-
-// Unwrap returns the underlying pipeline.
-func (p *observedPipeline) Unwrap() Pipeline {
-	return p.inner
 }
 
 // Close implements Pipeline.

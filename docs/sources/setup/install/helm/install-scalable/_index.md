@@ -14,7 +14,7 @@ keywords:
 This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
 
 {{< admonition type="note" >}}
-As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo. Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+As of March 16, 2026, the Loki Helm Chart is being maintained by Grafana Champions and the Grafana Community in the [Grafana-community/helm-charts repository](https://github.com/grafana-community/helm-charts). Please open issues and pull requests for the chart against the Grafana-community repo. Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0.
 {{< /admonition >}}
 
 {{< admonition type="tip" >}}
@@ -23,7 +23,7 @@ With the move to the Grafana-community repository, the chart numbering has chang
 
 This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
-The default Helm chart deploys the following components:
+When you deploy with `deploymentMode: SimpleScalable` and object storage configured, the chart deploys these components with default replica counts:
 
 - Read component (3 replicas)
 - Write component (3 replicas)
@@ -35,12 +35,13 @@ The default Helm chart deploys the following components:
 - Results cache (1 replica)
 
 {{< admonition type="note" >}}
-We do not recommend running scalable mode with `filesystem` storage. For the purpose of this guide, we will use the deprecated built-in MinIO subchart to provide a complete self-contained example. Configure a dedicated external object storage backend for production.
+Simple scalable mode requires object storage (`loki.storage.type` must be `s3`, `gcs`, `azure`, or another supported object-store type). Filesystem storage is not supported for this deployment mode.
 {{< /admonition >}}
 
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
+- Kubernetes 1.25 or later.
 - A running Kubernetes cluster (must have at least 3 nodes).
 
 ## Deploying the Helm chart for development and testing
@@ -293,6 +294,9 @@ gateway:
 Use the top-level `route:` key (mutually exclusive with the top-level `ingress:`) to route Gateway API traffic directly to Loki services, bypassing nginx. The chart auto-generates path-based rules that route write traffic to the write component and read traffic to the read component.
 
 ```yaml
+gateway:
+  enabled: false
+
 route:
   main:
     enabled: true

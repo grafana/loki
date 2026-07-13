@@ -88,8 +88,8 @@ func newCollector(sched *Scheduler) *collector {
 // computeLoad returns the active load on the scheduler: the sum of running and
 // pending tasks.
 func computeLoad(sched *Scheduler) float64 {
-	sched.resourcesMut.RLock()
-	defer sched.resourcesMut.RUnlock()
+	guard := sched.resourcesMut.RLock("collector_compute_load")
+	defer guard.RUnlock()
 
 	var load uint64
 
@@ -122,8 +122,8 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
-	mc.sched.resourcesMut.RLock()
-	defer mc.sched.resourcesMut.RUnlock()
+	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
+	defer guard.RUnlock()
 
 	var (
 		tasksByState   = make(map[workflow.TaskState]int)
@@ -166,8 +166,8 @@ func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
-	mc.sched.assignMut.RLock()
-	defer mc.sched.assignMut.RUnlock()
+	guard := mc.sched.assignMut.RLock("collector_assign_stats")
+	defer guard.RUnlock()
 
 	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.connectedWorkers)))
 	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(mc.sched.taskQueue.Len()))

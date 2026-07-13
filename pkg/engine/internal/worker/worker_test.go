@@ -137,8 +137,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a stream that will feed data to the TopK node
 		inputStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 
 		// Create a workflow task manually with the TopK node and stream source
@@ -154,8 +153,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a results stream for the workflow output
 		resultsStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 		task.Sinks[topkNode] = []*workflow.Stream{resultsStream}
 
@@ -394,9 +392,6 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 
 	opts := workflow.Options{
 		Tenant: objtest.Tenant,
-
-		MaxRunningScanTasks:  32,
-		MaxRunningOtherTasks: 0, // unlimited
 	}
 	wf, err := workflow.New(ctx, opts, logger, sched, plan)
 	require.NoError(t, err)
@@ -433,3 +428,121 @@ var _ net.Addr = testAddr("")
 
 func (addr testAddr) Network() string { return "local" }
 func (addr testAddr) String() string  { return string(addr) }
+
+// TestNonEqualityLabelFilterOnStreamLabel guards against a regression where a
+// non-equality label filter (!=, =~, !~) on a stream label was disambiguated
+// to structured metadata and pushed to the dataobj scan, where the absent
+// column produced an unsatisfiable predicate and dropped all matching rows.
+func TestNonEqualityLabelFilterOnStreamLabel(t *testing.T) {
+	streamData := []logproto.Stream{
+		{
+			Labels: `{app="loki", provider="idology"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC), Line: "idology line"},
+			},
+		},
+		{
+			Labels: `{app="loki", provider="other"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: time.Date(2025, time.January, 1, 0, 0, 1, 0, time.UTC), Line: "other line"},
+			},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		query     string
+		wantLines []string
+	}{
+		{
+			name:      "equality",
+			query:     `{app="loki"} | provider="idology"`,
+			wantLines: []string{"idology line"},
+		},
+		{
+			name:      "inequality",
+			query:     `{app="loki"} | provider!="other"`,
+			wantLines: []string{"idology line"},
+		},
+		{
+			name:      "regex match",
+			query:     `{app="loki"} | provider=~"idol.*"`,
+			wantLines: []string{"idology line"},
+		},
+		{
+			name:      "regex not match",
+			query:     `{app="loki"} | provider!~"oth.*"`,
+			wantLines: []string{"idology line"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := runLabelFilterQuery(t, tt.query, streamData...)
+			lines := make([]string, 0, len(got))
+			for _, row := range got {
+				lines = append(lines, row["utf8.builtin.message"].(string))
+			}
+			require.ElementsMatch(t, tt.wantLines, lines)
+		})
+	}
+}
+
+func runLabelFilterQuery(t *testing.T, query string, streams ...logproto.Stream) arrowtest.Rows {
+	t.Helper()
+
+	builder := objtest.NewBuilder(t)
+
+	logger := log.NewNopLogger()
+	if testing.Verbose() {
+		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	}
+
+	net := newTestNetwork()
+	sched := newTestScheduler(t, logger, net)
+	_ = newTestWorker(t, logger, builder.Location(), net)
+
+	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
+
+	builder.Append(ctx, streams...)
+	builder.Close()
+
+	params, err := logql.NewLiteralParams(
+		query,
+		time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
+		0,
+		0,
+		logproto.BACKWARD,
+		1000,
+		[]string{"0_of_1"},
+		nil,
+	)
+	require.NoError(t, err)
+
+	wf := buildWorkflow(ctx, t, logger, builder.Location(), sched, params)
+	pipeline, err := wf.Run(ctx)
+	require.NoError(t, err)
+
+	// Read the pipeline directly (rather than the shared readTable helper) so an
+	// empty result set produces a clean assertion failure instead of a panic.
+	var recs []arrow.RecordBatch
+	for {
+		rec, err := pipeline.Read(ctx)
+		if rec != nil && rec.NumRows() > 0 {
+			recs = append(recs, rec)
+		}
+		if err != nil && errors.Is(err, executor.EOF) {
+			break
+		}
+		require.NoError(t, err)
+	}
+
+	if len(recs) == 0 {
+		return arrowtest.Rows{}
+	}
+
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, array.NewTableFromRecords(recs[0].Schema(), recs))
+	require.NoError(t, err)
+	return actual
+}
