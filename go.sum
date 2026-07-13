@@ -645,8 +645,8 @@ github.com/googleapis/gax-go/v2 v2.0.4/go.mod h1:0Wqv26UfaUD9n4G6kQubkQ+KchISgw+
 github.com/googleapis/gax-go/v2 v2.0.5/go.mod h1:DWXyrwAJ9X0FpwwEdw+IPEYBICEFu5mhpdKc/us6bOk=
 github.com/googleapis/gax-go/v2 v2.22.0 h1:PjIWBpgGIVKGoCXuiCoP64altEJCj3/Ei+kSU5vlZD4=
 github.com/googleapis/gax-go/v2 v2.22.0/go.mod h1:irWBbALSr0Sk3qlqb9SyJ1h68WjgeFuiOzI4Rqw5+aY=
-github.com/gophercloud/gophercloud/v2 v2.12.0 h1:Gxmc/Bog1UDKkxTcQW7MSPTDviJXpLeEgVeN5KrxoCo=
-github.com/gophercloud/gophercloud/v2 v2.12.0/go.mod h1:H7TTOxbLy8RIaHSNhI2GCrWIzw4Xpw8Xn2mBhCUT5kA=
+github.com/gophercloud/gophercloud/v2 v2.13.0 h1:yEyJG+kABd8x2ttTqLsomihU6Kg2YheJSZhvP/QSx+8=
+github.com/gophercloud/gophercloud/v2 v2.13.0/go.mod h1:KZRLVs6gcoy/pEFdkZqFjdYqnS0emMHv66UqdM5lMjU=
 github.com/gorilla/handlers v1.5.2 h1:cLTUSsNkgcwhgRqvCNmdbRWG0A3N4F+M2nWKdScwyEE=
 github.com/gorilla/handlers v1.5.2/go.mod h1:dX+xVpaxdSw+q0Qek8SSsl3dfMk3jNddUkMzo0GtH0w=
 github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=

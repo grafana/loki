@@ -1193,7 +1193,7 @@ github.com/googleapis/gax-go/v2/internallog
 github.com/googleapis/gax-go/v2/internallog/grpclog
 github.com/googleapis/gax-go/v2/internallog/internal
 github.com/googleapis/gax-go/v2/iterator
-# github.com/gophercloud/gophercloud/v2 v2.12.0
+# github.com/gophercloud/gophercloud/v2 v2.13.0
 ## explicit; go 1.25.0
 github.com/gophercloud/gophercloud/v2
 github.com/gophercloud/gophercloud/v2/openstack
