@@ -423,18 +423,18 @@ func (q *internalQuery) GetRoutingKey() ([]byte, error) {
 	}
 
 	// try to determine the routing key
-	routingKeyInfo, err := q.session.routingKeyInfo(q.Context(), q.qryOpts.stmt, q.qryOpts.keyspace)
+	meta, err := q.session.routingStatementMetadata(q.Context(), q.qryOpts.stmt, q.qryOpts.keyspace)
 	if err != nil {
 		return nil, err
 	}
 
-	if routingKeyInfo != nil {
+	if meta != nil {
 		q.routingInfo.mu.Lock()
-		q.routingInfo.keyspace = routingKeyInfo.keyspace
-		q.routingInfo.table = routingKeyInfo.table
+		q.routingInfo.keyspace = meta.Keyspace
+		q.routingInfo.table = meta.Table
 		q.routingInfo.mu.Unlock()
 	}
-	return createRoutingKey(routingKeyInfo, q.qryOpts.values)
+	return createRoutingKey(meta, q.qryOpts.values)
 }
 
 func (q *internalQuery) Keyspace() string {
@@ -643,19 +643,19 @@ func (b *internalBatch) GetRoutingKey() ([]byte, error) {
 		return nil, nil
 	}
 	// try to determine the routing key
-	routingKeyInfo, err := b.session.routingKeyInfo(b.Context(), entry.Stmt, b.batchOpts.keyspace)
+	meta, err := b.session.routingStatementMetadata(b.Context(), entry.Stmt, b.batchOpts.keyspace)
 	if err != nil {
 		return nil, err
 	}
 
-	if routingKeyInfo != nil {
+	if meta != nil {
 		b.routingInfo.mu.Lock()
-		b.routingInfo.keyspace = routingKeyInfo.keyspace
-		b.routingInfo.table = routingKeyInfo.table
+		b.routingInfo.keyspace = meta.Keyspace
+		b.routingInfo.table = meta.Table
 		b.routingInfo.mu.Unlock()
 	}
 
-	return createRoutingKey(routingKeyInfo, entry.Args)
+	return createRoutingKey(meta, entry.Args)
 }
 
 func (b *internalBatch) Keyspace() string {

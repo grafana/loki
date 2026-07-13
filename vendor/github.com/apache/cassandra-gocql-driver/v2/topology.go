@@ -66,8 +66,11 @@ func (h tokenRingReplicas) replicasFor(t token) *hostTokens {
 }
 
 type placementStrategy interface {
-	replicaMap(tokenRing *tokenRing) tokenRingReplicas
+	replicaMap(tokenRing *tokenRing, logger StructuredLogger) tokenRingReplicas
 	replicationFactor(dc string) int
+	// strategyKey returns a unique identifier string for this strategy instance.
+	// Two strategy instances with identical configuration should return the same key.
+	strategyKey() string
 }
 
 func getReplicationFactorFromOpts(val interface{}) (int, error) {
@@ -92,15 +95,15 @@ func getReplicationFactorFromOpts(val interface{}) (int, error) {
 
 func getStrategy(ks *KeyspaceMetadata, logger StructuredLogger) placementStrategy {
 	switch {
-	case strings.Contains(ks.StrategyClass, "SimpleStrategy"):
+	case strings.Contains(ks.StrategyClass, simpleStrategyClass):
 		rf, err := getReplicationFactorFromOpts(ks.StrategyOptions["replication_factor"])
 		if err != nil {
 			logger.Warning("Failed to parse replication factor of keyspace configured with SimpleStrategy.",
-				newLogFieldString("keyspace", ks.Name), newLogFieldError("err", err))
+				NewLogFieldString("keyspace", ks.Name), NewLogFieldError("err", err))
 			return nil
 		}
-		return &simpleStrategy{rf: rf}
-	case strings.Contains(ks.StrategyClass, "NetworkTopologyStrategy"):
+		return newSimpleStrategy(rf)
+	case strings.Contains(ks.StrategyClass, networkTopologyStrategyClass):
 		dcs := make(map[string]int)
 		for dc, rf := range ks.StrategyOptions {
 			if dc == "class" {
@@ -110,32 +113,56 @@ func getStrategy(ks *KeyspaceMetadata, logger StructuredLogger) placementStrateg
 			rf, err := getReplicationFactorFromOpts(rf)
 			if err != nil {
 				logger.Warning("Failed to parse replication factors of keyspace configured with NetworkTopologyStrategy.",
-					newLogFieldString("keyspace", ks.Name), newLogFieldString("dc", dc), newLogFieldError("err", err))
+					NewLogFieldString("keyspace", ks.Name), NewLogFieldString("dc", dc), NewLogFieldError("err", err))
 				// skip DC if the rf is invalid/unsupported, so that we can at least work with other working DCs.
 				continue
 			}
 
 			dcs[dc] = rf
 		}
-		return &networkTopology{dcs: dcs}
+		return newNetworkTopology(dcs)
 	case strings.Contains(ks.StrategyClass, "LocalStrategy"):
 		return nil
 	default:
 		logger.Warning("Failed to parse replication factor of keyspace due to unknown strategy class.",
-			newLogFieldString("keyspace", ks.Name), newLogFieldString("strategy_class", ks.StrategyClass))
+			NewLogFieldString("keyspace", ks.Name), NewLogFieldString("strategy_class", ks.StrategyClass))
 		return nil
 	}
 }
 
+const (
+	simpleStrategyClass          string = "SimpleStrategy"
+	networkTopologyStrategyClass string = "NetworkTopologyStrategy"
+)
+
 type simpleStrategy struct {
-	rf int
+	rf  int
+	key string
+}
+
+// newSimpleStrategy creates a new SimpleStrategy with pre-computed strategy key.
+// Format: {Strategy}|rf:{RF}
+// Example: SimpleStrategy|rf:3
+func newSimpleStrategy(rf int) *simpleStrategy {
+	return &simpleStrategy{
+		rf:  rf,
+		key: fmt.Sprintf("%s|rf:%d", simpleStrategyClass, rf),
+	}
+}
+
+func (s *simpleStrategy) strategyClass() string {
+	return simpleStrategyClass
+}
+
+func (s *simpleStrategy) strategyKey() string {
+	return s.key
 }
 
 func (s *simpleStrategy) replicationFactor(dc string) int {
 	return s.rf
 }
 
-func (s *simpleStrategy) replicaMap(tokenRing *tokenRing) tokenRingReplicas {
+func (s *simpleStrategy) replicaMap(tokenRing *tokenRing, _ StructuredLogger) tokenRingReplicas {
 	tokens := tokenRing.tokens
 	ring := make(tokenRingReplicas, len(tokens))
 
@@ -161,6 +188,53 @@ func (s *simpleStrategy) replicaMap(tokenRing *tokenRing) tokenRingReplicas {
 
 type networkTopology struct {
 	dcs map[string]int
+	key string
+}
+
+// newNetworkTopology creates a new NetworkTopologyStrategy with pre-computed strategy key.
+func newNetworkTopology(dcs map[string]int) *networkTopology {
+	return &networkTopology{
+		dcs: dcs,
+		key: buildNetworkTopologyKey(dcs),
+	}
+}
+
+func (n *networkTopology) strategyClass() string {
+	return networkTopologyStrategyClass
+}
+
+func (n *networkTopology) strategyKey() string {
+	return n.key
+}
+
+// buildNetworkTopologyKey creates a deterministic strategy key from datacenter replication factors.
+// It sorts the datacenters alphabetically to ensure consistent key generation.
+//
+// Format: {Strategy}|{LenDC}:{DC}:{RF}|{LenDC}:{DC}:{RF}|...
+// Example: NetworkTopologyStrategy|3:dc1:3|3:dc2:1
+//
+// This format prevents collisions even if datacenter names contain special characters,
+// by prepending the length of each datacenter name.
+func buildNetworkTopologyKey(dcs map[string]int) string {
+	dcNames := make([]string, 0, len(dcs))
+	for dc := range dcs {
+		dcNames = append(dcNames, dc)
+	}
+	sort.Strings(dcNames)
+
+	// Build key with length-prefixed dc names to prevent ambiguity
+	var b strings.Builder
+	b.Grow(64)
+	b.WriteString(networkTopologyStrategyClass)
+	for _, dc := range dcNames {
+		b.WriteString("|")
+		b.WriteString(strconv.Itoa(len(dc)))
+		b.WriteString(":")
+		b.WriteString(dc)
+		b.WriteString(":")
+		b.WriteString(strconv.Itoa(dcs[dc]))
+	}
+	return b.String()
 }
 
 func (n *networkTopology) replicationFactor(dc string) int {
@@ -181,7 +255,7 @@ func (n *networkTopology) haveRF(replicaCounts map[string]int) bool {
 	return true
 }
 
-func (n *networkTopology) replicaMap(tokenRing *tokenRing) tokenRingReplicas {
+func (n *networkTopology) replicaMap(tokenRing *tokenRing, logger StructuredLogger) tokenRingReplicas {
 	dcRacks := make(map[string]map[string]struct{}, len(n.dcs))
 	// skipped hosts in a dc
 	skipped := make(map[string][]*HostInfo, len(n.dcs))
@@ -250,7 +324,11 @@ func (n *networkTopology) replicaMap(tokenRing *tokenRing) tokenRingReplicas {
 				continue
 			} else if replicasInDC[dc] >= rf {
 				if replicasInDC[dc] > rf {
-					panic(fmt.Sprintf("replica overflow. rf=%d have=%d in dc %q", rf, replicasInDC[dc], dc))
+					logger.Warning("Replica overflow. Returning empty map.",
+						NewLogFieldInt("rf", rf),
+						NewLogFieldInt("have", replicasInDC[dc]),
+						NewLogFieldString("dc", dc))
+					return tokenRingReplicas{}
 				}
 
 				// have enough replicas in this DC
@@ -298,23 +376,36 @@ func (n *networkTopology) replicaMap(tokenRing *tokenRing) tokenRingReplicas {
 		}
 
 		if len(replicas) == 0 {
-			panic(fmt.Sprintf("no replicas for token: %v", th.token))
+			logger.Warning("No replicas for token. Returning empty map.",
+				NewLogFieldString("token", th.token.String()))
+			return tokenRingReplicas{}
 		} else if !replicas[0].Equal(th.host) {
-			panic(fmt.Sprintf("first replica is not the primary replica for the token: expected %v got %v", replicas[0].ConnectAddress(), th.host.ConnectAddress()))
+			logger.Warning("First replica is not the primary replica for the token. Returning empty map.",
+				NewLogFieldString("token", th.token.String()),
+				NewLogFieldIP("expected", replicas[0].ConnectAddress()),
+				NewLogFieldIP("got", th.host.ConnectAddress()))
+			return tokenRingReplicas{}
 		}
 
 		replicaRing = append(replicaRing, hostTokens{th.token, replicas})
 	}
 
 	dcsWithReplicas := 0
-	for _, dc := range n.dcs {
-		if dc > 0 {
+	for dc, rf := range n.dcs {
+		// We should count only DCs that driver is aware of and have a replication factor > 0
+		if _, knownDc := dcRacks[dc]; knownDc && rf > 0 {
 			dcsWithReplicas++
 		}
 	}
 
 	if dcsWithReplicas == len(dcRacks) && len(replicaRing) != len(tokens) {
-		panic(fmt.Sprintf("token map different size to token ring: got %d expected %d", len(replicaRing), len(tokens)))
+		logger.Warning("Unexpected state while building replica map. Returning empty map.",
+			NewLogFieldString("strategy_key", n.strategyKey()),
+			NewLogFieldInt("dcs_with_replicas", dcsWithReplicas),
+			NewLogFieldInt("dcs_in_ring", len(dcRacks)),
+			NewLogFieldInt("token_ring_size", len(tokens)),
+			NewLogFieldInt("replica_ring_size", len(replicaRing)))
+		return tokenRingReplicas{}
 	}
 
 	return replicaRing

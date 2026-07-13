@@ -2921,12 +2921,6 @@ func (udt UDTTypeInfo) Marshal(value interface{}) ([]byte, error) {
 
 // Unmarshal unmarshals the byte slice into the value.
 func (udt UDTTypeInfo) Unmarshal(data []byte, value interface{}) error {
-	// do this up here so we don't need to duplicate all of the map logic below
-	if iptr, ok := value.(*interface{}); ok && iptr != nil {
-		v := map[string]interface{}{}
-		*iptr = v
-		value = &v
-	}
 	switch v := value.(type) {
 	case UDTUnmarshaler:
 		for id, e := range udt.Elements {
@@ -2945,34 +2939,18 @@ func (udt UDTTypeInfo) Unmarshal(data []byte, value interface{}) error {
 		}
 
 		return nil
-	case *map[string]interface{}:
-		if data == nil {
-			*v = nil
-			return nil
-		}
-
-		m := map[string]interface{}{}
-		*v = m
-
-		for id, e := range udt.Elements {
-			if len(data) == 0 {
-				return nil
-			}
-			if len(data) < 4 {
-				return unmarshalErrorf("can not unmarshal UDT: field [%d]%s: unexpected eof", id, e.Name)
-			}
-
-			var p []byte
-			p, data = readBytes(data)
-
-			v := reflect.New(reflect.TypeOf(e.Type.Zero()))
-			if err := Unmarshal(e.Type, p, v.Interface()); err != nil {
+	case *interface{}:
+		if v != nil {
+			// m will be initialized by the unmarshalIntoMap function
+			var m map[string]interface{}
+			if err := udt.unmarshalIntoMap(data, &m); err != nil {
 				return err
 			}
-			m[e.Name] = v.Elem().Interface()
+			*v = m
+			return nil
 		}
-
-		return nil
+	case *map[string]interface{}:
+		return udt.unmarshalIntoMap(data, v)
 	}
 
 	rv := reflect.ValueOf(value)
@@ -3032,6 +3010,37 @@ func (udt UDTTypeInfo) Unmarshal(data []byte, value interface{}) error {
 		if err := Unmarshal(e.Type, p, fk); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// Unmarshals data into map and store its pointer in the dstMap.
+func (udt UDTTypeInfo) unmarshalIntoMap(data []byte, dstMap *map[string]interface{}) error {
+	if data == nil {
+		*dstMap = nil
+		return nil
+	}
+
+	m := map[string]interface{}{}
+	*dstMap = m
+
+	for id, e := range udt.Elements {
+		if len(data) == 0 {
+			return nil
+		}
+		if len(data) < 4 {
+			return unmarshalErrorf("can not unmarshal UDT: field [%d]%s: unexpected eof", id, e.Name)
+		}
+
+		var p []byte
+		p, data = readBytes(data)
+
+		v := reflect.New(reflect.TypeOf(e.Type.Zero()))
+		if err := Unmarshal(e.Type, p, v.Interface()); err != nil {
+			return err
+		}
+		m[e.Name] = v.Elem().Interface()
 	}
 
 	return nil

@@ -48,7 +48,7 @@ func logHelper(logger StructuredLogger, level LogLevel, msg string, fields ...Lo
 	case LogLevelError:
 		logger.Error(msg, fields...)
 	default:
-		logger.Error("Unknown log level", newLogFieldInt("level", int(level)), newLogFieldString("msg", msg))
+		logger.Error("Unknown log level", NewLogFieldInt("level", int(level)), NewLogFieldString("msg", msg))
 	}
 }
 
@@ -229,7 +229,8 @@ func newLogField(name string, value LogFieldValue) LogField {
 	}
 }
 
-func newLogFieldIp(name string, value net.IP) LogField {
+// NewLogFieldIP creates a new LogField with the given name and net.IP.
+func NewLogFieldIP(name string, value net.IP) LogField {
 	var str string
 	if value == nil {
 		str = "<nil>"
@@ -239,7 +240,8 @@ func newLogFieldIp(name string, value net.IP) LogField {
 	return newLogField(name, logFieldValueString(str))
 }
 
-func newLogFieldError(name string, value error) LogField {
+// NewLogFieldError creates a new LogField with the given name and error.
+func NewLogFieldError(name string, value error) LogField {
 	var str string
 	if value != nil {
 		str = value.Error()
@@ -247,7 +249,8 @@ func newLogFieldError(name string, value error) LogField {
 	return newLogField(name, logFieldValueString(str))
 }
 
-func newLogFieldStringer(name string, value fmt.Stringer) LogField {
+// NewLogFieldStringer creates a new LogField with the given name and fmt.Stringer.
+func NewLogFieldStringer(name string, value fmt.Stringer) LogField {
 	var str string
 	if value != nil {
 		str = value.String()
@@ -255,15 +258,18 @@ func newLogFieldStringer(name string, value fmt.Stringer) LogField {
 	return newLogField(name, logFieldValueString(str))
 }
 
-func newLogFieldString(name string, value string) LogField {
+// NewLogFieldString creates a new LogField with the given name and string.
+func NewLogFieldString(name string, value string) LogField {
 	return newLogField(name, logFieldValueString(value))
 }
 
-func newLogFieldInt(name string, value int) LogField {
+// NewLogFieldInt creates a new LogField with the given name and int.
+func NewLogFieldInt(name string, value int) LogField {
 	return newLogField(name, logFieldValueInt64(int64(value)))
 }
 
-func newLogFieldBool(name string, value bool) LogField {
+// NewLogFieldBool creates a new LogField with the given name and bool.
+func NewLogFieldBool(name string, value bool) LogField {
 	return newLogField(name, logFieldValueBool(value))
 }
 

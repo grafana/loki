@@ -494,11 +494,11 @@ func (pool *hostConnPool) logConnectErr(err error) {
 		// connection refused
 		// these are typical during a node outage so avoid log spam.
 		pool.logger.Debug("Pool unable to establish a connection to host.",
-			newLogFieldIp("host_addr", pool.host.ConnectAddress()), newLogFieldString("host_id", pool.host.HostID()), newLogFieldError("err", err))
+			NewLogFieldIP("host_addr", pool.host.ConnectAddress()), NewLogFieldString("host_id", pool.host.HostID()), NewLogFieldError("err", err))
 	} else if err != nil {
 		// unexpected error
 		pool.logger.Debug("Pool failed to connect to host due to error.",
-			newLogFieldIp("host_addr", pool.host.ConnectAddress()), newLogFieldString("host_id", pool.host.HostID()), newLogFieldError("err", err))
+			NewLogFieldIP("host_addr", pool.host.ConnectAddress()), NewLogFieldString("host_id", pool.host.HostID()), NewLogFieldError("err", err))
 	}
 }
 
@@ -506,7 +506,7 @@ func (pool *hostConnPool) logConnectErr(err error) {
 func (pool *hostConnPool) fillingStopped(err error) {
 	if err != nil {
 		pool.logger.Warning("Connection pool filling failed.",
-			newLogFieldIp("host_addr", pool.host.ConnectAddress()), newLogFieldString("host_id", pool.host.HostID()), newLogFieldError("err", err))
+			NewLogFieldIP("host_addr", pool.host.ConnectAddress()), NewLogFieldString("host_id", pool.host.HostID()), NewLogFieldError("err", err))
 		// wait for some time to avoid back-to-back filling
 		// this provides some time between failed attempts
 		// to fill the pool for the host to recover
@@ -523,7 +523,7 @@ func (pool *hostConnPool) fillingStopped(err error) {
 	// if we errored and the size is now zero, make sure the host is marked as down
 	// see https://github.com/apache/cassandra-gocql-driver/issues/1614
 	pool.logger.Debug("Logging number of connections of pool after filling stopped.",
-		newLogFieldIp("host_addr", host.ConnectAddress()), newLogFieldString("host_id", host.HostID()), newLogFieldInt("count", count))
+		NewLogFieldIP("host_addr", host.ConnectAddress()), NewLogFieldString("host_id", host.HostID()), NewLogFieldInt("count", count))
 	if err != nil && count == 0 {
 		if pool.session.cfg.ConvictionPolicy.AddFailure(err, host) {
 			pool.session.handleNodeDown(host.ConnectAddress(), port)
@@ -580,10 +580,10 @@ func (pool *hostConnPool) connect() (err error) {
 			}
 		}
 		pool.logger.Warning("Pool failed to connect to host. Reconnecting according to the reconnection policy.",
-			newLogFieldIp("host", pool.host.ConnectAddress()),
-			newLogFieldString("host_id", pool.host.HostID()),
-			newLogFieldError("err", err),
-			newLogFieldString("reconnectionPolicy", fmt.Sprintf("%T", reconnectionPolicy)))
+			NewLogFieldIP("host", pool.host.ConnectAddress()),
+			NewLogFieldString("host_id", pool.host.HostID()),
+			NewLogFieldError("err", err),
+			NewLogFieldString("reconnectionPolicy", fmt.Sprintf("%T", reconnectionPolicy)))
 		time.Sleep(reconnectionPolicy.GetInterval(i))
 	}
 
@@ -631,7 +631,7 @@ func (pool *hostConnPool) HandleError(conn *Conn, err error, closed bool) {
 	}
 
 	pool.logger.Info("Pool connection error.",
-		newLogFieldString("addr", conn.addr), newLogFieldError("err", err))
+		NewLogFieldString("addr", conn.addr), NewLogFieldError("err", err))
 
 	// find the connection index
 	for i, candidate := range pool.conns {

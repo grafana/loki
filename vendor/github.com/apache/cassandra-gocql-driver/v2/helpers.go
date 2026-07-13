@@ -60,15 +60,14 @@ func (iter *Iter) RowData() (RowData, error) {
 
 	for _, column := range iter.Columns() {
 		if c, ok := column.TypeInfo.(TupleTypeInfo); !ok {
-			val := c.Zero()
+			val := reflect.New(reflect.TypeOf(column.TypeInfo.Zero()))
 			columns = append(columns, column.Name)
-			values = append(values, &val)
+			values = append(values, val.Interface())
 		} else {
 			for i, elem := range c.Elems {
 				columns = append(columns, TupleColumnName(column.Name, i))
-				var val interface{}
-				val = elem.Zero()
-				values = append(values, &val)
+				val := reflect.New(reflect.TypeOf(elem.Zero()))
+				values = append(values, val.Interface())
 			}
 		}
 	}
@@ -267,4 +266,43 @@ func ringString(hosts []*HostInfo) string {
 		buf.WriteString("[" + h.ConnectAddress().String() + "-" + h.HostID() + ":" + h.State().String() + "]")
 	}
 	return buf.String()
+}
+
+// stringsSlicesEqual compares two slices of strings. It doesn't ignore case and order.
+// It returns false if:
+// - slices are not the same length
+// - one slice is nil and the other is not
+// - corresponding elements are not equal
+func stringsSlicesEqual(a, b []string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+
+	if a == nil || b == nil {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// compareMapStringInterface compares two maps map[string]interface{} for equality.
+func compareMapStringInterface(mapA, mapB map[string]interface{}) bool {
+	if len(mapA) != len(mapB) {
+		return false
+	}
+	for k, v := range mapA {
+		if v != mapB[k] {
+			return false
+		}
+	}
+	return true
 }

@@ -65,11 +65,12 @@ func NamedValue(name string, value interface{}) interface{} {
 const (
 	protoDirectionMask = 0x80
 	protoVersionMask   = 0x7F
-	protoVersion1      = 0x01
-	protoVersion2      = 0x02
 	protoVersion3      = 0x03
 	protoVersion4      = 0x04
 	protoVersion5      = 0x05
+
+	lowestProtocolVersionSupported  = protoVersion3
+	highestProtocolVersionSupported = protoVersion5
 
 	maxFrameSize = 256 * 1024 * 1024
 
@@ -393,7 +394,7 @@ func newFramer(compressor Compressor, version byte, r *RegisteredTypes) *framer 
 		types:      r,
 	}
 	var flags byte
-	if compressor != nil {
+	if compressor != nil && version < protoVersion5 {
 		flags |= flagCompress
 	}
 
@@ -422,7 +423,7 @@ func readHeader(r io.Reader, p []byte) (head frameHeader, err error) {
 
 	version := p[0] & protoVersionMask
 
-	if version < protoVersion3 || version > protoVersion5 {
+	if version < lowestProtocolVersionSupported || version > highestProtocolVersionSupported {
 		return frameHeader{}, fmt.Errorf("gocql: unsupported protocol response version: %d", version)
 	}
 
@@ -758,10 +759,24 @@ func (f *framer) parseErrorFrame() (frame, error) {
 			return nil, err
 		}
 		return res, nil
-	case ErrCodeInvalid, ErrCodeBootstrapping, ErrCodeConfig, ErrCodeCredentials, ErrCodeOverloaded,
-		ErrCodeProtocol, ErrCodeServer, ErrCodeSyntax, ErrCodeTruncate, ErrCodeUnauthorized:
-		// TODO(zariel): we should have some distinct types for these errors
+	case ErrCodeOverloaded:
+		return &RequestErrOverloaded{errorFrame: errD}, nil
+	case ErrCodeBootstrapping:
+		return &RequestErrBootstrapping{errorFrame: errD}, nil
+	case ErrCodeInvalid:
+		return &RequestErrInvalid{errorFrame: errD}, nil
+	case ErrCodeConfig:
+		return &RequestErrConfig{errorFrame: errD}, nil
+	case ErrCodeCredentials:
+		return &RequestErrCredentials{errorFrame: errD}, nil
+	case ErrCodeServer, ErrCodeProtocol:
 		return errD, nil
+	case ErrCodeSyntax:
+		return &RequestErrSyntax{errorFrame: errD}, nil
+	case ErrCodeTruncate:
+		return &RequestErrTruncate{errorFrame: errD}, nil
+	case ErrCodeUnauthorized:
+		return &RequestErrUnauthorized{errorFrame: errD}, nil
 	default:
 		return nil, fmt.Errorf("unknown error code: 0x%x", errD.code)
 	}
@@ -1046,12 +1061,11 @@ func (f *framer) readTypeInfo() (TypeInfo, error) {
 type preparedMetadata struct {
 	resultMetadata
 
-	// proto v4+
-	pkeyColumns []int
-
-	keyspace string
-
-	table string
+	// pkeyColumns is only present in protocol v4+
+	pkeyColumns         []int
+	supportsPKeyColumns bool
+	keyspace            string
+	table               string
 }
 
 func (r preparedMetadata) String() string {
@@ -1090,6 +1104,7 @@ func (f *framer) parsePreparedMetadata() (preparedMetadata, error) {
 			pkeys[i] = int(c)
 		}
 		meta.pkeyColumns = pkeys
+		meta.supportsPKeyColumns = true
 	}
 
 	if meta.flags&flagHasMorePages == flagHasMorePages {
@@ -2228,6 +2243,9 @@ func (f *framer) readBytesMap() (map[string][]byte, error) {
 
 func (f *framer) readStringMultiMap() (map[string][]string, error) {
 	size, err := f.readShort()
+	if err != nil {
+		return nil, err
+	}
 	m := make(map[string][]string, size)
 	var k string
 	for i := 0; i < int(size); i++ {
@@ -2367,6 +2385,14 @@ func (f *framer) writeStringMap(m map[string]string) {
 	for k, v := range m {
 		f.writeString(k)
 		f.writeString(v)
+	}
+}
+
+func (f *framer) writeStringMultiMap(m map[string][]string) {
+	f.writeShort(uint16(len(m)))
+	for k, v := range m {
+		f.writeString(k)
+		f.writeStringList(v)
 	}
 }
 
