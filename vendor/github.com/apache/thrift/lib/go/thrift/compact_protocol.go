@@ -499,8 +499,7 @@ func (p *TCompactProtocol) ReadMapBegin(ctx context.Context) (keyType TType, val
 	valueType, _ = p.getTType(tCompactType(keyAndValueType & 0xf))
 
 	minElemSize := p.getMinSerializedSize(keyType) + p.getMinSerializedSize(valueType)
-	totalMinSize := size32 * minElemSize
-	err = checkSizeForProtocol(totalMinSize, p.cfg)
+	err = checkContainerSizeForProtocol(int64(size32), minElemSize, p.cfg)
 	if err != nil {
 		return
 	}
@@ -534,8 +533,7 @@ func (p *TCompactProtocol) ReadListBegin(ctx context.Context) (elemType TType, s
 	}
 
 	minElemSize := p.getMinSerializedSize(elemType)
-	totalMinSize := int32(size) * minElemSize
-	err = checkSizeForProtocol(totalMinSize, p.cfg)
+	err = checkContainerSizeForProtocol(int64(size), minElemSize, p.cfg)
 	if err != nil {
 		return
 	}
@@ -766,23 +764,27 @@ func (p *TCompactProtocol) readVarint32() (int32, error) {
 	return int32(v), err
 }
 
+// maxVarint64Bytes is the maximum wire size of a varint-encoded 64-bit integer:
+// ceil(64/7) = 10 bytes, matching the protobuf wire-format specification.
+const maxVarint64Bytes = 10
+
 // Read an i64 from the wire as a proper varint. The MSB of each byte is set
 // if there is another byte to follow. This can read up to 10 bytes.
 func (p *TCompactProtocol) readVarint64() (int64, error) {
 	shift := uint(0)
 	result := int64(0)
-	for {
+	for range maxVarint64Bytes {
 		b, err := p.readByteDirect()
 		if err != nil {
 			return 0, err
 		}
 		result |= int64(b&0x7f) << shift
 		if (b & 0x80) != 0x80 {
-			break
+			return result, nil
 		}
 		shift += 7
 	}
-	return result, nil
+	return 0, NewTProtocolExceptionWithType(INVALID_DATA, errors.New("variable-length int over 10 bytes"))
 }
 
 // Read a byte, unlike ReadByte that reads Thrift-byte that is i8.

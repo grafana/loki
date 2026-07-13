@@ -22,6 +22,7 @@
 package thrift
 
 import (
+	"crypto/tls"
 	"errors"
 	"io"
 	"syscall"
@@ -38,7 +39,12 @@ func (sc *socketConn) read0() error {
 }
 
 func (sc *socketConn) checkConn() error {
-	syscallConn, ok := sc.Conn.(syscall.Conn)
+	rawConn := sc.Conn
+	if tlsConn, ok := rawConn.(*tls.Conn); ok {
+		rawConn = tlsConn.NetConn()
+	}
+
+	syscallConn, ok := rawConn.(syscall.Conn)
 	if !ok {
 		// No way to check, return nil
 		return nil
@@ -47,7 +53,7 @@ func (sc *socketConn) checkConn() error {
 	// The reading about to be done here is non-blocking so we don't really
 	// need a read deadline. We just need to clear the previously set read
 	// deadline, if any.
-	sc.Conn.SetReadDeadline(zeroTime)
+	rawConn.SetReadDeadline(zeroTime)
 
 	rc, err := syscallConn.SyscallConn()
 	if err != nil {
