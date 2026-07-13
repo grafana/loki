@@ -1,5 +1,30 @@
 # Changes
 
+## [2.6.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v2.6.0...pubsub/v2.6.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **pubsub/v2/pstest:** Make ackIDs unique per delivery ([#14554](https://github.com/googleapis/google-cloud-go/issues/14554)) ([9072072](https://github.com/googleapis/google-cloud-go/commit/9072072537a0e3284043c803b54c5d60065e752f)), closes [#10707](https://github.com/googleapis/google-cloud-go/issues/10707)
+* **pubsub/v2:** Manage exactly once spans properly on failure ([#14559](https://github.com/googleapis/google-cloud-go/issues/14559)) ([dd8448b](https://github.com/googleapis/google-cloud-go/commit/dd8448b9186401259e24a68286e41522e0a8a27c)), closes [#14555](https://github.com/googleapis/google-cloud-go/issues/14555)
+* **pubsub/v2:** Release flow control credit on scheduler.Add error ([#20079](https://github.com/googleapis/google-cloud-go/issues/20079)) ([18d7b77](https://github.com/googleapis/google-cloud-go/commit/18d7b77ad527cb28e98f7b670e9926e781b2535d)), closes [#20078](https://github.com/googleapis/google-cloud-go/issues/20078)
+
+## [2.6.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.6.0) (2026-04-14)
+
+## [2.5.1](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.5.1) (2026-03-31)
+
+### Bug Fixes
+
+* prevent nil span panic in Subscriber.Receive (#14278) ([c590c35](https://github.com/googleapis/google-cloud-go/commit/c590c350583b42d9739842e838811caef254c72e))
+
+## [2.5.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.5.0) (2026-03-19)
+
+### Features
+
+* Add BigtableConfig type ([177550d](https://github.com/googleapis/google-cloud-go/commit/177550d454fe98dcd1cd6645bf9b4c51eef7a419))
+* add keep alive support (#13457) ([aeffa93](https://github.com/googleapis/google-cloud-go/commit/aeffa932f86ee8b221bc8f71faef7876791054db))
+* introduce per stream flow control (#13642) ([9bb9541](https://github.com/googleapis/google-cloud-go/commit/9bb9541773cde3a934eb0ab15032d777468cba9c))
+
 ## [2.4.0](https://github.com/googleapis/google-cloud-go/releases/tag/pubsub%2Fv2.4.0) (2026-02-04)
 
 ### Features
