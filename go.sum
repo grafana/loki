@@ -745,8 +745,8 @@ github.com/influxdata/telegraf v1.37.2 h1:mYr0I/suEw9+UM4KrCFuYuzJuq/e99cINniIwq
 github.com/influxdata/telegraf v1.37.2/go.mod h1:dq+24HZKWxGo5ttW03SZug03UlFfpxh9vsXQgdZ9RPw=
 github.com/ionos-cloud/sdk-go/v6 v6.3.7 h1:t773JkC/asnyVqeQ+OvN9WCRZuosSoPtJfyM82EFCWY=
 github.com/ionos-cloud/sdk-go/v6 v6.3.7/go.mod h1:nUGHP4kZHAZngCVr4v6C8nuargFrtvt7GrzH/hqn7c4=
-github.com/jaegertracing/jaeger-idl v0.6.0 h1:LOVQfVby9ywdMPI9n3hMwKbyLVV3BL1XH2QqsP5KTMk=
-github.com/jaegertracing/jaeger-idl v0.6.0/go.mod h1:mpW0lZfG907/+o5w5OlnNnig7nHJGT3SfKmRqC42HGQ=
+github.com/jaegertracing/jaeger-idl v0.9.0 h1:dI4olA7ArW3cjXwVbic/aYKDbdlfe7V+9wPQqAdzu8Y=
+github.com/jaegertracing/jaeger-idl v0.9.0/go.mod h1:W+9vbcr2cVZyS6z/cbr540EOzSkKYml3hmaWEavxkB0=
 github.com/jcmturner/aescts/v2 v2.0.0 h1:9YKLH6ey7H4eDBXW8khjYslgyqG2xZikXP0EQFKrle8=
 github.com/jcmturner/aescts/v2 v2.0.0/go.mod h1:AiaICIRyfYg35RUkr8yESTqvSy7csK90qZ5xfvvsoNs=
 github.com/jcmturner/dnsutils/v2 v2.0.0 h1:lltnkeZGL0wILNvrNiVCR6Ro5PGU/SeBvVO/8c/iPbo=
