@@ -1,5 +1,46 @@
 # Changes
 
+## [1.50.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.49.0...bigtable/v1.50.0) (2026-06-17)
+
+
+### Features
+
+* **bigtable:** Enable JWT ([#19957](https://github.com/googleapis/google-cloud-go/issues/19957)) ([af93528](https://github.com/googleapis/google-cloud-go/commit/af93528c6eb18e841783987820b9f586293459e4))
+* **bigtable:** Generate Admin API client using selective gapic ([#19962](https://github.com/googleapis/google-cloud-go/issues/19962)) ([a37509d](https://github.com/googleapis/google-cloud-go/commit/a37509ddadc60a81e5dfb0f373e47d0d578d8cca))
+* **bigtable:** Refactor channel_pool_factory as we need to maintain two channel factory one for session and another for unary ([#14652](https://github.com/googleapis/google-cloud-go/issues/14652)) ([0c0b6ce](https://github.com/googleapis/google-cloud-go/commit/0c0b6ceba693dbe8af778117f6ca10faf0ca67ff))
+* **bigtable:** Wrap admin client ([#14534](https://github.com/googleapis/google-cloud-go/issues/14534)) ([0bea4ba](https://github.com/googleapis/google-cloud-go/commit/0bea4ba37832608dc05293a1eb2a3c756a9f27d9))
+* Update API sources and regenerate ([#19950](https://github.com/googleapis/google-cloud-go/issues/19950)) ([c7607be](https://github.com/googleapis/google-cloud-go/commit/c7607be52757b803df345670b5d0621c2bb9ba30))
+
+## [1.49.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.49.0) (2026-06-10)
+
+### Features
+
+* add opensession descriptors for bigtable (#14647) ([8968f4f](https://github.com/googleapis/google-cloud-go/commit/8968f4fd7ca68297dcc42861878f90a5b339539d))
+* add traffic diverter and table shim  for bigtable (#14633) ([2f3c918](https://github.com/googleapis/google-cloud-go/commit/2f3c91847f882cef939496b92d5c4311583b4f5e))
+* add virtual RPC descriptors  (#14648) ([5eedda1](https://github.com/googleapis/google-cloud-go/commit/5eedda184cf228e72098a4d8c4a992b625ca9558))
+* enable new auth library and remove async refresh (#19943) ([0d3697b](https://github.com/googleapis/google-cloud-go/commit/0d3697b2f31a47b530cd7ba37323a4321d19091b))
+* update API sources and regenerate (#14701) ([a9b7921](https://github.com/googleapis/google-cloud-go/commit/a9b7921551e9c1535496731da53e880e9e364efa))
+
+### Bug Fixes
+
+* disable dynamic channel pool by default and raise default pool size to 10 (#19945) ([5ddf8d4](https://github.com/googleapis/google-cloud-go/commit/5ddf8d469ce0570aedaf925a9a377ddf51873a43))
+* raise default connection-recycler MaxAge to 7 days (#19940) ([a7959ef](https://github.com/googleapis/google-cloud-go/commit/a7959efcc0e145ac6bf0e271695a30284aa8b493))
+* retry unexpected EOF errors (#13157) ([2b4ac42](https://github.com/googleapis/google-cloud-go/commit/2b4ac429c5328ed230ead5e937cd11f7024b73bf))
+
+## [1.48.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.48.0) (2026-05-26)
+
+### Features
+
+* expose a client option to disable direct access: (#14626) ([f22b29f](https://github.com/googleapis/google-cloud-go/commit/f22b29f5d954a61b34e71995546c818883697aa6))
+
+## [1.47.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.47.0) (2026-05-01)
+
+## [1.46.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.46.0) (2026-04-09)
+
+## [1.45.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.45.0) (2026-03-31)
+
+## [1.44.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.44.0) (2026-03-30)
+
 ## [1.43.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.43.0) (2026-03-16)
 
 ### Features

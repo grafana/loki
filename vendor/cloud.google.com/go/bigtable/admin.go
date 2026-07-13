@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	admin "cloud.google.com/go/bigtable/admin/apiv2"
 	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
 	btopt "cloud.google.com/go/bigtable/internal/option"
 	"cloud.google.com/go/iam"
@@ -36,6 +37,7 @@ import (
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
@@ -100,9 +102,10 @@ func (e ErrPartiallyUnavailable) Error() string {
 
 // AdminClient is a client type for performing admin operations within a specific instance.
 type AdminClient struct {
-	connPool  gtransport.ConnPool
-	tClient   btapb.BigtableTableAdminClient
-	lroClient *lroauto.OperationsClient
+	connPool         gtransport.ConnPool
+	tClient          btapb.BigtableTableAdminClient
+	lroClient        *lroauto.OperationsClient
+	tableAdminClient *admin.BigtableTableAdminClient
 
 	project, instance string
 
@@ -120,6 +123,8 @@ func NewAdminClient(ctx context.Context, project, instance string, opts ...optio
 	o = append(o, btopt.ClientInterceptorOptions(nil, nil)...)
 	// Need to add scopes for long running operations (for create table & snapshots)
 	o = append(o, option.WithScopes(cloudresourcemanager.CloudPlatformScope))
+	o = append(o, internaloption.EnableNewAuthLibrary())
+	o = append(o, internaloption.EnableJwtWithScope())
 	o = append(o, opts...)
 	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
@@ -137,19 +142,35 @@ func NewAdminClient(ctx context.Context, project, instance string, opts ...optio
 		return nil, err
 	}
 
+	tableAdminClient, err := admin.NewBigtableTableAdminClient(ctx, gtransport.WithConnPool(connPool))
+	if err != nil {
+		return nil, err
+	}
+
 	return &AdminClient{
-		connPool:  connPool,
-		tClient:   btapb.NewBigtableTableAdminClient(connPool),
-		lroClient: lroClient,
-		project:   project,
-		instance:  instance,
-		md:        metadata.Pairs(resourcePrefixHeader, fmt.Sprintf("projects/%s/instances/%s", project, instance)),
+		connPool:         connPool,
+		tClient:          btapb.NewBigtableTableAdminClient(connPool),
+		lroClient:        lroClient,
+		tableAdminClient: tableAdminClient,
+		project:          project,
+		instance:         instance,
+		md:               metadata.Pairs(resourcePrefixHeader, fmt.Sprintf("projects/%s/instances/%s", project, instance)),
 	}, nil
 }
 
 // Close closes the AdminClient.
 func (ac *AdminClient) Close() error {
 	return ac.connPool.Close()
+}
+
+// TableAdminClientV2 returns the GAPIC generated BigtableTableAdminClient.
+//
+// The returned client shares the underlying connection pool with AdminClient.
+// Since the connection pool is shared, calling Close on either the returned client
+// or the parent AdminClient will close the connection pool, making both clients
+// unusable.
+func (ac *AdminClient) TableAdminClientV2() *admin.BigtableTableAdminClient {
+	return ac.tableAdminClient
 }
 
 func (ac *AdminClient) instancePrefix() string {
@@ -312,6 +333,12 @@ type TableAutomatedBackupPolicy struct {
 	// How frequently automated backups should occur. The only
 	// supported value at this time is 24 hours.
 	Frequency optional.Duration
+	// Optional. A list of Cloud Bigtable zones where automated backups are
+	// allowed to be created. If empty, automated backups will be created in all
+	// zones of the instance. Locations are in the format
+	// `projects/{project}/locations/{zone}`.
+	// This field can only set for tables in Enterprise Plus instances.
+	Locations []string
 }
 
 func (*TableAutomatedBackupPolicy) isTableAutomatedBackupConfig() {}
@@ -352,6 +379,7 @@ func (abp *TableAutomatedBackupPolicy) toProto() (*btapb.Table_AutomatedBackupPo
 	pbAutomatedBackupPolicy := &btapb.Table_AutomatedBackupPolicy{
 		RetentionPeriod: durationpb.New(0),
 		Frequency:       durationpb.New(0),
+		Locations:       abp.Locations,
 	}
 	if abp.RetentionPeriod == nil && abp.Frequency == nil {
 		return nil, errors.New("at least one of RetentionPeriod and Frequency must be set")
@@ -561,6 +589,7 @@ const (
 	automatedBackupPolicyFieldMask = "automated_backup_policy"
 	retentionPeriodFieldMaskPath   = "retention_period"
 	frequencyFieldMaskPath         = "frequency"
+	locationsFieldMaskPath         = "locations"
 	rowKeySchemaMaskPath           = "row_key_schema"
 	tieredStorageConfigFieldMask   = "tiered_storage_config"
 )
@@ -665,6 +694,10 @@ func (ac *AdminClient) UpdateTableWithAutomatedBackupPolicy(ctx context.Context,
 	if abc.AutomatedBackupPolicy.Frequency.Seconds != 0 {
 		// Update Frequency
 		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+frequencyFieldMaskPath)
+	}
+	if automatedBackupPolicy.Locations != nil {
+		// Update Locations
+		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+locationsFieldMaskPath)
 	}
 	req.Table.AutomatedBackupConfig = abc
 	return ac.updateTableAndWait(ctx, req)
@@ -822,6 +855,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 			ti.AutomatedBackupConfig = &TableAutomatedBackupPolicy{
 				RetentionPeriod: res.GetAutomatedBackupPolicy().GetRetentionPeriod().AsDuration(),
 				Frequency:       res.GetAutomatedBackupPolicy().GetFrequency().AsDuration(),
+				Locations:       res.GetAutomatedBackupPolicy().GetLocations(),
 			}
 		default:
 			return nil, fmt.Errorf("error: Unknown type of automated backup configuration")
@@ -1262,9 +1296,10 @@ const mtlsInstanceAdminAddr = "bigtableadmin.mtls.googleapis.com:443"
 // InstanceAdminClient is a client type for performing admin operations on instances.
 // These operations can be substantially more dangerous than those provided by AdminClient.
 type InstanceAdminClient struct {
-	connPool  gtransport.ConnPool
-	iClient   btapb.BigtableInstanceAdminClient
-	lroClient *lroauto.OperationsClient
+	connPool            gtransport.ConnPool
+	iClient             btapb.BigtableInstanceAdminClient
+	lroClient           *lroauto.OperationsClient
+	instanceAdminClient *admin.BigtableInstanceAdminClient
 
 	project string
 
@@ -1297,19 +1332,34 @@ func NewInstanceAdminClient(ctx context.Context, project string, opts ...option.
 		return nil, err
 	}
 
-	return &InstanceAdminClient{
-		connPool:  connPool,
-		iClient:   btapb.NewBigtableInstanceAdminClient(connPool),
-		lroClient: lroClient,
+	instanceAdminClient, err := admin.NewBigtableInstanceAdminClient(ctx, gtransport.WithConnPool(connPool))
+	if err != nil {
+		return nil, err
+	}
 
-		project: project,
-		md:      metadata.Pairs(resourcePrefixHeader, "projects/"+project),
+	return &InstanceAdminClient{
+		connPool:            connPool,
+		iClient:             btapb.NewBigtableInstanceAdminClient(connPool),
+		lroClient:           lroClient,
+		instanceAdminClient: instanceAdminClient,
+		project:             project,
+		md:                  metadata.Pairs(resourcePrefixHeader, "projects/"+project),
 	}, nil
 }
 
 // Close closes the InstanceAdminClient.
 func (iac *InstanceAdminClient) Close() error {
 	return iac.connPool.Close()
+}
+
+// InstanceAdminClientV2 returns the GAPIC generated BigtableInstanceAdminClient.
+//
+// The returned client shares the underlying connection pool with InstanceAdminClient.
+// Since the connection pool is shared, calling Close on either the returned client
+// or the parent InstanceAdminClient will close the connection pool, making both clients
+// unusable.
+func (iac *InstanceAdminClient) InstanceAdminClientV2() *admin.BigtableInstanceAdminClient {
+	return iac.instanceAdminClient
 }
 
 // StorageType is the type of storage used for all tables in an instance
@@ -1357,6 +1407,18 @@ const (
 	DEVELOPMENT              = InstanceType(btapb.Instance_DEVELOPMENT)
 )
 
+// Edition is the edition of the instance.
+type Edition int32
+
+const (
+	// EditionUnspecified defaults to ENTERPRISE
+	EditionUnspecified Edition = Edition(btapb.Instance_EDITION_UNSPECIFIED)
+	// Enterprise edition is the default edition.
+	Enterprise Edition = Edition(btapb.Instance_ENTERPRISE)
+	// EnterprisePlus edition is the edition with higher limits and more features than Enterprise edition.
+	EnterprisePlus Edition = Edition(btapb.Instance_ENTERPRISE_PLUS)
+)
+
 // InstanceInfo represents information about an instance
 type InstanceInfo struct {
 	Name          string // name of the instance
@@ -1364,6 +1426,7 @@ type InstanceInfo struct {
 	InstanceState InstanceState
 	InstanceType  InstanceType
 	Labels        map[string]string
+	Edition       Edition
 }
 
 // InstanceConf contains the information necessary to create an Instance
@@ -1374,6 +1437,7 @@ type InstanceConf struct {
 	StorageType  StorageType
 	InstanceType InstanceType
 	Labels       map[string]string
+	Edition      Edition
 
 	// AutoscalingConfig configures the autoscaling properties on the cluster
 	// created with the instance. It is optional.
@@ -1396,6 +1460,7 @@ type InstanceWithClustersConfig struct {
 	Clusters                []ClusterConfig
 	InstanceType            InstanceType
 	Labels                  map[string]string
+	Edition                 Edition
 	// Tags maps TagKey resource names (e.g., "tagKeys/123") to TagValue
 	// resource names (e.g., "tagValues/456") to be associated with the instance.
 	Tags map[string]string
@@ -1413,6 +1478,7 @@ func (iac *InstanceAdminClient) CreateInstance(ctx context.Context, conf *Instan
 		InstanceType: conf.InstanceType,
 		Labels:       conf.Labels,
 		Tags:         conf.Tags,
+		Edition:      conf.Edition,
 		Clusters: []ClusterConfig{
 			{
 				InstanceID:        conf.InstanceId,
@@ -1445,6 +1511,7 @@ func (iac *InstanceAdminClient) CreateInstanceWithClusters(ctx context.Context, 
 			Type:        btapb.Instance_Type(conf.InstanceType),
 			Labels:      conf.Labels,
 			Tags:        conf.Tags,
+			Edition:     btapb.Instance_Edition(conf.Edition),
 		},
 		Clusters: clusters,
 	}
@@ -1479,6 +1546,10 @@ func (iac *InstanceAdminClient) updateInstance(ctx context.Context, conf *Instan
 	if btapb.Instance_Type(conf.InstanceType) != btapb.Instance_TYPE_UNSPECIFIED {
 		ireq.Instance.Type = btapb.Instance_Type(conf.InstanceType)
 		mask.Paths = append(mask.Paths, "type")
+	}
+	if conf.Edition != EditionUnspecified {
+		ireq.Instance.Edition = btapb.Instance_Edition(conf.Edition)
+		mask.Paths = append(mask.Paths, "edition")
 	}
 	if conf.Labels != nil {
 		ireq.Instance.Labels = conf.Labels
@@ -1588,6 +1659,7 @@ func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo,
 			InstanceState: InstanceState(i.State),
 			InstanceType:  InstanceType(i.Type),
 			Labels:        i.Labels,
+			Edition:       Edition(i.Edition),
 		})
 	}
 	if len(res.FailedLocations) > 0 {
@@ -1624,6 +1696,7 @@ func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID str
 		InstanceState: InstanceState(res.State),
 		InstanceType:  InstanceType(res.Type),
 		Labels:        res.Labels,
+		Edition:       Edition(res.Edition),
 	}, nil
 }
 

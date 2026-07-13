@@ -64,6 +64,11 @@ var (
 		"Received Rst stream",
 		"RST_STREAM closed stream",
 		"Received RST_STREAM",
+
+		// https://github.com/googleapis/google-cloud-go/issues/10207#issuecomment-2604859656
+		// https://github.com/googleapis/google-cloud-go/issues/10909
+		// https://github.com/googleapis/google-cloud-go/pull/11276
+		"unexpected EOF",
 	}
 	defaultBackoff = gax.Backoff{
 		Initial:    100 * time.Millisecond,
@@ -1153,7 +1158,13 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 		newCtx := metadata.NewOutgoingContext(ctx, finalMD)
 
 		mt.recordAttemptStart()
+		blockTracker := &blockingLatencyTracker{}
+		mt.currOp.currAttempt.blockingLatencyTracker = blockTracker
+		newCtx = context.WithValue(newCtx, statsContextKey, blockTracker)
 
+		t4t7 := &t4t7Tracker{}
+		mt.currOp.currAttempt.t4t7Tracker = t4t7
+		newCtx = context.WithValue(newCtx, t4t7ContextKey, t4t7)
 		// f makes calls to CBT service
 		err := f(newCtx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 

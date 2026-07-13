@@ -1,0 +1,10 @@
+{
+    "api_shortname": "bigtableadmin",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest/admin/apiv2",
+    "client_library_type": "generated",
+    "description": "Cloud Bigtable Admin API",
+    "distribution_name": "cloud.google.com/go/bigtable/admin/apiv2",
+    "language": "go",
+    "library_type": "GAPIC_AUTO",
+    "release_level": "stable"
+}
