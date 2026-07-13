@@ -827,7 +827,7 @@ func (r *MockRequest) WithStartEndForCache(start time.Time, end time.Time) Reque
 // wiresmith-generated accessor is GetCachingOpts and returns a pointer
 // (der5: uniform pointer getters). The field is customname-renamed to
 // CachingOpts to free this identifier.
-func (m *MockRequest) GetCachingOptions() CachingOptions { return m.CachingOpts }
+func (r *MockRequest) GetCachingOptions() CachingOptions { return r.CachingOpts }
 
 type MockMerger struct{}
 

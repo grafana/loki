@@ -23,9 +23,6 @@ func MergePatternResponses(responses []*logproto.QueryPatternsResponse) *logprot
 	}
 
 	// Merge patterns by pattern string; index into result.Series for in-place update.
-	type entry struct {
-		idx int
-	}
 	patternIdx := make(map[string]int)
 
 	result := &logproto.QueryPatternsResponse{
