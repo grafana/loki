@@ -206,8 +206,9 @@ ruler:
 
   remote_write:
     enabled: true
-    client:
-      url: http://localhost:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://localhost:9090/api/v1/write
 ```
 
 Here is an example of a remote-write configuration for sending data to a Grafana Mimir instance:
@@ -241,7 +242,7 @@ ruler:
 
 By default, Loki adds the `X-Scope-OrgID` header using the tenant ID of the
 recording rules that produced the samples. Do not set `X-Scope-OrgID` manually
-under `headers`; Loki drops that header during configuration parsing.
+under `headers`; Loki strips that header at runtime before sending remote-write requests.
 
 Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
