@@ -51,8 +51,8 @@ func getEnvOptions() ([]Option, []error) {
 		return nil, nil
 	}
 
-	args := strings.Split(rawEnvArgs, ",")
-	for _, arg := range args {
+	args := strings.SplitSeq(rawEnvArgs, ",")
+	for arg := range args {
 		keyValue := strings.Split(arg, "=")
 		if len(keyValue) != 2 {
 			errs = append(errs, fmt.Errorf("argument %s is not of type '<key>=<value>'", arg))
