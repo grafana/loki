@@ -156,10 +156,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
 	}
 
-	// If this is a backfill push (X-Loki-Backfill-Day header), every stream gets the internal
+	// If this is a backfill push (X-Loki-Backfill-Shard header), every stream gets the internal
 	// backfill labels added below. Done here (not via OTLP attribute promotion) so a tenant's OTLP
 	// config cannot drop them.
-	backfillDay := ExtractBackfillDayContext(ctx)
+	backfillShard := ExtractBackfillShardContext(ctx)
 
 	mostRecentEntryTimestamp := time.Time{}
 	for i := 0; i < rls.Len(); i++ {
@@ -175,9 +175,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadata := resResult.StructuredMetadata
 		streamLabels := resResult.StreamLabels
 
-		if backfillDay != "" {
+		if backfillShard != "" {
 			streamLabels[constants.BackfillLabel] = "true"
-			streamLabels[constants.BackfillDayLabel] = model.LabelValue(backfillDay)
+			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)
 		}
 
 		var pushedLabels model.LabelSet
