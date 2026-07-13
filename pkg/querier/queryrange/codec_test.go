@@ -16,6 +16,7 @@ import (
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -2876,4 +2877,52 @@ func generateSeries() (res []logproto.SeriesIdentifier) {
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
+}
+
+// TestApproxTopkDownstreamHTTPGrpcRoundTrip is the queryrange-codec counterpart to
+// TestApproxTopkDownstreamRoundTrip (https://github.com/grafana/loki/issues/23150).
+//
+// When approx_topk is sharded, the shard mapper produces downstream
+// __count_min_sketch__ sub-queries whose AST is carried in LokiRequest.Plan. In a
+// microservices deployment the frontend dispatches each downstream to the querier via
+// httpgrpc: EncodeRequest -> DecodeHTTPGrpcRequest. If the plan is not carried across
+// that hop, the querier falls back to re-parsing the query string, which fails for the
+// internal __count_min_sketch__ operator with a 400 "unexpected IDENTIFIER".
+//
+// This asserts the AST survives the round-trip without depending on the query string
+// being parseable.
+func TestApproxTopkDownstreamHTTPGrpcRoundTrip(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// Build the __count_min_sketch__ downstream expr the way the shard mapper does.
+	inner := syntax.MustParseExpr(`approx_topk(3, sum by (ip)(rate({foo="bar"}[5m])))`).(*syntax.VectorAggregationExpr)
+	cms := syntax.MustClone(inner)
+	cms.Operation = syntax.OpTypeCountMinSketch
+	cms.Params = 0
+
+	req := &LokiRequest{
+		Query:     cms.String(),
+		Limit:     100,
+		StartTs:   start,
+		EndTs:     end,
+		Step:      30000,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+		Plan:      &plan.QueryPlan{AST: cms},
+	}
+
+	httpReq, err := DefaultCodec.EncodeRequest(ctx, req)
+	require.NoError(t, err)
+
+	grpcReq, err := httpgrpc.FromHTTPRequest(httpReq)
+	require.NoError(t, err)
+
+	got, _, err := DefaultCodec.DecodeHTTPGrpcRequest(ctx, grpcReq)
+	require.NoError(t, err, "querier must decode the sharded __count_min_sketch__ downstream without re-parsing the query string")
+
+	lokiReq, ok := got.(*LokiRequest)
+	require.True(t, ok)
+	require.NotNil(t, lokiReq.Plan)
+	require.NotNil(t, lokiReq.Plan.AST)
+	require.Equal(t, cms.String(), lokiReq.Plan.AST.String())
 }
