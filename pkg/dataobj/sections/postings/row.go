@@ -8,11 +8,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-// CompareRows orders two rows in the exact order they are physically written
-// into, and read back from, a postings section. This is the single source of
-// truth for postings ordering: the section encoder sorts by this order, and any
-// K-way merge over sections must use it too. Keeping ordering defined once here
-// prevents the write and merge sides from drifting apart.
+// CompareRows reports whether row [a] sorts before (<0), after (>0), or equal to
+// (0) row [b].
 func CompareRows(a, b Row) int {
 	return cmp.Or(
 		cmp.Compare(a.Kind, b.Kind),
