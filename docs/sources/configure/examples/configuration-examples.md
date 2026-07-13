@@ -239,9 +239,19 @@ storage_config:
     cache_location: /loki/index_cache
   alibabacloud:
     bucket: <bucket>
+    # Alibabacloud region name.
+    # Required when signature_version=v4.
+    # region: <region>
     endpoint: <endpoint>
     access_key_id: <access_key_id>
     secret_access_key: <secret_access_key>
+    # Specify the RAM role name of the ECS instance. ECS RAM role authentication is used only 
+    # when neither access_key_id nor secret_access_key is configured and requires signature_version=v4. 
+    # If not set, the role name will be automatically retrieved from the ECS instance metadata.
+    # ram_role_name: <ram_role_name>
+    # The signature version to use for authenticating against OSS. Supported values are: v1, v4. 
+    # ECS RAM role authentication requires signature_version=v4.
+    # signature_version: <signature_version>
 
 ```
 

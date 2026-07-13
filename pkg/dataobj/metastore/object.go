@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -53,10 +54,11 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
-	bucket      objstore.Bucket
-	parallelism int
-	logger      log.Logger
-	metrics     *ObjectMetastoreMetrics
+	readPostingsSections bool
+	bucket               objstore.Bucket
+	parallelism          int
+	logger               log.Logger
+	metrics              *ObjectMetastoreMetrics
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -75,26 +77,40 @@ type DataobjSectionDescriptor struct {
 	Start     time.Time
 	End       time.Time
 
-	// Ambiguous predicates are predicates which are present in the stream's labels as well as the LogQL query, and are therefore ambiguous.
-	AmbiguousPredicatesByStream map[int64][]string
+	// AmbiguousPredicates are predicate names present both as a stream label in
+	// the section and in the LogQL query, and are therefore ambiguous. It is the
+	// deduped union across the section's streams.
+	AmbiguousPredicates []string
+}
+
+// dedupeStringSlice returns s with duplicates removed, order preserved.
+func dedupeStringSlice(s []string) []string {
+	if len(s) <= 1 {
+		return s
+	}
+	result := make([]string, 0, len(s))
+	for _, v := range s {
+		if !slices.Contains(result, v) {
+			result = append(result, v)
+		}
+	}
+	return result
 }
 
 // NewSectionDescriptor creates a new section descriptor with the given pointer and labels.
 func NewSectionDescriptor(pointer pointers.SectionPointer, ambiguousLabelNames []string) *DataobjSectionDescriptor {
+	deduped := dedupeStringSlice(ambiguousLabelNames)
 	obj := &DataobjSectionDescriptor{
 		SectionKey: SectionKey{
 			ObjectPath: pointer.Path,
 			SectionIdx: pointer.Section,
 		},
-		StreamIDs:                   []int64{pointer.StreamIDRef},
-		RowCount:                    int(pointer.LineCount),
-		Size:                        pointer.UncompressedSize,
-		Start:                       pointer.StartTs,
-		End:                         pointer.EndTs,
-		AmbiguousPredicatesByStream: make(map[int64][]string),
-	}
-	if len(ambiguousLabelNames) > 0 {
-		obj.AmbiguousPredicatesByStream[pointer.StreamIDRef] = ambiguousLabelNames
+		StreamIDs:           []int64{pointer.StreamIDRef},
+		RowCount:            int(pointer.LineCount),
+		Size:                pointer.UncompressedSize,
+		Start:               pointer.StartTs,
+		End:                 pointer.EndTs,
+		AmbiguousPredicates: deduped,
 	}
 	return obj
 }
@@ -111,18 +127,11 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer, lbls [
 		d.End = pointer.EndTs
 	}
 
-	if len(lbls) == 0 {
-		return
+	for _, lbl := range lbls {
+		if !slices.Contains(d.AmbiguousPredicates, lbl) {
+			d.AmbiguousPredicates = append(d.AmbiguousPredicates, lbl)
+		}
 	}
-
-	curLbls, exists := d.AmbiguousPredicatesByStream[pointer.StreamIDRef]
-	if !exists {
-		d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = lbls
-		return
-	}
-
-	curLbls = append(curLbls, lbls...)
-	d.AmbiguousPredicatesByStream[pointer.StreamIDRef] = curLbls
 }
 
 // TableOfContentsPath returns the object-storage path of the ToC file that
@@ -163,10 +172,11 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 	b = bucket.NewXCapBucket(b)
 
 	store := &ObjectMetastore{
-		bucket:      b,
-		parallelism: 64,
-		logger:      logger,
-		metrics:     metrics,
+		readPostingsSections: cfg.ReadPostingsSections,
+		bucket:               b,
+		parallelism:          64,
+		logger:               logger,
+		metrics:              metrics,
 	}
 
 	return store
@@ -585,8 +595,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			sectionsMu.Lock()
 
 			// this is temporary, the stats will be collected differently in a distributed metastore
-			statsProvider := reader.(bloomStatsProvider)
-			totalSections.Add(statsProvider.totalReadRows())
+			sp := reader.(statsProvider)
+			totalSections.Add(sp.stats().ReadRows)
 
 			sections = append(sections, sectionsResp.SectionsResponse.Sections...)
 			sectionsMu.Unlock()
@@ -631,18 +641,50 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}
 
-	reader := newIndexSectionsReader(
-		m.logger,
-		idxObj,
-		req.SectionsRequest.Start,
-		req.SectionsRequest.End,
-		req.SectionsRequest.Matchers,
-		req.SectionsRequest.Predicates,
-		req.BatchSize,
-	)
-	reader.metrics = m.metrics
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return IndexSectionsReaderResponse{}, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	var reader ArrowRecordBatchReader
+	flow := flowStreams
+	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
+		flow = flowPostings
+		reader = newPostingsIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	} else {
+		reader = newIndexSectionsReader(
+			m.logger,
+			idxObj,
+			req.SectionsRequest.Start,
+			req.SectionsRequest.End,
+			req.SectionsRequest.Matchers,
+			req.SectionsRequest.Predicates,
+			req.BatchSize,
+		)
+	}
+
+	m.metrics.indexReadFlowTotal.WithLabelValues(flow).Inc()
+	reader = &instrumentedReader{ArrowRecordBatchReader: reader, metrics: m.metrics, flow: flow}
 
 	return IndexSectionsReaderResponse{Reader: reader}, nil
+}
+
+// hasPostingsSection reports whether obj has a postings section owned by tenant.
+func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
+	for _, sec := range obj.Sections() {
+		if sec.Tenant == tenant && postings.CheckSection(sec) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
@@ -711,6 +753,8 @@ func (m *ObjectMetastore) CollectSections(ctx context.Context, req CollectSectio
 			break
 		}
 	}
+
+	m.metrics.resolvedSectionsPerObject.Observe(float64(len(objectSectionDescriptors)))
 
 	sections := make([]*DataobjSectionDescriptor, 0, len(objectSectionDescriptors))
 	for _, s := range objectSectionDescriptors {

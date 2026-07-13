@@ -101,6 +101,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.22.1
 	github.com/IBM/ibm-cos-sdk-go v1.14.1
+	github.com/aliyun/credentials-go v1.4.12
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/axiomhq/hyperloglog v0.2.6
@@ -130,7 +131,7 @@ require (
 	github.com/tjhop/slog-gokit v0.2.0
 	github.com/twmb/franz-go v1.21.3
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
-	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
+	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
 	github.com/twmb/franz-go/plugin/kotel v1.7.0
 	github.com/twmb/franz-go/plugin/kprom v1.2.1
@@ -163,6 +164,8 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.57.0 // indirect
+	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/tea v1.2.2 // indirect
 	github.com/andybalholm/brotli v1.2.2 // indirect
 	github.com/apache/thrift v0.22.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
@@ -292,7 +295,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v4 v4.0.0-rc.4
+	go.yaml.in/yaml/v4 v4.0.0-rc.5
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	modernc.org/libc v1.73.4 // indirect

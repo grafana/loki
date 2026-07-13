@@ -65,11 +65,10 @@ func tokenizeLogfmt(input string, requestedKeys []string, strict bool, keepEmpty
 	// Check for parsing errors
 	if err := decoder.Err(); err != nil {
 		if strict {
-			// In strict mode, return the error immediately
+			// In strict mode, return the error immediately.
 			return nil, err
 		}
-		// In non-strict mode, return partial results with the error
-		return result, err
+		// Do not return any error in non-strict mode.
 	}
 
 	return result, nil

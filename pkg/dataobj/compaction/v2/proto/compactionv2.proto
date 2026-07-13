@@ -35,11 +35,12 @@ option (wiresmith.options.no_presence_all) = true;
 // and (max_key, max_timestamp) -- label tuple first, then timestamp.
 message SectionRef {
   string object_path = 1 [(wiresmith.options.jsontag) = "object_path"];
-  int32 section_index = 2 [(wiresmith.options.jsontag) = "section_index"];
+  int64 section_index = 2 [(wiresmith.options.jsontag) = "section_index"];
   repeated string min_key = 3 [(wiresmith.options.jsontag) = "min_key"];
   repeated string max_key = 4 [(wiresmith.options.jsontag) = "max_key"];
   int64 min_timestamp = 5 [(wiresmith.options.jsontag) = "min_timestamp"];
   int64 max_timestamp = 6 [(wiresmith.options.jsontag) = "max_timestamp"];
+  int64 uncompressed_size = 7 [(wiresmith.options.jsontag) = "uncompressed_size"];
 }
 
 // RunRef is one pile: a sorted, non-overlapping section sequence.
@@ -51,4 +52,5 @@ message RunRef {
 message TaskSpec {
   string tenant = 1 [(wiresmith.options.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(wiresmith.options.jsontag) = "runs"];
+  repeated string sort_schema = 3 [(wiresmith.options.jsontag) = "sort_schema"];
 }

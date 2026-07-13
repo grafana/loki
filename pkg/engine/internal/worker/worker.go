@@ -26,6 +26,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -119,7 +121,7 @@ type Worker struct {
 	dialer   wire.Dialer
 	listener wire.Listener
 
-	resourcesMut sync.RWMutex
+	resourcesMut obslock.RWMutex
 	sources      map[ulid.ULID]*streamSource
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
@@ -155,7 +157,7 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
-	return &Worker{
+	w := &Worker{
 		config:      config,
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
@@ -173,7 +175,9 @@ func New(config Config) (*Worker, error) {
 		collector: newCollector(),
 
 		jobManager: newJobManager(),
-	}, nil
+	}
+	w.resourcesMut.Init("resourcesMut", w.metrics.lock)
+	return w, nil
 }
 
 // Service returns the service used to manage the lifecycle of the worker.
@@ -303,13 +307,11 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		// Allow for a backlog of 8 frames before backpressure is applied.
 		Buffer: 8,
 
-		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
-			switch msg := msg.(type) {
-			case wire.StreamDataMessage:
-				return w.handleDataMessage(ctx, msg)
-			default:
-				return fmt.Errorf("unsupported message type %T", msg)
-			}
+		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
+			return w.handleDataMessage(ctx, msg, phases)
 		},
 	}
 
@@ -388,12 +390,23 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			return err
 		}
 
-		if err := w.jobManager.Send(ctx, job); err != nil {
+		// Time the handoff once into job_handoff_seconds; the handler no longer
+		// double-records it as a job_manager_send phase.
+		handoff, err := metrictimer.Time(func() error {
+			return w.jobManager.Send(ctx, job)
+		})
+		if err != nil {
+			outcome := outcomeNoReady429
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				outcome = outcomeCtxError
+			}
+			w.metrics.observeJobHandoff(outcome, handoff)
 			job.Close()                 // Clean up resources associated with the job.
 			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
 			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
+		w.metrics.observeJobHandoff(outcomeSent, handoff)
 
 		w.metrics.tasksAssignedTotal.Inc()
 		return nil
@@ -407,7 +420,10 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
 
-		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
 			switch msg := msg.(type) {
 			case wire.WorkerSubscribeMessage:
 				return handleWorkerSubscribe()
@@ -452,7 +468,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			case <-waitReady:
 			}
 
-			// Wait for a thread to become ready for another job
+			// Wait for a thread to become ready for another job. Per-slot
+			// ready->filled latency is measured on the thread itself as
+			// slot_ready_wait_seconds.
 			if err := w.jobManager.WaitReady(ctx); err != nil {
 				return nil
 			}
@@ -477,8 +495,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 // newJob returns an error if there was a ULID collision for the job or any of
 // its streams.
 func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Logger, msg wire.TaskAssignMessage) (job *threadJob, err error) {
-	w.resourcesMut.Lock()
-	defer w.resourcesMut.Unlock()
+	guard := w.resourcesMut.Lock("new_job")
+	defer guard.Unlock()
 
 	var (
 		sources = make(map[ulid.ULID]*streamSource)
@@ -533,9 +551,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		for _, taskSink := range taskSinks {
 			sink := &streamSink{
 				Logger:      log.With(logger, "stream", taskSink.ULID),
+				Metrics:     w.metrics,
 				WireMetrics: w.wireMetrics,
 				Scheduler:   scheduler,
 				Stream:      taskSink,
+				TaskType:    taskTypeLabel(msg.Task),
 				Dialer:      w.dial,
 			}
 
@@ -570,8 +590,8 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		Sinks:   sinks,
 
 		Close: func() {
-			w.resourcesMut.Lock()
-			defer w.resourcesMut.Unlock()
+			guard := w.resourcesMut.Lock("close_job")
+			defer guard.Unlock()
 
 			for sourceID := range sources {
 				delete(w.sources, sourceID)
@@ -593,9 +613,9 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 }
 
 func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
-	w.resourcesMut.RLock()
+	guard := w.resourcesMut.RLock("handle_cancel")
 	job, found := w.jobs[msg.ID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("task %s not found", msg.ID)
@@ -610,20 +630,22 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 }
 
 func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessage) error {
-	w.resourcesMut.RLock()
+	guard := w.resourcesMut.RLock("handle_bind")
 	sink, found := w.sinks[msg.StreamID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
-	return sink.Bind(ctx, msg.Receiver)
+
+	err := sink.Bind(ctx, msg.Receiver)
+	return err
 }
 
 func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
-	w.resourcesMut.RLock()
+	guard := w.resourcesMut.RLock("handle_stream_status")
 	source, found := w.sources[msg.StreamID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
@@ -636,15 +658,23 @@ func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
 	return nil
 }
 
-func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessage) error {
-	w.resourcesMut.RLock()
-	source, found := w.sources[msg.StreamID]
-	w.resourcesMut.RUnlock()
+func (w *Worker) handleDataMessage(ctx context.Context, msg wire.Message, phases *metrictimer.Timer) error {
+	streamData, ok := msg.(wire.StreamDataMessage)
+	if !ok {
+		return fmt.Errorf("unsupported message type %T", msg)
+	}
+
+	guard := w.resourcesMut.RLock("handle_stream_data")
+	source, found := w.sources[streamData.StreamID]
+	guard.RUnlock()
 
 	if !found {
-		return fmt.Errorf("stream %s not found for receiving data", msg.StreamID)
+		return fmt.Errorf("stream %s not found for receiving data", streamData.StreamID)
 	}
-	return source.Write(ctx, msg.Data)
+
+	return phases.Region(phaseSourceWriteWait, func() error {
+		return source.Write(ctx, streamData.Data)
+	})
 }
 
 // RegisterMetrics registers metrics about s to report to reg.

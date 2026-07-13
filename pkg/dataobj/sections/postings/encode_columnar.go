@@ -125,7 +125,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating kind column: %w", err)
 	}
 
-	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount)
+	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount, false)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
@@ -135,12 +135,12 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating section_index column: %w", err)
 	}
 
-	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, p.pageSizeHint, p.pageMaxRowCount)
+	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, p.pageSizeHint, p.pageMaxRowCount, true)
 	if err != nil {
 		return fmt.Errorf("creating column_name column: %w", err)
 	}
 
-	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, p.pageSizeHint, p.pageMaxRowCount)
+	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, p.pageSizeHint, p.pageMaxRowCount, true)
 	if err != nil {
 		return fmt.Errorf("creating label_value column: %w", err)
 	}
@@ -159,7 +159,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating bloom_filter column: %w", err)
 	}
 
-	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, p.pageSizeHint, p.pageMaxRowCount)
+	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, p.pageSizeHint, p.pageMaxRowCount, false)
 	if err != nil {
 		return fmt.Errorf("creating stream_id_bitmap column: %w", err)
 	}
@@ -269,7 +269,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 // Tag is empty: postings columns are all fixed (one column per Logical type),
 // so Logical alone uniquely identifies the column. Setting Tag would duplicate
 // it. Matches the convention used by streams.Reader for fixed columns.
-func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int, storeRangeStats bool) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -279,6 +279,9 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		},
 		Encoding:    datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 		Compression: datasetmd.CompressionType_COMPRESSION_TYPE_ZSTD,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: storeRangeStats,
+		},
 	})
 }
 

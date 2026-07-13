@@ -345,9 +345,10 @@ func TestShortCircuiting(t *testing.T) {
 	})
 }
 
-func TestAdmissionControl(t *testing.T) {
+func TestWorkflowDispatchesAllTasks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		numScanTasks := 100 // more tasks than the capacity of the token bucket
+		const numScanTasks = 100
+
 		var physicalGraph dag.Graph[physical.Node]
 
 		scanSet := &physical.ScanSet{}
@@ -369,18 +370,9 @@ func TestAdmissionControl(t *testing.T) {
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
 
-		physicalPlan := physical.FromGraph(physicalGraph)
-
 		fr := newFakeRunner()
-
-		opts := Options{
-			Tenant: "tenant",
-
-			MaxRunningScanTasks:       32, // less than numScanTasks
-			MaxRunningOtherTasks:      0,  // unlimited
-			MaxRunningCompactionTasks: 0,  // unlimited; lane is dormant
-		}
-		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physicalPlan)
+		opts := Options{Tenant: "tenant"}
+		wf, err := New(t.Context(), opts, log.NewNopLogger(), fr, physical.FromGraph(physicalGraph))
 		require.NoError(t, err, "workflow should construct properly")
 		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -393,31 +385,15 @@ func TestAdmissionControl(t *testing.T) {
 			t.Log(Sprint(wf))
 		}()
 
-		// Run returns an error if any of the methods in our fake runner failed.
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		t.Cleanup(cancel)
 
-		// Run() dispatches task in background goroutine, so it does not block
 		p, err := wf.Run(ctx)
 		require.NoError(t, err, "Workflow should start properly")
 		defer p.Close()
 
-		// Wait for first "batch" of scan tests to be enqueued.
 		synctest.Wait()
-		require.Equal(t, opts.MaxRunningScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 32 scan tasks + 1 other task
-
-		// Simulate scan tasks being completed
-		for _, task := range wf.allTasks() {
-			if !isScanTask(task) {
-				continue
-			}
-			time.Sleep(10 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
-			wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
-		}
-
-		// Wait for all other tasks to be enqueued.
-		synctest.Wait()
-		require.Equal(t, numScanTasks+1, len(wf.taskStates), "expected all tasks up to batch to be enqueued") // 100 scan tasks + 1 other task
+		require.Len(t, wf.taskStates, len(wf.allTasks()), "expected every task to be dispatched")
 	})
 }
 

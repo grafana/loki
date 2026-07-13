@@ -1545,10 +1545,6 @@ func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
 	return f.enableMultiVariantQueries
 }
 
-func (f fakeLimits) MaxScanTaskParallelism(_ string) int {
-	return 0
-}
-
 func (f fakeLimits) DebugEngineTasks(_ string) bool {
 	return false
 }

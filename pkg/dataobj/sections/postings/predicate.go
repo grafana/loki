@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
@@ -258,11 +259,37 @@ func mapPredicate(p Predicate, columnLookup map[*Column]dataset.Column) (dataset
 		}
 		return dataset.LessThanPredicate{Column: lookupColumn(p.Column, columnLookup), Value: value}, nil
 	case BloomMatchPredicate:
-		return dataset.BloomMatchPredicate{Column: lookupColumn(p.Column, columnLookup), Value: p.Value}, nil
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.FuncPredicate{Column: col, Keep: bloomKeep(col, p.Value)}, nil
 	case RegexMatchPredicate:
-		return dataset.RegexMatchPredicate{Column: lookupColumn(p.Column, columnLookup), Matcher: p.Matcher}, nil
+		col := lookupColumn(p.Column, columnLookup)
+		return dataset.FuncPredicate{Column: col, Keep: regexKeep(col, p.Matcher)}, nil
 	default:
 		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+func bloomKeep(col dataset.Column, value []byte) func(dataset.Column, dataset.Value) bool {
+	physical := col.ColumnDesc().Type.Physical
+	return func(_ dataset.Column, v dataset.Value) bool {
+		if v.IsNil() || v.Type() != physical {
+			return false
+		}
+		var filter bloom.BloomFilter
+		if err := filter.UnmarshalBinary(v.Binary()); err != nil {
+			return false
+		}
+		return filter.Test(value)
+	}
+}
+
+func regexKeep(col dataset.Column, matcher *labels.FastRegexMatcher) func(dataset.Column, dataset.Value) bool {
+	physical := col.ColumnDesc().Type.Physical
+	return func(_ dataset.Column, v dataset.Value) bool {
+		if v.IsNil() || v.Type() != physical {
+			return false
+		}
+		return matcher.MatchString(string(v.Binary()))
 	}
 }
 

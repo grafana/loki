@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
@@ -30,6 +31,52 @@ type protobufCodec struct {
 	*arrowcodec.ArrowCodec
 }
 
+// encode encodes a frame as protobuf and returns the on-wire bytes.
+// Format: [uvarint length][protobuf payload].
+//
+// scratch is a reusable buffer whose backing array encode grows and reuses to
+// avoid allocating a fresh length-prefix+payload buffer per frame. Callers pass
+// the previous return value back in; because a connection serializes its sends
+// under its write lock, the buffer is safe to reuse across that connection's
+// sends. The returned slice aliases scratch's array and stays valid only until
+// the next encode call on the same buffer.
+func (c *protobufCodec) encode(frame Frame, m *Metrics, scratch []byte) []byte {
+	mc := &metricCodec{protobufCodec: c, m: m}
+
+	// Convert wire.Frame to protobuf.
+	pbFrame, err := mc.frameToPbFrame(frame)
+	if err != nil {
+		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
+	}
+
+	// Marshal to bytes.
+	marshalStart := time.Now()
+	payload, err := proto.Marshal(pbFrame)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
+	}
+	mc.observeCodecStage(codecOperationEncode, codecStageProtobufMarshal, frame, time.Since(marshalStart))
+
+	// Write the length prefix (uvarint) then the payload into the reusable
+	// buffer.
+	var prefix [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(prefix[:], uint64(len(payload)))
+	buf := append(scratch[:0], prefix[:n]...)
+	buf = append(buf, payload...)
+	return buf
+}
+
+func readUvarint(r io.Reader) (length uint64, prefixBytes int, err error) {
+	byteReader, ok := r.(io.ByteReader)
+	if !ok {
+		byteReader = &byteReaderAdapter{r: r}
+	}
+
+	countingReader := &countingByteReader{r: byteReader}
+	length, err = binary.ReadUvarint(countingReader)
+	return length, countingReader.n, err
+}
+
 // byteReaderAdapter adapts an io.Reader to io.ByteReader without buffering.
 // This is used to read uvarint length prefixes byte-by-byte without
 // consuming extra data that might be needed for subsequent reads.
@@ -43,82 +90,99 @@ func (br *byteReaderAdapter) ReadByte() (byte, error) {
 	return b[0], err
 }
 
-// EncodeTo encodes a frame as protobuf and writes it to the writer.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
-	// Convert wire.Frame to protobuf
-	pbFrame, err := c.frameToPbFrame(frame)
-	if err != nil {
-		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
-	}
-
-	// Marshal to bytes
-	data, err := proto.Marshal(pbFrame)
-	if err != nil {
-		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
-	}
-
-	// Write length prefix (uvarint)
-	length := uint64(len(data))
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, length)
-	if _, err := w.Write(buf[:n]); err != nil {
-		return fmt.Errorf("failed to write length prefix: %w", err)
-	}
-
-	// Write payload
-	written, err := w.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write payload: %w", err)
-	}
-	if written != len(data) {
-		return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", written, len(data))
-	}
-
-	return nil
+type countingByteReader struct {
+	r io.ByteReader
+	n int
 }
 
-// DecodeFrom reads and decodes a frame from the bound reader.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) DecodeFrom(r io.Reader) (Frame, error) {
-	// Read length prefix (uvarint)
-	// binary.ReadUvarint requires a ByteReader, so we wrap if needed
-	byteReader, ok := r.(io.ByteReader)
-	if !ok {
-		byteReader = &byteReaderAdapter{r: r}
+func (br *countingByteReader) ReadByte() (byte, error) {
+	b, err := br.r.ReadByte()
+	if err == nil {
+		br.n++
 	}
+	return b, err
+}
 
-	length, err := binary.ReadUvarint(byteReader)
+// metricCodec binds a [protobufCodec] to the [*Metrics] used for one encode or
+// decode call. It is instantiated per call so the conversion helpers and
+// codec-stage timing can read Metrics from a field instead of threading it
+// through every signature. A nil m records nothing.
+type metricCodec struct {
+	*protobufCodec
+	m *Metrics
+}
+
+func (c *metricCodec) observeCodecStage(operation codecOperation, stage codecStage, frame Frame, d time.Duration) {
+	if c.m == nil || d < 0 {
+		return
+	}
+	labels := labelsForFrame(frame, "")
+	c.m.frameCodecStageSeconds.WithLabelValues(operation.String(), stage.String(), labels.frameType, labels.messageType).Observe(d.Seconds())
+}
+
+func (c *metricCodec) observeMessageCodecStage(operation codecOperation, stage codecStage, kind MessageKind, d time.Duration) {
+	if c.m == nil || d < 0 {
+		return
+	}
+	c.m.frameCodecStageSeconds.WithLabelValues(operation.String(), stage.String(), FrameKindMessage.String(), kind.String()).Observe(d.Seconds())
+}
+
+// decode reads and decodes the next frame from r, returning the frame and the
+// number of on-wire bytes consumed (including the length prefix). It emits its
+// own frame_receive_seconds read and deserialize phases; the receive path has
+// no outcome dimension. decode is only reached over HTTP/2.
+func (c *protobufCodec) decode(r io.Reader, m *Metrics) (Frame, int, error) {
+	mc := &metricCodec{protobufCodec: c, m: m}
+
+	readStart := time.Now()
+
+	// Read length prefix (uvarint).
+	length, prefixBytes, err := readUvarint(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read length prefix: %w", err)
+		return nil, 0, fmt.Errorf("failed to read length prefix: %w", err)
 	}
 
 	// Read payload
 	data := make([]byte, length)
 	n, err := io.ReadFull(r, data)
+	readDuration := time.Since(readStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read payload: %w", err)
+		return nil, 0, fmt.Errorf("failed to read payload: %w", err)
 	}
 	if uint64(n) != length {
-		return nil, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
+		return nil, 0, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
 	}
 
-	// Unmarshal protobuf
+	deserializeStart := time.Now()
+
+	// Unmarshal protobuf.
+	unmarshalStart := time.Now()
 	pbFrame := &wirepb.Frame{}
 	if err := proto.Unmarshal(data, pbFrame); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+		return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 	}
+	protobufUnmarshalDuration := time.Since(unmarshalStart)
 
-	// Convert protobuf to wire.Frame
-	frame, err := c.frameFromPbFrame(pbFrame)
+	// Convert protobuf to wire.Frame.
+	frame, err := mc.frameFromPbFrame(pbFrame)
+	deserializeDuration := time.Since(deserializeStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert protobuf to frame: %w", err)
+		return nil, 0, fmt.Errorf("failed to convert protobuf to frame: %w", err)
 	}
+	mc.observeCodecStage(codecOperationDecode, codecStageProtobufUnmarshal, frame, protobufUnmarshalDuration)
 
-	return frame, nil
+	// Emit our own receive-side read and deserialize phases now that the frame
+	// (and thus its labels) is known.
+	receive := m.startFrameReceive(transportHTTP2, frame, sendModeInternal)
+	receive.Observe(phaseReadBytes, readDuration)
+	receive.Observe(phaseDeserialize, deserializeDuration)
+	receive.Done()
+
+	return frame, prefixBytes + n, nil
 }
 
-func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
+func (c *metricCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
+
 	if f == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -162,7 +226,8 @@ func (c *protobufCodec) errorFromPb(errPb *wirepb.Error) *Error {
 	}
 }
 
-func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
+func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
+
 	if mf == nil {
 		return nil, errors.New("nil message frame")
 	}
@@ -241,7 +306,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}, nil
 
 	case *wirepb.MessageFrame_StreamData:
+		arrowStart := time.Now()
 		record, err := c.DeserializeArrowRecord(k.StreamData.Data)
+		c.observeMessageCodecStage(codecOperationDecode, codecStageArrowDecode, MessageKindStreamData, time.Since(arrowStart))
 		if err != nil {
 			return nil, fmt.Errorf("failed to deserialize arrow record: %w", err)
 		}
@@ -265,12 +332,15 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	}
 }
 
-func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
+func (c *metricCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
+
 	if t == nil {
 		return nil, fmt.Errorf("nil task")
 	}
 
+	planStart := time.Now()
 	fragment, err := t.Fragment.MarshalPhysical()
+	c.observeMessageCodecStage(codecOperationDecode, codecStageTaskAssignDecode, MessageKindTaskAssign, time.Since(planStart))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal fragment: %w", err)
 	}
@@ -434,7 +504,8 @@ func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]wirepb.CachedSource
 	return result, nil
 }
 
-func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
+func (c *metricCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
+
 	if from == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -486,7 +557,8 @@ func (c *protobufCodec) errorToPb(e *Error) *wirepb.Error {
 	}
 }
 
-func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
+func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
+
 	if from == nil {
 		return nil, errors.New("nil message")
 	}
@@ -565,8 +637,10 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 	case StreamDataMessage:
-		// Serialize Arrow record to bytes
+		// Serialize Arrow record to bytes.
+		arrowStart := time.Now()
 		data, err := c.SerializeArrowRecord(v.Data)
+		c.observeMessageCodecStage(codecOperationEncode, codecStageArrowEncode, MessageKindStreamData, time.Since(arrowStart))
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize arrow record: %w", err)
 		}
@@ -592,15 +666,19 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	return mf, nil
 }
 
-func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
+func (c *metricCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
+
 	if from == nil {
 		return nil, errors.New("nil task")
 	}
 
 	fragment := &physicalpb.Plan{}
+	planStart := time.Now()
 	if err := fragment.UnmarshalPhysical(from.Fragment); err != nil {
+		c.observeMessageCodecStage(codecOperationEncode, codecStageTaskAssignEncode, MessageKindTaskAssign, time.Since(planStart))
 		return nil, fmt.Errorf("failed to unmarshal fragment: %w", err)
 	}
+	c.observeMessageCodecStage(codecOperationEncode, codecStageTaskAssignEncode, MessageKindTaskAssign, time.Since(planStart))
 
 	sources, err := c.nodeStreamMapToPbNodeStreamList(from.Sources)
 	if err != nil {

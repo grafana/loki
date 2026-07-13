@@ -230,7 +230,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		}
 
 		// Calculate resource attributes metadata size for stats
-		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
+		resourceAttributesAsStructuredMetadataSize := int64(loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata))
 		retentionPeriodForUser := streamResolver.RetentionPeriodFor(lbs)
 		policy := streamResolver.PolicyFor(ctx, lbs)
 
@@ -247,8 +247,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.ResourceAndSourceMetadataLabels[policy] = make(map[time.Duration]push.LabelsAdapter)
 		}
 
-		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
-		totalBytesReceived += int64(resourceAttributesAsStructuredMetadataSize)
+		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += resourceAttributesAsStructuredMetadataSize
+		totalBytesReceived += resourceAttributesAsStructuredMetadataSize
 
 		stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
@@ -268,9 +268,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			}
 			scopeAttributesAsStructuredMetadata := scopeResult.StructuredMetadata
 
-			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
-			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
-			totalBytesReceived += int64(scopeAttributesAsStructuredMetadataSize)
+			scopeAttributesAsStructuredMetadataSize := int64(loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata))
+			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += scopeAttributesAsStructuredMetadataSize
+			totalBytesReceived += scopeAttributesAsStructuredMetadataSize
 
 			stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
@@ -335,6 +335,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
 				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
+
 				stream := pushRequestsByStream[entryLabelsStr]
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[entryLabelsStr] = stream
@@ -349,13 +350,18 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				// This keeps the same accounting intention without risk of negative values
 				stats.StructuredMetadataBytes[entryPolicy][entryRetentionPeriod] += entryOwnMetadataSize
 
+				lineSize := int64(len(entry.Line))
 				if _, ok := stats.LogLinesBytes[entryPolicy]; !ok {
 					stats.LogLinesBytes[entryPolicy] = make(map[time.Duration]int64)
 				}
-				stats.LogLinesBytes[entryPolicy][entryRetentionPeriod] += int64(len(entry.Line))
+				stats.LogLinesBytes[entryPolicy][entryRetentionPeriod] += lineSize
+
+				// Track the expanded entry size including the resource and scope attributes that are copied into the entry's structured metadata.
+				// This is the actual size of the entry that will be ingested.
+				stats.TotalExpandedEntriesSize += lineSize + entryOwnMetadataSize + resourceAttributesAsStructuredMetadataSize + scopeAttributesAsStructuredMetadataSize
 
 				totalBytesReceived += entryOwnMetadataSize
-				totalBytesReceived += int64(len(entry.Line))
+				totalBytesReceived += lineSize
 
 				stats.PolicyNumLines[entryPolicy]++
 				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {

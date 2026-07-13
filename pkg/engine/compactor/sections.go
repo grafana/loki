@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -15,6 +17,7 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
@@ -179,4 +182,99 @@ func sectionRefsFor(indexes []indexEntry) []compactionv2pb.SectionRef {
 		}
 	}
 	return out
+}
+
+// logSectionRefsFor reads an index object's stats sections and
+// produces compactionv2pb.SectionRef values (one per stats row) plus the
+// tenant's sort schema.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]*compactionv2pb.SectionRef, []string, error) {
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+	}
+
+	var (
+		refs           []*compactionv2pb.SectionRef
+		schema         []string
+		reader         stats.Reader
+		sortSchemaLbls []string
+		schemaDerived  bool
+	)
+
+	defer reader.Close()
+	const batchSize = 1024
+	scratch := make([]stats.Stat, batchSize)
+
+	for _, section := range obj.Sections().Filter(stats.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+
+		sec, err := stats.Open(ctx, section)
+		if err != nil {
+			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+
+		reader.Reset(stats.ReaderOptions{Columns: sec.Columns()})
+		if err := reader.Open(ctx); err != nil {
+			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+		}
+
+		for {
+			rec, readErr := reader.Read(ctx, batchSize)
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+			}
+			numRows := int(rec.NumRows())
+			if numRows == 0 && errors.Is(readErr, io.EOF) {
+				break
+			}
+
+			dest := scratch[:numRows]
+			n, err := stats.FromRecordBatch(rec, dest)
+			if err != nil {
+				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+			}
+
+			for i := range n {
+				st := dest[i]
+
+				if !schemaDerived {
+					for k := range strings.SplitSeq(st.SortSchema, ",") {
+						if k != "" {
+							sortSchemaLbls = append(sortSchemaLbls, k)
+						}
+					}
+					schema = make([]string, len(sortSchemaLbls))
+					for j, k := range sortSchemaLbls {
+						schema[j] = "label:" + k
+					}
+					schemaDerived = true
+				}
+
+				ref := &compactionv2pb.SectionRef{
+					ObjectPath:       st.ObjectPath,
+					SectionIndex:     st.SectionIndex,
+					MinTimestamp:     st.MinTimestamp,
+					MaxTimestamp:     st.MaxTimestamp,
+					UncompressedSize: st.UncompressedSize,
+				}
+				if len(sortSchemaLbls) > 0 {
+					minKey := make([]string, len(sortSchemaLbls))
+					for j, k := range sortSchemaLbls {
+						minKey[j] = st.Labels[k]
+					}
+					ref.MinKey = minKey
+					ref.MaxKey = slices.Clone(minKey)
+				}
+				refs = append(refs, ref)
+			}
+
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+		}
+	}
+
+	return refs, schema, nil
 }

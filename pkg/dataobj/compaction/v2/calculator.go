@@ -18,6 +18,16 @@ type run struct {
 	topMaxTimestamp int64
 }
 
+func (r *run) Sections() []compactionv2pb.SectionRef { return r.sections }
+
+func (r *run) Size() uint64 {
+	var total uint64
+	for _, s := range r.sections {
+		total += uint64(s.UncompressedSize)
+	}
+	return total
+}
+
 // cmpSortKey compares two composite (labels, timestamp) sort keys
 // lexicographically -- labels first, then timestamp.
 // Returns -1 if a < b, 0 if equal, +1 if a > b.

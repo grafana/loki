@@ -285,13 +285,6 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
-		if len(t.Cfg.LimitsConfig.PerTenantOverrideConfig) != 0 {
-			t.Cfg.RuntimeConfig.LoadPath = []string{t.Cfg.LimitsConfig.PerTenantOverrideConfig}
-		}
-		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
-	}
-
-	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
 		// no need to initialize module if load path is empty
 		return nil, nil
 	}
@@ -970,9 +963,11 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
 	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID

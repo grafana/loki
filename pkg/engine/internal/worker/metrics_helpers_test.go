@@ -14,6 +14,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -59,7 +60,7 @@ func TestTaskTypeLabel(t *testing.T) {
 	tests := []struct {
 		name string
 		task *workflow.Task
-		want string
+		want taskType
 	}{
 		{
 			name: "no sources is leaf",
@@ -88,17 +89,17 @@ func TestStatusUpdateErrorClass(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
-		want string
+		want metrictimer.Outcome
 	}{
-		{name: "nil", err: nil, want: "none"},
-		{name: "canceled", err: context.Canceled, want: "canceled"},
-		{name: "wrapped canceled", err: fmt.Errorf("send: %w", context.Canceled), want: "canceled"},
-		{name: "deadline", err: context.DeadlineExceeded, want: "timeout"},
-		{name: "conn closed", err: wire.ErrConnClosed, want: "conn_closed"},
-		{name: "client error", err: wire.Errorf(http.StatusTooManyRequests, "busy"), want: "rejected"},
-		{name: "server error", err: wire.Errorf(http.StatusInternalServerError, "boom"), want: "server_error"},
-		{name: "wrapped server error", err: fmt.Errorf("send: %w", wire.Errorf(http.StatusBadGateway, "boom")), want: "server_error"},
-		{name: "other", err: errors.New("nope"), want: "other"},
+		{name: "nil", err: nil, want: outcomeNone},
+		{name: "canceled", err: context.Canceled, want: outcomeCanceled},
+		{name: "wrapped canceled", err: fmt.Errorf("send: %w", context.Canceled), want: outcomeCanceled},
+		{name: "deadline", err: context.DeadlineExceeded, want: outcomeTimeout},
+		{name: "conn closed", err: wire.ErrConnClosed, want: outcomeConnClosed},
+		{name: "client error", err: wire.Errorf(http.StatusTooManyRequests, "busy"), want: outcomeRejected},
+		{name: "server error", err: wire.Errorf(http.StatusInternalServerError, "boom"), want: outcomeServerError},
+		{name: "wrapped server error", err: fmt.Errorf("send: %w", wire.Errorf(http.StatusBadGateway, "boom")), want: outcomeServerError},
+		{name: "other", err: errors.New("nope"), want: outcomeOther},
 	}
 
 	for _, tt := range tests {

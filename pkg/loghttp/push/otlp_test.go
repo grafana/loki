@@ -20,6 +20,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -670,7 +671,17 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
-			require.Equal(t, tc.expectedStats, *stats)
+
+			// TotalExpandedEntriesSize is the size of each entry after resource/scope attributes have been
+			// merged into its structured metadata, which is exactly what expectedPushRequest's entries already
+			// contain.
+			expectedStats := tc.expectedStats
+			for _, stream := range tc.expectedPushRequest.Streams {
+				for i := range stream.Entries {
+					expectedStats.TotalExpandedEntriesSize += int64(util.EntryTotalSize(&stream.Entries[i]))
+				}
+			}
+			require.Equal(t, expectedStats, *stats)
 
 			totalBytes := 0.0
 			for _, policyMapping := range stats.LogLinesBytes {
