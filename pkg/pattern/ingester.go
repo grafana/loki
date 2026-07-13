@@ -193,7 +193,7 @@ const (
 	// IngestModeKafka reads records from a Kafka topic (default).
 	IngestModeKafka IngestMode = "kafka"
 	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
-	IngestModeInMemory IngestMode = "inmemory"
+	IngestModeGrpc IngestMode = "grpc"
 )
 
 type TeeConfig struct {

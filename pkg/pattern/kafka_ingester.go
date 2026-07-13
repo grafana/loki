@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -67,9 +66,8 @@ type KafkaIngester struct {
 	metrics       *ingesterMetrics
 	drainCfg      *drain.Config
 	records       chan *kgo.Record
-	consumer      *kafkav2.SinglePartitionConsumer
+	consumer      *kafkav2.GroupConsumer
 	partitionRing ring.PartitionRingReader
-	wg            *sync.WaitGroup
 	decoder       *kafka.Decoder
 	flushRequests chan flushRequest
 	tenantCfgs    *runtime.TenantConfigs
@@ -104,7 +102,6 @@ func NewKafka(
 		instances:   make(map[string]*instance),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		loopQuit:    make(chan struct{}),
-		wg:          &sync.WaitGroup{},
 		drainCfg:    drainCfg,
 		tenantCfgs:  tenantCfgs,
 	}
@@ -129,12 +126,9 @@ func NewKafka(
 	// need to set up a partition ring before starting the consumer, so we can have a partition ID to use
 	records := make(chan *kgo.Record)
 	i.records = records
-	var partitionID int32 = 0
-	i.consumer = kafkav2.NewSinglePartitionConsumer(
+	i.consumer = kafkav2.NewGroupConsumer(
 		readerClient,
 		kafkaCfg.Topic,
-		partitionID,
-		kafkav2.OffsetStart, // We fetch the real initial offset before starting the service.
 		records,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_pattern_consumer_", registerer),
@@ -218,12 +212,9 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 			<-sendersDone  // Wait for them to be done
 		case <-sendersDone:
 		}
-		i.wg.Done()
 	}()
-	i.initFlushQueues()
 	// start our loop
 	i.loopDone.Add(1)
-	go i.loop()
 	return nil
 }
 
@@ -237,7 +228,6 @@ func (i *KafkaIngester) running(ctx context.Context) error {
 		serviceError = fmt.Errorf("lifecycler failed: %w", err)
 	}
 
-	close(i.loopQuit)
 	i.loopDone.Wait()
 	return serviceError
 }
@@ -443,50 +433,6 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 			)
 			return err
 		})
-}
-
-func (i *KafkaIngester) loop() {
-	defer i.loopDone.Done()
-
-	// Delay the first flush operation by up to 0.8x the flush time period.
-	// This will ensure that multiple ingesters started at the same time do not
-	// flush at the same time. Flushing at the same time can cause concurrently
-	// writing the same chunk to object storage, which in AWS S3 leads to being
-	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG -- nosemgrep: math-random-used
-	initialDelay := time.NewTimer(jitter)
-	defer initialDelay.Stop()
-
-	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
-
-	select {
-	case <-initialDelay.C:
-		// do nothing and continue with flush loop
-	case <-i.loopQuit:
-		// ingester stopped while waiting for initial delay
-		return
-	}
-
-	// Add +/- 20% of flush interval as jitter.
-	// The default flush check period is 30s so max jitter will be 6s.
-	j := i.cfg.FlushCheckPeriod / 5
-	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
-	defer flushTicker.Stop()
-
-	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.SamplePeriod)
-	defer downsampleTicker.Stop()
-	for {
-		select {
-		case <-flushTicker.C:
-			i.sweepUsers(false, true)
-		case t := <-downsampleTicker.C:
-			downsampleTicker.Reset(i.cfg.MetricAggregation.SamplePeriod)
-			now := model.TimeFromUnixNano(t.UnixNano())
-			i.downsampleMetrics(now)
-		case <-i.loopQuit:
-			return
-		}
-	}
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
@@ -695,4 +641,52 @@ func waitForPartitions(ctx context.Context, r ring.PartitionRingReader, timeout 
 			}
 		}
 	}
+}
+
+func (i *KafkaIngester) initFlushQueues() {
+	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
+		// for now we don't flush only prune old samples.
+		// go i.flushLoop(j)
+	}
+}
+
+func (i *KafkaIngester) Flush() {
+	i.flush(true)
+}
+
+func (i *KafkaIngester) flush(mayRemoveStreams bool) {
+	i.sweepUsers(true, mayRemoveStreams)
+
+	// Close the flush queues, to unblock waiting workers.
+	for _, flushQueue := range i.flushQueues {
+		flushQueue.Close()
+	}
+
+	i.flushQueuesDone.Wait()
+	level.Debug(i.logger).Log("msg", "flush queues have drained")
+}
+
+// sweepUsers periodically schedules series for flushing and garbage collects users with no series
+func (i *KafkaIngester) sweepUsers(immediate, mayRemoveStreams bool) {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		i.sweepInstance(instance, immediate, mayRemoveStreams)
+	}
+}
+
+func (i *KafkaIngester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
+	level.Debug(i.logger).Log("msg", "sweeping instance", "instance", instance.instanceID)
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		if mayRemoveStreams {
+			instance.streams.WithLock(func() {
+				if s.prune(i.cfg.RetainFor) {
+					instance.removeStream(s)
+				}
+			})
+		}
+		return true, nil
+	})
 }

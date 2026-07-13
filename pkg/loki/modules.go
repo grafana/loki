@@ -798,7 +798,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	}
 	logger := util_log.Logger
 	switch t.Cfg.Pattern.IngestMode {
-	case pattern.IngestModeInMemory:
+	case pattern.IngestModeGrpc:
 		_ = level.Debug(logger).Log("msg", "initializing in-memory pattern ingester...")
 		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 		t.PatternIngester, err = pattern.New(
@@ -865,36 +865,35 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee...")
 
-	if t.Cfg.Pattern.IngestMode == pattern.IngestMode(pattern.IngestModeInMemory) {
-		_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
-		svc, err := pattern.NewTeeService(
-			t.Cfg.Pattern,
-			t.Overrides,
-			t.PatternRingClient,
-			t.tenantConfigs,
-			t.Cfg.MetricsNamespace,
-			prometheus.DefaultRegisterer,
-			logger,
-		)
-		if err != nil {
-			return nil, err
-		}
-		t.Tee = distributor.WrapTee(t.Tee, svc)
-		return services.NewBasicService(
-			svc.Start,
-			func(_ context.Context) error {
-				svc.WaitUntilDone()
-				return nil
-			},
-			func(_ error) error {
-				svc.WaitUntilDone()
-				return nil
-			},
-		), nil
-	} else {
+	if t.Cfg.Pattern.IngestMode != pattern.IngestMode(pattern.IngestModeGrpc) {
 		_ = level.Debug(logger).Log("msg", "pattern ingester tee disabled for Kafka ingest mode")
 		return nil, nil
 	}
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+	svc, err := pattern.NewTeeService(
+		t.Cfg.Pattern,
+		t.Overrides,
+		t.PatternRingClient,
+		t.tenantConfigs,
+		t.Cfg.MetricsNamespace,
+		prometheus.DefaultRegisterer,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.Tee = distributor.WrapTee(t.Tee, svc)
+	return services.NewBasicService(
+		svc.Start,
+		func(_ context.Context) error {
+			svc.WaitUntilDone()
+			return nil
+		},
+		func(_ error) error {
+			svc.WaitUntilDone()
+			return nil
+		},
+	), nil
 }
 
 func (t *Loki) initStore() (services.Service, error) {

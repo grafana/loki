@@ -152,6 +152,7 @@ func (b *cooperativeActiveStickyBalancer) Balance(balancer *kgo.ConsumerBalancer
 					var meta kmsg.ConsumerMemberAssignment
 					err := meta.ReadFrom(m.MemberAssignment)
 					if err != nil {
+						level.Error(b.logger).Log("msg", "failed to read member assignment", "err", err)
 						continue
 					}
 
