@@ -2448,8 +2448,12 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:       t.Cfg.DataObj.Compaction.Worker,
-		Bucket:       indexBucket,
+		Config: t.Cfg.DataObj.Compaction.Worker,
+		Bucket: indexBucket,
+		// Source log objects live at the unprefixed dataobj root, so the
+		// LogMerge executor reads them through the unprefixed store rather than
+		// the index-prefixed bucket used for index I/O and ToC.
+		DataBucket:   store,
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,

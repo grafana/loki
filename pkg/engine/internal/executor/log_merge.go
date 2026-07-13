@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -30,6 +31,17 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 		}
 		return emptyPipeline()
 	}, nil)
+}
+
+// sourceBucket returns the bucket to read source log objects from. Source
+// objects are stored at the unprefixed dataobj root, so it prefers dataBucket
+// and falls back to bucket when dataBucket is unset (e.g. query-only workers or
+// tests that share a single bucket).
+func (c *Context) sourceBucket() objstore.Bucket {
+	if c.dataBucket != nil {
+		return c.dataBucket
+	}
+	return c.bucket
 }
 
 func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) error {
@@ -176,10 +188,14 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			paths = append(paths, sec.ObjectPath)
 		}
 	}
+	// Source log objects live at the unprefixed dataobj root, not under the
+	// index-storage prefix that c.bucket carries, so read them via dataBucket.
+	srcBucket := c.sourceBucket()
+
 	// Gather log and streams sections
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
-		obj, err := dataobj.FromBucket(ctx, c.bucket, path, 0)
+		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
@@ -438,7 +454,6 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("flushing object: %w", err)
 	}
-	defer closer.Close()
 
 	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
 
