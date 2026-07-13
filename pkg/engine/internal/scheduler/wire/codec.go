@@ -457,8 +457,7 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wire
 		streams := make([]*workflow.Stream, len(streamList.Streams))
 		for i, s := range streamList.Streams {
 			streams[i] = &workflow.Stream{
-				ULID:     ulid.ULID(s.Ulid),
-				TenantID: s.TenantId,
+				ULID: ulid.ULID(s.Ulid),
 			}
 		}
 
@@ -760,8 +759,7 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 		pbStreams := make([]*wirepb.Stream, len(streams))
 		for i, s := range streams {
 			pbStreams[i] = &wirepb.Stream{
-				Ulid:     protoUlid.ULID(s.ULID),
-				TenantId: s.TenantID,
+				Ulid: protoUlid.ULID(s.ULID),
 			}
 		}
 

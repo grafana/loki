@@ -219,7 +219,8 @@ message Stream {
     (gogoproto.nullable) = false
   ];
 
-  string tenant_id = 2;
+  reserved 2;
+  reserved "tenant_id";
 }
 
 // TaskStatus represents the current status of a task.

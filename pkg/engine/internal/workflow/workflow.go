@@ -153,7 +153,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	}
 
 	// Inject a stream for final task results.
-	results, err := injectResultsStream(opts.Tenant, &graph)
+	results, err := injectResultsStream(&graph)
 	if err != nil {
 		return nil, err
 	}
@@ -188,8 +188,8 @@ func (wf *Workflow) Empty() bool {
 
 // injectResultsStream injects a new stream into the sinks of the root task for
 // the workflow to receive final results.
-func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, error) {
-	results := &Stream{ULID: ulid.Make(), TenantID: tenantID}
+func injectResultsStream(graph *dag.Graph[*Task]) (*Stream, error) {
+	results := &Stream{ULID: ulid.Make()}
 
 	// Inject a stream for final task results.
 	rootTask, err := graph.Root()
