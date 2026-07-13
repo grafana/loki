@@ -278,12 +278,6 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 			ID: ulid.ULID(k.TaskCancel.Id),
 		}, nil
 
-	case *wirepb.MessageFrame_TaskFlag:
-		return TaskFlagMessage{
-			ID:            ulid.ULID(k.TaskFlag.Id),
-			Interruptible: k.TaskFlag.Interruptible,
-		}, nil
-
 	case *wirepb.MessageFrame_TaskStatus:
 		status, err := c.taskStatusFromPbTaskStatus(&k.TaskStatus.Status)
 		if err != nil {
@@ -593,14 +587,6 @@ func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, er
 		mf.Kind = &wirepb.MessageFrame_TaskCancel{
 			TaskCancel: &wirepb.TaskCancelMessage{
 				Id: protoUlid.ULID(v.ID),
-			},
-		}
-
-	case TaskFlagMessage:
-		mf.Kind = &wirepb.MessageFrame_TaskFlag{
-			TaskFlag: &wirepb.TaskFlagMessage{
-				Id:            protoUlid.ULID(v.ID),
-				Interruptible: v.Interruptible,
 			},
 		}
 

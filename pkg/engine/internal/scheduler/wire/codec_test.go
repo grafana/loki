@@ -104,18 +104,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"TaskCancelMessage": {
 			message: TaskCancelMessage{ID: taskULID},
 		},
-		"TaskFlagMessage not interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: false,
-			},
-		},
-		"TaskFlagMessage interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: true,
-			},
-		},
 		"TaskStatusMessage with Created state": {
 			message: TaskStatusMessage{
 				ID: taskULID,

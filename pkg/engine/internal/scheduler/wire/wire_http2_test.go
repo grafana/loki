@@ -498,7 +498,6 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}{
 		{"WorkerReadyMessage", wire.WorkerReadyMessage{}},
 		{"TaskCancelMessage", wire.TaskCancelMessage{}},
-		{"TaskFlagMessage", wire.TaskFlagMessage{Interruptible: true}},
 		{"TaskStatusMessage", wire.TaskStatusMessage{}},
 		{"TaskAssignMessage", wire.TaskAssignMessage{
 			Task: &workflow.Task{

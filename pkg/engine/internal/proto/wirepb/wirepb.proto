@@ -53,13 +53,15 @@ message MessageFrame {
 
     TaskAssignMessage task_assign = 3;
     TaskCancelMessage task_cancel = 4;
-    TaskFlagMessage task_flag = 5;
     TaskStatusMessage task_status = 6;
 
     StreamBindMessage stream_bind = 7;
     StreamDataMessage stream_data = 8;
     StreamStatusMessage stream_status = 9;
   }
+
+  reserved 5;
+  reserved "task_flag";
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -111,18 +113,6 @@ message TaskCancelMessage {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
-}
-
-// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-message TaskFlagMessage {
-  ulid.loki.v1.ProtoULID id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
-    (gogoproto.nullable) = false
-  ];
-
-  // Interruptible indicates that tasks blocked on writing or reading to a
-  // stream can be paused, and that worker can accept new tasks to run.
-  bool interruptible = 2;
 }
 
 // TaskStatusMessage is sent by the worker to the scheduler to inform the

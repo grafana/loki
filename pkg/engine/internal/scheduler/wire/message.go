@@ -23,7 +23,6 @@ const (
 	MessageKindWorkerReady     // MessageKindWorkerReady represents [WorkerReadyMessage].
 	MessageKindTaskAssign      // MessageKindTaskAssign represents [TaskAssignMessage].
 	MessageKindTaskCancel      // MessageKindTaskCancel represents [TaskCancelMessage].
-	MessageKindTaskFlag        // MessageKindTaskFlag represents [TaskFlagMessage].
 	MessageKindTaskStatus      // MessageKindTaskStatus represents [TaskStatusMessage].
 	MessageKindStreamBind      // MessageKindStreamBind represents [StreamBindMessage].
 	MessageKindStreamData      // MessageKindStreamData represents [StreamDataMessage].
@@ -37,7 +36,6 @@ var kindNames = [...]string{
 	MessageKindWorkerReady:     "WorkerReady",
 	MessageKindTaskAssign:      "TaskAssign",
 	MessageKindTaskCancel:      "TaskCancel",
-	MessageKindTaskFlag:        "TaskFlag",
 	MessageKindTaskStatus:      "TaskStatus",
 	MessageKindStreamBind:      "StreamBind",
 	MessageKindStreamData:      "StreamData",
@@ -129,16 +127,6 @@ type (
 		ID ulid.ULID // ID of the Task to cancel.
 	}
 
-	// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-	TaskFlagMessage struct {
-		ID ulid.ULID // ID of the Task to update.
-
-		// Interruptible indicates that tasks blocked on writing or reading to a
-		// [Stream] can be paused, and that worker can accept new tasks to run.
-		// Tasks are not interruptible by default.
-		Interruptible bool
-	}
-
 	// TaskStatusMessage is sent by the worker to the scheduler to inform the
 	// scheduler of the current status of a task.
 	TaskStatusMessage struct {
@@ -187,7 +175,6 @@ func (WorkerSubscribeMessage) isMessage() {}
 func (WorkerReadyMessage) isMessage()     {}
 func (TaskAssignMessage) isMessage()      {}
 func (TaskCancelMessage) isMessage()      {}
-func (TaskFlagMessage) isMessage()        {}
 func (TaskStatusMessage) isMessage()      {}
 func (StreamBindMessage) isMessage()      {}
 func (StreamDataMessage) isMessage()      {}
@@ -209,9 +196,6 @@ func (TaskAssignMessage) Kind() MessageKind { return MessageKindTaskAssign }
 
 // Kind returns [MessageKindTaskCancel].
 func (TaskCancelMessage) Kind() MessageKind { return MessageKindTaskCancel }
-
-// Kind returns [MessageKindTaskFlag].
-func (TaskFlagMessage) Kind() MessageKind { return MessageKindTaskFlag }
 
 // Kind returns [MessageKindTaskStatus].
 func (TaskStatusMessage) Kind() MessageKind { return MessageKindTaskStatus }
