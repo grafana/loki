@@ -65,6 +65,15 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
+	// Install a request-scoped releaser for the process-wide inflight-bytes
+	// budget. The parsers reserve bytes from the budget as they read the body;
+	// those reservations are returned only once this handler returns, i.e. after
+	// the response has been sent, so the bytes stay "allocated" for the whole
+	// lifetime of the request.
+	ctx, inflightReleaser := push.WithInflightReleaser(r.Context())
+	r = r.WithContext(ctx)
+	defer inflightReleaser.Release()
+
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
@@ -103,6 +112,19 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 					"contentLength", r.ContentLength)
 			}
 			errorWriter(w, err.Error(), http.StatusRequestEntityTooLarge, logger)
+			return
+
+		case errors.Is(err, push.ErrInflightBytesLimitExceeded):
+			if d.tenantConfigs.LogPushRequest(tenantID) {
+				level.Debug(logger).Log(
+					"msg", "push request rejected: process-wide inflight bytes limit exceeded",
+					"code", http.StatusServiceUnavailable,
+					"err", err,
+				)
+			}
+			d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
+
+			errorWriter(w, "The server cannot accept more requests at this time.", http.StatusServiceUnavailable, logger)
 			return
 
 		case !errors.Is(err, push.ErrAllLogsFiltered):

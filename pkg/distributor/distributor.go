@@ -336,10 +336,7 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// Track the max inflight bytes in the last 1 minute.
-	inflightBytesHighWatermark prometheus.Summary
-	inflightBytes              atomic.Int64
-	circuitBreaker             circuitBreaker
+	circuitBreaker circuitBreaker
 }
 
 // New a distributor creates.
@@ -487,13 +484,11 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytesHighWatermark: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Name:       "loki_distributor_inflight_bytes_high_watermark",
-			Help:       "The max inflight bytes in the last 1 minute.",
-			Objectives: map[float64]float64{1.0: 0.1},
-			MaxAge:     time.Minute,
-		}),
 	}
+
+	// Seed the process-wide inflight-bytes budget used by the request parsers to
+	// bound the (decompressed) bytes read across all concurrent push requests.
+	push.SetMaxInflightBytes(int64(cfg.MaxInflightBytes))
 
 	if cfg.CircuitBreaker.Enabled {
 		circuitBreaker := newTrialCircuitBreaker(
@@ -658,16 +653,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Can modify the input req parameter.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
-	newInflightBytes := d.inflightBytes.Add(requestSize)
-	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
-	defer d.inflightBytes.Add(-requestSize)
-
-	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
-	}
-
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

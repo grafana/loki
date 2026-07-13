@@ -76,6 +76,20 @@ var (
 		Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
 	}, []string{"tenant", "userAgent", "format"})
 
+	inflightLimitedRequests = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_inflight_limited_requests_total",
+		Help:      "The total number of push requests whose body was truncated because the process-wide inflight-bytes budget was exhausted.",
+	}, []string{"format"})
+
+	inflightBytesHighWatermark = promauto.NewSummary(prometheus.SummaryOpts{
+		Namespace:  constants.Loki,
+		Name:       "distributor_inflight_bytes_high_watermark",
+		Help:       "The maximum number of inflight request bytes reserved from the process-wide inflight-bytes budget in the last minute.",
+		Objectives: map[float64]float64{1.0: 0.1},
+		MaxAge:     time.Minute,
+	})
+
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
@@ -96,7 +110,33 @@ const (
 var (
 	ErrAllLogsFiltered     = errors.New("all logs lines filtered during parsing")
 	ErrRequestBodyTooLarge = errors.New("request body too large")
+	// ErrInflightBytesLimitExceeded is returned when the request body was
+	// truncated because the process-wide inflight-bytes budget was exhausted
+	// while reading it. The HTTP handler maps this to a 503 response.
+	ErrInflightBytesLimitExceeded = errors.New("inflight bytes limit exceeded")
 )
+
+// checkInflightLimited samples the process-wide inflight-bytes usage for the
+// high-watermark summary (once per request, at its peak reservation before it is
+// released) and reports whether the shared budget was exhausted while reading
+// the request body. If it was, it records the truncation on the stats and metric
+// and returns ErrInflightBytesLimitExceeded; otherwise it returns nil.
+// limitReader may be nil (limit disabled), in which case it is a no-op.
+func checkInflightLimited(limitReader *sharedLimitReader, pushStats *Stats, format string) error {
+	if limitReader == nil {
+		return nil
+	}
+	// Observe once per request (not per 8KB reservation) so the summary's max
+	// quantile reflects the true peak concurrent inflight bytes rather than being
+	// dragged down by many small incremental samples.
+	observeInflightBytesUsage()
+	if !limitReader.Truncated() {
+		return nil
+	}
+	pushStats.InflightLimited = true
+	inflightLimitedRequests.WithLabelValues(format).Inc()
+	return ErrInflightBytesLimitExceeded
+}
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -182,6 +222,10 @@ type Stats struct {
 	Extra []any
 
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
+
+	// InflightLimited is true if the request body was truncated because the
+	// process-wide inflight-bytes budget was exhausted while reading it.
+	InflightLimited bool
 
 	// TotalExpandedEntriesSize is the total size of all entries including the size of resource and scope
 	// attributes that are copied into the entry's structured metadata.
@@ -381,6 +425,23 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
 
+	// Wrap the (decompressed) body in the process-wide inflight-bytes allocator
+	// so the bytes flowing into the parser count against the global budget. When
+	// the budget is exhausted the reader returns io.EOF and parsing terminates.
+	// The reservation is returned to the budget by the HTTP handler once the
+	// response has been sent (via the InflightReleaser on the request context);
+	// if no releaser is wired, it is released when parsing finishes.
+	var limitReader *sharedLimitReader
+	if inflightLimitEnabled() {
+		limitReader = NewSharedLimitReader(body, &inflightBytesBudget)
+		if ir := inflightReleaserFromContext(r.Context()); ir != nil {
+			ir.track(limitReader)
+		} else {
+			defer func() { _ = limitReader.Close() }()
+		}
+		body = limitReader
+	}
+
 	contentType := r.Header.Get(contentType)
 	var req logproto.PushRequest
 
@@ -404,6 +465,13 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 			pushStats.ContentVersion = "v0"
 		}
 
+		// If the inflight-bytes budget was exhausted the body was truncated;
+		// surface a dedicated error so the handler returns 503 rather than a
+		// confusing decode error.
+		if inflightErr := checkInflightLimited(limitReader, pushStats, constants.Loki); inflightErr != nil {
+			return nil, inflightErr
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -411,7 +479,16 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
-		if err := util.ParseProtoReaderWithLimits(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, maxDecompressedSize, &req, util.RawSnappy); err != nil {
+		err := util.ParseProtoReaderWithLimits(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, maxDecompressedSize, &req, util.RawSnappy)
+
+		// If the inflight-bytes budget was exhausted the body was truncated;
+		// surface a dedicated error so the handler returns 503 rather than a
+		// confusing decode error.
+		if inflightErr := checkInflightLimited(limitReader, pushStats, constants.Loki); inflightErr != nil {
+			return nil, inflightErr
+		}
+
+		if err != nil {
 			return nil, err
 		}
 	}

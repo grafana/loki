@@ -97,9 +97,34 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 	default:
 		return plog.NewLogs(), errors.Errorf("unsupported content encoding %s: only gzip, lz4 and zstd are supported", pushStats.ContentEncoding)
 	}
+
+	// Wrap the (decompressed) body in the process-wide inflight-bytes allocator
+	// so the bytes flowing into the parser count against the global budget. When
+	// the budget is exhausted the reader returns io.EOF and parsing terminates.
+	// The reservation is returned to the budget by the HTTP handler once the
+	// response has been sent (via the InflightReleaser on the request context);
+	// if no releaser is wired, it is released when parsing finishes.
+	var limitReader *sharedLimitReader
+	if inflightLimitEnabled() {
+		limitReader = NewSharedLimitReader(body, &inflightBytesBudget)
+		if ir := inflightReleaserFromContext(r.Context()); ir != nil {
+			ir.track(limitReader)
+		} else {
+			defer func() { _ = limitReader.Close() }()
+		}
+		body = limitReader
+	}
+
 	buf, err := io.ReadAll(body)
 	if err != nil {
 		return plog.NewLogs(), err
+	}
+
+	// If the inflight-bytes budget was exhausted the body was truncated; surface
+	// a dedicated error so the handler returns 503 rather than a confusing
+	// decode error.
+	if inflightErr := checkInflightLimited(limitReader, pushStats, constants.OTLP); inflightErr != nil {
+		return plog.NewLogs(), inflightErr
 	}
 
 	// Check the size of the compressed body
