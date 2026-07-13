@@ -206,9 +206,39 @@ ruler:
 
   remote_write:
     enabled: true
-    client:
-      url: http://localhost:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://localhost:9090/api/v1/write
 ```
+
+Here is an example of a remote-write configuration for sending data to a Grafana Mimir instance:
+
+```yaml
+ruler:
+  remote_write:
+    enabled: true
+    clients:
+      mimir:
+        url: http://mimir:9009/api/v1/push
+```
+
+If the Mimir endpoint requires authentication, configure it on the remote-write client:
+
+```yaml
+ruler:
+  remote_write:
+    enabled: true
+    clients:
+      mimir:
+        url: https://mimir.example.com/api/v1/push
+        basic_auth:
+          username: <USERNAME>
+          password: <PASSWORD>
+```
+
+By default, Loki adds the `X-Scope-OrgID` header using the tenant ID of the
+recording rules that produced the samples. Do not set `X-Scope-OrgID` manually
+under `headers`; Loki strips that header at runtime before sending remote-write requests.
 
 Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
@@ -229,8 +259,8 @@ lokitool is intended to run against multi-tenant Loki. The commands need an `--i
 An example workflow is included below:
 
 ```sh
-# lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-lokitool rules lint ./output/rules.yaml
+# format the rules.yaml file, reordering keys and reformatting PromQL expressions
+lokitool rules format ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
 lokitool rules diff --rule-dirs=./output
