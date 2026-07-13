@@ -2389,8 +2389,20 @@ type DaemonTaskDefinition struct {
 	// The name of a family that this daemon task definition is registered to.
 	Family *string
 
+	// The IPC namespace mode for the daemon. A value of shared means the daemon
+	// shares the IPC namespace with co-located tasks, allowing communication through
+	// POSIX shared memory, semaphores, and message queues. A value of none means the
+	// daemon has its own isolated IPC namespace.
+	IpcMode DaemonIpcMode
+
 	// The amount of memory (in MiB) used by the daemon task.
 	Memory *string
+
+	// The process namespace mode for the daemon. A value of shared means the daemon
+	// shares the PID namespace with co-located tasks, giving it visibility into
+	// application processes. A value of none means the daemon has its own isolated
+	// PID namespace.
+	PidMode DaemonPidMode
 
 	// The Unix timestamp for the time when the daemon task definition was registered.
 	RegisteredAt *time.Time

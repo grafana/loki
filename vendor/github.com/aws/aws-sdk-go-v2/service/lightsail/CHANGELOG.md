@@ -1,3 +1,15 @@
+# v1.56.1 (2026-06-12)
+
+* No change notes available for this release.
+
+# v1.56.0 (2026-06-10)
+
+* **Feature**: This release adds support for Asia Pacific (Hong Kong) (ap-east-1), Europe (Spain) (eu-south-2) and South America (Sao Paulo) (sa-east-1) Regions.
+
+# v1.55.4 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.55.3 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.

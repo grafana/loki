@@ -6978,6 +6978,10 @@ type FlowLog struct {
 	// The ID of the resource being monitored.
 	ResourceId *string
 
+	// The tag configuration associated with the Flow Logs Amazon EC2 Tags feature
+	// fields in your custom log format.
+	TagFieldSpecifications []TagFieldSpecificationResponse
+
 	// The tags for the flow log.
 	Tags []Tag
 
@@ -7620,6 +7624,9 @@ type Image struct {
 	// The type of image.
 	ImageType ImageTypeValues
 
+	// The watermarks attached to the AMI.
+	ImageWatermarks []ImageWatermark
+
 	// If v2.0 , it indicates that IMDSv2 is specified in the AMI. Instances launched
 	// from this AMI will have HttpTokens automatically set to required so that, by
 	// default, the instance requires that IMDSv2 is used when requesting instance
@@ -7941,6 +7948,9 @@ type ImageMetadata struct {
 	// Valid values: amazon | aws-backup-vault | aws-marketplace
 	ImageOwnerAlias *string
 
+	// The watermarks attached to the AMI.
+	ImageWatermarks []ImageWatermark
+
 	// Indicates whether the AMI has public launch permissions. A value of true means
 	// this AMI has public launch permissions, while false means it has only implicit
 	// (AMI owner) or explicit (shared with your account) launch permissions.
@@ -8120,6 +8130,32 @@ type ImageUsageResourceTypeRequest struct {
 	// The options that affect the scope of the report. Valid only when ResourceType
 	// is ec2:LaunchTemplate .
 	ResourceTypeOptions []ImageUsageResourceTypeOptionRequest
+
+	noSmithyDocumentSerde
+}
+
+// Describes a watermark attached to an AMI.
+type ImageWatermark struct {
+
+	// The creation date of the source AMI, in the following format:
+	// YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM.
+	SourceImageCreationTime *time.Time
+
+	// The ID of the AMI to which the watermark was originally attached.
+	SourceImageId *string
+
+	// The Region where the watermark was originally attached.
+	SourceImageRegion *string
+
+	// The date and time the watermark was attached to the AMI, in the following
+	// format: YYYY-MM-DDTHH:MM:SS.ssssss+HH:MM.
+	WatermarkCreationTime *time.Time
+
+	// The watermark identifier, in accountId:watermarkName format (for example,
+	// 123456789012:approvedAmi ). The accountId portion is the Amazon Web Services
+	// account ID of the watermark creator. The watermarkName portion is
+	// customer-provided.
+	WatermarkKey *string
 
 	noSmithyDocumentSerde
 }
@@ -22483,6 +22519,36 @@ type TagDescription struct {
 	noSmithyDocumentSerde
 }
 
+// A single resource's tag configuration associated with the Flow Logs Amazon EC2
+// Tags feature fields in your custom log format.
+type TagFieldSpecificationRequest struct {
+
+	// The resource type for the tag keys associated with the Flow Logs Amazon EC2
+	// Tags feature fields in your custom log format.
+	ResourceType TaggableResourceType
+
+	// The tag keys on your tagged resources to be displayed by the Flow Logs Amazon
+	// EC2 Tags feature fields in your custom log format.
+	TagKeys []string
+
+	noSmithyDocumentSerde
+}
+
+// A single resource's tag configuration associated with the Flow Logs Amazon EC2
+// Tags feature fields in your custom log format.
+type TagFieldSpecificationResponse struct {
+
+	// The resource type for the tag keys associated with the Flow Logs Amazon EC2
+	// Tags feature fields in your custom log format.
+	ResourceType TaggableResourceType
+
+	// The tag keys on your tagged resources to be displayed by the Flow Logs Amazon
+	// EC2 Tags feature fields in your custom log format.
+	TagKeys []string
+
+	noSmithyDocumentSerde
+}
+
 // The tags to apply to a resource when the resource is being created. When you
 // specify a tag, you must specify the resource type to tag, otherwise the request
 // will fail.
@@ -25102,10 +25168,6 @@ type VolumeModification struct {
 
 	// The current modification state.
 	ModificationState VolumeModificationState
-
-	// Describes whether the resource is managed by a service provider and, if so,
-	// describes the service provider that manages it.
-	Operator *OperatorResponse
 
 	// The original IOPS rate of the volume.
 	OriginalIops *int32

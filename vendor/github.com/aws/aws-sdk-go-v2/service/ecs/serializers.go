@@ -10899,9 +10899,19 @@ func awsAwsjson11_serializeOpDocumentRegisterDaemonTaskDefinitionInput(v *Regist
 		ok.String(*v.Family)
 	}
 
+	if len(v.IpcMode) > 0 {
+		ok := object.Key("ipcMode")
+		ok.String(string(v.IpcMode))
+	}
+
 	if v.Memory != nil {
 		ok := object.Key("memory")
 		ok.String(*v.Memory)
+	}
+
+	if len(v.PidMode) > 0 {
+		ok := object.Key("pidMode")
+		ok.String(string(v.PidMode))
 	}
 
 	if v.Tags != nil {

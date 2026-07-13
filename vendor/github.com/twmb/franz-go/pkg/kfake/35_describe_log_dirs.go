@@ -1,23 +1,44 @@
 package kfake
 
 import (
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// DescribeLogDirs: v0-4
+//
+// Behavior:
+// * Returns log directory info for requested partitions
+// * If Topics is null, returns all partitions
+// * Returns in-memory size tracking, not actual disk usage
+//
+// Version notes:
+// * v1: ThrottleMillis
+// * v2: Flexible versions
+// * v3: TotalBytes, UsableBytes
+// * v4: No changes
+
 func init() { regKey(35, 0, 4) }
 
-func (c *Cluster) handleDescribeLogDirs(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
-	req := kreq.(*kmsg.DescribeLogDirsRequest)
-	resp := req.ResponseKind().(*kmsg.DescribeLogDirsResponse)
+func (c *Cluster) handleDescribeLogDirs(creq *clientReq) (kmsg.Response, error) {
+	var (
+		req  = creq.kreq.(*kmsg.DescribeLogDirsRequest)
+		resp = req.ResponseKind().(*kmsg.DescribeLogDirsResponse)
+	)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
+	}
+
+	if !c.allowedClusterACL(creq, kmsg.ACLOperationDescribe) {
+		resp.ErrorCode = kerr.ClusterAuthorizationFailed.Code
+		return resp, nil
 	}
 
 	totalSpace := make(map[string]int64)
 	individual := make(map[string]map[string]map[int32]int64)
 
-	add := func(d string, t string, p int32, s int64) {
+	add := func(d, t string, p int32, s int64) {
 		totalSpace[d] += s
 		ts, ok := individual[d]
 		if !ok {

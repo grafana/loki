@@ -639,6 +639,50 @@ func (DaemonDeploymentStatus) Values() []DaemonDeploymentStatus {
 	}
 }
 
+type DaemonIpcMode string
+
+// Enum values for DaemonIpcMode
+const (
+	// The daemon gets its own isolated IPC namespace.
+	DaemonIpcModeNone DaemonIpcMode = "none"
+	// The daemon shares the IPC namespace with co-located tasks on the same container
+	// instance.
+	DaemonIpcModeShared DaemonIpcMode = "shared"
+)
+
+// Values returns all known values for DaemonIpcMode. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (DaemonIpcMode) Values() []DaemonIpcMode {
+	return []DaemonIpcMode{
+		"none",
+		"shared",
+	}
+}
+
+type DaemonPidMode string
+
+// Enum values for DaemonPidMode
+const (
+	// The daemon gets its own isolated PID namespace.
+	DaemonPidModeNone DaemonPidMode = "none"
+	// The daemon shares the PID namespace with co-located tasks on the same container
+	// instance.
+	DaemonPidModeShared DaemonPidMode = "shared"
+)
+
+// Values returns all known values for DaemonPidMode. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (DaemonPidMode) Values() []DaemonPidMode {
+	return []DaemonPidMode{
+		"none",
+		"shared",
+	}
+}
+
 type DaemonPropagateTags string
 
 // Enum values for DaemonPropagateTags

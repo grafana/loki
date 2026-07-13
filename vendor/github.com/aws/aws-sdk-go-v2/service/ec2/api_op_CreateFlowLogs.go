@@ -144,6 +144,10 @@ type CreateFlowLogsInput struct {
 	// [Nitro-based instance]: https://docs.aws.amazon.com/ec2/latest/instancetypes/ec2-nitro-instances.html
 	MaxAggregationInterval *int32
 
+	// The tag configuration associated with the Flow Logs Amazon EC2 Tags feature
+	// fields in your custom log format.
+	TagFieldSpecifications []types.TagFieldSpecificationRequest
+
 	// The tags to apply to the flow logs.
 	TagSpecifications []types.TagSpecification
 

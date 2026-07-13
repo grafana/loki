@@ -16033,6 +16033,15 @@ func awsAwsjson11_deserializeDocumentDaemonTaskDefinition(v **types.DaemonTaskDe
 				sv.Family = ptr.String(jtv)
 			}
 
+		case "ipcMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected DaemonIpcMode to be of type string, got %T instead", value)
+				}
+				sv.IpcMode = types.DaemonIpcMode(jtv)
+			}
+
 		case "memory":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -16040,6 +16049,15 @@ func awsAwsjson11_deserializeDocumentDaemonTaskDefinition(v **types.DaemonTaskDe
 					return fmt.Errorf("expected String to be of type string, got %T instead", value)
 				}
 				sv.Memory = ptr.String(jtv)
+			}
+
+		case "pidMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected DaemonPidMode to be of type string, got %T instead", value)
+				}
+				sv.PidMode = types.DaemonPidMode(jtv)
 			}
 
 		case "registeredAt":

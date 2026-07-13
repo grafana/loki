@@ -1,3 +1,11 @@
+# v1.83.0 (2026-06-10)
+
+* **Feature**: Amazon ECS Managed Daemon task definitions now support pidMode and ipcMode parameters. Set shared to allow daemons to share PID or IPC namespaces with co-located tasks on Managed Instances, enabling process tracing and shared memory communication.
+
+# v1.82.4 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.82.3 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.
