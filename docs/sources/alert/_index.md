@@ -215,8 +215,6 @@ Here is an example of a remote-write configuration for sending data to a Grafana
 
 ```yaml
 ruler:
-  ... other settings ...
-
   remote_write:
     enabled: true
     clients:
@@ -228,16 +226,14 @@ If the Mimir endpoint requires authentication, configure it on the remote-write 
 
 ```yaml
 ruler:
-  ... other settings ...
-
   remote_write:
     enabled: true
     clients:
       mimir:
         url: https://mimir.example.com/api/v1/push
         basic_auth:
-          username: <username>
-          password: <password>
+          username: <USERNAME>
+          password: <PASSWORD>
 ```
 
 By default, Loki adds the `X-Scope-OrgID` header using the tenant ID of the
