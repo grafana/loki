@@ -150,10 +150,10 @@ func BenchmarkIndexMergePath_Build(b *testing.B) {
 
 func TestLogTaskSectionIDs_LabelTupleDisambiguates(t *testing.T) {
 	var buf bytes.Buffer
-	runsA := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+	runsA := []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}},
 	}}}
-	runsB := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+	runsB := []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"billing"}},
 	}}}
 
@@ -165,10 +165,10 @@ func TestLogTaskSectionIDs_LabelTupleDisambiguates(t *testing.T) {
 
 func TestLogTaskSectionIDs_DistinctTuplesDistinctIDs(t *testing.T) {
 	var buf bytes.Buffer
-	runs1 := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+	runs1 := []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{
 		{ObjectPath: "o", SectionIndex: 0, MinKey: []string{"a", "bc"}},
 	}}}
-	runs2 := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+	runs2 := []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{
 		{ObjectPath: "o", SectionIndex: 0, MinKey: []string{"ab", "c"}},
 	}}}
 	require.NotEqual(t, logTaskSectionIDs(runs1, &buf), logTaskSectionIDs(runs2, &buf))
@@ -176,7 +176,7 @@ func TestLogTaskSectionIDs_DistinctTuplesDistinctIDs(t *testing.T) {
 
 func TestLogTaskSectionIDs_BufferReuseAcrossCalls(t *testing.T) {
 	var buf bytes.Buffer
-	runs := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+	runs := []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}},
 	}}}
 	first := logTaskSectionIDs(runs, &buf)

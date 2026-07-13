@@ -586,7 +586,6 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
 // or is unsupported.
 func (n *Node_LogMerge) UnmarshalPhysical(from physical.Node) error {
-	n.LogMerge = new(LogMerge)
 	return n.LogMerge.UnmarshalPhysical(from)
 }
 

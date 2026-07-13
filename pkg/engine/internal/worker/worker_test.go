@@ -515,7 +515,7 @@ func runLabelFilterQuery(t *testing.T, query string, streams ...logproto.Stream)
 		time.Date(2025, time.January, 2, 0, 0, 0, 0, time.UTC),
 		0,
 		0,
-		logproto.BACKWARD,
+		logproto.Direction_BACKWARD,
 		1000,
 		[]string{"0_of_1"},
 		nil,

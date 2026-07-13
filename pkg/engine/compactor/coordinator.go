@@ -461,7 +461,7 @@ func taskSectionIDs(runs []compactionv2pb.RunRef) []string {
 // SectionRef's identity is {ObjectPath, SectionIndex, labelTuple}. Components
 // are separated by \x00 (which cannot occur in object paths or label values) to
 // keep the encoding unambiguous. Callers may reuse the same [buf] across calls.
-func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []string {
+func logTaskSectionIDs(runs []compactionv2pb.RunRef, buf *bytes.Buffer) []string {
 	var ids []string
 	for _, r := range runs {
 		for _, s := range r.Sections {

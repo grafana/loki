@@ -61,8 +61,8 @@ func TestBuildLogMergePlan(t *testing.T) {
 	task := &compactionv2pb.TaskSpec{
 		Tenant:     "t1",
 		SortSchema: []string{"label:service_name"},
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
 	}
 
@@ -81,7 +81,7 @@ func TestBuildLogMergePlan(t *testing.T) {
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",
-		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0"}}}},
+		Runs:   []compactionv2pb.RunRef{{Sections: []compactionv2pb.SectionRef{{ObjectPath: "logs/log-0"}}}},
 	}
 	p2 := buildLogMergePlan("t1", window, task2, "out2")
 	p2Root, err := p2.Root()

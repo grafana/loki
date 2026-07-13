@@ -187,14 +187,14 @@ func sectionRefsFor(indexes []indexEntry) []compactionv2pb.SectionRef {
 // logSectionRefsFor reads an index object's stats sections and
 // produces compactionv2pb.SectionRef values (one per stats row) plus the
 // tenant's sort schema.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]*compactionv2pb.SectionRef, []string, error) {
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]compactionv2pb.SectionRef, []string, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	var (
-		refs           []*compactionv2pb.SectionRef
+		refs           []compactionv2pb.SectionRef
 		schema         []string
 		reader         stats.Reader
 		sortSchemaLbls []string
@@ -252,7 +252,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					schemaDerived = true
 				}
 
-				ref := &compactionv2pb.SectionRef{
+				ref := compactionv2pb.SectionRef{
 					ObjectPath:       st.ObjectPath,
 					SectionIndex:     st.SectionIndex,
 					MinTimestamp:     st.MinTimestamp,

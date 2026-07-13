@@ -107,7 +107,7 @@ func buildSingleColumnStatsDataset(t *testing.T) (Dataset, []Column) {
 		{
 			Desc: ColumnDesc{
 				Tag:        "value",
-				Type:       ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
+				Type:       ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount:  1000,
 				PagesCount: 3,
 			},

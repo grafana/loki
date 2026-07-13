@@ -141,13 +141,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	seen := make(map[string]struct{})
 	var paths []string
 	for _, run := range node.Runs {
-		if run == nil {
-			continue
-		}
 		for _, sec := range run.Sections {
-			if sec == nil {
-				continue
-			}
 			if _, ok := seen[sec.ObjectPath]; ok {
 				continue
 			}

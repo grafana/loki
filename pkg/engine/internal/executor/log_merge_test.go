@@ -126,10 +126,10 @@ func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
 	node := &physical.LogMerge{
 		Tenant:     tenant,
 		SortSchema: sortSchema,
-		Runs: []*compactionv2pb.RunRef{
+		Runs: []compactionv2pb.RunRef{
 			// objA is referenced twice (and by two runs) to exercise dedup.
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objA"}}},
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objB"}, {ObjectPath: "objA"}}},
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objA"}}},
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objB"}, {ObjectPath: "objA"}}},
 		},
 	}
 
@@ -175,8 +175,8 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 	node := &physical.LogMerge{
 		Tenant:     tenant,
 		SortSchema: sortSchema,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objMulti"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objMulti"}}},
 		},
 	}
 
@@ -313,8 +313,8 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		Tenant:          tenant,
 		SortSchema:      sortSchema,
 		OutputIndexPath: "out/index",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
 		},
 	}
 
@@ -384,8 +384,8 @@ func TestDoLogObjectMerge_ExistingOutputShortCircuits(t *testing.T) {
 		Tenant:          tenant,
 		SortSchema:      sortSchema,
 		OutputIndexPath: "out/index",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
 	}
 
