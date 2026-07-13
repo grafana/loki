@@ -3956,34 +3956,8 @@ type AttachedDiskInitializeParams struct {
 	// boot disks, the default size is the size of the sourceImage.
 	// If you do not specify a sourceImage, the default disk size
 	// is 500 GB.
-	DiskSizeGb int64 `json:"diskSizeGb,omitempty,string"`
-	// DiskType: Specifies the disk type to use to create the instance. If not
-	// specified,
-	// the default is pd-standard, specified using the full URL.
-	// For
-	// example:
-	//
-	// https://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/pd-standard
-	//
-	//
-	// For a full list of acceptable values, seePersistent disk
-	// types. If you specify this field when creating a VM, you can provide
-	// either the full or partial URL. For example, the following values
-	// are
-	// valid:
-	//
-	//
-	//      -
-	// https://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/diskType
-	//
-	//    - projects/project/zones/zone/diskTypes/diskType
-	//    - zones/zone/diskTypes/diskType
-	//
-	//
-	// If you specify this field when creating or updating an instance template
-	// or all-instances configuration, specify the type of the disk, not the
-	// URL. For example: pd-standard.
-	DiskType string `json:"diskType,omitempty"`
+	DiskSizeGb int64  `json:"diskSizeGb,omitempty,string"`
+	DiskType   string `json:"diskType,omitempty"`
 	// EnableConfidentialCompute: Whether this disk is using confidential compute
 	// mode.
 	EnableConfidentialCompute bool `json:"enableConfidentialCompute,omitempty"`
@@ -12511,6 +12485,7 @@ type ConfidentialInstanceConfig struct {
 	// confidential instance.
 	//
 	// Possible values:
+	//   "CCA" - Arm Confidential Compute Architecture.
 	//   "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED" - No type specified. Do not use
 	// this value.
 	//   "SEV" - AMD Secure Encrypted Virtualization.
@@ -17388,6 +17363,21 @@ type FirewallPolicyRule struct {
 	// or
 	// 'mirror'. Cannot be specified for other actions.
 	SecurityProfileGroup string `json:"securityProfileGroup,omitempty"`
+	// TargetForwardingRules: A list of forwarding rules to which this rule
+	// applies.
+	// This field allows you to control which load balancers get this rule.
+	// For example, the following are valid values:
+	//
+	//
+	//      -
+	// https://www.googleapis.com/compute/v1/projects/project/global/forwardingRules/forwardingRule
+	//      -
+	// https://www.googleapis.com/compute/v1/projects/project/regions/region/forwardingRules/forwardingRule
+	//      - projects/project/global/
+	//      forwardingRules/forwardingRule
+	//      - projects/project/regions/region/forwardingRules/
+	//      forwardingRule
+	TargetForwardingRules []string `json:"targetForwardingRules,omitempty"`
 	// TargetResources: A list of network resource URLs to which this rule applies.
 	//  This field
 	// allows you to control which network's VMs get this rule.  If this field
@@ -17410,6 +17400,13 @@ type FirewallPolicyRule struct {
 	// instances that are
 	// applied with this rule.
 	TargetServiceAccounts []string `json:"targetServiceAccounts,omitempty"`
+	// TargetType: Target types of the firewall policy rule.
+	// Default value is INSTANCES.
+	//
+	// Possible values:
+	//   "INSTANCES"
+	//   "INTERNAL_MANAGED_LB"
+	TargetType string `json:"targetType,omitempty"`
 	// TlsInspect: Boolean flag indicating if the traffic should be TLS
 	// decrypted.
 	// Can be set only if action = 'apply_security_profile_group' and cannot
@@ -21382,6 +21379,7 @@ type GuestOsFeature struct {
 	//
 	// Possible values:
 	//   "BARE_METAL_LINUX_COMPATIBLE"
+	//   "CCA_CAPABLE"
 	//   "FEATURE_TYPE_UNSPECIFIED"
 	//   "GVNIC"
 	//   "IDPF"
@@ -43236,7 +43234,13 @@ type NetworkEndpointGroup struct {
 	Name string `json:"name,omitempty"`
 	// Network: The URL of the network to which all network endpoints in the NEG
 	// belong.
-	// Uses default project network if unspecified.
+	// For networkEndpointType GCE_VM_IP_PORT,GCE_VM_IP_PORTMAP or
+	// NON_GCP_PRIVATE_IP_PORT,
+	// if this field is not specified, a default network will be used.
+	// This field cannot be set for NEGs with networkEndpointType set toSERVERLESS
+	// or PRIVATE_SERVICE_CONNECT and for
+	// global NEGs.
+	// For all other network endpoint types, this field is required.
 	Network string `json:"network,omitempty"`
 	// NetworkEndpointType: Type of network endpoints in this network endpoint
 	// group. Can be one ofGCE_VM_IP, GCE_VM_IP_PORT,NON_GCP_PRIVATE_IP_PORT,
