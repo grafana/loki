@@ -113,7 +113,7 @@ define run_in_container
 			fi; \
 		fi))
 
-	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "USER_UID=$(shell id -u)" --build-arg "USER_GID=$(shell id -g)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
 		-f loki-build-image/Dockerfile \
 		-t $(MAKEFILE_IMAGE) \
 		.
