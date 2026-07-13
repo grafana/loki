@@ -423,8 +423,6 @@ func (c *protobufCodec) streamStateFromPbStreamState(state wirepb.StreamState) (
 		return workflow.StreamStateIdle, nil
 	case wirepb.STREAM_STATE_OPEN:
 		return workflow.StreamStateOpen, nil
-	case wirepb.STREAM_STATE_BLOCKED:
-		return workflow.StreamStateBlocked, nil
 	case wirepb.STREAM_STATE_CLOSED:
 		return workflow.StreamStateClosed, nil
 	default:
@@ -739,8 +737,6 @@ func (c *protobufCodec) streamStateToPbStreamState(state workflow.StreamState) w
 		return wirepb.STREAM_STATE_IDLE
 	case workflow.StreamStateOpen:
 		return wirepb.STREAM_STATE_OPEN
-	case workflow.StreamStateBlocked:
-		return wirepb.STREAM_STATE_BLOCKED
 	case workflow.StreamStateClosed:
 		return wirepb.STREAM_STATE_CLOSED
 	default:

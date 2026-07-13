@@ -258,6 +258,8 @@ enum StreamState {
   STREAM_STATE_INVALID = 0; // Invalid/unspecified state.
   STREAM_STATE_IDLE = 1; // Stream waiting for sender and receiver.
   STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
-  STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
   STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
+
+  reserved 3;
+  reserved "STREAM_STATE_BLOCKED";
 }

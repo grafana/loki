@@ -167,12 +167,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				State:    workflow.StreamStateOpen,
 			},
 		},
-		"StreamStatusMessage with Blocked state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateBlocked,
-			},
-		},
 		"StreamStatusMessage with Closed state": {
 			message: StreamStatusMessage{
 				StreamID: streamULID,
@@ -359,7 +353,6 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 	states := []workflow.StreamState{
 		workflow.StreamStateIdle,
 		workflow.StreamStateOpen,
-		workflow.StreamStateBlocked,
 		workflow.StreamStateClosed,
 	}
 

@@ -91,10 +91,6 @@ const (
 	// StreamStateOpen represents a stream that is open and transmitting data.
 	StreamStateOpen
 
-	// StreamStateBlocked represents a stream that is blocked (by backpressure)
-	// on sending data.
-	StreamStateBlocked
-
 	// StreamStateClosed represents a stream that is closed and no longer
 	// transmitting data.
 	StreamStateClosed
@@ -103,7 +99,6 @@ const (
 var streamStates = [...]string{
 	"Idle",
 	"Open",
-	"Blocked",
 	"Closed",
 }
 
