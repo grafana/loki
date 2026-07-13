@@ -32,7 +32,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: types.IndexTypeTSDB,
+		IndexType: types.TSDBType,
 		Schema:    "v13",
 	},
 }

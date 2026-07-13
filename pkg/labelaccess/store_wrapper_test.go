@@ -196,7 +196,7 @@ func getLocalStore(t *testing.T) storage.Store {
 		Configs: []storage_config.PeriodConfig{
 			{
 				From:       storage_config.DayTime{Time: start},
-				IndexType:  loki_types.IndexTypeTSDB,
+				IndexType:  loki_types.TSDBType,
 				ObjectType: loki_types.StorageTypeFileSystem,
 				Schema:     "v13",
 				RowShards:  16,
