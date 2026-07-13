@@ -4,6 +4,34 @@ Status of generating Loki's protobuf Go code with
 [wiresmith](https://github.com/grafana/wiresmith) instead of the current
 `protoc --gogoslick_out` toolchain.
 
+> **2026-07-13 (branch `wiresmith`):** re-pinned `go.mod` to the **v0.9.0**
+> release tag (previously `v0.0.0-20260706094138-fc34fadb1d56` / `fc34fad`).
+> `fc34fad` lived on the since-deleted `databases` branch and was never an
+> ancestor of `grafana/wiresmith` main, so cold-cache/direct-VCS resolution of
+> that pseudo-version fails with "unknown revision" — v0.9.0 is the
+> tag-resolvable release that supersedes it. v0.9.0 adds the file-level
+> `no_registration` option (opt-in; unused here) and an empty-message
+> unused-`protowire`-import prune, over `fc34fad`. Also caught up on 48
+> upstream commits (`upstream/main` merge, not rebase — the branch carries a
+> prior catch-up merge commit whose reconciliation a plain rebase would have
+> flattened). Regen delta vs the committed `.pb.go`: exactly the two proto
+> groups upstream's own schema changes touched (`compactionv2`: new
+> `uncompressed_size` field, `section_index` int32→int64, new `TaskSpec.
+> sort_schema`; `physicalpb`: the `LogMerge` message upstream added), byte-
+> stable across two consecutive regen runs; every other migrated proto group
+> regenerates identical to what's committed. The merge intersected upstream's
+> new compaction-v2 `Run`/`CalculateRuns`/`IsTerminal` refactor (written
+> against gogoproto's pointer-typed `SectionRef`/`RunRef`/`TaskSpec`) with our
+> value-type convention (no `pointer=true` on those messages); `go build` +
+> `go vet` surfaced every mismatch as a compile error (nil checks on
+> now-nonnullable loop variables, a stray `*LogMerge` alloc, pointer-typed
+> slice signatures) — no silent no-op mutations found in the newly-merged
+> code. `go vet` findings unchanged from the pre-merge baseline (7
+> pre-existing, unrelated). Touched + named proto-adjacent packages
+> (dataobj, engine, logproto, queryrange, resultscache, ruler/rulespb,
+> storage, distributor, indexgateway, logql, validation, querier, loki,
+> logcli) all green.
+>
 > **2026-07-06 (branch `wiresmith`):** re-pinned `go.mod` to
 > `v0.0.0-20260706094138-fc34fadb1d56` (`fc34fad`) — the flat-file import-keying
 > flip to protoc/buf path-parity. wiresmith now keys every compiled file by its
@@ -448,11 +476,9 @@ handling.
 ## Reproduction
 
 - Regenerate: `make wiresmith-protos BUILD_IN_CONTAINER=false` (the public
-  `github.com/grafana/wiresmith@fc34fad` binary on PATH —
-  `go install github.com/grafana/wiresmith/cmd/wiresmith@v0.0.0-20260706094138-fc34fadb1d56`).
-  Targets post-#142 merged main (`databases` → `grafana/wiresmith` main), at the
-  flat-file path-parity keying flip. Reproducible — byte-identical output across
-  runs.
+  `github.com/grafana/wiresmith@v0.9.0` release binary on PATH —
+  `go install github.com/grafana/wiresmith/cmd/wiresmith@v0.9.0`).
+  Reproducible — byte-identical output across runs.
 - The gogo pipeline (`make protos`) still generates the remaining gogo protos
   (push/push-rf1, indexgateway, vendored Thanos/dskit) and excludes the
   migrated ones via `WIRESMITH_PROTO_DEFS`.
