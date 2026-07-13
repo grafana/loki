@@ -7,7 +7,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -92,10 +91,6 @@ const (
 	// StreamStateOpen represents a stream that is open and transmitting data.
 	StreamStateOpen
 
-	// StreamStateBlocked represents a stream that is blocked (by backpressure)
-	// on sending data.
-	StreamStateBlocked
-
 	// StreamStateClosed represents a stream that is closed and no longer
 	// transmitting data.
 	StreamStateClosed
@@ -104,7 +99,6 @@ const (
 var streamStates = [...]string{
 	"Idle",
 	"Open",
-	"Blocked",
 	"Closed",
 }
 
@@ -130,10 +124,6 @@ type TaskStatus struct {
 
 	// Capture contains observations about the execution of the task.
 	Capture *xcap.Capture
-
-	// Statistics report analytics about the lifetime of a task. Only set
-	// for terminal task states (see [TaskState.Terminal]).
-	Statistics *stats.Result
 }
 
 // TaskState represents the state of a Task. It is sent as an event by a

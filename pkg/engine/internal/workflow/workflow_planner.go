@@ -613,7 +613,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+					stream := &Stream{ULID: ulid.Make()}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
@@ -637,7 +637,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+					stream := &Stream{ULID: ulid.Make()}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}

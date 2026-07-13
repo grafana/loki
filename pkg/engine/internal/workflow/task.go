@@ -48,7 +48,4 @@ type CachedSources [][]byte
 type Stream struct {
 	// ULID is a unique identifier of the Stream.
 	ULID ulid.ULID
-
-	// TenantID is a tenant associated with this stream.
-	TenantID string
 }

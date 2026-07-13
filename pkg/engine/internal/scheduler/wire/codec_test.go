@@ -104,18 +104,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"TaskCancelMessage": {
 			message: TaskCancelMessage{ID: taskULID},
 		},
-		"TaskFlagMessage not interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: false,
-			},
-		},
-		"TaskFlagMessage interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: true,
-			},
-		},
 		"TaskStatusMessage with Created state": {
 			message: TaskStatusMessage{
 				ID: taskULID,
@@ -165,12 +153,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 			message: StreamStatusMessage{
 				StreamID: streamULID,
 				State:    workflow.StreamStateOpen,
-			},
-		},
-		"StreamStatusMessage with Blocked state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateBlocked,
 			},
 		},
 		"StreamStatusMessage with Closed state": {
@@ -359,7 +341,6 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 	states := []workflow.StreamState{
 		workflow.StreamStateIdle,
 		workflow.StreamStateOpen,
-		workflow.StreamStateBlocked,
 		workflow.StreamStateClosed,
 	}
 
