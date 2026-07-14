@@ -81,6 +81,7 @@ type WorkerParams struct {
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -174,6 +175,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		IndexobjCfg:    params.IndexobjCfg,
 
 		IndexMergeObserver: params.IndexMergeObserver,
+		LogMergeObserver:   params.LogMergeObserver,
 	})
 	if err != nil {
 		return nil, err

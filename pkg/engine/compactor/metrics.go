@@ -5,6 +5,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 )
 
 // Label names for metrics.
@@ -206,25 +208,64 @@ func (m *coordinatorMetrics) recordTenantCycle(
 	}
 }
 
-// workerMetrics holds the worker-side metrics that the IndexMerge executor
-// emits.
+// workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge
+// executors emit.
 type workerMetrics struct {
 	outputBytesCompressed   *prometheus.HistogramVec // tenant
 	outputBytesUncompressed *prometheus.HistogramVec // tenant
+
+	logMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
+	logMergeDurationSeconds         *prometheus.HistogramVec // tenant
+	logMergeOutputRecords           *prometheus.HistogramVec // tenant
+	logMergeOutputStreams           *prometheus.HistogramVec // tenant
+	logMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
+	logMergeOutputBytesUncompressed *prometheus.HistogramVec // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
+	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
+	countBuckets := prometheus.ExponentialBuckets(1, 2, 16)
+	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_compressed",
 			Help:    "Size of the bytes uploaded to object storage per successful IndexMerge task (post-encoding, what's stored at rest). One observation per task.",
-			Buckets: prometheus.ExponentialBuckets(1024, 2, 21),
+			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 		outputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_output_bytes_uncompressed",
 			Help:    "Estimated in-memory size of the IndexMerge builder (postings + stats sections, pre-encoding) at Flush. One observation per task.",
-			Buckets: prometheus.ExponentialBuckets(1024, 2, 21),
+			Buckets: byteBuckets,
+		}, []string{labelTenant}),
+		logMergeTasksTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_merge_tasks_total",
+			Help: "LogMerge tasks by outcome. success = compacted log objects uploaded, short_circuit = output index already present, empty = no source data or records.",
+		}, []string{labelTenant, labelOutcome}),
+		logMergeDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_duration_seconds",
+			Help:    "Wall-clock duration of a LogMerge task on the worker.",
+			Buckets: durationBuckets,
+		}, []string{labelTenant}),
+		logMergeOutputRecords: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_output_records",
+			Help:    "Number of log records written by a successful LogMerge task.",
+			Buckets: countBuckets,
+		}, []string{labelTenant}),
+		logMergeOutputStreams: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_output_streams",
+			Help:    "Number of output streams written by a successful LogMerge task.",
+			Buckets: countBuckets,
+		}, []string{labelTenant}),
+		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
+			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
+			Buckets: byteBuckets,
+		}, []string{labelTenant}),
+		logMergeOutputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_log_merge_output_bytes_uncompressed",
+			Help:    "Estimated uncompressed bytes of log records written by a successful LogMerge task.",
+			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 	}
 }
@@ -240,5 +281,34 @@ func (m *workerMetrics) ObserveIndexMergeOutput(tenant string, compressed, uncom
 	}
 	if uncompressed > 0 {
 		m.outputBytesUncompressed.WithLabelValues(tenant).Observe(float64(uncompressed))
+	}
+}
+
+// ObserveLogMerge satisfies executor.LogMergeObserver. Called by the LogMerge
+// executor on the worker after each task attempt.
+func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeObservedStats, duration time.Duration) {
+	if m == nil {
+		return
+	}
+	outcome := stats.Outcome
+	if outcome == "" {
+		outcome = "unknown"
+	}
+	m.logMergeTasksTotal.WithLabelValues(tenant, outcome).Inc()
+	m.logMergeDurationSeconds.WithLabelValues(tenant).Observe(duration.Seconds())
+	if stats.Outcome != "success" {
+		return
+	}
+	if stats.OutputRecords > 0 {
+		m.logMergeOutputRecords.WithLabelValues(tenant).Observe(float64(stats.OutputRecords))
+	}
+	if stats.OutputStreams > 0 {
+		m.logMergeOutputStreams.WithLabelValues(tenant).Observe(float64(stats.OutputStreams))
+	}
+	if stats.OutputBytesCompressed > 0 {
+		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
+	}
+	if stats.OutputBytesUncompressed > 0 {
+		m.logMergeOutputBytesUncompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesUncompressed))
 	}
 }

@@ -110,6 +110,7 @@ type Config struct {
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -217,6 +218,7 @@ func (w *Worker) run(ctx context.Context) error {
 			IndexobjCfg:    w.config.IndexobjCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
+			LogMergeObserver:   w.config.LogMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
