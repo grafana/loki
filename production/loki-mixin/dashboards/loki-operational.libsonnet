@@ -17,7 +17,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  'Backend Path',
                                  if !$._config.operational.memcached then 'Memcached',
                                  if !$._config.operational.consul then 'Consul',
-                                 if !$._config.operational.dynamo then 'Dynamo',
                                  if !$._config.operational.gcs then 'GCS',
                                  if !$._config.operational.s3 then 'S3',
                                  if !$._config.operational.azureBlob then 'Azure Blob',
