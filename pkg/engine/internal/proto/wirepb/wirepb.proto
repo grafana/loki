@@ -53,15 +53,15 @@ message MessageFrame {
 
     TaskAssignMessage task_assign = 3;
     TaskCancelMessage task_cancel = 4;
-    TaskStatusMessage task_status = 6;
+    TaskResultMessage task_result = 12;
 
     StreamBindMessage stream_bind = 7;
     StreamDataMessage stream_data = 8;
     StreamStatusMessage stream_status = 9;
   }
 
-  reserved 5;
-  reserved "task_flag";
+  reserved 5, 6;
+  reserved "task_flag", "task_status";
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -115,15 +115,15 @@ message TaskCancelMessage {
   ];
 }
 
-// TaskStatusMessage is sent by the worker to the scheduler to inform the
-// scheduler of the current status of a task.
-message TaskStatusMessage {
+// TaskResultMessage is sent by the worker to the scheduler with the terminal
+// result of a task.
+message TaskResultMessage {
   ulid.loki.v1.ProtoULID id = 1 [
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
-  TaskStatus status = 2 [(gogoproto.nullable) = false];
+  TaskResult result = 2 [(gogoproto.nullable) = false];
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -213,11 +213,11 @@ message Stream {
   reserved "tenant_id";
 }
 
-// TaskStatus represents the current status of a task.
-message TaskStatus {
-  TaskState state = 1;
+// TaskResult represents the terminal result of a task.
+message TaskResult {
+  TaskOutcome outcome = 1;
 
-  // Error is set only when state is TASK_STATE_FAILED.
+  // Error is set only when outcome is TASK_OUTCOME_FAILED.
   TaskError error = 2;
 
   // Capture is the capture data for this task, if available.
@@ -232,15 +232,12 @@ message TaskError {
   string description = 1;
 }
 
-// TaskState represents the execution state of a task.
-enum TaskState {
-  TASK_STATE_INVALID = 0; // Invalid/unspecified state.
-  TASK_STATE_CREATED = 1; // Created but not given to Runner.
-  TASK_STATE_PENDING = 2; // Pending execution.
-  TASK_STATE_RUNNING = 3; // Currently being executed.
-  TASK_STATE_COMPLETED = 4; // Completed successfully.
-  TASK_STATE_CANCELLED = 5; // Cancelled.
-  TASK_STATE_FAILED = 6; // Failed during execution.
+// TaskOutcome represents the terminal outcome of a task.
+enum TaskOutcome {
+  TASK_OUTCOME_UNSPECIFIED = 0;
+  TASK_OUTCOME_COMPLETED = 1;
+  TASK_OUTCOME_CANCELLED = 2;
+  TASK_OUTCOME_FAILED = 3;
 }
 
 // StreamState represents the state of a stream.

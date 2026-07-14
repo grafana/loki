@@ -168,14 +168,37 @@ func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {
 		}
 		th.runJob(t.Context(), job)
 
-		finalState := peers.waitForTerminalTaskState(t, 2*time.Second)
-		require.Equal(t, workflow.TaskStateCompleted, finalState, "expected task to complete even with one closed source")
+		outcome := peers.waitForTaskResult(t, 2*time.Second)
+		require.Equal(t, workflow.TaskOutcomeCompleted, outcome, "expected task to complete even with one closed source")
+		require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
 	})
 }
 
+func TestThread_runJob_ReportsInvalidTask(t *testing.T) {
+	peers := newTestPeerPair(t)
+
+	job := &threadJob{
+		Context:   t.Context(),
+		Scheduler: peers.workerPeer,
+		Task: &workflow.Task{
+			ULID:     ulid.Make(),
+			Fragment: physical.FromGraph(dag.Graph[physical.Node]{}),
+		},
+		Sinks: make(map[ulid.ULID]*streamSink),
+		Close: func() {},
+	}
+
+	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+	th.runJob(t.Context(), job)
+
+	outcome := peers.waitForTaskResult(t, 2*time.Second)
+	require.Equal(t, workflow.TaskOutcomeFailed, outcome)
+	require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
+}
+
 type testPeerPair struct {
-	workerPeer *wire.Peer
-	taskStates chan workflow.TaskState
+	workerPeer  *wire.Peer
+	taskResults chan workflow.TaskOutcome
 }
 
 func newTestPeerPair(t *testing.T) *testPeerPair {
@@ -206,15 +229,15 @@ func newTestPeerPair(t *testing.T) *testPeerPair {
 	case schedulerConn = <-acceptedConn:
 	}
 
-	pair := &testPeerPair{taskStates: make(chan workflow.TaskState, 10)}
+	pair := &testPeerPair{taskResults: make(chan workflow.TaskOutcome, 10)}
 
 	schedulerPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Metrics: wire.NewMetrics(),
 		Conn:    schedulerConn,
 		Handler: func(_ context.Context, _ *wire.Peer, message wire.Message) error {
-			if status, ok := message.(wire.TaskStatusMessage); ok {
-				pair.taskStates <- status.Status.State
+			if result, ok := message.(wire.TaskResultMessage); ok {
+				pair.taskResults <- result.Result.Outcome
 			}
 			return nil
 		},
@@ -236,20 +259,14 @@ func newTestPeerPair(t *testing.T) *testPeerPair {
 	return pair
 }
 
-func (p *testPeerPair) waitForTerminalTaskState(t *testing.T, timeout time.Duration) workflow.TaskState {
+func (p *testPeerPair) waitForTaskResult(t *testing.T, timeout time.Duration) workflow.TaskOutcome {
 	t.Helper()
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	for {
-		select {
-		case state := <-p.taskStates:
-			if state == workflow.TaskStateCompleted || state == workflow.TaskStateFailed {
-				return state
-			}
-		case <-timer.C:
-			t.Fatal("timed out waiting for terminal task state")
-		}
+	select {
+	case outcome := <-p.taskResults:
+		return outcome
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for task result")
+		return 0
 	}
 }

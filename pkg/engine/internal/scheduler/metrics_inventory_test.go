@@ -29,9 +29,11 @@ func TestMetricInventory(t *testing.T) {
 		"loki_engine_scheduler_lock_wait_seconds":         {"lock", "mode", "reason"},
 		"loki_engine_scheduler_streams_total":             {"state"},
 		"loki_engine_scheduler_task_exec_seconds":         nil,
+		"loki_engine_scheduler_task_results_total":        {"outcome"},
+		"loki_engine_scheduler_tasks_assigned_total":      nil,
+		"loki_engine_scheduler_tasks_registered_total":    nil,
 		"loki_engine_scheduler_task_queue_seconds":        nil,
 		"loki_engine_scheduler_task_requeue_total":        nil,
-		"loki_engine_scheduler_tasks_total":               {"state"},
 	}
 
 	require.Equal(t, expected, metricInventory(t, newMetrics()))

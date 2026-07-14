@@ -161,7 +161,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		manifest := &workflow.Manifest{
 			Streams: []*workflow.Stream{inputStream, resultsStream},
 			Tasks:   []*workflow.Task{task},
-			TaskEventHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskStatus) {
+			TaskResultHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskResult) {
 				// Empty
 			},
 			StreamEventHandler: func(_ context.Context, _ *workflow.Stream, _ workflow.StreamState) {
