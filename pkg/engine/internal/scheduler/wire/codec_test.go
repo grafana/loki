@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -105,18 +104,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"TaskCancelMessage": {
 			message: TaskCancelMessage{ID: taskULID},
 		},
-		"TaskFlagMessage not interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: false,
-			},
-		},
-		"TaskFlagMessage interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: true,
-			},
-		},
 		"TaskStatusMessage with Created state": {
 			message: TaskStatusMessage{
 				ID: taskULID,
@@ -130,18 +117,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				ID: taskULID,
 				Status: workflow.TaskStatus{
 					State: workflow.TaskStateRunning,
-				},
-			},
-		},
-		"TaskStatusMessage with Running state and ContributingTimeRange": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-					ContributingTimeRange: workflow.ContributingTimeRange{
-						Timestamp: time.Now().Add(-time.Minute),
-						LessThan:  true,
-					},
 				},
 			},
 		},
@@ -178,12 +153,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 			message: StreamStatusMessage{
 				StreamID: streamULID,
 				State:    workflow.StreamStateOpen,
-			},
-		},
-		"StreamStatusMessage with Blocked state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateBlocked,
 			},
 		},
 		"StreamStatusMessage with Closed state": {
@@ -372,7 +341,6 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 	states := []workflow.StreamState{
 		workflow.StreamStateIdle,
 		workflow.StreamStateOpen,
-		workflow.StreamStateBlocked,
 		workflow.StreamStateClosed,
 	}
 

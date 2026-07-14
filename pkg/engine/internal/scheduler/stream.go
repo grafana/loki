@@ -22,10 +22,9 @@ type stream struct {
 }
 
 var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
-	workflow.StreamStateIdle:    {workflow.StreamStateOpen, workflow.StreamStateBlocked, workflow.StreamStateClosed},
-	workflow.StreamStateOpen:    {workflow.StreamStateBlocked, workflow.StreamStateClosed},
-	workflow.StreamStateBlocked: {workflow.StreamStateOpen, workflow.StreamStateClosed},
-	workflow.StreamStateClosed:  {}, // Closed streams cannot transition to any other state.
+	workflow.StreamStateIdle:   {workflow.StreamStateOpen, workflow.StreamStateClosed},
+	workflow.StreamStateOpen:   {workflow.StreamStateClosed},
+	workflow.StreamStateClosed: {}, // Closed streams cannot transition to any other state.
 }
 
 // setState updates the state of the stream. setState returns an error if the

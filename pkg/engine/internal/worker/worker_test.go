@@ -137,8 +137,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a stream that will feed data to the TopK node
 		inputStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 
 		// Create a workflow task manually with the TopK node and stream source
@@ -154,8 +153,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a results stream for the workflow output
 		resultsStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 		task.Sinks[topkNode] = []*workflow.Stream{resultsStream}
 

@@ -550,6 +550,7 @@ func (parser *Parser) parseDocumentStart(event *Event, implicit bool) error {
 			StartMark: token.StartMark,
 			EndMark:   token.EndMark,
 		}
+		parser.setEventComments(event)
 		parser.skipToken()
 	}
 

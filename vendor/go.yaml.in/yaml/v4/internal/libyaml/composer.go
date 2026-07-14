@@ -163,6 +163,11 @@ func (c *Composer) createStreamNode() *Node {
 	if !c.Textless && c.event.Type != NO_EVENT {
 		n.Line = c.event.StartMark.Line
 		n.Column = c.event.StartMark.Column
+		if c.event.Type == STREAM_END_EVENT {
+			n.HeadComment = string(c.event.HeadComment)
+			n.LineComment = string(c.event.LineComment)
+			n.FootComment = string(c.event.FootComment)
+		}
 	}
 	return n
 }
