@@ -650,15 +650,20 @@ func TestScheduler_worker(t *testing.T) {
 		}
 	})
 
-	t.Run("Owned tasks are canceled upon connection loss", func(t *testing.T) {
+	t.Run("Owned tasks and their sinks terminate upon connection loss", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
-			var taskResult atomic.Pointer[workflow.TaskResult]
-			handler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
-				taskResult.Store(&result)
+			taskResults := make(chan workflow.TaskResult, 1)
+			streamClosed := make(chan struct{}, 1)
+			taskHandler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
+				taskResults <- result
+			}
+			streamHandler := func(_ context.Context, _ *workflow.Stream, state workflow.StreamState) {
+				if state == workflow.StreamStateClosed {
+					streamClosed <- struct{}{}
+				}
 			}
 
 			sched := newTestScheduler(t)
-
 			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 			defer cancel()
 
@@ -666,7 +671,6 @@ func TestScheduler_worker(t *testing.T) {
 			require.NoError(t, err)
 
 			messages := make(chan wire.Message, 10)
-
 			peer := wire.Peer{
 				Logger:  log.NewNopLogger(),
 				Metrics: wire.NewMetrics(),
@@ -681,47 +685,57 @@ func TestScheduler_worker(t *testing.T) {
 			}
 			go func() { _ = peer.Serve(ctx) }()
 
-			// Send a ready message so we get a task as soon as we create one.
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}))
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
 
-			var (
-				exampleTask = &workflow.Task{ULID: ulid.Make()}
-				manifest    = &workflow.Manifest{
-					Tasks:              []*workflow.Task{exampleTask},
-					StreamEventHandler: nopStreamHandler,
-					TaskResultHandler:  handler,
-				}
-			)
-			require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
-			require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
+			stream := &workflow.Stream{ULID: ulid.Make()}
+			exampleTask := &workflow.Task{
+				ULID:  ulid.Make(),
+				Sinks: map[physical.Node][]*workflow.Stream{nil: {stream}},
+			}
+			manifest := &workflow.Manifest{
+				Streams:            []*workflow.Stream{stream},
+				Tasks:              []*workflow.Task{exampleTask},
+				StreamEventHandler: streamHandler,
+				TaskResultHandler:  taskHandler,
+			}
+			require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+			require.NoError(t, sched.Start(t.Context(), exampleTask))
 
-			// Wait for assignment.
 		WaitAssign:
 			for {
 				select {
 				case <-ctx.Done():
-					require.Fail(t, "time out before receiving expected message")
+					t.Fatal("timed out waiting for assignment")
 				case msg := <-messages:
-					switch msg := msg.(type) {
+					switch msg.(type) {
 					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
+						continue
 					case wire.TaskAssignMessage:
 						break WaitAssign
 					default:
-						require.Fail(t, "Unexpected message type", "Unexpected message type %T", msg)
+						t.Fatalf("unexpected message type %T", msg)
 					}
 				}
 			}
 
 			synctest.Wait()
 			guard := sched.resourcesMut.RLock("test_wait_assignment_owner")
-			require.NotNil(t, sched.tasks[exampleTask.ULID].owner, "assignment ownership should be installed after ACK")
+			require.NotNil(t, sched.tasks[exampleTask.ULID].owner)
 			guard.RUnlock()
 
-			require.NoError(t, conn.Close(), "Closing connection should succeed")
-			synctest.Wait()
-			require.True(t, taskResult.Load().Outcome.Valid(), "owned task should produce a terminal result")
+			require.NoError(t, conn.Close())
+			select {
+			case <-ctx.Done():
+				t.Fatal("timed out waiting for disconnected task result")
+			case result := <-taskResults:
+				require.True(t, result.Outcome.Valid())
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatal("timed out waiting for disconnected task sink closure")
+			case <-streamClosed:
+			}
 		})
 	})
 
@@ -1397,6 +1411,49 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestScheduler_DisconnectAfterAssignmentAckBeforeFinalize(t *testing.T) {
+	var (
+		result       workflow.TaskResult
+		streamClosed bool
+	)
+	taskHandler := func(_ context.Context, _ *workflow.Task, taskResult workflow.TaskResult) {
+		result = taskResult
+	}
+	streamHandler := func(_ context.Context, _ *workflow.Stream, state workflow.StreamState) {
+		streamClosed = state == workflow.StreamStateClosed
+	}
+
+	sched := newTestScheduler(t)
+	stream := &workflow.Stream{ULID: ulid.Make()}
+	workflowTask := &workflow.Task{
+		ULID:  ulid.Make(),
+		Sinks: map[physical.Node][]*workflow.Stream{nil: {stream}},
+	}
+	manifest := &workflow.Manifest{
+		Streams:            []*workflow.Stream{stream},
+		Tasks:              []*workflow.Task{workflowTask},
+		StreamEventHandler: streamHandler,
+		TaskResultHandler:  taskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+	require.NoError(t, sched.Start(t.Context(), workflowTask))
+
+	tracked, err := sched.findTasks([]*workflow.Task{workflowTask})
+	require.NoError(t, err)
+	require.NoError(t, tracked[0].TryAssign(func() error { return nil }), "worker should accept assignment")
+
+	// The connection closes after the assignment ACK records assignTime, but
+	// before finalizeAssignment can install ownership.
+	var worker workerConn
+	worker.MarkClosed(context.Canceled)
+	sched.finalizeAssignment(t.Context(), tracked[0], &worker, nil)
+
+	require.Equal(t, workflow.TaskOutcomeFailed, result.Outcome)
+	require.ErrorIs(t, result.Error, context.Canceled)
+	require.True(t, streamClosed, "task sinks should close when finalization observes a disconnected worker")
+	require.Nil(t, tracked[0].owner, "disconnected worker must not gain task ownership")
 }
 
 func TestScheduler_assignmentMetricsUseBoundedLabels(t *testing.T) {

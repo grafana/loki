@@ -418,12 +418,16 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 // - Aborts all tasks assigned to the given worker.
 // - Removes the worker from the ready list.
 //
-// If reason is non-nil, tasks that were running normally on the worker are
-// marked as failed with the provided reason.
-//
-// If reason is nil, all tasks are marked as cancelled. Tasks which were pending
-// cancellation will be marked as Canceled regardless of reason.
+// If reason is non-nil, assigned tasks without a cancellation request produce
+// a failed result with the provided reason. If reason is nil, they produce a
+// cancelled result. Tasks with a cancellation request produce a cancelled
+// result regardless of reason.
 func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason error) {
+	// MarkClosed is synchronized with Assign. Any assignment accepted before
+	// this point is included in assigned; later ownership attempts are refused
+	// and handled by finalizeAssignment.
+	assigned := worker.MarkClosed(reason)
+
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -433,59 +437,67 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	assignGuard := s.assignMut.Lock("remove_worker")
 	defer assignGuard.Unlock()
 
-	for _, task := range worker.Assigned() {
-		pendingCancel := task.PendingCancel()
-		worker.Unassign(task)
-
-		// Even though the worker disconnected we still have some stats about
-		// the task that the handler may be interested in.
-		result := workflow.TaskResult{Capture: task.capture}
-		switch {
-		case pendingCancel:
-			// Cancellation had already been requested for this task. Honor that
-			// intent regardless of whether the worker disconnected cleanly or
-			// with an error.
-			result.Outcome = workflow.TaskOutcomeCancelled
-		case reason != nil:
-			result.Outcome = workflow.TaskOutcomeFailed
-			result.Error = reason
-		default:
-			result.Outcome = workflow.TaskOutcomeCancelled
-		}
-
-		if changed, _ := task.SetResult(s.metrics, result); !changed {
-			continue
-		}
-
-		switch result.Outcome {
-		case workflow.TaskOutcomeCancelled:
-			if pendingCancel {
-				// The worker disconnected before confirming a cancellation we
-				// had requested. Record it against the assigned-cancellation
-				// stat to match the disposition that [Scheduler.Cancel] would
-				// have produced had the worker survived long enough to confirm.
-				task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-			}
-			// Otherwise the worker disconnected cleanly with no pending
-			// cancellation request; we have no specific stat for that category
-			// today.
-		case workflow.TaskOutcomeFailed:
-			task.wfRegion.Record(StatFailedTasks.Observe(1))
-		}
-
-		task.RecordTerminalObservations(time.Now())
-
-		// We only need to inform the handler about the result. There's nothing
-		// to send to the owner of the task since the worker has disconnected.
-		n.AddTaskEvent(taskNotification{
-			Handler: task.handler,
-			Task:    task.inner,
-			Result:  result,
-		})
+	for _, task := range assigned {
+		s.recordDisconnectedTaskResult(ctx, &n, worker, task, reason)
 	}
 
 	// Remove the worker from the ready list, if it exists.
 	delete(s.connectedWorkers, worker)
+}
+
+// recordDisconnectedTaskResult records the result of a task whose worker
+// disconnected and closes its sink streams. It must be called while
+// resourcesMut is held.
+func (s *Scheduler) recordDisconnectedTaskResult(ctx context.Context, n *notifier, worker *workerConn, task *task, reason error) {
+	pendingCancel := task.PendingCancel()
+	worker.Unassign(task)
+
+	// Even though the worker disconnected we still have some stats about the
+	// task that the handler may be interested in.
+	result := workflow.TaskResult{Capture: task.capture}
+	switch {
+	case pendingCancel:
+		// Cancellation had already been requested for this task. Honor that
+		// intent regardless of whether the worker disconnected cleanly or
+		// with an error.
+		result.Outcome = workflow.TaskOutcomeCancelled
+	case reason != nil:
+		result.Outcome = workflow.TaskOutcomeFailed
+		result.Error = reason
+	default:
+		result.Outcome = workflow.TaskOutcomeCancelled
+	}
+
+	changed, _ := task.SetResult(s.metrics, result)
+	if !changed {
+		return
+	}
+	s.closeTaskSinks(ctx, n, task)
+
+	switch result.Outcome {
+	case workflow.TaskOutcomeCancelled:
+		if pendingCancel {
+			// The worker disconnected before confirming a cancellation we
+			// had requested. Record it against the assigned-cancellation
+			// stat to match the disposition that [Scheduler.Cancel] would
+			// have produced had the worker survived long enough to confirm.
+			task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
+		}
+		// Otherwise the worker disconnected cleanly with no pending
+		// cancellation request; we have no specific stat for that category
+		// today.
+	case workflow.TaskOutcomeFailed:
+		task.wfRegion.Record(StatFailedTasks.Observe(1))
+	}
+
+	task.RecordTerminalObservations(time.Now())
+
+	// The worker is disconnected, so only the workflow handler is notified.
+	n.AddTaskEvent(taskNotification{
+		Handler: task.handler,
+		Task:    task.inner,
+		Result:  result,
+	})
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -716,7 +728,11 @@ type pendingMessage struct {
 // finalizeAssignment completes the assignment of the task to the worker.
 func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentStates map[ulid.ULID]workflow.StreamState) {
 	hop := s.metrics.startAssignmentHop("finalize_assignment")
-	var pendingMsgs []pendingMessage
+	var (
+		n           notifier
+		pendingMsgs []pendingMessage
+	)
+	defer n.Notify(ctx)
 
 	// Collect bookkeeping and messages under lock.
 	func() {
@@ -734,7 +750,10 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 			return
 		}
 
-		worker.Assign(t)
+		if !worker.Assign(t) {
+			s.recordDisconnectedTaskResult(ctx, &n, worker, t, worker.CloseReason())
+			return
+		}
 		s.metrics.tasksAssignedTotal.Inc()
 
 		if t.wfRegion != nil {
