@@ -1171,13 +1171,13 @@ func TestScheduler_worker(t *testing.T) {
 
 		require.NoError(t, peer.SendMessage(ctx, wire.StreamStatusMessage{
 			StreamID: stream.ULID,
-			State:    workflow.StreamStateBlocked,
+			State:    workflow.StreamStateOpen,
 		}), "Scheduler should accept status message")
 
 		// Wait for the handler to receive the state change.
 		maxWait, _ := ctx.Deadline()
 		require.Eventually(t, func() bool {
-			return *streamState.Load() == workflow.StreamStateBlocked
+			return *streamState.Load() == workflow.StreamStateOpen
 		}, time.Until(maxWait), 25*time.Millisecond, "Handler should be notified of state change")
 	})
 
@@ -1252,7 +1252,7 @@ func TestScheduler_worker(t *testing.T) {
 
 		require.NoError(t, peer.SendMessage(ctx, wire.StreamStatusMessage{
 			StreamID: stream.ULID,
-			State:    workflow.StreamStateBlocked,
+			State:    workflow.StreamStateOpen,
 		}), "Scheduler should accept status message")
 
 		// Wait for get the status change.
@@ -1265,7 +1265,7 @@ func TestScheduler_worker(t *testing.T) {
 				case wire.StreamBindMessage: // Ignore bindings
 				case wire.StreamStatusMessage:
 					require.Equal(t, stream.ULID, msg.StreamID, "Unexpected stream ID")
-					require.Equal(t, workflow.StreamStateBlocked, msg.State, "Unexpected stream state")
+					require.Equal(t, workflow.StreamStateOpen, msg.State, "Unexpected stream state")
 					return
 				default:
 					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)

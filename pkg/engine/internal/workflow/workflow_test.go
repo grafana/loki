@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -158,6 +157,66 @@ func TestCancellation(t *testing.T) {
 	}
 }
 
+func TestRunningTaskStatusDoesNotCancelDownstream(t *testing.T) {
+	var physicalGraph dag.Graph[physical.Node]
+
+	var (
+		scan        = physicalGraph.Add(&physical.DataObjScan{})
+		parallelize = physicalGraph.Add(&physical.Parallelize{})
+		rangeAgg    = physicalGraph.Add(&physical.RangeAggregation{})
+		vectorAgg   = physicalGraph.Add(&physical.VectorAggregation{})
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	synctest.Test(t, func(t *testing.T) {
+		fr := newFakeRunner()
+		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
+		require.NoError(t, err, "workflow should construct properly")
+		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
+
+		defer func() {
+			if !t.Failed() {
+				return
+			}
+
+			t.Log("Failing workflow:")
+			t.Log(Sprint(wf))
+		}()
+
+		p, err := wf.Run(t.Context())
+		require.NoError(t, err, "Workflow should start properly")
+		defer p.Close()
+
+		synctest.Wait()
+
+		rootTask, err := wf.graph.Root()
+		require.NoError(t, err, "should be able to retrieve singular root task")
+
+		rt, ok := fr.tasks[rootTask.ULID]
+		require.True(t, ok, "root task should be registered with runner")
+
+		// A non-terminal update records state only. It must not cancel downstream
+		// work now that TopK short-circuit feedback has been removed.
+		rt.handler(t.Context(), rootTask, TaskStatus{State: TaskStateRunning})
+
+		synctest.Wait()
+
+		_ = wf.graph.Walk(rootTask, func(n *Task) error {
+			if n == rootTask {
+				return nil
+			}
+
+			require.NotEqual(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should not be canceled", n.ULID)
+			return nil
+		}, dag.PreOrderWalk)
+	})
+}
+
 // TestFailedTaskSurfacesErrorBeforeEOF reproduces a race where a failed task's
 // error is lost because the worker closes the results-stream sink (signaling
 // EOF) before the workflow learns the task failed and calls
@@ -232,116 +291,6 @@ func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
 		res := <-done
 		require.ErrorIs(t, res.err, wantErr,
 			"consumer must surface the task failure instead of EOF")
-	})
-}
-
-// TestShortCircuiting tests that a running task updating its contributing time range cancels irrelevant
-// downstream tasks.
-func TestShortCircuiting(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
-
-	now := time.Now()
-	var (
-		scan = physicalGraph.Add(&physical.ScanSet{
-			Targets: []*physical.ScanTarget{
-				{
-					Type: physical.ScanTypeDataObject,
-					DataObject: &physical.DataObjScan{
-						MaxTimeRange: physical.TimeRange{
-							Start: now.Add(-time.Hour),
-							End:   now,
-						},
-					},
-				},
-				{
-					Type: physical.ScanTypeDataObject,
-					DataObject: &physical.DataObjScan{
-						MaxTimeRange: physical.TimeRange{
-							Start: now.Add(-2 * time.Hour),
-							End:   now.Add(-time.Hour),
-						},
-					},
-				},
-				{
-					Type: physical.ScanTypeDataObject,
-					DataObject: &physical.DataObjScan{
-						MaxTimeRange: physical.TimeRange{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-2 * time.Hour),
-						},
-					},
-				},
-			},
-		})
-		parallelize = physicalGraph.Add(&physical.Parallelize{})
-		topk        = physicalGraph.Add(&physical.TopK{
-			SortBy:    &physical.ColumnExpr{Ref: semconv.ColumnIdentTimestamp.ColumnRef()},
-			Ascending: false,
-			K:         100,
-		})
-	)
-
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: topk, Child: parallelize})
-
-	physicalPlan := physical.FromGraph(physicalGraph)
-
-	synctest.Test(t, func(t *testing.T) {
-		fr := newFakeRunner()
-		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
-		require.NoError(t, err, "workflow should construct properly")
-		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
-
-		defer func() {
-			if !t.Failed() {
-				return
-			}
-
-			t.Log("Failing workflow:")
-			t.Log(Sprint(wf))
-		}()
-
-		// Run returns an error if any of the methods in our fake runner failed.
-		p, err := wf.Run(t.Context())
-		require.NoError(t, err, "Workflow should start properly")
-		defer p.Close()
-
-		// Wait for the workflow to register all tasks with the runner.
-		synctest.Wait()
-
-		rootTask, err := wf.graph.Root()
-		require.NoError(t, err, "should be able to retrieve singular root task")
-
-		rt, ok := fr.tasks[rootTask.ULID]
-		require.True(t, ok, "root task should be registered with runner")
-
-		// Notify the workflow that the root task has updated its contributing time range.
-		rt.handler(t.Context(), rootTask, TaskStatus{
-			State: TaskStateRunning,
-			ContributingTimeRange: ContributingTimeRange{
-				Timestamp: now.Add(-45 * time.Minute),
-				LessThan:  false,
-			},
-		})
-
-		// Wait for the workflow to process all status updates.
-		synctest.Wait()
-
-		_ = wf.graph.Walk(rootTask, func(n *Task) error {
-			// Skip root task
-			if n == rootTask {
-				return nil
-			}
-
-			// Skip tasks that have intersecting time range
-			if n.MaxTimeRange.End.After(now.Add(-45 * time.Minute)) {
-				return nil
-			}
-
-			// Tasks should be canceled
-			require.Equal(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should be canceled", n.ULID)
-			return nil
-		}, dag.PreOrderWalk)
 	})
 }
 

@@ -47,9 +47,9 @@ func (wf *Workflow) flushTaskSummaries() {
 // needed, which the workflow does not observe.
 //
 // Tasks participate regardless of terminal status (success, failure, or
-// cancellation): selection is purely by finish time. Short-circuited or
-// pre-assignment-cancelled tasks tend to finish early and so are rarely chosen
-// as the gating child, which matches the intent.
+// cancellation): selection is purely by finish time. Pre-assignment-cancelled
+// tasks tend to finish early and so are rarely chosen as the gating child,
+// which matches the intent.
 //
 // If the graph has multiple roots, criticalPath starts from the root with the
 // latest finish time. Query workflows have a single root today (the physical

@@ -221,6 +221,9 @@ func loadSingle(in []byte, out any, opts *Options) error {
 	// Load first document
 	err = l.Load(out)
 	if err == io.EOF {
+		if opts.FromLegacy {
+			return nil
+		}
 		msg := "yaml: no documents in stream"
 		return &LoadErrors{Errors: []*LoadError{{
 			Stage:   ConstructorStage,
