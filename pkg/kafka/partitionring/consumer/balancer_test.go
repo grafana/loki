@@ -128,7 +128,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 	steps := []struct {
 		name   string
 		mutate func()
-		check  func(active []int32, prev, next map[string][]int32)
+		check  func(active []int32, _, next map[string][]int32)
 	}{
 		{
 			name: "bootstrap: 5 members join, ring has 3 active partitions",
@@ -138,7 +138,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markActive(1)
 				ring.markActive(2)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2}, active)
 				assertActivesPartitionAreSpread(active, next)
 			},
@@ -148,7 +148,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 			mutate: func() {
 				memberCount = 20
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2}, active)
 				assertActivesPartitionAreSpread(active, next)
 			},
@@ -160,7 +160,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markActive(4)
 				ring.markActive(5)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2, 3, 4, 5}, active)
 				assertActivesPartitionAreSpread(active, next)
 			},
@@ -170,7 +170,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 			mutate: func() {
 				memberCount = 8
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1, 2, 3, 4, 5}, active)
 				assertActivesPartitionAreSpread(active, next)
 			},
@@ -183,7 +183,7 @@ func TestCooperativeActiveStickyBalancer_ConvergesToOneActivePerMember(t *testin
 				ring.markInactive(4)
 				ring.markInactive(5)
 			},
-			check: func(active []int32, prev, next map[string][]int32) {
+			check: func(active []int32, _, next map[string][]int32) {
 				require.ElementsMatch(t, []int32{0, 1}, active)
 				assertActivesPartitionAreSpread(active, next)
 				assertInactivesPartitionsAreNotSticky(active, []int32{2, 3, 4, 5}, next)

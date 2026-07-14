@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -133,6 +132,9 @@ func NewKafka(
 		prometheus.WrapRegistererWithPrefix("loki_pattern_consumer_", registerer),
 	)
 	kvClient, err := kv.NewClient(kv.Config{}, ring.GetPartitionRingCodec(), registerer, logger)
+	if err != nil {
+		return nil, err
+	}
 	ringOptions := ring.DefaultPartitionRingOptions()
 	i.partitionRing = ring.NewPartitionRingWatcherWithOptions(PartitionRingName+"watcher", PartitionRingKey, kvClient, ringOptions, logger, registerer)
 
@@ -146,14 +148,6 @@ func NewKafka(
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	return i, nil
-}
-
-func (i *KafkaIngester) getEffectivePersistenceGranularity(userID string) time.Duration {
-	tenantGranularity := i.limits.PersistenceGranularity(userID)
-	if tenantGranularity > 0 && tenantGranularity <= i.cfg.MaxChunkAge {
-		return tenantGranularity
-	}
-	return i.cfg.MaxChunkAge
 }
 
 // ServeHTTP implements the pattern ring status page.
@@ -245,48 +239,48 @@ func (i *KafkaIngester) stopping(_ error) error {
 	return err
 }
 
-func (s *KafkaIngester) sender(ctx context.Context) error {
+func (i *KafkaIngester) sender(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			level.Info(s.logger).Log("msg", "context canceled")
+			level.Info(i.logger).Log("msg", "context canceled")
 			// We don't return ctx.Err() here as it manifests as a service failure
 			// when stopping the service.
 			return nil
-		case rec, ok := <-s.records:
+		case rec, ok := <-i.records:
 			if !ok {
-				level.Info(s.logger).Log("msg", "channel closed")
+				level.Info(i.logger).Log("msg", "channel closed")
 				return nil
 			}
 			tenant := string(rec.Key)
-			stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
+			stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 			if err != nil {
 				// This is an unrecoverable error and no amount of retries will fix it.
 				return fmt.Errorf("failed to decode stream: %w", err)
 			}
-			ingesterAddr, err := s.ingesterForTenant(tenant, stream)
+			ingesterAddr, err := i.ingesterForTenant(tenant, stream)
 			if err != nil {
 				return fmt.Errorf("failed to get ingester for tenant: %w", err)
 			}
 			req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-			s.sendReq(ctx, req)
-		case req := <-s.flushRequests:
+			i.sendReq(ctx, req)
+		case req := <-i.flushRequests:
 			// Drain any records that are already in the channel before flushing
 			// so that all pending data is included in the flush.
 		drain:
 			for {
 				select {
-				case rec, ok := <-s.records:
+				case rec, ok := <-i.records:
 					if !ok {
 						break drain
 					}
 					tenant := string(rec.Key)
-					stream, err := s.decoder.DecodeWithoutLabels(rec.Value)
+					stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 					if err != nil {
-						level.Error(s.logger).Log("msg", "failed to process record during flush drain", "err", err)
+						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
 					}
 					req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-					s.sendReq(ctx, req)
+					i.sendReq(ctx, req)
 				default:
 					break drain
 				}
@@ -296,17 +290,17 @@ func (s *KafkaIngester) sender(ctx context.Context) error {
 	}
 }
 
-func (s *KafkaIngester) ingesterForTenant(tenant string, stream logproto.Stream) (string, error) {
+func (i *KafkaIngester) ingesterForTenant(_ string, stream logproto.Stream) (string, error) {
 	var descs [1]ring.InstanceDesc
-	replicationSet, err := s.ringClient.Ring().Get(uint32(stream.Hash), ring.WriteNoExtend, descs[:0], nil, nil)
+	replicationSet, err := i.ringClient.Ring().Get(uint32(stream.Hash), ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
 		return "", err
 	}
 	return replicationSet.Instances[0].Addr, nil
 }
 
-func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest) {
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.ConnectionTimeout)
+func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest) {
+	ctx, cancel := context.WithTimeout(ctx, i.cfg.ConnectionTimeout)
 	defer cancel()
 
 	req := clientRequest.reqs[0]
@@ -320,22 +314,22 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 	_ = instrument.CollectedRequest(
 		ctx,
 		"FlushTeedLogsToPatternIngester",
-		s.metrics.sendDuration,
+		i.metrics.sendDuration,
 		instrument.ErrorCode,
 		func(ctx context.Context) error {
-			sp := spanlogger.FromContext(ctx, s.logger)
+			sp := spanlogger.FromContext(ctx, i.logger)
 			ctx, cancel := context.WithTimeout(
 				user.InjectOrgID(ctx, clientRequest.tenant),
-				s.cfg.ClientConfig.RemoteTimeout,
+				i.cfg.ClientConfig.RemoteTimeout,
 			)
 
 			// First try to send the request to the correct pattern ingester instance
 			defer cancel()
-			_, err := s.Push(ctx, req)
+			_, err := i.Push(ctx, req)
 			if err == nil {
 				// Success here means the stream will be processed for both metrics and patterns
-				s.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
-				s.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
+				i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
+				i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 
 				// limit logged labels to 1000
 				labelsLimit := len(req.Streams)
@@ -361,8 +355,8 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 
 				// this is basically the same as logging push request streams,
 				// so put it behind the same flag
-				if s.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
-					level.Debug(s.logger).
+				if i.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
+					level.Debug(i.logger).
 						Log(
 							"msg", "forwarded push request to pattern ingester",
 							"num_streams", len(req.Streams),
@@ -375,23 +369,23 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 			}
 
 			// The pattern ingester appends failed, but we can retry the metric append
-			s.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
-			level.Error(s.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
+			i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
+			level.Error(i.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
 
 			// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
 			// Only owned streams are processed for patterns, however any pattern ingester can
 			// aggregate metrics for any stream. Therefore, if we can't send the owned stream,
 			// try to forward request to any pattern ingester so we at least capture the metrics.
 
-			if !s.limits.MetricAggregationEnabled(clientRequest.tenant) {
+			if !i.limits.MetricAggregationEnabled(clientRequest.tenant) {
 				return err
 			}
 
-			replicationSet, err := s.ringClient.Ring().
+			replicationSet, err := i.ringClient.Ring().
 				GetReplicationSetForOperation(ring.WriteNoExtend)
 			if err != nil || len(replicationSet.Instances) == 0 {
-				s.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
-				level.Error(s.logger).Log(
+				i.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
+				level.Error(i.logger).Log(
 					"msg", "failed to send metrics to fallback pattern ingesters",
 					"num_instances", len(replicationSet.Instances),
 					"err", err,
@@ -405,11 +399,11 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 				fallbackAddrs = append(fallbackAddrs, addr)
 
 				var client ring_client.PoolClient
-				client, err = s.ringClient.GetClientFor(addr)
+				client, err = i.ringClient.GetClientFor(addr)
 				if err == nil {
 					ctx, cancel := context.WithTimeout(
 						user.InjectOrgID(ctx, clientRequest.tenant),
-						s.cfg.ClientConfig.RemoteTimeout,
+						i.cfg.ClientConfig.RemoteTimeout,
 					)
 					defer cancel()
 
@@ -418,14 +412,14 @@ func (s *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 						continue
 					}
 
-					s.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
+					i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 					// bail after any success to prevent sending more than one
 					return nil
 				}
 			}
 
-			s.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
-			level.Error(s.logger).Log(
+			i.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
+			level.Error(i.logger).Log(
 				"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
 				"addresses", strings.Join(fallbackAddrs, ", "),
 				"err", err,
@@ -601,53 +595,6 @@ func (i *KafkaIngester) flushPatterns() {
 		if i.limits.PatternPersistenceEnabled(instance.instanceID) {
 			instance.flushPatterns()
 		}
-	}
-}
-
-func (i *KafkaIngester) downsampleMetrics(ts model.Time) {
-	instances := i.getInstances()
-
-	for _, instance := range instances {
-		if i.limits.MetricAggregationEnabled(instance.instanceID) {
-			instance.Downsample(ts)
-		}
-	}
-}
-
-// waitForPartitions polls partitionRing until it reports at least one
-// partition or the deadline expires.
-func waitForPartitions(ctx context.Context, r ring.PartitionRingReader, timeout time.Duration, logger log.Logger) error {
-	if r.PartitionRing().PartitionsCount() > 0 {
-		return nil
-	}
-	deadline := time.NewTimer(timeout)
-	defer deadline.Stop()
-	tick := time.NewTicker(500 * time.Millisecond)
-	defer tick.Stop()
-
-	_ = level.Info(logger).Log("msg", "waiting for partition ring to be populated", "timeout", timeout)
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("partition ring did not become populated within %s "+
-				"(check ring.key, ring.memberlist.cluster_label, and ring.memberlist.join_members)", timeout)
-		case <-tick.C:
-			if c := r.PartitionRing().PartitionsCount(); c > 0 {
-				_ = level.Info(logger).Log("msg", "partition ring populated", "partitions", c)
-				return nil
-			}
-		}
-	}
-}
-
-func (i *KafkaIngester) initFlushQueues() {
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
-		// for now we don't flush only prune old samples.
-		// go i.flushLoop(j)
 	}
 }
 

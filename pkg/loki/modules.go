@@ -865,7 +865,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee...")
 
-	if t.Cfg.Pattern.IngestMode != pattern.IngestMode(pattern.IngestModeGRPC) {
+	if t.Cfg.Pattern.IngestMode != pattern.IngestModeGRPC {
 		_ = level.Debug(logger).Log("msg", "pattern ingester tee disabled for Kafka ingest mode")
 		return nil, nil
 	}

@@ -29,19 +29,6 @@ func newFakePartitionRing(activeIDs ...int32) *fakePartitionRing {
 	return f
 }
 
-// newDefaultFakePartitionRing returns a fake ring with 16 active
-// partitions (0..15). Tests that don't care about exact partition
-// membership can use this. Tests asserting on partition counts (e.g.
-// multi-partition consumption) should call newFakePartitionRing with
-// the exact IDs to match the kfake topic.
-func newDefaultFakePartitionRing() *fakePartitionRing {
-	ids := make([]int32, 16)
-	for i := range ids {
-		ids[i] = int32(i)
-	}
-	return newFakePartitionRing(ids...)
-}
-
 func (f *fakePartitionRing) PartitionRing() *ring.PartitionRing { return f.snap }
 
 // markActive adds the partition (or updates its state if already
@@ -55,12 +42,6 @@ func (f *fakePartitionRing) markActive(id int32) {
 // present) with state PartitionInactive, then rebuilds the snapshot.
 func (f *fakePartitionRing) markInactive(id int32) {
 	f.desc.AddPartition(id, ring.PartitionInactive, time.Now())
-	f.rebuild()
-}
-
-// removePartition deletes the partition from the ring entirely.
-func (f *fakePartitionRing) removePartition(id int32) {
-	f.desc.RemovePartition(id)
 	f.rebuild()
 }
 
