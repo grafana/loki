@@ -123,7 +123,6 @@ func NewKafka(
 	}
 	i.flushRequests = make(chan flushRequest, 1)
 
-	// need to set up a partition ring before starting the consumer, so we can have a partition ID to use
 	records := make(chan *kgo.Record)
 	i.records = records
 	i.consumer = kafkav2.NewGroupConsumer(

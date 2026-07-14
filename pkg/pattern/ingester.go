@@ -151,8 +151,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.StringVar(
 		(*string)(&cfg.IngestMode),
 		"pattern-ingester.ingest-mode",
-		string(IngestModeKafka),
-		`How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
+		string(IngestModeGRPC),
+		`How records are ingested: "kafka" reads from a Kafka topic; "grpc" uses an in-process channel (experimental, single-node, no durability guarantees, each replica holds independent data).`,
 	)
 	fs.DurationVar(
 		&cfg.KafkaSessionTimeout,
@@ -193,7 +193,7 @@ const (
 	// IngestModeKafka reads records from a Kafka topic (default).
 	IngestModeKafka IngestMode = "kafka"
 	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
-	IngestModeGrpc IngestMode = "grpc"
+	IngestModeGRPC IngestMode = "grpc"
 )
 
 type TeeConfig struct {

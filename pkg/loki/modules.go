@@ -798,7 +798,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	}
 	logger := util_log.Logger
 	switch t.Cfg.Pattern.IngestMode {
-	case pattern.IngestModeGrpc:
+	case pattern.IngestModeGRPC:
 		_ = level.Debug(logger).Log("msg", "initializing in-memory pattern ingester...")
 		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 		t.PatternIngester, err = pattern.New(
@@ -865,7 +865,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 	}
 	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee...")
 
-	if t.Cfg.Pattern.IngestMode != pattern.IngestMode(pattern.IngestModeGrpc) {
+	if t.Cfg.Pattern.IngestMode != pattern.IngestMode(pattern.IngestModeGRPC) {
 		_ = level.Debug(logger).Log("msg", "pattern ingester tee disabled for Kafka ingest mode")
 		return nil, nil
 	}
