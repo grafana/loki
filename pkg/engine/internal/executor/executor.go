@@ -63,6 +63,13 @@ type Config struct {
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
 
+	// DataBucket reads source log objects during LogMerge compaction. Unlike
+	// Bucket (which the compaction wiring prefixes with the index-storage
+	// prefix for index I/O and ToC), source log objects are stored at the
+	// unprefixed dataobj root, so they must be read through this bucket.
+	// Optional; when nil the executor falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
@@ -92,6 +99,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		dataBucket:         cfg.DataBucket,
 		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
@@ -119,11 +127,12 @@ type Context struct {
 	batchSize     int64
 	prefetchBytes int64
 
-	logger    log.Logger
-	plan      *physical.Plan
-	evaluator *expressionEvaluator
-	bucket    objstore.Bucket
-	metastore metastore.Metastore
+	logger     log.Logger
+	plan       *physical.Plan
+	evaluator  *expressionEvaluator
+	bucket     objstore.Bucket
+	dataBucket objstore.Bucket
+	metastore  metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 

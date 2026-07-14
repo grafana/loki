@@ -45,6 +45,12 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
+	// DataBucket reads source log objects during LogMerge compaction. When the
+	// compaction wiring prefixes Bucket with the index-storage prefix, source
+	// log objects (stored at the unprefixed dataobj root) must be read through
+	// this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	// Metastore client to access indexes.
 	Metastore metastore.Metastore
 
@@ -204,6 +210,7 @@ func (w *Worker) run(ctx context.Context) error {
 			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
+			DataBucket:     w.config.DataBucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
 			TaskCaches:     w.taskCaches,

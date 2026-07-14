@@ -321,9 +321,16 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleLogCompacted, result)
+
+	// A successful log-compaction reports its index/task deltas so the
+	// indexes_added/removed and tasks metrics reflect the work (regression:
+	// these were previously dropped, leaving the log-compaction path invisible).
+	require.Equal(t, 1, stats.removed, "the single converged index is removed")
+	require.Equal(t, 1, stats.added, "one merged index is added")
+	require.Equal(t, 1, stats.dispatched, "one log-merge task is dispatched")
 
 	dispatches := runner.snapshot()
 	require.Len(t, dispatches, 1, "two runs -> one task -> one LogMerge plan")
@@ -359,7 +366,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleConverged, result)
 	require.Empty(t, runner.snapshot())
@@ -408,7 +415,7 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleConverged, result)
@@ -436,7 +443,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	c.cfg.LogMinCompactionSize = 1 << 30 // 1GiB floor; 30 bytes is below it
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleConverged, result)
@@ -467,7 +474,7 @@ func TestCompactTenantLogs_SwapsToC(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleLogCompacted, result)
@@ -490,7 +497,7 @@ func TestCompactTenantLogs_SwapErrorFails(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.Error(t, err)
 	require.Equal(t, tenantCycleFailed, result)
@@ -507,7 +514,7 @@ func TestCompactTenantLogs_SwapRaceLossConverged(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleConverged, result)
@@ -525,7 +532,7 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 	c.cfg.DryRun = true
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
 	require.Equal(t, tenantCycleLogCompacted, result)
@@ -544,7 +551,7 @@ func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
-	result, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.Error(t, err)
 	require.Equal(t, tenantCycleFailed, result)
@@ -562,7 +569,7 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
-		_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+		_, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
 		require.NoError(t, err)
 		calls := replacer.snapshot()
 		require.Len(t, calls, 1)

@@ -25,8 +25,11 @@ type coordinatorMetrics struct {
 	// cyclesTotal counts coordinator cycles by outcome.
 	cyclesTotal *prometheus.CounterVec // outcome=toc_not_found|index_load_err|no_indexes|converged|compaction_failed|compacted_with_failures|compacted
 
-	// tenantCyclesTotal counts per-tenant cycle outcomes.
-	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|log_compacted|converged|failed, tenant
+	// tenantCyclesTotal counts per-tenant index-compaction cycle outcomes.
+	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
+
+	// tenantLogCyclesTotal counts per-tenant log-compaction cycle outcomes.
+	tenantLogCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
 
 	// indexesRemovedTotal counts source indexes removed by compaction
 	// (cumulative). Use with indexesAddedTotal to compute net reduction:
@@ -70,7 +73,11 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
-			Help: "Per-tenant cycle outcomes. compacted = ran index compaction successfully, log_compacted = converged window dispatched log-merge tasks, converged = no index or single index with no log-merge work, failed = cycle returned error.",
+			Help: "Per-tenant index-compaction cycle outcomes. compacted = ran index compaction successfully, converged = no index or single index (log-compaction path), failed = cycle returned error.",
+		}, []string{labelOutcome, labelTenant}),
+		tenantLogCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_tenant_log_cycles_total",
+			Help: "Per-tenant log-compaction cycle outcomes. compacted = converged window dispatched log-merge tasks, converged = single index with no log-merge work, failed = cycle returned error.",
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
@@ -148,8 +155,9 @@ func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration
 	m.cycleDurationSeconds.Observe(duration.Seconds())
 }
 
-// observeTenantCycle records per-tenant cycle outcomes and counts. stats is
-// only consulted for the compacted outcome; pass the zero value otherwise.
+// observeTenantCycle records per-tenant index-compaction cycle outcomes and
+// counts. stats is consulted for the compacted outcome; pass the zero value for
+// converged/failed.
 func (m *coordinatorMetrics) observeTenantCycle(
 	tenant string,
 	outcome string,
@@ -159,11 +167,40 @@ func (m *coordinatorMetrics) observeTenantCycle(
 	if m == nil {
 		return
 	}
-	// The converged outcome only bumps tenantCyclesTotal
 	m.tenantCyclesTotal.WithLabelValues(outcome, tenant).Inc()
+	m.recordTenantCycle(tenant, outcome, duration, stats)
+}
+
+// observeTenantLogCycle records per-tenant log-compaction cycle outcomes and
+// counts. stats is consulted for the compacted outcome; pass the zero value for
+// converged/failed.
+func (m *coordinatorMetrics) observeTenantLogCycle(
+	tenant string,
+	outcome string,
+	duration time.Duration,
+	stats compactionStats,
+) {
+	if m == nil {
+		return
+	}
+	m.tenantLogCyclesTotal.WithLabelValues(outcome, tenant).Inc()
+	m.recordTenantCycle(tenant, outcome, duration, stats)
+}
+
+// recordTenantCycle records the duration and index/task deltas shared by both
+// index- and log-compaction cycles.
+func (m *coordinatorMetrics) recordTenantCycle(
+	tenant string,
+	outcome string,
+	duration time.Duration,
+	stats compactionStats,
+) {
+	// The converged outcome skips the duration histogram.
 	if outcome != "converged" {
 		m.tenantCycleDurationSeconds.WithLabelValues(outcome).Observe(duration.Seconds())
 	}
+	// The compacted outcome adds/removes indexes and dispatches tasks, so
+	// record its deltas.
 	if outcome == "compacted" {
 		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed))
 		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))

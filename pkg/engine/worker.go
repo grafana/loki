@@ -43,6 +43,12 @@ type WorkerParams struct {
 	Bucket    objstore.Bucket     // Bucket to read stored data from.
 	Metastore metastore.Metastore // Metastore to access indexes.
 
+	// DataBucket reads source log objects during LogMerge compaction. When
+	// Bucket is prefixed with the index-storage prefix (compaction wiring),
+	// source log objects live at the unprefixed dataobj root and must be read
+	// through this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
 
@@ -145,9 +151,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	inner, err := worker.New(worker.Config{
-		Logger:    params.Logger,
-		Bucket:    params.Bucket,
-		Metastore: params.Metastore,
+		Logger:     params.Logger,
+		Bucket:     params.Bucket,
+		DataBucket: params.DataBucket,
+		Metastore:  params.Metastore,
 
 		Dialer:   dialer,
 		Listener: listener,

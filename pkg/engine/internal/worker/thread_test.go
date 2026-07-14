@@ -126,8 +126,8 @@ func TestThread_runJob_IgnoresClosedSourceBindErrors(t *testing.T) {
 		graph.Add(limitNode)
 
 		var (
-			closedStream = &workflow.Stream{ULID: ulid.Make(), TenantID: "test-tenant"}
-			openStream   = &workflow.Stream{ULID: ulid.Make(), TenantID: "test-tenant"}
+			closedStream = &workflow.Stream{ULID: ulid.Make()}
+			openStream   = &workflow.Stream{ULID: ulid.Make()}
 
 			closedSource = &streamSource{}
 			openSource   = &streamSource{}
