@@ -87,19 +87,12 @@ func newCollector(sched *Scheduler) *collector {
 
 // computeLoad returns the active load on the scheduler: the sum of running and
 // pending tasks.
+//
+// The count is maintained incrementally by [task.setStateLocked] rather than
+// scanned on demand, so this is a lock-free atomic read that stays cheap even
+// with millions of tracked tasks.
 func computeLoad(sched *Scheduler) float64 {
-	guard := sched.resourcesMut.RLock("collector_compute_load")
-	defer guard.RUnlock()
-
-	var load uint64
-
-	for _, t := range sched.tasks {
-		if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
-			load++
-		}
-	}
-
-	return float64(load)
+	return float64(sched.metrics.activeLoad.Load())
 }
 
 // Process performs stat computations for EWMA metrics of the collector. Process

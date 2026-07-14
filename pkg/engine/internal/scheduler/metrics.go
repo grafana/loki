@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,6 +32,12 @@ type metrics struct {
 
 	// lock holds the instruments for the scheduler's observed mutexes.
 	lock *obslock.Metrics
+
+	// activeLoad tracks the number of tasks currently in a load-bearing state
+	// (pending or running). It is maintained incrementally by
+	// [task.setStateLocked] on every state transition so that the load gauge can
+	// be read without scanning every task. See [computeLoad].
+	activeLoad atomic.Int64
 }
 
 // Handler phase label values shared by multiple handlers. Phase values used at a
