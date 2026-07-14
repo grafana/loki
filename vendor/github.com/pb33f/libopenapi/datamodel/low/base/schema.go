@@ -88,7 +88,9 @@ type Schema struct {
 	DependentSchemas  low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
 	DependentRequired low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[[]string]]]
 
-	PatternProperties     low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
+	PatternProperties low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
+	// Defs holds reusable JSON Schema definitions declared under the $defs keyword.
+	Defs                  low.NodeReference[*orderedmap.Map[low.KeyReference[string], low.ValueReference[*SchemaProxy]]]
 	PropertyNames         low.NodeReference[*SchemaProxy]
 	UnevaluatedItems      low.NodeReference[*SchemaProxy]
 	UnevaluatedProperties low.NodeReference[*SchemaDynamicValue[*SchemaProxy, bool]]

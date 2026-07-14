@@ -3,14 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Representer stage: Converts Go values to YAML nodes.
-// Handles marshaling from Go types to the intermediate node representation.
+// Handles representing from Go types to the intermediate node representation.
 
 package libyaml
 
 import (
 	"encoding"
-	"fmt"
-	"io"
 	"reflect"
 	"regexp"
 	"sort"
@@ -21,10 +19,399 @@ import (
 	"unicode/utf8"
 )
 
+// keyList is a sortable slice of reflect.Values used for sorting map keys
+// in a natural order (numeric, then lexicographic).
 type keyList []reflect.Value
 
-func (l keyList) Len() int      { return len(l) }
+// Representer converts Go values to YAML node trees with configurable
+// formatting options.
+type Representer struct {
+	flow                  bool
+	Indent                int
+	lineWidth             int
+	explicitStart         bool
+	explicitEnd           bool
+	flowSimpleCollections bool
+	quotePreference       QuoteStyle
+}
+
+// NewRepresenter creates a new YAML representer with the given options.
+func NewRepresenter(opts *Options) *Representer {
+	return &Representer{
+		Indent:                opts.Indent,
+		lineWidth:             opts.LineWidth,
+		explicitStart:         opts.ExplicitStart,
+		explicitEnd:           opts.ExplicitEnd,
+		flowSimpleCollections: opts.FlowSimpleCollections,
+		quotePreference:       opts.QuotePreference,
+	}
+}
+
+// Represent converts a Go value to a YAML node tree.
+// This is the primary method for the Representer stage in the dump pipeline.
+func (r *Representer) Represent(tag string, in reflect.Value) *Node {
+	var node *Node
+	if in.IsValid() {
+		node, _ = in.Interface().(*Node)
+	}
+	if node != nil && node.Kind == DocumentNode {
+		// Already a document node, return as-is
+		return node
+	} else {
+		// Wrap the represented value in a document node
+		contentNode := r.represent(tag, in)
+		return &Node{
+			Kind:    DocumentNode,
+			Content: []*Node{contentNode},
+		}
+	}
+}
+
+// From http://yaml.org/type/float.html, except the regular expression there
+// is bogus. In practice parsers do not enforce the "\.[0-9_]*" suffix.
+var base60float = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+(?:\.[0-9_]*)?$`)
+
+// represent is the core conversion method that handles the actual
+// type-specific conversion from Go values to YAML nodes.
+func (r *Representer) represent(tag string, in reflect.Value) *Node {
+	tag = shortTag(tag)
+	if !in.IsValid() || in.Kind() == reflect.Pointer && in.IsNil() {
+		return r.nilv()
+	}
+	iface := in.Interface()
+	switch value := iface.(type) {
+	case *Node:
+		return r.nodev(in)
+	case Node:
+		if !in.CanAddr() {
+			n := reflect.New(in.Type()).Elem()
+			n.Set(in)
+			in = n
+		}
+		return r.nodev(in.Addr())
+	case time.Time:
+		return r.timev(tag, in)
+	case *time.Time:
+		return r.timev(tag, in.Elem())
+	case time.Duration:
+		return r.stringv(tag, reflect.ValueOf(value.String()))
+	case Marshaler:
+		v, err := value.MarshalYAML()
+		if err != nil {
+			failDump(RepresenterStage, err)
+		}
+		if v == nil {
+			return r.nilv()
+		}
+		return r.represent(tag, reflect.ValueOf(v))
+	case encoding.TextMarshaler:
+		text, err := value.MarshalText()
+		if err != nil {
+			failDump(RepresenterStage, err)
+		}
+		in = reflect.ValueOf(string(text))
+	case nil:
+		return r.nilv()
+	}
+	switch in.Kind() {
+	case reflect.Interface:
+		return r.represent(tag, in.Elem())
+	case reflect.Map:
+		return r.mapv(tag, in)
+	case reflect.Pointer:
+		return r.represent(tag, in.Elem())
+	case reflect.Struct:
+		return r.structv(tag, in)
+	case reflect.Slice, reflect.Array:
+		return r.slicev(tag, in)
+	case reflect.String:
+		return r.stringv(tag, in)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return r.intv(tag, in)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return r.uintv(tag, in)
+	case reflect.Float32, reflect.Float64:
+		return r.floatv(tag, in)
+	case reflect.Bool:
+		return r.boolv(tag, in)
+	default:
+		failDumpf(RepresenterStage, "cannot represent type: %s", in.Type().String())
+		return nil // unreachable; failDumpf always panics
+	}
+}
+
+// mapv converts a Go map to a YAML mapping node with sorted keys.
+func (r *Representer) mapv(tag string, in reflect.Value) *Node {
+	if tag == "" {
+		tag = mapTag
+	}
+	var style Style
+	if r.flow {
+		r.flow = false
+		style = FlowStyle
+	}
+
+	keys := keyList(in.MapKeys())
+	sort.Sort(keys)
+	content := make([]*Node, 0, len(keys)*2)
+	for _, k := range keys {
+		content = append(content, r.represent("", k))
+		content = append(content, r.represent("", in.MapIndex(k)))
+	}
+
+	return &Node{
+		Kind:    MappingNode,
+		Tag:     tag,
+		Content: content,
+		Style:   style,
+	}
+}
+
+// structv converts a Go struct to a YAML mapping node, handling field tags,
+// omitempty, inline fields, and inline maps.
+func (r *Representer) structv(tag string, in reflect.Value) *Node {
+	sinfo, err := getStructInfo(in.Type())
+	if err != nil {
+		failDump(RepresenterStage, err)
+	}
+
+	if tag == "" {
+		tag = mapTag
+	}
+	var style Style
+	if r.flow {
+		r.flow = false
+		style = FlowStyle
+	}
+
+	content := make([]*Node, 0)
+	for _, info := range sinfo.FieldsList {
+		var value reflect.Value
+		if info.Inline == nil {
+			value = in.Field(info.Num)
+		} else {
+			value = r.fieldByIndex(in, info.Inline)
+			if !value.IsValid() {
+				continue
+			}
+		}
+		if info.OmitEmpty && isZero(value) {
+			continue
+		}
+		content = append(content, r.represent("", reflect.ValueOf(info.Key)))
+		r.flow = info.Flow
+		content = append(content, r.represent("", value))
+	}
+	if sinfo.InlineMap >= 0 {
+		m := in.Field(sinfo.InlineMap)
+		if m.Len() > 0 {
+			r.flow = false
+			keys := keyList(m.MapKeys())
+			sort.Sort(keys)
+			for _, k := range keys {
+				if _, found := sinfo.FieldsMap[k.String()]; found {
+					failDumpf(RepresenterStage, "cannot have key %q in inlined map: conflicts with struct field", k.String())
+				}
+				content = append(content, r.represent("", k))
+				r.flow = false
+				content = append(content, r.represent("", m.MapIndex(k)))
+			}
+		}
+	}
+
+	return &Node{
+		Kind:    MappingNode,
+		Tag:     tag,
+		Content: content,
+		Style:   style,
+	}
+}
+
+// slicev converts a Go slice or array to a YAML sequence node.
+func (r *Representer) slicev(tag string, in reflect.Value) *Node {
+	if tag == "" {
+		tag = seqTag
+	}
+	var style Style
+	if r.flow {
+		r.flow = false
+		style = FlowStyle
+	}
+
+	n := in.Len()
+	content := make([]*Node, n)
+	for i := 0; i < n; i++ {
+		content[i] = r.represent("", in.Index(i))
+	}
+
+	return &Node{
+		Kind:    SequenceNode,
+		Tag:     tag,
+		Content: content,
+		Style:   style,
+	}
+}
+
+// stringv converts a Go string to a YAML scalar node, handling quoting,
+// binary data (base64 encoding), and special string values.
+func (r *Representer) stringv(tag string, in reflect.Value) *Node {
+	var style Style
+	s := in.String()
+	needsQuoting := false
+
+	switch {
+	case !utf8.ValidString(s):
+		if tag == binaryTag {
+			failDumpf(RepresenterStage, "explicitly tagged !!binary data must be base64-encoded")
+		}
+		if tag != "" {
+			failDumpf(RepresenterStage, "cannot represent invalid UTF-8 data as %s", shortTag(tag))
+		}
+		// It can't be represented directly as YAML so use a binary tag
+		// and represent it as base64.
+		tag = binaryTag
+		s = encodeBase64(s)
+	case tag == "":
+		tag = strTag
+		// Check if this string needs quoting for compatibility
+		// even though it would resolve as !!str
+		needsQuoting = isBase60Float(s) || isOldBool(s) || looksLikeMerge(s)
+	}
+
+	// Set the style based on content
+	switch {
+	case strings.Contains(s, "\n"):
+		if r.flow || !shouldUseLiteralStyle(s) {
+			style = DoubleQuotedStyle
+		} else {
+			style = LiteralStyle
+		}
+	case needsQuoting:
+		// Force quoting for YAML 1.1 compatibility values
+		style = SingleQuotedStyle
+	default:
+		// Plain style by default - Desolver will add quotes if type mismatch
+		style = 0
+	}
+
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+		Style: style,
+	}
+}
+
+// boolv converts a Go bool to a YAML scalar node.
+func (r *Representer) boolv(tag string, in reflect.Value) *Node {
+	var s string
+	if in.Bool() {
+		s = "true"
+	} else {
+		s = "false"
+	}
+	if tag == "" {
+		tag = boolTag
+	}
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+	}
+}
+
+// intv converts a Go signed integer to a YAML scalar node.
+func (r *Representer) intv(tag string, in reflect.Value) *Node {
+	s := strconv.FormatInt(in.Int(), 10)
+	if tag == "" {
+		tag = intTag
+	}
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+	}
+}
+
+// uintv converts a Go unsigned integer to a YAML scalar node.
+func (r *Representer) uintv(tag string, in reflect.Value) *Node {
+	s := strconv.FormatUint(in.Uint(), 10)
+	if tag == "" {
+		tag = intTag
+	}
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+	}
+}
+
+// timev converts a Go [time.Time] to a YAML scalar node in RFC3339Nano format.
+func (r *Representer) timev(tag string, in reflect.Value) *Node {
+	t := in.Interface().(time.Time)
+	s := t.Format(time.RFC3339Nano)
+	if tag == "" {
+		tag = timestampTag
+	}
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+	}
+}
+
+// floatv converts a Go float to a YAML scalar node, handling special values
+// like infinity and NaN.
+func (r *Representer) floatv(tag string, in reflect.Value) *Node {
+	// Issue #352: When formatting, use the precision of the underlying value
+	precision := 64
+	if in.Kind() == reflect.Float32 {
+		precision = 32
+	}
+
+	s := strconv.FormatFloat(in.Float(), 'g', -1, precision)
+	switch s {
+	case "+Inf":
+		s = ".inf"
+	case "-Inf":
+		s = "-.inf"
+	case "NaN":
+		s = ".nan"
+	}
+	if tag == "" {
+		tag = floatTag
+	}
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   tag,
+		Value: s,
+	}
+}
+
+// nilv creates a YAML null node.
+func (r *Representer) nilv() *Node {
+	return &Node{
+		Kind:  ScalarNode,
+		Tag:   nullTag,
+		Value: "null",
+	}
+}
+
+// nodev returns a node value as-is without conversion.
+func (r *Representer) nodev(in reflect.Value) *Node {
+	// Return the node as-is - no conversion needed
+	return in.Interface().(*Node)
+}
+
+// Len returns the number of keys in the list.
+func (l keyList) Len() int { return len(l) }
+
+// Swap exchanges the positions of two keys in the list.
 func (l keyList) Swap(i, j int) { l[i], l[j] = l[j], l[i] }
+
+// Less implements a natural sort order for map keys: numeric values sort
+// numerically, strings sort with natural number ordering, and mixed types
+// sort by kind.
 func (l keyList) Less(i, j int) bool {
 	a := l[i]
 	b := l[j]
@@ -134,198 +521,8 @@ func numLess(a, b reflect.Value) bool {
 	panic("not a number")
 }
 
-// Sentinel values for newRepresenter parameters.
-// These provide clarity at call sites, similar to http.NoBody.
-var (
-	noWriter           io.Writer         = nil
-	noVersionDirective *VersionDirective = nil
-	noTagDirective     []TagDirective    = nil
-)
-
-type Representer struct {
-	Emitter               Emitter
-	Out                   []byte
-	flow                  bool
-	Indent                int
-	lineWidth             int
-	doneInit              bool
-	explicitStart         bool
-	explicitEnd           bool
-	flowSimpleCollections bool
-	quotePreference       QuoteStyle
-}
-
-// NewRepresenter creates a new YAML representr with the given options.
-//
-// The writer parameter specifies the output destination for the representr.
-// If writer is nil, the representr will write to an internal buffer.
-func NewRepresenter(writer io.Writer, opts *Options) *Representer {
-	emitter := NewEmitter()
-	emitter.CompactSequenceIndent = opts.CompactSeqIndent
-	emitter.quotePreference = opts.QuotePreference
-	emitter.SetWidth(opts.LineWidth)
-	emitter.SetUnicode(opts.Unicode)
-	emitter.SetCanonical(opts.Canonical)
-	emitter.SetLineBreak(opts.LineBreak)
-
-	r := &Representer{
-		Emitter:               emitter,
-		Indent:                opts.Indent,
-		lineWidth:             opts.LineWidth,
-		explicitStart:         opts.ExplicitStart,
-		explicitEnd:           opts.ExplicitEnd,
-		flowSimpleCollections: opts.FlowSimpleCollections,
-		quotePreference:       opts.QuotePreference,
-	}
-
-	if writer != nil {
-		r.Emitter.SetOutputWriter(writer)
-	} else {
-		r.Emitter.SetOutputString(&r.Out)
-	}
-
-	return r
-}
-
-func (r *Representer) init() {
-	if r.doneInit {
-		return
-	}
-	if r.Indent == 0 {
-		r.Indent = 4
-	}
-	r.Emitter.BestIndent = r.Indent
-	r.emit(NewStreamStartEvent(UTF8_ENCODING))
-	r.doneInit = true
-}
-
-func (r *Representer) Finish() {
-	r.Emitter.OpenEnded = false
-	r.emit(NewStreamEndEvent())
-}
-
-func (r *Representer) Destroy() {
-	r.Emitter.Delete()
-}
-
-func (r *Representer) emit(event Event) {
-	// This will internally delete the event value.
-	r.must(r.Emitter.Emit(&event))
-}
-
-func (r *Representer) must(err error) {
-	if err != nil {
-		msg := err.Error()
-		if msg == "" {
-			msg = "unknown problem generating YAML content"
-		}
-		failf("%s", msg)
-	}
-}
-
-func (r *Representer) MarshalDoc(tag string, in reflect.Value) {
-	r.init()
-	var node *Node
-	if in.IsValid() {
-		node, _ = in.Interface().(*Node)
-	}
-	if node != nil && node.Kind == DocumentNode {
-		r.nodev(in)
-	} else {
-		// Use !explicitStart for implicit flag (true = implicit/no marker)
-		r.emit(NewDocumentStartEvent(noVersionDirective, noTagDirective, !r.explicitStart))
-		r.marshal(tag, in)
-		// Use !explicitEnd for implicit flag
-		r.emit(NewDocumentEndEvent(!r.explicitEnd))
-	}
-}
-
-func (r *Representer) marshal(tag string, in reflect.Value) {
-	tag = shortTag(tag)
-	if !in.IsValid() || in.Kind() == reflect.Pointer && in.IsNil() {
-		r.nilv()
-		return
-	}
-	iface := in.Interface()
-	switch value := iface.(type) {
-	case *Node:
-		r.nodev(in)
-		return
-	case Node:
-		if !in.CanAddr() {
-			n := reflect.New(in.Type()).Elem()
-			n.Set(in)
-			in = n
-		}
-		r.nodev(in.Addr())
-		return
-	case time.Time:
-		r.timev(tag, in)
-		return
-	case *time.Time:
-		r.timev(tag, in.Elem())
-		return
-	case time.Duration:
-		r.stringv(tag, reflect.ValueOf(value.String()))
-		return
-	case Marshaler:
-		v, err := value.MarshalYAML()
-		if err != nil {
-			Fail(err)
-		}
-		if v == nil {
-			r.nilv()
-			return
-		}
-		r.marshal(tag, reflect.ValueOf(v))
-		return
-	case encoding.TextMarshaler:
-		text, err := value.MarshalText()
-		if err != nil {
-			Fail(err)
-		}
-		in = reflect.ValueOf(string(text))
-	case nil:
-		r.nilv()
-		return
-	}
-	switch in.Kind() {
-	case reflect.Interface:
-		r.marshal(tag, in.Elem())
-	case reflect.Map:
-		r.mapv(tag, in)
-	case reflect.Pointer:
-		r.marshal(tag, in.Elem())
-	case reflect.Struct:
-		r.structv(tag, in)
-	case reflect.Slice, reflect.Array:
-		r.slicev(tag, in)
-	case reflect.String:
-		r.stringv(tag, in)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		r.intv(tag, in)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		r.uintv(tag, in)
-	case reflect.Float32, reflect.Float64:
-		r.floatv(tag, in)
-	case reflect.Bool:
-		r.boolv(tag, in)
-	default:
-		panic("cannot marshal type: " + in.Type().String())
-	}
-}
-
-func (r *Representer) mapv(tag string, in reflect.Value) {
-	r.mappingv(tag, func() {
-		keys := keyList(in.MapKeys())
-		sort.Sort(keys)
-		for _, k := range keys {
-			r.marshal("", k)
-			r.marshal("", in.MapIndex(k))
-		}
-	})
-}
-
+// fieldByIndex navigates through struct fields using the given index path,
+// dereferencing pointers as needed.
 func (r *Representer) fieldByIndex(v reflect.Value, index []int) (field reflect.Value) {
 	for _, num := range index {
 		for {
@@ -343,79 +540,10 @@ func (r *Representer) fieldByIndex(v reflect.Value, index []int) (field reflect.
 	return v
 }
 
-func (r *Representer) structv(tag string, in reflect.Value) {
-	sinfo, err := getStructInfo(in.Type())
-	if err != nil {
-		panic(err)
-	}
-	r.mappingv(tag, func() {
-		for _, info := range sinfo.FieldsList {
-			var value reflect.Value
-			if info.Inline == nil {
-				value = in.Field(info.Num)
-			} else {
-				value = r.fieldByIndex(in, info.Inline)
-				if !value.IsValid() {
-					continue
-				}
-			}
-			if info.OmitEmpty && isZero(value) {
-				continue
-			}
-			r.marshal("", reflect.ValueOf(info.Key))
-			r.flow = info.Flow
-			r.marshal("", value)
-		}
-		if sinfo.InlineMap >= 0 {
-			m := in.Field(sinfo.InlineMap)
-			if m.Len() > 0 {
-				r.flow = false
-				keys := keyList(m.MapKeys())
-				sort.Sort(keys)
-				for _, k := range keys {
-					if _, found := sinfo.FieldsMap[k.String()]; found {
-						panic(fmt.Sprintf("cannot have key %q in inlined map: conflicts with struct field", k.String()))
-					}
-					r.marshal("", k)
-					r.flow = false
-					r.marshal("", m.MapIndex(k))
-				}
-			}
-		}
-	})
-}
-
-func (r *Representer) mappingv(tag string, f func()) {
-	implicit := tag == ""
-	style := BLOCK_MAPPING_STYLE
-	if r.flow {
-		r.flow = false
-		style = FLOW_MAPPING_STYLE
-	}
-	r.emit(NewMappingStartEvent(nil, []byte(tag), implicit, style))
-	f()
-	r.emit(NewMappingEndEvent())
-}
-
-func (r *Representer) slicev(tag string, in reflect.Value) {
-	implicit := tag == ""
-	style := BLOCK_SEQUENCE_STYLE
-	if r.flow {
-		r.flow = false
-		style = FLOW_SEQUENCE_STYLE
-	}
-	r.emit(NewSequenceStartEvent(nil, []byte(tag), implicit, style))
-	n := in.Len()
-	for i := 0; i < n; i++ {
-		r.marshal("", in.Index(i))
-	}
-	r.emit(NewSequenceEndEvent())
-}
-
 // isBase60 returns whether s is in base 60 notation as defined in YAML 1.1.
 //
 // The base 60 float notation in YAML 1.1 is a terrible idea and is unsupported
-// in YAML 1.2 and by this package, but these should be marshaled quoted for
+// in YAML 1.2 and by this package, but these should be represented quoted for
 // the time being for compatibility with other parsers.
 func isBase60Float(s string) (result bool) {
 	// Fast path.
@@ -430,14 +558,10 @@ func isBase60Float(s string) (result bool) {
 	return base60float.MatchString(s)
 }
 
-// From http://yaml.org/type/float.html, except the regular expression there
-// is bogus. In practice parsers do not enforce the "\.[0-9_]*" suffix.
-var base60float = regexp.MustCompile(`^[-+]?[0-9][0-9_]*(?::[0-5]?[0-9])+(?:\.[0-9_]*)?$`)
-
 // isOldBool returns whether s is bool notation as defined in YAML 1.1.
 //
 // We continue to force strings that YAML 1.1 would interpret as booleans to be
-// rendered as quotes strings so that the marshaled output valid for YAML 1.1
+// rendered as quotes strings so that the represented output valid for YAML 1.1
 // parsing.
 func isOldBool(s string) (result bool) {
 	switch s {
@@ -455,117 +579,4 @@ func isOldBool(s string) (result bool) {
 // from being interpreted as a merge indicator during decoding.
 func looksLikeMerge(s string) (result bool) {
 	return s == "<<"
-}
-
-func (r *Representer) stringv(tag string, in reflect.Value) {
-	var style ScalarStyle
-	s := in.String()
-	canUsePlain := true
-	switch {
-	case !utf8.ValidString(s):
-		if tag == binaryTag {
-			failf("explicitly tagged !!binary data must be base64-encoded")
-		}
-		if tag != "" {
-			failf("cannot marshal invalid UTF-8 data as %s", shortTag(tag))
-		}
-		// It can't be represented directly as YAML so use a binary tag
-		// and represent it as base64.
-		tag = binaryTag
-		s = encodeBase64(s)
-	case tag == "":
-		// Check to see if it would resolve to a specific
-		// tag when represented unquoted. If it doesn't,
-		// there's no need to quote it.
-		rtag, _ := resolve("", s)
-		canUsePlain = rtag == strTag &&
-			!(isBase60Float(s) ||
-				isOldBool(s) ||
-				looksLikeMerge(s))
-	}
-	// Note: it's possible for user code to emit invalid YAML
-	// if they explicitly specify a tag and a string containing
-	// text that's incompatible with that tag.
-	switch {
-	case strings.Contains(s, "\n"):
-		if r.flow || !shouldUseLiteralStyle(s) {
-			style = DOUBLE_QUOTED_SCALAR_STYLE
-		} else {
-			style = LITERAL_SCALAR_STYLE
-		}
-	case canUsePlain:
-		style = PLAIN_SCALAR_STYLE
-	default:
-		style = r.quotePreference.ScalarStyle()
-	}
-	r.emitScalar(s, "", tag, style, nil, nil, nil, nil)
-}
-
-func (r *Representer) boolv(tag string, in reflect.Value) {
-	var s string
-	if in.Bool() {
-		s = "true"
-	} else {
-		s = "false"
-	}
-	r.emitScalar(s, "", tag, PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) intv(tag string, in reflect.Value) {
-	s := strconv.FormatInt(in.Int(), 10)
-	r.emitScalar(s, "", tag, PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) uintv(tag string, in reflect.Value) {
-	s := strconv.FormatUint(in.Uint(), 10)
-	r.emitScalar(s, "", tag, PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) timev(tag string, in reflect.Value) {
-	t := in.Interface().(time.Time)
-	s := t.Format(time.RFC3339Nano)
-	r.emitScalar(s, "", tag, PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) floatv(tag string, in reflect.Value) {
-	// Issue #352: When formatting, use the precision of the underlying value
-	precision := 64
-	if in.Kind() == reflect.Float32 {
-		precision = 32
-	}
-
-	s := strconv.FormatFloat(in.Float(), 'g', -1, precision)
-	switch s {
-	case "+Inf":
-		s = ".inf"
-	case "-Inf":
-		s = "-.inf"
-	case "NaN":
-		s = ".nan"
-	}
-	r.emitScalar(s, "", tag, PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) nilv() {
-	r.emitScalar("null", "", "", PLAIN_SCALAR_STYLE, nil, nil, nil, nil)
-}
-
-func (r *Representer) emitScalar(
-	value, anchor, tag string, style ScalarStyle, head, line, foot, tail []byte,
-) {
-	// TODO Kill this function. Replace all initialize calls by their underlining Go literals.
-	implicit := tag == ""
-	if !implicit {
-		tag = longTag(tag)
-	}
-	event := NewScalarEvent([]byte(anchor), []byte(tag), []byte(value), implicit, implicit, style)
-	event.HeadComment = head
-	event.LineComment = line
-	event.FootComment = foot
-	event.TailComment = tail
-	r.emit(event)
-}
-
-func (r *Representer) nodev(in reflect.Value) {
-	r.node(in.Interface().(*Node), "")
 }

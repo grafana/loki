@@ -101,11 +101,16 @@ type DocumentConfiguration struct {
 	// passed in and used. Only enable this when parsing non openapi documents.
 	BypassDocumentCheck bool
 
-	// SkipJSONConversion skips the YAML-to-JSON conversion during spec parsing.
-	// SpecJSON and SpecJSONBytes on SpecInfo will be nil when enabled.
-	// This also skips structural validation that parseJSON performs (e.g., duplicate key detection).
+	// SkipJSONConversion disables the JSON representation of the document entirely:
+	// SpecInfo.GetSpecJSON and GetSpecJSONBytes return nil when enabled (and the
+	// deprecated SpecJSON/SpecJSONBytes fields stay nil). This also skips the eager
+	// structural validation performed at parse time (e.g., duplicate key detection).
 	// Safe when document-level schema validation rules are not running and no custom
 	// functions depend on the JSON representation.
+	//
+	// Note: the JSON representation is built lazily on first accessor call, so leaving
+	// this disabled no longer costs anything at parse time. Enable it only to also
+	// skip the eager structural validation, or to guarantee accessors return nil.
 	SkipJSONConversion bool
 
 	// IgnorePolymorphicCircularReferences will skip over checking for circular references in polymorphic schemas.
@@ -138,6 +143,20 @@ type DocumentConfiguration struct {
 	// ExcludeExtensionReferences will prevent the indexing of any $ref pointers buried under extensions.
 	// defaults to false (which means extensions will be included)
 	ExcludeExtensionRefs bool
+
+	// SkipMetadataCollection disables the collection of diagnostic metadata during indexing:
+	// descriptions, summaries, enums, objects-with-properties, security requirement
+	// references, and the JSONPath `Path` values on inline schema references. Skipping
+	// them significantly reduces allocations and retained memory when parsing large
+	// documents. Reference extraction, resolution and model building are unaffected.
+	//
+	// -- UNSAFE FOR DIAGNOSTIC, RULE, OR PATH CONSUMERS --
+	// When enabled, the index methods GetAllDescriptions, GetAllSummaries, GetAllEnums,
+	// GetAllObjectsWithProperties, GetSecurityRequirementReferences and the related
+	// counts are intentionally empty/zero, and inline schema Reference.Path values are
+	// empty strings. vacuum and any other tool that consumes index metadata or Path
+	// values must NOT enable this. Defaults to false (everything is collected).
+	SkipMetadataCollection bool
 
 	// BundleInlineRefs controls whether local component references are inlined during bundling.
 	// When false (default): Local refs like #/components/schemas/Pet are preserved

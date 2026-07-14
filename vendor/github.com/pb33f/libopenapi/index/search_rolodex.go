@@ -97,51 +97,49 @@ func (r *Rolodex) FindNodeOrigin(node *yaml.Node) *NodeOrigin {
 // is returned, otherwise nil is returned.
 func (index *SpecIndex) FindNodeOrigin(node *yaml.Node) *NodeOrigin {
 	if node != nil {
+		index.awaitNodeMap()
 		index.nodeMapLock.RLock()
-		if index.nodeMap[node.Line] != nil {
-			if index.nodeMap[node.Line][node.Column] != nil {
-				foundNode := index.nodeMap[node.Line][node.Column]
-				match := false
+		if foundNode := lookupNodeLines(index.nodeLines, node.Line, node.Column); foundNode != nil {
+			match := false
 
-				if foundNode == node {
-					match = true
+			if foundNode == node {
+				match = true
+			}
+
+			// if the found node is a map. iterate through the content until we locate the node at that position
+			if !match && (utils.IsNodeMap(foundNode) ||
+				utils.IsNodeArray(foundNode)) && (utils.IsNodeMap(node) || utils.IsNodeArray(node)) {
+				if len(node.Content) == len(foundNode.Content) {
+					// hash node and found node
+					match = checkHash(node, foundNode)
 				}
+			} else {
+				if !match {
+					// hash node and found node
+					match = checkHash(node, foundNode)
 
-				// if the found node is a map. iterate through the content until we locate the node at that position
-				if !match && (utils.IsNodeMap(foundNode) ||
-					utils.IsNodeArray(foundNode)) && (utils.IsNodeMap(node) || utils.IsNodeArray(node)) {
-					if len(node.Content) == len(foundNode.Content) {
-						// hash node and found node
-						match = checkHash(node, foundNode)
-					}
-				} else {
 					if !match {
-						// hash node and found node
-						match = checkHash(node, foundNode)
-
-						if !match {
-							// check if the found node is a map and if the first item in the map
-							// has the same line and column, as well as the same value
-							if utils.IsNodeMap(foundNode) && len(foundNode.Content) > 0 {
-								if foundNode.Content[0].Line == node.Line &&
-									foundNode.Content[0].Column == node.Column &&
-									foundNode.Content[0].Value == node.Value {
-									match = true
-								}
+						// check if the found node is a map and if the first item in the map
+						// has the same line and column, as well as the same value
+						if utils.IsNodeMap(foundNode) && len(foundNode.Content) > 0 {
+							if foundNode.Content[0].Line == node.Line &&
+								foundNode.Content[0].Column == node.Column &&
+								foundNode.Content[0].Value == node.Value {
+								match = true
 							}
 						}
 					}
 				}
+			}
 
-				if match {
-					index.nodeMapLock.RUnlock()
-					return &NodeOrigin{
-						Node:             foundNode,
-						Line:             node.Line,
-						Column:           node.Column,
-						AbsoluteLocation: index.specAbsolutePath,
-						Index:            index,
-					}
+			if match {
+				index.nodeMapLock.RUnlock()
+				return &NodeOrigin{
+					Node:             foundNode,
+					Line:             node.Line,
+					Column:           node.Column,
+					AbsoluteLocation: index.specAbsolutePath,
+					Index:            index,
 				}
 			}
 		}

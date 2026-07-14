@@ -145,6 +145,15 @@ func (p *Paths) MarshalYAML() (interface{}, error) {
 }
 
 func (p *Paths) MarshalYAMLInline() (interface{}, error) {
+	return p.marshalYAMLInlineWithContext(nil)
+}
+
+// MarshalYAMLInlineWithContext renders paths with a shared inline render context.
+func (p *Paths) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
+	return p.marshalYAMLInlineWithContext(ctx)
+}
+
+func (p *Paths) marshalYAMLInlineWithContext(ctx any) (interface{}, error) {
 	// map keys correctly.
 	m := utils.CreateEmptyMapNode()
 	type pathItem struct {
@@ -177,6 +186,7 @@ func (p *Paths) MarshalYAMLInline() (interface{}, error) {
 
 	nb := high.NewNodeBuilder(p, p.low)
 	nb.Resolve = true
+	nb.RenderContext = ctx
 	extNode := nb.Render()
 	if extNode != nil && extNode.Content != nil {
 		var label string
@@ -197,7 +207,13 @@ func (p *Paths) MarshalYAMLInline() (interface{}, error) {
 	})
 	for _, mp := range mapped {
 		if mp.pi != nil {
-			rendered, err := mp.pi.MarshalYAMLInline()
+			var rendered interface{}
+			var err error
+			if ctx != nil {
+				rendered, err = mp.pi.MarshalYAMLInlineWithContext(ctx)
+			} else {
+				rendered, err = mp.pi.MarshalYAMLInline()
+			}
 			if err != nil {
 				return nil, fmt.Errorf("failed to render path '%s' inline: %w", mp.path, err)
 			}

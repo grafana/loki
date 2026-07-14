@@ -4,6 +4,8 @@
 package base
 
 import (
+	"errors"
+
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/low"
 	lowBase "github.com/pb33f/libopenapi/datamodel/low/base"
@@ -56,4 +58,48 @@ func (d *Discriminator) Render() ([]byte, error) {
 func (d *Discriminator) MarshalYAML() (interface{}, error) {
 	nb := high.NewNodeBuilder(d, d.low)
 	return nb.Render(), nil
+}
+
+// MarshalYAMLInlineWithContext renders discriminator mappings with replacements
+// prepared for this render operation, without mutating their indexed YAML nodes.
+func (d *Discriminator) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
+	nb := high.NewNodeBuilder(d, d.low)
+	rendered := nb.Render()
+	renderCtx, ok := ctx.(*InlineRenderContext)
+	if !ok || renderCtx == nil || d.low == nil || d.Mapping == nil {
+		return rendered, errors.Join(nb.Errors...)
+	}
+
+	mappingNode := discriminatorMappingNode(rendered)
+	if mappingNode != nil {
+		for pair := d.Mapping.First(); pair != nil; pair = pair.Next() {
+			lowValue := d.low.FindMappingValue(pair.Key())
+			if lowValue == nil {
+				continue
+			}
+			replacement, exists := renderCtx.MappingRewrite(lowValue.ValueNode)
+			if !exists {
+				continue
+			}
+			for i := 0; i+1 < len(mappingNode.Content); i += 2 {
+				if mappingNode.Content[i].Value == pair.Key() {
+					mappingNode.Content[i+1].Value = replacement
+					break
+				}
+			}
+		}
+	}
+	return rendered, errors.Join(nb.Errors...)
+}
+
+func discriminatorMappingNode(node *yaml.Node) *yaml.Node {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == "mapping" && node.Content[i+1].Kind == yaml.MappingNode {
+			return node.Content[i+1]
+		}
+	}
+	return nil
 }
