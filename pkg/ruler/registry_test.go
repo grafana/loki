@@ -607,7 +607,7 @@ func TestTenantRemoteWriteConfig(t *testing.T) {
 	defaultCfg := Config{
 		RemoteWrite: RemoteWriteConfig{
 			Clients: map[string]promconfig.RemoteWriteConfig{
-				client: promconfig.RemoteWriteConfig{
+				client: {
 					Name:             "default-remote-write",
 					URL:              &commonconfig.URL{URL: remoteWriteURL},
 					RemoteTimeout:    model.Duration(30 * time.Second),
@@ -617,7 +617,7 @@ func TestTenantRemoteWriteConfig(t *testing.T) {
 					MetadataConfig:   promconfig.DefaultMetadataConfig,
 					HTTPClientConfig: promconfig.DefaultRemoteWriteHTTPClientConfig,
 					WriteRelabelConfigs: []*relabel.Config{ // single relabel config: keep all
-						&relabel.Config{
+						{
 							Separator:            relabel.DefaultRelabelConfig.Separator,
 							Replacement:          relabel.DefaultRelabelConfig.Replacement,
 							NameValidationScheme: relabel.DefaultRelabelConfig.NameValidationScheme,
@@ -638,16 +638,16 @@ func TestTenantRemoteWriteConfig(t *testing.T) {
 		"foo": {
 			RulerRemoteWriteDisabled: true,
 			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
-				client: rulerconfig.RemoteWriteConfig{
+				client: {
 					URL: &commonconfig.URL{URL: overrideURL},
 				},
 			},
 		},
 		"bar": {
 			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
-				client: rulerconfig.RemoteWriteConfig{
+				client: {
 					WriteRelabelConfigs: []*relabel.Config{
-						&relabel.Config{ // single relabel config: drop all
+						{ // single relabel config: drop all
 							SourceLabels: model.LabelNames{"__name__"},
 							Regex:        reAll,
 							Action:       "drop",
