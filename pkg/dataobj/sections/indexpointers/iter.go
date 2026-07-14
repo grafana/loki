@@ -133,6 +133,20 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 
 			pointer.EndTs = time.Unix(0, columnValue.Int64())
 
+		case ColumnTypeFileSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+
+			pointer.FileSize = uint64(columnValue.Int64())
+
+		case ColumnTypeUncompressedLogsSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+
+			pointer.UncompressedLogsSize = uint64(columnValue.Int64())
+
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
 			// columns because it breaks forward compatibility. Should we log

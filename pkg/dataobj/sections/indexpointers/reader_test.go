@@ -155,7 +155,7 @@ func buildSection(t *testing.T, ptrData []indexpointers.IndexPointer) *indexpoin
 	sectionBuilder := indexpointers.NewBuilder(nil, 0, 2)
 
 	for _, ptr := range ptrData {
-		sectionBuilder.Append(ptr.Path, ptr.StartTs, ptr.EndTs)
+		sectionBuilder.Append(ptr.Path, ptr.StartTs, ptr.EndTs, ptr.FileSize, ptr.UncompressedLogsSize)
 	}
 
 	objectBuilder := dataobj.NewBuilder(nil)
