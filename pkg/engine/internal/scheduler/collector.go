@@ -87,10 +87,6 @@ func newCollector(sched *Scheduler) *collector {
 
 // computeLoad returns the number of queued or assigned tasks without a terminal
 // result.
-//
-// The count is maintained incrementally by [task.MarkQueued] and
-// [task.SetResult] rather than scanned on demand, so this is a lock-free atomic
-// read that stays cheap even with millions of tracked tasks.
 func computeLoad(sched *Scheduler) float64 {
 	return float64(sched.metrics.activeLoad.Load())
 }
@@ -115,9 +111,6 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
-	// tasksInflight is the same "queued but without a terminal result" count as
-	// the load gauge, so we read the incrementally-maintained counter instead of
-	// scanning every task.
 	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(mc.sched.metrics.activeLoad.Load()))
 
 	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
