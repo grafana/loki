@@ -110,7 +110,7 @@ func TestMergeBuilder_AppendPostingsLabelEntry(t *testing.T) {
 	ts := int64(1000) // unix nanoseconds
 
 	// Create a valid label entry
-	bitmapBytes := []byte{0x01, 0x00}
+	bitmapBytes := []byte{0x01}
 	entry := postings.LabelEntry{
 		ObjectPath:       "/obj1",
 		SectionIndex:     0,
@@ -188,7 +188,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 
 	// Now create the entry
 	ts := int64(500) // unix nanoseconds
-	bitmapBytes := []byte{0x01, 0x00}
+	bitmapBytes := []byte{0x01}
 	entry := postings.BloomEntry{
 		ObjectPath:       "/obj2",
 		SectionIndex:     1,
