@@ -87,10 +87,6 @@ func newCollector(sched *Scheduler) *collector {
 
 // computeLoad returns the active load on the scheduler: the sum of running and
 // pending tasks.
-//
-// The count is maintained incrementally by [task.setStateLocked] rather than
-// scanned on demand, so this is a lock-free atomic read that stays cheap even
-// with millions of tracked tasks.
 func computeLoad(sched *Scheduler) float64 {
 	return float64(sched.metrics.activeLoad.Load())
 }

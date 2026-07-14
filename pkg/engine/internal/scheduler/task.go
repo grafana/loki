@@ -139,16 +139,16 @@ func (t *task) setStateLocked(m *metrics, newStatus workflow.TaskStatus) (bool, 
 		// Keep the active-load counter in sync so [computeLoad] can read it
 		// without scanning every task. A transition can move a task into and/or
 		// out of a load-bearing state (pending or running).
-		if delta := loadValue(newState) - loadValue(oldState); delta != 0 {
+		if delta := isActiveLoad(newState) - isActiveLoad(oldState); delta != 0 {
 			m.activeLoad.Add(delta)
 		}
 		return true, nil
 	}
 }
 
-// loadValue reports 1 if state contributes to the scheduler's active load
+// isActiveLoad returns 1 if state contributes to the scheduler's active load
 // (pending or running) and 0 otherwise.
-func loadValue(state workflow.TaskState) int64 {
+func isActiveLoad(state workflow.TaskState) int64 {
 	switch state {
 	case workflow.TaskStateRunning, workflow.TaskStatePending:
 		return 1
