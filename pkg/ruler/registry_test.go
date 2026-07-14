@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	commonconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
@@ -596,6 +597,95 @@ func TestRulerRemoteWriteSigV4ConfigWithoutOverrides(t *testing.T) {
 	require.Equal(t, tenantCfg.RemoteWrite[0].SigV4Config.Region, sigV4GlobalRegion)
 	require.NotNil(t, tenantCfg.RemoteWrite[1].SigV4Config)
 	require.Equal(t, tenantCfg.RemoteWrite[1].SigV4Config.Region, sigV4GlobalRegion)
+}
+
+func TestTenantRemoteWriteConfig(t *testing.T) {
+	const client = "default"
+
+	remoteWriteURL, _ := url.Parse("http://remote-write-default.example.com/prom/api/push")
+	reAll, _ := relabel.NewRegexp(".*")
+	defaultCfg := Config{
+		RemoteWrite: RemoteWriteConfig{
+			Clients: map[string]promconfig.RemoteWriteConfig{
+				client: promconfig.RemoteWriteConfig{
+					Name:             "default-remote-write",
+					URL:              &commonconfig.URL{URL: remoteWriteURL},
+					RemoteTimeout:    model.Duration(30 * time.Second),
+					Headers:          map[string]string{},
+					ProtobufMessage:  remoteapi.WriteV1MessageType,
+					QueueConfig:      promconfig.DefaultQueueConfig,
+					MetadataConfig:   promconfig.DefaultMetadataConfig,
+					HTTPClientConfig: promconfig.DefaultRemoteWriteHTTPClientConfig,
+					WriteRelabelConfigs: []*relabel.Config{ // single relabel config: keep all
+						&relabel.Config{
+							Separator:            relabel.DefaultRelabelConfig.Separator,
+							Replacement:          relabel.DefaultRelabelConfig.Replacement,
+							NameValidationScheme: relabel.DefaultRelabelConfig.NameValidationScheme,
+							SourceLabels:         model.LabelNames{"__name__"},
+							Regex:                reAll,
+							Action:               relabel.Keep,
+						},
+					},
+				},
+			},
+			Enabled:             true,
+			ConfigRefreshPeriod: time.Second,
+		},
+	}
+
+	overrideURL, _ := url.Parse("http://remote-write-override.example.com/prom/api/push")
+	tenantOverrides := fakeLimits{limits: map[string]*validation.Limits{
+		"foo": {
+			RulerRemoteWriteDisabled: true,
+			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+				client: rulerconfig.RemoteWriteConfig{
+					URL: &commonconfig.URL{URL: overrideURL},
+				},
+			},
+		},
+		"bar": {
+			RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+				client: rulerconfig.RemoteWriteConfig{
+					WriteRelabelConfigs: []*relabel.Config{
+						&relabel.Config{ // single relabel config: drop all
+							SourceLabels: model.LabelNames{"__name__"},
+							Regex:        reAll,
+							Action:       "drop",
+						},
+					},
+				},
+			},
+		},
+	}}
+
+	reg := setupRegistry(t, defaultCfg, tenantOverrides)
+
+	t.Run("no custom tenant overrides", func(t *testing.T) {
+		tenantCfg, err := reg.getTenantConfig("anyone")
+		require.NoError(t, err)
+		require.Len(t, tenantCfg.RemoteWrite, 1) // default config
+
+		clientCfg := defaultCfg.RemoteWrite.Clients[client]
+		require.Equal(t, clientCfg.URL, tenantCfg.RemoteWrite[0].URL)
+		require.Equal(t, "anyone-rw-default", tenantCfg.RemoteWrite[0].Name)
+	})
+
+	t.Run("tenant with disabled remote write", func(t *testing.T) {
+		tenantCfg, err := reg.getTenantConfig("foo")
+		require.NoError(t, err)
+		require.Len(t, tenantCfg.RemoteWrite, 0) // no config
+	})
+
+	t.Run("tenant with write relabel config", func(t *testing.T) {
+		tenantCfg, err := reg.getTenantConfig("bar")
+		require.NoError(t, err)
+		require.Len(t, tenantCfg.RemoteWrite, 1) // overrides config
+		require.Equal(t, "bar-rw-default", tenantCfg.RemoteWrite[0].Name)
+		require.Len(t, tenantCfg.RemoteWrite[0].WriteRelabelConfigs, 1)
+		require.Equal(t, relabel.Action("drop"), tenantCfg.RemoteWrite[0].WriteRelabelConfigs[0].Action)
+		clientCfg := defaultCfg.RemoteWrite.Clients[client]
+		require.Equal(t, clientCfg.URL, tenantCfg.RemoteWrite[0].URL)
+	})
 }
 
 func TestTenantRemoteWriteConfigDisabled(t *testing.T) {
