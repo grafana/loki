@@ -11,9 +11,9 @@ keywords:
 
 # Upgrade from the Loki Helm chart to the Community Helm chart
 
-The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 17.2.0 (appVersion 3.7.2) is the current release from the community repository at the time this topic was published.
+The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 18.4.4 (appVersion 3.7.3) is the current release from the community repository at the time this topic was published.
 
-This guide walks you through upgrading from 6.55.0 to the current community chart version, which spans eleven major chart versions (7 through 17), each with breaking changes.
+This guide walks you through upgrading from 6.55.0 to the current community chart version, which spans twelve major chart versions (7 through 18), each with breaking changes.
 
 {{< admonition type="warning" >}}
 Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The `grafana/loki` chart remains available for GEL users.
@@ -53,18 +53,18 @@ New location for 7.x and later from the community repository:
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
-helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 17.2.0
+helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 18.4.4
 ```
 
 Or if you are using OCI for 7.x and later:
 
 ```bash
-helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 17.2.0
+helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 18.4.4
 ```
 
 ## Update your values file for breaking changes
 
-The following sections describe every breaking change between chart versions 6.55.0 and 17.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
+The following sections describe every breaking change between chart versions 6.55.0 and 18.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
 
 {{< admonition type="caution" >}}
 Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#upgrading) for the latest changes and upgrade information. The Grafana Community is constantly improving the charts.
@@ -503,6 +503,79 @@ loki:
 
 For more information on storage schema configuration, see [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
 
+### 17.x to 18.0: Monitoring block refactored
+
+The `.Values.monitoring` block has been refactored. Do not assume backwards compatibility with any prior monitoring configuration — review this section in full before upgrading.
+
+All dashboards, recording rules, and alert rules are now generated from the upstream [loki-mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin). This keeps the chart aligned with the upstream Loki observability stack and ensures dashboard queries work correctly across all deployment modes.
+
+#### `cluster` label replaced by `app_instance`
+
+The metric label that identifies the Loki Helm release has changed from `cluster` to `app_instance`. The `cluster` label is no longer added by default — it is now reserved for multi-cluster environments and controlled by `monitoring.multiCluster`.
+
+Actions required:
+
+- Update any alerting rules, dashboards, or downstream recording rules that filter on `cluster=~"<release-name>"` to use `app_instance=~"<release-name>"` instead.
+- Update any Grafana dashboard URLs that encode the `cluster` variable.
+- If you run Loki across multiple Kubernetes clusters, enable `monitoring.multiCluster.enabled` and set `monitoring.multiCluster.clusterName` to restore the `cluster` label with a per-cluster value.
+
+#### Alerts separated from recording rules
+
+Alert rules have been split into a new `monitoring.alerts` section, separate from `monitoring.rules` (which now only controls recording rules). The old `monitoring.rules.configs` block — with per-alert `enabled`, `for`, `lookbackPeriod`, `threshold`, and `severity` fields — has been removed.
+
+Before (17.x):
+
+```yaml
+monitoring:
+  rules:
+    enabled: true
+    alerting: true
+    configs:
+      LokiRequestErrors:
+        enabled: true
+        for: 15m
+        severity: critical
+```
+
+After (18.x):
+
+```yaml
+monitoring:
+  rules:
+    enabled: true    # recording rules only
+  alerts:
+    enabled: true
+    overrides:
+      LokiRequestErrors:
+        for: 15m
+        severity: critical
+```
+
+{{< admonition type="note" >}}
+The `lookbackPeriod` and `threshold` fields are not carried forward. They did not generalize across all PromQL alert expressions and are not present in the loki-mixin alerts.
+{{< /admonition >}}
+
+#### Removed and renamed values
+
+Remove or rename the following keys in your values file:
+
+| Old value | Replacement |
+| --- | --- |
+| `clusterLabelOverride` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
+| `monitoring.serviceMonitor.clusterLabel` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
+| `monitoring.dashboards.namespace` | `monitoring.namespace` (now applies to all monitoring resources) |
+| `monitoring.rules.namespace` | `monitoring.namespace` |
+| `monitoring.rules.additionalGroups` | `monitoring.additionalPrometheusRules` (dict structure, supports both recording rules and alerts) |
+| `monitoring.dashboards.multiCluster` | `monitoring.multiCluster` (hoisted to the monitoring level) |
+
+#### Recording rule names changed
+
+Recording rule `record:` names now use the `cluster_job:`, `cluster_job_route:`, and `cluster_namespace_job_route:` conventions from the upstream loki-mixin. If you reference recording rule metric names directly in custom alerts or dashboards, update those queries.
+
+#### Dashboard architecture changed
+
+Dashboards are now generated into individual ConfigMap resources (one per dashboard) instead of a single ConfigMap containing all dashboards. If you reference the dashboard ConfigMap by name in any tooling or GitOps manifests, update those references.
+
 ## Review additional deprecations
 
 Several per-component fields have been deprecated in favor of unified blocks. These deprecated per-component service fields apply to indexGateway, compactor, and others.
@@ -537,7 +610,7 @@ After updating your values file, run the upgrade:
 ```bash
 helm upgrade <RELEASE_NAME> grafana-community/loki \
   -f your-updated-values.yaml \
-  --version 17.2.0
+  --version 18.4.4
 ```
 
 Or using OCI:
@@ -545,7 +618,7 @@ Or using OCI:
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki \
   -f your-updated-values.yaml \
-  --version 17.2.0
+  --version 18.4.4
 ```
 
 ### Verify the upgrade
@@ -619,6 +692,21 @@ After a successful upgrade:
 `The Loki chart builtin MinIO dependency is deprecated and will be removed 2026-10-31.`
 
 **Fix:** Either set `ignoreMinioDeprecation: true` as a temporary workaround while you plan a migration, or migrate to an external object storage backend. See [16.x to 17.0](#16x-to-170-built-in-minio-subchart-deprecated) for migration steps.
+
+### Monitoring values rejected or dashboards missing after upgrade to 18.x
+
+**Cause:** The `monitoring` block was refactored in 18.0.0. Old keys such as `clusterLabelOverride`, `monitoring.serviceMonitor.clusterLabel`, `monitoring.dashboards.namespace`, `monitoring.rules.namespace`, `monitoring.rules.additionalGroups`, and `monitoring.dashboards.multiCluster` no longer exist. Alert rules under `monitoring.rules.configs` are also removed.
+
+**Fix:** Remove or rename all obsolete monitoring keys as described in [17.x to 18.0](#17x-to-180-monitoring-block-refactored). In particular:
+- Move alert configuration from `monitoring.rules` to `monitoring.alerts`.
+- Replace `clusterLabelOverride` with `monitoring.appInstanceLabelName` / `monitoring.appInstanceLabelValue`.
+- Rename `monitoring.dashboards.multiCluster` to `monitoring.multiCluster`.
+
+### Metrics show `app_instance` instead of `cluster` after upgrade to 18.x
+
+**Cause:** The 18.0.0 refactoring renamed the Loki release identifier label from `cluster` to `app_instance`.
+
+**Fix:** Update any alerting rules, dashboards, or recording rules that filter on `cluster=~"<release-name>"` to use `app_instance=~"<release-name>"`. See [17.x to 18.0](#17x-to-180-monitoring-block-refactored) for details.
 
 ### Image pulled from wrong registry after upgrade to 14.x
 
