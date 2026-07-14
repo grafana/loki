@@ -95,9 +95,9 @@ type metrics struct {
 	// (before draining its pipeline), partitioned by task_type.
 	setupSeconds *prometheus.HistogramVec
 
-	// Task status-update send path (worker -> scheduler).
-	statusUpdateSeconds     prometheus.Histogram
-	statusUpdateErrorsTotal *prometheus.CounterVec
+	// Terminal task-result send path (worker -> scheduler).
+	taskResultSendSeconds     prometheus.Histogram
+	taskResultSendErrorsTotal *prometheus.CounterVec
 
 	handlerPhaseSeconds  *prometheus.HistogramVec
 	commSiteWaitSeconds  *prometheus.HistogramVec
@@ -171,13 +171,13 @@ func newMetrics() *metrics {
 			Help: "Time spent preparing a task for execution before its pipeline is drained",
 		}, []string{"task_type"}),
 
-		statusUpdateSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
-			Name: "loki_engine_worker_status_update_seconds",
-			Help: "Time spent sending a task's terminal status update to the scheduler and waiting for acknowledgement",
+		taskResultSendSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_task_result_send_seconds",
+			Help: "Time spent sending a terminal task result to the scheduler and waiting for acknowledgement",
 		}),
-		statusUpdateErrorsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_engine_worker_status_update_errors_total",
-			Help: "Total number of failures sending a task's terminal status update to the scheduler, by error class",
+		taskResultSendErrorsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_task_result_send_errors_total",
+			Help: "Total number of failures sending a terminal task result to the scheduler, by error class",
 		}, []string{"error_class"}),
 		handlerPhaseSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_handler_phase_seconds",

@@ -104,36 +104,20 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"TaskCancelMessage": {
 			message: TaskCancelMessage{ID: taskULID},
 		},
-		"TaskStatusMessage with Created state": {
-			message: TaskStatusMessage{
+		"TaskResultMessage with Completed outcome": {
+			message: TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateCreated,
+				Result: workflow.TaskResult{
+					Outcome: workflow.TaskOutcomeCompleted,
 				},
 			},
 		},
-		"TaskStatusMessage with Running state": {
-			message: TaskStatusMessage{
+		"TaskResultMessage with Failed outcome and error": {
+			message: TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-				},
-			},
-		},
-		"TaskStatusMessage with Completed state": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateCompleted,
-				},
-			},
-		},
-		"TaskStatusMessage with Failed state and error": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateFailed,
-					Error: errors.New("task failed"),
+				Result: workflow.TaskResult{
+					Outcome: workflow.TaskOutcomeFailed,
+					Error:   errors.New("task failed"),
 				},
 			},
 		},
@@ -294,27 +278,24 @@ func TestProtobufCodec_Metrics(t *testing.T) {
 		}))
 }
 
-func TestProtobufCodec_TaskStates(t *testing.T) {
+func TestProtobufCodec_TaskOutcomes(t *testing.T) {
 	taskULID := ulid.Make()
 
-	states := []workflow.TaskState{
-		workflow.TaskStateCreated,
-		workflow.TaskStatePending,
-		workflow.TaskStateRunning,
-		workflow.TaskStateCompleted,
-		workflow.TaskStateCancelled,
-		workflow.TaskStateFailed,
+	outcomes := []workflow.TaskOutcome{
+		workflow.TaskOutcomeCompleted,
+		workflow.TaskOutcomeCancelled,
+		workflow.TaskOutcomeFailed,
 	}
 
 	codec := DefaultFrameCodec
 	mc := &metricCodec{protobufCodec: codec}
 
-	for _, state := range states {
-		t.Run(state.String(), func(t *testing.T) {
-			message := TaskStatusMessage{
+	for _, outcome := range outcomes {
+		t.Run(outcome.String(), func(t *testing.T) {
+			message := TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: state,
+				Result: workflow.TaskResult{
+					Outcome: outcome,
 				},
 			}
 
@@ -329,8 +310,8 @@ func TestProtobufCodec_TaskStates(t *testing.T) {
 			actualFrame, err := mc.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
-			actualMessage := actualFrame.(MessageFrame).Message.(TaskStatusMessage)
-			assert.Equal(t, state, actualMessage.Status.State)
+			actualMessage := actualFrame.(MessageFrame).Message.(TaskResultMessage)
+			assert.Equal(t, outcome, actualMessage.Result.Outcome)
 		})
 	}
 }

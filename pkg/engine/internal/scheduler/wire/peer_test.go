@@ -11,6 +11,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
+	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 // TestPeer_DiscardCancelsRunningHandler verifies a discard cancels a running
@@ -21,7 +22,7 @@ func TestPeer_DiscardCancelsRunningHandler(t *testing.T) {
 
 		started, canceled := make(chan struct{}), make(chan struct{})
 		handler := func(hctx context.Context, _ *wire.Peer, m wire.Message) error {
-			if _, ok := m.(wire.TaskStatusMessage); ok { // the discarded message
+			if _, ok := m.(wire.TaskResultMessage); ok { // the discarded message
 				close(started)
 				<-hctx.Done()
 				close(canceled)
@@ -33,7 +34,7 @@ func TestPeer_DiscardCancelsRunningHandler(t *testing.T) {
 		client, serverConn := dialLocal(ctx, t)
 		defer serve(ctx, newServer(serverConn, handler))()
 
-		require.NoError(t, client.Send(ctx, wire.MessageFrame{ID: 1, Message: wire.TaskStatusMessage{}}))
+		require.NoError(t, client.Send(ctx, wire.MessageFrame{ID: 1, Message: wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}}))
 		synctest.Wait()
 		requireClosed(t, started, "handler did not start")
 
@@ -61,7 +62,7 @@ func TestPeer_DiscardDropsQueuedMessage(t *testing.T) {
 		var secondHandled atomic.Bool
 		handler := func(hctx context.Context, _ *wire.Peer, m wire.Message) error {
 			switch m.(type) {
-			case wire.TaskStatusMessage: // blocks handleIncoming
+			case wire.TaskResultMessage: // blocks handleIncoming
 				close(firstStarted)
 				select {
 				case <-release:
@@ -76,7 +77,7 @@ func TestPeer_DiscardDropsQueuedMessage(t *testing.T) {
 		client, serverConn := dialLocal(ctx, t)
 		defer serve(ctx, newServer(serverConn, handler))()
 
-		require.NoError(t, client.Send(ctx, wire.MessageFrame{ID: 1, Message: wire.TaskStatusMessage{}}))
+		require.NoError(t, client.Send(ctx, wire.MessageFrame{ID: 1, Message: wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}}))
 		synctest.Wait()
 		requireClosed(t, firstStarted, "first handler did not start")
 
