@@ -1,3 +1,57 @@
+# v1.316.0 (2026-07-10)
+
+* **Feature**: New Amazon EC2 instances. M9g, M9gd, C9g, and C9gd on AWS Graviton5. C8in, M8in, and R8in add 600 Gbps network. C8ib, M8ib, and R8ib add 300 Gbps EBS. C8ine, M8ine, M8idn, R8idn, M8idb, and R8idb round out Intel Xeon 6. Mac-m3ultra with Apple M3 Ultra. G7 with NVIDIA RTX PRO 4500 Blackwell GPUs.
+
+# v1.315.0 (2026-07-09)
+
+* **Feature**: Added support for additional override parameters in CreateFleet, including LaunchTemplateSpecificationUserData, KeyName, IamInstanceProfile, and MetadataOptions. The CreateFleet response now also includes SubnetId, AvailabilityZone, and AvailabilityZoneId for launched instances.
+
+# v1.314.0 (2026-07-08)
+
+* **Feature**: Replace Root Volume now supports a VolumeId parameter. This allows the customer to pass in a pre-prepared volume as the target root volume for an RRV workflow.
+
+# v1.313.0 (2026-07-07)
+
+* **Feature**: This launch surfaces the public SSM parameter associated with public AMIs in the AMI metadata.
+
+# v1.312.0 (2026-07-06)
+
+* **Feature**: Add request serialization snapshot tests.
+
+# v1.311.0 (2026-07-01)
+
+* **Feature**: Use declarative policies to enable VPC Encryption Controls across your organization or select accounts. Added AMD SEV-SNP support for EC2 Dedicated Hosts. Managed resource visibility settings control whether AWS-provisioned resources in your account appear in console views and API list operations.
+* **Bug Fix**: Bump smithy-go to 1.27.3, fix JSON encorder for document.Number, endpoint host label format validation and CBOR union serialization on new serde
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.310.0 (2026-06-30)
+
+* **Feature**: Adds ModifyVpcEndpointPayerResponsibility API, which enables VPC endpoint service owners to modify the billing account for VPC endpoint usage charges at the individual endpoint level
+
+# v1.309.0 (2026-06-29)
+
+* **Feature**: Adds support for the precision time strategy and a parentGroupId parameter on CreatePlacementGroup and DescribePlacementGroups. Precision time placement groups and cluster placement groups with a parent precision time placement group ensure instances launch on precision time capable hardware.
+
+# v1.308.0 (2026-06-22)
+
+* **Feature**: This release adds support for AMI Watermark and Allowed AMIs integration
+
+# v1.307.1 (2026-06-18)
+
+* **Documentation**: Documentation updates clarifying CancelCapacityReservation cancellable states
+
+# v1.307.0 (2026-06-10)
+
+* **Feature**: This release adds support for AMI Watermark which a structured identifier that helps in tracking AMI provenance
+
+# v1.306.0 (2026-06-09)
+
+* **Feature**: Added TagFieldSpecifications to CreateFlowLogs and DescribeFlowLogs APIs. Customers can now specify tag keys in their Flow Logs subscriptions to capture associated EC2 resource tag values in their logs, enabling tag-based visibility.
+
+# v1.305.3 (2026-06-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.305.2 (2026-06-04)
 
 * **Dependency Update**: Update to smithy-go v1.27.1 to fix several union-related deserialization bugs in schema-serde-enabled services.

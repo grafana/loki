@@ -670,6 +670,26 @@ func (m *validateOpAttachClassicLinkVpc) HandleInitialize(ctx context.Context, i
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpAttachImageWatermark struct {
+}
+
+func (*validateOpAttachImageWatermark) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpAttachImageWatermark) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*AttachImageWatermarkInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpAttachImageWatermarkInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpAttachInternetGateway struct {
 }
 
@@ -5350,6 +5370,26 @@ func (m *validateOpDetachClassicLinkVpc) HandleInitialize(ctx context.Context, i
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpDetachImageWatermark struct {
+}
+
+func (*validateOpDetachImageWatermark) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpDetachImageWatermark) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*DetachImageWatermarkInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpDetachImageWatermarkInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpDetachInternetGateway struct {
 }
 
@@ -9090,6 +9130,26 @@ func (m *validateOpModifyVpcEndpoint) HandleInitialize(ctx context.Context, in m
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpModifyVpcEndpointPayerResponsibility struct {
+}
+
+func (*validateOpModifyVpcEndpointPayerResponsibility) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpModifyVpcEndpointPayerResponsibility) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*ModifyVpcEndpointPayerResponsibilityInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpModifyVpcEndpointPayerResponsibilityInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpModifyVpcEndpointServiceConfiguration struct {
 }
 
@@ -10842,6 +10902,10 @@ func addOpAttachClassicLinkVpcValidationMiddleware(stack *middleware.Stack) erro
 	return stack.Initialize.Add(&validateOpAttachClassicLinkVpc{}, middleware.After)
 }
 
+func addOpAttachImageWatermarkValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpAttachImageWatermark{}, middleware.After)
+}
+
 func addOpAttachInternetGatewayValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpAttachInternetGateway{}, middleware.After)
 }
@@ -11778,6 +11842,10 @@ func addOpDetachClassicLinkVpcValidationMiddleware(stack *middleware.Stack) erro
 	return stack.Initialize.Add(&validateOpDetachClassicLinkVpc{}, middleware.After)
 }
 
+func addOpDetachImageWatermarkValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpDetachImageWatermark{}, middleware.After)
+}
+
 func addOpDetachInternetGatewayValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpDetachInternetGateway{}, middleware.After)
 }
@@ -12524,6 +12592,10 @@ func addOpModifyVpcEndpointConnectionNotificationValidationMiddleware(stack *mid
 
 func addOpModifyVpcEndpointValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpModifyVpcEndpoint{}, middleware.After)
+}
+
+func addOpModifyVpcEndpointPayerResponsibilityValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpModifyVpcEndpointPayerResponsibility{}, middleware.After)
 }
 
 func addOpModifyVpcEndpointServiceConfigurationValidationMiddleware(stack *middleware.Stack) error {
@@ -14464,6 +14536,24 @@ func validateOpAttachClassicLinkVpcInput(v *AttachClassicLinkVpcInput) error {
 	}
 }
 
+func validateOpAttachImageWatermarkInput(v *AttachImageWatermarkInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "AttachImageWatermarkInput"}
+	if v.ImageId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ImageId"))
+	}
+	if v.WatermarkName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("WatermarkName"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpAttachInternetGatewayInput(v *AttachInternetGatewayInput) error {
 	if v == nil {
 		return nil
@@ -14913,9 +15003,6 @@ func validateOpCreateCapacityReservationFleetInput(v *CreateCapacityReservationF
 		return nil
 	}
 	invalidParams := smithy.InvalidParamsError{Context: "CreateCapacityReservationFleetInput"}
-	if v.InstanceTypeSpecifications == nil {
-		invalidParams.Add(smithy.NewErrParamRequired("InstanceTypeSpecifications"))
-	}
 	if v.TotalTargetCapacity == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("TotalTargetCapacity"))
 	}
@@ -18372,6 +18459,24 @@ func validateOpDetachClassicLinkVpcInput(v *DetachClassicLinkVpcInput) error {
 	}
 }
 
+func validateOpDetachImageWatermarkInput(v *DetachImageWatermarkInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DetachImageWatermarkInput"}
+	if v.ImageId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("ImageId"))
+	}
+	if v.WatermarkKey == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("WatermarkKey"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateOpDetachInternetGatewayInput(v *DetachInternetGatewayInput) error {
 	if v == nil {
 		return nil
@@ -21456,6 +21561,27 @@ func validateOpModifyVpcEndpointInput(v *ModifyVpcEndpointInput) error {
 	invalidParams := smithy.InvalidParamsError{Context: "ModifyVpcEndpointInput"}
 	if v.VpcEndpointId == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("VpcEndpointId"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpModifyVpcEndpointPayerResponsibilityInput(v *ModifyVpcEndpointPayerResponsibilityInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ModifyVpcEndpointPayerResponsibilityInput"}
+	if v.VpcEndpointId == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("VpcEndpointId"))
+	}
+	if len(v.PayerResponsibility) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("PayerResponsibility"))
+	}
+	if len(v.Scope) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("Scope"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
