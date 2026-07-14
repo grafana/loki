@@ -180,7 +180,7 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 	sendersWg.Add(i.cfg.FlushWorkerCount)
 	for j := 0; j < i.cfg.FlushWorkerCount; j++ {
 		go func() {
-			i.sender(senderCtx)
+			_ = i.sender(senderCtx)
 			sendersWg.Done()
 		}()
 	}
