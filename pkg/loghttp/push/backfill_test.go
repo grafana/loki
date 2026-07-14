@@ -20,54 +20,54 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const testBackfillDay = "2026-06-10"
+const testBackfillShard = "3f8b1c9a-uuid"
 
-func TestExtractAndValidateBackfillDay(t *testing.T) {
+func TestExtractAndValidateBackfillShard(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		setHeader bool
 		value     string
-		wantDay   string
+		wantShard string
 		wantOK    bool
 		wantErr   bool
 	}{
 		{name: "no header"},
 		{name: "empty header", setHeader: true, value: ""},
-		{name: "valid", setHeader: true, value: "2026-06-10", wantDay: "2026-06-10", wantOK: true},
-		{name: "wrong separators", setHeader: true, value: "2026/06/10", wantErr: true},
-		{name: "not a date", setHeader: true, value: "yesterday", wantErr: true},
-		{name: "out of range", setHeader: true, value: "2026-13-40", wantErr: true},
-		{name: "has time component", setHeader: true, value: "2026-06-10T00:00:00Z", wantErr: true},
+		{name: "uuid", setHeader: true, value: "3f8b1c9a-uuid", wantShard: "3f8b1c9a-uuid", wantOK: true},
+		{name: "date bucket", setHeader: true, value: "2026-06-10", wantShard: "2026-06-10", wantOK: true},
+		{name: "arbitrary opaque", setHeader: true, value: "worker-7/bucket=1h", wantShard: "worker-7/bucket=1h", wantOK: true},
+		{name: "too long", setHeader: true, value: strings.Repeat("a", maxBackfillShardLen+1), wantErr: true},
+		{name: "invalid label value", setHeader: true, value: "bad\xffvalue", wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", nil)
 			if tc.setHeader {
-				r.Header.Set(HTTPHeaderBackfillDayKey, tc.value)
+				r.Header.Set(HTTPHeaderBackfillShardKey, tc.value)
 			}
 
-			day, ok, err := ExtractAndValidateBackfillDay(r)
+			shard, ok, err := ExtractAndValidateBackfillShard(r)
 			if tc.wantErr {
 				require.Error(t, err)
-				require.Contains(t, err.Error(), HTTPHeaderBackfillDayKey)
+				require.Contains(t, err.Error(), HTTPHeaderBackfillShardKey)
 				require.False(t, ok)
-				require.Empty(t, day)
+				require.Empty(t, shard)
 				return
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.wantOK, ok)
-			require.Equal(t, tc.wantDay, day)
+			require.Equal(t, tc.wantShard, shard)
 		})
 	}
 }
 
-func TestBackfillDayContext(t *testing.T) {
-	require.Empty(t, ExtractBackfillDayContext(context.Background()))
+func TestBackfillShardContext(t *testing.T) {
+	require.Empty(t, ExtractBackfillShardContext(context.Background()))
 
-	ctx := InjectBackfillDayContext(context.Background(), testBackfillDay)
-	require.Equal(t, testBackfillDay, ExtractBackfillDayContext(ctx))
+	ctx := InjectBackfillShardContext(context.Background(), testBackfillShard)
+	require.Equal(t, testBackfillShard, ExtractBackfillShardContext(ctx))
 }
 
-func TestParseRequest_BackfillDay(t *testing.T) {
+func TestParseRequest_BackfillShard(t *testing.T) {
 	const lokiBody = `{"streams":[{"stream":{"foo":"bar"},"values":[["1570818238000000000","fizzbuzz"]]}]}`
 
 	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.PushRequest, error) {
@@ -77,7 +77,7 @@ func TestParseRequest_BackfillDay(t *testing.T) {
 	}
 
 	t.Run("loki: header adds backfill labels to every stream", func(t *testing.T) {
-		req, err := parse(newBackfillLokiRequest(lokiBody, testBackfillDay), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
+		req, err := parse(newBackfillLokiRequest(lokiBody, testBackfillShard), ParseLokiRequest, &fakeLimits{enabled: true, labels: []string{"foo"}})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -95,14 +95,14 @@ func TestParseRequest_BackfillDay(t *testing.T) {
 	})
 
 	t.Run("malformed header rejects the whole push", func(t *testing.T) {
-		req, err := parse(newBackfillLokiRequest(lokiBody, "06-10-2026"), ParseLokiRequest, &fakeLimits{enabled: true})
+		req, err := parse(newBackfillLokiRequest(lokiBody, "bad\xffvalue"), ParseLokiRequest, &fakeLimits{enabled: true})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), HTTPHeaderBackfillDayKey)
+		require.Contains(t, err.Error(), HTTPHeaderBackfillShardKey)
 		require.Nil(t, req)
 	})
 
 	t.Run("otlp: header adds backfill labels", func(t *testing.T) {
-		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillDay), ParseOTLPRequest, &fakeLimits{enabled: true})
+		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), ParseOTLPRequest, &fakeLimits{enabled: true})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -111,7 +111,7 @@ func TestParseRequest_BackfillDay(t *testing.T) {
 	t.Run("otlp: restrictive tenant config cannot drop backfill labels", func(t *testing.T) {
 		// Service-name discovery is off and the only indexed attribute does not match the resource,
 		// so without injection this stream would carry no index labels at all.
-		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillDay), ParseOTLPRequest, &fakeLimits{enabled: false, indexAttributes: []string{"nonexistent"}})
+		req, err := parse(newBackfillOTLPRequest(t, singleResourceLogs("service.name", "service-1"), testBackfillShard), ParseOTLPRequest, &fakeLimits{enabled: false, indexAttributes: []string{"nonexistent"}})
 		require.NoError(t, err)
 		require.Len(t, req.Streams, 1)
 		requireBackfillLabels(t, req.Streams[0].Labels)
@@ -137,7 +137,7 @@ func TestOTLPBackfillLabelsOnCombinedStreams(t *testing.T) {
 
 	stats := NewPushStats()
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-	ctx := InjectBackfillDayContext(context.Background(), testBackfillDay)
+	ctx := InjectBackfillShardContext(context.Background(), testBackfillShard)
 
 	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
 	require.NoError(t, err)
@@ -154,23 +154,23 @@ func TestOTLPBackfillLabelsOnCombinedStreams(t *testing.T) {
 	require.Equal(t, 1, nonEmpty, "expected one combined stream carrying the indexed log attribute")
 }
 
-func newBackfillLokiRequest(body, backfillDay string) *http.Request {
+func newBackfillLokiRequest(body, backfillShard string) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	if backfillDay != "" {
-		r.Header.Set(HTTPHeaderBackfillDayKey, backfillDay)
+	if backfillShard != "" {
+		r.Header.Set(HTTPHeaderBackfillShardKey, backfillShard)
 	}
 	return r
 }
 
-func newBackfillOTLPRequest(t *testing.T, ld plog.Logs, backfillDay string) *http.Request {
+func newBackfillOTLPRequest(t *testing.T, ld plog.Logs, backfillShard string) *http.Request {
 	t.Helper()
 	body, err := (&plog.JSONMarshaler{}).MarshalLogs(ld)
 	require.NoError(t, err)
 	r := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	if backfillDay != "" {
-		r.Header.Set(HTTPHeaderBackfillDayKey, backfillDay)
+	if backfillShard != "" {
+		r.Header.Set(HTTPHeaderBackfillShardKey, backfillShard)
 	}
 	return r
 }
@@ -192,7 +192,7 @@ func requireBackfillLabels(t *testing.T, labelsStr string) {
 	lbs, err := syntax.ParseLabels(labelsStr)
 	require.NoError(t, err, "labels=%s", labelsStr)
 	require.Equal(t, "true", lbs.Get(constants.BackfillLabel), "labels=%s", labelsStr)
-	require.Equal(t, testBackfillDay, lbs.Get(constants.BackfillDayLabel), "labels=%s", labelsStr)
+	require.Equal(t, testBackfillShard, lbs.Get(constants.BackfillShardLabel), "labels=%s", labelsStr)
 }
 
 func requireNoBackfillLabels(t *testing.T, labelsStr string) {
@@ -200,5 +200,5 @@ func requireNoBackfillLabels(t *testing.T, labelsStr string) {
 	lbs, err := syntax.ParseLabels(labelsStr)
 	require.NoError(t, err, "labels=%s", labelsStr)
 	require.False(t, lbs.Has(constants.BackfillLabel), "labels=%s", labelsStr)
-	require.False(t, lbs.Has(constants.BackfillDayLabel), "labels=%s", labelsStr)
+	require.False(t, lbs.Has(constants.BackfillShardLabel), "labels=%s", labelsStr)
 }

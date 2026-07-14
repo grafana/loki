@@ -124,14 +124,7 @@ func (t *task) setStateLocked(m *metrics, newStatus workflow.TaskStatus) (bool, 
 	oldState, newState := t.status.State, newStatus.State
 
 	switch {
-	case newStatus != t.status && newState == oldState:
-		// State is the same (so we don't have to validate transitions), but
-		// there's a new payload about the status, so we should store it.
-		t.status = newStatus
-		return true, nil
-
 	case newState == oldState:
-		// Status is the exact same, no need to update.
 		return false, nil
 
 	default:

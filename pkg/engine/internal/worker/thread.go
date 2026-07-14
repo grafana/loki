@@ -103,6 +103,7 @@ type thread struct {
 	BatchSize      int64
 	PrefetchBytes  int64
 	Bucket         objstore.Bucket
+	DataBucket     objstore.Bucket
 	Metastore      metastore.Metastore
 	Logger         log.Logger
 	StreamFilterer executor.RequestStreamFilterer
@@ -112,6 +113,9 @@ type thread struct {
 
 	// IndexMergeObserver is optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
+
+	// LogMergeObserver is optional; nil for query-only workers.
+	LogMergeObserver executor.LogMergeObserver
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -125,6 +129,15 @@ func (t *thread) State() threadState {
 	t.stateMut.RLock()
 	defer t.stateMut.RUnlock()
 	return t.state
+}
+
+// dataBucketXCap wraps the source-object bucket for tracing, returning nil when
+// no separate data bucket is configured so the executor falls back to Bucket.
+func (t *thread) dataBucketXCap() objstore.Bucket {
+	if t.DataBucket == nil {
+		return nil
+	}
+	return bucket.NewXCapBucket(t.DataBucket)
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
@@ -215,6 +228,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		BatchSize:      t.BatchSize,
 		PrefetchBytes:  t.PrefetchBytes,
 		Bucket:         bucket.NewXCapBucket(t.Bucket),
+		DataBucket:     t.dataBucketXCap(),
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
@@ -222,6 +236,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		IndexobjCfg:    t.IndexobjCfg,
 
 		IndexMergeObserver: t.IndexMergeObserver,
+		LogMergeObserver:   t.LogMergeObserver,
 
 		GetExternalInputs: func(fnCtx context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
@@ -260,9 +275,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 				if err := source.Bind(input); err != nil && errors.Is(err, wire.ErrConnClosed) {
 					// Depending on load to workers, it's possible for a job to
-					// have some already-closed sources, such as if they got
-					// canceled due to short circuiting. This can be safely
-					// ignored.
+					// have some already-closed sources, such as if their upstream
+					// task was cancelled. This can be safely ignored.
 					level.Debug(logger).Log("msg", "skipping closed source", "source", stream.ULID)
 				} else if err != nil {
 					level.Error(logger).Log("msg", "failed to bind source", "err", err)
@@ -299,33 +313,6 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	defer span.End()
 
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
-
-	// If the root pipeline can be interested in some specific contributing time range
-	// then subscribe to changes.
-	// TODO(spiridonov): find a way to subscribe on non-root pipelines.
-	notifier, ok := executor.Unwrap(pipeline).(executor.ContributingTimeRangeChangedNotifier)
-	if ok {
-		notifier.SubscribeToTimeRangeChanges(func(ts time.Time, lessThan bool) {
-			// Send a Running task status update with the current time range.
-			// This callback fires synchronously from within pipeline.Read, so its
-			// wait is already inside the Read time counted toward the slot's
-			// comm-blocked total; it is recorded here for per-site attribution
-			// only and is not added to the slot total a second time.
-			_, err := t.Metrics.timeSend(ctx, job.Scheduler, "task_status_contributing_range_sync", sendModeSync, taskType, wire.TaskStatusMessage{
-				ID: job.Task.ULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-					ContributingTimeRange: workflow.ContributingTimeRange{
-						Timestamp: ts,
-						LessThan:  lessThan,
-					},
-				},
-			})
-			if err != nil {
-				level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)
-			}
-		})
-	}
 
 	runningWait, err := t.Metrics.timeSend(ctx, job.Scheduler, "task_status_running_async", sendModeAsync, taskType, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,

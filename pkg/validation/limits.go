@@ -280,9 +280,8 @@ type Limits struct {
 
 	// Per tenant limits for the v2 execution engine
 
-	MaxScanTaskParallelism int  `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
-	DebugEngineTasks       bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
-	DebugEngineStreams     bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
+	DebugEngineTasks   bool `yaml:"debug_engine_tasks" json:"debug_engine_tasks"`
+	DebugEngineStreams bool `yaml:"debug_engine_streams" json:"debug_engine_streams"`
 
 	// Data-objects sort schema
 	SortSchema SortSchema `yaml:"sort_schema,omitempty" json:"sort_schema,omitempty" doc:"hidden"`
@@ -571,7 +570,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
 
-	f.IntVar(&l.MaxScanTaskParallelism, "limits.max-scan-task-parallelism", 0, "Experimental: Controls the amount of scan tasks that can be running in parallel in the new query engine. The default of 0 means unlimited parallelism and all tasks will be scheduled at once.")
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 }
@@ -1384,10 +1382,6 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
-}
-
-func (o *Overrides) MaxScanTaskParallelism(userID string) int {
-	return o.getOverridesForUser(userID).MaxScanTaskParallelism
 }
 
 func (o *Overrides) DebugEngineTasks(userID string) bool {

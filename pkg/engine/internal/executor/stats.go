@@ -37,12 +37,17 @@ var (
 	DataObjScanCacheBytes   = xcap.NewStatisticInt64("dataobjscan.cache.bytes", xcap.AggregationTypeSum)
 )
 
-// IndexMerge statistics. Count the number of equal-key collisions observed
-// during a K-way index merge. A non-zero value indicates the upstream
-// invariant, that each (ObjectPath, SectionIndex) is referenced by exactly one
-// source index, has been violated — the merge tolerates this via last-wins, but
-// we want to know how often it happens.
+// Compaction statistics.
 var (
+	// Count the number of equal-key collisions observed
+	// during a K-way index merge. A non-zero value indicates the upstream
+	// invariant, that each (ObjectPath, SectionIndex) is referenced by exactly one
+	// source index, has been violated — the merge tolerates this via last-wins, but
+	// we want to know how often it happens.
 	statIndexMergeDuplicatePostings = xcap.NewStatisticInt64("index.merge.duplicate.postings", xcap.AggregationTypeSum)
 	statIndexMergeDuplicateStats    = xcap.NewStatisticInt64("index.merge.duplicate.stats", xcap.AggregationTypeSum)
+
+	// Encoded byte size of the index object written over the
+	// compacted log objects produced by a LogMerge task.
+	statLogMergeIndexBytes = xcap.NewStatisticInt64("logmerge.index.bytes", xcap.AggregationTypeSum)
 )

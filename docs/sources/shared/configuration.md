@@ -88,7 +88,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
-# if true. If false, the OrgID will always be set to 'fake'.
+# if true. If false, the OrgID will always be set to the value of
+# -auth.no-auth-tenant.
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
 
@@ -96,6 +97,12 @@ lbac:
   # Enables label based access control through the X-Prom-Label-Policy header.
   # CLI flag: -lbac.enabled
   [enabled: <boolean> | default = false]
+
+# Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
+# compatibility. Safe to change on a fresh cluster; on an existing cluster, data
+# stored under the old tenant path must be migrated first (see cmd/migrate).
+# CLI flag: -auth.no-auth-tenant
+[no_auth_tenant: <string> | default = "fake"]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
@@ -1614,6 +1621,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
+    # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
+    # by the coordinator. 0 means unlimited.
+    # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
+    [logs_max_running_compaction_tasks: <int> | default = 16]
+
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
@@ -1627,6 +1639,12 @@ dataobj:
     # Separate from max-runs-per-task to scale independently
     # CLI flag: -dataobj.compaction.logs.max-runs-per-task
     [logs_max_runs_per_task: <int> | default = 3]
+
+    # Experimental: Minimum total compactable data (sum of all runs'
+    # uncompressed size) that justifies log compaction. Converged windows below
+    # this floor are skipped.
+    # CLI flag: -dataobj.compaction.logs.min-compaction-size
+    [logs_min_compaction_size: <int> | default = 4MiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -2174,6 +2192,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Alibabacloud Region to use.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -2182,6 +2204,13 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# Specify the RAM role name of the ECS instance. ECS RAM role authentication is
+# used only when neither access_key_id nor secret_access_key is configured and
+# requires signature_version=v4. If not set, the role name will be automatically
+# retrieved from the ECS instance metadata.
+# CLI flag: -<prefix>.oss.ram-role-name
+[ram_role_name: <string> | default = ""]
+
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 30]
@@ -2189,6 +2218,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 60]
+
+# The signature version to use for authenticating against OSS. Supported values
+# are: v1, v4. ECS RAM role authentication requires signature_version=v4.
+# CLI flag: -<prefix>.oss.signature-version
+[signature_version: <string> | default = "v1"]
 ```
 
 ### analytics
@@ -3372,6 +3406,10 @@ ring:
 # The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.
 # CLI flag: -distributor.max-decompressed-size
 [max_decompressed_size: <int> | default = 5242880000]
+
+# The maximum number of inflight bytes at a time. 0 means disabled.
+# CLI flag: -distributor.max-inflight-bytes
+[max_inflight_bytes: <int> | default = 0]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
@@ -5071,12 +5109,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Controls the amount of scan tasks that can be running in
-# parallel in the new query engine. The default of 0 means unlimited parallelism
-# and all tasks will be scheduled at once.
-# CLI flag: -limits.max-scan-task-parallelism
-[max_scan_task_parallelism: <int> | default = 0]
 
 # Experimental: Toggles verbose debug logging of tasks in the new query engine.
 # CLI flag: -limits.debug-engine-tasks

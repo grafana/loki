@@ -115,11 +115,6 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 }
 
 func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
-	// TODO(rfratto): We should send a Blocked status update to the scheduler if
-	// SendMessage doesn't finish quickly enough.
-	//
-	// We need to find a way to efficiently do that here that doesn't cancel the
-	// send.
 	// stream_data keeps its callback because it also resolves the peer before
 	// sending; getPeer is timed inside the same site rather than split out.
 	_, err := sink.Metrics.timeCommSite("stream_data_sync", sendModeSync, wire.StreamDataMessage{}.Kind(), sink.TaskType, func() error {
