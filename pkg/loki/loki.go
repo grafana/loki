@@ -406,7 +406,7 @@ type Loki struct {
 	ingestLimitsFrontend                *limits_frontend.Frontend
 	ingestLimitsFrontendRing            *ring.Ring
 	Ingester                            ingester.Interface
-	PatternIngester                     *pattern.Ingester
+	PatternIngester                     pattern.PatternIngester
 	PatternRingClient                   pattern.RingClient
 	Querier                             querier.Querier
 	cacheGenerationLoader               queryrangebase.CacheGenNumberLoader

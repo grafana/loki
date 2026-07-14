@@ -241,6 +241,9 @@ func (cfg *TeeConfig) Validate() error {
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
+		return fmt.Errorf("pattern ingester replication factor must be 1")
+	}
 	// Validate retain-for >= chunk-duration
 	if cfg.RetainFor < cfg.MaxChunkAge {
 		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.MaxChunkAge)
@@ -267,6 +270,15 @@ type Limits interface {
 	PatternPersistenceEnabled(userID string) bool
 	PersistenceGranularity(userID string) time.Duration
 	PatternRateThreshold(userID string) float64
+}
+
+type PatternIngester interface {
+	services.Service
+
+	logproto.PatternServer
+	http.Handler
+
+	CheckReady(ctx context.Context) error
 }
 
 type Ingester struct {

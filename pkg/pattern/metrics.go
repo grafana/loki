@@ -66,19 +66,25 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Help:      "The total number of metric samples created to write back to Loki.",
 		}, []string{"tenant"}),
 		ingesterAppends: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_kafka_appends_total",
-			Help: "The total number of batch appends sent to pattern ingesters.",
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "kafka_appends_total",
+			Help:      "The total number of batch appends sent to pattern ingesters.",
 		}, []string{"ingester", "status"}),
 		ingesterMetricAppends: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "pattern_ingester_kafka_metric_appends_total",
-			Help: "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "kafka_metric_appends_total",
+			Help:      "The total number of metric only batch appends sent to pattern ingesters. These requests will not be processed for patterns.",
 		}, []string{"status"}),
 		sendDuration: instrument.NewHistogramCollector(
 			promauto.With(r).NewHistogramVec(
 				prometheus.HistogramOpts{
-					Name:    "pattern_ingester_kafka_send_duration_seconds",
-					Help:    "Time spent sending batches from the tee to the pattern ingester",
-					Buckets: prometheus.DefBuckets,
+					Namespace: metricsNamespace,
+					Subsystem: "pattern_ingester",
+					Name:      "kafka_send_duration_seconds",
+					Help:      "Time spent sending batches from the tee to the pattern ingester",
+					Buckets:   prometheus.DefBuckets,
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),

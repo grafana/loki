@@ -822,7 +822,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return t.PatternIngester, nil
 	case pattern.IngestModeKafka:
 		_ = level.Debug(logger).Log("msg", "initializing Kafka pattern ingester...")
-		svc, err := pattern.NewKafka(t.Cfg.Pattern,
+		t.PatternIngester, err = pattern.NewKafka(t.Cfg.Pattern,
 			t.Overrides,
 			t.PatternRingClient,
 			t.tenantConfigs,
@@ -838,7 +838,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
 		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
 
-		return svc, nil
+		return t.PatternIngester, nil
 	default:
 		return nil, fmt.Errorf("unsupported pattern ingest mode: %s", t.Cfg.Pattern.IngestMode)
 	}

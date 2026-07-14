@@ -168,6 +168,10 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 		return err
 	}
 
+	if err := services.StartAndAwaitRunning(ctx, i.consumer); err != nil {
+		return fmt.Errorf("start kafka consumer: %w", err)
+	}
+
 	// Start all batchSenders. We don't use the Run() context here, because we
 	// want the senders to finish sending any currently in-flight data and the
 	// remining batches in the queue before the service fully stops.
@@ -226,9 +230,14 @@ func (i *KafkaIngester) running(ctx context.Context) error {
 }
 
 func (i *KafkaIngester) stopping(_ error) error {
+	if err := services.StopAndAwaitTerminated(context.Background(), i.consumer); err != nil {
+		level.Warn(i.logger).Log("msg", "failed to stop kafka consumer", "err", err)
+	}
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
+		if flushQueue != nil {
+			flushQueue.Close()
+		}
 	}
 	i.flushQueuesDone.Wait()
 
@@ -278,6 +287,7 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 					stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 					if err != nil {
 						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
+						continue
 					}
 					req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
 					i.sendReq(ctx, req)
@@ -295,6 +305,9 @@ func (i *KafkaIngester) ingesterForTenant(_ string, stream logproto.Stream) (str
 	replicationSet, err := i.ringClient.Ring().Get(uint32(stream.Hash), ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
 		return "", err
+	}
+	if len(replicationSet.Instances) == 0 {
+		return "", errors.New("no pattern ingester instances in ring")
 	}
 	return replicationSet.Instances[0].Addr, nil
 }
@@ -325,7 +338,10 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 
 			// First try to send the request to the correct pattern ingester instance
 			defer cancel()
-			_, err := i.Push(ctx, req)
+			client, err := i.ringClient.GetClientFor(clientRequest.ingesterAddr)
+			if err == nil {
+				_, err = client.(logproto.PatternClient).Push(ctx, req)
+			}
 			if err == nil {
 				// Success here means the stream will be processed for both metrics and patterns
 				i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
