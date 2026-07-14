@@ -460,7 +460,9 @@ func collectIndexSections(ctx context.Context, t *testing.T, bucket objstore.Buc
 			ps, err := postings.Open(ctx, sec)
 			require.NoError(t, err)
 			func() {
-				rr := postings.NewRowReader(ctx, ps, nil)
+				reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+				require.NoError(t, reader.Open(ctx))
+				rr := postings.NewRowReader(ctx, reader)
 				defer rr.Close()
 				for rr.Next() {
 					if row := rr.At(); row.ObjectPath != "" {

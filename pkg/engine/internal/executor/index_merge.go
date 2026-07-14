@@ -472,7 +472,11 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIt
 	if err != nil {
 		return nil, err
 	}
-	return postings.NewRowReader(ctx, ps, nil), nil
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening postings reader: %w", err)
+	}
+	return postings.NewRowReader(ctx, reader), nil
 }
 
 // openStatsReader opens a stats section and returns a row iterator over it.
