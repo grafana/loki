@@ -1,11 +1,11 @@
 package scheduler
 
 import (
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
