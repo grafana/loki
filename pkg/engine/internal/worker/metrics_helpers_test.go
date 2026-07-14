@@ -85,7 +85,7 @@ func TestTaskTypeLabel(t *testing.T) {
 	}
 }
 
-func TestStatusUpdateErrorClass(t *testing.T) {
+func TestTaskResultSendErrorClass(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -104,7 +104,7 @@ func TestStatusUpdateErrorClass(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, statusUpdateErrorClass(tt.err))
+			require.Equal(t, tt.want, taskResultSendErrorClass(tt.err))
 		})
 	}
 }

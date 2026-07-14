@@ -15,13 +15,13 @@ type streamNotification struct {
 
 // taskNotification is a deferred call to a task event handler.
 type taskNotification struct {
-	Handler   workflow.TaskEventHandler
-	Task      *workflow.Task
-	NewStatus workflow.TaskStatus
+	Handler workflow.TaskResultHandler
+	Task    *workflow.Task
+	Result  workflow.TaskResult
 }
 
 // A notifier is responsible for invoking [workflow.StreamEventHandler] and
-// [workflow.TaskEventHandler].
+// [workflow.TaskResultHandler].
 //
 // Notifier is used to avoid deadlocks so notifications can be held without any
 // mutexes held.
@@ -47,6 +47,6 @@ func (n *notifier) Notify(ctx context.Context) {
 	}
 
 	for _, ev := range n.taskNotifications {
-		ev.Handler(ctx, ev.Task, ev.NewStatus)
+		ev.Handler(ctx, ev.Task, ev.Result)
 	}
 }
