@@ -113,8 +113,8 @@ type Workflow struct {
 	tasksMut    sync.RWMutex
 	taskResults map[*Task]pendingSummary // Holds terminal task results until Close.
 
-	streamsMut   sync.RWMutex
-	streamStates map[*Stream]StreamState
+	streamsMut          sync.RWMutex
+	resultsStreamClosed bool
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -142,11 +142,10 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	if graph.Len() == 0 {
 		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
-			opts:         opts,
-			logger:       logger,
-			runner:       runner,
-			taskResults:  make(map[*Task]pendingSummary),
-			streamStates: make(map[*Stream]StreamState),
+			opts:        opts,
+			logger:      logger,
+			runner:      runner,
+			taskResults: make(map[*Task]pendingSummary),
 		}, nil
 	}
 
@@ -164,8 +163,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsStream:   results,
 		resultsPipeline: newStreamPipe(),
 
-		taskResults:  make(map[*Task]pendingSummary),
-		streamStates: make(map[*Stream]StreamState),
+		taskResults: make(map[*Task]pendingSummary),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
 	// planning context does not abort the manifest registration, but keep
@@ -218,8 +216,8 @@ func (wf *Workflow) init(ctx context.Context) error {
 		Streams: wf.allStreams(),
 		Tasks:   wf.allTasks(),
 
-		StreamEventHandler: wf.onStreamChange,
-		TaskResultHandler:  wf.onTaskResult,
+		StreamClosedHandler: wf.onStreamClosed,
+		TaskResultHandler:   wf.onTaskResult,
 	}
 	if err := wf.runner.RegisterManifest(ctx, wf.manifest); err != nil {
 		return err
@@ -353,25 +351,19 @@ func (wf *Workflow) allTasks() []*Task {
 	return tasks
 }
 
-func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState StreamState) {
+func (wf *Workflow) onStreamClosed(_ context.Context, stream *Stream) {
 	if wf.opts.DebugStreams {
-		level.Debug(wf.logger).Log("msg", "stream state change", "stream_id", stream.ULID, "new_state", newState)
+		level.Debug(wf.logger).Log("msg", "stream closed", "stream_id", stream.ULID)
+	}
+
+	if stream.ULID != wf.resultsStream.ULID {
+		return
 	}
 
 	wf.streamsMut.Lock()
-	wf.streamStates[stream] = newState
-	shouldCloseResults := newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID
+	wf.resultsStreamClosed = true
 	wf.streamsMut.Unlock()
-
-	if shouldCloseResults {
-		wf.maybeCloseResults()
-	}
-}
-
-// resultsStreamClosed reports whether the results stream has reached
-// StreamStateClosed. Callers must hold streamsMut.
-func (wf *Workflow) resultsStreamClosed() bool {
-	return wf.streamStates[wf.resultsStream] == StreamStateClosed
+	wf.maybeCloseResults()
 }
 
 // maybeCloseResults closes the results pipeline (signaling EOF) only once the
@@ -379,7 +371,7 @@ func (wf *Workflow) resultsStreamClosed() bool {
 // SetError happens-before the EOF. Idempotent; safe to call from any handler.
 func (wf *Workflow) maybeCloseResults() {
 	wf.streamsMut.RLock()
-	streamClosed := wf.resultsStreamClosed()
+	streamClosed := wf.resultsStreamClosed
 	wf.streamsMut.RUnlock()
 
 	if !streamClosed {

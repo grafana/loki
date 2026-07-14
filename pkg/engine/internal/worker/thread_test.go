@@ -196,6 +196,18 @@ func TestThread_runJob_ReportsInvalidTask(t *testing.T) {
 	require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
 }
 
+func TestStreamSinkCloseIsIdempotent(t *testing.T) {
+	var sink streamSink
+	sink.Close()
+	sink.Close()
+
+	select {
+	case <-sink.ctx.Done():
+	default:
+		t.Fatal("closing sink should cancel its local connection context")
+	}
+}
+
 type testPeerPair struct {
 	workerPeer  *wire.Peer
 	taskResults chan workflow.TaskOutcome
@@ -236,8 +248,8 @@ func newTestPeerPair(t *testing.T) *testPeerPair {
 		Metrics: wire.NewMetrics(),
 		Conn:    schedulerConn,
 		Handler: func(_ context.Context, _ *wire.Peer, message wire.Message) error {
-			if result, ok := message.(wire.TaskResultMessage); ok {
-				pair.taskResults <- result.Result.Outcome
+			if msg, ok := message.(wire.TaskResultMessage); ok {
+				pair.taskResults <- msg.Result.Outcome
 			}
 			return nil
 		},
@@ -269,4 +281,30 @@ func (p *testPeerPair) waitForTaskResult(t *testing.T, timeout time.Duration) wo
 		t.Fatal("timed out waiting for task result")
 		return 0
 	}
+}
+
+func TestWorkerNewJobClosesSourcesListedInAssignment(t *testing.T) {
+	metrics := newMetrics()
+	worker := &Worker{
+		sources: make(map[ulid.ULID]*streamSource),
+		sinks:   make(map[ulid.ULID]*streamSink),
+		jobs:    make(map[ulid.ULID]*threadJob),
+		metrics: metrics,
+	}
+	worker.resourcesMut.Init("resourcesMut", metrics.lock)
+
+	stream := &workflow.Stream{ULID: ulid.Make()}
+	job, err := worker.newJob(t.Context(), nil, log.NewNopLogger(), wire.TaskAssignMessage{
+		Task: &workflow.Task{
+			ULID:    ulid.Make(),
+			Sources: map[physical.Node][]*workflow.Stream{nil: {stream}},
+		},
+		ClosedSourceIDs: []ulid.ULID{stream.ULID},
+	})
+	require.NoError(t, err)
+	t.Cleanup(job.Close)
+
+	var input nodeSource
+	err = job.Sources[stream.ULID].Bind(&input)
+	require.ErrorIs(t, err, wire.ErrConnClosed)
 }

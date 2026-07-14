@@ -8,7 +8,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/ewma"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 // collector implements [prometheus.Collector], collecting metrics for a
@@ -58,8 +57,8 @@ func newCollector(sched *Scheduler) *collector {
 		),
 		streamsInflight: prometheus.NewDesc(
 			"loki_engine_scheduler_streams_inflight",
-			"Number of in-flight streams by state",
-			[]string{"state"},
+			"Number of streams that have not closed",
+			nil,
 			nil,
 		),
 
@@ -124,10 +123,7 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
 	defer guard.RUnlock()
 
-	var (
-		tasksInflight  int
-		streamsByState = make(map[workflow.StreamState]int)
-	)
+	var tasksInflight, streamsInflight int
 
 	for _, t := range mc.sched.tasks {
 		if t.Queued() && !t.HasResult() {
@@ -135,13 +131,13 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 		}
 	}
 	for _, s := range mc.sched.streams {
-		streamsByState[s.state]++
+		if !s.closed {
+			streamsInflight++
+		}
 	}
 
 	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(tasksInflight))
-	for state, count := range streamsByState {
-		ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(count), state.String())
-	}
+	ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(streamsInflight))
 }
 
 func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {

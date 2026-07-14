@@ -24,8 +24,8 @@ type Manifest struct {
 	// Streams within the same manifest.
 	Tasks []*Task
 
-	StreamEventHandler StreamEventHandler // Handler for stream events.
-	TaskResultHandler  TaskResultHandler  // Handler for terminal task results.
+	StreamClosedHandler StreamClosedHandler // Handler for stream closure.
+	TaskResultHandler   TaskResultHandler   // Handler for terminal task results.
 }
 
 // A RecordWriter is used to write records to a stream.
@@ -74,41 +74,8 @@ type Runner interface {
 	Cancel(ctx context.Context, tasks ...*Task) error
 }
 
-// StreamEventHandler is a function that handles events for changed streams.
-type StreamEventHandler func(ctx context.Context, s *Stream, newState StreamState)
-
-// StreamState represents the state of a stream. It is sent as an event by a
-// [Runner] whenever a stream associated with a task changes its state.
-//
-// The zero value of StreamState is an inactive stream.
-type StreamState int
-
-const (
-	// StreamStateIdle represents a stream that is waiting for both the sender
-	// and receiver to be available.
-	StreamStateIdle StreamState = iota
-
-	// StreamStateOpen represents a stream that is open and transmitting data.
-	StreamStateOpen
-
-	// StreamStateClosed represents a stream that is closed and no longer
-	// transmitting data.
-	StreamStateClosed
-)
-
-var streamStates = [...]string{
-	"Idle",
-	"Open",
-	"Closed",
-}
-
-// String returns a string representation of the StreamState.
-func (s StreamState) String() string {
-	if s >= 0 && int(s) < len(streamStates) {
-		return streamStates[s]
-	}
-	return fmt.Sprintf("StreamState(%d)", s)
-}
+// StreamClosedHandler handles the closure of a stream.
+type StreamClosedHandler func(ctx context.Context, s *Stream)
 
 // TaskResultHandler handles a terminal result for a task.
 type TaskResultHandler func(ctx context.Context, t *Task, result TaskResult)

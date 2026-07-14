@@ -57,11 +57,11 @@ message MessageFrame {
 
     StreamBindMessage stream_bind = 7;
     StreamDataMessage stream_data = 8;
-    StreamStatusMessage stream_status = 9;
+    StreamClosedMessage stream_closed = 13;
   }
 
-  reserved 5, 6;
-  reserved "task_flag", "task_status";
+  reserved 5, 6, 9;
+  reserved "task_flag", "task_status", "stream_status";
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -97,13 +97,15 @@ message WorkerReadyMessage {}
 message TaskAssignMessage {
   Task task = 1;
 
-  // StreamStates holds the most recent state of each stream that the task
-  // reads from. The key is the stream ULID.
-  map<string, StreamState> stream_states = 2;
-
   // Metadata holds additional metadata to propagate with the task, such as
   // trace context.
   repeated httpgrpc.Header metadata = 3;
+
+  // ClosedSourceIDs identifies source streams that closed before assignment.
+  repeated string closed_source_ids = 4;
+
+  reserved 2;
+  reserved "stream_states";
 }
 
 // TaskCancelMessage is sent by the scheduler to a worker when a task is no
@@ -153,14 +155,16 @@ message StreamDataMessage {
   bytes data = 2;
 }
 
-// StreamStatusMessage communicates the status of the sending side of a stream.
-message StreamStatusMessage {
+// StreamClosedMessage is sent by the scheduler to a stream receiver after the
+// stream's producer finishes or is cancelled or disconnected.
+message StreamClosedMessage {
   ulid.loki.v1.ProtoULID stream_id = 1 [
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
-  StreamState state = 2;
+  reserved 2;
+  reserved "state";
 }
 
 // Task is a single unit of work within a workflow.
@@ -238,15 +242,4 @@ enum TaskOutcome {
   TASK_OUTCOME_COMPLETED = 1;
   TASK_OUTCOME_CANCELLED = 2;
   TASK_OUTCOME_FAILED = 3;
-}
-
-// StreamState represents the state of a stream.
-enum StreamState {
-  STREAM_STATE_INVALID = 0; // Invalid/unspecified state.
-  STREAM_STATE_IDLE = 1; // Stream waiting for sender and receiver.
-  STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
-  STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
-
-  reserved 3;
-  reserved "STREAM_STATE_BLOCKED";
 }

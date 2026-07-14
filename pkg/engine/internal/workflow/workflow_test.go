@@ -168,7 +168,7 @@ func TestCancellation(t *testing.T) {
 // at index objects that were never written.
 //
 // This drives the handlers in the order a real worker produces them:
-//  1. results stream -> StreamStateClosed  (worker closes all sinks on failure)
+//  1. results stream closes               (worker closes all sinks on failure)
 //  2. root task      -> TaskOutcomeFailed (worker reports its terminal result)
 //
 // and asserts the consumer pipeline surfaces the failure rather than EOF.
@@ -214,7 +214,7 @@ func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
 		//    the workflow has learned the task failed, so errCond is not closed.
 		rs, ok := fr.streams[wf.resultsStream.ULID]
 		require.True(t, ok, "results stream should be registered with runner")
-		rs.Handler(t.Context(), wf.resultsStream, StreamStateClosed)
+		rs.Handler(t.Context(), wf.resultsStream)
 
 		// Let the consumer goroutine react to the stream close.
 		synctest.Wait()
@@ -315,7 +315,7 @@ func (f *fakeRunner) RegisterManifest(_ context.Context, manifest *Manifest) err
 
 		manifestStreams[stream.ULID] = &runnerStream{
 			Stream:  stream,
-			Handler: manifest.StreamEventHandler,
+			Handler: manifest.StreamClosedHandler,
 		}
 	}
 	for _, task := range manifest.Tasks {
@@ -459,7 +459,7 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 // pipeline owned by the runner, given to the workflow.
 type runnerStream struct {
 	Stream  *Stream
-	Handler StreamEventHandler
+	Handler StreamClosedHandler
 
 	TaskReceiver ulid.ULID    // Task listening for messages on stream.
 	Listener     RecordWriter // Pipeline listening for messages on stream.

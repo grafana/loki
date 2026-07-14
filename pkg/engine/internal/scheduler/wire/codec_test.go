@@ -75,7 +75,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
 		},
-		"TaskAssignMessage without StreamStates": {
+		"TaskAssignMessage without ClosedSourceIDs": {
 			message: TaskAssignMessage{
 				Task: &workflow.Task{
 					ULID:     taskULID,
@@ -84,10 +84,10 @@ func TestProtobufCodec_Messages(t *testing.T) {
 					Sources:  map[physical.Node][]*workflow.Stream{},
 					Sinks:    map[physical.Node][]*workflow.Stream{},
 				},
-				StreamStates: map[ulid.ULID]workflow.StreamState{},
+				ClosedSourceIDs: []ulid.ULID{},
 			},
 		},
-		"TaskAssignMessage with StreamStates": {
+		"TaskAssignMessage with ClosedSourceIDs": {
 			message: TaskAssignMessage{
 				Task: &workflow.Task{
 					ULID:     taskULID,
@@ -96,9 +96,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 					Sources:  map[physical.Node][]*workflow.Stream{},
 					Sinks:    map[physical.Node][]*workflow.Stream{},
 				},
-				StreamStates: map[ulid.ULID]workflow.StreamState{
-					streamULID: workflow.StreamStateOpen,
-				},
+				ClosedSourceIDs: []ulid.ULID{streamULID},
 			},
 		},
 		"TaskCancelMessage": {
@@ -127,23 +125,8 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				Receiver: addr,
 			},
 		},
-		"StreamStatusMessage with Idle state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateIdle,
-			},
-		},
-		"StreamStatusMessage with Open state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateOpen,
-			},
-		},
-		"StreamStatusMessage with Closed state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateClosed,
-			},
+		"StreamClosedMessage": {
+			message: StreamClosedMessage{StreamID: streamULID},
 		},
 	}
 
@@ -229,7 +212,7 @@ func TestProtobufCodec_Metrics(t *testing.T) {
 				Sources:  map[physical.Node][]*workflow.Stream{},
 				Sinks:    map[physical.Node][]*workflow.Stream{},
 			},
-			StreamStates: map[ulid.ULID]workflow.StreamState{},
+			ClosedSourceIDs: []ulid.ULID{},
 		},
 	}
 	taskAssignBytes := codec.encode(taskAssign, metrics, nil)
@@ -312,42 +295,6 @@ func TestProtobufCodec_TaskOutcomes(t *testing.T) {
 
 			actualMessage := actualFrame.(MessageFrame).Message.(TaskResultMessage)
 			assert.Equal(t, outcome, actualMessage.Result.Outcome)
-		})
-	}
-}
-
-func TestProtobufCodec_StreamStates(t *testing.T) {
-	streamULID := ulid.Make()
-
-	states := []workflow.StreamState{
-		workflow.StreamStateIdle,
-		workflow.StreamStateOpen,
-		workflow.StreamStateClosed,
-	}
-
-	codec := DefaultFrameCodec
-	mc := &metricCodec{protobufCodec: codec}
-
-	for _, state := range states {
-		t.Run(state.String(), func(t *testing.T) {
-			message := StreamStatusMessage{
-				StreamID: streamULID,
-				State:    state,
-			}
-
-			frame := MessageFrame{
-				ID:      1,
-				Message: message,
-			}
-
-			pbFrame, err := mc.frameToPbFrame(frame)
-			require.NoError(t, err)
-
-			actualFrame, err := mc.frameFromPbFrame(pbFrame)
-			require.NoError(t, err)
-
-			actualMessage := actualFrame.(MessageFrame).Message.(StreamStatusMessage)
-			assert.Equal(t, state, actualMessage.State)
 		})
 	}
 }

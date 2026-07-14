@@ -35,7 +35,6 @@ type sendMode string
 // send mode label values. The Prometheus label is named "mode".
 const (
 	sendModeSync     sendMode = "sync"
-	sendModeAsync    sendMode = "async"
 	sendModeInternal sendMode = "internal"
 )
 
@@ -282,16 +281,11 @@ func (m *metrics) timeCommSite(site string, mode sendMode, messageType wire.Mess
 	return d, err
 }
 
-// timeSend times a fire-and-forget or acknowledged send at a communication
-// site: it sends msg to sender (asynchronously when mode is async, otherwise
-// synchronously) and records the wait to comm_site_wait_seconds, deriving the
-// message_type label from msg. It is the send-shaped counterpart to
-// timeCommSite, sparing pure-send sites a one-line callback.
-func (m *metrics) timeSend(ctx context.Context, sender *wire.Peer, site string, mode sendMode, taskType taskType, msg wire.Message) (time.Duration, error) {
-	return m.timeCommSite(site, mode, msg.Kind(), taskType, func() error {
-		if mode == sendModeAsync {
-			return sender.SendMessageAsync(ctx, msg)
-		}
+// timeSend synchronously sends msg and records the wait at a communication
+// site, deriving the message_type label from msg. It is the send-shaped
+// counterpart to timeCommSite, sparing pure-send sites a one-line callback.
+func (m *metrics) timeSend(ctx context.Context, sender *wire.Peer, site string, taskType taskType, msg wire.Message) (time.Duration, error) {
+	return m.timeCommSite(site, sendModeSync, msg.Kind(), taskType, func() error {
 		return sender.SendMessage(ctx, msg)
 	})
 }

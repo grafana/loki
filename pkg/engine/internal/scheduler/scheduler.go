@@ -207,8 +207,6 @@ func (s *Scheduler) handleMessage(ctx context.Context, worker *workerConn, msg w
 		return s.markWorkerReady(worker)
 	case wire.TaskResultMessage:
 		return s.handleTaskResult(ctx, worker, msg)
-	case wire.StreamStatusMessage:
-		return s.handleStreamStatus(ctx, worker, msg)
 	default:
 		phases := s.metrics.startHandler(msg.Kind())
 		defer func() { phases.Done(handlerOutcome(err)) }()
@@ -327,6 +325,9 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 		return nil
 	}
 
+	// A task result is the authoritative signal that all synchronous sink data
+	// sends finished. Close its sinks before task-result notification; notifier
+	// dispatches stream closures first.
 	s.closeTaskSinks(ctx, &n, task)
 
 	if owner := task.owner; owner != nil {
@@ -363,54 +364,24 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 	return nil
 }
 
-func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) (err error) {
-	phases := s.metrics.startHandler(msg.Kind())
-	defer func() { phases.Done(handlerOutcome(err)) }()
-
-	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+// closeStream records that target closed. It must be called while resourcesMut
+// is held.
+func (s *Scheduler) closeStream(ctx context.Context, n *notifier, target *stream) {
+	if !target.markClosed(s.metrics) {
+		return
 	}
 
-	var n notifier
-	defer n.Notify(ctx)
-
-	resourcesGuard := s.resourcesMut.Lock("handle_stream_status")
-	defer resourcesGuard.Unlock()
-
-	stream, found := s.streams[msg.StreamID]
-	if !found {
-		return fmt.Errorf("stream %s not found", msg.StreamID)
-	}
-	return s.changeStreamState(ctx, &n, stream, msg.State)
-}
-
-// changeStreamState updates the state of the target stream. changeStreamState
-// must be called while the resourcesMut lock is held.
-func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
-	changed, err := target.setState(s.metrics, newState)
-	if err != nil {
-		return err
-	} else if !changed {
-		return nil
-	}
-
-	// If we have a receiver, inform them about the change. This is a
-	// best-effort message so we don't need to wait for acknowledgement.
+	// If the stream has a receiver, inform it. This is a best-effort message so
+	// we do not wait for acknowledgement.
 	receiver, found := s.tasks[target.taskReceiver]
 	if found && receiver.owner != nil {
-		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: target.inner.ULID,
-			State:    newState,
-		})
+		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamClosedMessage{StreamID: target.inner.ULID})
 	}
 
-	// Inform the owner about the change.
 	n.AddStreamEvent(streamNotification{
-		Handler:  target.handler,
-		Stream:   target.inner,
-		NewState: newState,
+		Handler: target.handler,
+		Stream:  target.inner,
 	})
-	return nil
 }
 
 // removeWorker immediately cleans up state for a worker:
@@ -603,7 +574,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
-		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
+		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.ClosedSourceIDs)
 	}
 }
 
@@ -669,13 +640,11 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 // buildAssignMessage must be called while resourcesMut is held (at least RLock).
 func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 	msg := wire.TaskAssignMessage{
-		Task:         t.inner,
-		StreamStates: make(map[ulid.ULID]workflow.StreamState),
-		Metadata:     t.metadata,
+		Task:     t.inner,
+		Metadata: t.metadata,
 	}
 
-	// Populate stream states based on our view of streams that the task reads
-	// from.
+	// Include sources that closed before the assignment snapshot.
 	for _, sources := range t.inner.Sources {
 		for _, rawSource := range sources {
 			source, found := s.streams[rawSource.ULID]
@@ -685,7 +654,9 @@ func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 				continue
 			}
 
-			msg.StreamStates[rawSource.ULID] = source.state
+			if source.closed {
+				msg.ClosedSourceIDs = append(msg.ClosedSourceIDs, rawSource.ULID)
+			}
 		}
 	}
 
@@ -726,7 +697,7 @@ type pendingMessage struct {
 }
 
 // finalizeAssignment completes the assignment of the task to the worker.
-func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentStates map[ulid.ULID]workflow.StreamState) {
+func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentClosedSourceIDs []ulid.ULID) {
 	hop := s.metrics.startAssignmentHop("finalize_assignment")
 	var (
 		n           notifier
@@ -760,16 +731,22 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
 		}
 
-		// Reconcile stream states: send updates for any that changed while sending.
-		for streamID, sentState := range sentStates {
-			if current, found := s.streams[streamID]; found && current.state != sentState {
-				pendingMsgs = append(pendingMsgs, pendingMessage{
-					peer: worker,
-					msg: wire.StreamStatusMessage{
-						StreamID: streamID,
-						State:    current.state,
-					},
-				})
+		// Reconcile sources that closed after the assignment snapshot. Closure
+		// that was in the snapshot was acknowledged with TaskAssign.
+		sentClosed := make(map[ulid.ULID]struct{}, len(sentClosedSourceIDs))
+		for _, streamID := range sentClosedSourceIDs {
+			sentClosed[streamID] = struct{}{}
+		}
+		for _, sources := range t.inner.Sources {
+			for _, rawSource := range sources {
+				current, found := s.streams[rawSource.ULID]
+				_, sent := sentClosed[rawSource.ULID]
+				if found && current.closed && !sent {
+					pendingMsgs = append(pendingMsgs, pendingMessage{
+						peer: worker,
+						msg:  wire.StreamClosedMessage{StreamID: rawSource.ULID},
+					})
+				}
 			}
 		}
 
@@ -916,9 +893,7 @@ func (s *Scheduler) RegisterManifest(ctx context.Context, manifest *workflow.Man
 
 		manifestStreams[streamToAdd.ULID] = &stream{
 			inner:   streamToAdd,
-			handler: manifest.StreamEventHandler,
-
-			state: workflow.StreamStateIdle,
+			handler: manifest.StreamClosedHandler,
 		}
 	}
 
@@ -981,15 +956,12 @@ NextTask:
 		return errors.Join(errs...)
 	}
 
-	for range manifestStreams {
-		s.metrics.streamsTotal.WithLabelValues(workflow.StreamStateIdle.String()).Inc()
-	}
-
 	// Once we hit this point, the manifest has been validated and we can
 	// atomically update our internal state.
 	maps.Copy(s.streams, manifestStreams)
 	maps.Copy(s.tasks, manifestTasks)
 	s.metrics.tasksRegisteredTotal.Add(float64(len(manifestTasks)))
+	s.metrics.streamsRegisteredTotal.Add(float64(len(manifestStreams)))
 
 	xcap.RegionFromContext(ctx).Record(StatPlannedTasks.Observe(int64(len(manifestTasks))))
 	return nil
@@ -1094,14 +1066,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 	for _, streamToRemove := range manifest.Streams {
 		registered := s.streams[streamToRemove.ULID] // Validated to exist above
 
-		changed, _ := registered.setState(s.metrics, workflow.StreamStateClosed)
-		if changed {
-			n.AddStreamEvent(streamNotification{
-				Handler:  registered.handler,
-				Stream:   streamToRemove,
-				NewState: workflow.StreamStateClosed,
-			})
-		}
+		s.closeStream(ctx, &n, registered)
 
 		delete(s.streams, streamToRemove.ULID)
 	}
@@ -1259,8 +1224,8 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 // Cancel requests cancellation of the specified tasks. Cancel returns an error
 // if any of the tasks were not found.
 //
-// For tasks which are currently running on a worker, Cancel send a best-effort
-// cancellation message to the worker. Cancel does not wait for these tasks to
+// For tasks assigned to a worker, Cancel sends a best-effort cancellation
+// message to the worker. Cancel does not wait for these tasks to
 // produce a terminal result.
 func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	var n notifier
@@ -1327,7 +1292,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 }
 
 // closeTaskSinks closes all sink streams associated with t (if not already
-// closed) and queues stream-state notifications onto n.
+// closed) and queues stream-closure notifications onto n.
 //
 // closeTaskSinks must be called while resourcesMut is held.
 func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
@@ -1338,7 +1303,7 @@ func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
 				continue
 			}
 
-			_ = s.changeStreamState(ctx, n, sink, workflow.StreamStateClosed)
+			s.closeStream(ctx, n, sink)
 		}
 	}
 }
