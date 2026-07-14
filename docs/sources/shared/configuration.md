@@ -1104,36 +1104,11 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
-  # How records are ingested: "kafka" reads from a Kafka topic; "inmemory" uses
-  # an in-process channel (experimental, single-node, no durability guarantees,
+  # How records are ingested: "kafka" reads from a Kafka topic; "grpc" uses an
+  # in-process channel (experimental, single-node, no durability guarantees,
   # each replica holds independent data).
   # CLI flag: -pattern-ingester.ingest-mode
-  [ingest_mode: <string> | default = "kafka"]
-
-  ring_config:
-    # The key to use for the pattern ingester ring.
-    # CLI flag: -pattern-ingester.ring.ring.key
-    [key: <string> | default = "pattern-ingester"]
-
-    # Configuration for memberlist client. Only applies if the selected kvstore
-    # is memberlist.
-    # 
-    # When a memberlist config with atleast 1 join_members is defined, kvstore
-    # of type memberlist is automatically selected for all the components that
-    # require a ring unless otherwise specified in the component's configuration
-    # section.
-    # The CLI flags prefix for this block configuration is:
-    # pattern-ingester.ring.ring.memberlist
-    [memberlist: <memberlist>]
-
-    # Size of the buffer for key watchers.
-    # CLI flag: -pattern-ingester.ring.ring.watcher-buffer-size
-    [watcher_buffer_size: <int> | default = 0]
-
-    # How long to wait for the partition ring to be populated before failing
-    # startup.
-    # CLI flag: -pattern-ingester.ring.ring.startup-timeout
-    [startup_timeout: <duration> | default = 1m]
+  [ingest_mode: <string> | default = "grpc"]
 
   # Configures how the pattern ingester will connect to Kafka.
   kafka_config:
@@ -5183,129 +5158,129 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 
 ```yaml
 # Name of the node in memberlist cluster. Defaults to hostname.
-# CLI flag: -<prefix>.memberlist.nodename
+# CLI flag: -memberlist.nodename
 [node_name: <string> | default = ""]
 
 # Add random suffix to the node name.
-# CLI flag: -<prefix>.memberlist.randomize-node-name
+# CLI flag: -memberlist.randomize-node-name
 [randomize_node_name: <boolean> | default = true]
 
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
-# CLI flag: -<prefix>.memberlist.stream-timeout
+# CLI flag: -memberlist.stream-timeout
 [stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
-# CLI flag: -<prefix>.memberlist.retransmit-factor
+# CLI flag: -memberlist.retransmit-factor
 [retransmit_factor: <int> | default = 4]
 
 # How often to use pull/push sync.
-# CLI flag: -<prefix>.memberlist.pullpush-interval
+# CLI flag: -memberlist.pullpush-interval
 [pull_push_interval: <duration> | default = 30s]
 
 # How often to gossip.
-# CLI flag: -<prefix>.memberlist.gossip-interval
+# CLI flag: -memberlist.gossip-interval
 [gossip_interval: <duration> | default = 200ms]
 
 # How many nodes to gossip to.
-# CLI flag: -<prefix>.memberlist.gossip-nodes
+# CLI flag: -memberlist.gossip-nodes
 [gossip_nodes: <int> | default = 3]
 
 # How long to keep gossiping to dead nodes, to give them chance to refute their
 # death.
-# CLI flag: -<prefix>.memberlist.gossip-to-dead-nodes-time
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
 [gossip_to_dead_nodes_time: <duration> | default = 30s]
 
 # How soon can dead node's name be reclaimed with new address. 0 to disable.
-# CLI flag: -<prefix>.memberlist.dead-node-reclaim-time
+# CLI flag: -memberlist.dead-node-reclaim-time
 [dead_node_reclaim_time: <duration> | default = 0s]
 
 # Enable message compression. This can be used to reduce bandwidth usage at the
 # cost of slightly more CPU utilization.
-# CLI flag: -<prefix>.memberlist.compression-enabled
+# CLI flag: -memberlist.compression-enabled
 [compression_enabled: <boolean> | default = true]
 
 # How frequently to notify watchers when a key changes. Can reduce CPU activity
 # in large memberlist deployments. 0 to notify without delay.
-# CLI flag: -<prefix>.memberlist.notify-interval
+# CLI flag: -memberlist.notify-interval
 [notify_interval: <duration> | default = 0s]
 
 # Size of the internal queue for messages received from other nodes. Increasing
 # this value may help to avoid dropping messages when the node is processing a
 # large number of messages from other nodes.
-# CLI flag: -<prefix>.memberlist.received-messages-queue-size
+# CLI flag: -memberlist.received-messages-queue-size
 [received_messages_queue_size: <int> | default = 1024]
 
 # Size of the per-key internal queue for processing messages received from other
 # nodes. Increasing this value may help to avoid dropping per-key updates when
 # the node is processing many updates for the same key.
-# CLI flag: -<prefix>.memberlist.processed-messages-queue-size
+# CLI flag: -memberlist.processed-messages-queue-size
 [processed_messages_queue_size: <int> | default = 1024]
 
 # Compression algorithm used for outgoing messages when
 # -memberlist.compression-enabled is true. Supported values: lzw, snappy.
 # Ignored when -memberlist.compression-enabled is false.
-# CLI flag: -<prefix>.memberlist.compression-algorithm
+# CLI flag: -memberlist.compression-algorithm
 [compression_algorithm: <string> | default = "lzw"]
 
 # Gossip address to advertise to other members in the cluster. Used for NAT
 # traversal.
-# CLI flag: -<prefix>.memberlist.advertise-addr
+# CLI flag: -memberlist.advertise-addr
 [advertise_addr: <string> | default = ""]
 
 # Gossip port to advertise to other members in the cluster. Used for NAT
 # traversal.
-# CLI flag: -<prefix>.memberlist.advertise-port
+# CLI flag: -memberlist.advertise-port
 [advertise_port: <int> | default = 7946]
 
 # The cluster label is an optional string to include in outbound packets and
 # gossip streams. Other members in the memberlist cluster will discard any
 # message whose label doesn't match the configured one, unless the
 # 'cluster-label-verification-disabled' configuration option is set to true.
-# CLI flag: -<prefix>.memberlist.cluster-label
+# CLI flag: -memberlist.cluster-label
 [cluster_label: <string> | default = ""]
 
 # When true, memberlist doesn't verify that inbound packets and gossip streams
 # have the cluster label matching the configured one. This verification should
 # be disabled while rolling out the change to the configured cluster label in a
 # live memberlist cluster.
-# CLI flag: -<prefix>.memberlist.cluster-label-verification-disabled
+# CLI flag: -memberlist.cluster-label-verification-disabled
 [cluster_label_verification_disabled: <boolean> | default = false]
 
 # Other cluster members to join. Can be specified multiple times or as a
 # comma-separated list. It can be an IP, hostname or an entry specified in the
 # DNS Service Discovery format.
-# CLI flag: -<prefix>.memberlist.join
+# CLI flag: -memberlist.join
 [join_members: <list of strings>]
 
 # Min backoff duration to join other cluster members.
-# CLI flag: -<prefix>.memberlist.min-join-backoff
+# CLI flag: -memberlist.min-join-backoff
 [min_join_backoff: <duration> | default = 1s]
 
 # Max backoff duration to join other cluster members.
-# CLI flag: -<prefix>.memberlist.max-join-backoff
+# CLI flag: -memberlist.max-join-backoff
 [max_join_backoff: <duration> | default = 1m]
 
 # Max number of retries to join other cluster members.
-# CLI flag: -<prefix>.memberlist.max-join-retries
+# CLI flag: -memberlist.max-join-retries
 [max_join_retries: <int> | default = 10]
 
 # Abort if this node fails the fast memberlist cluster joining procedure at
 # startup. When enabled, it's guaranteed that other services, depending on
 # memberlist, have an updated view over the cluster state when they're started.
-# CLI flag: -<prefix>.memberlist.abort-if-fast-join-fails
+# CLI flag: -memberlist.abort-if-fast-join-fails
 [abort_if_cluster_fast_join_fails: <boolean> | default = false]
 
 # Minimum number of seed nodes that must be successfully joined during fast-join
 # for it to succeed. Only applies when -memberlist.abort-if-fast-join-fails is
 # enabled.
-# CLI flag: -<prefix>.memberlist.abort-if-fast-join-fails-min-nodes
+# CLI flag: -memberlist.abort-if-fast-join-fails-min-nodes
 [abort_if_cluster_fast_join_fails_min_nodes: <int> | default = 1]
 
 # Abort if this node fails to join memberlist cluster at startup. When enabled,
 # it's not guaranteed that other services are started only after the cluster
 # state has been successfully updated; use 'abort-if-fast-join-fails' instead.
-# CLI flag: -<prefix>.memberlist.abort-if-join-fails
+# CLI flag: -memberlist.abort-if-join-fails
 [abort_if_cluster_join_fails: <boolean> | default = false]
 
 # If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
@@ -5314,26 +5289,26 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # recommended to use rejoin. If -memberlist.join points to dynamic service that
 # resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
 # is not needed.
-# CLI flag: -<prefix>.memberlist.rejoin-interval
+# CLI flag: -memberlist.rejoin-interval
 [rejoin_interval: <duration> | default = 0s]
 
 # Seed nodes to use for periodic rejoin. Takes precedence over -memberlist.join
 # for rejoining. If not specified, -memberlist.join is used. Can be specified
 # multiple times or as a comma-separated list. Supports IP, hostname, or DNS
 # Service Discovery format.
-# CLI flag: -<prefix>.memberlist.rejoin-seed-nodes
+# CLI flag: -memberlist.rejoin-seed-nodes
 [rejoin_seed_nodes: <list of strings>]
 
 # How long to keep LEFT ingesters in the ring.
-# CLI flag: -<prefix>.memberlist.left-ingesters-timeout
+# CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
 
 # How long to keep obsolete entries in the KV store.
-# CLI flag: -<prefix>.memberlist.obsolete-entries-timeout
+# CLI flag: -memberlist.obsolete-entries-timeout
 [obsolete_entries_timeout: <duration> | default = 30s]
 
 # Timeout for leaving memberlist cluster.
-# CLI flag: -<prefix>.memberlist.leave-timeout
+# CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 20s]
 
 # Timeout for broadcasting all remaining locally-generated updates to other
@@ -5341,82 +5316,81 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # cluster, and only applies to locally-generated updates, not to broadcast
 # messages that are result of incoming gossip updates. 0 = no timeout, wait
 # until all locally-generated updates are sent.
-# CLI flag: -<prefix>.memberlist.broadcast-timeout-for-local-updates-on-shutdown
+# CLI flag: -memberlist.broadcast-timeout-for-local-updates-on-shutdown
 [broadcast_timeout_for_local_updates_on_shutdown: <duration> | default = 10s]
 
 # How much space to use for keeping received and sent messages in memory for
 # troubleshooting (two buffers). 0 to disable.
-# CLI flag: -<prefix>.memberlist.message-history-buffer-bytes
+# CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
 
 # Size of the buffered channel for the WatchPrefix function.
-# CLI flag: -<prefix>.memberlist.watch-prefix-buffer-size
+# CLI flag: -memberlist.watch-prefix-buffer-size
 [watch_prefix_buffer_size: <int> | default = 128]
 
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
-# CLI flag: -<prefix>.memberlist.bind-addr
+# CLI flag: -memberlist.bind-addr
 [bind_addr: <list of strings> | default = []]
 
 # Port to listen on for gossip messages.
-# CLI flag: -<prefix>.memberlist.bind-port
+# CLI flag: -memberlist.bind-port
 [bind_port: <int> | default = 7946]
 
 # Timeout used when connecting to other nodes to send packet.
-# CLI flag: -<prefix>.memberlist.packet-dial-timeout
+# CLI flag: -memberlist.packet-dial-timeout
 [packet_dial_timeout: <duration> | default = 2s]
 
 # Timeout for writing 'packet' data.
-# CLI flag: -<prefix>.memberlist.packet-write-timeout
+# CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 
 # Maximum number of concurrent writes to other nodes.
-# CLI flag: -<prefix>.memberlist.max-concurrent-writes
+# CLI flag: -memberlist.max-concurrent-writes
 [max_concurrent_writes: <int> | default = 3]
 
 # Timeout for acquiring one of the concurrent write slots. After this time, the
 # message will be dropped.
-# CLI flag: -<prefix>.memberlist.acquire-writer-timeout
+# CLI flag: -memberlist.acquire-writer-timeout
 [acquire_writer_timeout: <duration> | default = 250ms]
 
 # Enable TLS on the memberlist transport layer.
-# CLI flag: -<prefix>.memberlist.tls-enabled
+# CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is:
-# pattern-ingester.ring.ring.memberlist.memberlist
+# The CLI flags prefix for this block configuration is: memberlist
 [<tls_config>]
 
 zone_aware_routing:
   # Enable zone-aware routing for memberlist gossip.
-  # CLI flag: -<prefix>.memberlist.zone-aware-routing.enabled
+  # CLI flag: -memberlist.zone-aware-routing.enabled
   [enabled: <boolean> | default = false]
 
   # Availability zone where this node is running.
-  # CLI flag: -<prefix>.memberlist.zone-aware-routing.instance-availability-zone
+  # CLI flag: -memberlist.zone-aware-routing.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
   # Role of this node in the cluster. Valid values: member, bridge.
-  # CLI flag: -<prefix>.memberlist.zone-aware-routing.role
+  # CLI flag: -memberlist.zone-aware-routing.role
   [role: <string> | default = "member"]
 
 propagation_delay_tracker:
   # Enable the propagation delay tracker to measure gossip propagation delay.
-  # CLI flag: -<prefix>.memberlist.propagation-delay-tracker.enabled
+  # CLI flag: -memberlist.propagation-delay-tracker.enabled
   [enabled: <boolean> | default = false]
 
   # How often to publish beacons for propagation tracking.
-  # CLI flag: -<prefix>.memberlist.propagation-delay-tracker.beacon-interval
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-interval
   [beacon_interval: <duration> | default = 1m]
 
   # How long a beacon lives before being garbage collected.
-  # CLI flag: -<prefix>.memberlist.propagation-delay-tracker.beacon-lifetime
+  # CLI flag: -memberlist.propagation-delay-tracker.beacon-lifetime
   [beacon_lifetime: <duration> | default = 10m]
 
   # Log warning when beacon propagation delay exceeds this threshold. 0 disables
   # logging.
-  # CLI flag: -<prefix>.memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
+  # CLI flag: -memberlist.propagation-delay-tracker.log-beacons-latency-longer-than
   [log_beacons_latency_longer_than: <duration> | default = 0s]
 ```
 
@@ -7561,7 +7535,6 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `memberlist`
 - `pattern-ingester.client`
 - `pattern-ingester.etcd`
-- `pattern-ingester.ring.ring.memberlist.memberlist`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`
