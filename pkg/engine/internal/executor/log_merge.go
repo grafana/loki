@@ -65,7 +65,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if len(sources) == 0 {
-    c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
 	}
 
@@ -105,7 +105,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if stats.OutputObjects == 0 {
-    c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
