@@ -29,7 +29,7 @@ var (
 
 // maxConcurrentSectionOpens caps how many postings sections are opened
 // concurrently in Open. Hardcoded for now.
-const maxConcurrentSectionOpens = 16
+const maxConcurrentSectionOpens = 64
 
 // postingsResultSchema is the pointers-section Arrow schema the resolver's
 // results are serialized into, so the postings reader is a drop-in for the
@@ -77,6 +77,7 @@ type postingsIndexSectionsReader struct {
 	resolved    bool
 
 	openSections []*postings.Section
+	selector     *streamSelector
 	rows         []resolvedRow
 	offset       int
 
@@ -113,6 +114,7 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 	if len(r.matchers) == 0 {
 		r.initialized = true
+		r.resolved = true
 		return nil
 	}
 
@@ -133,11 +135,11 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	opened := make([]*postings.Section, len(matching))
-	g, ctx := errgroup.WithContext(ctx)
+	g, groupCtx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrentSectionOpens)
 	for i, section := range matching {
 		g.Go(func() error {
-			sec, err := postings.Open(ctx, section)
+			sec, err := postings.Open(groupCtx, section)
 			if err != nil {
 				return fmt.Errorf("opening postings section: %w", err)
 			}
@@ -149,7 +151,13 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 		return err
 	}
 
+	// Open readers of the sections, configured with the input predicates
 	r.openSections = opened
+	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end)
+	if err := selector.open(ctx, opened, maxConcurrentSectionOpens); err != nil {
+		return fmt.Errorf("opening postings readers: %w", err)
+	}
+	r.selector = selector
 	r.initialized = true
 	return nil
 }
@@ -164,7 +172,7 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 
-	if err := r.lazyResolve(ctx); err != nil {
+	if err := r.resolve(ctx); err != nil {
 		return nil, err
 	}
 	if r.offset >= len(r.rows) {
@@ -180,7 +188,7 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 	return sectionResultsToRecordBatch(batch), nil
 }
 
-func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
+func (r *postingsIndexSectionsReader) resolve(ctx context.Context) error {
 	if r.resolved {
 		return nil
 	}
@@ -192,8 +200,7 @@ func (r *postingsIndexSectionsReader) lazyResolve(ctx context.Context) error {
 		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
-	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end)
-	results, err := selector.selectStreams(ctx, r.openSections)
+	results, err := r.selector.selectStreams(ctx)
 	if err != nil {
 		return fmt.Errorf("resolving postings sections: %w", err)
 	}
@@ -233,6 +240,10 @@ func expandResults(results []SectionStreams) []resolvedRow {
 }
 
 func (r *postingsIndexSectionsReader) Close() {
+	if r.selector != nil {
+		_ = r.selector.close()
+		r.selector = nil
+	}
 	r.openSections = nil
 	if r.readSpan != nil {
 		r.readSpan.End()
