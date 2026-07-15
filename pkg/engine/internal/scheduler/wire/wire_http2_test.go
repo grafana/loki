@@ -515,9 +515,9 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 					},
 				},
 			},
-			StreamStates: nil,
+			ClosedSourceIDs: nil,
 		}},
-		{"StreamStatusMessage", wire.StreamStatusMessage{}},
+		{"StreamClosedMessage", wire.StreamClosedMessage{}},
 	}
 
 	for _, tc := range testCases {

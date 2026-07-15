@@ -29,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -429,7 +428,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
 
-		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) (err error) {
+		Handler: func(_ context.Context, peer *wire.Peer, msg wire.Message) (err error) {
 			phases := w.metrics.startHandler(msg.Kind())
 			defer func() { phases.Done(handlerOutcome(err)) }()
 
@@ -444,10 +443,10 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 				return w.handleCancelMessage(msg)
 
 			case wire.StreamBindMessage:
-				return w.handleBindMessage(ctx, msg)
+				return w.handleBindMessage(msg)
 
-			case wire.StreamStatusMessage:
-				return w.handleStreamStatusMessage(msg)
+			case wire.StreamClosedMessage:
+				return w.handleStreamClosedMessage(msg)
 
 			default:
 				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
@@ -533,6 +532,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		w.sinks = make(map[ulid.ULID]*streamSink)
 	}
 
+	closedSources := make(map[ulid.ULID]struct{}, len(msg.ClosedSourceIDs))
+	for _, id := range msg.ClosedSourceIDs {
+		closedSources[id] = struct{}{}
+	}
+
 	for _, taskSources := range msg.Task.Sources {
 		for _, taskSource := range taskSources {
 			source := new(streamSource)
@@ -543,7 +547,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 			// To handle this, we immediately close the source before adding it
 			// to the job. This will ensure that the stream returns EOF
 			// immediately and doesn't block forever.
-			if msg.StreamStates != nil && msg.StreamStates[taskSource.ULID] == workflow.StreamStateClosed {
+			if _, closed := closedSources[taskSource.ULID]; closed {
 				source.Close()
 			}
 
@@ -562,7 +566,6 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 				Logger:      log.With(logger, "stream", taskSink.ULID),
 				Metrics:     w.metrics,
 				WireMetrics: w.wireMetrics,
-				Scheduler:   scheduler,
 				Stream:      taskSink,
 				TaskType:    taskTypeLabel(msg.Task),
 				Dialer:      w.dial,
@@ -638,7 +641,7 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 	return nil
 }
 
-func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessage) error {
+func (w *Worker) handleBindMessage(msg wire.StreamBindMessage) error {
 	guard := w.resourcesMut.RLock("handle_bind")
 	sink, found := w.sinks[msg.StreamID]
 	guard.RUnlock()
@@ -647,12 +650,12 @@ func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessa
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
 
-	err := sink.Bind(ctx, msg.Receiver)
+	err := sink.Bind(msg.Receiver)
 	return err
 }
 
-func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
-	guard := w.resourcesMut.RLock("handle_stream_status")
+func (w *Worker) handleStreamClosedMessage(msg wire.StreamClosedMessage) error {
+	guard := w.resourcesMut.RLock("handle_stream_closed")
 	source, found := w.sources[msg.StreamID]
 	guard.RUnlock()
 
@@ -660,10 +663,7 @@ func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
 
-	// At the moment, workers only care about the stream being closed.
-	if msg.State == workflow.StreamStateClosed {
-		source.Close()
-	}
+	source.Close()
 	return nil
 }
 

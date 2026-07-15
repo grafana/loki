@@ -6,11 +6,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// streamNotification is a deferred call to a stream event handler.
+// streamNotification is a deferred call to a stream-closed handler.
 type streamNotification struct {
-	Handler  workflow.StreamEventHandler
-	Stream   *workflow.Stream
-	NewState workflow.StreamState
+	Handler workflow.StreamClosedHandler
+	Stream  *workflow.Stream
 }
 
 // taskNotification is a deferred call to a task event handler.
@@ -20,7 +19,7 @@ type taskNotification struct {
 	Result  workflow.TaskResult
 }
 
-// A notifier is responsible for invoking [workflow.StreamEventHandler] and
+// A notifier is responsible for invoking [workflow.StreamClosedHandler] and
 // [workflow.TaskResultHandler].
 //
 // Notifier is used to avoid deadlocks so notifications can be held without any
@@ -43,7 +42,7 @@ func (n *notifier) AddTaskEvent(notification taskNotification) {
 // Notify handles all pending notifications.
 func (n *notifier) Notify(ctx context.Context) {
 	for _, ev := range n.streamNotifications {
-		ev.Handler(ctx, ev.Stream, ev.NewState)
+		ev.Handler(ctx, ev.Stream)
 	}
 
 	for _, ev := range n.taskNotifications {

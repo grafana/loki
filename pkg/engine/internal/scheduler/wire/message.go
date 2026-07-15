@@ -26,7 +26,7 @@ const (
 	MessageKindTaskResult      // MessageKindTaskResult represents [TaskResultMessage].
 	MessageKindStreamBind      // MessageKindStreamBind represents [StreamBindMessage].
 	MessageKindStreamData      // MessageKindStreamData represents [StreamDataMessage].
-	MessageKindStreamStatus    // MessageKindStreamStatus represents [StreamStatusMessage].
+	MessageKindStreamClosed    // MessageKindStreamClosed represents [StreamClosedMessage].
 )
 
 var kindNames = [...]string{
@@ -39,7 +39,7 @@ var kindNames = [...]string{
 	MessageKindTaskResult:      "TaskResult",
 	MessageKindStreamBind:      "StreamBind",
 	MessageKindStreamData:      "StreamData",
-	MessageKindStreamStatus:    "StreamStatus",
+	MessageKindStreamClosed:    "StreamClosed",
 }
 
 // String returns a string representation of k.
@@ -110,12 +110,9 @@ type (
 	TaskAssignMessage struct {
 		Task *workflow.Task // Task to run.
 
-		// StreamStates holds the most recent state of each stream that the task
-		// reads from.
-		//
-		// StreamStates does not have any entries for streams that the task
-		// writes to.
-		StreamStates map[ulid.ULID]workflow.StreamState
+		// ClosedSourceIDs identifies source streams that closed before this
+		// assignment. It does not contain streams that the task writes to.
+		ClosedSourceIDs []ulid.ULID
 
 		// Metadata holds additional metadata about the task.
 		Metadata http.Header
@@ -151,20 +148,10 @@ type (
 		Data     arrow.RecordBatch // Payload data for the stream.
 	}
 
-	// StreamStatusMessage communicates the status of the sending side of a
-	// stream. It is sent in two cases:
-	//
-	// - By the sender of the stream, to inform the scheduler about the status
-	//   of that stream.
-	//
-	// - By the scheduler, to inform the stream reader about the status of the
-	//   stream.
-	//
-	// The scheduler is responsible for informing stream receivers about stream
-	// status to avoid keeping streams alive if the sender disconnects.
-	StreamStatusMessage struct {
-		StreamID ulid.ULID            // ID of the stream.
-		State    workflow.StreamState // State of the stream.
+	// StreamClosedMessage is sent by the scheduler to a stream receiver after
+	// the stream's producer finishes or is cancelled or disconnected.
+	StreamClosedMessage struct {
+		StreamID ulid.ULID // ID of the stream that closed.
 	}
 )
 
@@ -178,7 +165,7 @@ func (TaskCancelMessage) isMessage()      {}
 func (TaskResultMessage) isMessage()      {}
 func (StreamBindMessage) isMessage()      {}
 func (StreamDataMessage) isMessage()      {}
-func (StreamStatusMessage) isMessage()    {}
+func (StreamClosedMessage) isMessage()    {}
 
 // Kinds
 
@@ -206,5 +193,5 @@ func (StreamBindMessage) Kind() MessageKind { return MessageKindStreamBind }
 // Kind returns [MessageKindStreamData].
 func (StreamDataMessage) Kind() MessageKind { return MessageKindStreamData }
 
-// Kind returns [MessageKindStreamStatus].
-func (StreamStatusMessage) Kind() MessageKind { return MessageKindStreamStatus }
+// Kind returns [MessageKindStreamClosed].
+func (StreamClosedMessage) Kind() MessageKind { return MessageKindStreamClosed }

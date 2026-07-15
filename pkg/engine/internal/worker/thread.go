@@ -39,37 +39,16 @@ type recordSink interface {
 	Send(ctx context.Context, rec arrow.RecordBatch) error
 }
 
-// closableSink closes a sink at task end. Used by closeSinks so tests can inject
-// a sink whose close blocks.
-type closableSink interface {
-	Close(ctx context.Context) error
-}
-
-// closeSinks closes each sink so downstream tasks unblock. Every close issues a
-// StreamStatusClosed send on the calling (main runJob) goroutine, so its wait is
-// added to the slot's comm-blocked total, not counted as compute.
-func closeSinks(ctx context.Context, sinks []closableSink, slotPhase *slotPhaseTracker, logger log.Logger) {
-	for _, sink := range sinks {
-		closeStart := time.Now()
-		err := sink.Close(ctx)
-		slotPhase.AddComm(time.Since(closeStart))
-		if err != nil {
-			level.Warn(logger).Log("msg", "failed to close sink", "err", err)
-		}
+// closeSinks releases the local connections for every task sink.
+func closeSinks(job *threadJob) {
+	for _, sink := range job.Sinks {
+		sink.Close()
 	}
 }
 
 // sinksForJob returns the job's sinks as a slice for use with drainPipeline.
 func sinksForJob(job *threadJob) []recordSink {
 	sinks := make([]recordSink, 0, len(job.Sinks))
-	for _, s := range job.Sinks {
-		sinks = append(sinks, s)
-	}
-	return sinks
-}
-
-func closableSinksForJob(job *threadJob) []closableSink {
-	sinks := make([]closableSink, 0, len(job.Sinks))
 	for _, s := range job.Sinks {
 		sinks = append(sinks, s)
 	}
@@ -213,7 +192,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get root node", "err", err)
 
-		closeSinks(ctx, closableSinksForJob(job), slotPhase, logger)
+		closeSinks(job)
 		span.End()
 		capture.End()
 		result := workflow.TaskResult{Outcome: workflow.TaskOutcomeFailed, Error: err, Capture: capture}
@@ -351,8 +330,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		level.Warn(logger).Log("msg", "task failed", "err", drainErr)
 	}
 
-	// Close all sinks regardless of outcome so downstream tasks unblock.
-	closeSinks(ctx, closableSinksForJob(job), slotPhase, logger)
+	// Release local sink connections before finalizing the capture and reporting
+	// the task result.
+	closeSinks(job)
 
 	// Close before ending capture to ensure all observations are recorded.
 	pipeline.Close()
@@ -401,7 +381,7 @@ func (t *thread) sendTaskResult(ctx context.Context, job *threadJob, taskType ta
 	// the capture before the worker thread requests its next job. Detach from
 	// the job context so cancellation cannot prevent final result delivery.
 	sendCtx := context.WithoutCancel(ctx)
-	sendWait, sendErr := t.Metrics.timeSend(sendCtx, job.Scheduler, "task_result_terminal_sync", sendModeSync, taskType, wire.TaskResultMessage{
+	sendWait, sendErr := t.Metrics.timeSend(sendCtx, job.Scheduler, "task_result_terminal_sync", taskType, wire.TaskResultMessage{
 		ID:     job.Task.ULID,
 		Result: result,
 	})

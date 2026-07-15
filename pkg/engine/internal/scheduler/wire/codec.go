@@ -248,17 +248,13 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 			return nil, err
 		}
 
-		streamStates := make(map[ulid.ULID]workflow.StreamState)
-		for idStr, statePb := range k.TaskAssign.StreamStates {
+		closedSourceIDs := make([]ulid.ULID, 0, len(k.TaskAssign.ClosedSourceIds))
+		for _, idStr := range k.TaskAssign.ClosedSourceIds {
 			id, err := ulid.Parse(idStr)
 			if err != nil {
-				return nil, fmt.Errorf("invalid stream ID %q: %w", idStr, err)
+				return nil, fmt.Errorf("invalid closed source ID %q: %w", idStr, err)
 			}
-			state, err := c.streamStateFromPbStreamState(statePb)
-			if err != nil {
-				return nil, fmt.Errorf("stream state from pb stream state (%s): %w", idStr, err)
-			}
-			streamStates[id] = state
+			closedSourceIDs = append(closedSourceIDs, id)
 		}
 
 		var metadata http.Header
@@ -268,9 +264,9 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 		}
 
 		return TaskAssignMessage{
-			Task:         task,
-			StreamStates: streamStates,
-			Metadata:     metadata,
+			Task:            task,
+			ClosedSourceIDs: closedSourceIDs,
+			Metadata:        metadata,
 		}, nil
 
 	case *wirepb.MessageFrame_TaskCancel:
@@ -311,14 +307,9 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 			Data:     record,
 		}, nil
 
-	case *wirepb.MessageFrame_StreamStatus:
-		streamState, err := c.streamStateFromPbStreamState(k.StreamStatus.State)
-		if err != nil {
-			return nil, fmt.Errorf("stream state from pb stream state: %w", err)
-		}
-		return StreamStatusMessage{
-			StreamID: ulid.ULID(k.StreamStatus.StreamId),
-			State:    streamState,
+	case *wirepb.MessageFrame_StreamClosed:
+		return StreamClosedMessage{
+			StreamID: ulid.ULID(k.StreamClosed.StreamId),
 		}, nil
 
 	default:
@@ -402,19 +393,6 @@ func (c *protobufCodec) taskOutcomeFromPbTaskOutcome(outcome wirepb.TaskOutcome)
 		return workflow.TaskOutcomeFailed, nil
 	default:
 		return 0, fmt.Errorf("task outcome %v is unknown", outcome)
-	}
-}
-
-func (c *protobufCodec) streamStateFromPbStreamState(state wirepb.StreamState) (workflow.StreamState, error) {
-	switch state {
-	case wirepb.STREAM_STATE_IDLE:
-		return workflow.StreamStateIdle, nil
-	case wirepb.STREAM_STATE_OPEN:
-		return workflow.StreamStateOpen, nil
-	case wirepb.STREAM_STATE_CLOSED:
-		return workflow.StreamStateClosed, nil
-	default:
-		return workflow.StreamStateIdle, fmt.Errorf("stream state %v is unknown", state)
 	}
 }
 
@@ -564,16 +542,16 @@ func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, er
 			return nil, err
 		}
 
-		streamStates := make(map[string]wirepb.StreamState)
-		for id, state := range v.StreamStates {
-			streamStates[id.String()] = c.streamStateToPbStreamState(state)
+		closedSourceIDs := make([]string, len(v.ClosedSourceIDs))
+		for i, id := range v.ClosedSourceIDs {
+			closedSourceIDs[i] = id.String()
 		}
 
 		mf.Kind = &wirepb.MessageFrame_TaskAssign{
 			TaskAssign: &wirepb.TaskAssignMessage{
-				Task:         task,
-				StreamStates: streamStates,
-				Metadata:     httpgrpc.FromHeader(v.Metadata),
+				Task:            task,
+				ClosedSourceIds: closedSourceIDs,
+				Metadata:        httpgrpc.FromHeader(v.Metadata),
 			},
 		}
 
@@ -620,11 +598,10 @@ func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, er
 			},
 		}
 
-	case StreamStatusMessage:
-		mf.Kind = &wirepb.MessageFrame_StreamStatus{
-			StreamStatus: &wirepb.StreamStatusMessage{
+	case StreamClosedMessage:
+		mf.Kind = &wirepb.MessageFrame_StreamClosed{
+			StreamClosed: &wirepb.StreamClosedMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
-				State:    c.streamStateToPbStreamState(v.State),
 			},
 		}
 
@@ -702,19 +679,6 @@ func (c *protobufCodec) taskOutcomeToPbTaskOutcome(outcome workflow.TaskOutcome)
 		return wirepb.TASK_OUTCOME_FAILED
 	default:
 		return wirepb.TASK_OUTCOME_UNSPECIFIED
-	}
-}
-
-func (c *protobufCodec) streamStateToPbStreamState(state workflow.StreamState) wirepb.StreamState {
-	switch state {
-	case workflow.StreamStateIdle:
-		return wirepb.STREAM_STATE_IDLE
-	case workflow.StreamStateOpen:
-		return wirepb.STREAM_STATE_OPEN
-	case workflow.StreamStateClosed:
-		return wirepb.STREAM_STATE_CLOSED
-	default:
-		return wirepb.STREAM_STATE_INVALID
 	}
 }
 
