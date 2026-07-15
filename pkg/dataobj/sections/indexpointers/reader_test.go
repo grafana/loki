@@ -149,6 +149,47 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+func TestReaderSizeColumns(t *testing.T) {
+	sec := buildSection(t, []indexpointers.IndexPointer{
+		{Path: "path1", StartTs: unixTime(10), EndTs: unixTime(20), FileSize: 1024, UncompressedLogsSize: 2048},
+		{Path: "path2", StartTs: unixTime(30), EndTs: unixTime(40), FileSize: 4096, UncompressedLogsSize: 8192},
+	})
+
+	var (
+		fileSizeCol             *indexpointers.Column
+		uncompressedLogsSizeCol *indexpointers.Column
+	)
+
+	for _, col := range sec.Columns() {
+		if col.Type == indexpointers.ColumnTypeFileSize {
+			fileSizeCol = col
+		}
+		if col.Type == indexpointers.ColumnTypeUncompressedLogsSize {
+			uncompressedLogsSizeCol = col
+		}
+	}
+
+	require.NotNil(t, fileSizeCol, "FileSize column not found")
+	require.NotNil(t, uncompressedLogsSizeCol, "UncompressedLogsSize column not found")
+
+	r := indexpointers.NewReader(indexpointers.ReaderOptions{
+		Columns:   []*indexpointers.Column{fileSizeCol, uncompressedLogsSizeCol},
+		Allocator: memory.DefaultAllocator,
+	})
+
+	actualTable, err := readTable(context.Background(), r)
+	require.NoError(t, err)
+
+	actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
+	require.NoError(t, err, "failed to get rows from table")
+
+	expected := arrowtest.Rows{
+		{"file_size.file_size.int64": int64(1024), "uncompressed_logs_size.uncompressed_logs_size.int64": int64(2048)},
+		{"file_size.file_size.int64": int64(4096), "uncompressed_logs_size.uncompressed_logs_size.int64": int64(8192)},
+	}
+	require.Equal(t, expected, actual)
+}
+
 func buildSection(t *testing.T, ptrData []indexpointers.IndexPointer) *indexpointers.Section {
 	t.Helper()
 
