@@ -537,3 +537,35 @@ func TestReplaceIndexPointers_PreservesSizesDuringReplay(t *testing.T) {
 	require.Equal(t, uint64(7000), otherTenantRow.FileSize, "Other tenant sizes should be preserved")
 	require.Equal(t, uint64(70000), otherTenantRow.UncompressedLogsSize, "Other tenant sizes should be preserved")
 }
+
+func TestReplaceIndexPointersNewEntrySizes(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20, 0, 0},
+	})
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110), FileSize: 8192, UncompressedLogsSize: 81920},
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, swapped, "expected swap to apply")
+
+	rows := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	require.Len(t, rows, 1)
+	require.Equal(t, "tenantA", rows[0].Tenant)
+	require.Equal(t, uint64(8192), rows[0].FileSize, "new entry FileSize must be persisted")
+	require.Equal(t, uint64(81920), rows[0].UncompressedLogsSize, "new entry UncompressedLogsSize must be persisted")
+}
