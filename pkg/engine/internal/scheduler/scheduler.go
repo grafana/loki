@@ -202,7 +202,7 @@ func (s *Scheduler) handleMessage(ctx context.Context, worker *workerConn, msg w
 	case wire.StreamDataMessage:
 		return s.handleStreamData(ctx, worker, msg)
 	case wire.WorkerHelloMessage:
-		return s.handleWorkerHello(ctx, worker, msg)
+		return s.handleWorkerHello(worker, msg)
 	case wire.WorkerReadyMessage:
 		return s.markWorkerReady(worker)
 	case wire.TaskResultMessage:
@@ -237,17 +237,11 @@ func (s *Scheduler) handleStreamData(ctx context.Context, worker *workerConn, ms
 	})
 }
 
-func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, msg wire.WorkerHelloMessage) (err error) {
+func (s *Scheduler) handleWorkerHello(worker *workerConn, msg wire.WorkerHelloMessage) (err error) {
 	phases := s.metrics.startHandler(msg.Kind())
 	defer func() { phases.Done(handlerOutcome(err)) }()
 
-	if err := worker.HandleHello(); err != nil {
-		return err
-	}
-
-	// Request to be notified when the worker is ready.
-	s.workerSubscribe(ctx, worker)
-	return nil
+	return worker.HandleHello()
 }
 
 func (s *Scheduler) markWorkerReady(worker *workerConn) (err error) {
@@ -836,14 +830,6 @@ func assignmentAttemptOutcome(err error) metrictimer.Outcome {
 		return outcomeTimeout
 	default:
 		return outcomeSendError
-	}
-}
-
-// workerSubscribe sends a WorkerSubscribe message to the provided worker. The
-// worker will eventually send a WorkerReady message in response.
-func (s *Scheduler) workerSubscribe(ctx context.Context, worker *workerConn) {
-	if err := worker.SendMessageAsync(ctx, wire.WorkerSubscribeMessage{}); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to request subscription for ready worker thread", "err", err)
 	}
 }
 

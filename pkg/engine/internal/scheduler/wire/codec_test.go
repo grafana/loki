@@ -69,9 +69,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"WorkerHelloMessage": {
 			message: WorkerHelloMessage{},
 		},
-		"WorkerSubscribeMessage": {
-			message: WorkerSubscribeMessage{},
-		},
 		"WorkerReadyMessage": {
 			message: WorkerReadyMessage{},
 		},

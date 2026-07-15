@@ -529,8 +529,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					assignedTask = msg.Task
 					break WaitAssign
@@ -598,8 +596,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving expected message")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -682,8 +678,6 @@ func TestScheduler_worker(t *testing.T) {
 					t.Fatal("timed out waiting for assignment")
 				case msg := <-messages:
 					switch msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue
 					case wire.TaskAssignMessage:
 						break WaitAssign
 					default:
@@ -777,8 +771,6 @@ func TestScheduler_worker(t *testing.T) {
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalScheduler, msg.Receiver, "Should have seen expected receiver")
 						return
-					case wire.WorkerSubscribeMessage:
-						// Ignore; we already sent WorkerReady
 					case wire.TaskAssignMessage:
 					default:
 						require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
@@ -845,8 +837,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.TaskAssignMessage:
 						break WaitAssign
 					default:
@@ -936,8 +926,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -1012,8 +1000,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -1084,8 +1070,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1172,8 +1156,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1263,7 +1245,6 @@ func TestScheduler_worker(t *testing.T) {
 			case msg := <-messages:
 				switch msg := msg.(type) {
 				case wire.StreamBindMessage: // Ignore bindings
-				case wire.WorkerSubscribeMessage: // Ignore subscriptions
 				case wire.TaskAssignMessage:
 					assigned++
 				default:
@@ -1355,8 +1336,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1572,8 +1551,6 @@ func TestScheduler_assignmentMetricsUseBoundedLabels(t *testing.T) {
 				t.Fatal("timed out before assignment")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue
 				case wire.TaskAssignMessage:
 					require.Equal(t, exampleTask.ULID, msg.Task.ULID)
 					break WaitAssign

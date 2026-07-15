@@ -382,14 +382,12 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	// there's a ready thread.
 	waitReady := make(chan struct{}, 1)
 
-	handleWorkerSubscribe := func() error {
+	notifySchedulerOnReady := func() {
 		select {
 		case waitReady <- struct{}{}:
 		default:
 			// Already queued, nothing to do.
 		}
-
-		return nil
 	}
 
 	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
@@ -409,8 +407,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 				outcome = outcomeCtxError
 			}
 			w.metrics.observeJobHandoff(outcome, handoff)
-			job.Close()                 // Clean up resources associated with the job.
-			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
+			job.Close() // Clean up resources associated with the job.
+			notifySchedulerOnReady()
 			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
@@ -433,9 +431,6 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			defer func() { phases.Done(handlerOutcome(err)) }()
 
 			switch msg := msg.(type) {
-			case wire.WorkerSubscribeMessage:
-				return handleWorkerSubscribe()
-
 			case wire.TaskAssignMessage:
 				return handleAssignment(peer, msg)
 
@@ -465,11 +460,12 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
 		return err
 	}
+	notifySchedulerOnReady()
 
 	g.Go(func() error {
 		for {
-			// Wait for the scheduler to require a WorkerReady message.
-			// This happens automatically before sending a http.StatusTooManyRequests error
+			// Wait until this connection should announce that a worker thread is
+			// ready.
 			select {
 			case <-ctx.Done():
 				return nil
