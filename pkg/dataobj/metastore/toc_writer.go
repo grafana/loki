@@ -143,7 +143,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				// Append all the tenant time ranges that overlap with the current Table of Contents window.
 				for _, timeRange := range tenantTimeRanges {
 					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime, 0, 0)
+						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime, timeRange.FileSize, timeRange.UncompressedLogsSize)
 						if err != nil {
 							return nil, errors.Wrap(err, "appending index pointer")
 						}
