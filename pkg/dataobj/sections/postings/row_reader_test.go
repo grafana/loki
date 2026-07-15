@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
-func newRowReader(t *testing.T, ctx context.Context, sec *postings.Section, predicates []postings.Predicate) *postings.RowReader {
+func newRowReader(ctx context.Context, t *testing.T, sec *postings.Section, predicates []postings.Predicate) *postings.RowReader {
 	t.Helper()
 	reader := postings.NewReader(postings.ReaderOptions{
 		Columns:    sec.Columns(),
@@ -65,7 +65,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := newRowReader(t, ctx, sec, nil)
+		reader := newRowReader(ctx, t, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -130,7 +130,7 @@ func TestRowReader_RoundTrip_BitLevelAssertion(t *testing.T) {
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
 
-		reader := newRowReader(t, ctx, sec, nil)
+		reader := newRowReader(ctx, t, sec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
@@ -162,7 +162,7 @@ func TestRowReader_KindPredicate(t *testing.T) {
 			n := 0
 			for _, sec := range secs {
 				kindCol := getSectionColumn(t, sec, postings.ColumnTypeKind)
-				rr := newRowReader(t, ctx, sec, []postings.Predicate{postings.EqualPredicate{
+				rr := newRowReader(ctx, t, sec, []postings.Predicate{postings.EqualPredicate{
 					Column: kindCol,
 					Value:  scalar.NewInt64Scalar(int64(tc.kind)),
 				}})
@@ -209,7 +209,7 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	reader := newRowReader(t, ctx, sec, nil)
+	reader := newRowReader(ctx, t, sec, nil)
 	require.True(t, reader.Next())
 	require.NoError(t, reader.Close())
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")
@@ -256,7 +256,7 @@ func TestRowReader_BloomMatchPredicate(t *testing.T) {
 	require.NotNil(t, bloomCol)
 
 	countMatches := func(value string) int {
-		rr := newRowReader(t, ctx, sec, []postings.Predicate{postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}})
+		rr := newRowReader(ctx, t, sec, []postings.Predicate{postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}})
 		defer func() { _ = rr.Close() }()
 		var got int
 		for rr.Next() {
@@ -308,7 +308,7 @@ func TestRowReader_NotBloomMatchPredicate(t *testing.T) {
 	require.NotNil(t, bloomCol)
 
 	countMatches := func(value string) int {
-		rr := newRowReader(t, ctx, sec, []postings.Predicate{
+		rr := newRowReader(ctx, t, sec, []postings.Predicate{
 			postings.NotPredicate{Inner: postings.BloomMatchPredicate{Column: bloomCol, Value: []byte(value)}},
 		})
 		defer func() { _ = rr.Close() }()
@@ -385,7 +385,7 @@ func TestRowReader_RegexMatchPredicate(t *testing.T) {
 	countMatches := func(pattern string) int {
 		re, err := labels.NewFastRegexMatcher(pattern)
 		require.NoError(t, err)
-		rr := newRowReader(t, ctx, sec, []postings.Predicate{postings.RegexMatchPredicate{Column: lvCol, Matcher: re}})
+		rr := newRowReader(ctx, t, sec, []postings.Predicate{postings.RegexMatchPredicate{Column: lvCol, Matcher: re}})
 		defer func() { _ = rr.Close() }()
 		var got int
 		for rr.Next() {
@@ -440,7 +440,7 @@ func TestRowReader_NotRegexMatchPredicate(t *testing.T) {
 	re, err := labels.NewFastRegexMatcher("foo.*")
 	require.NoError(t, err)
 
-	rr := newRowReader(t, ctx, sec, []postings.Predicate{
+	rr := newRowReader(ctx, t, sec, []postings.Predicate{
 		postings.NotPredicate{Inner: postings.RegexMatchPredicate{Column: lvCol, Matcher: re}},
 	})
 	defer func() { _ = rr.Close() }()

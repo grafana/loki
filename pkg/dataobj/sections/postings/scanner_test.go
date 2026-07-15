@@ -36,7 +36,7 @@ func TestScanner_MatchLabel_PushesValuePredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(t, ctx, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
 		return sc.MatchLabels(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -65,7 +65,7 @@ func TestScanner_LabelStreams_PresentAndMatched(t *testing.T) {
 	require.NoError(t, err)
 
 	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(t, ctx, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
 		return sc.LabelStreams(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -99,7 +99,7 @@ func TestScanner_LabelStreams_UnionZeroExtends(t *testing.T) {
 	require.NoError(t, err)
 
 	cms := []postings.CompiledMatcher{cm}
-	got := scanAll(t, secs, scannerFactory(t, ctx, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
 		return sc.LabelStreams(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -135,7 +135,7 @@ func TestScanner_MatchLabels_MultiMatcherAttribution(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "tier", "silver"), // value absent -> empty
 	)
 
-	got := scanAll(t, secs, scannerFactory(t, ctx, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
 		return sc.MatchLabels(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -166,7 +166,7 @@ func TestScanner_MatchLabels_SharedNameDisambiguation(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "app", "mimir"), // -> stream 2
 	)
 
-	got := scanAll(t, secs, scannerFactory(t, ctx, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, cms, nil, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.MatchedStreams, error) {
 		return sc.MatchLabels(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -197,7 +197,7 @@ func TestScanner_LabelStreams_MultiMatcherAttribution(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 	)
 
-	got := scanAll(t, secs, scannerFactory(t, ctx, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
+	got := scanAll(t, secs, scannerFactory(ctx, t, nil, cms, nil), func(sc *postings.Scanner) (map[postings.SectionRef][]postings.LabelStreams, error) {
 		return sc.LabelStreams(ctx, nil, cms)
 	})
 	require.Len(t, got, 1)
@@ -225,13 +225,7 @@ func compileAllT(t *testing.T, matchers ...*labels.Matcher) []postings.CompiledM
 
 // scanAll runs scan over each section and returns the single non-empty result
 // map (the builder splits label and bloom rows across sections).
-func scannerFactory(
-	t *testing.T,
-	ctx context.Context,
-	matchers []postings.CompiledMatcher,
-	filters []postings.CompiledMatcher,
-	predicates []*labels.Matcher,
-) func(*postings.Section) *postings.Scanner {
+func scannerFactory(ctx context.Context, t *testing.T, matchers []postings.CompiledMatcher, filters []postings.CompiledMatcher, predicates []*labels.Matcher) func(*postings.Section) *postings.Scanner {
 	t.Helper()
 	return func(sec *postings.Section) *postings.Scanner {
 		readers, err := postings.NewScannerReaders(sec, matchers, filters, predicates, nil, nil)
@@ -285,7 +279,7 @@ func TestScanner_MatcherHits(t *testing.T) {
 
 	var hitFound bool
 	for _, sec := range secs {
-		hits, _, err := scannerFactory(t, ctx, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
+		hits, _, err := scannerFactory(ctx, t, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
 		require.NoError(t, err)
 		if _, ok := hits[ref][postings.PredicateValue{Name: "trace_id", Value: "abc"}]; ok {
 			hitFound = true
@@ -319,7 +313,7 @@ func TestScanner_MatcherHits_MultiBloomSinglePass(t *testing.T) {
 
 	got := make(map[postings.PredicateValue]struct{})
 	for _, sec := range secs {
-		hits, _, err := scannerFactory(t, ctx, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
+		hits, _, err := scannerFactory(ctx, t, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
 		require.NoError(t, err)
 		for pv := range hits[ref] {
 			got[pv] = struct{}{}
@@ -346,7 +340,7 @@ func TestScanner_MatcherHits_AttributesByValueNotName(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "mimir")}
 
 	for _, sec := range secs {
-		hits, _, err := scannerFactory(t, ctx, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
+		hits, _, err := scannerFactory(ctx, t, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
 		require.NoError(t, err)
 		_, hit := hits[ref][postings.PredicateValue{Name: "app", Value: "mimir"}]
 		require.False(t, hit, "matching column name but wrong value must not attribute a hit")
@@ -392,7 +386,7 @@ func TestScanner_MatcherHits_LabelNamesSinglePass(t *testing.T) {
 
 	got := make(map[string]struct{})
 	for _, sec := range secs {
-		_, ambiguous, err := scannerFactory(t, ctx, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
+		_, ambiguous, err := scannerFactory(ctx, t, nil, nil, matchers)(sec).MatcherHits(ctx, matchers)
 		require.NoError(t, err)
 		for name := range ambiguous[ref] {
 			got[name] = struct{}{}
