@@ -28,6 +28,34 @@ var (
 	StatMetastoreStreamsReadTime         = xcap.NewStatisticFloat64("metastore.sections.streams.read.duration", xcap.AggregationTypeSum)
 	StatMetastoreSectionPointersRead     = xcap.NewStatisticInt64("metastore.sections.pointers.read", xcap.AggregationTypeSum)
 	StatMetastoreSectionPointersReadTime = xcap.NewStatisticFloat64("metastore.sections.pointers.read.duration", xcap.AggregationTypeSum)
+
+	// StatPostingsLabelColumnNameTotalPages – the total number of "column_name" column pages for label-based postings,
+	// sum across all the sections.
+	StatPostingsLabelColumnNameTotalPages = xcap.NewStatisticInt64(
+		"dataobj.postings.label.column_name.pages.total",
+		xcap.AggregationTypeSum,
+	)
+
+	// StatPostingsLabelColumnNameRelevantPages – the total number of "column_name" column relevant pages for
+	// label-based postings, sum across all the sections.
+	StatPostingsLabelColumnNameRelevantPages = xcap.NewStatisticInt64(
+		"dataobj.postings.label.column_name.pages.relevant",
+		xcap.AggregationTypeSum,
+	)
+
+	// StatPostingsBloomColumnNameTotalPages – the total number of "column_name" column pages for bloom-based postings,
+	// sum across all the sections.
+	StatPostingsBloomColumnNameTotalPages = xcap.NewStatisticInt64(
+		"dataobj.postings.bloom.column_name.pages.total",
+		xcap.AggregationTypeSum,
+	)
+
+	// StatPostingsBloomColumnNameRelevantPages – the total number of "column_name" column relevant pages for
+	// bloom-based postings, sum across all the sections.
+	StatPostingsBloomColumnNameRelevantPages = xcap.NewStatisticInt64(
+		"dataobj.postings.bloom.column_name.pages.relevant",
+		xcap.AggregationTypeSum,
+	)
 )
 
 const (

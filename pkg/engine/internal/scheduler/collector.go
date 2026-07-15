@@ -8,7 +8,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/ewma"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 // collector implements [prometheus.Collector], collecting metrics for a
@@ -40,7 +39,7 @@ func newCollector(sched *Scheduler) *collector {
 
 		load: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "loki_engine_scheduler_load",
-			Help: "Current load on the scheduler (count of running and pending tasks)",
+			Help: "Current number of queued or assigned tasks without a terminal result",
 		}, loadSource),
 		loadAverage: ewma.MustNew(ewma.Options{
 			Name: "loki_engine_scheduler_load_average",
@@ -52,14 +51,14 @@ func newCollector(sched *Scheduler) *collector {
 
 		tasksInflight: prometheus.NewDesc(
 			"loki_engine_scheduler_tasks_inflight",
-			"Number of in-flight tasks by state",
-			[]string{"state"},
+			"Number of queued or assigned tasks without a terminal result",
+			nil,
 			nil,
 		),
 		streamsInflight: prometheus.NewDesc(
 			"loki_engine_scheduler_streams_inflight",
-			"Number of in-flight streams by state",
-			[]string{"state"},
+			"Number of streams that have not closed",
+			nil,
 			nil,
 		),
 
@@ -85,8 +84,7 @@ func newCollector(sched *Scheduler) *collector {
 	}
 }
 
-// computeLoad returns the active load on the scheduler: the sum of running and
-// pending tasks.
+// computeLoad returns the number of queued or assigned tasks without a terminal result.
 func computeLoad(sched *Scheduler) float64 {
 	guard := sched.resourcesMut.RLock("collector_compute_load")
 	defer guard.RUnlock()
@@ -94,7 +92,7 @@ func computeLoad(sched *Scheduler) float64 {
 	var load uint64
 
 	for _, t := range sched.tasks {
-		if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
+		if t.Queued() && !t.HasResult() {
 			load++
 		}
 	}
@@ -125,24 +123,21 @@ func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
 	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
 	defer guard.RUnlock()
 
-	var (
-		tasksByState   = make(map[workflow.TaskState]int)
-		streamsByState = make(map[workflow.StreamState]int)
-	)
+	var tasksInflight, streamsInflight int
 
 	for _, t := range mc.sched.tasks {
-		tasksByState[t.status.State]++
+		if t.Queued() && !t.HasResult() {
+			tasksInflight++
+		}
 	}
 	for _, s := range mc.sched.streams {
-		streamsByState[s.state]++
+		if !s.closed {
+			streamsInflight++
+		}
 	}
 
-	for state, count := range tasksByState {
-		ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(count), state.String())
-	}
-	for state, count := range streamsByState {
-		ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(count), state.String())
-	}
+	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(tasksInflight))
+	ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(streamsInflight))
 }
 
 func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {

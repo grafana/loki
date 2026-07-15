@@ -578,7 +578,6 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		stack     = make(stack[physical.Node], 0, p.physical.Len())
 		visited   = make(map[physical.Node]struct{}, p.physical.Len())
 		nodeTasks = make(map[physical.Node][]*Task, p.physical.Len())
-		timeRange physical.TimeRange
 	)
 
 	stack.Push(node)
@@ -614,14 +613,12 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+					stream := &Stream{ULID: ulid.Make()}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
 
-					// Merge in time ranges of each child
-					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			case child.Type() == physical.NodeTypeParallelize:
@@ -640,14 +637,12 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
+					stream := &Stream{ULID: ulid.Make()}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
 
-					// Merge in time ranges of each child
-					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			default:
@@ -665,10 +660,6 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	}
 
 	fragment := physical.FromGraph(taskPlan)
-	planTimeRange := fragment.CalculateMaxTimeRange()
-	if !planTimeRange.IsZero() {
-		timeRange = planTimeRange
-	}
 
 	// If batching is enabled, wrap every task fragment with a Batching node so all task outputs are batched.
 	// Batching is enabled when the root of the original plan is a Batching node.
@@ -680,12 +671,11 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	}
 
 	task := &Task{
-		ULID:         ulid.Make(),
-		TenantID:     p.tenantID,
-		Fragment:     fragment,
-		Sources:      sources,
-		Sinks:        make(map[physical.Node][]*Stream),
-		MaxTimeRange: timeRange,
+		ULID:     ulid.Make(),
+		TenantID: p.tenantID,
+		Fragment: fragment,
+		Sources:  sources,
+		Sinks:    make(map[physical.Node][]*Stream),
 	}
 	p.graph.Add(task)
 
@@ -857,8 +847,6 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			Fragment: fragment,
 			Sources:  shardSources,
 			Sinks:    make(map[physical.Node][]*Stream),
-			// Recalculate MaxTimeRange because the new injected `shard` node can cover another time range.
-			MaxTimeRange: fragment.CalculateMaxTimeRange(),
 		}
 		p.graph.Add(partition)
 

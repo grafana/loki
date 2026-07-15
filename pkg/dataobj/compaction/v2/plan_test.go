@@ -1,8 +1,6 @@
 package compactionv2
 
 import (
-	"context"
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,126 +8,141 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-func TestPlan_EmptyInput(t *testing.T) {
-	got := Plan(context.Background(), nil, "tenantA", 3)
-	require.Nil(t, got, "empty input should produce no tasks")
+type fakeRun struct {
+	sections []*compactionv2pb.SectionRef
+	size     uint64
+}
 
-	got = Plan(context.Background(), []*compactionv2pb.SectionRef{}, "tenantA", 3)
-	require.Nil(t, got)
+func (f fakeRun) Sections() []*compactionv2pb.SectionRef { return f.sections }
+func (f fakeRun) Size() uint64                           { return f.size }
+
+func TestPlan_EmptyInput(t *testing.T) {
+	require.Nil(t, Plan(nil, "tenantA", 3, nil))
+	require.Nil(t, Plan([]Run{}, "tenantA", 3, nil))
 }
 
 func TestPlan_InvalidK_Panics(t *testing.T) {
-	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b")}
-
-	require.PanicsWithValue(t, "k must be > 0, got 0", func() {
-		Plan(context.Background(), sections, "tenantA", 0)
-	}, "k=0 must panic")
-
-	require.PanicsWithValue(t, "k must be > 0, got -1", func() {
-		Plan(context.Background(), sections, "tenantA", -1)
-	}, "negative k must panic")
-
-	// Empty input + k<=0: panic still fires (k validation is unconditional).
-	require.Panics(t, func() {
-		Plan(context.Background(), nil, "tenantA", 0)
-	}, "k<=0 panic fires even with empty input")
+	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(runs, "tenantA", 0, nil) })
+	require.PanicsWithValue(t, "k must be > 0, got -1", func() { Plan(runs, "tenantA", -1, nil) })
+	// nil runs (typed []Run) with k<=0 still panics on k before the empty check.
+	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(nil, "tenantA", 0, nil) })
 }
 
-func TestPlan_SingleSection(t *testing.T) {
-	s := sec("o", 0, "a", "b")
-	got := Plan(context.Background(), []*compactionv2pb.SectionRef{s}, "tenantA", 8)
-
-	require.Len(t, got, 1, "P=1 K=8 should produce exactly 1 task")
+func TestPlan_SingleRun(t *testing.T) {
+	s := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0}
+	got := Plan([]Run{fakeRun{sections: []*compactionv2pb.SectionRef{s}}}, "tenantA", 8, nil)
+	require.Len(t, got, 1)
 	require.Equal(t, "tenantA", got[0].Tenant)
 	require.Len(t, got[0].Runs, 1)
-	require.Equal(t, []*compactionv2pb.SectionRef{s}, got[0].Runs[0].Sections)
 }
 
 func TestPlan_KGrouping_P10_K3(t *testing.T) {
-	// Construct exactly 10 piles by feeding 10 mutually-overlapping sections.
-	// All share MinKey "a" but have different MaxKeys (and stable_ids), so each
-	// section creates its own pile.
-	sections := make([]*compactionv2pb.SectionRef, 0, 10)
-	for i := 0; i < 10; i++ {
-		// MaxKey = "z" so all of them overlap pairwise (MinKey "a" < MaxKey "z").
-		sections = append(sections, sec("o", int32(i), "a", "z"))
+	runs := make([]Run, 10)
+	for i := range runs {
+		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
-
-	got := Plan(context.Background(), sections, "tenantA", 3)
-
-	require.Len(t, got, 4, "P=10 K=3 should produce ⌈10/3⌉ = 4 tasks")
-	require.Equal(t, "tenantA", got[0].Tenant)
-
-	// Verify task sizes: 3, 3, 3, 1.
+	got := Plan(runs, "tenantA", 3, nil)
+	require.Len(t, got, 4) // ceil(10/3)
 	require.Len(t, got[0].Runs, 3)
 	require.Len(t, got[1].Runs, 3)
 	require.Len(t, got[2].Runs, 3)
 	require.Len(t, got[3].Runs, 1)
-
-	// Total piles across all tasks == 10.
-	total := 0
-	for _, tsk := range got {
-		total += len(tsk.Runs)
-	}
-	require.Equal(t, 10, total)
 }
 
 func TestPlan_KGreaterThanP(t *testing.T) {
-	// 3 mutually-overlapping sections (P=3); K=100 → 1 task with 3 piles.
-	sections := []*compactionv2pb.SectionRef{
-		sec("o", 0, "a", "z"),
-		sec("o", 1, "a", "z"),
-		sec("o", 2, "a", "z"),
+	runs := make([]Run, 3)
+	for i := range runs {
+		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
-
-	got := Plan(context.Background(), sections, "tenantB", 100)
+	got := Plan(runs, "tenantB", 100, nil)
 	require.Len(t, got, 1)
-	require.Equal(t, "tenantB", got[0].Tenant)
 	require.Len(t, got[0].Runs, 3)
 }
 
-func TestPlan_Determinism(t *testing.T) {
-	// Mix of overlapping and non-overlapping sections.
-	base := []*compactionv2pb.SectionRef{
-		sec("o", 0, "01", "03"),
-		sec("o", 1, "02", "04"),
-		sec("o", 2, "05", "07"),
-		sec("o", 3, "06", "10"),
-		sec("o", 4, "11", "13"),
-		sec("o", 5, "12", "14"),
-		sec("o", 6, "15", "18"),
-		sec("p", 0, "02", "06"),
-		sec("p", 1, "08", "09"),
-	}
-
-	want := Plan(context.Background(), append([]*compactionv2pb.SectionRef(nil), base...), "tenantA", 3)
-
-	r := rand.New(rand.NewSource(1337))
-	for trial := 0; trial < 10; trial++ {
-		shuffled := append([]*compactionv2pb.SectionRef(nil), base...)
-		r.Shuffle(len(shuffled), func(i, j int) {
-			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-		})
-		got := Plan(context.Background(), shuffled, "tenantA", 3)
-
-		require.Equal(t, len(want), len(got), "trial %d: task count must be deterministic", trial)
-		for i := range want {
-			require.Equal(t, want[i].Tenant, got[i].Tenant)
-			require.Equal(t, len(want[i].Runs), len(got[i].Runs), "trial %d: task %d run count", trial, i)
-			for j := range want[i].Runs {
-				require.Equal(t, want[i].Runs[j].Sections, got[i].Runs[j].Sections,
-					"trial %d: task %d run %d sections", trial, i, j)
-			}
-		}
+func TestPlan_TenantPassThrough(t *testing.T) {
+	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	for _, tenant := range []string{"t1", "t2"} {
+		got := Plan(runs, tenant, 1, nil)
+		require.Equal(t, tenant, got[0].Tenant)
 	}
 }
 
-func TestPlan_TenantPassThrough(t *testing.T) {
-	sections := []*compactionv2pb.SectionRef{sec("o", 0, "a", "b"), sec("o", 1, "a", "c")}
-	for _, tenant := range []string{"", "tenant-1", "tenant_with_strange_chars-A.B/C"} {
-		got := Plan(context.Background(), sections, tenant, 1)
-		for _, tsk := range got {
-			require.Equal(t, tenant, tsk.Tenant)
-		}
+func TestPlan_StampsSortSchema(t *testing.T) {
+	schema := []string{"label:service_name"}
+	runs := make([]Run, 3)
+	for i := range runs {
+		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
+	}
+	tasks := Plan(runs, "t1", 2, schema)
+	require.NotEmpty(t, tasks)
+	for _, ts := range tasks {
+		require.Equal(t, schema, ts.SortSchema)
+	}
+}
+
+func TestPlan_NilSortSchemaStaysEmpty(t *testing.T) {
+	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	tasks := Plan(runs, "t1", 2, nil)
+	require.NotEmpty(t, tasks)
+	require.Empty(t, tasks[0].SortSchema)
+}
+
+func TestRun_SizeAndSections(t *testing.T) {
+	s1 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 100}
+	s2 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 1, UncompressedSize: 250}
+
+	var r Run = &run{sections: []*compactionv2pb.SectionRef{s1, s2}}
+
+	require.Equal(t, uint64(350), r.Size())
+	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2}, r.Sections())
+}
+
+func TestRun_SizeEmpty(t *testing.T) {
+	var r Run = &run{sections: nil}
+	require.Equal(t, uint64(0), r.Size())
+	require.Empty(t, r.Sections())
+}
+
+func TestCalculateRuns_EmptyInput(t *testing.T) {
+	require.Empty(t, CalculateRuns(nil))
+	require.Empty(t, CalculateRuns([]*compactionv2pb.SectionRef{}))
+}
+
+func TestCalculateRuns_WrapsRunsAndSortsInPlace(t *testing.T) {
+	// Two non-overlapping same-tuple sections (disjoint, ordered times) chain
+	// into one run; passed out of order to prove in-place sorting.
+	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 5}
+	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 7}
+
+	input := []*compactionv2pb.SectionRef{b, a}
+	runs := CalculateRuns(input)
+
+	require.Len(t, runs, 1)
+	require.Equal(t, uint64(12), runs[0].Size())
+	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, input, "input sorted in place")
+}
+
+func TestIsTerminal(t *testing.T) {
+	const floor = uint64(100)
+	run := func(size uint64) Run { return fakeRun{size: size} }
+
+	tests := []struct {
+		name     string
+		runs     []Run
+		terminal bool
+	}{
+		{"no runs", nil, true},
+		{"single run below floor", []Run{run(1)}, true},
+		{"single run above floor", []Run{run(500)}, true},
+		{"two runs total >= floor", []Run{run(60), run(60)}, false},
+		{"two runs total exactly floor", []Run{run(50), run(50)}, false},
+		{"two runs total below floor", []Run{run(10), run(20)}, true},
+		{"many tiny runs below floor (small tenant)", []Run{run(5), run(5), run(5)}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.terminal, IsTerminal(tc.runs, floor))
+		})
 	}
 }
