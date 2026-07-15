@@ -169,9 +169,7 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 		return nil, errIndexSectionsReaderNotOpen
 	}
 	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
-	} else {
-		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
+		_, r.readSpan = xcap.StartSpan(ctx, tracer, "metastore.postingsIndexSectionsReader.Read")
 	}
 
 	if r.offset >= len(r.rows) {
