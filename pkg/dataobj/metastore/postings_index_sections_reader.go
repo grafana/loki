@@ -74,12 +74,9 @@ type postingsIndexSectionsReader struct {
 	batchSize  int
 
 	initialized bool
-	resolved    bool
 
-	openSections []*postings.Section
-	selector     *streamSelector
-	rows         []resolvedRow
-	offset       int
+	rows   []resolvedRow
+	offset int
 
 	resolvedRefs uint64
 
@@ -114,7 +111,6 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 	if len(r.matchers) == 0 {
 		r.initialized = true
-		r.resolved = true
 		return nil
 	}
 
@@ -152,12 +148,18 @@ func (r *postingsIndexSectionsReader) Open(ctx context.Context) error {
 	}
 
 	// Open readers of the sections, configured with the input predicates
-	r.openSections = opened
 	selector := newStreamSelector(r.matchers, r.predicates, r.start, r.end)
 	if err := selector.open(ctx, opened, maxConcurrentSectionOpens); err != nil {
 		return fmt.Errorf("opening postings readers: %w", err)
 	}
-	r.selector = selector
+	defer selector.close()
+
+	// Eagerly resolve the stream selector, caching the result as part of the reader
+	err = r.resolveStreamsFromSelector(ctx, selector)
+	if err != nil {
+		return err
+	}
+
 	r.initialized = true
 	return nil
 }
@@ -172,9 +174,6 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 
-	if err := r.resolve(ctx); err != nil {
-		return nil, err
-	}
 	if r.offset >= len(r.rows) {
 		return nil, io.EOF
 	}
@@ -188,11 +187,7 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 	return sectionResultsToRecordBatch(batch), nil
 }
 
-func (r *postingsIndexSectionsReader) resolve(ctx context.Context) error {
-	if r.resolved {
-		return nil
-	}
-
+func (r *postingsIndexSectionsReader) resolveStreamsFromSelector(ctx context.Context, selector *streamSelector) error {
 	region := xcap.RegionFromContext(ctx)
 	startTime := time.Now()
 	defer func() {
@@ -200,13 +195,12 @@ func (r *postingsIndexSectionsReader) resolve(ctx context.Context) error {
 		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(startTime).Seconds()))
 	}()
 
-	results, err := r.selector.selectStreams(ctx)
+	results, err := selector.selectStreams(ctx)
 	if err != nil {
 		return fmt.Errorf("resolving postings sections: %w", err)
 	}
 	r.rows = expandResults(results)
 	r.resolvedRefs = uint64(len(r.rows))
-	r.resolved = true
 
 	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.rows))))
 	return nil
@@ -240,11 +234,6 @@ func expandResults(results []SectionStreams) []resolvedRow {
 }
 
 func (r *postingsIndexSectionsReader) Close() {
-	if r.selector != nil {
-		_ = r.selector.close()
-		r.selector = nil
-	}
-	r.openSections = nil
 	if r.readSpan != nil {
 		r.readSpan.End()
 	}
