@@ -83,7 +83,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 					Namespace: metricsNamespace,
 					Subsystem: "pattern_ingester",
 					Name:      "kafka_send_duration_seconds",
-					Help:      "Time spent sending batches from the tee to the pattern ingester",
+					Help:      "Time spent forwarding batches from Kafka to the pattern ingester",
 					Buckets:   prometheus.DefBuckets,
 				}, instrument.HistogramCollectorBuckets,
 			),

@@ -1104,71 +1104,14 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
-  # How records are ingested: "kafka" reads from a Kafka topic; "grpc" uses an
-  # in-process channel (experimental, single-node, no durability guarantees,
-  # each replica holds independent data).
+  # How records are ingested: "kafka" reads from a Kafka topic; "grpc" receives
+  # Push requests over gRPC via the pattern-ingester tee.
   # CLI flag: -pattern-ingester.ingest-mode
-  [ingest_mode: <string> | default = "grpc"]
-
-  # Configures how the pattern ingester will connect to Kafka.
-  kafka_config:
-    [topic: <string> | default = ""]
-
-    [dial_timeout: <duration>]
-
-    [write_timeout: <duration>]
-
-    reader_config:
-      [address: <string> | default = ""]
-
-      [client_id: <string> | default = ""]
-
-    writer_config:
-      [address: <string> | default = ""]
-
-      [client_id: <string> | default = ""]
-
-    [sasl_username: <string> | default = ""]
-
-    sasl_password:
-
-    [consumer_group: <string> | default = ""]
-
-    [consumer_group_offset_commit_interval: <duration>]
-
-    [last_produced_offset_retry_timeout: <duration>]
-
-    [auto_create_topic_enabled: <boolean>]
-
-    [auto_create_topic_default_partitions: <int>]
-
-    [producer_max_record_size_bytes: <int>]
-
-    [producer_max_buffered_bytes: <int>]
-
-    [max_consumer_lag_at_startup: <duration>]
-
-    [max_consumer_workers: <int>]
-
-    [enable_kafka_histograms: <boolean>]
-
-    [tracing_enabled: <boolean>]
-
-  # The number of log flushes to queue before dropping
-  # CLI flag: -pattern-ingester.flush-queue-size
-  [flush_queue_size: <int> | default = 1000]
+  [ingest_mode: <string> | default = "kafka"]
 
   # the number of concurrent workers sending logs to the template service
   # CLI flag: -pattern-ingester.flush-worker-count
   [flush_worker_count: <int> | default = 100]
-
-  # The Kafka instance ID
-  # CLI flag: -pattern-ingester.kafka-instance-id
-  [kafka_instance_id: <string> | default = ""]
-
-  # The Kafka session timeout
-  # CLI flag: -pattern-ingester.kafka-session-timeout
-  [kafka_session_timeout: <duration> | default = 2m]
 
   # The max time we will try to flush any remaining logs to be mined when the
   # service is stopped

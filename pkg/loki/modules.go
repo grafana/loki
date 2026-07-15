@@ -837,6 +837,9 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		// should only be used for the Query endpoint, not the Push endpoint
 		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
 		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		}
 
 		return t.PatternIngester, nil
 	default:

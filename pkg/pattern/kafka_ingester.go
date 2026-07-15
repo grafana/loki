@@ -59,7 +59,6 @@ type KafkaIngester struct {
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
-	loopDone        sync.WaitGroup
 	loopQuit        chan struct{}
 
 	metrics       *ingesterMetrics
@@ -210,8 +209,6 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 		case <-sendersDone:
 		}
 	}()
-	// start our loop
-	i.loopDone.Add(1)
 	return nil
 }
 
@@ -225,7 +222,6 @@ func (i *KafkaIngester) running(ctx context.Context) error {
 		serviceError = fmt.Errorf("lifecycler failed: %w", err)
 	}
 
-	i.loopDone.Wait()
 	return serviceError
 }
 
@@ -289,7 +285,11 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
 						continue
 					}
-					req := clientRequest{ingesterAddr: "", tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
+					ingesterAddr, err := i.ingesterForTenant(tenant, stream)
+					if err != nil {
+						return fmt.Errorf("failed to get ingester for tenant: %w", err)
+					}
+					req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
 					i.sendReq(ctx, req)
 				default:
 					break drain
@@ -326,7 +326,7 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 	// are gathered by this request
 	_ = instrument.CollectedRequest(
 		ctx,
-		"FlushTeedLogsToPatternIngester",
+		"SendKafkaBatchToPatternIngester",
 		i.metrics.sendDuration,
 		instrument.ErrorCode,
 		func(ctx context.Context) error {
@@ -421,13 +421,11 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 						user.InjectOrgID(ctx, clientRequest.tenant),
 						i.cfg.ClientConfig.RemoteTimeout,
 					)
-					defer cancel()
-
 					_, err = client.(logproto.PatternClient).Push(ctx, req)
 					if err != nil {
 						continue
 					}
-
+					cancel()
 					i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 					// bail after any success to prevent sending more than one
 					return nil

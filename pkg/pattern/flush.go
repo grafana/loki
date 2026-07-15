@@ -6,7 +6,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-func (i *Ingester) initFlushQueues() {
+func (i *GRPCIngester) initFlushQueues() {
 	// i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
@@ -15,11 +15,11 @@ func (i *Ingester) initFlushQueues() {
 	}
 }
 
-func (i *Ingester) Flush() {
+func (i *GRPCIngester) Flush() {
 	i.flush(true)
 }
 
-func (i *Ingester) flush(mayRemoveStreams bool) {
+func (i *GRPCIngester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
 
 	// Close the flush queues, to unblock waiting workers.
@@ -32,7 +32,7 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
+func (i *GRPCIngester) sweepUsers(immediate, mayRemoveStreams bool) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
@@ -40,7 +40,7 @@ func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
 	}
 }
 
-func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
+func (i *GRPCIngester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
 	level.Debug(i.logger).Log("msg", "sweeping instance", "instance", instance.instanceID)
 	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
 		if mayRemoveStreams {
