@@ -16,11 +16,13 @@ type metrics struct {
 	// registry to collect metrics as a unit.
 	reg *prometheus.Registry
 
-	tasksTotal    *prometheus.CounterVec
-	streamsTotal  *prometheus.CounterVec
-	connsTotal    prometheus.Counter
-	backoffsTotal prometheus.Counter
-	requeueTotal  prometheus.Counter
+	tasksRegisteredTotal prometheus.Counter
+	tasksAssignedTotal   prometheus.Counter
+	taskResultsTotal     *prometheus.CounterVec
+	streamsTotal         *prometheus.CounterVec
+	connsTotal           prometheus.Counter
+	backoffsTotal        prometheus.Counter
+	requeueTotal         prometheus.Counter
 
 	taskQueueSeconds prometheus.Histogram
 	taskExecSeconds  prometheus.Histogram
@@ -65,10 +67,18 @@ func newMetrics() *metrics {
 			"loki_engine_scheduler_lock_hold_seconds",
 		),
 
-		tasksTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_engine_scheduler_tasks_total",
-			Help: "Total number of tasks by state, counting transitions into state",
-		}, []string{"state"}),
+		tasksRegisteredTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_tasks_registered_total",
+			Help: "Total number of tasks registered from successfully validated manifests",
+		}),
+		tasksAssignedTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_tasks_assigned_total",
+			Help: "Total number of tasks whose ownership was installed on a worker",
+		}),
+		taskResultsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_scheduler_task_results_total",
+			Help: "Total number of terminal task results by outcome",
+		}, []string{"outcome"}),
 		streamsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_engine_scheduler_streams_total",
 			Help: "Total number of streams by state, counting transitions into state",
