@@ -1,5 +1,7 @@
 package push
 
+import "bytes"
+
 // Wiresmith customtype adapter methods. The wiresmith protobuf compiler
 // (used for pkg/logproto in the main Loki module) requires custom types to
 // implement its Size/Marshal/Unmarshal/Equal/CompareWiresmith contract.
@@ -20,8 +22,17 @@ func (m *Stream) UnmarshalWiresmith(buf []byte) error { return m.Unmarshal(buf) 
 func (m *Stream) EqualWiresmith(other any) bool { return m.Equal(other) }
 
 // CompareWiresmith implements the wiresmith customtype contract. Streams
-// have no natural order; equality decides 0, otherwise label order then
-// entry count provide a stable total order.
+// have no natural order; equality decides 0, otherwise label order, then
+// entry count, then the marshaled form provide a stable total order.
+//
+// The marshaled-form tiebreak matters for correctness, not just style: two
+// Streams with equal Labels and equal Entries length but differing entry
+// content (or only a differing Hash) used to both fall through to the same
+// `return 1`, regardless of which side was the receiver, so
+// A.Compare(B)==1 && B.Compare(A)==1 could both hold -- not a valid
+// ordering. Comparing the marshaled form (like
+// DedicatedColumns.CompareWiresmith in tempo's wiresmith migration) covers
+// every field, including Hash, and keeps the result antisymmetric.
 func (m *Stream) CompareWiresmith(other any) int {
 	o, ok := other.(*Stream)
 	if !ok {
@@ -40,10 +51,21 @@ func (m *Stream) CompareWiresmith(other any) int {
 		}
 		return 1
 	}
-	if len(m.Entries) < len(o.Entries) {
+	if len(m.Entries) != len(o.Entries) {
+		if len(m.Entries) < len(o.Entries) {
+			return -1
+		}
+		return 1
+	}
+	a, err := m.Marshal()
+	if err != nil {
 		return -1
 	}
-	return 1
+	b, err := o.Marshal()
+	if err != nil {
+		return 1
+	}
+	return bytes.Compare(a, b)
 }
 
 // SizeWiresmith implements the wiresmith customtype contract.
