@@ -39,35 +39,30 @@ func (e *Expression) UnmarshalPhysical(from physical.Expression) error {
 // UnmarshalPhysical reads from into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *Expression_Unary) UnmarshalPhysical(from physical.Expression) error {
-	e.Unary = new(UnaryExpression)
 	return e.Unary.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *Expression_Binary) UnmarshalPhysical(from physical.Expression) error {
-	e.Binary = new(BinaryExpression)
 	return e.Binary.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *Expression_Variadic) UnmarshalPhysical(from physical.Expression) error {
-	e.Variadic = new(VariadicExpression)
 	return e.Variadic.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *Expression_Literal) UnmarshalPhysical(from physical.Expression) error {
-	e.Literal = new(LiteralExpression)
 	return e.Literal.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into e. Returns an error if the conversion fails
 // or is unsupported.
 func (e *Expression_Column) UnmarshalPhysical(from physical.Expression) error {
-	e.Column = new(ColumnExpression)
 	return e.Column.UnmarshalPhysical(from)
 }
 
@@ -79,9 +74,7 @@ func (e *UnaryExpression) UnmarshalPhysical(from physical.Expression) error {
 		return fmt.Errorf("unsupported physical expression type: %T", from)
 	}
 
-	*e = UnaryExpression{
-		Value: new(Expression),
-	}
+	*e = UnaryExpression{}
 	if err := e.Op.UnmarshalType(unary.Op); err != nil {
 		return err
 	}
@@ -99,10 +92,7 @@ func (e *BinaryExpression) UnmarshalPhysical(from physical.Expression) error {
 		return fmt.Errorf("unsupported physical expression type: %T", from)
 	}
 
-	*e = BinaryExpression{
-		Left:  new(Expression),
-		Right: new(Expression),
-	}
+	*e = BinaryExpression{}
 	if err := e.Op.UnmarshalType(binary.Op); err != nil {
 		return err
 	}
@@ -124,13 +114,12 @@ func (e *VariadicExpression) UnmarshalPhysical(from physical.Expression) error {
 	}
 
 	*e = VariadicExpression{
-		Args: make([]*Expression, len(variadic.Expressions)),
+		Args: make([]Expression, len(variadic.Expressions)),
 	}
 	if err := e.Op.UnmarshalType(variadic.Op); err != nil {
 		return err
 	}
 	for i, expr := range variadic.Expressions {
-		e.Args[i] = new(Expression)
 		if err := e.Args[i].UnmarshalPhysical(expr); err != nil {
 			return err
 		}

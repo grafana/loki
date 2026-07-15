@@ -172,7 +172,7 @@ func TestLabel(t *testing.T) {
 	// Call Label() without a query : labels matching LBAC header are returned
 	start := time.Unix(0, 0)
 	res, err := wrapped.Label(ctx, &logproto.LabelRequest{
-		Start:  &start,
+		Start:  start,
 		Name:   "bar",
 		Values: true,
 		Query:  ``,
@@ -183,7 +183,7 @@ func TestLabel(t *testing.T) {
 
 	// Call Label() with a query : labels matching LBAC header and query are returned
 	res, err = wrapped.Label(ctx, &logproto.LabelRequest{
-		Start:  &start,
+		Start:  start,
 		Name:   "bar",
 		Values: true,
 		Query:  `{bar="baz2"}`,
@@ -196,7 +196,7 @@ func TestLabel(t *testing.T) {
 	ctx = context.Background()
 	ctx = user.InjectOrgID(ctx, "tenant1")
 	res, err = wrapped.Label(ctx, &logproto.LabelRequest{
-		Start:  &start,
+		Start:  start,
 		Name:   "bar",
 		Values: true,
 		Query:  ``,

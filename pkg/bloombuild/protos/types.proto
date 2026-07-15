@@ -2,24 +2,26 @@ syntax = "proto3";
 
 package protos;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 import "pkg/logproto/bloomgateway.proto";
 
 option go_package = "protos";
-option (gogoproto.marshaler_all) = true;
-option (gogoproto.unmarshaler_all) = true;
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 // FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
 // which ensures we can cast between them without allocations.
 // TODO(salvacorts): Reuse from `pkg/logproto/indexgateway.proto`
 message ProtoFingerprintBounds {
   uint64 min = 1 [
-    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
-    (gogoproto.jsontag) = "min"
+    (wiresmith.options.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (wiresmith.options.jsontag) = "min"
   ];
   uint64 max = 2 [
-    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
-    (gogoproto.jsontag) = "max"
+    (wiresmith.options.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (wiresmith.options.jsontag) = "max"
   ];
 }
 
@@ -30,15 +32,14 @@ message DayTable {
 
 message ProtoSeries {
   uint64 fingerprint = 1;
-  repeated logproto.ShortRef chunks = 2;
+  repeated logproto.ShortRef chunks = 2 [(wiresmith.options.pointer) = true];
 }
 
 message ProtoGapWithBlocks {
   ProtoFingerprintBounds bounds = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "bounds"
+    (wiresmith.options.jsontag) = "bounds"
   ];
-  repeated ProtoSeries series = 2;
+  repeated ProtoSeries series = 2 [(wiresmith.options.pointer) = true];
   repeated string blockRef = 3;
 }
 
@@ -47,16 +48,14 @@ message ProtoGapWithBlocks {
 message ProtoTask {
   string id = 1;
   DayTable table = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "table"
+    (wiresmith.options.jsontag) = "table"
   ];
   string tenant = 3;
   ProtoFingerprintBounds bounds = 4 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "bounds"
+    (wiresmith.options.jsontag) = "bounds"
   ];
   string tsdb = 5;
-  repeated ProtoGapWithBlocks gaps = 6;
+  repeated ProtoGapWithBlocks gaps = 6 [(wiresmith.options.pointer) = true];
 }
 
 message ProtoMeta {
@@ -68,5 +67,5 @@ message ProtoMeta {
 message ProtoTaskResult {
   string taskID = 1;
   string error = 2;
-  repeated ProtoMeta createdMetas = 3;
+  repeated ProtoMeta createdMetas = 3 [(wiresmith.options.pointer) = true];
 }

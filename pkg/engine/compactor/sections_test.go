@@ -177,13 +177,13 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	require.Equal(t, []string{"label:service_name"}, schema)
 	require.Len(t, refs, 2)
 
-	byKey := map[string]*compactionv2pb.SectionRef{}
+	byKey := map[string]compactionv2pb.SectionRef{}
 	for _, r := range refs {
 		byKey[r.MinKey[0]] = r
 	}
 
-	auth := byKey["auth"]
-	require.NotNil(t, auth)
+	auth, ok := byKey["auth"]
+	require.True(t, ok, "expected a ref keyed by MinKey \"auth\"")
 	require.Equal(t, "logs/log-0", auth.ObjectPath)
 	require.Equal(t, []string{"auth"}, auth.MinKey)
 	require.Equal(t, []string{"auth"}, auth.MaxKey)

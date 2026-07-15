@@ -23,7 +23,7 @@ type LogMerge struct {
 
 	// Runs are the K piles the merge consumes; each RunRef references LOG
 	// sections in object storage.
-	Runs []*compactionv2pb.RunRef
+	Runs []compactionv2pb.RunRef
 
 	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
 	// (e.g. "label:service_name")

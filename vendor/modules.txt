@@ -1003,6 +1003,10 @@ github.com/grafana/pyroscope-go/godeltaprof/internal/pprof
 ## explicit; go 1.21
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
+# github.com/grafana/wiresmith v0.9.0
+## explicit; go 1.25.0
+github.com/grafana/wiresmith/protohelpers
+github.com/grafana/wiresmith/types/known/anypb
 # github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery

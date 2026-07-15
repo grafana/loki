@@ -84,12 +84,12 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 				Selector:  tc.selector,
-				Direction: logproto.BACKWARD,
+				Direction: logproto.Direction_BACKWARD,
 				Limit:     0,
 				Shards:    nil,
 				Start:     time.Unix(0, 1),
 				End:       time.Unix(0, time.Now().UnixNano()),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.selector),
 				},
 			}}
@@ -161,7 +161,7 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.selector),
 				},
 			}}
@@ -194,7 +194,7 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 		t.Run(tc.selector, func(t *testing.T) {
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(tc.selector),
 				},
 			}}
@@ -286,8 +286,8 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 		return &logproto.LabelRequest{
 			Name:   name,
 			Values: name != "",
-			Start:  &start,
-			End:    &end,
+			Start:  start,
+			End:    end,
 		}
 	}
 
@@ -744,16 +744,16 @@ func TestMultiTenantQuerierPatterns(t *testing.T) {
 
 			// Mock the Patterns method to return a response
 			querier.On("Patterns", mock.Anything, mock.Anything).Return(&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "pattern1",
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 0, Value: 100},
 						},
 					},
 					{
 						Pattern: "pattern2",
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: 0, Value: 50},
 						},
 					},

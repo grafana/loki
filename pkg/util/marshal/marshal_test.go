@@ -1142,11 +1142,11 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		},
 		{
 			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(1), Value: 1},
 							{Timestamp: model.TimeFromUnix(2), Value: 2},
 						},
@@ -1157,11 +1157,11 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		},
 		{
 			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(1), Value: 1},
 							{Timestamp: model.TimeFromUnix(2), Value: 2},
 						},
@@ -1169,7 +1169,7 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 					{
 						Pattern: "foo <*> buzz",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{
+						Samples: []logproto.PatternSample{
 							{Timestamp: model.TimeFromUnix(3), Value: 1},
 							{Timestamp: model.TimeFromUnix(3), Value: 2},
 						},
@@ -1180,16 +1180,16 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 		},
 		{
 			&logproto.QueryPatternsResponse{
-				Series: []*logproto.PatternSeries{
+				Series: []logproto.PatternSeries{
 					{
 						Pattern: "foo <*> bar",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{},
+						Samples: []logproto.PatternSample{},
 					},
 					{
 						Pattern: "foo <*> buzz",
 						Level:   constants.LogLevelInfo,
-						Samples: []*logproto.PatternSample{},
+						Samples: []logproto.PatternSample{},
 					},
 				},
 			},

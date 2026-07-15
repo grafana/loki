@@ -278,21 +278,21 @@ func materializeNulls(alloc *memory.Allocator, typ datasetmd.PhysicalType, valid
 	// accept some of the arrays being Null? Would that slow things down too
 	// much?
 	switch typ {
-	case datasetmd.PHYSICAL_TYPE_INT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_INT64:
 		valuesBuffer := memory.NewBuffer[int64](alloc, validity.Len())
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
 		return columnar.NewNumber[int64](valuesBuffer.Data(), validity), nil
 
-	case datasetmd.PHYSICAL_TYPE_UINT64:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_UINT64:
 		valuesBuffer := memory.NewBuffer[uint64](alloc, validity.Len())
 		valuesBuffer.Resize(validity.Len())
 		valuesBuffer.Clear()
 
 		return columnar.NewNumber[uint64](valuesBuffer.Data(), validity), nil
 
-	case datasetmd.PHYSICAL_TYPE_BINARY:
+	case datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY:
 		offsetsBuffer := memory.NewBuffer[int32](alloc, validity.Len()+1)
 		offsetsBuffer.Resize(validity.Len() + 1)
 		offsetsBuffer.Clear()

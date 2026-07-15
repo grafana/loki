@@ -8,7 +8,7 @@ import (
 
 func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, error) {
 	var (
-		series   = map[string]map[string][]*logproto.PatternSample{}
+		series   = map[string]map[string][]logproto.PatternSample{}
 		respSize int
 	)
 
@@ -18,16 +18,16 @@ func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, err
 		sample := it.At()
 
 		if _, ok := series[lvl]; !ok {
-			series[lvl] = map[string][]*logproto.PatternSample{}
+			series[lvl] = map[string][]logproto.PatternSample{}
 		}
-		series[lvl][pattern] = append(series[lvl][pattern], &sample)
+		series[lvl][pattern] = append(series[lvl][pattern], sample)
 	}
 	result := logproto.QueryPatternsResponse{
-		Series: make([]*logproto.PatternSeries, 0, len(series)),
+		Series: make([]logproto.PatternSeries, 0, len(series)),
 	}
 	for lvl, patterns := range series {
 		for pattern, samples := range patterns {
-			result.Series = append(result.Series, &logproto.PatternSeries{
+			result.Series = append(result.Series, logproto.PatternSeries{
 				Pattern: pattern,
 				Level:   lvl,
 				Samples: samples,

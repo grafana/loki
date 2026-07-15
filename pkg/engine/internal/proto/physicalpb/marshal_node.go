@@ -153,14 +153,14 @@ func marshalGrouping(g *Grouping) (physical.Grouping, error) {
 	}, nil
 }
 
-func marshalColumnExpressions(exprs []*expressionpb.ColumnExpression) []physical.ColumnExpression {
+func marshalColumnExpressions(exprs []expressionpb.ColumnExpression) []physical.ColumnExpression {
 	if exprs == nil {
 		return nil
 	}
 
 	out := make([]physical.ColumnExpression, len(exprs))
-	for i, expr := range exprs {
-		columnExpression, err := expr.MarshalPhysical()
+	for i := range exprs {
+		columnExpression, err := exprs[i].MarshalPhysical()
 		if err != nil {
 			return nil
 		}
@@ -211,10 +211,7 @@ func (n *DataObjScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	}, nil
 }
 
-func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
-	if timeRange == nil {
-		return physical.TimeRange{}
-	}
+func marshalTimeRange(timeRange TimeRange) physical.TimeRange {
 
 	return physical.TimeRange{
 		Start: timeRange.Start,
@@ -222,14 +219,14 @@ func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
 	}
 }
 
-func marshalExpressions(exprs []*expressionpb.Expression) ([]physical.Expression, error) {
+func marshalExpressions(exprs []expressionpb.Expression) ([]physical.Expression, error) {
 	if exprs == nil {
 		return nil, nil
 	}
 
 	out := make([]physical.Expression, len(exprs))
-	for i, expr := range exprs {
-		expression, err := expr.MarshalPhysical()
+	for i := range exprs {
+		expression, err := exprs[i].MarshalPhysical()
 		if err != nil {
 			return nil, err
 		}
@@ -478,19 +475,13 @@ func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	}, nil
 }
 
-// copyRunRefs deep-copies a RunRef slice and its nested SectionRefs
-func copyRunRefs(in []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
-	runs := make([]*compactionv2pb.RunRef, len(in))
+// copyRunRefs deep-copies a RunRef slice and its nested SectionRefs.
+func copyRunRefs(in []compactionv2pb.RunRef) []compactionv2pb.RunRef {
+	runs := make([]compactionv2pb.RunRef, len(in))
 	for i, r := range in {
-		if r == nil {
-			continue
-		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
+		sections := make([]compactionv2pb.SectionRef, len(r.Sections))
 		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			sections[j] = &compactionv2pb.SectionRef{
+			sections[j] = compactionv2pb.SectionRef{
 				ObjectPath:       s.ObjectPath,
 				SectionIndex:     s.SectionIndex,
 				MinKey:           slices.Clone(s.MinKey),
@@ -500,7 +491,7 @@ func copyRunRefs(in []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
 				UncompressedSize: s.UncompressedSize,
 			}
 		}
-		runs[i] = &compactionv2pb.RunRef{Sections: sections}
+		runs[i] = compactionv2pb.RunRef{Sections: sections}
 	}
 	return runs
 }

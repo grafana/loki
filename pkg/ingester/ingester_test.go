@@ -835,7 +835,7 @@ func Test_InMemoryLabels(t *testing.T) {
 
 	start := time.Unix(0, 0)
 	res, err := i.Label(ctx, &logproto.LabelRequest{
-		Start:  &start,
+		Start:  start,
 		Name:   "bar",
 		Values: true,
 	})
@@ -843,7 +843,7 @@ func Test_InMemoryLabels(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"baz1", "baz2"}, res.Values)
 
-	res, err = i.Label(ctx, &logproto.LabelRequest{Start: &start})
+	res, err = i.Label(ctx, &logproto.LabelRequest{Start: start})
 	require.NoError(t, err)
 	require.Equal(t, []string{"bar", "foo"}, res.Values)
 }
@@ -1014,15 +1014,15 @@ func Test_DedupeIngester(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
-				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_BACKWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"} | label_format bar=""`),
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.Direction_BACKWARD))
 		}
-		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.Direction_BACKWARD)
 
 		for i := requests - 1; i >= 0; i-- {
 			actualHashes := []uint64{}
@@ -1047,12 +1047,12 @@ func Test_DedupeIngester(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, requests+1),
 				Limit:     uint32(requests * streamCount),
-				Direction: logproto.FORWARD,
+				Direction: logproto.Direction_FORWARD,
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.Direction_FORWARD))
 		}
-		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.Direction_FORWARD)
 
 		for i := int64(0); i < requests; i++ {
 			actualHashes := []uint64{}
@@ -1076,7 +1076,7 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m])) by (bar)`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m])) by (bar)`),
 				},
 			})
@@ -1114,7 +1114,7 @@ func Test_DedupeIngester(t *testing.T) {
 				Selector: `sum(rate({foo="bar"}[1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, requests+1),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum(rate({foo="bar"}[1m]))`),
 				},
 			})
@@ -1176,15 +1176,15 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
-				Direction: logproto.BACKWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_BACKWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.BACKWARD))
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.Direction_BACKWARD))
 		}
-		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.BACKWARD)
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.Direction_BACKWARD)
 
 		for i := requests - 1; i >= 0; i-- {
 			for j := 0; j < streamCount; j++ {
@@ -1206,15 +1206,15 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Start:     time.Unix(0, 0),
 				End:       time.Unix(0, int64(requests+1)),
 				Limit:     uint32(requests * streamCount * 2),
-				Direction: logproto.FORWARD,
-				Plan: &plan.QueryPlan{
+				Direction: logproto.Direction_FORWARD,
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"} | json`),
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.FORWARD))
+			iterators = append(iterators, iter.NewQueryClientIterator(stream, logproto.Direction_FORWARD))
 		}
-		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.FORWARD)
+		it := iter.NewMergeEntryIterator(ctx, iterators, logproto.Direction_FORWARD)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {
@@ -1234,7 +1234,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `rate({foo="bar"} | json [1m])`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`rate({foo="bar"} | json [1m])`),
 				},
 			})
@@ -1262,7 +1262,7 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				Selector: `sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`,
 				Start:    time.Unix(0, 0),
 				End:      time.Unix(0, int64(requests+1)),
-				Plan: &plan.QueryPlan{
+				Plan: plan.QueryPlan{
 					AST: syntax.MustParseExpr(`sum by (c,d,e,foo) (rate({foo="bar"} | json [1m]))`),
 				},
 			})

@@ -174,13 +174,13 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 	if err := jsoniter.ConfigFastest.Unmarshal(data, &v); err != nil {
 		return err
 	}
-	r.Series = make([]*PatternSeries, 0, len(v.Data))
+	r.Series = make([]PatternSeries, 0, len(v.Data))
 	for _, d := range v.Data {
-		samples := make([]*PatternSample, 0, len(d.Samples))
+		samples := make([]PatternSample, 0, len(d.Samples))
 		for _, s := range d.Samples {
-			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
+			samples = append(samples, PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
 		}
-		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Level: d.Level, Samples: samples})
+		r.Series = append(r.Series, PatternSeries{Pattern: d.Pattern, Level: d.Level, Samples: samples})
 	}
 	return nil
 }

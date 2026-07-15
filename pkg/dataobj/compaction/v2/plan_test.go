@@ -9,12 +9,12 @@ import (
 )
 
 type fakeRun struct {
-	sections []*compactionv2pb.SectionRef
+	sections []compactionv2pb.SectionRef
 	size     uint64
 }
 
-func (f fakeRun) Sections() []*compactionv2pb.SectionRef { return f.sections }
-func (f fakeRun) Size() uint64                           { return f.size }
+func (f fakeRun) Sections() []compactionv2pb.SectionRef { return f.sections }
+func (f fakeRun) Size() uint64                          { return f.size }
 
 func TestPlan_EmptyInput(t *testing.T) {
 	require.Nil(t, Plan(nil, "tenantA", 3, nil))
@@ -22,7 +22,7 @@ func TestPlan_EmptyInput(t *testing.T) {
 }
 
 func TestPlan_InvalidK_Panics(t *testing.T) {
-	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	runs := []Run{fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
 	require.PanicsWithValue(t, "k must be > 0, got 0", func() { Plan(runs, "tenantA", 0, nil) })
 	require.PanicsWithValue(t, "k must be > 0, got -1", func() { Plan(runs, "tenantA", -1, nil) })
 	// nil runs (typed []Run) with k<=0 still panics on k before the empty check.
@@ -30,8 +30,8 @@ func TestPlan_InvalidK_Panics(t *testing.T) {
 }
 
 func TestPlan_SingleRun(t *testing.T) {
-	s := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0}
-	got := Plan([]Run{fakeRun{sections: []*compactionv2pb.SectionRef{s}}}, "tenantA", 8, nil)
+	s := compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0}
+	got := Plan([]Run{fakeRun{sections: []compactionv2pb.SectionRef{s}}}, "tenantA", 8, nil)
 	require.Len(t, got, 1)
 	require.Equal(t, "tenantA", got[0].Tenant)
 	require.Len(t, got[0].Runs, 1)
@@ -40,7 +40,7 @@ func TestPlan_SingleRun(t *testing.T) {
 func TestPlan_KGrouping_P10_K3(t *testing.T) {
 	runs := make([]Run, 10)
 	for i := range runs {
-		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
+		runs[i] = fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
 	got := Plan(runs, "tenantA", 3, nil)
 	require.Len(t, got, 4) // ceil(10/3)
@@ -53,7 +53,7 @@ func TestPlan_KGrouping_P10_K3(t *testing.T) {
 func TestPlan_KGreaterThanP(t *testing.T) {
 	runs := make([]Run, 3)
 	for i := range runs {
-		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
+		runs[i] = fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
 	got := Plan(runs, "tenantB", 100, nil)
 	require.Len(t, got, 1)
@@ -61,7 +61,7 @@ func TestPlan_KGreaterThanP(t *testing.T) {
 }
 
 func TestPlan_TenantPassThrough(t *testing.T) {
-	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	runs := []Run{fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
 	for _, tenant := range []string{"t1", "t2"} {
 		got := Plan(runs, tenant, 1, nil)
 		require.Equal(t, tenant, got[0].Tenant)
@@ -72,7 +72,7 @@ func TestPlan_StampsSortSchema(t *testing.T) {
 	schema := []string{"label:service_name"}
 	runs := make([]Run, 3)
 	for i := range runs {
-		runs[i] = fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
+		runs[i] = fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "o", SectionIndex: int64(i)}}}
 	}
 	tasks := Plan(runs, "t1", 2, schema)
 	require.NotEmpty(t, tasks)
@@ -82,20 +82,20 @@ func TestPlan_StampsSortSchema(t *testing.T) {
 }
 
 func TestPlan_NilSortSchemaStaysEmpty(t *testing.T) {
-	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	runs := []Run{fakeRun{sections: []compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
 	tasks := Plan(runs, "t1", 2, nil)
 	require.NotEmpty(t, tasks)
 	require.Empty(t, tasks[0].SortSchema)
 }
 
 func TestRun_SizeAndSections(t *testing.T) {
-	s1 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 100}
-	s2 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 1, UncompressedSize: 250}
+	s1 := compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 100}
+	s2 := compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 1, UncompressedSize: 250}
 
-	var r Run = &run{sections: []*compactionv2pb.SectionRef{s1, s2}}
+	var r Run = &run{sections: []compactionv2pb.SectionRef{s1, s2}}
 
 	require.Equal(t, uint64(350), r.Size())
-	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2}, r.Sections())
+	require.Equal(t, []compactionv2pb.SectionRef{s1, s2}, r.Sections())
 }
 
 func TestRun_SizeEmpty(t *testing.T) {
@@ -106,21 +106,21 @@ func TestRun_SizeEmpty(t *testing.T) {
 
 func TestCalculateRuns_EmptyInput(t *testing.T) {
 	require.Empty(t, CalculateRuns(nil))
-	require.Empty(t, CalculateRuns([]*compactionv2pb.SectionRef{}))
+	require.Empty(t, CalculateRuns([]compactionv2pb.SectionRef{}))
 }
 
 func TestCalculateRuns_WrapsRunsAndSortsInPlace(t *testing.T) {
 	// Two non-overlapping same-tuple sections (disjoint, ordered times) chain
 	// into one run; passed out of order to prove in-place sorting.
-	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 5}
-	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 7}
+	a := compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 5}
+	b := compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 7}
 
-	input := []*compactionv2pb.SectionRef{b, a}
+	input := []compactionv2pb.SectionRef{b, a}
 	runs := CalculateRuns(input)
 
 	require.Len(t, runs, 1)
 	require.Equal(t, uint64(12), runs[0].Size())
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, input, "input sorted in place")
+	require.Equal(t, []compactionv2pb.SectionRef{a, b}, input, "input sorted in place")
 }
 
 func TestIsTerminal(t *testing.T) {

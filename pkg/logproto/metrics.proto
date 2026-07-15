@@ -2,24 +2,25 @@ syntax = "proto3";
 
 package logproto;
 
-import "gogoproto/gogo.proto";
+import "wiresmith/options.proto";
 import "pkg/logproto/logproto.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
-option (gogoproto.marshaler_all) = true;
-option (gogoproto.unmarshaler_all) = true;
+
+// Drop the per-message presence bitmap: gogoproto nullable=false parity
+// (see WIRESMITH_MIGRATION.md).
+option (wiresmith.options.no_presence_all) = true;
 
 message WriteRequest {
   repeated TimeSeries timeseries = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "PreallocTimeseries"
+    (wiresmith.options.customtype) = "PreallocTimeseries"
   ];
   enum SourceEnum {
     API = 0;
     RULE = 1;
   }
   SourceEnum Source = 2;
-  repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
+  repeated MetricMetadata metadata = 3 [(wiresmith.options.pointer) = true];
 
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }
@@ -28,12 +29,11 @@ message WriteResponse {}
 
 message TimeSeries {
   repeated LegacyLabelPair labels = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "LabelAdapter"
+    (wiresmith.options.customtype) = "LabelAdapter"
   ];
   // Sorted by time, oldest sample first.
-  repeated LegacySample samples = 2 [(gogoproto.nullable) = false];
-  // repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
+  repeated LegacySample samples = 2;
+  // repeated Exemplar exemplars = 3;
 }
 
 message MetricMetadata {
@@ -56,7 +56,6 @@ message MetricMetadata {
 
 message Metric {
   repeated LegacyLabelPair labels = 1 [
-    (gogoproto.nullable) = false,
-    (gogoproto.customtype) = "LabelAdapter"
+    (wiresmith.options.customtype) = "LabelAdapter"
   ];
 }

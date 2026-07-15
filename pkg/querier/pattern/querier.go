@@ -14,7 +14,7 @@ type PatterQuerier interface {
 func MergePatternResponses(responses []*logproto.QueryPatternsResponse) *logproto.QueryPatternsResponse {
 	if len(responses) == 0 {
 		return &logproto.QueryPatternsResponse{
-			Series: []*logproto.PatternSeries{},
+			Series: []logproto.PatternSeries{},
 		}
 	}
 
@@ -22,8 +22,12 @@ func MergePatternResponses(responses []*logproto.QueryPatternsResponse) *logprot
 		return responses[0]
 	}
 
-	// Merge patterns by pattern string
-	patternMap := make(map[string]*logproto.PatternSeries)
+	// Merge patterns by pattern string; index into result.Series for in-place update.
+	patternIdx := make(map[string]int)
+
+	result := &logproto.QueryPatternsResponse{
+		Series: make([]logproto.PatternSeries, 0),
+	}
 
 	for _, resp := range responses {
 		if resp == nil {
@@ -31,28 +35,23 @@ func MergePatternResponses(responses []*logproto.QueryPatternsResponse) *logprot
 		}
 
 		for _, series := range resp.Series {
-			existing, exists := patternMap[series.Pattern]
+			idx, exists := patternIdx[series.Pattern]
 			if !exists {
-				patternMap[series.Pattern] = series
+				patternIdx[series.Pattern] = len(result.Series)
+				result.Series = append(result.Series, series)
 				continue
 			}
 
-			// Merge samples
-			existing.Samples = append(existing.Samples, series.Samples...)
+			// Merge samples into existing entry.
+			result.Series[idx].Samples = append(result.Series[idx].Samples, series.Samples...)
 		}
 	}
 
-	// Sort samples within each series by timestamp
-	result := &logproto.QueryPatternsResponse{
-		Series: make([]*logproto.PatternSeries, 0, len(patternMap)),
-	}
-
-	for _, series := range patternMap {
-		// Sort samples by timestamp
-		sort.Slice(series.Samples, func(i, j int) bool {
-			return series.Samples[i].Timestamp < series.Samples[j].Timestamp
+	// Sort samples within each series by timestamp.
+	for i := range result.Series {
+		sort.Slice(result.Series[i].Samples, func(a, b int) bool {
+			return result.Series[i].Samples[a].Timestamp < result.Series[i].Samples[b].Timestamp
 		})
-		result.Series = append(result.Series, series)
 	}
 
 	return result

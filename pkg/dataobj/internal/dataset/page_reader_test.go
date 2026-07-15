@@ -31,9 +31,9 @@ func Test_pageReader(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
@@ -56,9 +56,9 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
@@ -88,9 +88,9 @@ func Test_pageReader_Reset(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
@@ -119,9 +119,9 @@ func Test_pageReader_SkipRows(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
@@ -146,9 +146,9 @@ func Test_pageReader_SkipRows(t *testing.T) {
 func Test_pageReader_statsStability(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+		Type:         ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.CompressionType_COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.EncodingType_ENCODING_TYPE_PLAIN,
 		Statistics:   StatisticsOptions{StoreRangeStats: true},
 	}
 	testStrings := []Value{

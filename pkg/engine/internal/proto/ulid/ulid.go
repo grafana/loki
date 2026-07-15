@@ -83,3 +83,60 @@ func (id ULID) Equal(other ULID) bool {
 func (id ULID) String() string {
 	return ulid.ULID(id).String()
 }
+
+// SizeWiresmith returns the size of the ULID payload when marshaled as a
+// [ProtoULID], implementing the wiresmith customtype contract. It never
+// returns 0 so the field is always emitted, matching the previous
+// gogoproto non-nullable customtype behavior.
+func (id *ULID) SizeWiresmith() int {
+	pb := ProtoULID{Value: id[:]}
+	return pb.Size()
+}
+
+// MarshalWiresmith marshals id as a [ProtoULID] into buf, implementing the
+// wiresmith customtype contract. buf is sized to exactly SizeWiresmith bytes.
+func (id *ULID) MarshalWiresmith(buf []byte) (int, error) {
+	pb := ProtoULID{Value: id[:]}
+	return pb.MarshalTo(buf)
+}
+
+// UnmarshalWiresmith unmarshals a [ProtoULID] payload, implementing the
+// wiresmith customtype contract.
+func (id *ULID) UnmarshalWiresmith(buf []byte) error {
+	return id.Unmarshal(buf)
+}
+
+// EqualWiresmith implements the wiresmith customtype contract.
+func (id *ULID) EqualWiresmith(other any) bool {
+	o, ok := coerceULID(other)
+	if !ok {
+		return false
+	}
+	return *id == o
+}
+
+// CompareWiresmith implements the wiresmith customtype contract. It returns
+// -1 on type mismatch so the generated Compare stays total.
+func (id *ULID) CompareWiresmith(other any) int {
+	o, ok := coerceULID(other)
+	if !ok {
+		return -1
+	}
+	return id.Compare(o)
+}
+
+// coerceULID accepts the value and pointer shapes the generated code may
+// pass to the *Wiresmith comparison methods.
+func coerceULID(other any) (ULID, bool) {
+	switch o := other.(type) {
+	case ULID:
+		return o, true
+	case *ULID:
+		if o == nil {
+			return ULID{}, false
+		}
+		return *o, true
+	default:
+		return ULID{}, false
+	}
+}

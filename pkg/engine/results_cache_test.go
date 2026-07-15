@@ -121,8 +121,8 @@ func TestShouldCacheRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			req := &queryrange.LokiRequest{
-				Query:          `{app="test"}`,
-				CachingOptions: resultscache.CachingOptions{Disabled: tc.disabled},
+				Query:       `{app="test"}`,
+				CachingOpts: resultscache.CachingOptions{Disabled: tc.disabled},
 			}
 			got := shouldCacheRequest(context.Background(), req)
 			require.Equal(t, tc.want, got)

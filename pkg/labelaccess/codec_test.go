@@ -56,7 +56,7 @@ func TestCodec_QueryRequestUnwrap_InjectsLBACIntoReturnedCtx(t *testing.T) {
 			HTTPHeaderKey: string(encoded),
 		},
 		Request: &queryrange.QueryRequest_Series{
-			Series: &queryrange.LokiSeriesRequest{},
+			Series: queryrange.LokiSeriesRequest{},
 		},
 	}
 
@@ -88,7 +88,7 @@ func TestCodec_QueryRequestUnwrap_InjectsLBACIntoReturnedCtx(t *testing.T) {
 func TestCodec_QueryRequestUnwrap_NoMetadataIsPassthrough(t *testing.T) {
 	req := &queryrange.QueryRequest{
 		Request: &queryrange.QueryRequest_Series{
-			Series: &queryrange.LokiSeriesRequest{},
+			Series: queryrange.LokiSeriesRequest{},
 		},
 	}
 
@@ -110,7 +110,7 @@ func TestCodec_QueryRequestUnwrap_InvalidMetadataReturnsError(t *testing.T) {
 			HTTPHeaderKey: "not-valid-json",
 		},
 		Request: &queryrange.QueryRequest_Series{
-			Series: &queryrange.LokiSeriesRequest{},
+			Series: queryrange.LokiSeriesRequest{},
 		},
 	}
 

@@ -25,11 +25,11 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	// Build the statistics index from deduplicated statistics.
 	statistics := c.getAllStatistics()
 	statsIndex := make(map[StatisticKey]uint32, len(statistics))
-	protoStats := make([]*proto.Statistic, 0, len(statistics))
+	protoStats := make([]proto.Statistic, 0, len(statistics))
 
 	for _, stat := range statistics {
 		statsIndex[stat.Key()] = uint32(len(protoStats))
-		protoStats = append(protoStats, &proto.Statistic{
+		protoStats = append(protoStats, proto.Statistic{
 			Name:            stat.Name(),
 			DataType:        marshalDataType(stat.DataType()),
 			AggregationType: marshalAggregationType(stat.Aggregation()),
@@ -37,7 +37,7 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	}
 
 	// Convert regions to proto regions
-	protoRegions := make([]*proto.Region, 0, len(c.regions))
+	protoRegions := make([]proto.Region, 0, len(c.regions))
 	for _, region := range c.regions {
 		protoRegion, err := toProtoRegion(region, statsIndex)
 		if err != nil {
@@ -45,7 +45,7 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 		}
 
 		if protoRegion != nil {
-			protoRegions = append(protoRegions, protoRegion)
+			protoRegions = append(protoRegions, *protoRegion)
 		}
 	}
 
@@ -57,7 +57,7 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 
 // toProtoRegion converts a Region to its protobuf representation.
 func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.Region, error) {
-	protoObservations := make([]*proto.Observation, 0, len(region.observations))
+	protoObservations := make([]proto.Observation, 0, len(region.observations))
 	for key, observation := range region.observations {
 		statIndex, exists := statsIndex[key]
 		if !exists {
@@ -69,9 +69,9 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.R
 			return nil, fmt.Errorf("failed to marshal observation: %w", err)
 		}
 
-		protoObservations = append(protoObservations, &proto.Observation{
+		protoObservations = append(protoObservations, proto.Observation{
 			StatisticId: statIndex,
-			Value:       protoValue,
+			Value:       *protoValue,
 			Count:       uint32(observation.Count),
 		})
 	}
@@ -108,15 +108,15 @@ func marshalObservationValue(value any) (*proto.ObservationValue, error) {
 func marshalDataType(dt DataType) proto.DataType {
 	switch dt {
 	case DataTypeInvalid:
-		return proto.DATA_TYPE_INVALID
+		return proto.DataType_DATA_TYPE_INVALID
 	case DataTypeInt64:
-		return proto.DATA_TYPE_INT64
+		return proto.DataType_DATA_TYPE_INT64
 	case DataTypeFloat64:
-		return proto.DATA_TYPE_FLOAT64
+		return proto.DataType_DATA_TYPE_FLOAT64
 	case DataTypeBool:
-		return proto.DATA_TYPE_BOOL
+		return proto.DataType_DATA_TYPE_BOOL
 	default:
-		return proto.DATA_TYPE_INVALID
+		return proto.DataType_DATA_TYPE_INVALID
 	}
 }
 
@@ -124,18 +124,18 @@ func marshalDataType(dt DataType) proto.DataType {
 func marshalAggregationType(agg AggregationType) proto.AggregationType {
 	switch agg {
 	case AggregationTypeInvalid:
-		return proto.AGGREGATION_TYPE_INVALID
+		return proto.AggregationType_AGGREGATION_TYPE_INVALID
 	case AggregationTypeSum:
-		return proto.AGGREGATION_TYPE_SUM
+		return proto.AggregationType_AGGREGATION_TYPE_SUM
 	case AggregationTypeMin:
-		return proto.AGGREGATION_TYPE_MIN
+		return proto.AggregationType_AGGREGATION_TYPE_MIN
 	case AggregationTypeMax:
-		return proto.AGGREGATION_TYPE_MAX
+		return proto.AggregationType_AGGREGATION_TYPE_MAX
 	case AggregationTypeLast:
-		return proto.AGGREGATION_TYPE_LAST
+		return proto.AggregationType_AGGREGATION_TYPE_LAST
 	case AggregationTypeFirst:
-		return proto.AGGREGATION_TYPE_FIRST
+		return proto.AggregationType_AGGREGATION_TYPE_FIRST
 	default:
-		return proto.AGGREGATION_TYPE_INVALID
+		return proto.AggregationType_AGGREGATION_TYPE_INVALID
 	}
 }

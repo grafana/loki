@@ -81,8 +81,8 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Start = &start
-	req.End = &end
+	req.Start = start
+	req.End = end
 
 	req.Query = query(r)
 	return req, nil

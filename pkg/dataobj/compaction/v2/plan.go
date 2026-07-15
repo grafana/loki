@@ -9,13 +9,13 @@ import (
 // Run is one non-overlapping layer of sections over the sort key.
 type Run interface {
 	// Sections returns the run's sections in sorted order.
-	Sections() []*compactionv2pb.SectionRef
+	Sections() []compactionv2pb.SectionRef
 	// Size returns the sum of the run's sections' UncompressedSize.
 	Size() uint64
 }
 
 // CalculateRuns sorts [sections] in place and returns the resulting runs.
-func CalculateRuns(sections []*compactionv2pb.SectionRef) []Run {
+func CalculateRuns(sections []compactionv2pb.SectionRef) []Run {
 	calculated := calculateRuns(sections)
 	runs := make([]Run, len(calculated))
 	for i, r := range calculated {
@@ -56,9 +56,9 @@ func Plan(
 		return nil
 	}
 
-	refs := make([]*compactionv2pb.RunRef, len(runs))
+	refs := make([]compactionv2pb.RunRef, len(runs))
 	for i, r := range runs {
-		refs[i] = &compactionv2pb.RunRef{Sections: r.Sections()}
+		refs[i] = compactionv2pb.RunRef{Sections: r.Sections()}
 	}
 
 	numTasks := (len(refs) + k - 1) / k

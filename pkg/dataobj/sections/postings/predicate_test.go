@@ -14,7 +14,7 @@ import (
 func binaryColumn() dataset.Column {
 	return &dataset.MemColumn{
 		Desc: dataset.ColumnDesc{
-			Type: dataset.ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY},
+			Type: dataset.ColumnType{Physical: datasetmd.PhysicalType_PHYSICAL_TYPE_BINARY},
 		},
 	}
 }
