@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -56,6 +57,11 @@ type workerConn struct {
 	// Peer connection to the worker.
 	*wire.Peer
 
+	// ctx is scoped to the lifetime of the connection. Long-lived goroutines
+	// started from a message handler (whose own context ends when the handler
+	// returns) must run under this instead.
+	ctx context.Context
+
 	// mutex of the worker. Protects all fields.
 	mut sync.RWMutex
 
@@ -65,6 +71,12 @@ type workerConn struct {
 
 	// tasks hold the collection of tasks currently assigned to the worker.
 	tasks map[*task]struct{}
+
+	// closed prevents accepted tasks from being assigned after removeWorker has
+	// snapshotted this connection's tasks. closeReason is the connection error,
+	// if any.
+	closed      bool
+	closeReason error
 
 	// done is closed when the worker connection is closed. It is used to signal
 	// worker goroutines to exit.
@@ -134,18 +146,38 @@ func (wc *workerConn) MarkDataPlane() error {
 	return nil
 }
 
-// Assigned returns a copy of the assigned tasks in an undefined order.
-func (wc *workerConn) Assigned() []*task {
-	wc.mut.RLock()
-	defer wc.mut.RUnlock()
+// MarkClosed marks the worker connection closed and returns a snapshot of its
+// assigned tasks. Assign and MarkClosed share the same mutex: either Assign
+// installs ownership before this snapshot, or it observes the closed fact and
+// refuses ownership.
+func (wc *workerConn) MarkClosed(reason error) []*task {
+	wc.mut.Lock()
+	defer wc.mut.Unlock()
 
+	if !wc.closed {
+		wc.closed = true
+		wc.closeReason = reason
+	}
 	return slices.Collect(maps.Keys(wc.tasks))
 }
 
-// Assign assigns a task to the worker.
-func (wc *workerConn) Assign(assigned *task) {
+// CloseReason returns the reason the worker connection closed, if any.
+func (wc *workerConn) CloseReason() error {
+	wc.mut.RLock()
+	defer wc.mut.RUnlock()
+
+	return wc.closeReason
+}
+
+// Assign assigns a task to the worker. It returns false if the worker connection
+// has already closed.
+func (wc *workerConn) Assign(assigned *task) bool {
 	wc.mut.Lock()
 	defer wc.mut.Unlock()
+
+	if wc.closed {
+		return false
+	}
 
 	assigned.owner = wc
 
@@ -153,6 +185,7 @@ func (wc *workerConn) Assign(assigned *task) {
 		wc.tasks = make(map[*task]struct{})
 	}
 	wc.tasks[assigned] = struct{}{}
+	return true
 }
 
 // Unassign removes a task from the worker.

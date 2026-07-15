@@ -98,10 +98,6 @@ func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
 	return m.PersistenceGranularityVal
 }
 
-func (m *MockLimits) MaxScanTaskParallelism(_ string) int {
-	return 0
-}
-
 func (m *MockLimits) DebugEngineStreams(_ string) bool {
 	return false
 }

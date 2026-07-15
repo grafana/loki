@@ -409,6 +409,32 @@ func TestPeriodConfig_Validate(t *testing.T) {
 	}
 }
 
+func TestDayTime_UnmarshalYAML(t *testing.T) {
+	// Regression test for go yaml v4: an unquoted date such as `2023-01-01`
+	// is resolved to the `!!timestamp` tag. Decoding such a node into a
+	// string fails with:
+	//   yaml: construct errors: line 1: cannot construct !!timestamp `2023-01-01` into string
+	// so DayTime.UnmarshalYAML must read the raw scalar value instead of
+	// decoding the node into a string.
+	expected := MustParseDayTime("2023-01-01")
+
+	for _, tc := range []struct {
+		name string
+		in   string
+	}{
+		{name: "unquoted", in: `2023-01-01`},
+		{name: "double-quoted", in: `"2023-01-01"`},
+		{name: "single-quoted", in: `'2023-01-01'`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var d DayTime
+			err := yaml.Unmarshal([]byte(tc.in), &d)
+			require.NoError(t, err)
+			require.Equal(t, expected, d)
+		})
+	}
+}
+
 func MustParseDayTime(s string) DayTime {
 	t, err := time.Parse("2006-01-02", s)
 	if err != nil {

@@ -33,14 +33,14 @@ func TestFlushTaskSummaries_FlagsCriticalPath(t *testing.T) {
 	// C finishes after B, so the critical path is A -> C; B is off the path.
 	_, capture := xcap.NewCapture(context.Background(), nil)
 	terminal := func(finish int64) pendingSummary {
-		return pendingSummary{oldState: TaskStateRunning, status: TaskStatus{State: TaskStateCompleted, Capture: capture}, taskFinishNanos: finish}
+		return pendingSummary{result: TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture}, taskFinishNanos: finish}
 	}
 
 	var buf bytes.Buffer
 	wf := &Workflow{
-		logger:           log.NewLogfmtLogger(&buf),
-		graph:            graph,
-		pendingSummaries: map[*Task]pendingSummary{a: terminal(100), b: terminal(20), c: terminal(40)},
+		logger:      log.NewLogfmtLogger(&buf),
+		graph:       graph,
+		taskResults: map[*Task]pendingSummary{a: terminal(100), b: terminal(20), c: terminal(40)},
 	}
 
 	wf.flushTaskSummaries()
@@ -61,32 +61,31 @@ func TestFlushTaskSummaries_FlagsCriticalPath(t *testing.T) {
 	require.Contains(t, lineFor(b), "on_critical_path=false")
 }
 
-func TestOnTaskChange_DefersSummary(t *testing.T) {
+func TestOnTaskResult_DefersSummary(t *testing.T) {
 	var graph dag.Graph[*Task]
 	task := graph.Add(&Task{ULID: ulid.Make(), Fragment: physical.FromGraph(dag.Graph[physical.Node]{})})
 
 	wf := &Workflow{
-		logger:           log.NewNopLogger(),
-		runner:           newFakeRunner(),
-		graph:            graph,
-		taskStates:       make(map[*Task]TaskState),
-		resultsPipeline:  newStreamPipe(),
-		pendingSummaries: make(map[*Task]pendingSummary),
+		logger:          log.NewNopLogger(),
+		runner:          newFakeRunner(),
+		graph:           graph,
+		taskResults:     make(map[*Task]pendingSummary),
+		resultsPipeline: newStreamPipe(),
 	}
 	capCtx, capture := xcap.NewCapture(context.Background(), nil)
 	_, region := xcap.StartRegion(capCtx, "task")
 	region.Record(schedulerstat.TaskFinishTime.Observe(42))
 
-	// A terminal transition records the summary and finish time together,
-	// deferred (not logged).
-	wf.onTaskChange(context.Background(), task, TaskStatus{State: TaskStateCompleted, Capture: capture})
-	require.Len(t, wf.pendingSummaries, 1)
-	require.Contains(t, wf.pendingSummaries, task)
-	require.Equal(t, int64(42), wf.pendingSummaries[task].taskFinishNanos)
+	// A terminal result records the summary and finish time together, deferred
+	// (not logged).
+	wf.onTaskResult(context.Background(), task, TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture})
+	require.Len(t, wf.taskResults, 1)
+	require.Contains(t, wf.taskResults, task)
+	require.Equal(t, int64(42), wf.taskResults[task].taskFinishNanos)
 
-	// A duplicate terminal notification does not double-record.
-	wf.onTaskChange(context.Background(), task, TaskStatus{State: TaskStateCompleted, Capture: capture})
-	require.Len(t, wf.pendingSummaries, 1)
+	// A duplicate terminal result does not double-record.
+	wf.onTaskResult(context.Background(), task, TaskResult{Outcome: TaskOutcomeCompleted, Capture: capture})
+	require.Len(t, wf.taskResults, 1)
 }
 
 func TestCriticalPath(t *testing.T) {

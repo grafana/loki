@@ -3,14 +3,17 @@ package metastore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // SectionStreams holds the matching streams within one logs section
@@ -28,6 +31,12 @@ type streamSelector struct {
 	matchers        []*labels.Matcher
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
+
+	compiledMatchers []postings.CompiledMatcher
+	compiledFilters  []postings.CompiledMatcher
+	scanners         []*postings.Scanner
+	stats            *statsTracker
+	opened           bool
 }
 
 func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time) *streamSelector {
@@ -38,6 +47,83 @@ func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.T
 		}
 	}
 	return &streamSelector{matchers: matchers, equalPredicates: eq, start: start, end: end}
+}
+
+func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
+	if s.opened {
+		return nil
+	}
+	if len(s.matchers) == 0 {
+		s.opened = true
+		return nil
+	}
+
+	filters, matchers := s.splitFiltersAndMatchers()
+	if len(matchers) == 0 {
+		return fmt.Errorf("stream selector requires at least one non-filter matcher")
+	}
+
+	var err error
+	s.compiledMatchers, err = compileAll(matchers)
+	if err != nil {
+		return err
+	}
+	s.compiledFilters, err = compileAll(filters)
+	if err != nil {
+		return err
+	}
+
+	s.stats = newStatsTracker(len(sections))
+	s.scanners = make([]*postings.Scanner, len(sections))
+
+	labelStats := make([]*sectionStatsTracker, len(sections))
+	bloomStats := make([]*sectionStatsTracker, len(sections))
+	for i := range sections {
+		labelStats[i] = s.stats.SectionLabelTracker(i)
+		bloomStats[i] = s.stats.SectionBloomTracker(i)
+	}
+
+	g, groupCtx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency) // Each ScannerReader opens 4 readers, so share the concurrent limit
+	for i, section := range sections {
+		g.Go(func() error {
+			readers, err := postings.NewScannerReaders(
+				section,
+				s.compiledMatchers,
+				s.compiledFilters,
+				s.equalPredicates,
+				labelStats[i],
+				bloomStats[i],
+			)
+			if err != nil {
+				return fmt.Errorf("creating postings scanner readers: %w", err)
+			}
+			if err := readers.Open(groupCtx); err != nil {
+				return fmt.Errorf("opening postings scanner readers: %w", err)
+			}
+			s.scanners[i] = postings.NewScanner(section, readers)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		_ = s.close()
+		return err
+	}
+
+	s.opened = true
+	return nil
+}
+
+func (s *streamSelector) close() error {
+	var errs []error
+	for _, scanner := range s.scanners {
+		if scanner != nil {
+			errs = append(errs, scanner.Close())
+		}
+	}
+	s.scanners = nil
+	s.opened = false
+	return errors.Join(errs...)
 }
 
 // accum holds the per-logs-section state. result is the running intersection of
@@ -51,36 +137,27 @@ type accum struct {
 	hasTS        bool
 }
 
-// selectStreams scans the already-opened sections and returns matching
+// selectStreams scans it's attached readers and returns matching
 // SectionStreams, one per logs section with at least one matching stream. The
-// caller owns opening and closing the sections.
-func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings.Section) ([]SectionStreams, error) {
+// caller owns opening and closing the selector.
+func (s *streamSelector) selectStreams(ctx context.Context) ([]SectionStreams, error) {
+	if !s.opened {
+		return nil, fmt.Errorf("stream selector not opened")
+	}
 	if len(s.matchers) == 0 {
 		return nil, nil
 	}
 
-	filters, matchers := s.splitFiltersAndMatchers()
-	if len(matchers) == 0 {
-		return nil, fmt.Errorf("stream selector requires at least one non-filter matcher")
-	}
-
-	compiledMatchers, err := compileAll(matchers)
-	if err != nil {
-		return nil, err
-	}
-	compiledFilters, err := compileAll(filters)
-	if err != nil {
-		return nil, err
-	}
+	defer s.stats.Report(ctx)
 
 	startNanos, endNanos := s.start.UnixNano(), s.end.UnixNano()
 
-	accums, err := s.eval(ctx, sections, compiledMatchers, compiledFilters, startNanos, endNanos)
+	accums, err := s.eval(ctx, s.compiledMatchers, s.compiledFilters, startNanos, endNanos)
 	if err != nil {
 		return nil, err
 	}
 
-	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, sections, accums)
+	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, accums)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +183,6 @@ func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings
 // surviving accumulators keyed by logs SectionRef.
 func (s *streamSelector) eval(
 	ctx context.Context,
-	sections []*postings.Section,
 	matchers []postings.CompiledMatcher,
 	filters []postings.CompiledMatcher,
 	startNanos, endNanos int64,
@@ -114,7 +190,7 @@ func (s *streamSelector) eval(
 	accums := make(map[postings.SectionRef]*accum)
 
 	if len(matchers) > 0 {
-		if err := s.matchMatchers(ctx, sections, matchers, accums, startNanos, endNanos); err != nil {
+		if err := s.matchMatchers(ctx, matchers, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -123,7 +199,7 @@ func (s *streamSelector) eval(
 	}
 
 	if len(filters) > 0 {
-		if err := s.matchFilters(ctx, sections, filters, accums, startNanos, endNanos); err != nil {
+		if err := s.matchFilters(ctx, filters, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -140,7 +216,6 @@ func (s *streamSelector) eval(
 // matcher are pruned from accums.
 func (s *streamSelector) matchMatchers(
 	ctx context.Context,
-	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
@@ -150,8 +225,8 @@ func (s *streamSelector) matchMatchers(
 		perMatcherHits[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for _, sec := range sections {
-		matches, err := postings.NewScanner(sec).MatchLabels(ctx, nil, cms)
+	for _, scanner := range s.scanners {
+		matches, err := scanner.MatchLabels(ctx, nil, cms)
 		if err != nil {
 			return err
 		}
@@ -183,7 +258,6 @@ func (s *streamSelector) matchMatchers(
 // pruned from accums.
 func (s *streamSelector) matchFilters(
 	ctx context.Context,
-	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
@@ -195,8 +269,8 @@ func (s *streamSelector) matchFilters(
 		matched[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for _, sec := range sections {
-		streams, err := postings.NewScanner(sec).LabelStreams(ctx, nil, cms)
+	for _, scanner := range s.scanners {
+		streams, err := scanner.LabelStreams(ctx, nil, cms)
 		if err != nil {
 			return err
 		}
@@ -313,7 +387,7 @@ func (s *streamSelector) finalize(ref postings.SectionRef, acc *accum, startNano
 }
 
 // admitSections applies blooms and collects ambiguous names in a single pass.
-func (s *streamSelector) admitSections(ctx context.Context, sections []*postings.Section, accums map[postings.SectionRef]*accum) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
+func (s *streamSelector) admitSections(ctx context.Context, accums map[postings.SectionRef]*accum) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
 	if len(s.equalPredicates) == 0 {
 		return nil, nil, nil
 	}
@@ -323,13 +397,12 @@ func (s *streamSelector) admitSections(ctx context.Context, sections []*postings
 		streamLabelsByRef[ref] = acc.streamLabels
 	}
 
-	bloomHits := make([]map[postings.SectionRef]map[postings.PredicateValue]struct{}, len(sections))
-	ambiguousHits := make([]map[postings.SectionRef]map[string]struct{}, len(sections))
-	g, ctx := errgroup.WithContext(ctx)
-	for i := range sections {
+	bloomHits := make([]map[postings.SectionRef]map[postings.PredicateValue]struct{}, len(s.scanners))
+	ambiguousHits := make([]map[postings.SectionRef]map[string]struct{}, len(s.scanners))
+	g, groupCtx := errgroup.WithContext(ctx)
+	for i := range s.scanners {
 		g.Go(func() error {
-			scanner := postings.NewScanner(sections[i])
-			matched, ambiguous, err := scanner.MatcherHits(ctx, s.equalPredicates)
+			matched, ambiguous, err := s.scanners[i].MatcherHits(groupCtx, s.equalPredicates)
 			if err != nil {
 				return err
 			}
@@ -462,4 +535,73 @@ func (s *streamSelector) ambiguousNames(acc *accum) []string {
 		}
 	}
 	return out
+}
+
+type statsTracker struct {
+	bySectionLabelReads map[int]*sectionStatsTracker
+	bySectionBloomReads map[int]*sectionStatsTracker
+}
+
+func newStatsTracker(sectionsCount int) *statsTracker {
+	return &statsTracker{
+		bySectionLabelReads: make(map[int]*sectionStatsTracker, sectionsCount),
+		bySectionBloomReads: make(map[int]*sectionStatsTracker, sectionsCount),
+	}
+}
+
+func (s *statsTracker) SectionLabelTracker(sID int) *sectionStatsTracker {
+	st, ok := s.bySectionLabelReads[sID]
+	if !ok {
+		st = &sectionStatsTracker{}
+		s.bySectionLabelReads[sID] = st
+	}
+	return st
+}
+
+func (s *statsTracker) SectionBloomTracker(sID int) *sectionStatsTracker {
+	st, ok := s.bySectionBloomReads[sID]
+	if !ok {
+		st = &sectionStatsTracker{}
+		s.bySectionBloomReads[sID] = st
+	}
+	return st
+}
+
+func (s *statsTracker) Report(ctx context.Context) {
+	region := xcap.RegionFromContext(ctx)
+
+	// "column_name" column stats
+	var (
+		labelColumnNameTotalPages    = uint64(0)
+		labelColumnNameRelevantPages = uint64(0)
+		bloomColumnNameTotalPages    = uint64(0)
+		bloomColumnNameRelevantPages = uint64(0)
+	)
+
+	for _, st := range s.bySectionLabelReads {
+		labelColumnNameTotalPages += st.columnNamePages.Total
+		labelColumnNameRelevantPages += st.columnNamePages.Relevant
+	}
+
+	for _, st := range s.bySectionBloomReads {
+		bloomColumnNameTotalPages += st.columnNamePages.Total
+		bloomColumnNameRelevantPages += st.columnNamePages.Relevant
+	}
+
+	region.Record(StatPostingsLabelColumnNameTotalPages.Observe(int64(labelColumnNameTotalPages)))
+	region.Record(StatPostingsLabelColumnNameRelevantPages.Observe(int64(labelColumnNameRelevantPages)))
+	region.Record(StatPostingsBloomColumnNameTotalPages.Observe(int64(bloomColumnNameTotalPages)))
+	region.Record(StatPostingsBloomColumnNameRelevantPages.Observe(int64(bloomColumnNameRelevantPages)))
+}
+
+type sectionStatsTracker struct {
+	columnNamePages dataset.ColumnReadPageStats
+}
+
+func (st *sectionStatsTracker) OnColumnPredicateBuilt(c dataset.Column, pages dataset.ColumnReadPageStats) {
+	if c.ColumnDesc().Type.Logical != postings.ColumnTypeColumnName.String() {
+		return
+	}
+	st.columnNamePages.Total = pages.Total
+	st.columnNamePages.Relevant += pages.Relevant
 }

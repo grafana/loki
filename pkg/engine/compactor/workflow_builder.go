@@ -40,6 +40,26 @@ func buildIndexMergePlan(
 	return physical.FromGraph(g)
 }
 
+func buildLogMergePlan(
+	tenant string,
+	window time.Time,
+	task *compactionv2pb.TaskSpec,
+	outputIndexPath string,
+) *physical.Plan {
+	node := &physical.LogMerge{
+		// Each call mints a fresh NodeID so racing builds don't collide
+		NodeID:          ulid.Make(),
+		Tenant:          tenant,
+		ToCWindowStart:  window.UnixNano(),
+		Runs:            task.Runs,
+		SortSchema:      task.SortSchema,
+		OutputIndexPath: outputIndexPath,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
 // and drains the pipeline. Returns when the workflow has fully terminated.
 func runPlan(

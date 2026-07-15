@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 func TestProjectionPushdown(t *testing.T) {
@@ -829,6 +830,123 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				return builder.Value()
 			},
 		},
+		{
+			name: "line_format template fields are added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (app) (sum_over_time({app="test"} | logfmt | line_format "{{.mint}}" | regexp "(?P<val>\d+)" | unwrap val [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLinefmt, logical.NewLiteral("{{.mint}}"))
+				builder = builder.ParseRegexp(`(?P<val>\d+)`)
+				builder = builder.Cast("val", types.UnaryOpCastFloat)
+				builder = builder.ProjectDrop(&logical.ColumnRef{
+					Ref: types.ColumnRef{Column: "val", Type: types.ColumnTypeAmbiguous},
+				})
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeSum,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"mint", "val"},
+			expectedDataObjScanProjections: []string{"app", "message", "mint", "timestamp", "val"},
+		},
+		{
+			name: "label_format rename source is added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (msg_new) (count_over_time({app="test"} | logfmt | label_format msg_new=msg [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLabelfmt, logical.NewLiteral([]log.LabelFmt{
+					log.NewRenameLabelFmt("msg_new", "msg"),
+				}))
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "msg_new", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"msg", "msg_new"},
+			expectedDataObjScanProjections: []string{"message", "msg", "msg_new", "timestamp"},
+		},
+		{
+			name: "label_format template fields are added to upstream logfmt requestedKeys",
+			buildLogical: func() logical.Value {
+				// sum by (tag) (count_over_time({app="test"} | logfmt | label_format tag=`x{{.error}}y` [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
+				builder = builder.Format(types.VariadicOpParseLabelfmt, logical.NewLiteral([]log.LabelFmt{
+					log.NewTemplateLabelFmt("tag", "x{{.error}}y"),
+				}))
+				builder = builder.RangeAggregation(
+					logical.NoGrouping,
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+				builder = builder.VectorAggregation(
+					logical.Grouping{
+						Columns: []logical.ColumnRef{
+							{Ref: types.ColumnRef{Column: "tag", Type: types.ColumnTypeAmbiguous}},
+						},
+						Without: false,
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"error", "tag"},
+			expectedDataObjScanProjections: []string{"error", "message", "tag", "timestamp"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -860,12 +978,19 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			optimizedPlan, err := planner.Optimize(physicalPlan)
 			require.NoError(t, err)
 
-			var projectionNode *Projection
+			// Collect ALL Projection nodes rather than the last one iterated
+			// (map iteration order is non-deterministic), and find the one
+			// carrying the parse (JSON / logfmt) VariadicExpr — that's the
+			// node whose requestedKeys we assert on. A pipeline can have
+			// several Projection nodes (parser + line_format + regexp +
+			// cast + drop each become one) so picking the last-iterated
+			// makes the assertion flaky when more than one is present.
+			var projectionNodes []*Projection
 			projections := map[string]struct{}{}
 			projectionRefs := map[types.ColumnRef]struct{}{}
 			for node := range optimizedPlan.graph.Nodes() {
 				if pn, ok := node.(*Projection); ok {
-					projectionNode = pn
+					projectionNodes = append(projectionNodes, pn)
 					continue
 				}
 				if pn, ok := node.(*ScanSet); ok {
@@ -877,24 +1002,29 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				}
 			}
 
-			require.NotNil(t, projectionNode, "Projection not found in plan")
+			require.NotEmpty(t, projectionNodes, "Projection not found in plan")
 			var requestedKeys *LiteralExpr
-			for _, expr := range projectionNode.Expressions {
-				ve, ok := expr.(*VariadicExpr)
-				if !ok {
-					continue
-				}
-				// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
-				// parser's arg index 1 is the pattern literal (a StringLiteral),
-				// not a requested-keys list — interpreting it as requestedKeys
-				// would falsely fail the literal-type assertion below.
-				if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
-					continue
-				}
-				if len(ve.Expressions) >= 2 {
-					if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
-						requestedKeys = e
+			for _, projectionNode := range projectionNodes {
+				for _, expr := range projectionNode.Expressions {
+					ve, ok := expr.(*VariadicExpr)
+					if !ok {
+						continue
 					}
+					// Only JSON / logfmt carry requestedKeys at arg index 1. The regexp
+					// parser's arg index 1 is the pattern literal (a StringLiteral),
+					// not a requested-keys list — interpreting it as requestedKeys
+					// would falsely fail the literal-type assertion below.
+					if ve.Op != types.VariadicOpParseJSON && ve.Op != types.VariadicOpParseLogfmt {
+						continue
+					}
+					if len(ve.Expressions) >= 2 {
+						if e, ok := ve.Expressions[1].(*LiteralExpr); ok {
+							requestedKeys = e
+						}
+					}
+				}
+				if requestedKeys != nil {
+					break
 				}
 			}
 
