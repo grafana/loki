@@ -1109,7 +1109,7 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.ingest-mode
   [ingest_mode: <string> | default = "kafka"]
 
-  # the number of concurrent workers sending logs to the template service
+  # the number of concurrent workers forwarding Kafka logs to pattern ingesters
   # CLI flag: -pattern-ingester.flush-worker-count
   [flush_worker_count: <int> | default = 100]
 

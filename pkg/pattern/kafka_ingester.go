@@ -183,7 +183,9 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 	sendersWg.Add(i.cfg.FlushWorkerCount)
 	for j := 0; j < i.cfg.FlushWorkerCount; j++ {
 		go func() {
-			_ = i.sender(senderCtx)
+			if err := i.sender(senderCtx); err != nil {
+				level.Error(i.logger).Log("msg", "kafka sender exited with error", "err", err)
+			}
 			sendersWg.Done()
 		}()
 	}
@@ -422,10 +424,10 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 						i.cfg.ClientConfig.RemoteTimeout,
 					)
 					_, err = client.(logproto.PatternClient).Push(ctx, req)
+					cancel()
 					if err != nil {
 						continue
 					}
-					cancel()
 					i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 					// bail after any success to prevent sending more than one
 					return nil

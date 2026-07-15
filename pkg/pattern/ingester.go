@@ -147,7 +147,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		&cfg.FlushWorkerCount,
 		"pattern-ingester.flush-worker-count",
 		100,
-		"the number of concurrent workers sending logs to the template service",
+		"the number of concurrent workers forwarding Kafka logs to pattern ingesters",
 	)
 	fs.DurationVar(
 		&cfg.StopFlushTimeout,
