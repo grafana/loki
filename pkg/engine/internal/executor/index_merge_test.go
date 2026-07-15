@@ -773,7 +773,9 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	require.NotNil(t, sec, "expected postings section in output object")
 
-	reader := postings.NewRowReader(ctx, sec, nil)
+	inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+	require.NoError(t, inner.Open(ctx))
+	reader := postings.NewRowReader(ctx, inner)
 	defer reader.Close()
 
 	var rows []postings.Row
@@ -802,7 +804,9 @@ func readAllPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket obj
 		}
 		sec, err := postings.Open(ctx, s)
 		require.NoError(t, err)
-		reader := postings.NewRowReader(ctx, sec, nil)
+		inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+		require.NoError(t, inner.Open(ctx))
+		reader := postings.NewRowReader(ctx, inner)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}
