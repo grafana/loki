@@ -251,12 +251,12 @@ func (s *Scheduler) markWorkerReady(worker *workerConn) (err error) {
 	hop := s.metrics.startAssignmentHop("worker_ready_handler")
 	defer func() { hop.Done(handlerOutcome(err)) }()
 
+	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
+		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	}
+
 	assignGuard := s.assignMut.Lock("mark_worker_ready")
 	defer assignGuard.Unlock()
-
-	if err := worker.MarkReady(); err != nil {
-		return err
-	}
 
 	if _, exists := s.connectedWorkers[worker]; exists {
 		nudgeSemaphore(worker.wake)

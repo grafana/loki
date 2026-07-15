@@ -112,19 +112,6 @@ func (wc *workerConn) HandleHello() error {
 	return nil
 }
 
-// MarkReady marks the worker as ready to receive tasks. Returns an error if the
-// worker is not a control plane connection, or if the worker is at full
-// capacity.
-func (wc *workerConn) MarkReady() error {
-	wc.mut.Lock()
-	defer wc.mut.Unlock()
-
-	if got, want := wc.ty, connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
-	}
-	return nil
-}
-
 // MarkDataPlane marks the worker as a data plane connection. Returns an error
 // if the worker is not in a valid state. MarkDataPlane is a no-op if the worker
 // is already marked as a data plane connection.
