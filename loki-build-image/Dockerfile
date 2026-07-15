@@ -13,7 +13,7 @@ ARG TARGETARCH
 ARG HELM_VER="v3.20.1"
 RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
     install -t /usr/local/bin "linux-$TARGETARCH/helm"
-RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "helm-docs_Linux_x86_64") &&  \
+RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_1.14.2_Linux_arm64" || echo "helm-docs_1.14.2_Linux_x86_64") &&  \
     curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
