@@ -100,3 +100,42 @@ func TestTaskFirstResultIsAuthoritative(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, workflow.TaskOutcomeCompleted, result.Outcome)
 }
+
+// TestActiveLoadTracksQueuedWithoutResult verifies that the incrementally
+// maintained activeLoad counter (read by computeLoad) always equals the number
+// of tasks that are queued but do not yet have a terminal result — the exact
+// scan it replaces. It exercises every ordering, including the idempotent and
+// no-op transitions that must not move the counter.
+func TestActiveLoadTracksQueuedWithoutResult(t *testing.T) {
+	m := newMetrics()
+
+	completed := workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}
+
+	steps := []struct {
+		name string
+		op   func(tk *task)
+	}{
+		{"queue a", func(tk *task) { require.True(t, tk.MarkQueued(m)) }},
+		{"queue b", func(tk *task) { require.True(t, tk.MarkQueued(m)) }},
+		{"requeue a is a no-op", func(tk *task) { require.False(t, tk.MarkQueued(m)) }},
+		{"result a removes it from load", func(tk *task) { c, _ := tk.SetResult(m, completed); require.True(t, c) }},
+		{"duplicate result a is a no-op", func(tk *task) { c, _ := tk.SetResult(m, completed); require.False(t, c) }},
+		{"result before queue never counted", func(tk *task) { c, _ := tk.SetResult(m, completed); require.True(t, c) }},
+		{"queue after result is rejected", func(tk *task) { require.False(t, tk.MarkQueued(m)) }},
+	}
+
+	tasks := map[string]*task{"a": {}, "b": {}, "c": {}}
+	targets := []string{"a", "b", "a", "a", "a", "c", "c"}
+
+	for i, step := range steps {
+		step.op(tasks[targets[i]])
+
+		var want int64
+		for _, tk := range tasks {
+			if tk.Queued() && !tk.HasResult() {
+				want++
+			}
+		}
+		require.Equal(t, want, m.activeLoad.Load(), "after step %q", step.name)
+	}
+}

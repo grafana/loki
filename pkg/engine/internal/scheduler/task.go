@@ -91,6 +91,13 @@ func (t *task) SetResult(m *metrics, result workflow.TaskResult) (bool, error) {
 
 	t.result = &result
 	m.taskResultsTotal.WithLabelValues(result.Outcome.String()).Inc()
+
+	// A queued task without a result contributes to the active load; recording
+	// its first result removes it. Tasks that never queued never counted, so
+	// there is nothing to subtract. See [metrics.activeLoad] and [computeLoad].
+	if t.queued {
+		m.activeLoad.Dec()
+	}
 	return true, nil
 }
 
@@ -128,7 +135,7 @@ func (t *task) QueueTime() time.Time {
 
 // MarkQueued records the first submission of a task to the assignment queue.
 // It returns false if the task was already queued or already has a result.
-func (t *task) MarkQueued() bool {
+func (t *task) MarkQueued(m *metrics) bool {
 	t.mut.Lock()
 	defer t.mut.Unlock()
 	if t.queued || t.result != nil {
@@ -137,6 +144,10 @@ func (t *task) MarkQueued() bool {
 
 	t.queued = true
 	t.queueTime = time.Now()
+
+	// The task now contributes to the active load until it produces a result.
+	// See [metrics.activeLoad] and [computeLoad].
+	m.activeLoad.Inc()
 	return true
 }
 

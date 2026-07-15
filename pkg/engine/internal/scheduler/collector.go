@@ -85,20 +85,10 @@ func newCollector(sched *Scheduler) *collector {
 	}
 }
 
-// computeLoad returns the number of queued or assigned tasks without a terminal result.
+// computeLoad returns the number of queued or assigned tasks without a terminal
+// result.
 func computeLoad(sched *Scheduler) float64 {
-	guard := sched.resourcesMut.RLock("collector_compute_load")
-	defer guard.RUnlock()
-
-	var load uint64
-
-	for _, t := range sched.tasks {
-		if t.Queued() && !t.HasResult() {
-			load++
-		}
-	}
-
-	return float64(load)
+	return float64(sched.metrics.activeLoad.Load())
 }
 
 // Process performs stat computations for EWMA metrics of the collector. Process
@@ -121,24 +111,16 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(mc.sched.metrics.activeLoad.Load()))
+
 	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
 	defer guard.RUnlock()
 
-	var (
-		tasksInflight  int
-		streamsByState = make(map[workflow.StreamState]int)
-	)
-
-	for _, t := range mc.sched.tasks {
-		if t.Queued() && !t.HasResult() {
-			tasksInflight++
-		}
-	}
+	streamsByState := make(map[workflow.StreamState]int)
 	for _, s := range mc.sched.streams {
 		streamsByState[s.state]++
 	}
 
-	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(tasksInflight))
 	for state, count := range streamsByState {
 		ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(count), state.String())
 	}

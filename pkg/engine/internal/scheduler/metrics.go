@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
 	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
@@ -33,6 +34,12 @@ type metrics struct {
 
 	// lock holds the instruments for the scheduler's observed mutexes.
 	lock *obslock.Metrics
+
+	// activeLoad tracks the number of tasks that have been queued but do not yet
+	// have a terminal result. It is maintained incrementally by [task.MarkQueued]
+	// and [task.SetResult] so the load gauge can be read without scanning every
+	// task. See [computeLoad].
+	activeLoad atomic.Int64
 }
 
 // Handler phase label values shared by multiple handlers. Phase values used at a

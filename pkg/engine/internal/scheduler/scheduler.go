@@ -1242,7 +1242,7 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 
 	for _, task := range tasks {
 		// Ignore tasks that were already submitted or preemptively cancelled.
-		if !task.MarkQueued() {
+		if !task.MarkQueued(s.metrics) {
 			continue
 		}
 
