@@ -4,54 +4,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
-// comparePostingsRow orders two postings rows in the order they are physically
-// written into, and read back from, a postings section:
-// (Kind, ColumnName, LabelValue, MinTimestamp, MaxTimestamp, ObjectPath,
-// SectionIndex).
+// comparePostingsRow orders two postings rows using the postings package's
+// canonical physical order. Delegating keeps the K-way merge in lockstep with
+// the section encoder's write order, which is the single source of truth.
 func comparePostingsRow(a, b postings.Row) int {
-	if a.Kind != b.Kind {
-		if a.Kind < b.Kind {
-			return -1
-		}
-		return 1
-	}
-	if a.ColumnName != b.ColumnName {
-		if a.ColumnName < b.ColumnName {
-			return -1
-		}
-		return 1
-	}
-	if a.LabelValue != b.LabelValue {
-		if a.LabelValue < b.LabelValue {
-			return -1
-		}
-		return 1
-	}
-	if a.MinTimestamp != b.MinTimestamp {
-		if a.MinTimestamp < b.MinTimestamp {
-			return -1
-		}
-		return 1
-	}
-	if a.MaxTimestamp != b.MaxTimestamp {
-		if a.MaxTimestamp < b.MaxTimestamp {
-			return -1
-		}
-		return 1
-	}
-	if a.ObjectPath != b.ObjectPath {
-		if a.ObjectPath < b.ObjectPath {
-			return -1
-		}
-		return 1
-	}
-	if a.SectionIndex != b.SectionIndex {
-		if a.SectionIndex < b.SectionIndex {
-			return -1
-		}
-		return 1
-	}
-	return 0
+	return postings.CompareRows(a, b)
 }
 
 // samePostingsKey reports whether two rows share the postings builder's identity
