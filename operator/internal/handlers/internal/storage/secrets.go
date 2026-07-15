@@ -45,8 +45,7 @@ var (
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointAWSNoRegion       = errors.New("endpoint for AWS S3 must include correct region")
-	errS3EndpointNoBucketName      = errors.New("bucket name must not be included in AWS S3 endpoint URL")
-	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://vpce-id.s3.region.vpce.amazonaws.com")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://bucket.vpce-id.s3.region.vpce.amazonaws.com")
 	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
@@ -72,15 +71,9 @@ var (
 	// Regular AWS S3 endpoint: https://s3.{region}.amazonaws.com
 	awsS3EndpointRegex = regexp.MustCompile(`^https://s3\.([a-z0-9-]+)\.amazonaws\.com$`)
 
-	// VPC endpoint: https://vpce-{id}.s3.{region}.vpce.amazonaws.com
-	awsVPCEndpointRegex = regexp.MustCompile(`^https://vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
-
-	// Invalid patterns with bucket names (to detect and reject)
-	// Regular S3 with bucket: https://bucket-name.s3.region.amazonaws.com
-	awsS3WithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.s3\.([a-z0-9-]+)\.amazonaws\.com$`)
-
-	// VPC with bucket: https://bucket-name.vpce-id.s3.region.vpce.amazonaws.com
-	awsVPCWithBucketRegex = regexp.MustCompile(`^https://([a-z0-9.-]+)\.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
+	// VPC interface endpoint for virtual-hosted-style access:
+	// https://bucket.vpce-{id}-{hash}.s3.{region}.vpce.amazonaws.com
+	awsVPCEndpointRegex = regexp.MustCompile(`^https://bucket\.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
 )
 
 func getSecrets(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (*corev1.Secret, *corev1.Secret, error) {
@@ -544,25 +537,20 @@ func validateS3Endpoint(endpoint, region string) error {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
-		if awsS3WithBucketRegex.MatchString(endpoint) || awsVPCWithBucketRegex.MatchString(endpoint) {
-			return errS3EndpointNoBucketName
-		}
-
-		if matches := awsS3EndpointRegex.FindStringSubmatch(endpoint); matches != nil {
-			if extractedRegion := matches[1]; extractedRegion != region {
-				return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
+		var extractedRegion string
+		for _, re := range []*regexp.Regexp{awsS3EndpointRegex, awsVPCEndpointRegex} {
+			if matches := re.FindStringSubmatch(endpoint); matches != nil {
+				extractedRegion = matches[1]
+				break
 			}
-			return nil
 		}
-
-		if matches := awsVPCEndpointRegex.FindStringSubmatch(endpoint); matches != nil {
-			if extractedRegion := matches[1]; extractedRegion != region {
-				return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
-			}
-			return nil
+		if extractedRegion == "" {
+			return fmt.Errorf("%w: got %s", errS3EndpointAWSInvalid, endpoint)
 		}
-
-		return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, endpoint)
+		if extractedRegion != region {
+			return fmt.Errorf("%w: expected region %s, got %s", errS3EndpointAWSNoRegion, region, extractedRegion)
+		}
+		return nil
 	}
 
 	return nil
