@@ -78,5 +78,23 @@
     meta_monitoring: {
       enabled: false,
     },
+
+    // Enable panels that depend on autoscaler metrics
+    // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
+    autoscaling_metrics: false,
+    // Per-component autoscaling status.
+    // Only consulted when autoscaling_metrics is true.
+    // If true, min and max replicas for the component are shown.
+    // If false, a panel that says "not autoscaled" is shown instead.
+    autoscaled: {
+      gateway: false,  // only when internal_components=true
+      query_frontend: false,
+      query_scheduler: false,
+      querier: false,
+      index_gateway: false,
+      bloom_gateway: false,
+      ingester: false,
+      ruler: false,
+    },
   },
 }
