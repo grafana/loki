@@ -241,7 +241,7 @@ func (s *Scheduler) handleWorkerHello(ctx context.Context, worker *workerConn, m
 	phases := s.metrics.startHandler(msg.Kind())
 	defer func() { phases.Done(handlerOutcome(err)) }()
 
-	if err := worker.HandleHello(msg); err != nil {
+	if err := worker.HandleHello(); err != nil {
 		return err
 	}
 

@@ -461,7 +461,7 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 	// Perform a handshake with the scheduler. This must be done before
 	// launching the other worker message goroutines, as WorkerReady messages
 	// are rejected until a WorkerHello is acknowledged.
-	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: w.numThreads}); err != nil {
+	if err := peer.SendMessage(ctx, wire.WorkerHelloMessage{}); err != nil {
 		level.Error(logger).Log("msg", "failed to perform handshake with scheduler", "err", err)
 		return err
 	}

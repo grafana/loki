@@ -69,11 +69,8 @@ message MessageFrame {
 //
 // WorkerHelloMessage must be sent by workers before any other worker messages.
 message WorkerHelloMessage {
-  // Threads is the maximum number of threads the worker has available.
-  //
-  // The scheduler uses threads to determine the maximum number of tasks that
-  // can be assigned concurrently to a worker.
-  uint64 threads = 1;
+  reserved 1;
+  reserved "threads";
 }
 
 // WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage

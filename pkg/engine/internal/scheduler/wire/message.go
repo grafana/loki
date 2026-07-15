@@ -71,11 +71,7 @@ type (
 	// WorkerHelloMessage must be sent by workers before any other worker
 	// messages.
 	WorkerHelloMessage struct {
-		// Threads is the number of threads the worker has available.
-		//
-		// The scheduler uses Threads to determine the maximum number of tasks
-		// that can be assigned concurrently to a worker.
-		Threads int
+		// No fields.
 	}
 
 	// WorkerSubscribeMessage is sent by a scheduler to request a
