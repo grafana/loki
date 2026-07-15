@@ -120,7 +120,7 @@ func TestCapture_AddRegion(t *testing.T) {
 }
 
 func TestCapture_Merge(t *testing.T) {
-	t.Run("merges all regions from src into dst", func(t *testing.T) {
+	t.Run("distinct-named regions are all present after merge", func(t *testing.T) {
 		ctxDst, dst := NewCapture(context.Background(), nil)
 		ctxSrc, src := NewCapture(context.Background(), nil)
 
@@ -138,21 +138,7 @@ func TestCapture_Merge(t *testing.T) {
 		require.ElementsMatch(t, []string{"dst-region", "src-region-1", "src-region-2"}, got)
 	})
 
-	t.Run("re-parents src root regions when parent is provided", func(t *testing.T) {
-		ctxDst, dst := NewCapture(context.Background(), nil)
-		_, dstParent := StartRegion(ctxDst, "dst-parent")
-
-		ctxSrc, src := NewCapture(context.Background(), nil)
-		_, srcRoot := StartRegion(ctxSrc, "src-root")
-
-		require.True(t, srcRoot.parentID.IsZero(), "src root should have no parent before merge")
-
-		dst.Merge(dstParent, src)
-
-		require.Equal(t, dstParent.id, srcRoot.parentID, "src root should be re-parented onto dstParent")
-	})
-
-	t.Run("does not change parent for src non-root regions", func(t *testing.T) {
+	t.Run("all merged regions are parented onto provided parent", func(t *testing.T) {
 		ctxDst, dst := NewCapture(context.Background(), nil)
 		_, dstParent := StartRegion(ctxDst, "dst-parent")
 
@@ -164,11 +150,18 @@ func TestCapture_Merge(t *testing.T) {
 
 		dst.Merge(dstParent, src)
 
-		require.Equal(t, dstParent.id, srcRoot.parentID, "src-root should be re-parented onto dstParent")
-		require.Equal(t, srcRoot.id, srcChild.parentID, "src-child should keep its original parent (src-root)")
+		// The accumulating merge collapses the src hierarchy: every merged
+		// region is parented directly onto dstParent.
+		dstRoots := dst.regionByName["src-root"]
+		require.Len(t, dstRoots, 1)
+		require.Equal(t, dstParent.id, dstRoots[0].parentID, "dst region for src root should be parented onto dstParent")
+
+		dstChildren := dst.regionByName["src-child"]
+		require.Len(t, dstChildren, 1)
+		require.Equal(t, dstParent.id, dstChildren[0].parentID, "dst region for src non-root should also be parented onto dstParent")
 	})
 
-	t.Run("observations roll up across merged regions", func(t *testing.T) {
+	t.Run("observations roll up across merged regions with distinct names", func(t *testing.T) {
 		stat := NewStatisticInt64("merged.value", AggregationTypeSum)
 
 		ctxDst, dst := NewCapture(context.Background(), nil)
@@ -211,6 +204,88 @@ func TestCapture_Merge(t *testing.T) {
 
 		dst.Merge(nil, src)
 		require.Empty(t, dst.Regions(), "ended dst should not absorb new regions")
+	})
+
+	t.Run("same-named region observations are accumulated across merges", func(t *testing.T) {
+		stat := NewStatisticInt64("rows.scanned", AggregationTypeSum)
+		_, dst := NewCapture(context.Background(), nil)
+
+		// Simulate N task completions, each contributing a capture with the
+		// same region name. Expect the values to be collapsed into one region.
+		const tasks = 5
+		for i := 0; i < tasks; i++ {
+			ctxSrc, src := NewCapture(context.Background(), nil)
+			_, r := StartRegion(ctxSrc, "task.region")
+			r.Record(stat.Observe(100))
+			r.End()
+			src.End()
+			dst.Merge(nil, src)
+		}
+
+		// Only one region should exist regardless of the number of merges.
+		require.Len(t, dst.Regions(), 1, "accumulating merge should collapse same-named regions")
+
+		value, ok := TryValue[int64](dst, stat)
+		require.True(t, ok)
+		require.Equal(t, int64(tasks*100), value, "accumulated value should equal sum across all merged captures")
+	})
+
+	t.Run("multiple distinct region names each accumulate independently", func(t *testing.T) {
+		statA := NewStatisticInt64("bytes.a", AggregationTypeSum)
+		statB := NewStatisticInt64("bytes.b", AggregationTypeSum)
+
+		_, dst := NewCapture(context.Background(), nil)
+
+		const tasks = 3
+		for i := 0; i < tasks; i++ {
+			ctxSrc, src := NewCapture(context.Background(), nil)
+			_, ra := StartRegion(ctxSrc, "region.a")
+			ra.Record(statA.Observe(10))
+			ra.End()
+			_, rb := StartRegion(ctxSrc, "region.b")
+			rb.Record(statB.Observe(20))
+			rb.End()
+			src.End()
+			dst.Merge(nil, src)
+		}
+
+		require.Len(t, dst.Regions(), 2, "one collapsed region per unique name")
+		require.Equal(t, int64(tasks*10), Value[int64](dst, statA))
+		require.Equal(t, int64(tasks*20), Value[int64](dst, statB))
+	})
+
+	t.Run("accumulating merge handles Min and Max correctly", func(t *testing.T) {
+		statMin := NewStatisticFloat64("latency.min", AggregationTypeMin)
+		statMax := NewStatisticInt64("rows.max", AggregationTypeMax)
+
+		_, dst := NewCapture(context.Background(), nil)
+
+		for _, pair := range [][2]int64{{10, 50}, {3, 200}, {7, 100}} {
+			ctxSrc, src := NewCapture(context.Background(), nil)
+			_, r := StartRegion(ctxSrc, "task.region")
+			r.Record(statMin.Observe(float64(pair[0])))
+			r.Record(statMax.Observe(pair[1]))
+			r.End()
+			src.End()
+			dst.Merge(nil, src)
+		}
+
+		require.Equal(t, float64(3), Value[float64](dst, statMin), "min should be the smallest across all merges")
+		require.Equal(t, int64(200), Value[int64](dst, statMax), "max should be the largest across all merges")
+	})
+
+	t.Run("regionByName index is populated after merge", func(t *testing.T) {
+		ctxSrc, src := NewCapture(context.Background(), nil)
+		_, _ = StartRegion(ctxSrc, "alpha")
+		_, _ = StartRegion(ctxSrc, "beta")
+		src.End()
+
+		_, dst := NewCapture(context.Background(), nil)
+		dst.Merge(nil, src)
+
+		require.Len(t, dst.regionByName["alpha"], 1, "index should contain alpha")
+		require.Len(t, dst.regionByName["beta"], 1, "index should contain beta")
+		require.Empty(t, dst.regionByName["gamma"], "index should not contain unknown name")
 	})
 }
 
@@ -373,6 +448,10 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 	logsOpen.Record(stat.Observe(100))
 	logsOpen.End()
 
+	_, logsOpen2 := StartRegion(ctx, "logs.Reader.Open")
+	logsOpen2.Record(stat.Observe(25))
+	logsOpen2.End()
+
 	_, logsRead := StartRegion(ctx, "logs.Reader.Read")
 	logsRead.Record(stat.Observe(50))
 	logsRead.End()
@@ -381,15 +460,20 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 	streamsOpen.Record(stat.Observe(1000))
 	streamsOpen.End()
 
-	got := capture.ValueFromRegion("logs.Reader.", stat)
-	require.NotNil(t, got)
-	require.Equal(t, int64(150), got.Value)
-	require.Equal(t, 2, got.Count)
-	require.Equal(t, stat.Key(), got.Statistic.Key())
+	// Exact name matches only the Open region.
+	gotOpen := capture.ValueFromRegion("logs.Reader.Open", stat)
+	require.NotNil(t, gotOpen)
+	require.Equal(t, int64(125), gotOpen.Value)
+	require.Equal(t, 2, gotOpen.Count)
 
-	require.Equal(t, int64(150), ValueFromRegion[int64](capture, "logs.Reader", stat))
-	require.Zero(t, ValueFromRegion[int64](capture, "missing.Reader", stat))
-	require.Zero(t, ValueFromRegion[float64](capture, "logs.Reader", stat))
+	// Exact name matches only the Read region.
+	gotRead := capture.ValueFromRegion("logs.Reader.Read", stat)
+	require.NotNil(t, gotRead)
+	require.Equal(t, int64(50), gotRead.Value)
+	require.Equal(t, 1, gotRead.Count)
+
+	// Prefix is not a match — no region is named "logs.Reader." exactly.
+	require.Nil(t, capture.ValueFromRegion("logs.Reader.", stat))
 }
 
 func TestCapture_GetAllStatistics(t *testing.T) {

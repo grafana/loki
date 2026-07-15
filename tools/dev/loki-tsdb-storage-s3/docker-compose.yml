@@ -29,7 +29,7 @@ services:
   memcached:
     logging:
       <<: *logging
-    image: memcached:1.6.41-alpine@sha256:1c6a2d48c5f561226f1dc54ed37132f83b4cde94b5e3f3e2d88386d028b86a27
+    image: memcached:1.6.42-alpine@sha256:7381333da6d6ae06e02d8dfc87ee6f2c7cd0a19f7ba048d5efc538d2100e2208
 
   jaeger:
     logging:

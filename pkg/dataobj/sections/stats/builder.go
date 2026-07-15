@@ -1,8 +1,9 @@
 package stats
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,7 +22,8 @@ type Builder struct {
 	tenant  string
 	encode  SectionEncoder
 
-	rows []Stat
+	rows          []Stat
+	estimatedSize int
 }
 
 // NewBuilder creates a new Builder.
@@ -46,21 +48,24 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 // Append adds a [Stat] row to the builder.
 func (b *Builder) Append(stat Stat) {
 	b.rows = append(b.rows, stat)
+	b.estimatedSize += statSize(stat)
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
-// rows in bytes. The estimate uses a per-row heuristic:
+// rows in bytes, maintained incrementally by [Builder.Append] (see statSize).
+func (b *Builder) EstimatedSize() int {
+	return b.estimatedSize
+}
+
+// statSize is the per-row size heuristic:
 //   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
 //   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
-func (b *Builder) EstimatedSize() int {
-	var total int
-	for _, r := range b.rows {
-		total += 5 * 8 // int64 columns: SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize
-		total += len(r.ObjectPath) + len(r.SortSchema)
-		for k, v := range r.Labels {
-			total += len(k) + len(v)
-		}
+func statSize(r Stat) int {
+	total := 5 * 8
+	total += len(r.ObjectPath) + len(r.SortSchema)
+	for k, v := range r.Labels {
+		total += len(k) + len(v)
 	}
 	return total
 }
@@ -68,30 +73,37 @@ func (b *Builder) EstimatedSize() int {
 // Reset clears all accumulated rows and resets the builder to a fresh state.
 func (b *Builder) Reset() {
 	b.rows = b.rows[:0]
+	b.estimatedSize = 0
 }
 
-// compareStats returns true if a should sort before b, using the sort order:
-// label values in sort schema order, then MinTimestamp, then MaxTimestamp.
+// Compare reports the canonical sort order of two [Stat] rows. It returns a
+// negative value if a sorts before b, a positive value if a sorts after b, and
+// zero if they share the full key.
 //
-// Iterates the SortSchema with [strings.SplitSeq] so the function does not
-// allocate per comparison; sort.SliceStable invokes this O(n log n) times per
-// flush, so avoiding the allocation matters at high row counts.
-func compareStats(a, b Stat) bool {
+// Both rows must share the same SortSchema.
+func Compare(a, b Stat) int {
+	// Iterates the SortSchema with [strings.SplitSeq] so the function does not
+	// allocate per comparison; the flush sort invokes it O(n log n) times.
 	for key := range strings.SplitSeq(a.SortSchema, ",") {
-		va, vb := a.Labels[key], b.Labels[key]
-		if va != vb {
-			return va < vb
+		if va, vb := a.Labels[key], b.Labels[key]; va != vb {
+			return strings.Compare(va, vb)
 		}
 	}
 	if a.MinTimestamp != b.MinTimestamp {
-		return a.MinTimestamp < b.MinTimestamp
+		return cmp.Compare(a.MinTimestamp, b.MinTimestamp)
 	}
-	return a.MaxTimestamp < b.MaxTimestamp
+	if a.MaxTimestamp != b.MaxTimestamp {
+		return cmp.Compare(a.MaxTimestamp, b.MaxTimestamp)
+	}
+	if a.ObjectPath != b.ObjectPath {
+		return strings.Compare(a.ObjectPath, b.ObjectPath)
+	}
+	return cmp.Compare(a.SectionIndex, b.SectionIndex)
 }
 
-// Flush sorts the accumulated rows by label values in sort schema order, then
-// by MinTimestamp, then by MaxTimestamp. It encodes them via the [SectionEncoder]
-// and writes the result to the provided [dataobj.SectionWriter].
+// Flush sorts the accumulated rows with [Compare], encodes them via the
+// [SectionEncoder], and writes the result to the provided
+// [dataobj.SectionWriter].
 //
 // After a successful flush, the builder is reset.
 func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
@@ -104,11 +116,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		defer timer.ObserveDuration()
 	}
 
-	// Sort rows by label values in sort schema order, then by MinTimestamp,
-	// then by MaxTimestamp as a final tie-breaker.
-	sort.SliceStable(b.rows, func(i, j int) bool {
-		return compareStats(b.rows[i], b.rows[j])
-	})
+	slices.SortStableFunc(b.rows, Compare)
 
 	var enc columnar.Encoder
 	defer enc.Reset()

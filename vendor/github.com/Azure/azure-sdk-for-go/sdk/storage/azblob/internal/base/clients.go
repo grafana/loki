@@ -20,6 +20,15 @@ type ClientOptions struct {
 	// Only has an effect when credential is of type TokenCredential. The value could be
 	// https://storage.azure.com/ (default) or https://<account>.blob.core.windows.net.
 	Audience string
+
+	// ExpectContinueBehavior configures the application of the HTTP "Expect: 100-continue"
+	// header on operations that include a request body. The default zero-value behavior
+	// conditionally applies the header for a short window after the service responds with a
+	// throttle/server-error status (429, 500, or 503).
+	//
+	// Setting the environment variable AZURE_STORAGE_DISABLE_EXPECT_CONTINUE_HEADER to a
+	// truthy value disables this behavior entirely, regardless of this setting.
+	ExpectContinueBehavior exported.ExpectContinueOptions
 }
 
 type Client[T any] struct {

@@ -337,6 +337,25 @@ https://github.com/buger/jsonparser/blob/master/benchmark/benchmark_large_payloa
 
 Also last benchmark did not included `EachKey` test, because in this particular case we need to read lot of Array values, and using `ArrayEach` is more efficient. 
 
+## Formal Verification
+
+<!-- Documents: SYS-REQ-001, SYS-REQ-016, SYS-REQ-017, SYS-REQ-018, SYS-REQ-019, SYS-REQ-020, SYS-REQ-021, SYS-REQ-022, SYS-REQ-023, SYS-REQ-024, SYS-REQ-025, SYS-REQ-026, SYS-REQ-027 -->
+
+This project uses [ReqProof](https://reqproof.com) for formal requirements verification, achieving:
+
+- **92 formally specified requirements** covering all public API behavior including edge cases, malformed input, boundary values, and error propagation
+- **100% MC/DC coverage** (Modified Condition/Decision Coverage) — every boolean decision in the code is independently proven exercised
+- **Kind2 model checking** — mathematical proof that the specification is realizable and consistent
+- **Z3 SMT proofs** — data-level properties verified for all possible inputs, not just test samples
+
+ReqProof found **2 real bugs** during the verification process ([see PR #281](https://github.com/buger/jsonparser/pull/281)):
+1. `Delete` panic on truncated JSON input — bounds check missing after internal sentinel value
+2. `ArrayEach` callback silently swallowing parse errors — the callback's `err` parameter was always nil
+
+It also identified and safely removed **7 dead code blocks** that MC/DC analysis proved unreachable from any input.
+
+The verification runs on every PR via [probelabs/proof-action](https://github.com/probelabs/proof-action).
+
 ## Questions and support
 
 All bug-reports and suggestions should go though Github Issues.

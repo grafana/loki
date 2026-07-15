@@ -14,10 +14,6 @@ type Metrics struct {
 	TotalRemovedSeries     prometheus.Counter
 	TotalAppendedSamples   prometheus.Counter
 	TotalAppendedExemplars prometheus.Counter
-	TotalCorruptions       prometheus.Counter
-	TotalFailedRepairs     prometheus.Counter
-	TotalSucceededRepairs  prometheus.Counter
-	ReplayDuration         prometheus.Histogram
 	DiskSize               prometheus.Gauge
 }
 
@@ -53,27 +49,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		Help: "Total number of exemplars appended to a tenant's WAL",
 	})
 
-	m.TotalCorruptions = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "corruptions_total",
-		Help: "Total number of corruptions observed in a tenant's WAL",
-	})
-
-	m.TotalFailedRepairs = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "corruptions_repair_failed_total",
-		Help: "Total number of corruptions unsuccessfully repaired in a tenant's WAL",
-	})
-
-	m.TotalSucceededRepairs = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "corruptions_repair_succeeded_total",
-		Help: "Total number of corruptions successfully repaired in a tenant's WAL",
-	})
-
-	m.ReplayDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name:    "replay_duration",
-		Help:    "Total duration in seconds it took to replay a tenant's WAL",
-		Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
-	})
-
 	m.DiskSize = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "disk_size",
 		Help: "Size of each tenant's WAL on disk",
@@ -90,10 +65,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			m.TotalRemovedSeries,
 			m.TotalAppendedSamples,
 			m.TotalAppendedExemplars,
-			m.TotalCorruptions,
-			m.TotalFailedRepairs,
-			m.TotalSucceededRepairs,
-			m.ReplayDuration,
 			m.DiskSize,
 		)
 	}
@@ -112,10 +83,6 @@ func (m *Metrics) Unregister() {
 		m.TotalRemovedSeries,
 		m.TotalAppendedSamples,
 		m.TotalAppendedExemplars,
-		m.TotalCorruptions,
-		m.TotalFailedRepairs,
-		m.TotalSucceededRepairs,
-		m.ReplayDuration,
 		m.DiskSize,
 	}
 	for _, c := range cs {

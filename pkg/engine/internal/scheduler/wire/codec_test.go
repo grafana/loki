@@ -1,12 +1,12 @@
 package wire
 
 import (
+	"bytes"
 	"errors"
 	"net"
 	"net/http"
 	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -41,13 +41,14 @@ func TestProtobufCodec_Frames(t *testing.T) {
 	}
 
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			pbFrame, err := codec.frameToPbFrame(tt.frame)
+			pbFrame, err := mc.frameToPbFrame(tt.frame)
 			require.NoError(t, err)
 
-			actualFrame, err := codec.frameFromPbFrame(pbFrame)
+			actualFrame, err := mc.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.frame, actualFrame)
@@ -103,60 +104,20 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"TaskCancelMessage": {
 			message: TaskCancelMessage{ID: taskULID},
 		},
-		"TaskFlagMessage not interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: false,
-			},
-		},
-		"TaskFlagMessage interruptible": {
-			message: TaskFlagMessage{
-				ID:            taskULID,
-				Interruptible: true,
-			},
-		},
-		"TaskStatusMessage with Created state": {
-			message: TaskStatusMessage{
+		"TaskResultMessage with Completed outcome": {
+			message: TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateCreated,
+				Result: workflow.TaskResult{
+					Outcome: workflow.TaskOutcomeCompleted,
 				},
 			},
 		},
-		"TaskStatusMessage with Running state": {
-			message: TaskStatusMessage{
+		"TaskResultMessage with Failed outcome and error": {
+			message: TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-				},
-			},
-		},
-		"TaskStatusMessage with Running state and ContributingTimeRange": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateRunning,
-					ContributingTimeRange: workflow.ContributingTimeRange{
-						Timestamp: time.Now().Add(-time.Minute),
-						LessThan:  true,
-					},
-				},
-			},
-		},
-		"TaskStatusMessage with Completed state": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateCompleted,
-				},
-			},
-		},
-		"TaskStatusMessage with Failed state and error": {
-			message: TaskStatusMessage{
-				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: workflow.TaskStateFailed,
-					Error: errors.New("task failed"),
+				Result: workflow.TaskResult{
+					Outcome: workflow.TaskOutcomeFailed,
+					Error:   errors.New("task failed"),
 				},
 			},
 		},
@@ -178,12 +139,6 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				State:    workflow.StreamStateOpen,
 			},
 		},
-		"StreamStatusMessage with Blocked state": {
-			message: StreamStatusMessage{
-				StreamID: streamULID,
-				State:    workflow.StreamStateBlocked,
-			},
-		},
 		"StreamStatusMessage with Closed state": {
 			message: StreamStatusMessage{
 				StreamID: streamULID,
@@ -193,6 +148,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 	}
 
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -201,10 +157,10 @@ func TestProtobufCodec_Messages(t *testing.T) {
 				Message: tt.message,
 			}
 
-			pbFrame, err := codec.frameToPbFrame(frame)
+			pbFrame, err := mc.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := codec.frameFromPbFrame(pbFrame)
+			actualFrame, err := mc.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, frame, actualFrame)
@@ -215,6 +171,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 func TestProtobufCodec_StreamDataMessage(t *testing.T) {
 	streamULID := ulid.Make()
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
 	originalRecord := createTestArrowRecord()
 
@@ -228,10 +185,10 @@ func TestProtobufCodec_StreamDataMessage(t *testing.T) {
 		Message: message,
 	}
 
-	pbFrame, err := codec.frameToPbFrame(frame)
+	pbFrame, err := mc.frameToPbFrame(frame)
 	require.NoError(t, err)
 
-	actualFrame, err := codec.frameFromPbFrame(pbFrame)
+	actualFrame, err := mc.frameFromPbFrame(pbFrame)
 	require.NoError(t, err)
 
 	actualMessage := actualFrame.(MessageFrame).Message.(StreamDataMessage)
@@ -245,26 +202,100 @@ func TestProtobufCodec_StreamDataMessage(t *testing.T) {
 	assert.Equal(t, originalRecord.NumCols(), actualMessage.Data.NumCols())
 }
 
-func TestProtobufCodec_TaskStates(t *testing.T) {
+func TestProtobufCodec_Metrics(t *testing.T) {
+	codec := DefaultFrameCodec
+	metrics := NewMetrics()
+
+	streamData := MessageFrame{
+		ID: 1,
+		Message: StreamDataMessage{
+			StreamID: ulid.Make(),
+			Data:     createTestArrowRecord(),
+		},
+	}
+	streamDataBytes := codec.encode(streamData, metrics, nil)
+	decodedStreamData, size, err := codec.decode(bytes.NewReader(streamDataBytes), metrics)
+	require.NoError(t, err)
+	require.Equal(t, len(streamDataBytes), size)
+	metrics.observeFrameBytes(directionIncoming, decodedStreamData, sendModeInternal, size)
+
+	taskAssign := MessageFrame{
+		ID: 2,
+		Message: TaskAssignMessage{
+			Task: &workflow.Task{
+				ULID:     ulid.Make(),
+				TenantID: "test-tenant",
+				Fragment: &physical.Plan{},
+				Sources:  map[physical.Node][]*workflow.Stream{},
+				Sinks:    map[physical.Node][]*workflow.Stream{},
+			},
+			StreamStates: map[ulid.ULID]workflow.StreamState{},
+		},
+	}
+	taskAssignBytes := codec.encode(taskAssign, metrics, nil)
+	decodedTaskAssign, size, err := codec.decode(bytes.NewReader(taskAssignBytes), metrics)
+	require.NoError(t, err)
+	require.Equal(t, len(taskAssignBytes), size)
+	metrics.observeFrameBytes(directionOutgoing, decodedTaskAssign, sendModeSync, size)
+
+	for _, tc := range []struct {
+		operation   codecOperation
+		stage       codecStage
+		messageType string
+	}{
+		{codecOperationEncode, codecStageArrowEncode, MessageKindStreamData.String()},
+		{codecOperationDecode, codecStageArrowDecode, MessageKindStreamData.String()},
+		{codecOperationEncode, codecStageProtobufMarshal, MessageKindStreamData.String()},
+		{codecOperationDecode, codecStageProtobufUnmarshal, MessageKindStreamData.String()},
+		{codecOperationEncode, codecStageTaskAssignEncode, MessageKindTaskAssign.String()},
+		{codecOperationDecode, codecStageTaskAssignDecode, MessageKindTaskAssign.String()},
+	} {
+		require.Equal(t, uint64(1), histogramCount(t, metrics.reg,
+			"loki_engine_scheduler_wire_frame_codec_stage_seconds",
+			map[string]string{
+				"operation":    tc.operation.String(),
+				"stage":        tc.stage.String(),
+				"frame_type":   FrameKindMessage.String(),
+				"message_type": tc.messageType,
+			}))
+	}
+
+	require.Equal(t, uint64(1), histogramCount(t, metrics.reg,
+		"loki_engine_scheduler_wire_frame_size_bytes",
+		map[string]string{
+			"direction":    directionIncoming.String(),
+			"frame_type":   FrameKindMessage.String(),
+			"message_type": MessageKindStreamData.String(),
+			"mode":         sendModeInternal.String(),
+		}))
+	require.Equal(t, uint64(1), histogramCount(t, metrics.reg,
+		"loki_engine_scheduler_wire_frame_size_bytes",
+		map[string]string{
+			"direction":    directionOutgoing.String(),
+			"frame_type":   FrameKindMessage.String(),
+			"message_type": MessageKindTaskAssign.String(),
+			"mode":         sendModeSync.String(),
+		}))
+}
+
+func TestProtobufCodec_TaskOutcomes(t *testing.T) {
 	taskULID := ulid.Make()
 
-	states := []workflow.TaskState{
-		workflow.TaskStateCreated,
-		workflow.TaskStatePending,
-		workflow.TaskStateRunning,
-		workflow.TaskStateCompleted,
-		workflow.TaskStateCancelled,
-		workflow.TaskStateFailed,
+	outcomes := []workflow.TaskOutcome{
+		workflow.TaskOutcomeCompleted,
+		workflow.TaskOutcomeCancelled,
+		workflow.TaskOutcomeFailed,
 	}
 
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
-	for _, state := range states {
-		t.Run(state.String(), func(t *testing.T) {
-			message := TaskStatusMessage{
+	for _, outcome := range outcomes {
+		t.Run(outcome.String(), func(t *testing.T) {
+			message := TaskResultMessage{
 				ID: taskULID,
-				Status: workflow.TaskStatus{
-					State: state,
+				Result: workflow.TaskResult{
+					Outcome: outcome,
 				},
 			}
 
@@ -273,14 +304,14 @@ func TestProtobufCodec_TaskStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := codec.frameToPbFrame(frame)
+			pbFrame, err := mc.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := codec.frameFromPbFrame(pbFrame)
+			actualFrame, err := mc.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
-			actualMessage := actualFrame.(MessageFrame).Message.(TaskStatusMessage)
-			assert.Equal(t, state, actualMessage.Status.State)
+			actualMessage := actualFrame.(MessageFrame).Message.(TaskResultMessage)
+			assert.Equal(t, outcome, actualMessage.Result.Outcome)
 		})
 	}
 }
@@ -291,11 +322,11 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 	states := []workflow.StreamState{
 		workflow.StreamStateIdle,
 		workflow.StreamStateOpen,
-		workflow.StreamStateBlocked,
 		workflow.StreamStateClosed,
 	}
 
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -309,10 +340,10 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := codec.frameToPbFrame(frame)
+			pbFrame, err := mc.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := codec.frameFromPbFrame(pbFrame)
+			actualFrame, err := mc.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			actualMessage := actualFrame.(MessageFrame).Message.(StreamStatusMessage)
@@ -323,27 +354,28 @@ func TestProtobufCodec_StreamStates(t *testing.T) {
 
 func TestProtobufCodec_ErrorCases(t *testing.T) {
 	codec := DefaultFrameCodec
+	mc := &metricCodec{protobufCodec: codec}
 
 	t.Run("nil frame to protobuf", func(t *testing.T) {
-		_, err := codec.frameToPbFrame(nil)
+		_, err := mc.frameToPbFrame(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil frame from protobuf", func(t *testing.T) {
-		_, err := codec.frameFromPbFrame(nil)
+		_, err := mc.frameFromPbFrame(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil message to protobuf", func(t *testing.T) {
-		_, err := codec.messageToPbMessage(nil)
+		_, err := mc.messageToPbMessage(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil message")
 	})
 
 	t.Run("nil task to protobuf", func(t *testing.T) {
-		_, err := codec.taskToPbTask(nil)
+		_, err := mc.taskToPbTask(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil task")
 	})

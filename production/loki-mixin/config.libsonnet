@@ -58,19 +58,12 @@
       memcached: true,
       // Whether or not to include consul in the operational dashboard
       consul: true,
-      // Whether or not to include big table in the operational dashboard
-      bigTable: true,
-      // Whether or not to include dynamo in the operational dashboard
-      dynamo: true,
       // Whether or not to include gcs in the operational dashboard
       gcs: true,
       // Whether or not to include s3 in the operational dashboard
       s3: true,
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
-      // Whether or not to include BoltDB Shipper in the operational dashboard.
-      // Kept as a legacy toggle; defaults to false since TSDB is the default index.
-      boltDB: false,
     },
 
     // Enable TSDB specific dashboards
@@ -80,15 +73,6 @@
     // Set to at least twice the scrape interval; otherwise, recording rules will output no data.
     // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
     recording_rules_range_interval: '1m',
-
-    // SSD related configuration for dashboards.
-    ssd: {
-      // Support Loki SSD mode on dashboards.
-      enabled: false,
-
-      // The prefix used to match the write and read pods on SSD mode.
-      pod_prefix_matcher: '(loki.*|enterprise-logs)',
-    },
 
     // Meta-monitoring related configuration
     meta_monitoring: {

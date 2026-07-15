@@ -132,16 +132,48 @@ canary.  To stop or start the canary issue an HTTP GET request against the `/sus
 ### Binary
 
 Loki Canary is provided as a pre-compiled binary as part of the
-[Loki Releases](https://github.com/grafana/loki/releases) on GitHub.
+[Loki Releases](https://github.com/grafana/loki/releases) on GitHub. Each release
+publishes a `loki-canary` archive for common platforms.
+
+1. Download and unpack the archive that matches your platform from the
+   [releases page](https://github.com/grafana/loki/releases).
+1. Make the binary executable and move it onto your `PATH`:
+
+   ```bash
+   chmod +x loki-canary
+   sudo mv loki-canary /usr/local/bin/loki-canary
+   ```
+
+The address of Loki is required. Either pass `-addr` or set the `LOKI_ADDRESS`
+environment variable; if neither is set, Loki Canary prints
+`Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS`
+and exits.
 
 ### Docker
 
-Loki Canary is also provided as a Docker container image:
+Loki Canary is also published as a Docker container image to Docker Hub as
+[`grafana/loki-canary`](https://hub.docker.com/r/grafana/loki-canary). Image tags
+track Loki releases, so use the tag that matches the Loki version you run.
 
 ```bash
 # change tag to the most recent release
-$ docker pull grafana/loki-canary:2.9.2
+$ docker pull grafana/loki-canary:3.7.3
 ```
+
+The image entrypoint is the `loki-canary` binary, so any arguments after the image
+name are passed straight to the canary:
+
+```bash
+docker run --rm \
+  -p 3500:3500 \
+  grafana/loki-canary:3.7.3 \
+  -addr=loki:3100 \
+  -labelname=instance \
+  -labelvalue=loki-canary-1
+```
+
+The metrics port (default `3500`) must be published so that Prometheus or Alloy can
+scrape it.
 
 ### Kubernetes
 
@@ -285,6 +317,68 @@ If the other options are not sufficient for your use case, you can compile
     $ make loki-canary-image
     ```
 
+### Example invocations
+
+The following examples show common ways to run `loki-canary`. They use only flags
+that the binary accepts; see [Configuration](#configuration) for the full list.
+
+**1. Minimal local run (no authentication, no TLS)**
+
+Write artificial logs to standard output, tail them back over a WebSocket, and
+expose metrics on the default port `3500`:
+
+```bash
+loki-canary \
+  -addr=localhost:3100 \
+  -labelname=instance \
+  -labelvalue=loki-canary-1
+```
+
+By default the canary only reads logs over the WebSocket; an agent such as Grafana
+Alloy is still responsible for shipping the canary's standard output into Loki. See
+[Monolithic mode setup](#monolithic-mode-setup) for a complete Systemd plus Alloy
+example.
+
+**2. Push mode against an authenticated, multi-tenant Loki**
+
+Have the canary push its own logs directly to Loki instead of relying on a separate
+agent, using basic authentication and an `X-Scope-OrgID` tenant header:
+
+```bash
+loki-canary \
+  -addr=loki.example.com:3100 \
+  -push=true \
+  -user=canary \
+  -pass="$LOKI_PASSWORD" \
+  -tenant-id=team-a \
+  -labelname=instance \
+  -labelvalue=loki-canary-team-a \
+  -interval=500ms \
+  -size=512
+```
+
+When `-push=true` is set, the default value of `-streamvalue` becomes `push`
+instead of `stdout`.
+
+**3. Run over TLS with a custom client certificate**
+
+Connect to a Loki endpoint that terminates TLS. Enabling `-tls` switches the
+WebSocket connection from `ws://` to `wss://`:
+
+```bash
+loki-canary \
+  -addr=loki.example.com:443 \
+  -tls=true \
+  -cert-file=/etc/loki-canary/client.crt \
+  -key-file=/etc/loki-canary/client.key \
+  -ca-file=/etc/loki-canary/ca.crt \
+  -labelname=instance \
+  -labelvalue=loki-canary-tls
+```
+
+If you supply any of `-cert-file`, `-key-file`, or `-ca-file` without also setting
+`-tls=true`, the canary exits with `Must set --tls when specifying client certs`.
+
 ## Configuration
 
 The address of Loki must be passed in with the `-addr` flag or by setting the
@@ -394,6 +488,77 @@ All options:
   -write-timeout duration
     	How long to wait write response from Loki (default 10s)
 ```
+
+In addition to the options listed above, two flags control how logs are batched
+when pushing directly to Loki with `-push`:
+
+- `-logs-batch-size` sends logs to Loki in batches of the given size. A value of
+  `0` or `1` disables batching and sends each entry immediately (default `1`).
+- `-logs-batch-size-max` is the upper bound on `-logs-batch-size` (default `20`).
+  Only increase it if you have also increased the memory limits for the canary.
+
+## Troubleshooting common misconfigurations
+
+This section lists the most common configuration mistakes and how to resolve them.
+
+### Canary exits immediately with "Must specify a Loki address"
+
+If you see:
+
+```nohighlight
+Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS
+```
+
+You did not provide a Loki address. Set `-addr` (for example `-addr=loki:3100`) or
+set `LOKI_ADDRESS`. The value is `host:port` only: do not include a scheme such as
+`http://` or `https://`, and use `-tls=true` to select a secure connection.
+
+### No entries are read, all logs end up missing
+
+If the canary writes logs but the `loki_canary_missing_entries_total` counter keeps
+climbing and `response_latency` records nothing, the most common cause is a label
+mismatch between what the canary writes and what it queries:
+
+- The canary filters the log stream using `-labelname`/`-labelvalue` (and
+  `-streamname`/`-streamvalue`). The agent that ships the canary's standard output
+  into Loki must apply the same labels. If your Alloy or Promtail configuration
+  attaches different labels, the canary's read query matches nothing.
+- Each canary instance must use a unique `-labelvalue`. If two canaries share the
+  same label value, they read each other's logs and report out-of-order or
+  unexpected entries.
+- If you set `-labels`, remember it overwrites `-labelname` and `-streamname`. Make
+  sure the combined selector still matches the labels applied at ingestion time.
+
+To confirm the selector, run the same query the canary builds (for example
+`{name="loki-canary", stream="stdout"}`) directly in Grafana or `logcli` and check
+that it returns the canary's lines.
+
+### Authentication failures (401 or 403)
+
+If pushes or queries fail with HTTP 401 or 403, the basic-auth credentials or tenant
+header are wrong:
+
+- Provide both `-user` and `-pass`. The password credential must have read and write
+  permissions, because the canary both queries and (with `-push`) writes.
+- For multi-tenant Loki, set `-tenant-id` so the canary sends the correct
+  `X-Scope-OrgID` header. A missing or wrong tenant ID typically returns empty query
+  results, or an error such as:
+
+  ```nohighlight
+  no org id
+  ```
+
+### TLS errors
+
+- Enabling client certificates without TLS fails fast with
+  `Must set --tls when specifying client certs`. Always pair `-cert-file`,
+  `-key-file`, and `-ca-file` with `-tls=true`.
+- `x509: certificate signed by unknown authority` means the canary does not trust
+  the server certificate. Provide the CA with `-ca-file`, or, for testing only, set
+  `-insecure` to skip verification. Do not use `-insecure` in production.
+- After enabling `-tls`, make sure `-addr` points at the TLS port (for example
+  `:443` or your gateway's HTTPS port), because the WebSocket connection switches to
+  `wss://`.
 
 ## Monolithic mode setup
 

@@ -127,3 +127,19 @@ func TestObjectClientAdapter_List(t *testing.T) {
 		require.Equal(t, tt.storageCommonPref, storageCommonPref)
 	}
 }
+
+func TestObjectClientAdapter_IsBackendFilesystem(t *testing.T) {
+	// A filesystem-backed adapter must report true so that callers select the
+	// FSEncoder for chunk keys (see compactor chunk client setup).
+	client, err := NewObjectClient(context.Background(), "filesystem", ConfigWithNamedStores{
+		Config: Config{
+			Filesystem: filesystem.Config{Directory: t.TempDir()},
+		},
+	}, "test", hedging.Config{}, false, log.NewNopLogger())
+	require.NoError(t, err)
+	require.True(t, client.IsBackendFilesystem())
+
+	// Non-filesystem backends must report false.
+	require.False(t, (&ObjectClientAdapter{storeType: S3}).IsBackendFilesystem())
+	require.False(t, (&ObjectClientAdapter{storeType: GCS}).IsBackendFilesystem())
+}

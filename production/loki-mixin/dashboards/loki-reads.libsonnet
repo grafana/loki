@@ -3,7 +3,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
-    local showBigTable = false,
 
     // Available HTTP routes can be collected with the following instant query:
     // count by (route) (loki_request_duration_seconds_count{route!~"/.*"})
@@ -68,26 +67,26 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          matchers:: {
                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                            queryFrontend: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
+                           then [utils.selector.re('job', '($namespace)/(query-frontend|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/query-frontend')],
                            querier: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                           then [utils.selector.re('job', '($namespace)/(querier|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/querier')],
                            ingester: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                           then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/(ingester.*|partition-ingester.*)')],
                            ingesterZoneAware: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(partition-ingester-.*|ingester-zone.*)'))],
+                           then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone.*)')],
                            querierOrIndexGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(querier|index-gateway|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           then [utils.selector.re('job', '($namespace)/(querier|index-gateway|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/(querier|index-gateway)')],
                            indexGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(index-gateway|%s-backend|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'index-gateway'))],
+                           then [utils.selector.re('job', '($namespace)/(index-gateway|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/index-gateway')],
                            bloomGateway: if $._config.meta_monitoring.enabled
-                           then [utils.selector.re('job', '($namespace)/(bloom-gateway|%s-backend|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                           else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-backend' % $._config.ssd.pod_prefix_matcher else 'bloom-gateway'))],
+                           then [utils.selector.re('job', '($namespace)/(bloom-gateway|loki-single-binary)')]
+                           else [utils.selector.re('job', '($namespace)/bloom-gateway')],
                          },
 
                          local selector(matcherId) =
@@ -134,7 +133,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                        )
                        .addRow(
-                         $.row(if $._config.ssd.enabled then 'Read Path' else 'Frontend (query-frontend)')
+                         $.row('Query Frontend')
                          .addPanel(
                            $.newQueryPanel('QPS') +
                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"%s"}' % [dashboards['loki-reads.json'].queryFrontendSelector, http_routes])
@@ -158,8 +157,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('Querier')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -184,8 +182,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('Ingester')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -211,8 +208,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          )
                        )
                        // todo: add row iff multi zone ingesters are enabled
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('Ingester - Zone Aware')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -237,8 +233,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('Index Gateway')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -263,8 +258,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('Bloom Gateway')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -289,23 +283,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            )
                          )
                        )
-                       .addRowIf(
-                         showBigTable,
-                         $.row('BigTable')
-                         .addPanel(
-                           $.newQueryPanel('QPS') +
-                           $.newQpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/ReadRows"}' % dashboards['loki-reads.json'].querierSelector)
-                         )
-                         .addPanel(
-                           $.newQueryPanel('Latency', 'ms') +
-                           utils.latencyRecordingRulePanel(
-                             'loki_bigtable_request_duration_seconds',
-                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
-                           )
-                         )
-                       )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
+                       .addRow(
                          $.row('TSDB Index')
                          .addPanel(
                            $.newQueryPanel('QPS') +
@@ -319,24 +297,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.p99LatencyByPod(
                              'loki_index_request_duration_seconds',
                              '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
-                           )
-                         )
-                       )
-                       .addRowIf(
-                         !$._config.ssd.enabled,
-                         $.row('BoltDB Index')
-                         .addPanel(
-                           $.newQueryPanel('QPS') +
-                           $.newQpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
-                         )
-                         .addPanel(
-                           $.newQueryPanel('Latency', 'ms') +
-                           $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector)
-                         )
-                         .addPanel(
-                           $.p99LatencyByPod(
-                             'loki_boltdb_shipper_request_duration_seconds',
-                             '{%s operation="Shipper.Query"}' % dashboards['loki-reads.json'].querierOrIndexGatewaySelector
                            )
                          )
                        ),

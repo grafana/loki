@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // batchingPipeline wraps a [Pipeline] and accumulates records from it into
@@ -58,7 +57,6 @@ func (p *batchingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 		return nil, EOF
 	}
 
-	region := xcap.RegionFromContext(ctx)
 	var currentCount int64
 
 	// Include any record carried over from the previous Read.
@@ -77,9 +75,6 @@ func (p *batchingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 		if err != nil {
 			return nil, err
 		}
-
-		region.Record(xcap.TaskBatchingRecordsReceived.Observe(1))
-		region.Record(xcap.TaskBatchingRowsReceived.Observe(rec.NumRows()))
 
 		if rec.NumRows() == 0 {
 			continue
@@ -109,8 +104,6 @@ func (p *batchingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) 
 		return nil, err
 	}
 
-	region.Record(xcap.TaskBatchingBatchesProduced.Observe(1))
-	region.Record(xcap.TaskBatchingRowsWritten.Observe(combined.NumRows()))
 	return combined, nil
 }
 

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 )
 
@@ -29,6 +31,11 @@ type Config struct {
 	// admission throttle). Negative values are rejected at config validation.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
 
+	// LogMaxRunningCompactionTasks caps how many LogMerge tasks the coordinator
+	// runs concurrently per tenant within a single cycle. Zero means unlimited.
+	// Negative values are rejected at config validation.
+	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
+
 	// PollingInterval is the cadence of the coordinator's main loop. Each
 	// tick reads the most-recent ToC and runs a compaction plan per tenant
 	// that has > 1 index in the window.
@@ -37,6 +44,15 @@ type Config struct {
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
+
+	// LogMaxRunsPerTask (K for log compaction) is the maximum number of runs a
+	// single LogMerge task may consume. Kept separate from index max runs
+	LogMaxRunsPerTask int `yaml:"logs_max_runs_per_task"`
+
+	// LogMinCompactionSize is the minimum total compactable data (sum of all
+	// runs' uncompressed size) that justifies log compaction. Converged
+	// windows below this floor are skipped.
+	LogMinCompactionSize flagext.Bytes `yaml:"logs_min_compaction_size"`
 
 	// ToCConsolidateTimeout bounds the coordinator's inline ReplaceIndexPointers
 	// call. NOT a task TTL — applied as context.WithTimeout around the metastore
@@ -131,11 +147,13 @@ type WorkerConfig struct {
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
-	defaultMaxRunningCompactionTasks = 16
-	defaultEndpoint                  = "/api/v2/compaction-frame"
+	defaultMaxRunningCompactionTasks    = 16
+	defaultLogMaxRunningCompactionTasks = 16
+	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMaxRunsPerTask        = 8
+	defaultLogMaxRunsPerTask     = 3
 	defaultToCConsolidateTimeout = 30 * time.Second
 	defaultPlanVersion           = uint(1)
 )
@@ -154,10 +172,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
+	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
+		defaultLogMaxRunningCompactionTasks,
+		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
+	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
+		"Experimental: Maximum runs per LogMerge task (K for log compaction). Separate from max-runs-per-task to scale independently")
+	_ = cfg.LogMinCompactionSize.Set("4MB")
+	f.Var(&cfg.LogMinCompactionSize, prefix+"logs.min-compaction-size",
+		"Experimental: Minimum total compactable data (sum of all runs' uncompressed size) that justifies log compaction. Converged windows below this floor are skipped.")
 	f.DurationVar(&cfg.ToCConsolidateTimeout, prefix+"toc-consolidate-timeout", defaultToCConsolidateTimeout,
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
@@ -202,6 +228,9 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunningCompactionTasks < 0 {
 		return errInvalidMaxRunningCompactionTasks
 	}
+	if cfg.LogMaxRunningCompactionTasks < 0 {
+		return errInvalidLogMaxRunningCompactionTasks
+	}
 	if cfg.Scheduler.Endpoint == "" {
 		return errEmptySchedulerEndpoint
 	}
@@ -214,6 +243,12 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxRunsPerTask <= 0 {
 		return errInvalidMaxRunsPerTask
 	}
+	if cfg.LogMaxRunsPerTask <= 0 {
+		return errInvalidLogMaxRunsPerTask
+	}
+	if cfg.LogMinCompactionSize == 0 {
+		return errInvalidLogMinCompactionSize
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
@@ -224,9 +259,12 @@ func (cfg *Config) Validate() error {
 // Sentinel validation errors. Kept at package scope so tests can match
 // them with errors.Is.
 var (
-	errInvalidMaxRunningCompactionTasks = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
-	errEmptySchedulerEndpoint           = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
-	errInvalidPollingInterval           = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
-	errInvalidToCConsolidateTimeout     = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
-	errInvalidMaxRunsPerTask            = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidMaxRunningCompactionTasks    = errors.New("dataobj.compaction.max_running_compaction_tasks must be >= 0")
+	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
+	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
+	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
+	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
+	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")
+	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
 )

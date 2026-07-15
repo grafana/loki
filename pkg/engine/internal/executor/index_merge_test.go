@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -606,12 +607,13 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 // buildSourceIndexWithBothKinds builds a dataobj containing one postings section
 // (with 1-2 LabelObservations) and one stats section (with 1-2 Stat rows),
 // then uploads it to the bucket at the given path.
-func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path string) {
+func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	ctx := context.Background()
 
 	// Build postings section with one label entry
-	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant(tenant)
 	ts := time.Unix(0, 1_000_000)
 
 	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
@@ -626,6 +628,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, _, path
 
 	// Build stats section with one stat row
 	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder.SetTenant(tenant)
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
@@ -699,11 +702,21 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 
 // buildSourcePostingsObject builds a dataobj containing a single postings section
 // with the given label observations, then uploads it to the bucket.
-func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, _, path string, observations []postings.LabelObservation) {
+func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, observations []postings.LabelObservation) {
+	t.Helper()
+	buildSourcePostingsObjectSized(t, bucket, tenant, path, math.MaxInt, observations)
+}
+
+// buildSourcePostingsObjectSized is buildSourcePostingsObject with a caller-chosen
+// target section size. A small size splits the postings into multiple sections
+// within the object, which exercises the per-object section concatenation in the
+// merge readers.
+func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant, path string, targetSectionSize int, observations []postings.LabelObservation) {
 	t.Helper()
 	ctx := context.Background()
 
-	postingsBuilder := postings.NewBuilder(nil, 0, 0)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, targetSectionSize)
+	postingsBuilder.SetTenant(tenant)
 	for _, obs := range observations {
 		postingsBuilder.ObserveLabelPosting(obs)
 	}
@@ -720,11 +733,12 @@ func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, _, path str
 
 // buildSourceStatsObject builds a dataobj containing a single stats section
 // with the given stats rows, then uploads it to the bucket.
-func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, _, path string, statsRows []stats.Stat) {
+func buildSourceStatsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, statsRows []stats.Stat) {
 	t.Helper()
 	ctx := context.Background()
 
 	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+	statsBuilder.SetTenant(tenant)
 	for _, row := range statsRows {
 		statsBuilder.Append(row)
 	}
@@ -759,7 +773,7 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	require.NotNil(t, sec, "expected postings section in output object")
 
-	reader := postings.NewRowReader(ctx, sec)
+	reader := postings.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	var rows []postings.Row
@@ -771,6 +785,88 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 	}
 
 	return rows
+}
+
+// readAllPostingsRowsFromBucket reads rows from ALL postings sections of the
+// object, in section order (unlike readPostingsRowsFromBucket, which reads only
+// the first section). Merge output can span multiple postings sections.
+func readAllPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []postings.Row {
+	t.Helper()
+
+	obj := openObjectFromBucket(ctx, t, bucket, path)
+
+	var rows []postings.Row
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(ctx, s)
+		require.NoError(t, err)
+		reader := postings.NewRowReader(ctx, sec, nil)
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
+	}
+	return rows
+}
+
+// TestExecuteIndexMerge_StorageOrderConcat verifies that the postings merge
+// orders rows by physical storage order (ColumnName-primary), not by the
+// identity-key order (ObjectPath-primary), and that per-object section
+// concatenation is correct.
+func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	ts := time.Unix(0, 100)
+
+	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/a", 1, []postings.LabelObservation{
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Timestamp: ts, UncompressedSize: 20},
+	})
+	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/b", 1, []postings.LabelObservation{
+		// (log-B, 0, svc, api) duplicates src/a's first row exactly (same ts).
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Timestamp: ts, UncompressedSize: 30},
+	})
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/a", SectionIndex: 0}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/b", SectionIndex: 0}}},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	require.NoError(t, execCtx.doIndexMerge(ctx, node))
+
+	rows := readAllPostingsRowsFromBucket(ctx, t, bucket, outputPath)
+
+	// Three unique identity keys; the (log-B, svc, api) duplicate collapsed.
+	require.Len(t, rows, 3)
+
+	// Output is in physical storage order (ColumnName-primary).
+	for i := range len(rows) - 1 {
+		require.Negative(t, comparePostingsRow(rows[i], rows[i+1]),
+			"rows not in storage order at %d: %+v vs %+v", i, rows[i], rows[i+1])
+	}
+
+	// Every expected identity key is present exactly once.
+	type key struct{ obj, col, val string }
+	got := map[key]int{}
+	for _, r := range rows {
+		got[key{r.ObjectPath, r.ColumnName, r.LabelValue}]++
+	}
+	require.Equal(t, map[key]int{
+		{"log-B", "svc", "api"}: 1,
+		{"log-A", "zone", "us"}: 1,
+		{"log-A", "zone", "eu"}: 1,
+	}, got)
 }
 
 // readStatsRowsFromBucket downloads an object from the bucket, finds its
@@ -1441,4 +1537,133 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 	err := execCtx.doIndexMerge(ctx, node)
 	require.Error(t, err, "merge should fail with SortSchema mismatch")
 	require.Contains(t, err.Error(), "SortSchema", "error should mention SortSchema mismatch")
+}
+
+// tenantRows describes how many postings and stats rows to seed for a tenant
+// in a multi-tenant source object.
+type tenantRows struct {
+	tenant   string
+	rowCount int
+}
+
+// buildMultiTenantSourceObject builds a single index object holding postings
+// and stats sections for multiple tenants. Every row references an
+// object_path that embeds the tenant name, so foreign rows are identifiable in
+// the merged output.
+func buildMultiTenantSourceObject(t *testing.T, bucket objstore.Bucket, path string, tenants []tenantRows) {
+	t.Helper()
+	ctx := context.Background()
+
+	objBuilder := dataobj.NewBuilder(nil)
+
+	for _, tr := range tenants {
+		// Tiny targetSectionSizeBytes so postings spill into multiple sections.
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, 64)
+		postingsBuilder.SetTenant(tr.tenant)
+
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+		statsBuilder.SetTenant(tr.tenant)
+
+		for i := 0; i < tr.rowCount; i++ {
+			// Embed the source object path so rows from different source objects
+			// are distinct and do not collapse during the merge dedup.
+			objectPath := fmt.Sprintf("logs/%s/%s/obj-%d.dat", tr.tenant, path, i)
+			ts := time.Unix(0, int64(1_000_000+i))
+
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath:       objectPath,
+				SectionIndex:     int64(i),
+				ColumnName:       "service_name",
+				LabelValue:       fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i),
+				StreamID:         int64(i + 1),
+				Timestamp:        ts,
+				UncompressedSize: 100,
+			})
+
+			statsBuilder.Append(stats.Stat{
+				ObjectPath:       objectPath,
+				SectionIndex:     int64(i),
+				SortSchema:       "service_name",
+				Labels:           map[string]string{"service_name": fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i)},
+				MinTimestamp:     ts.UnixNano(),
+				MaxTimestamp:     ts.UnixNano() + 1000,
+				RowCount:         int64(10),
+				UncompressedSize: int64(1000),
+			})
+
+			// Flush stats mid-stream every 2 rows to produce multiple stats
+			// sections per tenant. Builder.Flush resets after each flush.
+			if (i+1)%2 == 0 {
+				require.NoError(t, objBuilder.Append(statsBuilder))
+			}
+		}
+
+		// Final flush of any remaining stats rows and all postings.
+		require.NoError(t, objBuilder.Append(statsBuilder))
+		require.NoError(t, objBuilder.Append(postingsBuilder))
+	}
+
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.NoError(t, uploadObjectToBucket(ctx, bucket, path, obj))
+}
+
+// TestExecuteIndexMerge_CrossTenantSectionsExcluded verifies that an IndexMerge
+// for one tenant only merges sections belonging to that tenant.
+func TestExecuteIndexMerge_CrossTenantSectionsExcluded(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	const targetTenant = "tenant-A"
+
+	// Intentionally mirroring a case where one tenant's small slice is buried under
+	// everyone else's.
+	layout := []tenantRows{
+		{tenant: targetTenant, rowCount: 3},
+		{tenant: "tenant-B", rowCount: 20},
+		{tenant: "tenant-C", rowCount: 25},
+	}
+
+	source0 := "source/index-0.dat"
+	source1 := "source/index-1.dat"
+	buildMultiTenantSourceObject(t, bucket, source0, layout)
+	buildMultiTenantSourceObject(t, bucket, source1, layout)
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          targetTenant,
+		OutputIndexPath: outputPath,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: source0, SectionIndex: 0},
+			}},
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: source1, SectionIndex: 0},
+			}},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	err := execCtx.doIndexMerge(ctx, node)
+	require.NoError(t, err)
+
+	// Only the target tenant's rows must appear: 2 sources × 3 rows = 6.
+	statsRows := readStatsRowsFromBucket(ctx, t, bucket, outputPath)
+	require.Len(t, statsRows, 6,
+		"output must contain only the target tenant's stats rows, not every tenant's")
+	for _, row := range statsRows {
+		require.Contains(t, row.ObjectPath, targetTenant,
+			"foreign-tenant stats row leaked into output: %q", row.ObjectPath)
+	}
+
+	postingsRows := readPostingsRowsFromBucket(ctx, t, bucket, outputPath)
+	require.Len(t, postingsRows, 6,
+		"output must contain only the target tenant's postings rows, not every tenant's")
+	for _, row := range postingsRows {
+		require.Contains(t, row.ObjectPath, targetTenant,
+			"foreign-tenant postings row leaked into output: %q", row.ObjectPath)
+	}
 }

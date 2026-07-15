@@ -8,6 +8,7 @@ linters:
   disable:
     - cyclop
     - depguard
+    - gomodguard
     - err113
     - exhaustive
     - exhaustruct

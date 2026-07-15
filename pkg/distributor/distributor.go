@@ -36,6 +36,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -72,6 +73,8 @@ var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 
+	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
+
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
 		if r == utf8.RuneError {
@@ -90,6 +93,7 @@ type Config struct {
 	// Request parser
 	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
 	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
+	MaxInflightBytes    int   `yaml:"max_inflight_bytes"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -112,7 +116,8 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
+	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -120,10 +125,12 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
+	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
+	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -133,14 +140,50 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
-		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+		return errors.New("at least one of kafka and ingestor writes must be enabled")
 	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
+	}
+	if cfg.MaxInflightBytes < 0 {
+		return errors.New("max inflight bytes cannot be less than zero")
+	}
+	return nil
+}
+
+type CircuitBreakerConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	OpenPeriod      time.Duration `yaml:"open_period"`
+	MinFailures     int           `yaml:"min_failures"`
+	PermittedTrials int           `yaml:"permitted_trials"`
+}
+
+func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
+	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
+	f.IntVar(&cfg.MinFailures, "distributor.circuit-breaker.min-failures", 1, "The minimum number of successive failures required to open the circuit breaker.")
+	f.IntVar(&cfg.PermittedTrials, "distributor.circuit-breaker.permitted-trials", 1, "The number of permitted trial requests in the half-open state. All requests must succeed to close the circuit breaker, any failure re-opens it.")
+}
+
+func (cfg *CircuitBreakerConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.OpenPeriod <= 0 {
+		return errors.New("the open period must be a positive duration")
+	}
+	if cfg.MinFailures < 1 {
+		return errors.New("the minimum number of failures must be at least 1")
+	}
+	if cfg.PermittedTrials < 1 {
+		return errors.New("the permitted number of trials must be at least 1")
 	}
 	return nil
 }
@@ -155,6 +198,89 @@ type KafkaProducer interface {
 	Close()
 }
 
+type metrics struct {
+	// distributor metrics
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendTimeouts                *prometheus.CounterVec
+	replicationFactor                     prometheus.Gauge
+	streamShardCount                      prometheus.Counter
+	zeroStreamCount                       *prometheus.CounterVec
+	pushStatsCount                        *prometheus.CounterVec
+	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
+
+	// kafka metrics
+	kafkaAppends           *prometheus.CounterVec
+	kafkaWriteBytesTotal   prometheus.Counter
+	kafkaWriteLatency      prometheus.Histogram
+	kafkaRecordsPerRequest prometheus.Histogram
+}
+
+func newMetrics(registerer prometheus.Registerer) *metrics {
+	return &metrics{
+		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_ingester_appends_total",
+			Help:      "The total number of batch appends sent to ingesters.",
+		}, []string{"ingester"}),
+		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_ingester_append_timeouts_total",
+			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
+		}, []string{"ingester"}),
+		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_replication_factor",
+			Help:      "The configured replication factor.",
+		}),
+		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "stream_sharding_count",
+			Help:      "Total number of times the distributor has sharded streams",
+		}),
+		zeroStreamCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_zero_streams_count",
+			Help:      "Total number of push requests with 0 streams",
+		}, []string{"tenant", "stage"}),
+		pushStatsCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_stats_count",
+			Help:      "Total number of successfully parsed push requests aggregated by tenant, content-type, encoding, version, format",
+		}, []string{"tenant", "content_type", "content_encoding", "content_version", "format"}),
+		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_structured_metadata_sanitized_total",
+			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
+		}, []string{"tenant", "format"}),
+
+		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_appends_total",
+			Help:      "The total number of appends sent to kafka ingest path.",
+		}, []string{"partition", "status"}),
+		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_kafka_latency_seconds",
+			Help:                            "Latency to write an incoming request to the ingest storage.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_sent_bytes_total",
+			Help:      "Total number of bytes sent to the ingest storage.",
+		}),
+		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_records_per_write_request",
+			Help:      "The number of records a single per-partition write request has been split into.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+		}),
+	}
+}
+
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	services.Service
@@ -162,6 +288,7 @@ type Distributor struct {
 	cfg              Config
 	ingesterCfg      ingester.Config
 	logger           log.Logger
+	m                *metrics
 	clientCfg        ingester_client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
@@ -192,13 +319,6 @@ type Distributor struct {
 
 	RequestParserWrapper push.RequestParserWrapper
 
-	// metrics
-	ingesterAppends                       *prometheus.CounterVec
-	ingesterAppendTimeouts                *prometheus.CounterVec
-	replicationFactor                     prometheus.Gauge
-	streamShardCount                      prometheus.Counter
-	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
-
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -219,12 +339,7 @@ type Distributor struct {
 	// Track the max inflight bytes in the last 1 minute.
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
-
-	// kafka metrics
-	kafkaAppends           *prometheus.CounterVec
-	kafkaWriteBytesTotal   prometheus.Counter
-	kafkaWriteLatency      prometheus.Histogram
-	kafkaRecordsPerRequest prometheus.Histogram
+	circuitBreaker             circuitBreaker
 }
 
 // New a distributor creates.
@@ -366,56 +481,7 @@ func New(
 		tee:                   tee,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_append_timeouts_total",
-			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
-		}, []string{"ingester"}),
-		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_replication_factor",
-			Help:      "The configured replication factor.",
-		}),
-		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "stream_sharding_count",
-			Help:      "Total number of times the distributor has sharded streams",
-		}),
-		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_push_structured_metadata_sanitized_total",
-			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
-		}, []string{"tenant", "format"}),
-		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_appends_total",
-			Help:      "The total number of appends sent to kafka ingest path.",
-		}, []string{"partition", "status"}),
-		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "distributor_kafka_latency_seconds",
-			Help:                            "Latency to write an incoming request to the ingest storage.",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.DefBuckets,
-		}),
-		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_sent_bytes_total",
-			Help:      "Total number of bytes sent to the ingest storage.",
-		}),
-		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_records_per_write_request",
-			Help:      "The number of records a single per-partition write request has been split into.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
-		}),
+		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
@@ -427,6 +493,19 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+	}
+
+	if cfg.CircuitBreaker.Enabled {
+		circuitBreaker := newTrialCircuitBreaker(
+			cfg.CircuitBreaker.OpenPeriod,
+			cfg.CircuitBreaker.MinFailures,
+			cfg.CircuitBreaker.PermittedTrials,
+			func(err error) bool {
+				return errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, errServiceUnavailableMaxLoad)
+			},
+		)
+		registerer.MustRegister(circuitBreaker)
+		d.circuitBreaker = circuitBreaker
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -448,7 +527,7 @@ func New(
 	d.distributorsRing = distributorsRing
 	d.distributorsLifecycler = distributorsLifecycler
 
-	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
+	d.m.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
 	rs := NewRateStore(
@@ -580,8 +659,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
+
+	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
+	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
+		return nil, errServiceUnavailableMaxLoad
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -593,6 +678,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
+		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
@@ -609,10 +695,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
-	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string) {
+	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
+	// and threaded into these closures, so a policy can override the tenant sharding behavior
+	// (e.g. toggle time sharding or use a different desired_rate).
+	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy)...)
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
 			return
 		}
 		streams = append(streams, KeyedStream{
@@ -623,26 +711,34 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string) {
-		if !shardStreamsCfg.TimeShardingEnabled {
-			maybeShardByRate(stream, pushSize, policy)
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
+		// Backfill streams implement time sharding on the client side (via the
+		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
+		// exploding stream cardinality. Rate-based sharding still applies.
+		if !shardStreamsCfg.TimeShardingEnabled || labels.Has(constants.BackfillLabel) {
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
 		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !ok {
-			maybeShardByRate(stream, pushSize, policy)
+			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
 
 		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy)
+			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy, shardStreamsCfg)
 		}
 	}
 
 	var ingestionBlockedError error
-	var totalEntriesSize, totalLineCount int
+
+	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
+	// resolved policy has a per-policy ingestion rate override are metered against their own
+	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
+	// tenant-wide bucket (keyed by "").
+	rlBuckets := map[string]*rateLimitBucket{}
 
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
@@ -724,11 +820,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 						normalizedBuilder.Del(lbl.Name)
 						normalizedBuilder.Set(normalized, lbl.Value)
 
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 					if strings.ContainsRune(lbl.Value, utf8.RuneError) {
 						normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
-						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 					}
 				}
 
@@ -774,9 +870,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 				n++
 				entrySize := util.EntryTotalSize(&entry)
-				totalEntriesSize += entrySize
 				streamEntriesSize += entrySize
-				totalLineCount++
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -784,7 +878,22 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy)
+			// Attribute this stream's bytes/lines to its rate-limit bucket.
+			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
+			bucketKey := ""
+			if hasRateOverride {
+				bucketKey = policy
+			}
+			b := rlBuckets[bucketKey]
+			if b == nil {
+				b = &rateLimitBucket{policy: policy, hasOverride: hasRateOverride}
+				rlBuckets[bucketKey] = b
+			}
+			b.bytes += streamEntriesSize
+			b.lines += n
+
+			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
+			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
 		}
 		return nil
 	}()
@@ -802,16 +911,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
+		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalEntriesSize) {
-		d.trackDiscardedData(ctx, req.Streams, validationContext, tenantID, validation.RateLimited, streamResolver, format)
-
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), totalLineCount, totalEntriesSize)
-		d.writeFailuresManager.Log(tenantID, err)
-		// Return a 429 to indicate to the client they are being rate limited
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
@@ -824,7 +929,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				for _, stream := range rejected {
 					discardedStreams = append(discardedStreams, stream.Stream)
 				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format)
+				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
 
 				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
 				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
@@ -988,6 +1093,124 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 	return len(missingLbs) > 0, missingLbs
 }
 
+// rateLimitBucket accumulates the bytes and line count of the streams metered against a
+// single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
+type rateLimitBucket struct {
+	policy      string
+	hasOverride bool
+	bytes       int
+	lines       int
+}
+
+// rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
+// exceeded. A single exceeded bucket uses the existing per-tenant or per-policy message; two
+// or more are enumerated deterministically (the caller sorts them). All limits are looked up
+// at the same "now" used for the reservation decision.
+func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []*rateLimitBucket) error {
+	limitOf := func(b *rateLimitBucket) int {
+		key := tenantID
+		if b.hasOverride {
+			key = encodeRateLimitKey(tenantID, b.policy)
+		}
+		return int(d.ingestionRateLimiter.Limit(now, key))
+	}
+
+	if len(exceeded) == 1 {
+		b := exceeded[0]
+		if b.hasOverride {
+			return fmt.Errorf(validation.RateLimitedPolicyErrorMsg, tenantID, b.policy, limitOf(b), b.lines, b.bytes)
+		}
+		return fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, limitOf(b), b.lines, b.bytes)
+	}
+
+	clauses := make([]string, 0, len(exceeded))
+	for _, b := range exceeded {
+		if b.hasOverride {
+			clauses = append(clauses, fmt.Sprintf("policy %q (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", b.policy, limitOf(b), b.lines, b.bytes))
+		} else {
+			clauses = append(clauses, fmt.Sprintf("the tenant default (limit: %d bytes/sec) ingesting %d lines totaling %d bytes", limitOf(b), b.lines, b.bytes))
+		}
+	}
+	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
+}
+
+// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
+// decision. A bucket with a per-policy override is metered independently from the tenant-wide
+// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
+// immediately, cancel every reservation (returning the tokens) and reject the whole request.
+// Using reservations rather than AllowN keeps the buckets independent: a request rejected
+// because one bucket is over its limit does not consume tokens from the others, so an
+// over-limit policy can't drain the budgets of unrelated policies across client retries.
+//
+// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
+// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+func (d *Distributor) enforceIngestionRateLimits(
+	ctx context.Context,
+	now time.Time,
+	tenantID string,
+	rlBuckets map[string]*rateLimitBucket,
+	streams []logproto.Stream,
+	validationContext validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) error {
+	type bucketReservation struct {
+		bucket      *rateLimitBucket
+		reservation *rate.Reservation
+	}
+	reservations := make([]bucketReservation, 0, len(rlBuckets))
+	var exceeded []*rateLimitBucket
+	for _, b := range rlBuckets {
+		limiterKey := tenantID
+		if b.hasOverride {
+			limiterKey = encodeRateLimitKey(tenantID, b.policy)
+		}
+		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
+		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
+		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
+		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
+		// bucket (rather than stopping at the first failure) so the rejection error can
+		// deterministically report all exceeded buckets.
+		if !r.OK() || r.DelayFrom(now) > 0 {
+			exceeded = append(exceeded, b)
+		}
+	}
+
+	if len(exceeded) == 0 {
+		return nil
+	}
+
+	// Roll back every reservation so no tokens are consumed for a rejected request.
+	for _, br := range reservations {
+		br.reservation.CancelAt(now)
+	}
+
+	// The whole request is dropped, so attribute every stream as discarded (each under its
+	// own policy label, handled by trackDiscardedData).
+	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+
+	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
+	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
+	// map iteration order.
+	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
+		if a.hasOverride != b.hasOverride {
+			if !a.hasOverride {
+				return -1 // tenant-wide bucket sorts first
+			}
+			return 1
+		}
+		return strings.Compare(a.policy, b.policy)
+	})
+
+	err := d.rateLimitError(now, tenantID, exceeded)
+	d.writeFailuresManager.Log(tenantID, err)
+	// Return a 429 to indicate to the client they are being rate limited
+	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
+}
+
+// trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
+// streams whose resolved policy satisfies it are tracked (used to attribute discards to a
+// single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	streams []logproto.Stream,
@@ -996,11 +1219,15 @@ func (d *Distributor) trackDiscardedData(
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
+	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
 		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
+			continue
+		}
+		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
 		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
@@ -1101,8 +1328,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string) []KeyedStream {
-	shardStreamsCfg := d.validator.ShardStreams(tenantID)
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
@@ -1110,7 +1336,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
 
-	d.streamShardCount.Inc()
+	d.m.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
@@ -1307,12 +1533,12 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
-	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
+	d.m.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		if e, ok := status.FromError(err); ok {
 			switch e.Code() {
 			case codes.DeadlineExceeded:
-				d.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
+				d.m.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
 			}
 		}
 	}
@@ -1325,7 +1551,7 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, tenant string, str
 	if err != nil {
 		// We need to add len(streams) to the counter as we later count successes and
 		// failures per stream too.
-		d.kafkaAppends.WithLabelValues("kafka", "fail").Add(float64(len(streams)))
+		d.m.kafkaAppends.WithLabelValues("kafka", "fail").Add(float64(len(streams)))
 		tracker.doneWithResult(err)
 		return
 	}
@@ -1336,23 +1562,23 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, tenant string, str
 		tracker.doneWithResult(nil)
 		return
 	}
-	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
+	d.m.kafkaRecordsPerRequest.Observe(float64(len(records)))
 	// Produce the records to Kafka.
-	writeLatency := prometheus.NewTimer(d.kafkaWriteLatency)
+	writeLatency := prometheus.NewTimer(d.m.kafkaWriteLatency)
 	results := d.kafkaWriter.ProduceSync(ctx, records)
 	if count, sizeBytes := successfulProduceRecordsStats(results); count > 0 {
 		// TODO(grobinson): We should emit the write latency even when we failed.
 		// This has been kept as-is for now to preserve behavior.
 		writeLatency.ObserveDuration()
-		d.kafkaWriteBytesTotal.Add(float64(sizeBytes))
+		d.m.kafkaWriteBytesTotal.Add(float64(sizeBytes))
 	}
 	var finalErr error
 	for _, result := range results {
 		if result.Err != nil {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "fail").Inc()
+			d.m.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "fail").Inc()
 			finalErr = result.Err
 		} else {
-			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "success").Inc()
+			d.m.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition), "success").Inc()
 		}
 	}
 	tracker.doneWithResult(finalErr)

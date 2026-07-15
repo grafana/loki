@@ -172,8 +172,17 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		if err != nil {
 			return nil, err
 		}
-		tenantShards := q.getShardCountForTenant(tenantID)
-		subring, err := q.partitionRing.ShuffleShardWithLookback(tenantID, tenantShards, q.querierConfig.QueryIngestersWithin, time.Now())
+		shardSize := q.getShardCountForTenant(tenantID)
+		// When the tenant has no configured shard size, share a single subring
+		// across all such tenants by using a fixed identifier. The resulting set
+		// of partitions is tenant-independent when size == 0, so per-tenant
+		// shuffle sharding would just waste CPU and cache memory recomputing the
+		// same answer.
+		shuffleShardIdentifier := tenantID
+		if shardSize == 0 {
+			shuffleShardIdentifier = ""
+		}
+		subring, err := q.partitionRing.ShuffleShardWithLookback(shuffleShardIdentifier, shardSize, q.querierConfig.QueryIngestersWithin, time.Now())
 		if err != nil {
 			return nil, err
 		}

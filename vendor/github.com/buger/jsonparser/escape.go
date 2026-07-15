@@ -1,3 +1,4 @@
+// SYS-REQ-014, SYS-REQ-060, SYS-REQ-061, SYS-REQ-062, SYS-REQ-063: string escape and Unicode handling
 package jsonparser
 
 import (
@@ -63,8 +64,12 @@ func decodeUnicodeEscape(in []byte) (rune, int) {
 	if r, ok := decodeSingleUnicodeEscape(in); !ok {
 		// Invalid Unicode escape
 		return utf8.RuneError, -1
-	} else if r <= basicMultilingualPlaneOffset && !isUTF16EncodedRune(r) {
-		// Valid Unicode escape in Basic Multilingual Plane
+	} else if !isUTF16EncodedRune(r) {
+		// Valid Unicode escape in Basic Multilingual Plane.
+		// Note: a single \uXXXX escape produces r in [0, 0xFFFF], so r is always
+		// within the BMP. The former r <= basicMultilingualPlaneOffset guard was
+		// tautological and has been removed — the real discriminator is whether r
+		// falls in the UTF-16 surrogate range.
 		return r, 6
 	} else if r2, ok := decodeSingleUnicodeEscape(in[6:]); !ok { // Note: previous decodeSingleUnicodeEscape success guarantees at least 6 bytes remain
 		// UTF16 "high surrogate" without manditory valid following Unicode escape for the "low surrogate"
@@ -145,7 +150,11 @@ func Unescape(in, out []byte) ([]byte, error) {
 	in = in[firstBackslash:]
 	buf := out[firstBackslash:]
 
-	for len(in) > 0 {
+	// The loop always exits via break: either on error (MalformedStringEscapeError)
+	// or after copying the final non-escaped tail. The former `for len(in) > 0`
+	// guard was structurally always true on re-entry since the else branch always
+	// leaves at least the backslash character in `in`.
+	for {
 		// Unescape the next escaped character
 		inLen, bufLen := unescapeToUTF8(in, buf)
 		if inLen == -1 {

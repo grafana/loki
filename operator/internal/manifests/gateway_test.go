@@ -840,7 +840,6 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 		"--logs.rules.read-only=true",
 		"--tls.client-auth-type=NoClientCert",
-		"--tls.min-version=VersionTLS12",
 		"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 		"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 		"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1037,7 +1036,6 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
 				"--tls.client-auth-type=NoClientCert",
-				"--tls.min-version=VersionTLS12",
 				"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 				"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1202,7 +1200,6 @@ func TestBuildGateway_WithHTTPEncryption_WithCustomTLS(t *testing.T) {
 				"--logs.rules.endpoint=https://abcd-ruler-http.efgh.svc.cluster.local:3100",
 				"--logs.rules.read-only=true",
 				"--tls.client-auth-type=NoClientCert",
-				"--tls.min-version=VersionTLS12",
 				"--tls.server.cert-file=/var/run/tls/http/server/tls.crt",
 				"--tls.server.key-file=/var/run/tls/http/server/tls.key",
 				"--tls.healthchecks.server-name=abcd-gateway-http.efgh.svc.cluster.local",
@@ -1448,8 +1445,8 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	require.NotNil(t, pdb)
 	require.Equal(t, "abcd-gateway", pdb.Name)
 	require.Equal(t, "efgh", pdb.Namespace)
-	require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-	require.Equal(t, int32(1), pdb.Spec.MinAvailable.IntVal)
+	require.NotNil(t, pdb.Spec.MaxUnavailable.IntVal)
+	require.Equal(t, int32(1), pdb.Spec.MaxUnavailable.IntVal)
 	require.EqualValues(t, ComponentLabels(LabelGatewayComponent, opts.Name), pdb.Spec.Selector.MatchLabels)
 }
 

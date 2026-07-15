@@ -32,6 +32,7 @@ linters:
     - maintidx
     - misspell
     - mnd
+    - modernize
     - nakedret
     - nestif
     - nilnil
@@ -52,3 +53,8 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - gomodguard
+  settings:
+    govet:
+      disable:
+        - inline

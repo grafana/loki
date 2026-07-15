@@ -1,11 +1,13 @@
 package executor
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/assertions"
@@ -27,6 +29,101 @@ var (
 
 func init() {
 	assertions.Enabled = true
+}
+
+func BenchmarkRangeAggregation(b *testing.B) {
+	opts := &rangeAggregationOptions{
+		grouping: physical.Grouping{
+			Columns: []physical.ColumnExpression{
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "env",
+						Type:   types.ColumnTypeAmbiguous,
+					},
+				},
+				&physical.ColumnExpr{
+					Ref: types.ColumnRef{
+						Column: "service",
+						Type:   types.ColumnTypeAmbiguous,
+					},
+				},
+			},
+			Without: false,
+		},
+		startTs:       time.Unix(0, 0).UTC(),
+		rangeInterval: 10 * time.Second,
+		operation:     types.RangeAggregationTypeCount,
+	}
+
+	type testCase struct {
+		name      string
+		intervals int
+		series    int
+	}
+
+	cases := []testCase{
+		{
+			name:      "10 intervals",
+			intervals: 10,
+			series:    1,
+		},
+		{
+			name:      "10 intervals, 10 series",
+			intervals: 10,
+			series:    10,
+		},
+		{
+			name:      "10 intervals, 1000 series",
+			intervals: 10,
+			series:    1000,
+		},
+		{
+			name:      "10 intervals, 100k series",
+			intervals: 10,
+			series:    100000,
+		},
+	}
+
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			innerOpts := *opts
+			innerOpts.endTs = innerOpts.startTs.Add(innerOpts.rangeInterval * time.Duration(tc.intervals))
+			fakeInput := arrowtest.Rows{}
+			for i := range tc.series {
+				for j := range tc.intervals {
+					fakeInput = append(fakeInput, arrowtest.Row{colTs: time.Unix(int64(j)*int64(opts.rangeInterval.Seconds()), 0).UTC(), colEnv: "prod", colSvc: fmt.Sprintf("app%d", i)})
+				}
+			}
+			input := NewBufferedPipeline(fakeInput.Record(memory.DefaultAllocator, fakeInput.Schema()))
+			input.Reset()
+
+			pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, newExpressionEvaluator(), innerOpts)
+			require.NoError(b, err)
+			defer pipeline.Close()
+
+			b.ResetTimer()
+			rowsProduced := 0
+			eofCount := 0
+			for b.Loop() {
+				rec, err := pipeline.Read(b.Context())
+				if err == EOF {
+					eofCount++
+					input.Reset()
+					pipeline.inputsExhausted = false
+					pipeline.aggregator.Reset()
+					continue
+				}
+				rowsProduced += int(rec.NumRows())
+				rec.Release()
+				require.NoError(b, err)
+			}
+
+			// Check at least one row per non-EOF iteration was produced.
+			require.GreaterOrEqual(b, rowsProduced, b.N-eofCount)
+
+			b.ReportMetric(float64(tc.series*tc.intervals*b.N)/b.Elapsed().Seconds(), "datapoints/s")
+		})
+	}
 }
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {

@@ -47,19 +47,21 @@ Loki automatically tries to populate a default `service_name` label while ingest
 If you are already applying a `service_name`, Loki will use that value. For example, if you are using the Kubernetes monitoring Helm Chart, the Alloy configuration applies a `service_name` by default.
 {{< /admonition >}}
 
-Loki will attempt to create the `service_name` label by looking for the following labels in this order:
+If a `service_name` label is already present on the stream, Loki uses it directly. Otherwise, Loki looks for the first non-empty value from the following labels, in order:
 
-- service_name
 - service
 - app
 - application
+- app_name
 - name
 - app_kubernetes_io_name
 - container
 - container_name
+- k8s_container_name
 - component
 - workload
 - job
+- k8s_job_name
 
 If no label is found matching the list, a value of `unknown_service` is applied.
 

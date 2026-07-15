@@ -33,7 +33,7 @@ Loki is designed to be run in two states:
 * [Microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode): For workloads that require high availability and scalability. Loki is deployed in this mode internally at Grafana Labs.
 
 {{< admonition type="tip" >}}
-Loki can also be deployed in [Simple Scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). But Simple Scalable Deployment (SSD) mode is being deprecated. For the best possible experience in production, we recommend deploying Loki in *microservices* mode.
+Loki can also be deployed in [Simple Scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). But Simple Scalable Deployment (SSD) mode is being deprecated and removed in Loki 4.0. For the best possible experience in production, we recommend deploying Loki in *microservices* mode.
 {{< /admonition >}}
 
 ## Cloud Deployment Guides
@@ -46,4 +46,4 @@ The following guides provide step-by-step instructions for deploying Loki on clo
 
 ## Reference
 
-You can find reference documentation for the Loki Helm chart in the [values.yaml file](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml).
+You can find reference documentation for the Loki Helm chart values in the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/) or view the source [values.yaml file](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml).

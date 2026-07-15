@@ -349,7 +349,7 @@ Loki ingesters are unable to flush chunks to backend storage at a critical rate 
 
 ### Summary
 
-One or more Loki ingesters are failing to flush at least 20% of their chunks to backend storage over a 5-minute period. This indicates issues with storage connectivity, authentication, or storage capacity that require immediate intervention.
+One or more Loki ingesters are failing to flush at least 20% of their chunks to backend storage. This indicates issues with storage connectivity, authentication, or storage capacity that require immediate intervention.
 
 ### Severity
 

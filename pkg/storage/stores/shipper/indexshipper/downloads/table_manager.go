@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -28,6 +29,10 @@ import (
 const (
 	cacheCleanupInterval = time.Hour
 	daySeconds           = int64(24 * time.Hour / time.Second)
+
+	// sync trigger values, used as the "trigger" metric/log label.
+	syncTriggerPeriodic = "periodic"
+	syncTriggerManual   = "manual"
 )
 
 type Limits interface {
@@ -50,6 +55,11 @@ type TableManager interface {
 	Stop()
 	ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
+	// TriggerSync starts a background sync (refreshing the list cache first) if
+	// none is already in progress. It returns true if a new sync was started.
+	TriggerSync() bool
+	// SyncStatus reports the current/last sync status.
+	SyncStatus() indexstore.SyncStatus
 }
 
 type Config struct {
@@ -76,6 +86,10 @@ type tableManager struct {
 	wg     sync.WaitGroup
 
 	tenantFilter TenantFilter
+
+	// syncManager serializes periodic and on-demand index syncs and tracks their
+	// status (see TriggerSync/SyncStatus).
+	syncManager *syncManager
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
@@ -97,6 +111,16 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		ctx:                ctx,
 		cancel:             cancel,
 	}
+
+	// The sync work (refresh-on-manual + syncTables) stays on the table manager
+	// since it touches the tables map, storage client, and metrics; the
+	// syncManager owns the serialization, status tracking, and async triggering.
+	tm.syncManager = newSyncManager(logger, func(ctx context.Context, trigger string) error {
+		if trigger == syncTriggerManual {
+			tm.refreshListCache(ctx)
+		}
+		return tm.syncTables(ctx, trigger)
+	})
 
 	// load the existing tables first.
 	err := tm.loadLocalTables()
@@ -132,14 +156,12 @@ func (tm *tableManager) loop() {
 	for {
 		select {
 		case <-syncTicker.C:
-			err := tm.syncTables(tm.ctx)
-			if err != nil {
+			if err := tm.syncManager.RunPeriodic(tm.ctx); err != nil {
 				level.Error(tm.logger).Log("msg", "error syncing local index files with storage", "err", err)
 			}
 
 			// we need to keep ensuring query readiness to download every days new table which would otherwise be downloaded only during queries.
-			err = tm.ensureQueryReadiness(tm.ctx)
-			if err != nil {
+			if err := tm.ensureQueryReadiness(tm.ctx); err != nil {
 				level.Error(tm.logger).Log("msg", "error ensuring query readiness of tables", "err", err)
 			}
 		case <-cacheCleanupTicker.C:
@@ -153,9 +175,43 @@ func (tm *tableManager) loop() {
 	}
 }
 
+// TriggerSync starts a background index sync if none is already in progress,
+// returning true if a new sync was started. A manual sync refreshes the
+// object-listing cache first so freshly shipped index files become visible
+// immediately instead of after the cache TTL. The sync is bound to the table
+// manager's lifecycle so Stop drains it.
+func (tm *tableManager) TriggerSync() bool {
+	return tm.syncManager.TriggerManual(tm.ctx)
+}
+
+// SyncStatus reports the current/last index sync status.
+func (tm *tableManager) SyncStatus() indexstore.SyncStatus {
+	return tm.syncManager.Status()
+}
+
+// refreshListCache forces the object-listing cache to be rebuilt so newly
+// shipped index files in already-tracked tables become visible to the
+// subsequent sync. It deliberately does not run query-readiness, so a brand-new
+// table (e.g. a new day) is left for the periodic loop to pick up.
+func (tm *tableManager) refreshListCache(ctx context.Context) {
+	tm.indexStorageClient.RefreshIndexTableNamesCache(ctx)
+
+	tm.tablesMtx.RLock()
+	names := slices.Collect(maps.Keys(tm.tables))
+	tm.tablesMtx.RUnlock()
+
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		tm.indexStorageClient.RefreshIndexTableCache(ctx, name)
+	}
+}
+
 func (tm *tableManager) Stop() {
 	tm.cancel()
 	tm.wg.Wait()
+	tm.syncManager.Wait()
 	tm.tablesMtx.Lock()
 	defer tm.tablesMtx.Unlock()
 
@@ -217,7 +273,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 	return table, nil
 }
 
-func (tm *tableManager) syncTables(ctx context.Context) error {
+func (tm *tableManager) syncTables(ctx context.Context, trigger string) error {
 	tm.tablesMtx.RLock()
 	tables := slices.Collect(maps.Keys(tm.tables))
 	tm.tablesMtx.RUnlock()
@@ -231,8 +287,8 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 			status = statusFailure
 		}
 
-		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status).Inc()
-		tm.metrics.tablesDownloadOperationDurationSeconds.Set(time.Since(start).Seconds())
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(status, trigger).Inc()
+		tm.metrics.tablesDownloadOperationDurationSeconds.WithLabelValues(trigger).Set(time.Since(start).Seconds())
 	}()
 
 	level.Info(tm.logger).Log("msg", "syncing tables")
@@ -256,10 +312,10 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 		err := table.Sync(ctx)
 		duration := time.Since(start).Seconds()
 		if err != nil {
-			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
+			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure, trigger).Observe(duration)
 			return errors.Wrapf(err, "failed to sync table '%s'", name)
 		}
-		tm.metrics.tableSyncLatency.WithLabelValues(name, statusSuccess).Observe(duration)
+		tm.metrics.tableSyncLatency.WithLabelValues(name, statusSuccess, trigger).Observe(duration)
 	}
 
 	return nil

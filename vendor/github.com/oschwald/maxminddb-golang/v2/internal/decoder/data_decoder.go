@@ -397,6 +397,69 @@ func append64(val uint64, b byte) (uint64, byte) {
 	return (val << 8) | uint64(b), byte(val >> 56)
 }
 
+// decodePointerKeyFast is an allocation-free inline of decodePointer followed
+// by decodeKey for the dominant case of a map key encoded as a pointer to a
+// short string. On success, returns the key bytes (aliasing d.buffer) and the
+// offset past the pointer. On any deviation from the fast-path shape it
+// returns ok=false, signaling the caller to fall through to the slow path —
+// this is not an error and is re-validated downstream:
+//
+//   - bail-outs for OOB pointer reads are re-encountered by decodeCtrlData /
+//     decodePointer in the slow path and surfaced as typed errors.
+//   - pointedSize >= 29 selects the extended-size encoding, which requires
+//     additional control bytes the slow path knows how to read.
+//   - non-KindString targets and pointer-to-pointer chains are spec violations
+//     that the slow path reports.
+//
+// pointerSize == 4 uses no bias (pointerBase 0); sizes 2 and 3 use
+// pointerBase2 / pointerBase3. Size 1 also has no bias.
+func (d *DataDecoder) decodePointerKeyFast(offset, ctrlByte, bufferLen uint) ([]byte, uint, bool) {
+	size := ctrlByte & 0x1f
+	pointerSize := ((size >> 3) & 0x3) + 1
+	newOffset := offset + 1 + pointerSize
+	if newOffset > bufferLen {
+		return nil, 0, false
+	}
+	var prefix uint
+	if pointerSize == 4 {
+		prefix = 0
+	} else {
+		prefix = size & 0x7
+	}
+	pointerBytes := d.buffer[offset+1 : newOffset]
+	unpacked := uintFromBytes(prefix, pointerBytes)
+
+	var pointerValueOffset uint
+	switch pointerSize {
+	case 1, 4:
+		pointerValueOffset = 0
+	case 2:
+		pointerValueOffset = pointerBase2
+	case 3:
+		pointerValueOffset = pointerBase3
+	default:
+		return nil, 0, false
+	}
+
+	pointer := unpacked + pointerValueOffset
+	if pointer >= bufferLen {
+		return nil, 0, false
+	}
+	pointedCtrlByte := d.buffer[pointer]
+	if Kind(pointedCtrlByte>>5) != KindString {
+		return nil, 0, false
+	}
+	pointedSize := uint(pointedCtrlByte & 0x1f)
+	if pointedSize >= 29 {
+		return nil, 0, false
+	}
+	dataOffset := pointer + 1
+	if dataOffset+pointedSize > bufferLen {
+		return nil, 0, false
+	}
+	return d.buffer[dataOffset : dataOffset+pointedSize], newOffset, true
+}
+
 // DecodeKey decodes a map key into []byte slice. We use a []byte so that we
 // can take advantage of https://github.com/golang/go/issues/3512 to avoid
 // copying the bytes when decoding a struct. Previously, we achieved this by
@@ -408,7 +471,12 @@ func (d *DataDecoder) decodeKey(offset uint) ([]byte, uint, error) {
 	}
 
 	ctrlByte := d.buffer[offset]
-	if Kind(ctrlByte>>5) == KindString {
+	kind := Kind(ctrlByte >> 5)
+	// Fast paths for the two dominant key shapes. Everything else — including
+	// KindString with size >= 29 (extended encoding) and any fast-path
+	// bail-out — falls through to the slow path below.
+	switch kind {
+	case KindString:
 		size := uint(ctrlByte & 0x1f)
 		if size < 29 {
 			dataOffset := offset + 1
@@ -418,6 +486,11 @@ func (d *DataDecoder) decodeKey(offset uint) ([]byte, uint, error) {
 			}
 			return d.buffer[dataOffset:newOffset], newOffset, nil
 		}
+	case KindPointer:
+		if key, newOffset, ok := d.decodePointerKeyFast(offset, uint(ctrlByte), bufferLen); ok {
+			return key, newOffset, nil
+		}
+	default:
 	}
 
 	kindNum, size, dataOffset, err := d.decodeCtrlData(offset)
@@ -477,9 +550,10 @@ func (d *DataDecoder) nextValueOffset(offset, numberToSkip uint) (uint, error) {
 			// A pointer value is represented by its pointer token only.
 			// To skip it, just move past the pointer bytes; do NOT follow
 			// the pointer target here.
-			_, ptrEndOffset, err2 := d.decodePointer(size, newOffset)
-			if err2 != nil {
-				return 0, err2
+			pointerSize := ((size >> 3) & 0x3) + 1
+			ptrEndOffset := newOffset + pointerSize
+			if ptrEndOffset > uint(len(d.buffer)) {
+				return 0, mmdberrors.NewOffsetError()
 			}
 			newOffset = ptrEndOffset
 		case KindMap:

@@ -24,6 +24,9 @@ type ObjectClientAdapter struct {
 	logger               log.Logger
 	supportsUpdatedAt    bool
 	isRetryableErr       func(err error) bool
+	// storeType is the resolved backend type (e.g. filesystem, s3, gcs), used by
+	// callers that need backend-specific behaviour such as chunk key encoding.
+	storeType string
 }
 
 func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
@@ -73,6 +76,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		hedgedBucket:      hedgedBucket,
 		logger:            log.With(logger, "component", "bucket_to_object_client_adapter"),
 		supportsUpdatedAt: slices.Contains(bucket.SupportedIterOptions(), objstore.UpdatedAt),
+		storeType:         storeType,
 		// default to no retryable errors. Override with WithRetryableErrFunc
 		isRetryableErr: func(_ error) bool {
 			return false
@@ -90,6 +94,12 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 }
 
 func (o *ObjectClientAdapter) Stop() {
+}
+
+// IsBackendFilesystem reports whether the underlying object storage backend is
+// the local filesystem.
+func (o *ObjectClientAdapter) IsBackendFilesystem() bool {
+	return o.storeType == Filesystem
 }
 
 // ObjectExists checks if a given objectKey exists in the bucket

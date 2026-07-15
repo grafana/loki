@@ -70,9 +70,6 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 		newFields := make([]arrow.Field, 0, len(headers))
 		for _, header := range headers {
 			ct := types.ColumnTypeParsed
-			if op == types.VariadicOpParseLabelfmt {
-				ct = types.ColumnTypeLabel
-			}
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
 				ct = types.ColumnTypeGenerated
 			}
