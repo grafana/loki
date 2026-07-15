@@ -5,7 +5,6 @@ syntax = "proto3";
 package loki.wire;
 
 import "wiresmith/options.proto";
-import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 
@@ -59,13 +58,15 @@ message MessageFrame {
 
     TaskAssignMessage task_assign = 3;
     TaskCancelMessage task_cancel = 4;
-    TaskFlagMessage task_flag = 5;
-    TaskStatusMessage task_status = 6;
+    TaskResultMessage task_result = 12;
 
     StreamBindMessage stream_bind = 7;
     StreamDataMessage stream_data = 8;
     StreamStatusMessage stream_status = 9;
   }
+
+  reserved 5, 6;
+  reserved "task_flag", "task_status";
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -128,21 +129,12 @@ message TaskCancelMessage {
   ulid.loki.v1.ProtoULID id = 1 [(wiresmith.options.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID"];
 }
 
-// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-message TaskFlagMessage {
+// TaskResultMessage is sent by the worker to the scheduler with the terminal
+// result of a task.
+message TaskResultMessage {
   ulid.loki.v1.ProtoULID id = 1 [(wiresmith.options.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID"];
 
-  // Interruptible indicates that tasks blocked on writing or reading to a
-  // stream can be paused, and that worker can accept new tasks to run.
-  bool interruptible = 2;
-}
-
-// TaskStatusMessage is sent by the worker to the scheduler to inform the
-// scheduler of the current status of a task.
-message TaskStatusMessage {
-  ulid.loki.v1.ProtoULID id = 1 [(wiresmith.options.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID"];
-
-  TaskStatus status = 2;
+  TaskResult result = 2;
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -190,12 +182,8 @@ message Task {
   // The key is the node ID string representation.
   map<string, StreamList> sinks = 5;
 
-  // The maximum boundary of timestamps that the task can possibly emit.
-  // Does not account for predicates.
-  // MaxTimeRange is not read when executing a task fragment. It can be used
-  // as metadata to control execution (such as cancelling ongoing tasks based
-  // on their maximum time range).
-  loki.physical.TimeRange max_time_range = 6;
+  reserved 6;
+  reserved "max_time_range";
 
   // cached_source defines a set of already processed arrow batches ready to be consumed by the physical node.
   // The key is the node ID string representation.
@@ -217,42 +205,35 @@ message CachedSources {
 message Stream {
   ulid.loki.v1.ProtoULID ulid = 1 [(wiresmith.options.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID"];
 
-  string tenant_id = 2;
+  reserved 2;
+  reserved "tenant_id";
 }
 
-// TaskStatus represents the current status of a task.
-message TaskStatus {
-  TaskState state = 1;
+// TaskResult represents the terminal result of a task.
+message TaskResult {
+  TaskOutcome outcome = 1;
 
-  // Error is set only when state is TASK_STATE_FAILED.
+  // Error is set only when outcome is TASK_OUTCOME_FAILED.
   TaskError error = 2 [(wiresmith.options.pointer) = true];
 
   // Capture is the capture data for this task, if available.
   // This is an opaque binary representation of the capture payload.
   bytes capture = 3;
 
-  ContributingTimeRange contributing_time_range = 4 [(wiresmith.options.pointer) = true];
-}
-
-message ContributingTimeRange {
-  google.protobuf.Timestamp timestamp = 1 [(wiresmith.options.stdtime) = true];
-
-  bool less_than = 2;
+  reserved 4;
+  reserved "contributing_time_range";
 }
 
 message TaskError {
   string description = 1;
 }
 
-// TaskState represents the execution state of a task.
-enum TaskState {
-  TASK_STATE_INVALID = 0; // Invalid/unspecified state.
-  TASK_STATE_CREATED = 1; // Created but not given to Runner.
-  TASK_STATE_PENDING = 2; // Pending execution.
-  TASK_STATE_RUNNING = 3; // Currently being executed.
-  TASK_STATE_COMPLETED = 4; // Completed successfully.
-  TASK_STATE_CANCELLED = 5; // Cancelled.
-  TASK_STATE_FAILED = 6; // Failed during execution.
+// TaskOutcome represents the terminal outcome of a task.
+enum TaskOutcome {
+  TASK_OUTCOME_UNSPECIFIED = 0;
+  TASK_OUTCOME_COMPLETED = 1;
+  TASK_OUTCOME_CANCELLED = 2;
+  TASK_OUTCOME_FAILED = 3;
 }
 
 // StreamState represents the state of a stream.
@@ -260,6 +241,8 @@ enum StreamState {
   STREAM_STATE_INVALID = 0; // Invalid/unspecified state.
   STREAM_STATE_IDLE = 1; // Stream waiting for sender and receiver.
   STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
-  STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
   STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
+
+  reserved 3;
+  reserved "STREAM_STATE_BLOCKED";
 }

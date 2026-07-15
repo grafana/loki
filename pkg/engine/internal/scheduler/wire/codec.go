@@ -278,21 +278,15 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 			ID: ulid.ULID(k.TaskCancel.Id),
 		}, nil
 
-	case *wirepb.MessageFrame_TaskFlag:
-		return TaskFlagMessage{
-			ID:            ulid.ULID(k.TaskFlag.Id),
-			Interruptible: k.TaskFlag.Interruptible,
-		}, nil
-
-	case *wirepb.MessageFrame_TaskStatus:
-		status, err := c.taskStatusFromPbTaskStatus(&k.TaskStatus.Status)
+	case *wirepb.MessageFrame_TaskResult:
+		result, err := c.taskResultFromPbTaskResult(&k.TaskResult.Result)
 		if err != nil {
 			return nil, err
 		}
 
-		return TaskStatusMessage{
-			ID:     ulid.ULID(k.TaskStatus.Id),
-			Status: status,
+		return TaskResultMessage{
+			ID:     ulid.ULID(k.TaskResult.Id),
+			Result: result,
 		}, nil
 
 	case *wirepb.MessageFrame_StreamBind:
@@ -367,64 +361,47 @@ func (c *metricCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		Sources:       sources,
 		Sinks:         sinks,
 		CachedSources: cachedSources,
-		MaxTimeRange: physical.TimeRange{
-			Start: t.MaxTimeRange.Start,
-			End:   t.MaxTimeRange.End,
-		},
 	}, nil
 }
 
-func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workflow.TaskStatus, error) {
-	if ts == nil {
-		return workflow.TaskStatus{}, fmt.Errorf("nil task status")
+func (c *protobufCodec) taskResultFromPbTaskResult(tr *wirepb.TaskResult) (workflow.TaskResult, error) {
+	if tr == nil {
+		return workflow.TaskResult{}, fmt.Errorf("nil task result")
 	}
 
-	state, err := c.taskStateFromPbTaskState(ts.State)
+	outcome, err := c.taskOutcomeFromPbTaskOutcome(tr.Outcome)
 	if err != nil {
-		return workflow.TaskStatus{}, err
+		return workflow.TaskResult{}, err
 	}
 
-	status := workflow.TaskStatus{State: state}
-	pbErr := ts.GetError()
+	result := workflow.TaskResult{Outcome: outcome}
+	pbErr := tr.GetError()
 	if pbErr != nil {
-		status.Error = errors.New(pbErr.Description)
+		result.Error = errors.New(pbErr.Description)
 	}
 
-	if captureData := ts.GetCapture(); len(captureData) > 0 {
+	if captureData := tr.GetCapture(); len(captureData) > 0 {
 		capture := &xcap.Capture{}
 		if err := capture.UnmarshalBinary(captureData); err != nil {
-			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
+			return workflow.TaskResult{}, fmt.Errorf("failed to unmarshal capture: %w", err)
 		}
 
-		status.Capture = capture
+		result.Capture = capture
 	}
 
-	if ts.ContributingTimeRange != nil {
-		status.ContributingTimeRange = workflow.ContributingTimeRange{
-			Timestamp: ts.ContributingTimeRange.Timestamp,
-			LessThan:  ts.ContributingTimeRange.LessThan,
-		}
-	}
-
-	return status, nil
+	return result, nil
 }
 
-func (c *protobufCodec) taskStateFromPbTaskState(state wirepb.TaskState) (workflow.TaskState, error) {
-	switch state {
-	case wirepb.TaskState_TASK_STATE_CREATED:
-		return workflow.TaskStateCreated, nil
-	case wirepb.TaskState_TASK_STATE_PENDING:
-		return workflow.TaskStatePending, nil
-	case wirepb.TaskState_TASK_STATE_RUNNING:
-		return workflow.TaskStateRunning, nil
-	case wirepb.TaskState_TASK_STATE_COMPLETED:
-		return workflow.TaskStateCompleted, nil
-	case wirepb.TaskState_TASK_STATE_CANCELLED:
-		return workflow.TaskStateCancelled, nil
-	case wirepb.TaskState_TASK_STATE_FAILED:
-		return workflow.TaskStateFailed, nil
+func (c *protobufCodec) taskOutcomeFromPbTaskOutcome(outcome wirepb.TaskOutcome) (workflow.TaskOutcome, error) {
+	switch outcome {
+	case wirepb.TaskOutcome_TASK_OUTCOME_COMPLETED:
+		return workflow.TaskOutcomeCompleted, nil
+	case wirepb.TaskOutcome_TASK_OUTCOME_CANCELLED:
+		return workflow.TaskOutcomeCancelled, nil
+	case wirepb.TaskOutcome_TASK_OUTCOME_FAILED:
+		return workflow.TaskOutcomeFailed, nil
 	default:
-		return workflow.TaskStateCancelled, fmt.Errorf("task state %v is unknown", state)
+		return 0, fmt.Errorf("task outcome %v is unknown", outcome)
 	}
 }
 
@@ -434,8 +411,6 @@ func (c *protobufCodec) streamStateFromPbStreamState(state wirepb.StreamState) (
 		return workflow.StreamStateIdle, nil
 	case wirepb.StreamState_STREAM_STATE_OPEN:
 		return workflow.StreamStateOpen, nil
-	case wirepb.StreamState_STREAM_STATE_BLOCKED:
-		return workflow.StreamStateBlocked, nil
 	case wirepb.StreamState_STREAM_STATE_CLOSED:
 		return workflow.StreamStateClosed, nil
 	default:
@@ -468,8 +443,7 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]wirep
 		streams := make([]*workflow.Stream, len(streamList.Streams))
 		for i, s := range streamList.Streams {
 			streams[i] = &workflow.Stream{
-				ULID:     ulid.ULID(s.Ulid),
-				TenantID: s.TenantId,
+				ULID: ulid.ULID(s.Ulid),
 			}
 		}
 
@@ -607,24 +581,16 @@ func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, er
 			},
 		}
 
-	case TaskFlagMessage:
-		mf.Kind = &wirepb.MessageFrame_TaskFlag{
-			TaskFlag: wirepb.TaskFlagMessage{
-				Id:            protoUlid.ULID(v.ID),
-				Interruptible: v.Interruptible,
-			},
-		}
-
-	case TaskStatusMessage:
-		status, err := c.taskStatusToPbTaskStatus(v.Status)
+	case TaskResultMessage:
+		result, err := c.taskResultToPbTaskResult(v.Result)
 		if err != nil {
 			return nil, err
 		}
 
-		mf.Kind = &wirepb.MessageFrame_TaskStatus{
-			TaskStatus: wirepb.TaskStatusMessage{
+		mf.Kind = &wirepb.MessageFrame_TaskResult{
+			TaskResult: wirepb.TaskResultMessage{
 				Id:     protoUlid.ULID(v.ID),
-				Status: *status,
+				Result: *result,
 			},
 		}
 
@@ -699,24 +665,16 @@ func (c *metricCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
 		Sources:       sources,
 		Sinks:         sinks,
 		CachedSources: cachedSources,
-		MaxTimeRange: physicalpb.TimeRange{
-			Start: from.MaxTimeRange.Start,
-			End:   from.MaxTimeRange.End,
-		},
 	}, nil
 }
 
-func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
-	ts := &wirepb.TaskStatus{
-		State: c.taskStateToPbTaskState(from.State),
-		ContributingTimeRange: &wirepb.ContributingTimeRange{
-			Timestamp: from.ContributingTimeRange.Timestamp,
-			LessThan:  from.ContributingTimeRange.LessThan,
-		},
+func (c *protobufCodec) taskResultToPbTaskResult(from workflow.TaskResult) (*wirepb.TaskResult, error) {
+	tr := &wirepb.TaskResult{
+		Outcome: c.taskOutcomeToPbTaskOutcome(from.Outcome),
 	}
 
 	if from.Error != nil {
-		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
+		tr.Error = &wirepb.TaskError{Description: from.Error.Error()}
 	}
 
 	if from.Capture != nil {
@@ -725,28 +683,22 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 			return nil, fmt.Errorf("failed to marshal capture: %w", err)
 		}
 
-		ts.Capture = captureData
+		tr.Capture = captureData
 	}
 
-	return ts, nil
+	return tr, nil
 }
 
-func (c *protobufCodec) taskStateToPbTaskState(state workflow.TaskState) wirepb.TaskState {
-	switch state {
-	case workflow.TaskStateCreated:
-		return wirepb.TaskState_TASK_STATE_CREATED
-	case workflow.TaskStatePending:
-		return wirepb.TaskState_TASK_STATE_PENDING
-	case workflow.TaskStateRunning:
-		return wirepb.TaskState_TASK_STATE_RUNNING
-	case workflow.TaskStateCompleted:
-		return wirepb.TaskState_TASK_STATE_COMPLETED
-	case workflow.TaskStateCancelled:
-		return wirepb.TaskState_TASK_STATE_CANCELLED
-	case workflow.TaskStateFailed:
-		return wirepb.TaskState_TASK_STATE_FAILED
+func (c *protobufCodec) taskOutcomeToPbTaskOutcome(outcome workflow.TaskOutcome) wirepb.TaskOutcome {
+	switch outcome {
+	case workflow.TaskOutcomeCompleted:
+		return wirepb.TaskOutcome_TASK_OUTCOME_COMPLETED
+	case workflow.TaskOutcomeCancelled:
+		return wirepb.TaskOutcome_TASK_OUTCOME_CANCELLED
+	case workflow.TaskOutcomeFailed:
+		return wirepb.TaskOutcome_TASK_OUTCOME_FAILED
 	default:
-		return wirepb.TaskState_TASK_STATE_INVALID
+		return wirepb.TaskOutcome_TASK_OUTCOME_UNSPECIFIED
 	}
 }
 
@@ -756,8 +708,6 @@ func (c *protobufCodec) streamStateToPbStreamState(state workflow.StreamState) w
 		return wirepb.StreamState_STREAM_STATE_IDLE
 	case workflow.StreamStateOpen:
 		return wirepb.StreamState_STREAM_STATE_OPEN
-	case workflow.StreamStateBlocked:
-		return wirepb.StreamState_STREAM_STATE_BLOCKED
 	case workflow.StreamStateClosed:
 		return wirepb.StreamState_STREAM_STATE_CLOSED
 	default:
@@ -776,8 +726,7 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 		pbStreams := make([]wirepb.Stream, len(streams))
 		for i, s := range streams {
 			pbStreams[i] = wirepb.Stream{
-				Ulid:     protoUlid.ULID(s.ULID),
-				TenantId: s.TenantID,
+				Ulid: protoUlid.ULID(s.ULID),
 			}
 		}
 

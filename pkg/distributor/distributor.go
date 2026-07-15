@@ -712,7 +712,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		if !shardStreamsCfg.TimeShardingEnabled {
+		// Backfill streams implement time sharding on the client side (via the
+		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
+		// exploding stream cardinality. Rate-based sharding still applies.
+		if !shardStreamsCfg.TimeShardingEnabled || labels.Has(constants.BackfillLabel) {
 			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}

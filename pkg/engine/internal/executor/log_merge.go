@@ -11,13 +11,17 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
@@ -27,6 +31,17 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 		}
 		return emptyPipeline()
 	}, nil)
+}
+
+// sourceBucket returns the bucket to read source log objects from. Source
+// objects are stored at the unprefixed dataobj root, so it prefers dataBucket
+// and falls back to bucket when dataBucket is unset (e.g. query-only workers or
+// tests that share a single bucket).
+func (c *Context) sourceBucket() objstore.Bucket {
+	if c.dataBucket != nil {
+		return c.dataBucket
+	}
+	return c.bucket
 }
 
 func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) error {
@@ -41,6 +56,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	if exists {
 		level.Info(c.logger).Log("msg", "LogMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeShortCircuit}, time.Since(start))
 		return nil
 	}
 
@@ -49,14 +65,20 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if len(sources) == 0 {
-		level.Info(c.logger).Log("msg", "LogMerge: no source log sections, nothing to compact", "tenant", node.Tenant)
-		return nil
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		return fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
 	}
 
 	table, err := buildGlobalStreamTable(sources, node.SortSchema)
 	if err != nil {
 		return err
 	}
+
+	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
+	if err != nil {
+		return fmt.Errorf("creating index builder: %w", err)
+	}
+	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
 	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
@@ -65,7 +87,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 
 	// Consume the globally-sorted stream and build compacted object
-	w := c.newLogObjectWriter(node, table)
+	w := c.newLogObjectWriter(node, table, calc)
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -83,17 +105,32 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if stats.OutputObjects == 0 {
-		level.Info(c.logger).Log("msg", "LogMerge: no records to compact", "tenant", node.Tenant)
-		return nil
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
+		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
+	}
+
+	idxObj, idxCloser, err := calc.Flush()
+	if err != nil {
+		return fmt.Errorf("flushing index: %w", err)
+	}
+
+	idxBytes, err := c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
+	if err != nil {
+		return errors.Join(fmt.Errorf("uploading index %q: %w", node.OutputIndexPath, err), idxCloser.Close())
+	}
+	if err := idxCloser.Close(); err != nil {
+		return fmt.Errorf("closing index %q: %w", node.OutputIndexPath, err)
+	}
+	if region := xcap.RegionFromContext(ctx); region != nil {
+		region.Record(statLogMergeIndexBytes.Observe(idxBytes))
 	}
 
 	stats.SourceObjects = len(sources)
 	for _, s := range sources {
 		stats.InputSections += len(s.logsSections)
 	}
+	stats.Outcome = logMergeOutcomeSuccess
 
-	// The compacted object(s) are logged for reference; the downstream index build
-	// and ToC swap land in a follow-up.
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
 		"tenant", node.Tenant,
@@ -107,11 +144,20 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"sort_schema", strings.Join(node.SortSchema, ","),
 		"duration", time.Since(start),
 	)
+	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
 	return nil
 }
 
-// logMergeStats summarizes a completed LogMerge for the reference log line.
-type logMergeStats struct {
+const (
+	logMergeOutcomeSuccess      = "success"
+	logMergeOutcomeShortCircuit = "short_circuit"
+	logMergeOutcomeEmpty        = "empty"
+)
+
+// LogMergeObservedStats is the per-task compaction summary reported to
+// LogMergeObserver and xcap statistics.
+type LogMergeObservedStats struct {
+	Outcome                 string
 	SourceObjects           int
 	InputSections           int
 	OutputObjects           int
@@ -119,6 +165,20 @@ type logMergeStats struct {
 	OutputRecords           int
 	OutputBytesCompressed   int64
 	OutputBytesUncompressed int64
+}
+
+// logMergeObservedStats is the internal alias used while assembling stats.
+type logMergeObservedStats = LogMergeObservedStats
+
+// logMergeStats summarizes a completed LogMerge for the reference log line.
+type logMergeStats struct {
+	logMergeObservedStats
+}
+
+func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
+	if c.logMergeObserver != nil {
+		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
+	}
 }
 
 // logMergeOutputPath derives the deterministic object-storage key for the i-th
@@ -149,10 +209,14 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			paths = append(paths, sec.ObjectPath)
 		}
 	}
+	// Source log objects live at the unprefixed dataobj root, not under the
+	// index-storage prefix that c.bucket carries, so read them via dataBucket.
+	srcBucket := c.sourceBucket()
+
 	// Gather log and streams sections
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
-		obj, err := dataobj.FromBucket(ctx, c.bucket, path, 0)
+		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
@@ -305,6 +369,7 @@ type logObjectWriter struct {
 	c     *Context
 	node  *physical.LogMerge
 	table *globalStreamTable
+	calc  *dataobjindex.Calculator
 
 	logsMetrics    *logs.Metrics
 	streamsMetrics *streams.Metrics
@@ -323,11 +388,12 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable) *logObjectWriter {
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable, calc *dataobjindex.Calculator) *logObjectWriter {
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,
 		table:          table,
+		calc:           calc,
 		logsMetrics:    logs.NewMetrics(),
 		streamsMetrics: streams.NewMetrics(),
 		targetObject:   int(c.indexobjCfg.TargetObjectSize),
@@ -409,12 +475,20 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("flushing object: %w", err)
 	}
-	defer closer.Close()
 
 	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
-	size, err := w.c.uploadLogObject(ctx, path, obj)
-	if err != nil {
-		return fmt.Errorf("uploading %q: %w", path, err)
+
+	size, upErr := w.c.uploadLogObject(ctx, path, obj)
+	if upErr != nil {
+		return errors.Join(fmt.Errorf("uploading %q: %w", path, upErr), closer.Close())
+	}
+
+	// Build the index over the just-written object while it is still in memory.
+	if err := w.calc.Calculate(ctx, w.c.logger, obj, path); err != nil {
+		return errors.Join(fmt.Errorf("indexing %q: %w", path, err), closer.Close())
+	}
+	if err := closer.Close(); err != nil {
+		return fmt.Errorf("closing compacted object %q: %w", path, err)
 	}
 
 	level.Info(w.c.logger).Log(

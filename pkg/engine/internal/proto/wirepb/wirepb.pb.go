@@ -12,44 +12,34 @@ import (
 	"io"
 	"math"
 	"strconv"
-	"time"
 )
 
-// TaskState represents the execution state of a task.
-type TaskState int32
+// TaskOutcome represents the terminal outcome of a task.
+type TaskOutcome int32
 
 const (
-	TaskState_TASK_STATE_INVALID   TaskState = 0
-	TaskState_TASK_STATE_CREATED   TaskState = 1
-	TaskState_TASK_STATE_PENDING   TaskState = 2
-	TaskState_TASK_STATE_RUNNING   TaskState = 3
-	TaskState_TASK_STATE_COMPLETED TaskState = 4
-	TaskState_TASK_STATE_CANCELLED TaskState = 5
-	TaskState_TASK_STATE_FAILED    TaskState = 6
+	TaskOutcome_TASK_OUTCOME_UNSPECIFIED TaskOutcome = 0
+	TaskOutcome_TASK_OUTCOME_COMPLETED   TaskOutcome = 1
+	TaskOutcome_TASK_OUTCOME_CANCELLED   TaskOutcome = 2
+	TaskOutcome_TASK_OUTCOME_FAILED      TaskOutcome = 3
 )
 
-var TaskState_name = map[int32]string{
-	0: "TASK_STATE_INVALID",
-	1: "TASK_STATE_CREATED",
-	2: "TASK_STATE_PENDING",
-	3: "TASK_STATE_RUNNING",
-	4: "TASK_STATE_COMPLETED",
-	5: "TASK_STATE_CANCELLED",
-	6: "TASK_STATE_FAILED",
+var TaskOutcome_name = map[int32]string{
+	0: "TASK_OUTCOME_UNSPECIFIED",
+	1: "TASK_OUTCOME_COMPLETED",
+	2: "TASK_OUTCOME_CANCELLED",
+	3: "TASK_OUTCOME_FAILED",
 }
 
-var TaskState_value = map[string]int32{
-	"TASK_STATE_INVALID":   0,
-	"TASK_STATE_CREATED":   1,
-	"TASK_STATE_PENDING":   2,
-	"TASK_STATE_RUNNING":   3,
-	"TASK_STATE_COMPLETED": 4,
-	"TASK_STATE_CANCELLED": 5,
-	"TASK_STATE_FAILED":    6,
+var TaskOutcome_value = map[string]int32{
+	"TASK_OUTCOME_UNSPECIFIED": 0,
+	"TASK_OUTCOME_COMPLETED":   1,
+	"TASK_OUTCOME_CANCELLED":   2,
+	"TASK_OUTCOME_FAILED":      3,
 }
 
-func (x TaskState) String() string {
-	if name, ok := TaskState_name[int32(x)]; ok {
+func (x TaskOutcome) String() string {
+	if name, ok := TaskOutcome_name[int32(x)]; ok {
 		return name
 	}
 	return strconv.FormatInt(int64(x), 10)
@@ -62,7 +52,6 @@ const (
 	StreamState_STREAM_STATE_INVALID StreamState = 0
 	StreamState_STREAM_STATE_IDLE    StreamState = 1
 	StreamState_STREAM_STATE_OPEN    StreamState = 2
-	StreamState_STREAM_STATE_BLOCKED StreamState = 3
 	StreamState_STREAM_STATE_CLOSED  StreamState = 4
 )
 
@@ -70,7 +59,6 @@ var StreamState_name = map[int32]string{
 	0: "STREAM_STATE_INVALID",
 	1: "STREAM_STATE_IDLE",
 	2: "STREAM_STATE_OPEN",
-	3: "STREAM_STATE_BLOCKED",
 	4: "STREAM_STATE_CLOSED",
 }
 
@@ -78,7 +66,6 @@ var StreamState_value = map[string]int32{
 	"STREAM_STATE_INVALID": 0,
 	"STREAM_STATE_IDLE":    1,
 	"STREAM_STATE_OPEN":    2,
-	"STREAM_STATE_BLOCKED": 3,
 	"STREAM_STATE_CLOSED":  4,
 }
 
@@ -151,17 +138,11 @@ type MessageFrame_TaskCancel struct {
 
 func (*MessageFrame_TaskCancel) isMessageFrame_Kind() {}
 
-type MessageFrame_TaskFlag struct {
-	TaskFlag TaskFlagMessage `protobuf:"bytes,5,opt,name=task_flag,json=taskFlag,proto3,oneof" json:"task_flag,omitempty"`
+type MessageFrame_TaskResult struct {
+	TaskResult TaskResultMessage `protobuf:"bytes,12,opt,name=task_result,json=taskResult,proto3,oneof" json:"task_result,omitempty"`
 }
 
-func (*MessageFrame_TaskFlag) isMessageFrame_Kind() {}
-
-type MessageFrame_TaskStatus struct {
-	TaskStatus TaskStatusMessage `protobuf:"bytes,6,opt,name=task_status,json=taskStatus,proto3,oneof" json:"task_status,omitempty"`
-}
-
-func (*MessageFrame_TaskStatus) isMessageFrame_Kind() {}
+func (*MessageFrame_TaskResult) isMessageFrame_Kind() {}
 
 type MessageFrame_StreamBind struct {
 	StreamBind StreamBindMessage `protobuf:"bytes,7,opt,name=stream_bind,json=streamBind,proto3,oneof" json:"stream_bind,omitempty"`
@@ -270,19 +251,11 @@ type TaskCancelMessage struct {
 	Id ulid.ULID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 }
 
-// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-type TaskFlagMessage struct {
-	Id ulid.ULID `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Interruptible indicates that tasks blocked on writing or reading to a
-	// stream can be paused, and that worker can accept new tasks to run.
-	Interruptible bool `protobuf:"varint,2,opt,name=interruptible,proto3" json:"interruptible,omitempty"`
-}
-
-// TaskStatusMessage is sent by the worker to the scheduler to inform the
-// scheduler of the current status of a task.
-type TaskStatusMessage struct {
+// TaskResultMessage is sent by the worker to the scheduler with the terminal
+// result of a task.
+type TaskResultMessage struct {
 	Id     ulid.ULID  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Status TaskStatus `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	Result TaskResult `protobuf:"bytes,2,opt,name=result,proto3" json:"result,omitempty"`
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -322,12 +295,6 @@ type Task struct {
 	// Sinks defines which streams physical nodes write to.
 	// The key is the node ID string representation.
 	Sinks map[string]StreamList `protobuf:"bytes,5,rep,name=sinks,proto3" json:"sinks,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// The maximum boundary of timestamps that the task can possibly emit.
-	// Does not account for predicates.
-	// MaxTimeRange is not read when executing a task fragment. It can be used
-	// as metadata to control execution (such as cancelling ongoing tasks based
-	// on their maximum time range).
-	MaxTimeRange physicalpb.TimeRange `protobuf:"bytes,6,opt,name=max_time_range,json=maxTimeRange,proto3" json:"max_time_range,omitempty"`
 	// cached_source defines a set of already processed arrow batches ready to be consumed by the physical node.
 	// The key is the node ID string representation.
 	// The arrow batches are retrieved from the task result cache by the scheduler and passed to the workers here.
@@ -346,24 +313,17 @@ type CachedSources struct {
 
 // Stream is an abstract representation of how data flows across task boundaries.
 type Stream struct {
-	Ulid     ulid.ULID `protobuf:"bytes,1,opt,name=ulid,proto3" json:"ulid,omitempty"`
-	TenantId string    `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Ulid ulid.ULID `protobuf:"bytes,1,opt,name=ulid,proto3" json:"ulid,omitempty"`
 }
 
-// TaskStatus represents the current status of a task.
-type TaskStatus struct {
-	State TaskState `protobuf:"varint,1,opt,name=state,proto3,enum=loki.wire.TaskState" json:"state,omitempty"`
-	// Error is set only when state is TASK_STATE_FAILED.
+// TaskResult represents the terminal result of a task.
+type TaskResult struct {
+	Outcome TaskOutcome `protobuf:"varint,1,opt,name=outcome,proto3,enum=loki.wire.TaskOutcome" json:"outcome,omitempty"`
+	// Error is set only when outcome is TASK_OUTCOME_FAILED.
 	Error *TaskError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	// Capture is the capture data for this task, if available.
 	// This is an opaque binary representation of the capture payload.
-	Capture               []byte                 `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
-	ContributingTimeRange *ContributingTimeRange `protobuf:"bytes,4,opt,name=contributing_time_range,json=contributingTimeRange,proto3" json:"contributing_time_range,omitempty"`
-}
-
-type ContributingTimeRange struct {
-	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	LessThan  bool      `protobuf:"varint,2,opt,name=less_than,json=lessThan,proto3" json:"less_than,omitempty"`
+	Capture []byte `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
 }
 
 type TaskError struct {
@@ -466,21 +426,13 @@ func (m *TaskCancelMessage) Reset() {
 }
 func (*TaskCancelMessage) ProtoMessage() {}
 
-func (m *TaskFlagMessage) Reset() {
+func (m *TaskResultMessage) Reset() {
 	if m == nil {
 		return
 	}
-	*m = TaskFlagMessage{}
+	*m = TaskResultMessage{}
 }
-func (*TaskFlagMessage) ProtoMessage() {}
-
-func (m *TaskStatusMessage) Reset() {
-	if m == nil {
-		return
-	}
-	*m = TaskStatusMessage{}
-}
-func (*TaskStatusMessage) ProtoMessage() {}
+func (*TaskResultMessage) ProtoMessage() {}
 
 func (m *StreamBindMessage) Reset() {
 	if m == nil {
@@ -538,21 +490,13 @@ func (m *Stream) Reset() {
 }
 func (*Stream) ProtoMessage() {}
 
-func (m *TaskStatus) Reset() {
+func (m *TaskResult) Reset() {
 	if m == nil {
 		return
 	}
-	*m = TaskStatus{}
+	*m = TaskResult{}
 }
-func (*TaskStatus) ProtoMessage() {}
-
-func (m *ContributingTimeRange) Reset() {
-	if m == nil {
-		return
-	}
-	*m = ContributingTimeRange{}
-}
-func (*ContributingTimeRange) ProtoMessage() {}
+func (*TaskResult) ProtoMessage() {}
 
 func (m *TaskError) Reset() {
 	if m == nil {
@@ -688,16 +632,9 @@ func (m *MessageFrame) GetTaskCancel() *TaskCancelMessage {
 	return nil
 }
 
-func (m *MessageFrame) GetTaskFlag() *TaskFlagMessage {
-	if x, ok := m.GetKind().(*MessageFrame_TaskFlag); ok {
-		return &x.TaskFlag
-	}
-	return nil
-}
-
-func (m *MessageFrame) GetTaskStatus() *TaskStatusMessage {
-	if x, ok := m.GetKind().(*MessageFrame_TaskStatus); ok {
-		return &x.TaskStatus
+func (m *MessageFrame) GetTaskResult() *TaskResultMessage {
+	if x, ok := m.GetKind().(*MessageFrame_TaskResult); ok {
+		return &x.TaskResult
 	}
 	return nil
 }
@@ -773,7 +710,7 @@ func (m *TaskCancelMessage) GetId() ulid.ULID {
 	return zero
 }
 
-func (m *TaskFlagMessage) GetId() ulid.ULID {
+func (m *TaskResultMessage) GetId() ulid.ULID {
 	if m != nil {
 		return m.Id
 	}
@@ -781,24 +718,9 @@ func (m *TaskFlagMessage) GetId() ulid.ULID {
 	return zero
 }
 
-func (m *TaskFlagMessage) GetInterruptible() bool {
+func (m *TaskResultMessage) GetResult() *TaskResult {
 	if m != nil {
-		return m.Interruptible
-	}
-	return false
-}
-
-func (m *TaskStatusMessage) GetId() ulid.ULID {
-	if m != nil {
-		return m.Id
-	}
-	var zero ulid.ULID
-	return zero
-}
-
-func (m *TaskStatusMessage) GetStatus() *TaskStatus {
-	if m != nil {
-		return &m.Status
+		return &m.Result
 	}
 	return nil
 }
@@ -884,13 +806,6 @@ func (m *Task) GetSinks() map[string]StreamList {
 	return nil
 }
 
-func (m *Task) GetMaxTimeRange() *physicalpb.TimeRange {
-	if m != nil {
-		return &m.MaxTimeRange
-	}
-	return nil
-}
-
 func (m *Task) GetCachedSources() map[string]CachedSources {
 	if m != nil {
 		return m.CachedSources
@@ -920,53 +835,25 @@ func (m *Stream) GetUlid() ulid.ULID {
 	return zero
 }
 
-func (m *Stream) GetTenantId() string {
+func (m *TaskResult) GetOutcome() TaskOutcome {
 	if m != nil {
-		return m.TenantId
-	}
-	return ""
-}
-
-func (m *TaskStatus) GetState() TaskState {
-	if m != nil {
-		return m.State
+		return m.Outcome
 	}
 	return 0
 }
 
-func (m *TaskStatus) GetError() *TaskError {
+func (m *TaskResult) GetError() *TaskError {
 	if m != nil {
 		return m.Error
 	}
 	return nil
 }
 
-func (m *TaskStatus) GetCapture() []byte {
+func (m *TaskResult) GetCapture() []byte {
 	if m != nil {
 		return m.Capture
 	}
 	return nil
-}
-
-func (m *TaskStatus) GetContributingTimeRange() *ContributingTimeRange {
-	if m != nil {
-		return m.ContributingTimeRange
-	}
-	return nil
-}
-
-func (m *ContributingTimeRange) GetTimestamp() time.Time {
-	if m != nil {
-		return m.Timestamp
-	}
-	return time.Time{}
-}
-
-func (m *ContributingTimeRange) GetLessThan() bool {
-	if m != nil {
-		return m.LessThan
-	}
-	return false
 }
 
 func (m *TaskError) GetDescription() string {
@@ -1073,11 +960,8 @@ func (m *MessageFrame) Size() int {
 	case *MessageFrame_TaskCancel:
 		s := v.TaskCancel.Size()
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
-	case *MessageFrame_TaskFlag:
-		s := v.TaskFlag.Size()
-		n += 1 + protowire.SizeVarint(uint64(s)) + s
-	case *MessageFrame_TaskStatus:
-		s := v.TaskStatus.Size()
+	case *MessageFrame_TaskResult:
+		s := v.TaskResult.Size()
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
 	case *MessageFrame_StreamBind:
 		s := v.StreamBind.Size()
@@ -1166,21 +1050,7 @@ func (m *TaskCancelMessage) Size() int {
 	return n
 }
 
-func (m *TaskFlagMessage) Size() int {
-	if m == nil {
-		return 0
-	}
-	var n int
-	if s := m.Id.SizeWiresmith(); s > 0 {
-		n += 1 + protowire.SizeVarint(uint64(s)) + s
-	}
-	if m.Interruptible {
-		n += 2
-	}
-	return n
-}
-
-func (m *TaskStatusMessage) Size() int {
+func (m *TaskResultMessage) Size() int {
 	if m == nil {
 		return 0
 	}
@@ -1189,7 +1059,7 @@ func (m *TaskStatusMessage) Size() int {
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
 	}
 	{
-		s := m.Status.Size()
+		s := m.Result.Size()
 		if s > 0 {
 			n += 1 + protowire.SizeVarint(uint64(s)) + s
 		}
@@ -1270,12 +1140,6 @@ func (m *Task) Size() int {
 		entrySize += 1 + protowire.SizeVarint(uint64(s)) + s
 		n += 1 + protowire.SizeVarint(uint64(entrySize)) + entrySize
 	}
-	{
-		s := m.MaxTimeRange.Size()
-		if s > 0 {
-			n += 1 + protowire.SizeVarint(uint64(s)) + s
-		}
-	}
 	for k, v := range m.CachedSources {
 		entrySize := 0
 		entrySize += 1 + protowire.SizeVarint(uint64(len(k))) + len(k)
@@ -1317,19 +1181,16 @@ func (m *Stream) Size() int {
 	if s := m.Ulid.SizeWiresmith(); s > 0 {
 		n += 1 + protowire.SizeVarint(uint64(s)) + s
 	}
-	if len(m.TenantId) > 0 {
-		n += 1 + protowire.SizeVarint(uint64(len(m.TenantId))) + len(m.TenantId)
-	}
 	return n
 }
 
-func (m *TaskStatus) Size() int {
+func (m *TaskResult) Size() int {
 	if m == nil {
 		return 0
 	}
 	var n int
-	if m.State != 0 {
-		n += 1 + protowire.SizeVarint(uint64(m.State))
+	if m.Outcome != 0 {
+		n += 1 + protowire.SizeVarint(uint64(m.Outcome))
 	}
 	if m.Error != nil {
 		s := (*m.Error).Size()
@@ -1337,25 +1198,6 @@ func (m *TaskStatus) Size() int {
 	}
 	if len(m.Capture) > 0 {
 		n += 1 + protowire.SizeVarint(uint64(len(m.Capture))) + len(m.Capture)
-	}
-	if m.ContributingTimeRange != nil {
-		s := (*m.ContributingTimeRange).Size()
-		n += 1 + protowire.SizeVarint(uint64(s)) + s
-	}
-	return n
-}
-
-func (m *ContributingTimeRange) Size() int {
-	if m == nil {
-		return 0
-	}
-	var n int
-	if !m.Timestamp.IsZero() {
-		inner := protohelpers.SizeStdTime(m.Timestamp)
-		n += 1 + protowire.SizeVarint(uint64(inner)) + inner
-	}
-	if m.LessThan {
-		n += 2
 	}
 	return n
 }
@@ -1666,6 +1508,20 @@ func (m *MessageFrame) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i := len(dAtA)
 	switch v := m.Kind.(type) {
+	case *MessageFrame_TaskResult:
+		size, err := v.TaskResult.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		if size <= 0x7F {
+			dAtA[i-1] = uint8(size)
+			i--
+		} else {
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x62
 	case *MessageFrame_WorkerSubscribe:
 		size, err := v.WorkerSubscribe.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -1736,34 +1592,6 @@ func (m *MessageFrame) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		}
 		i--
 		dAtA[i] = 0x3a
-	case *MessageFrame_TaskStatus:
-		size, err := v.TaskStatus.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		if size <= 0x7F {
-			dAtA[i-1] = uint8(size)
-			i--
-		} else {
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x32
-	case *MessageFrame_TaskFlag:
-		size, err := v.TaskFlag.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		if size <= 0x7F {
-			dAtA[i-1] = uint8(size)
-			i--
-		} else {
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x2a
 	case *MessageFrame_TaskCancel:
 		size, err := v.TaskCancel.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -2104,7 +1932,7 @@ func (m *TaskCancelMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TaskFlagMessage) Marshal() (dAtA []byte, err error) {
+func (m *TaskResultMessage) Marshal() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2120,7 +1948,7 @@ func (m *TaskFlagMessage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TaskFlagMessage) MarshalTo(dAtA []byte) (int, error) {
+func (m *TaskResultMessage) MarshalTo(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2128,68 +1956,13 @@ func (m *TaskFlagMessage) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TaskFlagMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	if m.Interruptible {
-		i--
-		if m.Interruptible {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
-	}
-	if s := m.Id.SizeWiresmith(); s > 0 {
-		i -= s
-		n, err := m.Id.MarshalWiresmith(dAtA[i : i+s])
-		if err != nil {
-			return 0, err
-		}
-		if n != s {
-			return 0, fmt.Errorf("m.Id.MarshalWiresmith returned %d bytes, expected %d", n, s)
-		}
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(s))
-		i--
-		dAtA[i] = 0x0a
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *TaskStatusMessage) Marshal() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.Size()
-	dAtA = make([]byte, size)
-	if size == 0 {
-		return dAtA, nil
-	}
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *TaskStatusMessage) MarshalTo(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *TaskStatusMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *TaskResultMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
 	i := len(dAtA)
 	{
-		size, err := m.Status.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Result.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -2448,23 +2221,6 @@ func (m *Task) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x3a
 	}
-	{
-		size, err := m.MaxTimeRange.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		if size > 0 {
-			i -= size
-			if size <= 0x7F {
-				dAtA[i-1] = uint8(size)
-				i--
-			} else {
-				i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x32
-		}
-	}
 	for k, v := range m.Sinks {
 		baseI := i
 		size, err := v.MarshalToSizedBuffer(dAtA[:i])
@@ -2698,18 +2454,6 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		return 0, nil
 	}
 	i := len(dAtA)
-	if len(m.TenantId) > 0 {
-		i -= len(m.TenantId)
-		copy(dAtA[i:], m.TenantId)
-		if len(m.TenantId) <= 0x7F {
-			dAtA[i-1] = uint8(len(m.TenantId))
-			i--
-		} else {
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.TenantId)))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
 	if s := m.Ulid.SizeWiresmith(); s > 0 {
 		i -= s
 		n, err := m.Ulid.MarshalWiresmith(dAtA[i : i+s])
@@ -2726,7 +2470,7 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TaskStatus) Marshal() (dAtA []byte, err error) {
+func (m *TaskResult) Marshal() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -2742,7 +2486,7 @@ func (m *TaskStatus) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TaskStatus) MarshalTo(dAtA []byte) (int, error) {
+func (m *TaskResult) MarshalTo(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -2750,26 +2494,11 @@ func (m *TaskStatus) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *TaskResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
 	i := len(dAtA)
-	if m.ContributingTimeRange != nil {
-		size, err := (*m.ContributingTimeRange).MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		if size <= 0x7F {
-			dAtA[i-1] = uint8(size)
-			i--
-		} else {
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x22
-	}
 	if len(m.Capture) > 0 {
 		i -= len(m.Capture)
 		copy(dAtA[i:], m.Capture)
@@ -2797,60 +2526,10 @@ func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.State != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.State))
+	if m.Outcome != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Outcome))
 		i--
 		dAtA[i] = 0x08
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ContributingTimeRange) Marshal() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.Size()
-	dAtA = make([]byte, size)
-	if size == 0 {
-		return dAtA, nil
-	}
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ContributingTimeRange) MarshalTo(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ContributingTimeRange) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	if m.LessThan {
-		i--
-		if m.LessThan {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x10
-	}
-	if !m.Timestamp.IsZero() {
-		start := i
-		i = protohelpers.EncodeStdTime(dAtA, i, m.Timestamp)
-		inner := start - i
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(inner))
-		i--
-		dAtA[i] = 0x0a
 	}
 	return len(dAtA) - i, nil
 }
@@ -3936,7 +3615,7 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Kind = &MessageFrame_TaskCancel{TaskCancel: msg}
 			iNdEx = postIndex
-		case 5: // task_flag
+		case 12: // task_result
 			if wireType != 2 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
@@ -3979,66 +3658,14 @@ func (m *MessageFrame) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			var msg TaskFlagMessage
-			if ov, ok := m.Kind.(*MessageFrame_TaskFlag); ok {
-				msg = ov.TaskFlag
+			var msg TaskResultMessage
+			if ov, ok := m.Kind.(*MessageFrame_TaskResult); ok {
+				msg = ov.TaskResult
 			}
 			if err := msg.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
-			m.Kind = &MessageFrame_TaskFlag{TaskFlag: msg}
-			iNdEx = postIndex
-		case 6: // task_status
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			var msg TaskStatusMessage
-			if ov, ok := m.Kind.(*MessageFrame_TaskStatus); ok {
-				msg = ov.TaskStatus
-			}
-			if err := msg.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
-				return err
-			}
-			m.Kind = &MessageFrame_TaskStatus{TaskStatus: msg}
+			m.Kind = &MessageFrame_TaskResult{TaskResult: msg}
 			iNdEx = postIndex
 		case 7: // stream_bind
 			if wireType != 2 {
@@ -5127,18 +4754,18 @@ func (m *TaskCancelMessage) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
-func (m *TaskFlagMessage) Unmarshal(b []byte) error {
+func (m *TaskResultMessage) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
 
-func (m *TaskFlagMessage) UnmarshalWithDepth(b []byte, depth int) error {
+func (m *TaskResultMessage) UnmarshalWithDepth(b []byte, depth int) error {
 	if depth < 0 {
 		depth = 0
 	}
 	return m.unmarshal(b, depth)
 }
 
-func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
+func (m *TaskResultMessage) unmarshal(dAtA []byte, depth int) error {
 	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
@@ -5218,93 +4845,7 @@ func (m *TaskFlagMessage) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2: // interruptible
-			if wireType != 0 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return fmt.Errorf("proto: integer overflow")
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					if shift == 63 && b > 1 {
-						return fmt.Errorf("proto: varint overflow")
-					}
-					break
-				}
-			}
-			m.Interruptible = v != 0
-		default:
-			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-			if err != nil {
-				return err
-			}
-			iNdEx += n
-		}
-	}
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-
-func (m *TaskStatusMessage) Unmarshal(b []byte) error {
-	return m.unmarshal(b, 0)
-}
-
-func (m *TaskStatusMessage) UnmarshalWithDepth(b []byte, depth int) error {
-	if depth < 0 {
-		depth = 0
-	}
-	return m.unmarshal(b, depth)
-}
-
-func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
-	if depth > protohelpers.MaxUnmarshalDepth {
-		return fmt.Errorf("exceeded max recursion depth")
-	}
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		var wire uint64
-		if iNdEx < l && dAtA[iNdEx] < 0x80 {
-			wire = uint64(dAtA[iNdEx])
-			iNdEx++
-		} else {
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 35 {
-					return fmt.Errorf("proto: integer overflow")
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				wire |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		}
-		if wire>>3 < 1 || wire>>3 > 0x1FFFFFFF {
-			return fmt.Errorf("invalid field number")
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		switch fieldNum {
-		case 1: // id
+		case 2: // result
 			if wireType != 2 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
@@ -5347,54 +4888,7 @@ func (m *TaskStatusMessage) unmarshal(dAtA []byte, depth int) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Id.UnmarshalWiresmith(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2: // status
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.Status.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
+			if err := m.Result.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -6465,53 +5959,6 @@ func (m *Task) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Sinks[mapkey] = mapvalue
 			iNdEx = postIndex
-		case 6: // max_time_range
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.MaxTimeRange.UnmarshalWithDepth(dAtA[iNdEx:postIndex], depth+1); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 7: // cached_sources
 			if wireType != 2 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
@@ -7143,51 +6590,6 @@ func (m *Stream) unmarshal(dAtA []byte, depth int) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2: // tenant_id
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TenantId = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {
@@ -7202,18 +6604,18 @@ func (m *Stream) unmarshal(dAtA []byte, depth int) error {
 	return nil
 }
 
-func (m *TaskStatus) Unmarshal(b []byte) error {
+func (m *TaskResult) Unmarshal(b []byte) error {
 	return m.unmarshal(b, 0)
 }
 
-func (m *TaskStatus) UnmarshalWithDepth(b []byte, depth int) error {
+func (m *TaskResult) UnmarshalWithDepth(b []byte, depth int) error {
 	if depth < 0 {
 		depth = 0
 	}
 	return m.unmarshal(b, depth)
 }
 
-func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
+func (m *TaskResult) unmarshal(dAtA []byte, depth int) error {
 	if depth > protohelpers.MaxUnmarshalDepth {
 		return fmt.Errorf("exceeded max recursion depth")
 	}
@@ -7246,7 +6648,7 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		switch fieldNum {
-		case 1: // state
+		case 1: // outcome
 			if wireType != 0 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 				if err != nil {
@@ -7273,7 +6675,7 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 					break
 				}
 			}
-			m.State = TaskState(v)
+			m.Outcome = TaskOutcome(v)
 		case 2: // error
 			if wireType != 2 {
 				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
@@ -7369,191 +6771,6 @@ func (m *TaskStatus) unmarshal(dAtA []byte, depth int) error {
 			}
 			m.Capture = append(m.Capture[:0], dAtA[iNdEx:postIndex]...)
 			iNdEx = postIndex
-		case 4: // contributing_time_range
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.ContributingTimeRange == nil {
-				m.ContributingTimeRange = new(ContributingTimeRange)
-			}
-			if err := m.ContributingTimeRange.unmarshal(dAtA[iNdEx:postIndex], depth+1); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-			if err != nil {
-				return err
-			}
-			iNdEx += n
-		}
-	}
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-
-func (m *ContributingTimeRange) Unmarshal(b []byte) error {
-	return m.unmarshal(b, 0)
-}
-
-func (m *ContributingTimeRange) UnmarshalWithDepth(b []byte, depth int) error {
-	if depth < 0 {
-		depth = 0
-	}
-	return m.unmarshal(b, depth)
-}
-
-func (m *ContributingTimeRange) unmarshal(dAtA []byte, depth int) error {
-	if depth > protohelpers.MaxUnmarshalDepth {
-		return fmt.Errorf("exceeded max recursion depth")
-	}
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		var wire uint64
-		if iNdEx < l && dAtA[iNdEx] < 0x80 {
-			wire = uint64(dAtA[iNdEx])
-			iNdEx++
-		} else {
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 35 {
-					return fmt.Errorf("proto: integer overflow")
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				wire |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		}
-		if wire>>3 < 1 || wire>>3 > 0x1FFFFFFF {
-			return fmt.Errorf("invalid field number")
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		switch fieldNum {
-		case 1: // timestamp
-			if wireType != 2 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var byteLen uint64
-			if iNdEx < l && dAtA[iNdEx] < 0x80 {
-				byteLen = uint64(dAtA[iNdEx])
-				iNdEx++
-			} else {
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return fmt.Errorf("proto: integer overflow")
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					byteLen |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						if shift == 63 && b > 1 {
-							return fmt.Errorf("proto: varint overflow")
-						}
-						break
-					}
-				}
-			}
-			if byteLen > uint64(math.MaxInt) {
-				return io.ErrUnexpectedEOF
-			}
-			intByteLen := int(byteLen)
-			postIndex := iNdEx + intByteLen
-			if postIndex < 0 {
-				return fmt.Errorf("proto: negative length")
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			stdtimeVal, err := protohelpers.DecodeStdTime(dAtA[iNdEx:postIndex])
-			if err != nil {
-				return err
-			}
-			m.Timestamp = stdtimeVal
-			iNdEx = postIndex
-		case 2: // less_than
-			if wireType != 0 {
-				n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
-				if err != nil {
-					return err
-				}
-				iNdEx += n
-				continue
-			}
-			var v uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return fmt.Errorf("proto: integer overflow")
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					if shift == 63 && b > 1 {
-						return fmt.Errorf("proto: varint overflow")
-					}
-					break
-				}
-			}
-			m.LessThan = v != 0
 		default:
 			n, err := protohelpers.SkipValue(dAtA[iNdEx:], wireType, fieldNum)
 			if err != nil {

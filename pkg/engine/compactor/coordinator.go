@@ -232,22 +232,20 @@ func (c *coordinator) runTenantCycle(
 	}
 
 	if len(entries) == 1 {
-		result, err := c.compactTenantLogs(ctx, tenant, window, entries[0])
+		result, stats, err := c.compactTenantLogs(ctx, tenant, window, entries[0])
 		tenantDuration := c.clock().Sub(tenantStart)
+		c.metrics.observeEntries(tenant, entries, c.clock())
 		switch {
 		case err != nil:
 			level.Warn(c.logger).Log("msg", "tenant log-compaction failed",
 				"tenant", tenant, "window", window, "err", err)
-			c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "failed", tenantDuration, compactionStats{})
 			return tenantCycleFailed
 		case result == tenantCycleConverged:
-			c.metrics.observeTenantCycle(tenant, "converged", tenantDuration, compactionStats{})
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "converged", tenantDuration, compactionStats{})
 			return tenantCycleConverged
 		default:
-			c.metrics.observeTenantCycle(tenant, "log_compacted", tenantDuration, compactionStats{})
-			c.metrics.observeEntries(tenant, entries, c.clock())
+			c.metrics.observeTenantLogCycle(tenant, "compacted", tenantDuration, stats)
 			return tenantCycleLogCompacted
 		}
 	}
@@ -284,17 +282,17 @@ func (c *coordinator) compactTenantLogs(
 	tenant string,
 	window time.Time,
 	converged indexEntry,
-) (tenantCycleResult, error) {
+) (tenantCycleResult, compactionStats, error) {
 	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
 	if err != nil {
-		return tenantCycleFailed, fmt.Errorf("reading log section refs: %w", err)
+		return tenantCycleFailed, compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 
 	runs := v2.CalculateRuns(sections)
 	if v2.IsTerminal(runs, uint64(c.cfg.LogMinCompactionSize)) {
 		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
 			"tenant", tenant, "window", window)
-		return tenantCycleConverged, nil
+		return tenantCycleConverged, compactionStats{}, nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
@@ -321,11 +319,19 @@ func (c *coordinator) compactTenantLogs(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return tenantCycleFailed, fmt.Errorf("failed to execute log-merge tasks: %w", err)
+		return tenantCycleFailed, compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
 	oldPaths := []string{converged.Path}
 	newEntries := makeTocEntries(tasks, outputs)
+
+	// removed = the single converged index this window replaces; added = the
+	// merged indexes written; dispatched = log-merge tasks run this cycle.
+	stats := compactionStats{
+		removed:    len(oldPaths),
+		added:      len(outputs),
+		dispatched: len(tasks),
+	}
 
 	level.Debug(c.logger).Log("msg", "log-compacted",
 		"tenant", tenant, "window", window,
@@ -336,21 +342,23 @@ func (c *coordinator) compactTenantLogs(
 	)
 
 	if c.cfg.DryRun {
-		return tenantCycleLogCompacted, nil
+		// Tasks ran but the ToC was left untouched, so no indexes were
+		// added/removed; only report the tasks dispatched.
+		return tenantCycleLogCompacted, compactionStats{dispatched: len(tasks)}, nil
 	}
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return tenantCycleFailed, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
+		return tenantCycleFailed, compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(c.logger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
 			"tenant", tenant, "window", window)
-		return tenantCycleConverged, nil
+		return tenantCycleConverged, compactionStats{}, nil
 	}
-	return tenantCycleLogCompacted, nil
+	return tenantCycleLogCompacted, stats, nil
 }
 
 // compactTenant performs the per-(tenant, window) compaction. Returns the

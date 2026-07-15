@@ -23,8 +23,7 @@ const (
 	MessageKindWorkerReady     // MessageKindWorkerReady represents [WorkerReadyMessage].
 	MessageKindTaskAssign      // MessageKindTaskAssign represents [TaskAssignMessage].
 	MessageKindTaskCancel      // MessageKindTaskCancel represents [TaskCancelMessage].
-	MessageKindTaskFlag        // MessageKindTaskFlag represents [TaskFlagMessage].
-	MessageKindTaskStatus      // MessageKindTaskStatus represents [TaskStatusMessage].
+	MessageKindTaskResult      // MessageKindTaskResult represents [TaskResultMessage].
 	MessageKindStreamBind      // MessageKindStreamBind represents [StreamBindMessage].
 	MessageKindStreamData      // MessageKindStreamData represents [StreamDataMessage].
 	MessageKindStreamStatus    // MessageKindStreamStatus represents [StreamStatusMessage].
@@ -37,8 +36,7 @@ var kindNames = [...]string{
 	MessageKindWorkerReady:     "WorkerReady",
 	MessageKindTaskAssign:      "TaskAssign",
 	MessageKindTaskCancel:      "TaskCancel",
-	MessageKindTaskFlag:        "TaskFlag",
-	MessageKindTaskStatus:      "TaskStatus",
+	MessageKindTaskResult:      "TaskResult",
 	MessageKindStreamBind:      "StreamBind",
 	MessageKindStreamData:      "StreamData",
 	MessageKindStreamStatus:    "StreamStatus",
@@ -129,21 +127,11 @@ type (
 		ID ulid.ULID // ID of the Task to cancel.
 	}
 
-	// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-	TaskFlagMessage struct {
-		ID ulid.ULID // ID of the Task to update.
-
-		// Interruptible indicates that tasks blocked on writing or reading to a
-		// [Stream] can be paused, and that worker can accept new tasks to run.
-		// Tasks are not interruptible by default.
-		Interruptible bool
-	}
-
-	// TaskStatusMessage is sent by the worker to the scheduler to inform the
-	// scheduler of the current status of a task.
-	TaskStatusMessage struct {
-		ID     ulid.ULID           // ID of the Task to update.
-		Status workflow.TaskStatus // Current status of the task.
+	// TaskResultMessage is sent by the worker to the scheduler with the
+	// terminal result of a task.
+	TaskResultMessage struct {
+		ID     ulid.ULID           // ID of the task that finished.
+		Result workflow.TaskResult // Terminal result of the task.
 	}
 )
 
@@ -187,8 +175,7 @@ func (WorkerSubscribeMessage) isMessage() {}
 func (WorkerReadyMessage) isMessage()     {}
 func (TaskAssignMessage) isMessage()      {}
 func (TaskCancelMessage) isMessage()      {}
-func (TaskFlagMessage) isMessage()        {}
-func (TaskStatusMessage) isMessage()      {}
+func (TaskResultMessage) isMessage()      {}
 func (StreamBindMessage) isMessage()      {}
 func (StreamDataMessage) isMessage()      {}
 func (StreamStatusMessage) isMessage()    {}
@@ -210,11 +197,8 @@ func (TaskAssignMessage) Kind() MessageKind { return MessageKindTaskAssign }
 // Kind returns [MessageKindTaskCancel].
 func (TaskCancelMessage) Kind() MessageKind { return MessageKindTaskCancel }
 
-// Kind returns [MessageKindTaskFlag].
-func (TaskFlagMessage) Kind() MessageKind { return MessageKindTaskFlag }
-
-// Kind returns [MessageKindTaskStatus].
-func (TaskStatusMessage) Kind() MessageKind { return MessageKindTaskStatus }
+// Kind returns [MessageKindTaskResult].
+func (TaskResultMessage) Kind() MessageKind { return MessageKindTaskResult }
 
 // Kind returns [MessageKindStreamBind].
 func (StreamBindMessage) Kind() MessageKind { return MessageKindStreamBind }

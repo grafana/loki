@@ -45,6 +45,12 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
+	// DataBucket reads source log objects during LogMerge compaction. When the
+	// compaction wiring prefixes Bucket with the index-storage prefix, source
+	// log objects (stored at the unprefixed dataobj root) must be read through
+	// this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
+
 	// Metastore client to access indexes.
 	Metastore metastore.Metastore
 
@@ -104,6 +110,7 @@ type Config struct {
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -203,6 +210,7 @@ func (w *Worker) run(ctx context.Context) error {
 			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
+			DataBucket:     w.config.DataBucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
 			TaskCaches:     w.taskCaches,
@@ -210,6 +218,7 @@ func (w *Worker) run(ctx context.Context) error {
 			IndexobjCfg:    w.config.IndexobjCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
+			LogMergeObserver:   w.config.LogMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

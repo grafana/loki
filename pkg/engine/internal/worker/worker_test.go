@@ -137,8 +137,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a stream that will feed data to the TopK node
 		inputStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 
 		// Create a workflow task manually with the TopK node and stream source
@@ -154,8 +153,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a results stream for the workflow output
 		resultsStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 		task.Sinks[topkNode] = []*workflow.Stream{resultsStream}
 
@@ -163,7 +161,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		manifest := &workflow.Manifest{
 			Streams: []*workflow.Stream{inputStream, resultsStream},
 			Tasks:   []*workflow.Task{task},
-			TaskEventHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskStatus) {
+			TaskResultHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskResult) {
 				// Empty
 			},
 			StreamEventHandler: func(_ context.Context, _ *workflow.Stream, _ workflow.StreamState) {

@@ -266,20 +266,12 @@ func (this *MessageFrame) Equal(that interface{}) bool {
 			if !v.TaskCancel.Equal(v2.TaskCancel) {
 				return false
 			}
-		case *MessageFrame_TaskFlag:
-			v2, ok := that1.Kind.(*MessageFrame_TaskFlag)
+		case *MessageFrame_TaskResult:
+			v2, ok := that1.Kind.(*MessageFrame_TaskResult)
 			if !ok {
 				return false
 			}
-			if !v.TaskFlag.Equal(v2.TaskFlag) {
-				return false
-			}
-		case *MessageFrame_TaskStatus:
-			v2, ok := that1.Kind.(*MessageFrame_TaskStatus)
-			if !ok {
-				return false
-			}
-			if !v.TaskStatus.Equal(v2.TaskStatus) {
+			if !v.TaskResult.Equal(v2.TaskResult) {
 				return false
 			}
 		case *MessageFrame_StreamBind:
@@ -488,14 +480,14 @@ func (this *TaskCancelMessage) Equal(that interface{}) bool {
 	return true
 }
 
-func (this *TaskFlagMessage) Equal(that interface{}) bool {
+func (this *TaskResultMessage) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TaskFlagMessage)
+	that1, ok := that.(*TaskResultMessage)
 	if !ok {
-		that2, ok := that.(TaskFlagMessage)
+		that2, ok := that.(TaskResultMessage)
 		if ok {
 			that1 = &that2
 		} else {
@@ -510,35 +502,7 @@ func (this *TaskFlagMessage) Equal(that interface{}) bool {
 	if !this.Id.EqualWiresmith(that1.Id) {
 		return false
 	}
-	if this.Interruptible != that1.Interruptible {
-		return false
-	}
-	return true
-}
-
-func (this *TaskStatusMessage) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*TaskStatusMessage)
-	if !ok {
-		that2, ok := that.(TaskStatusMessage)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if !this.Id.EqualWiresmith(that1.Id) {
-		return false
-	}
-	if !this.Status.Equal(that1.Status) {
+	if !this.Result.Equal(that1.Result) {
 		return false
 	}
 	return true
@@ -680,9 +644,6 @@ func (this *Task) Equal(that interface{}) bool {
 			return false
 		}
 	}
-	if !this.MaxTimeRange.Equal(that1.MaxTimeRange) {
-		return false
-	}
 	if len(this.CachedSources) != len(that1.CachedSources) {
 		return false
 	}
@@ -780,20 +741,17 @@ func (this *Stream) Equal(that interface{}) bool {
 	if !this.Ulid.EqualWiresmith(that1.Ulid) {
 		return false
 	}
-	if this.TenantId != that1.TenantId {
-		return false
-	}
 	return true
 }
 
-func (this *TaskStatus) Equal(that interface{}) bool {
+func (this *TaskResult) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TaskStatus)
+	that1, ok := that.(*TaskResult)
 	if !ok {
-		that2, ok := that.(TaskStatus)
+		that2, ok := that.(TaskResult)
 		if ok {
 			that1 = &that2
 		} else {
@@ -805,7 +763,7 @@ func (this *TaskStatus) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.State != that1.State {
+	if this.Outcome != that1.Outcome {
 		return false
 	}
 	if (this.Error == nil) != (that1.Error == nil) {
@@ -815,40 +773,6 @@ func (this *TaskStatus) Equal(that interface{}) bool {
 		return false
 	}
 	if !bytes.Equal(this.Capture, that1.Capture) {
-		return false
-	}
-	if (this.ContributingTimeRange == nil) != (that1.ContributingTimeRange == nil) {
-		return false
-	}
-	if this.ContributingTimeRange != nil && !this.ContributingTimeRange.Equal(that1.ContributingTimeRange) {
-		return false
-	}
-	return true
-}
-
-func (this *ContributingTimeRange) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*ContributingTimeRange)
-	if !ok {
-		that2, ok := that.(ContributingTimeRange)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if !this.Timestamp.Equal(that1.Timestamp) {
-		return false
-	}
-	if this.LessThan != that1.LessThan {
 		return false
 	}
 	return true
@@ -1162,16 +1086,14 @@ func (this *MessageFrame) Compare(that interface{}) int {
 			thisIdx = 3
 		case *MessageFrame_TaskCancel:
 			thisIdx = 4
-		case *MessageFrame_TaskFlag:
+		case *MessageFrame_TaskResult:
 			thisIdx = 5
-		case *MessageFrame_TaskStatus:
-			thisIdx = 6
 		case *MessageFrame_StreamBind:
-			thisIdx = 7
+			thisIdx = 6
 		case *MessageFrame_StreamData:
-			thisIdx = 8
+			thisIdx = 7
 		case *MessageFrame_StreamStatus:
-			thisIdx = 9
+			thisIdx = 8
 		}
 		thatIdx := -1
 		switch that1.Kind.(type) {
@@ -1185,16 +1107,14 @@ func (this *MessageFrame) Compare(that interface{}) int {
 			thatIdx = 3
 		case *MessageFrame_TaskCancel:
 			thatIdx = 4
-		case *MessageFrame_TaskFlag:
+		case *MessageFrame_TaskResult:
 			thatIdx = 5
-		case *MessageFrame_TaskStatus:
-			thatIdx = 6
 		case *MessageFrame_StreamBind:
-			thatIdx = 7
+			thatIdx = 6
 		case *MessageFrame_StreamData:
-			thatIdx = 8
+			thatIdx = 7
 		case *MessageFrame_StreamStatus:
-			thatIdx = 9
+			thatIdx = 8
 		}
 		if thisIdx != thatIdx {
 			if thisIdx < thatIdx {
@@ -1234,16 +1154,10 @@ func (this *MessageFrame) Compare(that interface{}) int {
 				if c := v.TaskCancel.Compare(v2.TaskCancel); c != 0 {
 					return c
 				}
-			case *MessageFrame_TaskFlag:
-				v2 := that1.Kind.(*MessageFrame_TaskFlag)
+			case *MessageFrame_TaskResult:
+				v2 := that1.Kind.(*MessageFrame_TaskResult)
 				_ = v2
-				if c := v.TaskFlag.Compare(v2.TaskFlag); c != 0 {
-					return c
-				}
-			case *MessageFrame_TaskStatus:
-				v2 := that1.Kind.(*MessageFrame_TaskStatus)
-				_ = v2
-				if c := v.TaskStatus.Compare(v2.TaskStatus); c != 0 {
+				if c := v.TaskResult.Compare(v2.TaskResult); c != 0 {
 					return c
 				}
 			case *MessageFrame_StreamBind:
@@ -1523,7 +1437,7 @@ func (this *TaskCancelMessage) Compare(that interface{}) int {
 	return 0
 }
 
-func (this *TaskFlagMessage) Compare(that interface{}) int {
+func (this *TaskResultMessage) Compare(that interface{}) int {
 	if that == nil {
 		if this == nil {
 			return 0
@@ -1531,9 +1445,9 @@ func (this *TaskFlagMessage) Compare(that interface{}) int {
 		return 1
 	}
 
-	that1, ok := that.(*TaskFlagMessage)
+	that1, ok := that.(*TaskResultMessage)
 	if !ok {
-		that2, ok := that.(TaskFlagMessage)
+		that2, ok := that.(TaskResultMessage)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1551,44 +1465,7 @@ func (this *TaskFlagMessage) Compare(that interface{}) int {
 	if c := this.Id.CompareWiresmith(that1.Id); c != 0 {
 		return c
 	}
-	if this.Interruptible != that1.Interruptible {
-		if !this.Interruptible && that1.Interruptible {
-			return -1
-		}
-		return 1
-	}
-	return 0
-}
-
-func (this *TaskStatusMessage) Compare(that interface{}) int {
-	if that == nil {
-		if this == nil {
-			return 0
-		}
-		return 1
-	}
-
-	that1, ok := that.(*TaskStatusMessage)
-	if !ok {
-		that2, ok := that.(TaskStatusMessage)
-		if ok {
-			that1 = &that2
-		} else {
-			return 1
-		}
-	}
-	if that1 == nil {
-		if this == nil {
-			return 0
-		}
-		return 1
-	} else if this == nil {
-		return -1
-	}
-	if c := this.Id.CompareWiresmith(that1.Id); c != 0 {
-		return c
-	}
-	if c := this.Status.Compare(that1.Status); c != 0 {
+	if c := this.Result.Compare(that1.Result); c != 0 {
 		return c
 	}
 	return 0
@@ -1801,9 +1678,6 @@ func (this *Task) Compare(that interface{}) int {
 			}
 		}
 	}
-	if c := this.MaxTimeRange.Compare(that1.MaxTimeRange); c != 0 {
-		return c
-	}
 	if len(this.CachedSources) != len(that1.CachedSources) {
 		if len(this.CachedSources) < len(that1.CachedSources) {
 			return -1
@@ -1944,16 +1818,10 @@ func (this *Stream) Compare(that interface{}) int {
 	if c := this.Ulid.CompareWiresmith(that1.Ulid); c != 0 {
 		return c
 	}
-	if this.TenantId != that1.TenantId {
-		if this.TenantId < that1.TenantId {
-			return -1
-		}
-		return 1
-	}
 	return 0
 }
 
-func (this *TaskStatus) Compare(that interface{}) int {
+func (this *TaskResult) Compare(that interface{}) int {
 	if that == nil {
 		if this == nil {
 			return 0
@@ -1961,9 +1829,9 @@ func (this *TaskStatus) Compare(that interface{}) int {
 		return 1
 	}
 
-	that1, ok := that.(*TaskStatus)
+	that1, ok := that.(*TaskResult)
 	if !ok {
-		that2, ok := that.(TaskStatus)
+		that2, ok := that.(TaskResult)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1978,8 +1846,8 @@ func (this *TaskStatus) Compare(that interface{}) int {
 	} else if this == nil {
 		return -1
 	}
-	if this.State != that1.State {
-		if this.State < that1.State {
+	if this.Outcome != that1.Outcome {
+		if this.Outcome < that1.Outcome {
 			return -1
 		}
 		return 1
@@ -1997,54 +1865,6 @@ func (this *TaskStatus) Compare(that interface{}) int {
 	}
 	if c := bytes.Compare(this.Capture, that1.Capture); c != 0 {
 		return c
-	}
-	if (this.ContributingTimeRange == nil) != (that1.ContributingTimeRange == nil) {
-		if this.ContributingTimeRange == nil {
-			return -1
-		}
-		return 1
-	}
-	if this.ContributingTimeRange != nil {
-		if c := this.ContributingTimeRange.Compare(that1.ContributingTimeRange); c != 0 {
-			return c
-		}
-	}
-	return 0
-}
-
-func (this *ContributingTimeRange) Compare(that interface{}) int {
-	if that == nil {
-		if this == nil {
-			return 0
-		}
-		return 1
-	}
-
-	that1, ok := that.(*ContributingTimeRange)
-	if !ok {
-		that2, ok := that.(ContributingTimeRange)
-		if ok {
-			that1 = &that2
-		} else {
-			return 1
-		}
-	}
-	if that1 == nil {
-		if this == nil {
-			return 0
-		}
-		return 1
-	} else if this == nil {
-		return -1
-	}
-	if c := this.Timestamp.Compare(that1.Timestamp); c != 0 {
-		return c
-	}
-	if this.LessThan != that1.LessThan {
-		if !this.LessThan && that1.LessThan {
-			return -1
-		}
-		return 1
 	}
 	return 0
 }
