@@ -163,7 +163,7 @@ func (m *TableOfContentsWriter) replaceIndexPointers(
 			}
 
 			for _, e := range newEntries {
-				if err := builder.AppendIndexPointer(tenant, e.Path, e.StartTime, e.EndTime); err != nil {
+				if err := builder.AppendIndexPointer(tenant, e.Path, e.StartTime, e.EndTime, 0, 0); err != nil {
 					return nil, fmt.Errorf("appending new ToC entry: %w", err)
 				}
 			}
@@ -261,7 +261,7 @@ func replayFiltered(ctx context.Context, obj *dataobj.Object, builder *indexobj.
 						continue
 					}
 				}
-				if aerr := builder.AppendIndexPointer(sectionTenant, buf[i].Path, buf[i].StartTs, buf[i].EndTs); aerr != nil {
+				if aerr := builder.AppendIndexPointer(sectionTenant, buf[i].Path, buf[i].StartTs, buf[i].EndTs, buf[i].FileSize, buf[i].UncompressedLogsSize); aerr != nil {
 					return fmt.Errorf("replaying index pointer: %w", aerr)
 				}
 			}

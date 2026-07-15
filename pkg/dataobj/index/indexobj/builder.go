@@ -270,9 +270,9 @@ func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, colu
 	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
 }
 
-func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
+func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time, fileSize, uncompressedLogsSize uint64) error {
 	b.metrics.appendsTotal.Inc()
-	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
+	newEntrySize := len(path) + 1 + 1 + 8 + 8 // path, startTs, endTs, fileSize, uncompressedLogsSize
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
@@ -284,7 +284,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
-	tenantIndexPointers.Append(path, startTs, endTs, 0, 0)
+	tenantIndexPointers.Append(path, startTs, endTs, fileSize, uncompressedLogsSize)
 
 	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
