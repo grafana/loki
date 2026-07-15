@@ -122,7 +122,8 @@ limits_config:
   - selector: '{namespace="dev"}'
     priority: 1
     period: 24h
-  per_tenant_override_config: /etc/overrides.yaml
+runtime_config:
+  file: /etc/overrides.yaml
 ...
 ```
 

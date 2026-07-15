@@ -85,6 +85,17 @@ func TestNewWriterClient(t *testing.T) {
 }
 
 func TestProducer(t *testing.T) {
+	t.Run("no records", func(t *testing.T) {
+		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+		require.NoError(t, err)
+
+		producer := NewProducer("test-producer", client, 1024*1024, prometheus.NewRegistry())
+
+		results := producer.ProduceSync(t.Context(), []*kgo.Record{})
+		require.Len(t, results, 0)
+	})
+
 	t.Run("on context canceled", func(t *testing.T) {
 		_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 		client, err := NewWriterClient("test-client", kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())

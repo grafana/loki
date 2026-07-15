@@ -156,6 +156,16 @@ const (
 	UIRing                       = "ui-ring"
 	UI                           = "ui"
 	All                          = "all"
+	AuthMiddleware               = "auth-middleware"
+	LabelAccess                  = "label-access"
+	LabelAccessUserIDTransformer = "label-access-user-id-transformer"
+	LabelAccessInterceptors      = "label-access-interceptors"
+	LabelAccessStoreWrapper      = "label-access-store-wrapper"
+	LabelAccessIngesterWrapper   = "label-access-ingester-wrapper"
+	LabelAccessV2Engine          = "label-access-v2-engine"
+	LabelAccessTripperware       = "label-access-tripperware"
+	Filterers                    = "filterers"
+	AuthTripperware              = "auth-tripperware"
 )
 
 const (
@@ -201,7 +211,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
-				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
+				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), t.Cfg.NoAuthTenant)))
 				return
 			}
 
@@ -274,13 +284,6 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
-	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
-		if len(t.Cfg.LimitsConfig.PerTenantOverrideConfig) != 0 {
-			t.Cfg.RuntimeConfig.LoadPath = []string{t.Cfg.LimitsConfig.PerTenantOverrideConfig}
-		}
-		t.Cfg.RuntimeConfig.ReloadPeriod = time.Duration(t.Cfg.LimitsConfig.PerTenantOverridePeriod)
-	}
-
 	if len(t.Cfg.RuntimeConfig.LoadPath) == 0 {
 		// no need to initialize module if load path is empty
 		return nil, nil
@@ -960,9 +963,11 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
 	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
@@ -1902,6 +1907,15 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	}
 
 	logproto.RegisterIndexGatewayServer(t.Server.GRPC, gateway)
+
+	// On-demand index sync: refresh the object-listing cache and download newly
+	// shipped indexes so a freshly flushed index becomes queryable without
+	// waiting for the periodic list-cache TTL. This is cluster-wide and not
+	// tenant-scoped, so it carries no auth middleware (mirroring /flush rather
+	// than /flush/tenant). PUT triggers an async sync; GET reports its status.
+	t.Server.HTTP.Methods("PUT").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexesHandler))
+	t.Server.HTTP.Methods("GET").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexStatusHandler))
+
 	return gateway, nil
 }
 
@@ -2434,8 +2448,12 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:       t.Cfg.DataObj.Compaction.Worker,
-		Bucket:       indexBucket,
+		Config: t.Cfg.DataObj.Compaction.Worker,
+		Bucket: indexBucket,
+		// Source log objects live at the unprefixed dataobj root, so the
+		// LogMerge executor reads them through the unprefixed store rather than
+		// the index-prefixed bucket used for index I/O and ToC.
+		DataBucket:   store,
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,

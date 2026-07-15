@@ -32,11 +32,6 @@ const (
 var (
 	tracer = otel.Tracer("pkg/engine/internal/workflow")
 
-	shortCircuitsTotal = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_engine_v2_task_short_circuits_total",
-		Help: "Total number of tasks preemptively canceled by short circuiting.",
-	})
-
 	eliminatedCachedTasksTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "loki_engine_v2_task_cached_eliminated_total",
 		Help: "Total number of tasks eliminated before execution due to a cache hit.",
@@ -48,24 +43,6 @@ type Options struct {
 	ID     ulid.ULID // Optional ID for the workflow. One will be generated if not provided.
 	Tenant string    // Tenant ID associated with the workflow.
 	Actor  []string  // Optional path to the actor that is generating the workflow.
-
-	// MaxRunningScanTasks specifies the maximum number of scan tasks that may
-	// run concurrently within a single workflow. 0 means no limit.
-	MaxRunningScanTasks int
-
-	// MaxRunningOtherTasks specifies the maximum number of non-scan tasks that
-	// may run concurrently within a single workflow. 0 means no limit.
-	MaxRunningOtherTasks int
-
-	// MaxRunningCompactionTasks specifies the maximum number of compaction
-	// tasks that may run concurrently within a single workflow. 0 means no
-	// limit.
-	//
-	// The lane is dormant in query workflows (typeFor never classifies a
-	// query task as compaction); compactor workflows opt in by populating
-	// this field once the dataobj-compaction physical-plan node types and
-	// the corresponding typeFor classification land.
-	MaxRunningCompactionTasks int
 
 	// DebugTasks toggles debug messages for a task. This is very verbose and
 	// should only be enabled for debugging purposes.
@@ -133,14 +110,11 @@ type Workflow struct {
 
 	span *xcap.Span
 
-	tasksMut         sync.RWMutex
-	taskStates       map[*Task]TaskState
-	pendingSummaries map[*Task]pendingSummary // Holds terminal task state until Close.
+	tasksMut    sync.RWMutex
+	taskResults map[*Task]pendingSummary // Holds terminal task results until Close.
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
-
-	admissionControl *admissionControl
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -168,17 +142,16 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	if graph.Len() == 0 {
 		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
-			opts:             opts,
-			logger:           logger,
-			runner:           runner,
-			taskStates:       make(map[*Task]TaskState),
-			streamStates:     make(map[*Stream]StreamState),
-			pendingSummaries: make(map[*Task]pendingSummary),
+			opts:         opts,
+			logger:       logger,
+			runner:       runner,
+			taskResults:  make(map[*Task]pendingSummary),
+			streamStates: make(map[*Stream]StreamState),
 		}, nil
 	}
 
 	// Inject a stream for final task results.
-	results, err := injectResultsStream(opts.Tenant, &graph)
+	results, err := injectResultsStream(&graph)
 	if err != nil {
 		return nil, err
 	}
@@ -191,9 +164,8 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsStream:   results,
 		resultsPipeline: newStreamPipe(),
 
-		taskStates:       make(map[*Task]TaskState),
-		streamStates:     make(map[*Stream]StreamState),
-		pendingSummaries: make(map[*Task]pendingSummary),
+		taskResults:  make(map[*Task]pendingSummary),
+		streamStates: make(map[*Stream]StreamState),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
 	// planning context does not abort the manifest registration, but keep
@@ -213,8 +185,8 @@ func (wf *Workflow) Empty() bool {
 
 // injectResultsStream injects a new stream into the sinks of the root task for
 // the workflow to receive final results.
-func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, error) {
-	results := &Stream{ULID: ulid.Make(), TenantID: tenantID}
+func injectResultsStream(graph *dag.Graph[*Task]) (*Stream, error) {
+	results := &Stream{ULID: ulid.Make()}
 
 	// Inject a stream for final task results.
 	rootTask, err := graph.Root()
@@ -247,7 +219,7 @@ func (wf *Workflow) init(ctx context.Context) error {
 		Tasks:   wf.allTasks(),
 
 		StreamEventHandler: wf.onStreamChange,
-		TaskEventHandler:   wf.onTaskChange,
+		TaskResultHandler:  wf.onTaskResult,
 	}
 	if err := wf.runner.RegisterManifest(ctx, wf.manifest); err != nil {
 		return err
@@ -286,9 +258,9 @@ func (wf *Workflow) Close() {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
 
-	// UnregisterManifest synchronously drives every remaining task to a terminal
-	// state and delivers its status, so by here the DAG and all per-task finish
-	// times are recorded and the critical path is complete.
+	// UnregisterManifest synchronously produces a result for every remaining
+	// task, so by here the DAG and all per-task finish times are recorded and the
+	// critical path is complete.
 	wf.flushTaskSummaries()
 }
 
@@ -324,58 +296,11 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	return wf.resultsPipeline, nil
 }
 
-// dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
-// and dispatches them to the runner.
-// Tasks from different admission lanes are dispatched concurrently.
-// The caller needs to wait on the returned error group.
+// dispatchTasks dispatches tasks to the runner.
 func (wf *Workflow) dispatchTasks(ctx context.Context, tasks []*Task) error {
-	wf.admissionControl = newAdmissionControl(
-		int64(wf.opts.MaxRunningScanTasks),
-		int64(wf.opts.MaxRunningOtherTasks),
-		int64(wf.opts.MaxRunningCompactionTasks),
-	)
-
-	// this span captures the time spent waiting for all tasks to be admitted
-	// but not the time spent to assign them all to workers.
-	//
-	// context is not updated here to avoid making this a parent of
-	// task spans since admission span ends once all tasks are admitted,
-	// but tasks can still be running after it ends.
-	_, span := tracer.Start(ctx, "wf.taskAdmission")
-	defer span.End()
-
-	groups := wf.admissionControl.groupByType(tasks)
-	// taskTypeCompaction is appended last because the loop is sequential
-	// (each lane is fully drained before the next): a populated Compaction
-	// lane should never delay Scan dispatch. The lane is currently dormant
-	// — typeFor does not classify any task as compaction — so this slot is
-	// always empty for query workflows. It will be populated once the
-	// dataobj-compaction node types and typeFor classification land.
-	for _, taskType := range []taskType{
-		taskTypeOther,
-		taskTypeScan,
-		taskTypeCompaction,
-	} {
-		lane := wf.admissionControl.get(taskType)
-		tasks := groups[taskType]
-
-		var offset, batchSize int64
-		total := int64(len(tasks))
-
-		for ; offset < total; offset += batchSize {
-			batchSize = int64(1)
-
-			if err := lane.Acquire(ctx, batchSize); err != nil {
-				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
-			}
-
-			batch := tasks[offset : offset+batchSize]
-			if err := wf.runner.Start(ctx, batch...); err != nil {
-				return fmt.Errorf("failed to start tasks: %w", err)
-			}
-		}
+	if err := wf.runner.Start(ctx, tasks...); err != nil {
+		return fmt.Errorf("failed to start tasks: %w", err)
 	}
-
 	return nil
 }
 
@@ -462,97 +387,55 @@ func (wf *Workflow) maybeCloseResults() {
 	}
 
 	wf.tasksMut.RLock()
-	for _, state := range wf.taskStates {
-		if !state.Terminal() {
-			wf.tasksMut.RUnlock()
-			return
-		}
-	}
+	allTasksFinished := len(wf.taskResults) == len(wf.manifest.Tasks)
 	wf.tasksMut.RUnlock()
+	if !allTasksFinished {
+		return
+	}
 
 	wf.resultsPipeline.Close()
 }
 
-func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
+func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskResult) {
 	if wf.opts.DebugTasks {
-		level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+		level.Debug(wf.logger).Log("msg", "task result", "task_id", task.ULID, "outcome", result.Outcome)
 	}
 
 	wf.tasksMut.Lock()
-	oldState := wf.taskStates[task]
-	wf.taskStates[task] = newStatus.State
-	if newStatus.State.Terminal() && oldState != newStatus.State {
-		wf.recordTerminal(task, oldState, newStatus)
-	}
-	wf.tasksMut.Unlock()
-
-	if newStatus.State.Terminal() {
-		wf.handleTerminalStateChange(ctx, task, oldState, newStatus)
-	} else {
-		wf.handleNonTerminalStateChange(ctx, task, newStatus)
-	}
-}
-
-// recordTerminal stashes a terminal task's summary and finish time for Close to
-// emit. Recording both under one lock is what lets flushTaskSummaries trust that
-// observing every task terminal implies every summary and finish is present.
-// wf.tasksMut must be held.
-func (wf *Workflow) recordTerminal(task *Task, oldState TaskState, newStatus TaskStatus) {
-	summary := pendingSummary{
-		oldState: oldState,
-		status:   newStatus,
-	}
-	if newStatus.Capture != nil {
-		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
-			summary.taskFinishNanos = finish
-		}
-	}
-	wf.pendingSummaries[task] = summary
-}
-
-func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, oldState TaskState, newStatus TaskStatus) {
-	// State has not changed
-	if oldState == newStatus.State {
+	if _, exists := wf.taskResults[task]; exists {
+		wf.tasksMut.Unlock()
 		return
 	}
+	wf.recordTaskResult(task, result)
+	wf.tasksMut.Unlock()
 
-	if newStatus.State == TaskStateFailed {
+	if result.Outcome == TaskOutcomeFailed {
 		// Use the first failure from a task as the failure for the entire
 		// workflow.
-		wf.resultsPipeline.SetError(newStatus.Error)
+		wf.resultsPipeline.SetError(result.Error)
 	}
 
-	if wf.admissionControl == nil {
-		level.Warn(wf.logger).Log("msg", "admission control was not initialized")
-	} else if oldState == TaskStatePending || oldState == TaskStateRunning {
-		// Release tokens only if the task was already enqueued and therefore either pending or running.
-		defer wf.admissionControl.laneFor(task).Release(1)
+	if result.Capture != nil {
+		wf.mergeCapture(result.Capture)
 	}
 
-	if newStatus.Capture != nil {
-		wf.mergeCapture(newStatus.Capture)
-	}
-
-	// task reached a terminal state. We need to detect if task's immediate
-	// children should be canceled. We only look at immediate unterminated
-	// children, since canceling them will trigger onTaskChange to process
-	// indirect children.
+	// The task has finished. Detect whether its immediate children should be
+	// cancelled. We only look at immediate unfinished children, since
+	// cancelling them will invoke onTaskResult to process indirect children.
 	var tasksToCancel []*Task
 
 	wf.tasksMut.RLock()
 	{
 	NextChild:
 		for _, child := range wf.graph.Children(task) {
-			// Ignore children in terminal states.
-			if childState := wf.taskStates[child]; childState.Terminal() {
+			if _, finished := wf.taskResults[child]; finished {
 				continue
 			}
 
 			// Cancel the child if and only if all of the child's parents (which
-			// includes the task that just updated) are in a terminal state.
+			// includes the task that just finished) have terminal results.
 			for _, parent := range wf.graph.Parents(child) {
-				parentState := wf.taskStates[parent]
-				if !parentState.Terminal() {
+				if _, finished := wf.taskResults[parent]; !finished {
 					continue NextChild
 				}
 			}
@@ -568,46 +451,25 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.maybeCloseResults()
 }
 
-func (wf *Workflow) handleNonTerminalStateChange(ctx context.Context, task *Task, newStatus TaskStatus) {
-	// If the task is running, but its contributing time range has been changed
-	if newStatus.State == TaskStateRunning && !newStatus.ContributingTimeRange.Timestamp.IsZero() {
-		// We need to detect if task's immediate children should be canceled because they can no longer contribute
-		// to the state of the running task. We only look at immediate unterminated
-		// children, since canceling them will trigger onTaskChange to process indirect children.
-		var tasksToCancel []*Task
-
-		ts := newStatus.ContributingTimeRange.Timestamp
-		lessThan := newStatus.ContributingTimeRange.LessThan
-
-		wf.tasksMut.RLock()
-		{
-			for _, child := range wf.graph.Children(task) {
-				// Ignore children in terminal states.
-				if childState := wf.taskStates[child]; childState.Terminal() {
-					continue
-				}
-
-				// Ignore if time ranges intersect, so they can contribute
-				if lessThan && child.MaxTimeRange.Start.Before(ts) ||
-					!lessThan && child.MaxTimeRange.End.After(ts) {
-					continue
-				}
-
-				// TODO(spiridonov): We do not check parents here right now, there is only 1 parent now,
-				// but in general a task can be canceled only if all its parents are in terminal states OR
-				// have non-inersecting contributing time range.
-				tasksToCancel = append(tasksToCancel, child)
-				shortCircuitsTotal.Inc()
-			}
-		}
-		wf.tasksMut.RUnlock()
-
-		wf.cancelTasks(ctx, tasksToCancel)
+// recordTaskResult stashes a task's result and finish time for Close to emit.
+// Recording both under one lock lets flushTaskSummaries trust that observing a
+// result for every task implies every summary and finish time is present.
+// wf.tasksMut must be held.
+func (wf *Workflow) recordTaskResult(task *Task, result TaskResult) {
+	summary := pendingSummary{result: result}
+	if result.Capture == nil {
+		wf.taskResults[task] = summary
+		return
 	}
+
+	if finish, ok := xcap.TryValue[int64](result.Capture, schedulerstat.TaskFinishTime); ok {
+		summary.taskFinishNanos = finish
+	}
+	wf.taskResults[task] = summary
 }
 
 func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
-	// Runners may re-invoke onTaskChange, so we don't want to hold the mutex
+	// Runners may re-invoke onTaskResult, so we don't want to hold the mutex
 	// when calling this.
 	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)

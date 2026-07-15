@@ -7,13 +7,24 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
+// SASLAuthenticate: v0-2
+//
+// Supported mechanisms:
+// * PLAIN
+// * SCRAM-SHA-256
+// * SCRAM-SHA-512
+//
+// Version notes:
+// * v1: SessionLifetimeMs in response
+// * v2: Flexible versions
+
 func init() { regKey(36, 0, 2) }
 
 func (c *Cluster) handleSASLAuthenticate(creq *clientReq) (kmsg.Response, error) {
 	req := creq.kreq.(*kmsg.SASLAuthenticateRequest)
 	resp := req.ResponseKind().(*kmsg.SASLAuthenticateResponse)
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
+	if err := c.checkReqVersion(req.Key(), req.Version); err != nil {
 		return nil, err
 	}
 
@@ -34,6 +45,7 @@ func (c *Cluster) handleSASLAuthenticate(creq *clientReq) (kmsg.Response, error)
 			return nil, errors.New("invalid sasl")
 		}
 		creq.cc.saslStage = saslStageComplete
+		creq.cc.user = u
 
 	case saslStageAuthScram0_256:
 		c0, err := scramParseClient0(req.SASLAuthBytes)
@@ -51,6 +63,7 @@ func (c *Cluster) handleSASLAuthenticate(creq *clientReq) (kmsg.Response, error)
 		resp.SASLAuthBytes = serverFirst
 		creq.cc.saslStage = saslStageAuthScram1
 		creq.cc.s0 = &s0
+		creq.cc.user = c0.user // store user for later; cleared if auth fails
 
 	case saslStageAuthScram0_512:
 		c0, err := scramParseClient0(req.SASLAuthBytes)
@@ -68,6 +81,7 @@ func (c *Cluster) handleSASLAuthenticate(creq *clientReq) (kmsg.Response, error)
 		resp.SASLAuthBytes = serverFirst
 		creq.cc.saslStage = saslStageAuthScram1
 		creq.cc.s0 = &s0
+		creq.cc.user = c0.user // store user for later; cleared if auth fails
 
 	case saslStageAuthScram1:
 		serverFinal, err := creq.cc.s0.serverFinal(req.SASLAuthBytes)

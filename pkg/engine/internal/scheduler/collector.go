@@ -40,7 +40,7 @@ func newCollector(sched *Scheduler) *collector {
 
 		load: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "loki_engine_scheduler_load",
-			Help: "Current load on the scheduler (count of running and pending tasks)",
+			Help: "Current number of queued or assigned tasks without a terminal result",
 		}, loadSource),
 		loadAverage: ewma.MustNew(ewma.Options{
 			Name: "loki_engine_scheduler_load_average",
@@ -52,8 +52,8 @@ func newCollector(sched *Scheduler) *collector {
 
 		tasksInflight: prometheus.NewDesc(
 			"loki_engine_scheduler_tasks_inflight",
-			"Number of in-flight tasks by state",
-			[]string{"state"},
+			"Number of queued or assigned tasks without a terminal result",
+			nil,
 			nil,
 		),
 		streamsInflight: prometheus.NewDesc(
@@ -85,16 +85,15 @@ func newCollector(sched *Scheduler) *collector {
 	}
 }
 
-// computeLoad returns the active load on the scheduler: the sum of running and
-// pending tasks.
+// computeLoad returns the number of queued or assigned tasks without a terminal result.
 func computeLoad(sched *Scheduler) float64 {
-	sched.resourcesMut.RLock()
-	defer sched.resourcesMut.RUnlock()
+	guard := sched.resourcesMut.RLock("collector_compute_load")
+	defer guard.RUnlock()
 
 	var load uint64
 
 	for _, t := range sched.tasks {
-		if t.status.State == workflow.TaskStateRunning || t.status.State == workflow.TaskStatePending {
+		if t.Queued() && !t.HasResult() {
 			load++
 		}
 	}
@@ -122,24 +121,24 @@ func (mc *collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectResourceStats(ch chan<- prometheus.Metric) {
-	mc.sched.resourcesMut.RLock()
-	defer mc.sched.resourcesMut.RUnlock()
+	guard := mc.sched.resourcesMut.RLock("collector_resource_stats")
+	defer guard.RUnlock()
 
 	var (
-		tasksByState   = make(map[workflow.TaskState]int)
+		tasksInflight  int
 		streamsByState = make(map[workflow.StreamState]int)
 	)
 
 	for _, t := range mc.sched.tasks {
-		tasksByState[t.status.State]++
+		if t.Queued() && !t.HasResult() {
+			tasksInflight++
+		}
 	}
 	for _, s := range mc.sched.streams {
 		streamsByState[s.state]++
 	}
 
-	for state, count := range tasksByState {
-		ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(count), state.String())
-	}
+	ch <- prometheus.MustNewConstMetric(mc.tasksInflight, prometheus.GaugeValue, float64(tasksInflight))
 	for state, count := range streamsByState {
 		ch <- prometheus.MustNewConstMetric(mc.streamsInflight, prometheus.GaugeValue, float64(count), state.String())
 	}
@@ -166,8 +165,8 @@ func (mc *collector) collectConnStats(ch chan<- prometheus.Metric) {
 }
 
 func (mc *collector) collectAssignStats(ch chan<- prometheus.Metric) {
-	mc.sched.assignMut.RLock()
-	defer mc.sched.assignMut.RUnlock()
+	guard := mc.sched.assignMut.RLock("collector_assign_stats")
+	defer guard.RUnlock()
 
 	ch <- prometheus.MustNewConstMetric(mc.readyWorkers, prometheus.GaugeValue, float64(len(mc.sched.connectedWorkers)))
 	ch <- prometheus.MustNewConstMetric(mc.taskQueue, prometheus.GaugeValue, float64(mc.sched.taskQueue.Len()))

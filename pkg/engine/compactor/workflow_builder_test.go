@@ -55,3 +55,37 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 
 	require.NotEqual(t, n1.ID(), n2.ID(), "every build must mint a fresh NodeID")
 }
+
+func TestBuildLogMergePlan(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
+	task := &compactionv2pb.TaskSpec{
+		Tenant:     "t1",
+		SortSchema: []string{"label:service_name"},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
+		},
+	}
+
+	plan := buildLogMergePlan("t1", window, task, "indexes/bb/out")
+
+	root, err := plan.Root()
+	require.NoError(t, err, "plan must have exactly one root node")
+
+	node, ok := root.(*physical.LogMerge)
+	require.True(t, ok, "root is %T, want *physical.LogMerge", root)
+	require.Equal(t, "t1", node.Tenant)
+	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
+	require.Equal(t, task.Runs, node.Runs)
+	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+	require.Equal(t, "indexes/bb/out", node.OutputIndexPath)
+
+	task2 := &compactionv2pb.TaskSpec{
+		Tenant: "t1",
+		Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0"}}}},
+	}
+	p2 := buildLogMergePlan("t1", window, task2, "out2")
+	p2Root, err := p2.Root()
+	require.NoError(t, err, "plan must have exactly one root node")
+
+	require.NotEqual(t, root.ID(), p2Root.ID(), "every build must mint a fresh NodeID")
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
@@ -30,16 +31,30 @@ type RowReader struct {
 	exhausted bool  // set when Next has returned false; further calls return false without work
 }
 
-// NewRowReader creates a RowReader over all of sec's columns. The underlying
-// reader is opened lazily on the first call to Next. The provided ctx governs
-// all subsequent I/O (Open and Read).
-func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+type ReaderOption func(*ReaderOptions)
+
+func WithStatsTracker(tracker dataset.RowReaderStatsTracker) ReaderOption {
+	return func(r *ReaderOptions) {
+		r.StatsTracker = tracker
+	}
+}
+
+// NewRowReader creates a RowReader over all of sec's columns, applying the
+// provided predicates when scanning. The underlying reader is opened lazily on
+// the first call to Next. The provided ctx governs all subsequent I/O (Open and
+// Read).
+func NewRowReader(ctx context.Context, sec *Section, preds []Predicate, optFuncs ...ReaderOption) *RowReader {
+	opts := ReaderOptions{
+		Columns:    sec.Columns(),
+		Predicates: preds,
+		Allocator:  memory.DefaultAllocator,
+	}
+	for _, optFunc := range optFuncs {
+		optFunc(&opts)
+	}
 	return &RowReader{
-		ctx: ctx,
-		reader: NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		}),
+		ctx:    ctx,
+		reader: NewReader(opts),
 	}
 }
 

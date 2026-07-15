@@ -25,14 +25,14 @@ type LogMerge struct {
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
 
-	// SourceIndexPaths is the set of unique source-index paths referenced across
-	// all Runs. Used by the consolidation step to know which indexes the merge's
-	// outputs replace.
-	SourceIndexPaths []string
+	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
+	// (e.g. "label:service_name")
+	SortSchema []string
 
-	// OutputPath is the deterministic object-storage key where the
-	// executor writes the compacted log object.
-	OutputPath string
+	// OutputIndexPath is the deterministic object-storage key of the index
+	// object the worker builds from the newly-created compacted log object and
+	// returns to the planner for the ToC swap
+	OutputIndexPath string
 }
 
 // ID implements the Node interface.
@@ -44,12 +44,12 @@ func (*LogMerge) Type() NodeType { return NodeTypeLogMerge }
 // Clone implements the Node interface.
 func (n *LogMerge) Clone() Node {
 	return &LogMerge{
-		NodeID:           ulid.Make(),
-		Tenant:           n.Tenant,
-		ToCWindowStart:   n.ToCWindowStart,
-		Runs:             cloneRuns(n.Runs),
-		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
-		OutputPath:       n.OutputPath,
+		NodeID:          ulid.Make(),
+		Tenant:          n.Tenant,
+		ToCWindowStart:  n.ToCWindowStart,
+		Runs:            cloneRuns(n.Runs),
+		SortSchema:      slices.Clone(n.SortSchema),
+		OutputIndexPath: n.OutputIndexPath,
 	}
 }
 
