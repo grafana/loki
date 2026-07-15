@@ -836,9 +836,9 @@ func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
 		NodeID:          ulid.Make(),
 		Tenant:          "tenant",
 		OutputIndexPath: outputPath,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/a", SectionIndex: 0}}},
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/b", SectionIndex: 0}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "src/a", SectionIndex: 0}}},
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "src/b", SectionIndex: 0}}},
 		},
 	}
 

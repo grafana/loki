@@ -221,8 +221,8 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 	node := &physical.LogMerge{
 		Tenant:     tenant,
 		SortSchema: sortSchema,
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
 		},
 	}
 
@@ -499,8 +499,8 @@ func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
 		Tenant:          tenant,
 		SortSchema:      sortSchema,
 		OutputIndexPath: "index/out",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
 		},
 	}
 
@@ -569,8 +569,8 @@ func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
 		Tenant:          tenant,
 		SortSchema:      sortSchema,
 		OutputIndexPath: "index/out",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
 		},
 	}
 
@@ -628,8 +628,8 @@ func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
 		Tenant:          "T",
 		SortSchema:      sortSchema,
 		OutputIndexPath: "index/out",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
 	}
 
@@ -668,8 +668,8 @@ func TestDoLogObjectMerge_CompactedObjectCloseErrorPropagates(t *testing.T) {
 		Tenant:          tenant,
 		SortSchema:      sortSchema,
 		OutputIndexPath: "index/out",
-		Runs: []*compactionv2pb.RunRef{
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		Runs: []compactionv2pb.RunRef{
+			{Sections: []compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
 		},
 	}
 
