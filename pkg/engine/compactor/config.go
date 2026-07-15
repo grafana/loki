@@ -24,6 +24,10 @@ type Config struct {
 	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
+	// CompactionTenants is the set of tenant IDs to compact; one worker per
+	// entry. Empty means no workers run.
+	CompactionTenants flagext.StringSliceCSV `yaml:"tenants"`
+
 	// MaxRunningCompactionTasks caps how many IndexMerge tasks the
 	// coordinator runs concurrently per tenant within a single cycle.
 	// Applied via errgroup.SetLimit on the per-tenant goroutine group in
@@ -169,6 +173,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", false,
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
+	f.Var(&cfg.CompactionTenants, prefix+"tenants",
+		"Experimental: Comma-separated tenant IDs to compact. One worker is started per tenant at startup; changing the set requires a restart. Empty means no compaction workers run.")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
 		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
