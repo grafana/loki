@@ -4,6 +4,7 @@ import (
 	"flag"
 	"testing"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,4 +35,30 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestConfig_LogMinCompactionSizeValidation(t *testing.T) {
+	// Build a valid enabled config, driving LogMinCompactionSize through the flag
+	// parser so this one test covers both parsing and validation.
+	base := func(t *testing.T, args ...string) Config {
+		t.Helper()
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse(args))
+		cfg.Enabled = true
+		cfg.Scheduler.Endpoint = defaultEndpoint
+		return cfg
+	}
+
+	t.Run("parsed value passes and is applied", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.logs.min-compaction-size=8MB")
+		require.Equal(t, flagext.Bytes(8*1024*1024), cfg.LogMinCompactionSize)
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("zero fails", func(t *testing.T) {
+		cfg := base(t, "--dataobj.compaction.logs.min-compaction-size=0")
+		require.ErrorIs(t, cfg.Validate(), errInvalidLogMinCompactionSize)
+	})
 }

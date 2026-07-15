@@ -345,7 +345,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		schemaLabels := b.overrides.SortSchemaLabels(tenant)
 		if len(schemaLabels) > 0 {
 			var err error
-			sortKey, err = computeSortKey(ls, schemaLabels)
+			sortKey, err = ComputeSortKey(ls, schemaLabels)
 			if err != nil {
 				return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
 			}
@@ -736,7 +736,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
-		k, err := computeSortKey(stream.Labels, schemaLabels)
+		k, err := ComputeSortKey(stream.Labels, schemaLabels)
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
@@ -796,16 +796,16 @@ func streamsSectionIter(ctx context.Context, section *streams.Section) result.Se
 	})
 }
 
-// computeSortKey builds a composite sort key from stream labels using FQN entries.
+// ComputeSortKey builds a composite sort key from stream labels using FQN entries.
 // Each FQN must be "label:<name>" — validation.SortSchema.Validate() enforces this.
-func computeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
+func ComputeSortKey(ls labels.Labels, schemaLabels []string) (string, error) {
 	if len(schemaLabels) == 0 {
 		return "", nil
 	}
 	resolveLabel := func(fqn string) (string, error) {
 		typ, name, ok := strings.Cut(fqn, ":")
 		if !ok || typ != "label" {
-			return "", fmt.Errorf("computeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn)
+			return "", fmt.Errorf("ComputeSortKey: unexpected FQN %q — only \"label:<name>\" is supported", fqn)
 		}
 		return ls.Get(name), nil
 	}

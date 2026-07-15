@@ -67,6 +67,7 @@ const (
 	outcomeCanceled   metrictimer.Outcome = "canceled"
 	outcomeConnClosed metrictimer.Outcome = "conn_closed"
 	outcomeSendError  metrictimer.Outcome = "send_error"
+	outcomeDiscarded  metrictimer.Outcome = "discarded"
 )
 
 // phase label values for frame send and receive histograms.

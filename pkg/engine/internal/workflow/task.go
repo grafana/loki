@@ -31,13 +31,6 @@ type Task struct {
 	// from a child task over a network stream. Populated at plan time when a
 	// child task is eliminated because its cached result is known to be non-empty.
 	CachedSources map[physical.Node]CachedSources
-
-	// The maximum boundary of timestamps that the task can possibly emit.
-	// Does not account for predicates.
-	// MaxTimeRange is not read when executing a task fragment. It can be used
-	// as metadata to control execution (such as cancelling ongoing tasks based
-	// on their maximum time range).
-	MaxTimeRange physical.TimeRange
 }
 
 // ID returns the Task's ULID.
@@ -55,7 +48,4 @@ type CachedSources [][]byte
 type Stream struct {
 	// ULID is a unique identifier of the Stream.
 	ULID ulid.ULID
-
-	// TenantID is a tenant associated with this stream.
-	TenantID string
 }
