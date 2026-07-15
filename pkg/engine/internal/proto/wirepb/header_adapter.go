@@ -1,7 +1,7 @@
 package wirepb
 
 import (
-	"strings"
+	"bytes"
 
 	"github.com/grafana/dskit/httpgrpc"
 )
@@ -39,26 +39,33 @@ func (h *HeaderAdapter) EqualWiresmith(other any) bool {
 
 // CompareWiresmith implements the wiresmith customtype contract. It returns
 // -1 on type mismatch so the generated Compare stays total.
+//
+// Ordering is derived from httpgrpc.Header's own gogo-generated Marshal
+// rather than a hand-enumerated Key-then-Values walk. httpgrpc.Header has no
+// generated Compare of its own to delegate to (gogo's compare plugin was
+// never enabled for this message), so a Key/Values walk was the only option
+// when this was first written -- but it silently stops covering the type
+// the day dskit's httpgrpc.Header gains a field, unlike EqualWiresmith
+// above, which delegates to httpgrpc.Header.Equal and picks up new fields
+// automatically (wiresmith-yp37). Marshal-then-bytes.Compare tracks the
+// vendored struct the same way Equal does. Matches
+// DedicatedColumns.CompareWiresmith in tempo's wiresmith migration and
+// Stream.CompareWiresmith in loki's pkg/push (wiresmith-6azr), which hit the
+// same hand-enumeration fragility.
 func (h *HeaderAdapter) CompareWiresmith(other any) int {
 	o, ok := coerceHeaderAdapter(other)
 	if !ok {
 		return -1
 	}
-	if c := strings.Compare(h.Key, o.Key); c != 0 {
-		return c
+	a, err := (*httpgrpc.Header)(h).Marshal()
+	if err != nil {
+		return -1
 	}
-	if c := len(h.Values) - len(o.Values); c != 0 {
-		if c < 0 {
-			return -1
-		}
+	b, err := (*httpgrpc.Header)(o).Marshal()
+	if err != nil {
 		return 1
 	}
-	for i := range h.Values {
-		if c := strings.Compare(h.Values[i], o.Values[i]); c != 0 {
-			return c
-		}
-	}
-	return 0
+	return bytes.Compare(a, b)
 }
 
 func coerceHeaderAdapter(other any) (*HeaderAdapter, bool) {
