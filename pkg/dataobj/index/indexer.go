@@ -222,6 +222,13 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	// Build the index using internal method
 	indexPath, processed, err := si.buildIndex(req.ctx, events, req.partition)
+	if err != nil {
+		// The calculator is shared across partitions on this serial indexer. Clear
+		// any partial state when a build fails or is cancelled (e.g. partition
+		// revoke) so the next request starts clean. Successful flushes already call
+		// Reset inside flushIndex.
+		si.calculator.Reset()
+	}
 
 	// Update metrics
 	buildTime := time.Since(start)
