@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/util/loser"
+	"github.com/stretchr/testify/require"
 )
 
 type List struct {
@@ -164,4 +165,23 @@ func TestPush(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPushDuringIteration(t *testing.T) {
+	// Start with {1, 2} then push {5, 6}, {3}, {4}, interleaved with some Next() calls.
+	lt := loser.New([]*List{NewList(1, 2)}, math.MaxUint64, func(s *List) uint64 { return s.At() }, lessUint64, func(*List) {})
+
+	require.True(t, lt.Next())
+	require.Equal(t, uint64(1), lt.Winner().At())
+
+	lt.Push(NewList(5, 6))
+
+	require.True(t, lt.Next())
+	require.Equal(t, uint64(2), lt.Winner().At())
+
+	lt.Push(NewList(3))
+	lt.Push(NewList(4))
+
+	want := NewList(3, 4, 5, 6)
+	checkIterablesEqual(t, want, lt, listAt, treeAt, lessUint64)
 }
