@@ -1,3 +1,7 @@
+# v1.4.0 (2026-07-08.2)
+
+* **Feature**: Adds support for OAuth 2.0 token operations in AWS Sign-In, CreateOAuth2TokenWithIAM (client credentials flow), IntrospectOAuth2TokenWithIAM (token inspection), and RevokeOAuth2TokenWithIAM (token revocation).
+
 # v1.3.0 (2026-07-06)
 
 * **Feature**: Add request serialization snapshot tests.
