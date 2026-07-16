@@ -2,6 +2,7 @@ package rendezvous
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -102,8 +103,12 @@ func TestPartitionWatcher_PicksUpChanges(t *testing.T) {
 	// Update KV store to a ring with only partition 2.
 	writePartitionRing(t, kvClient, activePartitionRing(2))
 
+	// Wait until the watcher reflects the new ring. Checking identity alone is
+	// racy: ShuffleSharder() can return a fresh object that still holds the
+	// pre-update partitions, so wait for the partitions themselves to change.
 	require.Eventually(t, func() bool {
-		return watcher.ShuffleSharder() != initial
+		ss := watcher.ShuffleSharder()
+		return ss != initial && slices.Equal(ss.partitions, []int32{2})
 	}, 5*time.Second, 10*time.Millisecond, "watcher did not pick up KV change")
 
 	updated := watcher.ShuffleSharder()
