@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // phase is the current step of a tenant's flip-flop worker.
@@ -139,5 +141,30 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 	default:
 		c.metrics.observeTenantLogCycle(tenant, "converged", dur, compactionStats{})
 		return phaseOutcomeNoWork
+	}
+}
+
+// runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
+// is cancelled. It never returns an error and never sleeps: on error it retries
+// the same phase, otherwise it flips. 
+func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
+	p := phaseIndexMerge
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
+
+		var outcome phaseOutcome
+		switch p {
+		case phaseIndexMerge:
+			outcome = c.runIndexMergePhase(ctx, tenant, window)
+		case phaseLogMerge:
+			outcome = c.runLogMergePhase(ctx, tenant, window)
+		}
+
+		if outcome != phaseOutcomeError {
+			p = p.flip()
+		}
 	}
 }
