@@ -33,6 +33,12 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 
 	cfg := Config{
 		UploadInterval: time.Hour,
+		// The manager's background loop runs an upload on startup, which races
+		// with tests that add indexes and then inspect the in-memory set. With
+		// a zero retain period, Cleanup drops indexes as soon as they're
+		// uploaded, so ForEach could miss just-added indexes. Retain them for
+		// the duration of the test.
+		DBRetainPeriod: time.Hour,
 	}
 	tm, err := NewTableManager(cfg, storageClient, nil, log.NewNopLogger())
 	require.NoError(t, err)
