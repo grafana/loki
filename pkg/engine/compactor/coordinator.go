@@ -115,7 +115,7 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	start := c.clock()
 	window := start.UTC().Truncate(metastore.MetastoreWindowSize)
 
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+	indexes, err := loadTenantIndexes(ctx, c.bucket, window, c.logger)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for current window", "window", window)

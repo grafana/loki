@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -37,6 +39,11 @@ type tenantIndexes map[string][]indexEntry
 // loadTenantIndexes reads the ToC for the given window-aligned time and
 // returns every (tenant, index entry) pair — each entry carries path, time range, and sizes.
 //
+// For entries whose FileSize is zero (legacy ToC rows), loadTenantIndexes attempts
+// to backfill FileSize by stat'ing the object via bucket.Attributes. Stat failures
+// are logged via logger and leave FileSize at zero; UncompressedLogsSize is left
+// unchanged in all cases.
+//
 // This is the per-cycle planning input: the coordinator iterates the result
 // map and skips tenants whose index slice has length ≤ 1 (the convergence
 // gate). If the ToC does not exist for this window the call returns a
@@ -51,6 +58,7 @@ func loadTenantIndexes(
 	ctx context.Context,
 	bucket objstore.Bucket,
 	window time.Time,
+	logger log.Logger,
 ) (tenantIndexes, error) {
 	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
 
@@ -88,6 +96,22 @@ func loadTenantIndexes(
 		}
 		out[tenant] = append(out[tenant], entries...)
 	}
+
+	for tenant, entries := range out {
+		for i := range entries {
+			if entries[i].FileSize != 0 {
+				continue
+			}
+			attrs, err := bucket.Attributes(ctx, entries[i].Path)
+			if err != nil {
+				level.Warn(logger).Log("msg", "backfill file size failed", "path", entries[i].Path, "err", err)
+				continue
+			}
+			entries[i].FileSize = uint64(attrs.Size)
+		}
+		out[tenant] = entries
+	}
+
 	return out, nil
 }
 

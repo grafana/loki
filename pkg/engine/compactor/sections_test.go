@@ -38,7 +38,7 @@ func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
 		},
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
+	got, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Len(t, got, 2, "two tenants written")
 
@@ -57,7 +57,7 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
-	_, err := loadTenantIndexes(ctx, bucket, window)
+	_, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
 	require.Error(t, err)
 	require.True(t, bucket.IsObjNotFoundErr(err),
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
@@ -254,7 +254,7 @@ func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
 		},
 	})
 
-	got, err := loadTenantIndexes(ctx, bucket, window)
+	got, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Len(t, got["tenant-a"], 2)
 
@@ -289,4 +289,73 @@ func TestSectionRefsFor_CopiesUncompressedSize(t *testing.T) {
 
 	require.Equal(t, int64(2048), got[0].UncompressedSize)
 	require.Equal(t, int64(4096), got[1].UncompressedSize)
+}
+
+// TestLoadTenantIndexesBackfillsLegacyFileSize verifies that loadTenantIndexes
+// backfills FileSize == 0 (legacy ToC rows) by stat'ing the object in the bucket.
+// Non-zero FileSize entries are left unchanged (not re-stat'd).
+func TestLoadTenantIndexesBackfillsLegacyFileSize(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// Seed ToC with one legacy row (FileSize=0) and one modern row (FileSize=512).
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-a": {
+			{path: "legacy-index", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
+				fileSize: 0, uncompressedLogsSize: 0},
+			{path: "modern-index", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour),
+				fileSize: 512, uncompressedLogsSize: 4096},
+		},
+	})
+
+	// Upload an object at the legacy-index path with a known size.
+	legacyContent := []byte("legacy index content with known size")
+	require.NoError(t, bucket.Upload(ctx, "legacy-index", io.NopCloser(bytes.NewReader(legacyContent))))
+
+	got, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
+	require.NoError(t, err)
+	require.Len(t, got["tenant-a"], 2)
+
+	// Build map by path to avoid order-dependent assertions.
+	byPath := make(map[string]indexEntry)
+	for _, e := range got["tenant-a"] {
+		byPath[e.Path] = e
+	}
+
+	// Legacy row should have FileSize backfilled to actual object size.
+	legacyEntry := byPath["legacy-index"]
+	require.Equal(t, uint64(len(legacyContent)), legacyEntry.FileSize, "legacy FileSize=0 should be backfilled")
+	require.Equal(t, uint64(0), legacyEntry.UncompressedLogsSize, "UncompressedLogsSize=0 left as-is")
+
+	// Modern row should NOT be modified (not re-stat'd).
+	modernEntry := byPath["modern-index"]
+	require.Equal(t, uint64(512), modernEntry.FileSize, "non-zero FileSize left unchanged")
+	require.Equal(t, uint64(4096), modernEntry.UncompressedLogsSize)
+}
+
+// TestLoadTenantIndexesBackfillLegacyFileSizeMissingObject verifies that when
+// a legacy ToC row (FileSize==0) references a missing object in the bucket,
+// loadTenantIndexes returns successfully (non-fatal), logs a warning, and leaves
+// that entry's FileSize and UncompressedLogsSize unchanged.
+func TestLoadTenantIndexesBackfillLegacyFileSizeMissingObject(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// Seed ToC with one legacy row (FileSize=0) but DO NOT upload the object.
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-a": {
+			{path: "missing-legacy-index", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
+				fileSize: 0, uncompressedLogsSize: 0},
+		},
+	})
+
+	got, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
+	require.NoError(t, err, "should return successfully despite missing object")
+	require.Len(t, got["tenant-a"], 1)
+
+	entry := got["tenant-a"][0]
+	require.Equal(t, uint64(0), entry.FileSize, "FileSize should remain 0 when object is missing")
+	require.Equal(t, uint64(0), entry.UncompressedLogsSize, "UncompressedLogsSize should remain 0")
 }
