@@ -1,5 +1,13 @@
 package compactor
 
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/go-kit/log/level"
+)
+
 // phase is the current step of a tenant's flip-flop worker.
 type phase int
 
@@ -15,7 +23,7 @@ func (p phase) flip() phase {
 	return phaseIndexMerge
 }
 
-// phaseOutcome is the result of running one phase; it drives the flip-vs-re-arm
+// phaseOutcome is the result of running one phase; it drives the flip-vs-retry
 // decision.
 type phaseOutcome int
 
@@ -24,3 +32,58 @@ const (
 	phaseOutcomeNoWork                      // success, nothing to do; flip
 	phaseOutcomeSwapped                     // ToC swap applied/observed; flip
 )
+
+// runIndexMergePhase runs IndexMerge for the tenant's current window and swaps
+// the ToC.
+func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, window time.Time) phaseOutcome {
+	start := c.clock()
+	entries, ok := c.tenantEntries(ctx, tenant, window)
+	if !ok {
+		return phaseOutcomeError
+	}
+
+	c.metrics.observeEntries(tenant, entries, c.clock())
+
+	if len(entries) <= 1 {
+		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(start), compactionStats{})
+		return phaseOutcomeNoWork
+	}
+
+	stats, err := c.compactTenant(ctx, tenant, window, entries)
+	dur := c.clock().Sub(start)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return phaseOutcomeError
+		}
+		level.Warn(c.logger).Log("msg", "index-merge phase failed",
+			"tenant", tenant, "window", window, "err", err)
+		c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		return phaseOutcomeError
+	}
+	// compactTenant returns zero stats for every no-op success; a real swap sets
+	// added > 0.
+	if stats.added == 0 {
+		c.metrics.observeTenantCycle(tenant, "converged", dur, compactionStats{})
+		return phaseOutcomeNoWork
+	}
+	c.metrics.observeTenantCycle(tenant, "compacted", dur, stats)
+	return phaseOutcomeSwapped
+}
+
+// tenantEntries reads the current-window ToC and returns the tenant's entries.
+// A missing ToC yields (nil, true) — no work, not an error. Any other read
+// error yields (nil, false).
+func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexEntry, bool) {
+	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+	if err != nil {
+		if c.bucket.IsObjNotFoundErr(err) {
+			level.Debug(c.logger).Log("msg", "bucket not found",
+				"tenant", tenant, "window", window, "bucket", c.bucket.Name(), "err", err)
+			return nil, true
+		}
+		level.Warn(c.logger).Log("msg", "phase: load tenant indexes failed",
+			"tenant", tenant, "window", window, "err", err)
+		return nil, false
+	}
+	return indexes[tenant], true
+}
