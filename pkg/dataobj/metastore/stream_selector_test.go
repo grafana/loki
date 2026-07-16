@@ -567,15 +567,16 @@ func TestStreamSelector_MixedMatcherTypes(t *testing.T) {
 // loop so the benchmark isolates selection cost.
 func BenchmarkStreamSelector_SelectStreams(b *testing.B) {
 	ctx := context.Background()
-	const nStreams = 1000
+	const nStreams = 10000
 	names := []string{"app", "job", "namespace", "tenant"}
 	values := []string{"loki", "worker", "distributor", "dev", "prod"}
 
 	var lps []labelPosting
 	for id := int64(0); id < nStreams; id++ {
+		section := id / 100
 		lps = append(lps, labelPosting{
 			name: "svc", value: values[id%int64(len(values))],
-			streamID: id, obj: "obj-0", section: 0, minTs: 10, maxTs: 1000,
+			streamID: id, obj: "obj-0", section: section, minTs: 10, maxTs: 1000,
 		})
 		for i, name := range names {
 			if (id+int64(i))%3 != 0 {
@@ -583,7 +584,7 @@ func BenchmarkStreamSelector_SelectStreams(b *testing.B) {
 			}
 			lps = append(lps, labelPosting{
 				name: name, value: values[(id+int64(i))%int64(len(values))],
-				streamID: id, obj: "obj-0", section: 0, minTs: 10, maxTs: 1000,
+				streamID: id, obj: "obj-0", section: section, minTs: 10, maxTs: 1000,
 			})
 		}
 	}
