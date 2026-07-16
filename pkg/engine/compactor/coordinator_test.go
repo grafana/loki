@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -583,4 +585,101 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 	for i := range first {
 		require.Equal(t, first[i].Path, second[i].Path, "output index paths must be deterministic across cycles")
 	}
+}
+
+func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// Task 1: sections with distinct timestamps
+	task1Min := window.UnixNano()
+	task1Mid := window.Add(30 * time.Minute).UnixNano()
+	task1Max := window.Add(2 * time.Hour).UnixNano()
+
+	// Task 2: sections with different distinct timestamps
+	task2Min := window.Add(10 * time.Minute).UnixNano()
+	task2Max := window.Add(3 * time.Hour).UnixNano()
+
+	tasks := []*compactionv2pb.TaskSpec{
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task1Max, MaxTimestamp: task1Max, UncompressedSize: 100},
+						{MinTimestamp: task1Min, MaxTimestamp: task1Mid, UncompressedSize: 200},
+					},
+				},
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task1Mid, MaxTimestamp: task1Max, UncompressedSize: 150},
+					},
+				},
+			},
+		},
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task2Max, MaxTimestamp: task2Max, UncompressedSize: 300},
+						{MinTimestamp: task2Min, MaxTimestamp: task2Min, UncompressedSize: 50},
+					},
+				},
+			},
+		},
+	}
+
+	outputs := []string{"output1", "output2"}
+	entries := makeTocEntries(tasks, outputs)
+
+	require.Len(t, entries, 2)
+
+	// Task 1: UncompressedLogsSize = 100+200+150
+	require.Equal(t, uint64(450), entries[0].UncompressedLogsSize, "first task sum: 100+200+150")
+	require.Equal(t, time.Unix(0, task1Min).UTC(), entries[0].StartTime, "first task StartTime = min(task1Min, task1Max, task1Min, task1Mid, task1Mid, task1Max)")
+	require.Equal(t, time.Unix(0, task1Max).UTC(), entries[0].EndTime, "first task EndTime = max(task1Max, task1Mid, task1Max)")
+
+	// Task 2: UncompressedLogsSize = 300+50
+	require.Equal(t, uint64(350), entries[1].UncompressedLogsSize, "second task sum: 300+50")
+	require.Equal(t, time.Unix(0, task2Min).UTC(), entries[1].StartTime, "second task StartTime = min(task2Max, task2Min)")
+	require.Equal(t, time.Unix(0, task2Max).UTC(), entries[1].EndTime, "second task EndTime = max(task2Max, task2Min)")
+}
+
+func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	outputPath := "indexes/test/output"
+	testData := []byte("test data for size calculation")
+	err := bucket.Upload(ctx, outputPath, bytes.NewReader(testData))
+	require.NoError(t, err)
+
+	entries := []metastore.TableOfContentsEntry{
+		{Path: outputPath},
+	}
+
+	c := &coordinator{
+		logger: log.NewNopLogger(),
+		bucket: bucket,
+	}
+
+	c.fillFileSizes(ctx, entries)
+
+	require.Equal(t, uint64(len(testData)), entries[0].FileSize)
+}
+
+func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	entries := []metastore.TableOfContentsEntry{
+		{Path: "indexes/test/nonexistent"},
+	}
+
+	c := &coordinator{
+		logger: log.NewNopLogger(),
+		bucket: bucket,
+	}
+
+	c.fillFileSizes(ctx, entries)
+
+	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
 }

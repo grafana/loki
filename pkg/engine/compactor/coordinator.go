@@ -347,6 +347,8 @@ func (c *coordinator) compactTenantLogs(
 		return tenantCycleLogCompacted, compactionStats{dispatched: len(tasks)}, nil
 	}
 
+	c.fillFileSizes(ctx, newEntries)
+
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
@@ -427,6 +429,8 @@ func (c *coordinator) compactTenant(
 		return compactionStats{}, nil
 	}
 
+	c.fillFileSizes(ctx, newEntries)
+
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
@@ -487,12 +491,27 @@ func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []strin
 	return ids
 }
 
+// fillFileSizes stats each entry's object and sets FileSize. Best-effort: a
+// missing or not-yet-visible object leaves FileSize zero; the next cycle's
+// planning-read backfill recovers it.
+func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
+	for i := range entries {
+		attrs, err := c.bucket.Attributes(ctx, entries[i].Path)
+		if err != nil {
+			level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
+			continue
+		}
+		entries[i].FileSize = uint64(attrs.Size)
+	}
+}
+
 // makeTocEntries pairs each output path with the time bounds derived
 // from its task's source SectionRefs. tasks[i] is the TaskSpec that produced
 // outputs[i].
 //
 // Time bounds: min(MinTimestamp) / max(MaxTimestamp) across all SectionRefs
-// in the task.
+// in the task. UncompressedLogsSize is the sum of UncompressedSize across all
+// sections in the task.
 func makeTocEntries(
 	tasks []*compactionv2pb.TaskSpec,
 	outputs []string,
@@ -500,6 +519,7 @@ func makeTocEntries(
 	entries := make([]metastore.TableOfContentsEntry, len(outputs))
 	for i, ts := range tasks {
 		minTS, maxTS := int64(0), int64(0)
+		var uncompressed uint64
 		first := true
 		for _, run := range ts.Runs {
 			for _, sec := range run.Sections {
@@ -507,20 +527,22 @@ func makeTocEntries(
 					minTS = sec.MinTimestamp
 					maxTS = sec.MaxTimestamp
 					first = false
-					continue
+				} else {
+					if sec.MinTimestamp < minTS {
+						minTS = sec.MinTimestamp
+					}
+					if sec.MaxTimestamp > maxTS {
+						maxTS = sec.MaxTimestamp
+					}
 				}
-				if sec.MinTimestamp < minTS {
-					minTS = sec.MinTimestamp
-				}
-				if sec.MaxTimestamp > maxTS {
-					maxTS = sec.MaxTimestamp
-				}
+				uncompressed += uint64(sec.UncompressedSize)
 			}
 		}
 		entries[i] = metastore.TableOfContentsEntry{
-			Path:      outputs[i],
-			StartTime: time.Unix(0, minTS).UTC(),
-			EndTime:   time.Unix(0, maxTS).UTC(),
+			Path:                 outputs[i],
+			StartTime:            time.Unix(0, minTS).UTC(),
+			EndTime:              time.Unix(0, maxTS).UTC(),
+			UncompressedLogsSize: uncompressed,
 		}
 	}
 	return entries
