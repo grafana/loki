@@ -1657,6 +1657,24 @@ dataobj:
     # CLI flag: -dataobj.compaction.dry-run
     [dry_run: <boolean> | default = false]
 
+    # Experimental: Pin the coordinator to a fixed 12h window (RFC3339) instead
+    # of the current wall-clock window. Empty uses the current window. Used to
+    # compact a historical/seeded window; the value is truncated to the
+    # metastore window boundary.
+    # CLI flag: -dataobj.compaction.target-window
+    [target_window: <string> | default = ""]
+
+    # Experimental: Restrict compaction to the listed tenant IDs
+    # (comma-separated). Empty compacts all tenants in the window.
+    # CLI flag: -dataobj.compaction.tenants
+    [tenants: <string> | default = ""]
+
+    # Experimental: Exit the coordinator once the selected tenants converge (a
+    # cycle makes no further index-compaction progress without failing), instead
+    # of polling forever. Pair with target-window for one-shot jobs.
+    # CLI flag: -dataobj.compaction.run-once
+    [run_once: <boolean> | default = false]
+
     # Experimental: Plan version hashed into IndexMerge output paths. Bump to
     # invalidate previously-written outputs after a planner-algorithm change.
     # CLI flag: -dataobj.compaction.plan-version

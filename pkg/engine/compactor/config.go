@@ -65,6 +65,26 @@ type Config struct {
 	// Intended for testing index compaction.
 	DryRun bool `yaml:"dry_run"`
 
+	// TargetWindow pins the coordinator to a fixed 12h window (RFC3339)
+	// instead of the current wall-clock window. Empty keeps production
+	// behavior (compact now.Truncate(MetastoreWindowSize)). Set it to
+	// compact a historical/seeded window in an experiment; the value is
+	// truncated to the metastore window boundary.
+	TargetWindow string `yaml:"target_window"`
+
+	// Tenants restricts compaction to the listed tenant IDs (comma-separated).
+	// Empty means all tenants present in the window's ToC (production
+	// behavior). Intended for scoping experiment runs to a single tenant.
+	Tenants string `yaml:"tenants"`
+
+	// RunOnce makes the coordinator exit cleanly once the selected tenants
+	// converge — a cycle that makes no further index-compaction progress
+	// without failing — instead of polling forever. It keeps cycling (over
+	// polling_interval) across multiple merge rounds until then, and retries
+	// failed cycles. Intended for one-shot experiment jobs; pair with
+	// TargetWindow.
+	RunOnce bool `yaml:"run_once"`
+
 	// PlanVersion is hashed into IndexMerge output paths so a planner
 	// change invalidates previously-written outputs. Bump on any
 	// breaking change to the planner or merge semantics. Stored as uint
@@ -188,6 +208,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
 		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
+	f.StringVar(&cfg.TargetWindow, prefix+"target-window", "",
+		"Experimental: Pin the coordinator to a fixed 12h window (RFC3339) instead of the current wall-clock window. Empty uses the current window. Used to compact a historical/seeded window; the value is truncated to the metastore window boundary.")
+	f.StringVar(&cfg.Tenants, prefix+"tenants", "",
+		"Experimental: Restrict compaction to the listed tenant IDs (comma-separated). Empty compacts all tenants in the window.")
+	f.BoolVar(&cfg.RunOnce, prefix+"run-once", false,
+		"Experimental: Exit the coordinator once the selected tenants converge (a cycle makes no further index-compaction progress without failing), instead of polling forever. Pair with target-window for one-shot jobs.")
 	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
@@ -253,7 +279,25 @@ func (cfg *Config) Validate() error {
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
 	}
+	if _, _, err := cfg.ParseTargetWindow(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// ParseTargetWindow parses the TargetWindow config. ok is false when
+// TargetWindow is empty (production: use the current window). The returned
+// time is not yet truncated to the metastore window boundary; the coordinator
+// applies that so config.go stays free of the metastore import.
+func (cfg *Config) ParseTargetWindow() (window time.Time, ok bool, err error) {
+	if cfg.TargetWindow == "" {
+		return time.Time{}, false, nil
+	}
+	t, err := time.Parse(time.RFC3339, cfg.TargetWindow)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("invalid dataobj.compaction.target_window %q: %w", cfg.TargetWindow, err)
+	}
+	return t, true, nil
 }
 
 // Sentinel validation errors. Kept at package scope so tests can match

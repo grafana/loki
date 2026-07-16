@@ -52,6 +52,17 @@ type coordinator struct {
 	// wiring sets it to time.Now.
 	clock   func() time.Time
 	metrics *coordinatorMetrics
+
+	// targetWindow, when hasTargetWindow is true, pins every cycle to a fixed
+	// window instead of clock().Truncate(MetastoreWindowSize). Used to compact
+	// a historical/seeded window in experiments.
+	targetWindow    time.Time
+	hasTargetWindow bool
+	// tenantFilter, when non-empty, restricts a cycle to these tenant IDs.
+	tenantFilter map[string]struct{}
+	// runOnce makes Run exit after the first cycle that processes the selected
+	// tenants without failure.
+	runOnce bool
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -66,7 +77,7 @@ func newCoordinator(
 	metastoreWriter *metastore.TableOfContentsWriter,
 	reg prometheus.Registerer,
 ) *coordinator {
-	return &coordinator{
+	c := &coordinator{
 		cfg:    cfg,
 		logger: logger,
 		bucket: bucket,
@@ -76,24 +87,57 @@ func newCoordinator(
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
 		metrics:         newCoordinatorMetrics(reg),
+		tenantFilter:    parseTenants(cfg.Tenants),
+		runOnce:         cfg.RunOnce,
 	}
+	// TargetWindow is validated in Config.Validate before New is reached, so a
+	// parse error here is unexpected; log and fall back to the current window.
+	if w, ok, err := cfg.ParseTargetWindow(); err != nil {
+		level.Warn(logger).Log("msg", "ignoring invalid target_window", "err", err)
+	} else if ok {
+		c.targetWindow = w.UTC().Truncate(metastore.MetastoreWindowSize)
+		c.hasTargetWindow = true
+	}
+	return c
+}
+
+// parseTenants splits a comma-separated tenant list into a set. Returns nil
+// (meaning "all tenants") for an empty or whitespace-only input.
+func parseTenants(s string) map[string]struct{} {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	set := make(map[string]struct{})
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			set[t] = struct{}{}
+		}
+	}
+	return set
 }
 
 // Run blocks until ctx is cancelled, ticking every cfg.PollingInterval and
 // running one compaction cycle per tick. Per-cycle errors are logged and
-// swallowed; the next tick is always attempted.
+// swallowed; the next tick is always attempted. When run_once is set it
+// returns nil once the selected tenants converge (a cycle makes no further
+// index-compaction progress without failing).
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
 		"polling_interval", c.cfg.PollingInterval,
 		"max_runs_per_task", c.cfg.MaxRunsPerTask,
 		"plan_version", c.cfg.PlanVersion,
+		"target_window", c.cfg.TargetWindow,
+		"tenants", c.cfg.Tenants,
+		"run_once", c.runOnce,
 	)
 
 	// Run one cycle immediately on startup; subsequent cycles are
 	// ticker-driven. Without this initial tick a fresh coordinator
 	// would wait a full polling_interval before doing anything.
-	c.runCycle(ctx)
+	if c.runOnceDone(c.runCycle(ctx)) {
+		return nil
+	}
 
 	t := time.NewTicker(c.cfg.PollingInterval)
 	defer t.Stop()
@@ -102,35 +146,80 @@ func (c *coordinator) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-t.C:
-			c.runCycle(ctx)
+			if c.runOnceDone(c.runCycle(ctx)) {
+				return nil
+			}
 		}
 	}
 }
 
-// runCycle performs one full poll iteration: reads the most-recent ToC and runs
-// compaction for every tenant whose window has > 1 index. All errors are logged
-// and swallowed; the loop is designed to recover on the next tick by
-// re-planning against the post-swap ToC.
-func (c *coordinator) runCycle(ctx context.Context) {
+// cycleResult summarizes one poll cycle's per-tenant outcomes so Run can decide
+// when a run-once coordinator has done its job.
+type cycleResult struct {
+	compacted    int
+	converged    int
+	logCompacted int
+	failed       int
+}
+
+// processed reports whether the cycle handled at least one tenant — whether it
+// compacted, log-compacted, or found the tenant already converged.
+func (r cycleResult) processed() bool {
+	return r.compacted+r.converged+r.logCompacted > 0
+}
+
+// runOnceDone reports whether a run-once coordinator should stop after the
+// given cycle. It stops once a cycle makes no further index-compaction progress
+// (compacted == 0) and hits no failures — i.e. the selected tenants have
+// converged. A cycle that still compacted has more merge rounds to run; a
+// failed cycle keeps polling so a transient error (e.g. the worker not yet
+// connected on startup) is retried. Always false when run_once is disabled.
+func (c *coordinator) runOnceDone(res cycleResult) bool {
+	if !c.runOnce {
+		return false
+	}
+	if res.failed == 0 && res.compacted == 0 && res.processed() {
+		level.Info(c.logger).Log("msg", "run-once: selected tenants converged, stopping coordinator")
+		return true
+	}
+	return false
+}
+
+// runCycle performs one full poll iteration: reads the ToC for the target
+// window (or the current window when unset) and runs compaction for every
+// selected tenant whose window has > 1 index. All errors are logged and
+// swallowed; the loop is designed to recover on the next tick by re-planning
+// against the post-swap ToC.
+func (c *coordinator) runCycle(ctx context.Context) cycleResult {
 	start := c.clock()
 	window := start.UTC().Truncate(metastore.MetastoreWindowSize)
+	if c.hasTargetWindow {
+		window = c.targetWindow
+	}
 
 	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
-			level.Debug(c.logger).Log("msg", "no ToC for current window", "window", window)
+			level.Debug(c.logger).Log("msg", "no ToC for window", "window", window)
 			c.metrics.observeCycle("toc_not_found", c.clock().Sub(start))
-			return
+			return cycleResult{}
 		}
 		level.Warn(c.logger).Log("msg", "cycle aborted: load tenant indexes",
 			"window", window, "err", err)
 		c.metrics.observeCycle("index_load_err", c.clock().Sub(start))
-		return
+		return cycleResult{}
+	}
+	if len(c.tenantFilter) > 0 {
+		for tenant := range indexes {
+			if _, ok := c.tenantFilter[tenant]; !ok {
+				delete(indexes, tenant)
+			}
+		}
 	}
 	if len(indexes) == 0 {
-		level.Debug(c.logger).Log("msg", "cycle: no tenants in ToC", "window", window)
+		level.Debug(c.logger).Log("msg", "cycle: no tenants to compact in window", "window", window)
 		c.metrics.observeCycle("no_indexes", c.clock().Sub(start))
-		return
+		return cycleResult{}
 	}
 
 	var (
@@ -197,6 +286,13 @@ func (c *coordinator) runCycle(ctx context.Context) {
 			"polling_interval", c.cfg.PollingInterval,
 		)
 	}
+
+	return cycleResult{
+		compacted:    compacted,
+		converged:    converged,
+		logCompacted: logCompacted,
+		failed:       failed,
+	}
 }
 
 // tenantCycleResult is the single outcome of one per-(tenant, window) cycle.
@@ -252,15 +348,22 @@ func (c *coordinator) runTenantCycle(
 
 	stats, err := c.compactTenant(ctx, tenant, window, entries)
 	tenantDuration := c.clock().Sub(tenantStart)
+	c.metrics.observeEntries(tenant, entries, c.clock())
 	if err != nil {
 		level.Warn(c.logger).Log("msg", "tenant cycle failed",
 			"tenant", tenant, "window", window, "err", err)
 		c.metrics.observeTenantCycle(tenant, "failed", tenantDuration, compactionStats{})
-		c.metrics.observeEntries(tenant, entries, c.clock())
 		return tenantCycleFailed
 	}
+	if stats.added == 0 {
+		// No index-merge work this cycle: the planner produced no tasks, or the
+		// ToC swap was a race-loss / already-converged no-op. Report converged
+		// (not compacted) so a run-once coordinator can tell that index
+		// compaction has nothing left to do for this tenant.
+		c.metrics.observeTenantCycle(tenant, "converged", tenantDuration, stats)
+		return tenantCycleConverged
+	}
 	c.metrics.observeTenantCycle(tenant, "compacted", tenantDuration, stats)
-	c.metrics.observeEntries(tenant, entries, c.clock())
 	return tenantCycleCompacted
 }
 
