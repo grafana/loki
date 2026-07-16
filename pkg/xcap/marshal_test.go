@@ -52,6 +52,52 @@ func TestMarshalUnmarshal(t *testing.T) {
 	require.True(t, capturesEqual(capture, unmarshaled), "captures should be equal after marshal/unmarshal")
 }
 
+func TestMarshalAggregatesRegionsByName(t *testing.T) {
+	ctx, capture := NewCapture(context.Background(), nil)
+
+	bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
+	latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
+	requests := NewStatisticInt64("requests", AggregationTypeSum)
+
+	_, first := StartRegion(ctx, "reader")
+	first.Record(bytesRead.Observe(100))
+	first.Record(latency.Observe(10.5))
+	first.End()
+
+	_, second := StartRegion(ctx, "reader")
+	second.Record(bytesRead.Observe(50))
+	second.Record(latency.Observe(3.1))
+	second.Record(requests.Observe(2))
+	second.End()
+
+	capture.End()
+
+	protoCapture, err := toProtoCapture(capture)
+	require.NoError(t, err)
+	require.Len(t, protoCapture.Regions, 1)
+	require.Equal(t, "reader", protoCapture.Regions[0].Name)
+
+	unmarshaled := &Capture{}
+	require.NoError(t, fromProtoCapture(protoCapture, unmarshaled))
+	require.Len(t, unmarshaled.Regions(), 1)
+
+	region := unmarshaled.Regions()[0]
+	bytesReadObservation := region.observations[bytesRead.Key()]
+	require.NotNil(t, bytesReadObservation)
+	require.EqualValues(t, 150, bytesReadObservation.Value)
+	require.Equal(t, 2, bytesReadObservation.Count)
+
+	latencyObservation := region.observations[latency.Key()]
+	require.NotNil(t, latencyObservation)
+	require.Equal(t, 3.1, latencyObservation.Value)
+	require.Equal(t, 2, latencyObservation.Count)
+
+	requestsObservation := region.observations[requests.Key()]
+	require.NotNil(t, requestsObservation)
+	require.EqualValues(t, 2, requestsObservation.Value)
+	require.Equal(t, 1, requestsObservation.Count)
+}
+
 // capturesEqual compares two captures for equality.
 func capturesEqual(c1, c2 *Capture) bool {
 	if c1 == nil && c2 == nil {
@@ -97,13 +143,6 @@ func capturesEqual(c1, c2 *Capture) bool {
 // regionsEqual compares two regions for equality.
 func regionsEqual(r1, r2 *Region) bool {
 	if r1.name != r2.name {
-		return false
-	}
-
-	if r1.id != r2.id {
-		return false
-	}
-	if r1.parentID != r2.parentID {
 		return false
 	}
 

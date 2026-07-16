@@ -37,8 +37,9 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	}
 
 	// Convert regions to proto regions
-	protoRegions := make([]*proto.Region, 0, len(c.regions))
-	for _, region := range c.regions {
+	regions := aggregateRegionsByName(c.regions)
+	protoRegions := make([]*proto.Region, 0, len(regions))
+	for _, region := range regions {
 		protoRegion, err := toProtoRegion(region, statsIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal region: %w", err)
@@ -53,6 +54,33 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 		Regions:    protoRegions,
 		Statistics: protoStats,
 	}, nil
+}
+
+// aggregateRegionsByName folds all regions that share a name into a single
+// region, merging their observations with [AggregatedObservation] semantics.
+//
+// Aggregated regions have fresh IDs and no parent linkage because wire
+// consumers only use region names and observations.
+func aggregateRegionsByName(regions []*Region) []*Region {
+	byName := make(map[string]*Region, len(regions))
+	aggregated := make([]*Region, 0, len(regions))
+
+	for _, src := range regions {
+		dst, ok := byName[src.name]
+		if !ok {
+			dst = &Region{
+				id:           newID(),
+				name:         src.name,
+				observations: make(map[StatisticKey]*AggregatedObservation),
+			}
+			byName[src.name] = dst
+			aggregated = append(aggregated, dst)
+		}
+
+		dst.MergeObservations(src)
+	}
+
+	return aggregated
 }
 
 // toProtoRegion converts a Region to its protobuf representation.
