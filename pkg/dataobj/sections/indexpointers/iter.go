@@ -93,6 +93,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
 func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+	*pointer = IndexPointer{}
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 		switch column.Type {

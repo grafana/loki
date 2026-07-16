@@ -453,7 +453,7 @@ func TestDownloadObject_ObjectNotFound(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to fetch object from storage")
 }
 
-func TestFlushIndex_PopulatesToCSizes(t *testing.T) {
+func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -480,21 +480,23 @@ func TestFlushIndex_PopulatesToCSizes(t *testing.T) {
 	timeRanges := calculator.TimeRanges()
 	require.Greater(t, len(timeRanges), 0)
 
-	obj, closer, err := calculator.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
+	// Verify per-tenant UncompressedLogsSize accumulator is populated.
+	// buildLogObject creates 10 streams with 1 entry each (lines "line 0" through "line 9").
+	expectedUncompressed := uint64(0)
+	for i := 0; i < 10; i++ {
+		// Each entry is the string "line %d" which is 5 + 1 = 6 bytes
+		expectedUncompressed += 6
+	}
 
-	fileSize := uint64(obj.Size())
-	require.Greater(t, fileSize, uint64(0))
-
-	found := false
+	var foundTenant bool
 	for _, tr := range timeRanges {
 		if tr.Tenant == "tenant" {
-			found = true
-			require.Greater(t, tr.UncompressedLogsSize, uint64(0), "UncompressedLogsSize should be populated from streams")
+			foundTenant = true
+			require.Equal(t, expectedUncompressed, tr.UncompressedLogsSize, "UncompressedLogsSize should equal sum of input stream sizes")
+			break
 		}
 	}
-	require.True(t, found, "tenant should be found in timeRanges")
+	require.True(t, foundTenant, "tenant should be found in timeRanges")
 }
 
 func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {

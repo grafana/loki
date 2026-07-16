@@ -109,8 +109,8 @@ func (b *Builder) EstimatedSize() int {
 	// End timestamp column (int64 with delta encoding)
 	sizeEstimate += len(b.indexPointers) * timestampDeltaSize
 
-	// File size and uncompressed logs size columns (int64 with delta encoding)
-	sizeEstimate += 2 * len(b.indexPointers) * streamio.VarintSize(int64(1<<20))
+	// File size and uncompressed logs size columns (int64)
+	sizeEstimate += 2 * len(b.indexPointers) * 8
 
 	// Column metadata overhead (5 columns)
 	sizeEstimate += 5 * metadataOverhead

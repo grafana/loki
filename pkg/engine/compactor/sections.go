@@ -107,7 +107,9 @@ func loadTenantIndexes(
 				level.Warn(logger).Log("msg", "backfill file size failed", "path", entries[i].Path, "err", err)
 				continue
 			}
-			entries[i].FileSize = uint64(attrs.Size)
+			if attrs.Size > 0 {
+				entries[i].FileSize = uint64(attrs.Size)
+			}
 		}
 		out[tenant] = entries
 	}

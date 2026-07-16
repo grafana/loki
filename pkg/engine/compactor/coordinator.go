@@ -501,7 +501,9 @@ func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.Tab
 			level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
 			continue
 		}
-		entries[i].FileSize = uint64(attrs.Size)
+		if attrs.Size > 0 {
+			entries[i].FileSize = uint64(attrs.Size)
+		}
 	}
 }
 
