@@ -90,7 +90,12 @@ func (c *coordinator) Run(ctx context.Context) error {
 	)
 
 	var wg sync.WaitGroup
+	seen := make(map[string]struct{}, len(tenants))
 	for _, tenant := range tenants {
+		if _, dup := seen[tenant]; dup {
+			continue
+		}
+		seen[tenant] = struct{}{}
 		wg.Add(1)
 		go func(tenant string) {
 			defer wg.Done()
@@ -428,8 +433,8 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
-			level.Debug(c.logger).Log("msg", "bucket not found",
-				"tenant", tenant, "window", window, "bucket", c.bucket.Name(), "err", err)
+			level.Debug(c.logger).Log("msg", "no ToC for window",
+				"tenant", tenant, "window", window, "err", err)
 			return nil, true
 		}
 		level.Warn(c.logger).Log("msg", "phase: load tenant indexes failed",
@@ -481,6 +486,9 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 
 	dur := c.clock().Sub(start)
 	switch {
+	case anySwapped && anyError:
+		c.metrics.observeTenantLogCycle(tenant, "compacted", dur, agg)
+		return phaseOutcomeError
 	case anyError:
 		c.metrics.observeTenantLogCycle(tenant, "failed", dur, compactionStats{})
 		return phaseOutcomeError
@@ -512,6 +520,9 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		case phaseLogMerge:
 			outcome = c.runLogMergePhase(ctx, tenant, window)
 		}
+		if ctx.Err() != nil {
+			return
+		}
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 
 		if outcome != phaseOutcomeError {
@@ -520,8 +531,8 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	}
 }
 
-// cycleOutcome maps a phaseOutcome to the existing cyclesTotal outcome label
-// values, preserving dashboard compatibility.
+// cycleOutcome maps a phaseOutcome to a cyclesTotal outcome label. The label set
+// is now compacted|converged|failed (reduced from the old poll-loop set).
 func cycleOutcome(o phaseOutcome) string {
 	switch o {
 	case phaseOutcomeSwapped:

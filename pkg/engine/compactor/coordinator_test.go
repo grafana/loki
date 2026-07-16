@@ -532,3 +532,78 @@ func TestRunLogMergePhase_CancelledMidIterationStops(t *testing.T) {
 	require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme", window))
 	require.Empty(t, replacer.snapshot(), "cancelled phase performs no swap")
 }
+
+func TestRun_CancelDrainsGoroutines(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c.cfg.CompactionTenants = []string{"acme"}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Run(ctx)
+	}()
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not drain within 2 seconds; possible goroutine leak")
+	}
+}
+
+func TestRunTenantLoop_ErrorRetries(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	window := imWindow()
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+
+	callCount := 0
+	prevRunPlan := c.runPlan
+	c.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error {
+		callCount++
+		if callCount >= 4 {
+			cancel()
+		}
+		return prevRunPlan(ctx, opts, plan)
+	}
+
+	c.runTenantLoop(ctx, "acme")
+
+	require.GreaterOrEqual(t, callCount, 3, "loop made multiple dispatch cycles")
+}
+
+func TestRun_DedupesTenants(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{}
+
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c.cfg.CompactionTenants = []string{"acme", "acme", "bravo", "acme"}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.Run(ctx)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	wg.Wait()
+}
