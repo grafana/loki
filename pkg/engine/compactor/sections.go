@@ -22,9 +22,11 @@ import (
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
-	Path  string
-	Start time.Time
-	End   time.Time
+	Path                 string
+	Start                time.Time
+	End                  time.Time
+	FileSize             uint64
+	UncompressedLogsSize uint64
 }
 
 // tenantIndexes maps tenant ID → ordered list of indexes the ToC references
@@ -33,7 +35,7 @@ type indexEntry struct {
 type tenantIndexes map[string][]indexEntry
 
 // loadTenantIndexes reads the ToC for the given window-aligned time and
-// returns every (tenant, index path, time range) triple it references.
+// returns every (tenant, index entry) pair — each entry carries path, time range, and sizes.
 //
 // This is the per-cycle planning input: the coordinator iterates the result
 // map and skips tenants whose index slice has length ≤ 1 (the convergence
@@ -153,6 +155,22 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 					}
 					scratch[rIdx].End = time.Unix(0, int64(values.Value(rIdx)))
 				}
+			case indexpointers.ColumnTypeFileSize:
+				values := col.(*array.Int64)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].FileSize = uint64(values.Value(rIdx))
+				}
+			case indexpointers.ColumnTypeUncompressedLogsSize:
+				values := col.(*array.Int64)
+				for rIdx := range numRows {
+					if col.IsNull(rIdx) {
+						continue
+					}
+					scratch[rIdx].UncompressedLogsSize = uint64(values.Value(rIdx))
+				}
 			}
 		}
 
@@ -175,10 +193,11 @@ func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
 	out := make([]*compactionv2pb.SectionRef, len(indexes))
 	for i, e := range indexes {
 		out[i] = &compactionv2pb.SectionRef{
-			ObjectPath:   e.Path,
-			SectionIndex: 0,
-			MinTimestamp: e.Start.UnixNano(),
-			MaxTimestamp: e.End.UnixNano(),
+			ObjectPath:       e.Path,
+			SectionIndex:     0,
+			MinTimestamp:     e.Start.UnixNano(),
+			MaxTimestamp:     e.End.UnixNano(),
+			UncompressedSize: int64(e.UncompressedLogsSize),
 		}
 	}
 	return out
