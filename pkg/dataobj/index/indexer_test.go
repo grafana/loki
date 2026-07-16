@@ -204,7 +204,7 @@ func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
 
 	_, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeAppend)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "indexer service is not running")
+	require.ErrorIs(t, err, ErrIndexerNotRunning)
 }
 
 func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
