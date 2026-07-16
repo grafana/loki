@@ -250,7 +250,7 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 			index:             0,
 			watchesCallsCount: 4,
 			featureGates:      configv1.FeatureGates{},
-			pred:              createOrUpdateOnlyPred,
+			pred:              createOrUpdatePred,
 		},
 		{
 			src:               &corev1.Secret{},

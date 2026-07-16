@@ -4181,13 +4181,6 @@ spec:
                   - type
                   type: object
                 type: array
-              networkPolicyRuleSet:
-                description: NetworkPolicyRuleSet indicates which NetworkPolicies
-                  ruleset was applied by the operator for this LokiStack.
-                enum:
-                - None
-                - RestrictIngressEgress
-                type: string
               networkPolicyStatus:
                 description: NetworkPolicyStatus provides details about the applied
                   NetworkPolicies configuration

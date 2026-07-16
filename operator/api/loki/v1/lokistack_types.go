@@ -1581,12 +1581,6 @@ type LokiStackStatus struct {
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
 
-	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	NetworkPolicyRuleSet NetworkPolicyRuleSet `json:"networkPolicyRuleSet,omitempty"`
-
 	// NetworkPolicyStatus provides details about the applied NetworkPolicies configuration
 	//
 	// +optional

@@ -2241,22 +2241,6 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
-<code>networkPolicyRuleSet</code><br/>
-<em>
-<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
-NetworkPolicyRuleSet
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
-<p>Deprecated: This field is deprecated and will be removed in a future release.
-Use NetworkPolicyStatus.RuleSet instead.</p>
-</td>
-</tr>
-<tr>
-<td>
 <code>networkPolicyStatus</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-LokiStackNetworkPolicyStatus">
@@ -2646,7 +2630,7 @@ NetworkPolicyRuleSet
 ## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackNetworkPolicyStatus">LokiStackNetworkPolicyStatus</a>, <a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackNetworkPolicyStatus">LokiStackNetworkPolicyStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
 </p>
 <div>
 <p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>

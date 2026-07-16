@@ -105,6 +105,16 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
+	// createOrUpdatePred uses ResourceVersion for update detection instead of Generation,
+	// making it suitable for resources like Services that don't populate Generation.
+	createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return e.ObjectOld.GetResourceVersion() != e.ObjectNew.GetResourceVersion()
+		},
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	})
 )
 
 // LokiStackReconciler reconciles a LokiStack object
@@ -222,7 +232,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&networkingv1.NetworkPolicy{}, updateOrDeleteOnlyPred).
-		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdateOnlyPred).
+		Watches(&corev1.Service{}, r.enqueueForObjectStorageServices(), createOrUpdatePred).
 		Watches(&corev1.Service{}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&corev1.Secret{}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
 		Watches(&corev1.ConfigMap{}, r.enqueueForStorageCA(), createUpdateOrDeletePred)
@@ -407,7 +417,7 @@ func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHan
 				continue
 			}
 
-			storageURL, err := url.Parse(string(secret.Data["endpoint"]))
+			storageURL, err := url.Parse(storageEndpoint)
 			if err != nil || storageURL.Hostname() == "" {
 				continue
 			}

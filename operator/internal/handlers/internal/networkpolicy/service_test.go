@@ -567,7 +567,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 
 			logger := log.NewLogger("")
 
-			ports, err := DetermineObjectStoragePorts(context.Background(), logger, k.Build(), tt.objStore, tt.stack, tt.featureGates)
+			ports, err := DetermineObjectStoragePorts(context.Background(), logger, k.Build(), tt.objStore, tt.stack, tt.featureGates.OpenShift.Enabled)
 
 			if tt.expectedError {
 				require.Error(t, err)

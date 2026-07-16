@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
@@ -148,7 +147,7 @@ func resolveTargetPort(service *corev1.Service, endpointSlices *discoveryv1.Endp
 	return 0
 }
 
-func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options, stack lokiv1.LokiStack, fg configv1.FeatureGates) ([]int32, error) {
+func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Client, objStore storage.Options, stack lokiv1.LokiStack, openShiftEnabled bool) ([]int32, error) {
 	ports := []int32{}
 
 	servicePorts, err := portToPodPort(ctx, log, k, objStore)
@@ -160,7 +159,7 @@ func DetermineObjectStoragePorts(ctx context.Context, log logr.Logger, k k8s.Cli
 	}
 
 	if len(ports) == 0 {
-		ports = endpointPort(objStore, fg.OpenShift.Enabled)
+		ports = endpointPort(objStore, openShiftEnabled)
 	}
 
 	// Default to HTTPS if no ports determined

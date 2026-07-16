@@ -131,7 +131,7 @@ func CreateOrUpdateLokiStack(
 	if stack.Spec.NetworkPolicies != nil {
 		networkPolicyRuleSet = stack.Spec.NetworkPolicies.RuleSet
 
-		ports, optErr := networkpolicy.DetermineObjectStoragePorts(ctx, ll, k, objStore, stack, fg)
+		ports, optErr := networkpolicy.DetermineObjectStoragePorts(ctx, ll, k, objStore, stack, fg.OpenShift.Enabled)
 		if optErr != nil {
 			return nil, optErr
 		}

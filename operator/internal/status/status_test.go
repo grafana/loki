@@ -60,7 +60,6 @@ func TestRefreshSuccess(t *testing.T) {
 		Storage: lokiv1.LokiStackStorageStatus{
 			CredentialMode: lokiv1.CredentialModeStatic,
 		},
-		NetworkPolicyRuleSet: lokiv1.NetworkPolicyRuleSetNone,
 		NetworkPolicyStatus: lokiv1.LokiStackNetworkPolicyStatus{
 			RuleSet: lokiv1.NetworkPolicyRuleSetNone,
 		},
