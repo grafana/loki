@@ -462,6 +462,11 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", fmt.Errorf("failed to upload index: %w", err)
 	}
 
+	fileSize := uint64(obj.Size())
+	for i := range tenantTimeRanges {
+		tenantTimeRanges[i].FileSize = fileSize
+	}
+
 	metastoreTocWriter := metastore.NewTableOfContentsWriter(si.indexStorageBucket, si.logger)
 	if err := metastoreTocWriter.WriteEntry(ctx, key, tenantTimeRanges); err != nil {
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)

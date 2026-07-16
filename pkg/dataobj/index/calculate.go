@@ -70,15 +70,17 @@ func getLogsCalculationSteps() []logsIndexCalculation {
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 type Calculator struct {
-	indexobjBuilder *indexobj.Builder
-	builderMtx      sync.Mutex
-	metrics         *calculatorMetrics
+	indexobjBuilder      *indexobj.Builder
+	builderMtx           sync.Mutex
+	metrics              *calculatorMetrics
+	uncompressedByTenant map[string]uint64
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
 	return &Calculator{
-		indexobjBuilder: indexobjBuilder,
-		metrics:         newCalculatorMetrics(),
+		indexobjBuilder:      indexobjBuilder,
+		metrics:              newCalculatorMetrics(),
+		uncompressedByTenant: make(map[string]uint64),
 	}
 }
 
@@ -94,10 +96,15 @@ func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
 
 func (c *Calculator) Reset() {
 	c.indexobjBuilder.Reset()
+	clear(c.uncompressedByTenant)
 }
 
 func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
-	return c.indexobjBuilder.TimeRanges()
+	ranges := c.indexobjBuilder.TimeRanges()
+	for i := range ranges {
+		ranges[i].UncompressedLogsSize = c.uncompressedByTenant[ranges[i].Tenant]
+	}
+	return ranges
 }
 
 func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
@@ -207,6 +214,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 				}
 				streamIDLookup[stream.ID] = newStreamID
 				streamLabels[stream.ID] = stream.Labels
+				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil
 		}()
