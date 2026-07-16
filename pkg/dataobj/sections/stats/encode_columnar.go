@@ -3,7 +3,6 @@ package stats
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -30,16 +29,7 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	// Parse label keys from SortSchema. All rows within a section share the
 	// same SortSchema (guaranteed by the builder being per-tenant and the
 	// calculation pipeline producing rows with a config-driven schema).
-	sortSchema := rows[0].SortSchema
-	var labelKeys []string
-	if sortSchema != "" {
-		parts := strings.Split(sortSchema, ",")
-		for _, k := range parts {
-			if k != "" {
-				labelKeys = append(labelKeys, k)
-			}
-		}
-	}
+	labelKeys := schemaLabelNames(rows[0].SortSchema)
 
 	// Build fixed column builders (indices 0-6).
 	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
