@@ -49,11 +49,22 @@ func TestEvaluate_Constant(t *testing.T) {
 
 	e := &expr.Constant{Value: columnartest.Scalar(t, types.KindUint64, 42)}
 
-	expect := columnartest.Scalar(t, types.KindUint64, 42)
+	t.Run("without input", func(t *testing.T) {
+		expect := columnartest.Scalar(t, types.KindUint64, 42)
 
-	result, err := expr.Evaluate(&alloc, e, nil, memory.Bitmap{})
-	require.NoError(t, err)
-	columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+		result, err := expr.Evaluate(&alloc, e, nil, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
+	t.Run("with array input", func(t *testing.T) {
+		input := columnartest.Array(t, types.KindInt64, &alloc, int64(1), int64(2), int64(3))
+		expect := columnartest.Array(t, types.KindUint64, &alloc, 42, 42, 42)
+
+		result, err := expr.Evaluate(&alloc, e, input, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
 }
 
 func TestEvaluate_Column(t *testing.T) {
@@ -277,6 +288,25 @@ func TestEvaluate_MakeStruct(t *testing.T) {
 		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
 	})
 
+	t.Run("broadcast scalar values", func(t *testing.T) {
+		e := &expr.MakeStruct{
+			Names: []string{"name", "constant"},
+			Values: []expr.Expression{
+				&expr.Column{Name: "name"},
+				&expr.Constant{Value: columnartest.Scalar(t, types.KindInt64, 5)},
+			},
+		}
+
+		expect := columnartest.Struct(t, &alloc,
+			columnartest.Field("name", types.KindUTF8, "Alice", "Bob", "Charlie"),
+			columnartest.Field("constant", types.KindInt64, int64(5), int64(5), int64(5)),
+		)
+
+		result, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
+		require.NoError(t, err)
+		columnartest.RequireDatumsEqual(t, expect, result, memory.Bitmap{})
+	})
+
 	t.Run("mismatched names and values", func(t *testing.T) {
 		e := &expr.MakeStruct{
 			Names:  []string{"a", "b"},
@@ -291,16 +321,6 @@ func TestEvaluate_MakeStruct(t *testing.T) {
 		e := &expr.MakeStruct{
 			Names:  []string{"x", "x"},
 			Values: []expr.Expression{&expr.Column{Name: "name"}, &expr.Column{Name: "age"}},
-		}
-
-		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})
-		require.Error(t, err)
-	})
-
-	t.Run("scalar value rejected", func(t *testing.T) {
-		e := &expr.MakeStruct{
-			Names:  []string{"x"},
-			Values: []expr.Expression{&expr.Constant{Value: columnartest.Scalar(t, types.KindUTF8, "hello")}},
 		}
 
 		_, err := expr.Evaluate(&alloc, e, record, memory.Bitmap{})

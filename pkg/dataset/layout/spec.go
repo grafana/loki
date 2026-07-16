@@ -43,6 +43,12 @@ type (
 		// Chunk is the spec used for all chunks in the layout.
 		Chunk Spec
 	}
+
+	// SpecStruct specifies how to encode fields in a struct layout.
+	SpecStruct struct {
+		Fields   []Spec
+		Validity Spec // Optional; nil for non-nullable structs.
+	}
 )
 
 // Kind returns [KindArray].
@@ -55,9 +61,15 @@ func (spec *SpecChunked) Kind() Kind {
 	return KindChunked
 }
 
+// Kind returns [KindStruct].
+func (spec *SpecStruct) Kind() Kind {
+	return KindStruct
+}
+
 //
 // Sealed marker implementations.
 //
 
 func (spec *SpecArray) isSpec()   {}
 func (spec *SpecChunked) isSpec() {}
+func (spec *SpecStruct) isSpec()  {}

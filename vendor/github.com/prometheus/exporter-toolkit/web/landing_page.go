@@ -12,7 +12,6 @@
 // limitations under the License.
 
 //go:build !genassets
-// +build !genassets
 
 //go:generate go run -tags genassets gen_assets.go
 

@@ -2,6 +2,7 @@ package postings
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
@@ -28,14 +29,125 @@ type LabelStreams struct {
 	Has          bool
 }
 
-// Scanner scans one postings Section. It holds no mutable state — each scan
-// uses its own reader and is safe to share across goroutines.
-type Scanner struct {
-	sec *Section
+// ScannerReaders contains the readers used by a [Scanner].
+type ScannerReaders struct {
+	MatchLabels  *Reader
+	LabelStreams *Reader
+	BloomMatches *Reader
+	LabelNames   *Reader
 }
 
-// NewScanner returns a Scanner bound to sec.
-func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
+// NewScannerReaders creates the readers needed to scan sec. The returned
+// readers must be opened before they are passed to [NewScanner].
+func NewScannerReaders(
+	sec *Section,
+	matchers []CompiledMatcher,
+	filters []CompiledMatcher,
+	predicates []*labels.Matcher,
+	labelStats dataset.RowReaderStatsTracker,
+	bloomStats dataset.RowReaderStatsTracker,
+) (*ScannerReaders, error) {
+	readers := &ScannerReaders{}
+
+	kindCol := sectionColumn(sec, ColumnTypeKind)
+	nameCol := sectionColumn(sec, ColumnTypeColumnName)
+	valueCol := sectionColumn(sec, ColumnTypeLabelValue)
+	bloomCol := sectionColumn(sec, ColumnTypeBloomFilter)
+
+	if len(matchers) > 0 && kindCol != nil && nameCol != nil && valueCol != nil {
+		readers.MatchLabels = newScannerReader(sec, matchLabelsPredicate(kindCol, nameCol, valueCol, matchers), labelStats)
+	}
+	if len(filters) > 0 && kindCol != nil && nameCol != nil {
+		readers.LabelStreams = newScannerReader(sec, labelNamesPredicate(kindCol, nameCol, compiledMatchersByName(filters)), labelStats)
+	}
+
+	if len(predicates) > 0 && kindCol != nil && nameCol != nil && bloomCol != nil {
+		if err := validateMatcherNames(predicates); err != nil {
+			return nil, err
+		}
+
+		readers.BloomMatches = newScannerReader(sec, bloomMatchPredicate(kindCol, nameCol, bloomCol, predicates), bloomStats)
+		readers.LabelNames = newScannerReader(sec, matcherLabelNamesPredicate(kindCol, nameCol, predicates), nil)
+	}
+
+	return readers, nil
+}
+
+func newScannerReader(sec *Section, pred Predicate, statsTracker dataset.RowReaderStatsTracker) *Reader {
+	return NewReader(ReaderOptions{
+		Columns:      sec.Columns(),
+		Predicates:   []Predicate{pred},
+		StatsTracker: statsTracker,
+	})
+}
+
+func compiledMatchersByName(cms []CompiledMatcher) map[string][]int {
+	byName := make(map[string][]int, len(cms))
+	for i, cm := range cms {
+		byName[cm.matcher.Name] = append(byName[cm.matcher.Name], i)
+	}
+	return byName
+}
+
+func validateMatcherNames(matchers []*labels.Matcher) error {
+	byName := make(map[string]*labels.Matcher, len(matchers))
+	for _, matcher := range matchers {
+		if existing, duplicate := byName[matcher.Name]; duplicate {
+			return fmt.Errorf("duplicate equal-predicate name %q (%q, %q); MatcherHits assumes distinct names",
+				matcher.Name, existing.Value, matcher.Value)
+		}
+		byName[matcher.Name] = matcher
+	}
+	return nil
+}
+
+// Open opens all configured readers.
+func (r *ScannerReaders) Open(ctx context.Context) error {
+	for _, reader := range r.all() {
+		if reader == nil {
+			continue
+		}
+		if err := reader.Open(ctx); err != nil {
+			_ = r.Close()
+			return err
+		}
+	}
+	return nil
+}
+
+// Close closes all configured readers.
+func (r *ScannerReaders) Close() error {
+	var errs []error
+	for _, reader := range r.all() {
+		if reader != nil {
+			errs = append(errs, reader.Close())
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (r *ScannerReaders) all() []*Reader {
+	return []*Reader{r.MatchLabels, r.LabelStreams, r.BloomMatches, r.LabelNames}
+}
+
+// Scanner scans one postings Section using readers opened by its caller.
+type Scanner struct {
+	sec     *Section
+	readers *ScannerReaders
+}
+
+// NewScanner returns a Scanner bound to sec and readers.
+func NewScanner(sec *Section, readers *ScannerReaders) *Scanner {
+	return &Scanner{sec: sec, readers: readers}
+}
+
+// Close closes the scanner's readers.
+func (s *Scanner) Close() error {
+	if s.readers == nil {
+		return nil
+	}
+	return s.readers.Close()
+}
 
 // MatchLabels scans the section once for all cms (kind=Label AND OR-of per
 // matcher (name=cm.Name AND cm.valuePredicate)), attributing each row back to
@@ -47,7 +159,7 @@ func NewScanner(sec *Section) *Scanner { return &Scanner{sec: sec} }
 // The Matched bitmaps in the result are allocated from alloc (a nil alloc uses
 // Go's built-in allocation). They outlive the scan, so the caller must not
 // reclaim alloc while the returned map is in use.
-func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef][]MatchedStreams, error) {
+func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]MatchedStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	valueCol := sectionColumn(s.sec, ColumnTypeLabelValue)
@@ -57,6 +169,9 @@ func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms 
 	if len(cms) == 0 {
 		return nil, nil
 	}
+	if s.readers == nil || s.readers.MatchLabels == nil {
+		return nil, errors.New("match labels reader not provided")
+	}
 
 	byName := make(map[string][]int, len(cms))
 	for i, cm := range cms {
@@ -64,10 +179,8 @@ func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms 
 		byName[n] = append(byName[n], i)
 	}
 
-	pred := matchLabelsPredicate(kindCol, nameCol, valueCol, cms)
-
 	out := make(map[SectionRef][]MatchedStreams)
-	err := s.eachRow(ctx, pred, statsTracker, func(row Row) {
+	err := s.eachRow(ctx, s.readers.MatchLabels, func(row Row) {
 		cands := byName[row.ColumnName]
 		if len(cands) == 0 {
 			return
@@ -122,7 +235,7 @@ func matchLabelsPredicate(kindCol, nameCol, valueCol *Column, cms []CompiledMatc
 // The Present and Matched bitmaps in the result are allocated from alloc (a nil
 // alloc uses Go's built-in allocation). They outlive the scan, so the caller
 // must not reclaim alloc while the returned map is in use.
-func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef][]LabelStreams, error) {
+func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms []CompiledMatcher) (map[SectionRef][]LabelStreams, error) {
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	if kindCol == nil || nameCol == nil {
@@ -131,6 +244,9 @@ func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms
 	if len(cms) == 0 {
 		return nil, nil
 	}
+	if s.readers == nil || s.readers.LabelStreams == nil {
+		return nil, errors.New("label streams reader not provided")
+	}
 
 	byName := make(map[string][]int, len(cms))
 	for i, cm := range cms {
@@ -138,7 +254,7 @@ func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms
 	}
 
 	out := make(map[SectionRef][]LabelStreams)
-	err := s.eachRow(ctx, labelNamesPredicate(kindCol, nameCol, byName), statsTracker, func(row Row) {
+	err := s.eachRow(ctx, s.readers.LabelStreams, func(row Row) {
 		cands := byName[row.ColumnName]
 		if len(cands) == 0 {
 			return
@@ -177,9 +293,11 @@ func labelNamesPredicate(kindCol, nameCol *Column, names map[string][]int) Predi
 	}
 }
 
-func (s *Scanner) eachRow(ctx context.Context, pred Predicate, statsTracker dataset.RowReaderStatsTracker, fn func(Row)) error {
-	rr := NewRowReader(ctx, s.sec, []Predicate{pred}, WithStatsTracker(statsTracker))
-	defer rr.Close()
+func (s *Scanner) eachRow(ctx context.Context, reader *Reader, fn func(Row)) error {
+	if reader == nil {
+		return nil
+	}
+	rr := NewRowReader(ctx, reader)
 	for rr.Next() {
 		row := rr.At()
 		if len(row.StreamIDBitmap) == 0 {
@@ -259,28 +377,31 @@ func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap
 // per-section (name,value) bloom hits. The second is the per-section set of
 // matcher names that occur as a stream label. Returns nil maps when the section
 // lacks the required columns.
-func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher, statsTracker dataset.RowReaderStatsTracker) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher) (map[SectionRef]map[PredicateValue]struct{}, map[SectionRef]map[string]struct{}, error) {
+	if len(matchers) == 0 {
+		return nil, nil, nil
+	}
+
 	kindCol := sectionColumn(s.sec, ColumnTypeKind)
 	nameCol := sectionColumn(s.sec, ColumnTypeColumnName)
 	bloomCol := sectionColumn(s.sec, ColumnTypeBloomFilter)
 	if kindCol == nil || nameCol == nil || bloomCol == nil {
 		return nil, nil, nil
 	}
+	if s.readers == nil || s.readers.BloomMatches == nil || s.readers.LabelNames == nil {
+		return nil, nil, errors.New("matcher hits readers not provided")
+	}
 
-	// the bloom match predicate assumes no two matchers will match on the same
-	// name, which is guaranteed upstream by only passing equality matchers.
+	// The bloom match predicate assumes no two matchers will match on the same
+	// name, which is validated when the scanner readers are created.
 	byName := make(map[string]*labels.Matcher, len(matchers))
 	for _, p := range matchers {
-		if existing, dup := byName[p.Name]; dup {
-			return nil, nil, fmt.Errorf("MatcherHits: duplicate equal-predicate name %q (%q, %q); MatcherHits assumes distinct names",
-				p.Name, existing.Value, p.Value)
-		}
 		byName[p.Name] = p
 	}
 
 	matched := make(map[SectionRef]map[PredicateValue]struct{})
-	if pred := s.bloomMatchPredicate(kindCol, nameCol, bloomCol, matchers); pred != nil {
-		br := NewRowReader(ctx, s.sec, []Predicate{pred}, WithStatsTracker(statsTracker))
+	if s.readers.BloomMatches != nil {
+		br := NewRowReader(ctx, s.readers.BloomMatches)
 		for br.Next() {
 			row := br.At()
 			p := byName[row.ColumnName]
@@ -297,16 +418,14 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher, s
 			vals[pv] = struct{}{}
 		}
 		if err := br.Err(); err != nil {
-			_ = br.Close()
 			return nil, nil, err
 		}
-		_ = br.Close()
 	}
 
 	// matchers are predicates from outside the stream selector, so a name may
 	// resolve to either a stream label or a parsed/metadata label. Report which
 	// ones occur as stream labels here so the caller can resolve the collision.
-	matchersInLabelNames, err := s.labelNameHits(ctx, kindCol, nameCol, matchers)
+	matchersInLabelNames, err := s.labelNameHits(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -316,7 +435,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, matchers []*labels.Matcher, s
 // bloomMatchPredicate folds matchers into a single OR of per-matcher
 // (kind=Bloom AND name=p.Name AND bloom~p.Value) branches. Returns nil when
 // there are no matchers.
-func (s *Scanner) bloomMatchPredicate(kindCol, nameCol, bloomCol *Column, matchers []*labels.Matcher) Predicate {
+func bloomMatchPredicate(kindCol, nameCol, bloomCol *Column, matchers []*labels.Matcher) Predicate {
 	var pred Predicate
 	for _, p := range matchers {
 		branch := AndPredicate{
@@ -338,22 +457,8 @@ func (s *Scanner) bloomMatchPredicate(kindCol, nameCol, bloomCol *Column, matche
 // labelNameHits scans the section once for all matcher names (kind=Label AND
 // name IN names), returning per section the matcher names that appear as a
 // stream label there.
-func (s *Scanner) labelNameHits(ctx context.Context, kindCol, nameCol *Column, matchers []*labels.Matcher) (map[SectionRef]map[string]struct{}, error) {
-	names := make([]scalar.Scalar, 0, len(matchers))
-	wanted := make(map[string]struct{}, len(matchers))
-	for _, p := range matchers {
-		if _, ok := wanted[p.Name]; ok {
-			continue
-		}
-		wanted[p.Name] = struct{}{}
-		names = append(names, scalar.NewStringScalar(p.Name))
-	}
-
-	lr := NewRowReader(ctx, s.sec, []Predicate{AndPredicate{
-		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
-		Right: InPredicate{Column: nameCol, Values: names},
-	}})
-	defer lr.Close()
+func (s *Scanner) labelNameHits(ctx context.Context) (map[SectionRef]map[string]struct{}, error) {
+	lr := NewRowReader(ctx, s.readers.LabelNames)
 
 	hits := make(map[SectionRef]map[string]struct{})
 	for lr.Next() {
@@ -367,6 +472,22 @@ func (s *Scanner) labelNameHits(ctx context.Context, kindCol, nameCol *Column, m
 		set[row.ColumnName] = struct{}{}
 	}
 	return hits, lr.Err()
+}
+
+func matcherLabelNamesPredicate(kindCol, nameCol *Column, matchers []*labels.Matcher) Predicate {
+	names := make([]scalar.Scalar, 0, len(matchers))
+	wanted := make(map[string]struct{}, len(matchers))
+	for _, matcher := range matchers {
+		if _, ok := wanted[matcher.Name]; ok {
+			continue
+		}
+		wanted[matcher.Name] = struct{}{}
+		names = append(names, scalar.NewStringScalar(matcher.Name))
+	}
+	return AndPredicate{
+		Left:  EqualPredicate{Column: kindCol, Value: scalar.NewInt64Scalar(int64(KindLabel))},
+		Right: InPredicate{Column: nameCol, Values: names},
+	}
 }
 
 // sectionColumn returns the section's column of the given type, or nil if absent.

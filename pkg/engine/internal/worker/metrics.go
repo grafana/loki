@@ -35,7 +35,6 @@ type sendMode string
 // send mode label values. The Prometheus label is named "mode".
 const (
 	sendModeSync     sendMode = "sync"
-	sendModeAsync    sendMode = "async"
 	sendModeInternal sendMode = "internal"
 )
 
@@ -95,9 +94,9 @@ type metrics struct {
 	// (before draining its pipeline), partitioned by task_type.
 	setupSeconds *prometheus.HistogramVec
 
-	// Task status-update send path (worker -> scheduler).
-	statusUpdateSeconds     prometheus.Histogram
-	statusUpdateErrorsTotal *prometheus.CounterVec
+	// Terminal task-result send path (worker -> scheduler).
+	taskResultSendSeconds     prometheus.Histogram
+	taskResultSendErrorsTotal *prometheus.CounterVec
 
 	handlerPhaseSeconds  *prometheus.HistogramVec
 	commSiteWaitSeconds  *prometheus.HistogramVec
@@ -171,13 +170,13 @@ func newMetrics() *metrics {
 			Help: "Time spent preparing a task for execution before its pipeline is drained",
 		}, []string{"task_type"}),
 
-		statusUpdateSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
-			Name: "loki_engine_worker_status_update_seconds",
-			Help: "Time spent sending a task's terminal status update to the scheduler and waiting for acknowledgement",
+		taskResultSendSeconds: newNativeHistogram(reg, prometheus.HistogramOpts{
+			Name: "loki_engine_worker_task_result_send_seconds",
+			Help: "Time spent sending a terminal task result to the scheduler and waiting for acknowledgement",
 		}),
-		statusUpdateErrorsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_engine_worker_status_update_errors_total",
-			Help: "Total number of failures sending a task's terminal status update to the scheduler, by error class",
+		taskResultSendErrorsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_engine_worker_task_result_send_errors_total",
+			Help: "Total number of failures sending a terminal task result to the scheduler, by error class",
 		}, []string{"error_class"}),
 		handlerPhaseSeconds: newNativeHistogramVec(reg, prometheus.HistogramOpts{
 			Name: "loki_engine_worker_handler_phase_seconds",
@@ -282,16 +281,11 @@ func (m *metrics) timeCommSite(site string, mode sendMode, messageType wire.Mess
 	return d, err
 }
 
-// timeSend times a fire-and-forget or acknowledged send at a communication
-// site: it sends msg to sender (asynchronously when mode is async, otherwise
-// synchronously) and records the wait to comm_site_wait_seconds, deriving the
-// message_type label from msg. It is the send-shaped counterpart to
-// timeCommSite, sparing pure-send sites a one-line callback.
-func (m *metrics) timeSend(ctx context.Context, sender *wire.Peer, site string, mode sendMode, taskType taskType, msg wire.Message) (time.Duration, error) {
-	return m.timeCommSite(site, mode, msg.Kind(), taskType, func() error {
-		if mode == sendModeAsync {
-			return sender.SendMessageAsync(ctx, msg)
-		}
+// timeSend synchronously sends msg and records the wait at a communication
+// site, deriving the message_type label from msg. It is the send-shaped
+// counterpart to timeCommSite, sparing pure-send sites a one-line callback.
+func (m *metrics) timeSend(ctx context.Context, sender *wire.Peer, site string, taskType taskType, msg wire.Message) (time.Duration, error) {
+	return m.timeCommSite(site, sendModeSync, msg.Kind(), taskType, func() error {
 		return sender.SendMessage(ctx, msg)
 	})
 }

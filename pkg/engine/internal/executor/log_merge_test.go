@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -191,13 +194,52 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 	require.Equal(t, map[string]bool{"a": true}, apps, "other tenants' streams must be excluded")
 }
 
+// TestCollectLogSources_ReadsFromUnprefixedDataBucket reproduces the bug where
+// the compaction worker was wired with only the index-prefixed bucket. Source
+// log objects live at the unprefixed dataobj root, so reading them through the
+// prefixed bucket prepended the index prefix and failed with "key does not
+// exist". collectLogSources must read sources from dataBucket (unprefixed).
+func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
+	ctx := context.Background()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Source log objects are written at the unprefixed root, exactly as the
+	// uploader writes them (objects/<sha>/<sha>).
+	root := objstore.NewInMemBucket()
+	buildSourceLogObject(t, root, "objects/09/abcdef", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+	})
+
+	// bucket is the index-prefixed view the compaction wiring hands the
+	// executor; dataBucket is the unprefixed root for reading source objects.
+	c := newTestExecutorContext(t, objstore.NewPrefixedBucket(root, "dataobj/index/v0"))
+	c.dataBucket = root
+
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
+		},
+	}
+
+	sources, err := c.collectLogSources(ctx, node)
+	require.NoError(t, err, "source objects must resolve against the unprefixed data bucket")
+	require.Len(t, sources, 1)
+	require.Equal(t, "objects/09/abcdef", sources[0].path)
+}
+
 // newSmallObjectExecutorContext is like newTestExecutorContext but with a tiny
 // TargetObjectSize so the merge splits its output across multiple objects.
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 	c := newTestExecutorContext(t, bucket)
+	c.indexobjCfg.TargetPageSize = 512
 	c.indexobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
-	c.indexobjCfg.TargetSectionSize = 4096
+	c.indexobjCfg.TargetSectionSize = 800
 	return c
 }
 
@@ -354,20 +396,6 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	require.Equal(t, 36, totalRecords)
 }
 
-func TestDoLogObjectMerge_EmptyRunsIsNoOp(t *testing.T) {
-	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
-
-	c := newTestExecutorContext(t, bucket)
-	node := &physical.LogMerge{Tenant: "T", SortSchema: []string{"label:app"}, OutputIndexPath: "out/index"}
-
-	require.NoError(t, c.doLogObjectMerge(ctx, node))
-
-	ok, err := bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
-	require.NoError(t, err)
-	require.False(t, ok, "no output object should be written for an empty merge")
-}
-
 func TestDoLogObjectMerge_ExistingOutputShortCircuits(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -405,4 +433,259 @@ func TestDoLogObjectMerge_ExistingOutputShortCircuits(t *testing.T) {
 	ok, err := bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
 	require.NoError(t, err)
 	require.False(t, ok, "compacted log objects must not be written when output index already exists")
+}
+
+// collectIndexSections opens the index object at node.OutputIndexPath and
+// returns the postings/stats section kinds present for the tenant plus the set
+// of object paths referenced by KindLabel postings rows.
+func collectIndexSections(ctx context.Context, t *testing.T, bucket objstore.Bucket, node *physical.LogMerge) (kinds map[string]bool, postingsPaths map[string]bool) {
+	t.Helper()
+
+	obj, err := dataobj.FromBucket(ctx, bucket, node.OutputIndexPath, 0)
+	require.NoError(t, err)
+
+	kinds = make(map[string]bool)
+	postingsPaths = make(map[string]bool)
+
+	for _, sec := range obj.Sections() {
+		if sec.Tenant != node.Tenant {
+			continue
+		}
+		switch {
+		case stats.CheckSection(sec):
+			kinds["stats"] = true
+		case postings.CheckSection(sec):
+			kinds["postings"] = true
+
+			ps, err := postings.Open(ctx, sec)
+			require.NoError(t, err)
+			func() {
+				reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+				require.NoError(t, reader.Open(ctx))
+				rr := postings.NewRowReader(ctx, reader)
+				defer rr.Close()
+				for rr.Next() {
+					if row := rr.At(); row.ObjectPath != "" {
+						postingsPaths[row.ObjectPath] = true
+					}
+				}
+				require.NoError(t, rr.Err())
+			}()
+		}
+	}
+	return kinds, postingsPaths
+}
+
+func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="a"}`, entries: linesAt(base, 3)},
+			{labels: `{app="b"}`, entries: linesAt(base, 2)},
+		},
+	})
+	buildSourceLogObject(t, bucket, "objB", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="c"}`, entries: linesAt(base.Add(time.Hour), 4)},
+		},
+	})
+
+	c := newTestExecutorContext(t, bucket)
+	node := &physical.LogMerge{
+		Tenant:          tenant,
+		SortSchema:      sortSchema,
+		OutputIndexPath: "index/out",
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	require.NoError(t, c.doLogObjectMerge(ctx, node))
+
+	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
+	require.NoError(t, err)
+	require.True(t, ok, "index object must be written at OutputIndexPath")
+
+	kinds, postingsPaths := collectIndexSections(ctx, t, bucket, node)
+	require.True(t, kinds["stats"], "index must contain a stats section")
+	require.True(t, kinds["postings"], "index must contain a postings section")
+
+	compacted := make(map[string]bool)
+	for i := 0; ; i++ {
+		p := logMergeOutputPath(node.OutputIndexPath, i)
+		exists, err := bucket.Exists(ctx, p)
+		require.NoError(t, err)
+		if !exists {
+			break
+		}
+		compacted[p] = true
+	}
+	require.NotEmpty(t, compacted, "at least one compacted object must exist")
+	require.NotEmpty(t, postingsPaths, "postings must reference at least one object path")
+	for p := range postingsPaths {
+		require.True(t, compacted[p], "postings object_path %q must be a compacted object", p)
+		require.False(t, p == "objA" || p == "objB", "postings must not reference source object paths")
+	}
+}
+
+func TestDoLogObjectMerge_IndexCoversAllSplitObjects(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	ta := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	tb := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	tc := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="a"}`, entries: wideLinesAt(ta, 4)},
+			{labels: `{app="b"}`, entries: wideLinesAt(ta, 4)},
+			{labels: `{app="c"}`, entries: wideLinesAt(ta, 4)},
+		},
+	})
+	buildSourceLogObject(t, bucket, "objB", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="b"}`, entries: wideLinesAt(tb, 4)},
+			{labels: `{app="c"}`, entries: wideLinesAt(tb, 4)},
+			{labels: `{app="d"}`, entries: wideLinesAt(tb, 4)},
+		},
+	})
+	buildSourceLogObject(t, bucket, "objC", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="c"}`, entries: wideLinesAt(tc, 4)},
+			{labels: `{app="d"}`, entries: wideLinesAt(tc, 4)},
+			{labels: `{app="e"}`, entries: wideLinesAt(tc, 4)},
+		},
+	})
+
+	c := newSmallObjectExecutorContext(t, bucket)
+	node := &physical.LogMerge{
+		Tenant:          tenant,
+		SortSchema:      sortSchema,
+		OutputIndexPath: "index/out",
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}, {ObjectPath: "objC"}}},
+		},
+	}
+
+	require.NoError(t, c.doLogObjectMerge(ctx, node))
+
+	compacted := make(map[string]bool)
+	for i := 0; ; i++ {
+		p := logMergeOutputPath(node.OutputIndexPath, i)
+		exists, err := bucket.Exists(ctx, p)
+		require.NoError(t, err)
+		if !exists {
+			break
+		}
+		compacted[p] = true
+	}
+	require.GreaterOrEqual(t, len(compacted), 2, "output must be split into multiple objects")
+
+	_, postingsPaths := collectIndexSections(ctx, t, bucket, node)
+	require.Equal(t, compacted, postingsPaths, "postings must reference every compacted object")
+}
+
+func TestDoLogObjectMerge_EmptyRunsErrors(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	c := newTestExecutorContext(t, bucket)
+	node := &physical.LogMerge{Tenant: "T", SortSchema: []string{"label:app"}, OutputIndexPath: "index/out"}
+
+	require.Error(t, c.doLogObjectMerge(ctx, node), "empty runs must error so the coordinator skips the ToC swap")
+
+	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
+	require.NoError(t, err)
+	require.False(t, ok, "no index object should be written when there are no sources")
+
+	ok, err = bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
+	require.NoError(t, err)
+	require.False(t, ok, "no compacted object should be written for an empty merge")
+}
+
+func TestDoLogObjectMerge_ZeroOutputObjectsErrors(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// The object holds only tenant "other" data. The node targets tenant "T",
+	// so a source is collected but no records for "T" are produced.
+	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+		"other": {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+	})
+
+	c := newTestExecutorContext(t, bucket)
+	node := &physical.LogMerge{
+		Tenant:          "T",
+		SortSchema:      sortSchema,
+		OutputIndexPath: "index/out",
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		},
+	}
+
+	require.Error(t, c.doLogObjectMerge(ctx, node), "zero output objects must error")
+
+	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
+	require.NoError(t, err)
+	require.False(t, ok, "no index object should be written when no output was produced")
+}
+
+// removeFailingStore wraps a scratch.Store and fails every Remove, simulating a
+// scratch-cleanup failure surfaced through a flushed object's closer.
+type removeFailingStore struct {
+	scratch.Store
+}
+
+func (removeFailingStore) Remove(scratch.Handle) error {
+	return errors.New("scratch remove failed")
+}
+
+func TestDoLogObjectMerge_CompactedObjectCloseErrorPropagates(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, bucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+	})
+
+	c := newTestExecutorContext(t, bucket)
+	c.scratchStore = removeFailingStore{c.scratchStore}
+	node := &physical.LogMerge{
+		Tenant:          tenant,
+		SortSchema:      sortSchema,
+		OutputIndexPath: "index/out",
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}}},
+		},
+	}
+
+	err := c.doLogObjectMerge(ctx, node)
+	require.Error(t, err, "a failing closer must surface as an error, not be dropped")
+	require.ErrorContains(t, err, "scratch remove failed")
+
+	ok, err := bucket.Exists(ctx, node.OutputIndexPath)
+	require.NoError(t, err)
+	require.False(t, ok, "no index should be written when a compacted object fails to close")
+
+	// The compacted object is uploaded before its closer runs, so it lands even
+	// though the close failure aborts the merge before the index is built.
+	ok, err = bucket.Exists(ctx, logMergeOutputPath(node.OutputIndexPath, 0))
+	require.NoError(t, err)
+	require.True(t, ok, "the compacted object is uploaded before the failing close")
 }

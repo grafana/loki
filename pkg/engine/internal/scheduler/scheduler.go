@@ -205,10 +205,8 @@ func (s *Scheduler) handleMessage(ctx context.Context, worker *workerConn, msg w
 		return s.handleWorkerHello(ctx, worker, msg)
 	case wire.WorkerReadyMessage:
 		return s.markWorkerReady(worker)
-	case wire.TaskStatusMessage:
-		return s.handleTaskStatus(ctx, worker, msg)
-	case wire.StreamStatusMessage:
-		return s.handleStreamStatus(ctx, worker, msg)
+	case wire.TaskResultMessage:
+		return s.handleTaskResult(ctx, worker, msg)
 	default:
 		phases := s.metrics.startHandler(msg.Kind())
 		defer func() { phases.Done(handlerOutcome(err)) }()
@@ -294,7 +292,7 @@ func nudgeSemaphore(sema chan struct{}) {
 	}
 }
 
-func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, msg wire.TaskStatusMessage) (err error) {
+func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, msg wire.TaskResultMessage) (err error) {
 	phases := s.metrics.startHandler(msg.Kind())
 	defer func() { phases.Done(handlerOutcome(err)) }()
 
@@ -305,7 +303,7 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 	var n notifier
 	defer n.Notify(ctx)
 
-	resourcesGuard := s.resourcesMut.Lock("handle_task_status")
+	resourcesGuard := s.resourcesMut.Lock("handle_task_result")
 	defer resourcesGuard.Unlock()
 
 	task, found := s.tasks[msg.ID]
@@ -313,105 +311,77 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, worker *workerConn, ms
 		return fmt.Errorf("task %s not found", msg.ID)
 	}
 
-	changed, err := task.SetState(s.metrics, msg.Status)
-	if err != nil {
-		return err
-	} else if changed {
-		newState := msg.Status.State
-		if owner := task.owner; owner != nil && newState.Terminal() {
-			owner.Unassign(task)
-		}
-
-		switch newState {
-		case workflow.TaskStateCompleted:
-			task.wfRegion.Record(StatExecutedTasks.Observe(1))
-
-			if assignTime := task.AssignTime(); !assignTime.IsZero() {
-				// The execution time of the task is the duration from when it
-				// was first assigned to when we received the completion status.
-				//
-				// We skip the observation when assignTime is zero, which can
-				// happen when a task completes before we can process the
-				// assignment. If we didn't skip these, we'd record an
-				// observation of the maximum time.Duration value (290 years).
-				s.metrics.taskExecSeconds.Observe(time.Since(assignTime).Seconds())
-			}
-		case workflow.TaskStateCancelled:
-			// The worker has confirmed cancellation of a previously assigned
-			// task from [Scheduler.Cancel].
-			task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-		case workflow.TaskStateFailed:
-			task.wfRegion.Record(StatFailedTasks.Observe(1))
-		}
-
-		// Terminal states may include a capture from the worker; if so, we want
-		// to roll these up into our own per-task capture to give the event
-		// handler full visibility into the task's execution.
-		notifyStatus := msg.Status
-		if newState.Terminal() {
-			task.RecordTerminalObservations(time.Now())
-			task.capture.Merge(nil, notifyStatus.Capture)
-			notifyStatus.Capture = task.capture
-		}
-
-		// Notify the handler about the change.
-		n.AddTaskEvent(taskNotification{
-			Handler:   task.handler,
-			Task:      task.inner,
-			NewStatus: notifyStatus,
-		})
-	}
-	return nil
-}
-
-func (s *Scheduler) handleStreamStatus(ctx context.Context, worker *workerConn, msg wire.StreamStatusMessage) (err error) {
-	phases := s.metrics.startHandler(msg.Kind())
-	defer func() { phases.Done(handlerOutcome(err)) }()
-
-	if got, want := worker.Type(), connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
+	// TryAssign holds task.mut through the TaskAssign ACK and records assignTime
+	// before releasing it. A racing result therefore blocks in AssignTime until
+	// accepted-assignment evidence is visible.
+	if task.AssignTime().IsZero() {
+		return fmt.Errorf("task %s produced a result before accepting an assignment", msg.ID)
 	}
 
-	var n notifier
-	defer n.Notify(ctx)
-
-	resourcesGuard := s.resourcesMut.Lock("handle_stream_status")
-	defer resourcesGuard.Unlock()
-
-	stream, found := s.streams[msg.StreamID]
-	if !found {
-		return fmt.Errorf("stream %s not found", msg.StreamID)
-	}
-	return s.changeStreamState(ctx, &n, stream, msg.State)
-}
-
-// changeStreamState updates the state of the target stream. changeStreamState
-// must be called while the resourcesMut lock is held.
-func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
-	changed, err := target.setState(s.metrics, newState)
+	changed, err := task.SetResult(s.metrics, msg.Result)
 	if err != nil {
 		return err
 	} else if !changed {
 		return nil
 	}
 
-	// If we have a receiver, inform them about the change. This is a
-	// best-effort message so we don't need to wait for acknowledgement.
-	receiver, found := s.tasks[target.taskReceiver]
-	if found && receiver.owner != nil {
-		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: target.inner.ULID,
-			State:    newState,
-		})
+	// A task result is the authoritative signal that all synchronous sink data
+	// sends finished. Close its sinks before task-result notification; notifier
+	// dispatches stream closures first.
+	s.closeTaskSinks(ctx, &n, task)
+
+	if owner := task.owner; owner != nil {
+		owner.Unassign(task)
 	}
 
-	// Inform the owner about the change.
-	n.AddStreamEvent(streamNotification{
-		Handler:  target.handler,
-		Stream:   target.inner,
-		NewState: newState,
+	switch msg.Result.Outcome {
+	case workflow.TaskOutcomeCompleted:
+		task.wfRegion.Record(StatExecutedTasks.Observe(1))
+
+		// The execution time of the task is the duration from when it was first
+		// assigned to when we received the completion result.
+		s.metrics.taskExecSeconds.Observe(time.Since(task.AssignTime()).Seconds())
+	case workflow.TaskOutcomeCancelled:
+		// The worker has confirmed cancellation of a previously assigned task
+		// from [Scheduler.Cancel].
+		task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
+	case workflow.TaskOutcomeFailed:
+		task.wfRegion.Record(StatFailedTasks.Observe(1))
+	}
+
+	// Results may include a capture from the worker. Merge it into the
+	// scheduler's per-task capture so the handler sees one unified capture.
+	task.RecordTerminalObservations(time.Now())
+	task.capture.Merge(nil, msg.Result.Capture)
+	result := msg.Result
+	result.Capture = task.capture
+
+	n.AddTaskEvent(taskNotification{
+		Handler: task.handler,
+		Task:    task.inner,
+		Result:  result,
 	})
 	return nil
+}
+
+// closeStream records that target closed. It must be called while resourcesMut
+// is held.
+func (s *Scheduler) closeStream(ctx context.Context, n *notifier, target *stream) {
+	if !target.markClosed(s.metrics) {
+		return
+	}
+
+	// If the stream has a receiver, inform it. This is a best-effort message so
+	// we do not wait for acknowledgement.
+	receiver, found := s.tasks[target.taskReceiver]
+	if found && receiver.owner != nil {
+		_ = receiver.owner.SendMessageAsync(ctx, wire.StreamClosedMessage{StreamID: target.inner.ULID})
+	}
+
+	n.AddStreamEvent(streamNotification{
+		Handler: target.handler,
+		Stream:  target.inner,
+	})
 }
 
 // removeWorker immediately cleans up state for a worker:
@@ -419,12 +389,16 @@ func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *
 // - Aborts all tasks assigned to the given worker.
 // - Removes the worker from the ready list.
 //
-// If reason is non-nil, tasks that were running normally on the worker are
-// marked as failed with the provided reason.
-//
-// If reason is nil, all tasks are marked as cancelled. Tasks which were pending
-// cancellation will be marked as Canceled regardless of reason.
+// If reason is non-nil, assigned tasks without a cancellation request produce
+// a failed result with the provided reason. If reason is nil, they produce a
+// cancelled result. Tasks with a cancellation request produce a cancelled
+// result regardless of reason.
 func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason error) {
+	// MarkClosed is synchronized with Assign. Any assignment accepted before
+	// this point is included in assigned; later ownership attempts are refused
+	// and handled by finalizeAssignment.
+	assigned := worker.MarkClosed(reason)
+
 	var n notifier
 	defer n.Notify(ctx)
 
@@ -434,59 +408,67 @@ func (s *Scheduler) removeWorker(ctx context.Context, worker *workerConn, reason
 	assignGuard := s.assignMut.Lock("remove_worker")
 	defer assignGuard.Unlock()
 
-	for _, task := range worker.Assigned() {
-		wasInterrupted := task.Interrupted()
-		worker.Unassign(task)
-
-		// Even though the worker disconnected we still have some stats about
-		// the task that the handler may be interested in.
-		newStatus := workflow.TaskStatus{Capture: task.capture}
-		switch {
-		case wasInterrupted:
-			// Cancellation had already been requested for this task. Honor that
-			// intent regardless of whether the worker disconnected cleanly or
-			// with an error.
-			newStatus.State = workflow.TaskStateCancelled
-		case reason != nil:
-			newStatus.State = workflow.TaskStateFailed
-			newStatus.Error = reason
-		default:
-			newStatus.State = workflow.TaskStateCancelled
-		}
-
-		if changed, _ := task.SetState(s.metrics, newStatus); !changed {
-			continue
-		}
-
-		switch newStatus.State {
-		case workflow.TaskStateCancelled:
-			if wasInterrupted {
-				// The worker disconnected before confirming a cancellation we
-				// had requested. Record it against the assigned-cancellation
-				// stat to match the disposition that [Scheduler.Cancel] would
-				// have produced had the worker survived long enough to confirm.
-				task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
-			}
-			// Otherwise the worker disconnected cleanly with no pending
-			// cancellation request; we have no specific stat for that category
-			// today.
-		case workflow.TaskStateFailed:
-			task.wfRegion.Record(StatFailedTasks.Observe(1))
-		}
-
-		task.RecordTerminalObservations(time.Now())
-
-		// We only need to inform the handler about the change. There's nothing
-		// to send to the owner of the task since worker has disconnected.
-		n.AddTaskEvent(taskNotification{
-			Handler:   task.handler,
-			Task:      task.inner,
-			NewStatus: newStatus,
-		})
+	for _, task := range assigned {
+		s.recordDisconnectedTaskResult(ctx, &n, worker, task, reason)
 	}
 
 	// Remove the worker from the ready list, if it exists.
 	delete(s.connectedWorkers, worker)
+}
+
+// recordDisconnectedTaskResult records the result of a task whose worker
+// disconnected and closes its sink streams. It must be called while
+// resourcesMut is held.
+func (s *Scheduler) recordDisconnectedTaskResult(ctx context.Context, n *notifier, worker *workerConn, task *task, reason error) {
+	pendingCancel := task.PendingCancel()
+	worker.Unassign(task)
+
+	// Even though the worker disconnected we still have some stats about the
+	// task that the handler may be interested in.
+	result := workflow.TaskResult{Capture: task.capture}
+	switch {
+	case pendingCancel:
+		// Cancellation had already been requested for this task. Honor that
+		// intent regardless of whether the worker disconnected cleanly or
+		// with an error.
+		result.Outcome = workflow.TaskOutcomeCancelled
+	case reason != nil:
+		result.Outcome = workflow.TaskOutcomeFailed
+		result.Error = reason
+	default:
+		result.Outcome = workflow.TaskOutcomeCancelled
+	}
+
+	changed, _ := task.SetResult(s.metrics, result)
+	if !changed {
+		return
+	}
+	s.closeTaskSinks(ctx, n, task)
+
+	switch result.Outcome {
+	case workflow.TaskOutcomeCancelled:
+		if pendingCancel {
+			// The worker disconnected before confirming a cancellation we
+			// had requested. Record it against the assigned-cancellation
+			// stat to match the disposition that [Scheduler.Cancel] would
+			// have produced had the worker survived long enough to confirm.
+			task.wfRegion.Record(StatCanceledAssignedTasks.Observe(1))
+		}
+		// Otherwise the worker disconnected cleanly with no pending
+		// cancellation request; we have no specific stat for that category
+		// today.
+	case workflow.TaskOutcomeFailed:
+		task.wfRegion.Record(StatFailedTasks.Observe(1))
+	}
+
+	task.RecordTerminalObservations(time.Now())
+
+	// The worker is disconnected, so only the workflow handler is notified.
+	n.AddTaskEvent(taskNotification{
+		Handler: task.handler,
+		Task:    task.inner,
+		Result:  result,
+	})
 }
 
 func (s *Scheduler) runAssignLoop(ctx context.Context) error {
@@ -567,7 +549,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 		s.metrics.incAssignmentAttempt(attemptOutcome)
 
 		if err != nil && errors.Is(err, errUnassignable) {
-			// Task is already in a terminal state or has been interrupted,
+			// Task already has a terminal result or cancellation was requested,
 			// so we can skip the send and move on to the next task.
 			continue
 		} else if err != nil {
@@ -592,7 +574,7 @@ func (s *Scheduler) workerLoop(ctx context.Context, worker *workerConn) {
 
 		gotrace.Log(assignment.t.runtimeTraceCtx, "task_assigned", assignment.t.inner.ULID.String()+" -> "+worker.RemoteAddr().String())
 
-		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.StreamStates)
+		s.finalizeAssignment(ctx, assignment.t, worker, assignment.msg.ClosedSourceIDs)
 	}
 }
 
@@ -627,7 +609,7 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 	defer assignGuard.Unlock()
 
 	// clean up any terminal tasks at the front of the queue.
-	for s.taskQueue.Len() > 0 && s.peekTask().status.State.Terminal() {
+	for s.taskQueue.Len() > 0 && s.peekTask().HasResult() {
 		s.taskQueue.Pop()
 	}
 
@@ -658,13 +640,11 @@ func (s *Scheduler) prepareAssignment() (taskAssignment, bool) {
 // buildAssignMessage must be called while resourcesMut is held (at least RLock).
 func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 	msg := wire.TaskAssignMessage{
-		Task:         t.inner,
-		StreamStates: make(map[ulid.ULID]workflow.StreamState),
-		Metadata:     t.metadata,
+		Task:     t.inner,
+		Metadata: t.metadata,
 	}
 
-	// Populate stream states based on our view of streams that the task reads
-	// from.
+	// Include sources that closed before the assignment snapshot.
 	for _, sources := range t.inner.Sources {
 		for _, rawSource := range sources {
 			source, found := s.streams[rawSource.ULID]
@@ -674,7 +654,9 @@ func (s *Scheduler) buildAssignMessage(t *task) wire.TaskAssignMessage {
 				continue
 			}
 
-			msg.StreamStates[rawSource.ULID] = source.state
+			if source.closed {
+				msg.ClosedSourceIDs = append(msg.ClosedSourceIDs, rawSource.ULID)
+			}
 		}
 	}
 
@@ -687,7 +669,7 @@ func (s *Scheduler) requeueTask(t *task, pos fair.Position) {
 	assignGuard := s.assignMut.Lock("requeue_task")
 	defer assignGuard.Unlock()
 
-	if t.State().Terminal() {
+	if t.HasResult() {
 		return
 	}
 
@@ -715,9 +697,13 @@ type pendingMessage struct {
 }
 
 // finalizeAssignment completes the assignment of the task to the worker.
-func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentStates map[ulid.ULID]workflow.StreamState) {
+func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *workerConn, sentClosedSourceIDs []ulid.ULID) {
 	hop := s.metrics.startAssignmentHop("finalize_assignment")
-	var pendingMsgs []pendingMessage
+	var (
+		n           notifier
+		pendingMsgs []pendingMessage
+	)
+	defer n.Notify(ctx)
 
 	// Collect bookkeeping and messages under lock.
 	func() {
@@ -727,30 +713,40 @@ func (s *Scheduler) finalizeAssignment(ctx context.Context, t *task, worker *wor
 		assignTime := t.AssignTime() // Set by [task.TryAssign] by the previous caller before this runs.
 		s.metrics.taskQueueSeconds.Observe(assignTime.Sub(t.QueueTime()).Seconds())
 
-		if t.State().Terminal() {
-			// The task reached a terminal state between TryAssign and now. The
+		if t.HasResult() {
+			// The task produced a terminal result between TryAssign and now. The
 			// worker may still have the assignment, so we tell it to not
 			// bother.
 			pendingMsgs = append(pendingMsgs, pendingMessage{peer: worker, msg: wire.TaskCancelMessage{ID: t.inner.ULID}})
 			return
 		}
 
-		worker.Assign(t)
+		if !worker.Assign(t) {
+			s.recordDisconnectedTaskResult(ctx, &n, worker, t, worker.CloseReason())
+			return
+		}
+		s.metrics.tasksAssignedTotal.Inc()
 
 		if t.wfRegion != nil {
 			t.wfRegion.Record(StatAssignedTasks.Observe(1))
 		}
 
-		// Reconcile stream states: send updates for any that changed while sending.
-		for streamID, sentState := range sentStates {
-			if current, found := s.streams[streamID]; found && current.state != sentState {
-				pendingMsgs = append(pendingMsgs, pendingMessage{
-					peer: worker,
-					msg: wire.StreamStatusMessage{
-						StreamID: streamID,
-						State:    current.state,
-					},
-				})
+		// Reconcile sources that closed after the assignment snapshot. Closure
+		// that was in the snapshot was acknowledged with TaskAssign.
+		sentClosed := make(map[ulid.ULID]struct{}, len(sentClosedSourceIDs))
+		for _, streamID := range sentClosedSourceIDs {
+			sentClosed[streamID] = struct{}{}
+		}
+		for _, sources := range t.inner.Sources {
+			for _, rawSource := range sources {
+				current, found := s.streams[rawSource.ULID]
+				_, sent := sentClosed[rawSource.ULID]
+				if found && current.closed && !sent {
+					pendingMsgs = append(pendingMsgs, pendingMessage{
+						peer: worker,
+						msg:  wire.StreamClosedMessage{StreamID: rawSource.ULID},
+					})
+				}
 			}
 		}
 
@@ -897,9 +893,7 @@ func (s *Scheduler) RegisterManifest(ctx context.Context, manifest *workflow.Man
 
 		manifestStreams[streamToAdd.ULID] = &stream{
 			inner:   streamToAdd,
-			handler: manifest.StreamEventHandler,
-
-			state: workflow.StreamStateIdle,
+			handler: manifest.StreamClosedHandler,
 		}
 	}
 
@@ -940,7 +934,7 @@ NextTask:
 
 		// We create a fresh [xcap.Capture] for each task to generate per-task
 		// observations. This will be merged with a capture received by the
-		// worker upon receiving a terminal state.
+		// worker upon receiving a terminal result.
 		//
 		// The scheduler region holds scheduler-side observations about this
 		// specific task; worker-supplied regions are merged into the capture
@@ -952,7 +946,7 @@ NextTask:
 			createTime: time.Now(),
 			scope:      scope,
 			inner:      taskToAdd,
-			handler:    manifest.TaskEventHandler,
+			handler:    manifest.TaskResultHandler,
 			capture:    taskCapture,
 			region:     taskRegion,
 		}
@@ -962,25 +956,12 @@ NextTask:
 		return errors.Join(errs...)
 	}
 
-	// Observe initial state for the streams and tasks.
-	{
-		var (
-			initialStreamState = workflow.StreamStateIdle.String()
-			initialTaskState   = workflow.TaskStateCreated.String()
-		)
-
-		for range manifestStreams {
-			s.metrics.streamsTotal.WithLabelValues(initialStreamState).Inc()
-		}
-		for range manifestTasks {
-			s.metrics.tasksTotal.WithLabelValues(initialTaskState).Inc()
-		}
-	}
-
 	// Once we hit this point, the manifest has been validated and we can
 	// atomically update our internal state.
 	maps.Copy(s.streams, manifestStreams)
 	maps.Copy(s.tasks, manifestTasks)
+	s.metrics.tasksRegisteredTotal.Add(float64(len(manifestTasks)))
+	s.metrics.streamsRegisteredTotal.Add(float64(len(manifestStreams)))
 
 	xcap.RegionFromContext(ctx).Record(StatPlannedTasks.Observe(int64(len(manifestTasks))))
 	return nil
@@ -1047,39 +1028,35 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 		return errors.Join(errs...)
 	}
 
-	// Remove tasks first. If any of them are currently running, we'll cancel them.
+	// Remove tasks first. If any are assigned, ask their workers to cancel them.
 	for _, taskToRemove := range manifest.Tasks {
 		registered := s.tasks[taskToRemove.ULID] // Validated to exist above
 
 		// Immediately clean up our own resources.
 		s.deleteTask(registered)
 
-		if changed, _ := registered.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
-			// Ignore if the task couldn't move into the canceled state, which
-			// indicates it's already in a terminal state.
+		result := workflow.TaskResult{Outcome: workflow.TaskOutcomeCancelled, Capture: registered.capture}
+		if changed, _ := registered.SetResult(s.metrics, result); !changed {
 			continue
 		}
+		s.closeTaskSinks(ctx, &n, registered)
 
-		// If the task has an owner, we'll inform it that the task has been
-		// canceled and it can stop processing it.
-		//
-		// This is a best-effort message, so we don't wait for acknowledgement.
+		// If the task has an owner, inform it that the task has been cancelled
+		// and it can stop processing it. This is a best-effort message, so we do
+		// not wait for acknowledgement.
 		if owner := registered.owner; owner != nil {
 			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 		}
 
 		registered.RecordTerminalObservations(time.Now())
 
-		// Inform the owner about the change. Attach the per-task capture so
-		// the workflow consumer can read scheduler-side observations; once we
-		// flip the state here, any later status message from a still-running
-		// worker would be ignored as a no-op transition.
-		notifyStatus := registered.Status()
-		notifyStatus.Capture = registered.capture
+		// Attach the per-task capture so the workflow consumer can read
+		// scheduler-side observations. Any later result from a still-running
+		// worker is ignored because the first terminal result is authoritative.
 		n.AddTaskEvent(taskNotification{
-			Handler:   registered.handler,
-			Task:      taskToRemove,
-			NewStatus: notifyStatus,
+			Handler: registered.handler,
+			Task:    taskToRemove,
+			Result:  result,
 		})
 	}
 
@@ -1089,14 +1066,7 @@ func (s *Scheduler) UnregisterManifest(ctx context.Context, manifest *workflow.M
 	for _, streamToRemove := range manifest.Streams {
 		registered := s.streams[streamToRemove.ULID] // Validated to exist above
 
-		changed, _ := registered.setState(s.metrics, workflow.StreamStateClosed)
-		if changed {
-			n.AddStreamEvent(streamNotification{
-				Handler:  registered.handler,
-				Stream:   streamToRemove,
-				NewState: workflow.StreamStateClosed,
-			})
-		}
+		s.closeStream(ctx, &n, registered)
 
 		delete(s.streams, streamToRemove.ULID)
 	}
@@ -1203,10 +1173,7 @@ func (s *Scheduler) Start(ctx context.Context, tasks ...*workflow.Task) error {
 		t.runtimeTraceCtx = ctx
 	}
 
-	// We set markPending *after* enqueueTasks to give tasks an opportunity to
-	// immediately transition into running (lowering state transition noise).
 	s.enqueueTasks(trackedTasks)
-	s.markPending(ctx, trackedTasks)
 	return nil
 }
 
@@ -1239,14 +1206,11 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 	defer assignGuard.Unlock()
 
 	for _, task := range tasks {
-		// Ignore tasks that aren't in the initial state (created). This
-		// prevents us from rejecting tasks which were preemptively canceled by
-		// callers.
-		if task.State() != workflow.TaskStateCreated {
+		// Ignore tasks that were already submitted or preemptively cancelled.
+		if !task.MarkQueued() {
 			continue
 		}
 
-		task.MarkQueued()
 		if err := s.taskQueue.Push(task.scope, task); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue task; task will not be executed", "id", task.inner.ULID, "err", err)
 		}
@@ -1257,36 +1221,12 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 	}
 }
 
-func (s *Scheduler) markPending(ctx context.Context, tasks []*task) {
-	var n notifier
-	defer n.Notify(ctx)
-
-	resourcesGuard := s.resourcesMut.Lock("mark_pending")
-	defer resourcesGuard.Unlock()
-
-	for _, task := range tasks {
-		if changed, _ := task.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStatePending}); !changed {
-			// If the state change failed, the task either got canceled or
-			// picked up by a worker in between enqueueing it and calling this
-			// method.
-			continue
-		}
-
-		// Inform the owner about the state change from Created to Pending.
-		n.AddTaskEvent(taskNotification{
-			Handler:   task.handler,
-			Task:      task.inner,
-			NewStatus: task.Status(),
-		})
-	}
-}
-
 // Cancel requests cancellation of the specified tasks. Cancel returns an error
 // if any of the tasks were not found.
 //
-// For tasks which are currently running on a worker, Cancel send a best-effort
-// cancellation message to the worker. Cancel does not wait for these tasks to
-// transition to a terminal state.
+// For tasks assigned to a worker, Cancel sends a best-effort cancellation
+// message to the worker. Cancel does not wait for these tasks to
+// produce a terminal result.
 func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	var n notifier
 	defer n.Notify(ctx)
@@ -1308,58 +1248,40 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			continue
 		}
 
-		// Already in a terminal state — nothing to do for the task itself, but
-		// fall through to the sink-stream cleanup below so a redundant Cancel
-		// still closes any associated streams.
-		prevState := registered.State()
-		if prevState.Terminal() {
+		if registered.HasResult() {
 			s.closeTaskSinks(ctx, &n, registered)
 			continue
 		}
 
-		region := registered.wfRegion
-
-		if owner := registered.owner; owner != nil && registered.MarkInterrupted() {
-			// The task is currently running on a worker. We don't want to
-			// transition the task's state here so we can let the worker send
-			// final stats before acknowledging cancellation.
-			//
-			// The confirmation of cancellation will come in via
-			// handleTaskStatus. MarkInterrupted makes the cancel message
-			// at most once: a redundant Cancel for an already-interrupted task
-			// is a no-op.
-			_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
-		} else if changed, _ := registered.SetState(s.metrics, workflow.TaskStatus{State: workflow.TaskStateCancelled}); changed {
-			// No worker is executing this task, so we transition the state
-			// directly as the scheduler is the source of truth.
-			//
-			// TaskStateCreated maps to the "pending" stat: from the scheduler's
-			// perspective, a task that has been registered via RegisterManifest
-			// but not yet handed off to the queue via Start is pending
-			// execution. The workflow.TaskStatePending value is a stronger
-			// condition (the task is enqueued and waiting for a worker), which
-			// is what we report as "queued".
-			switch prevState {
-			case workflow.TaskStateCreated:
-				region.Record(obsCanceledPending)
-			case workflow.TaskStatePending:
-				region.Record(obsCanceledQueued)
+		if owner := registered.owner; owner != nil {
+			// Let the worker return its capture with the cancellation result.
+			// RequestCancel makes the best-effort message at most once.
+			if registered.RequestCancel() {
+				_ = owner.SendMessageAsync(ctx, wire.TaskCancelMessage{ID: registered.inner.ULID})
 			}
-
-			registered.RecordTerminalObservations(time.Now())
-
-			// Inform the owner about the change. Attach the per-task capture so
-			// the workflow consumer can read scheduler-side observations even for
-			// tasks that never reached a worker.
-			notifyStatus := registered.Status()
-			notifyStatus.Capture = registered.capture
-			n.AddTaskEvent(taskNotification{
-				Handler:   registered.handler,
-				Task:      taskToCancel,
-				NewStatus: notifyStatus,
-			})
+			s.closeTaskSinks(ctx, &n, registered)
+			continue
 		}
 
+		// No worker owns this task, so the scheduler produces its result.
+		result := workflow.TaskResult{Outcome: workflow.TaskOutcomeCancelled, Capture: registered.capture}
+		changed, _ := registered.SetResult(s.metrics, result)
+		if !changed {
+			continue
+		}
+
+		if registered.Queued() {
+			registered.wfRegion.Record(obsCanceledQueued)
+		} else {
+			registered.wfRegion.Record(obsCanceledPending)
+		}
+
+		registered.RecordTerminalObservations(time.Now())
+		n.AddTaskEvent(taskNotification{
+			Handler: registered.handler,
+			Task:    taskToCancel,
+			Result:  result,
+		})
 		s.closeTaskSinks(ctx, &n, registered)
 	}
 
@@ -1370,7 +1292,7 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 }
 
 // closeTaskSinks closes all sink streams associated with t (if not already
-// closed) and queues stream-state notifications onto n.
+// closed) and queues stream-closure notifications onto n.
 //
 // closeTaskSinks must be called while resourcesMut is held.
 func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
@@ -1381,7 +1303,7 @@ func (s *Scheduler) closeTaskSinks(ctx context.Context, n *notifier, t *task) {
 				continue
 			}
 
-			_ = s.changeStreamState(ctx, n, sink, workflow.StreamStateClosed)
+			s.closeStream(ctx, n, sink)
 		}
 	}
 }

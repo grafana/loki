@@ -16,8 +16,9 @@ type Expression interface{ isExpr() }
 
 // Types implementing [Expression].
 type (
-	// Constant is an [Expression] that produces a single scalar value when
-	// evaluated.
+	// Constant is an [Expression] that produces a scalar value. When a Constant
+	// is the final result evaluated against an Array, it is broadcast to the
+	// Array's length.
 	Constant struct{ Value columnar.Scalar }
 
 	// Column is an [Expression] that looks up the column by name in the record
