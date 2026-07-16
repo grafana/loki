@@ -155,9 +155,99 @@ func (m *Stats) GetNullCount() int64 {
 	return 0
 }
 
+// BitpackedMetadata holds encoding-specific metadata for bitpacked arrays.
+type BitpackedMetadata struct {
+	BlockSize uint64 `protobuf:"varint,1,opt,name=block_size,json=blockSize,proto3" json:"block_size,omitempty"`
+}
+
+func (m *BitpackedMetadata) Reset()      { *m = BitpackedMetadata{} }
+func (*BitpackedMetadata) ProtoMessage() {}
+func (*BitpackedMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_0b0a12943a3691e3, []int{2}
+}
+func (m *BitpackedMetadata) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *BitpackedMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_BitpackedMetadata.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *BitpackedMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_BitpackedMetadata.Merge(m, src)
+}
+func (m *BitpackedMetadata) XXX_Size() int {
+	return m.Size()
+}
+func (m *BitpackedMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_BitpackedMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_BitpackedMetadata proto.InternalMessageInfo
+
+func (m *BitpackedMetadata) GetBlockSize() uint64 {
+	if m != nil {
+		return m.BlockSize
+	}
+	return 0
+}
+
+// ZstdMetadata holds encoding-specific metadata for zstd-compressed arrays.
+type ZstdMetadata struct {
+	UncompressedSize uint64 `protobuf:"varint,1,opt,name=uncompressed_size,json=uncompressedSize,proto3" json:"uncompressed_size,omitempty"`
+}
+
+func (m *ZstdMetadata) Reset()      { *m = ZstdMetadata{} }
+func (*ZstdMetadata) ProtoMessage() {}
+func (*ZstdMetadata) Descriptor() ([]byte, []int) {
+	return fileDescriptor_0b0a12943a3691e3, []int{3}
+}
+func (m *ZstdMetadata) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ZstdMetadata) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ZstdMetadata.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ZstdMetadata) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ZstdMetadata.Merge(m, src)
+}
+func (m *ZstdMetadata) XXX_Size() int {
+	return m.Size()
+}
+func (m *ZstdMetadata) XXX_DiscardUnknown() {
+	xxx_messageInfo_ZstdMetadata.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ZstdMetadata proto.InternalMessageInfo
+
+func (m *ZstdMetadata) GetUncompressedSize() uint64 {
+	if m != nil {
+		return m.UncompressedSize
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*Array)(nil), "grafana.dataset.array.v1.Array")
 	proto.RegisterType((*Stats)(nil), "grafana.dataset.array.v1.Stats")
+	proto.RegisterType((*BitpackedMetadata)(nil), "grafana.dataset.array.v1.BitpackedMetadata")
+	proto.RegisterType((*ZstdMetadata)(nil), "grafana.dataset.array.v1.ZstdMetadata")
 }
 
 func init() {
@@ -165,29 +255,33 @@ func init() {
 }
 
 var fileDescriptor_0b0a12943a3691e3 = []byte{
-	// 344 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x91, 0xb1, 0x4e, 0xeb, 0x30,
-	0x18, 0x85, 0xe3, 0x9b, 0xe6, 0xea, 0xd6, 0xed, 0x70, 0x6f, 0xa6, 0x2c, 0xd7, 0x84, 0x0e, 0x28,
-	0x12, 0x52, 0x2c, 0xa8, 0x98, 0x10, 0x03, 0x30, 0x81, 0xc4, 0x62, 0x36, 0x96, 0xca, 0x8d, 0x9d,
-	0xd4, 0x6a, 0x6a, 0x57, 0x8e, 0x53, 0xc4, 0xd6, 0x47, 0xe0, 0x31, 0x78, 0x14, 0xc6, 0x8e, 0x1d,
-	0xa9, 0xbb, 0x20, 0xa6, 0x3e, 0x02, 0x4a, 0xda, 0x74, 0x03, 0x89, 0xc9, 0xfa, 0xbf, 0xff, 0xfc,
-	0x47, 0xc7, 0x3a, 0xf0, 0x62, 0x3a, 0xce, 0x30, 0xa3, 0x86, 0x16, 0xdc, 0x60, 0x2e, 0x13, 0xc5,
-	0x84, 0xcc, 0xf0, 0xa3, 0xd0, 0x3c, 0x51, 0x8c, 0x27, 0x58, 0x48, 0xc3, 0xb5, 0xa4, 0x39, 0xa6,
-	0x5a, 0xd3, 0xa7, 0x09, 0x6b, 0xde, 0x78, 0xaa, 0x95, 0x51, 0x7e, 0x90, 0x69, 0x9a, 0x52, 0x49,
-	0xe3, 0x9d, 0x45, 0x5c, 0xaf, 0xe3, 0xd9, 0x49, 0xef, 0x03, 0x40, 0xef, 0xb2, 0x1a, 0xfc, 0x43,
-	0xd8, 0x6d, 0x8c, 0x07, 0x9a, 0xa7, 0x01, 0x08, 0x41, 0xd4, 0x22, 0x9d, 0x86, 0x11, 0x9e, 0xfa,
-	0xc7, 0xf0, 0xdf, 0x5e, 0x32, 0xe1, 0x86, 0x56, 0x6e, 0xc1, 0xaf, 0x10, 0x44, 0x5d, 0xf2, 0xb7,
-	0x59, 0xdc, 0xed, 0xb8, 0xff, 0x1f, 0xc2, 0x61, 0x99, 0xa6, 0x5c, 0x0f, 0x04, 0x2b, 0x02, 0x37,
-	0x74, 0xa3, 0x16, 0x69, 0x6f, 0xc9, 0x0d, 0x2b, 0xfc, 0x73, 0xf8, 0x27, 0x19, 0x89, 0x9c, 0x69,
-	0x2e, 0x83, 0x56, 0xe8, 0x46, 0x9d, 0xd3, 0x83, 0xf8, 0xab, 0x94, 0x71, 0x9d, 0x90, 0xec, 0x0f,
-	0xfc, 0x33, 0xe8, 0x15, 0x86, 0x9a, 0x22, 0xf0, 0x42, 0xf0, 0xfd, 0xe5, 0x7d, 0x25, 0x23, 0x5b,
-	0x75, 0xef, 0x08, 0x7a, 0xf5, 0x5c, 0x65, 0x93, 0x65, 0x9e, 0x0f, 0x12, 0x55, 0x4a, 0x53, 0xff,
-	0xd4, 0x25, 0xed, 0x8a, 0x5c, 0x57, 0xe0, 0x6a, 0x0e, 0x16, 0x2b, 0xe4, 0x2c, 0x57, 0xc8, 0xd9,
-	0xac, 0x10, 0x98, 0x5b, 0x04, 0x5e, 0x2c, 0x02, 0xaf, 0x16, 0x81, 0x85, 0x45, 0xe0, 0xcd, 0x22,
-	0xf0, 0x6e, 0x91, 0xb3, 0xb1, 0x08, 0x3c, 0xaf, 0x91, 0xb3, 0x58, 0x23, 0x67, 0xb9, 0x46, 0xce,
-	0xc3, 0x6d, 0x26, 0xcc, 0xa8, 0x1c, 0xc6, 0x89, 0x9a, 0xe0, 0x5d, 0x20, 0x9c, 0xab, 0xb1, 0xc0,
-	0xb3, 0x3e, 0xfe, 0x61, 0x7f, 0xc3, 0xdf, 0x75, 0x71, 0xfd, 0xcf, 0x00, 0x00, 0x00, 0xff, 0xff,
-	0xb8, 0xb0, 0xa5, 0xd9, 0xf9, 0x01, 0x00, 0x00,
+	// 401 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x92, 0x31, 0x6f, 0xd4, 0x30,
+	0x14, 0xc7, 0x63, 0x72, 0x41, 0x9c, 0x7b, 0x43, 0x2f, 0x53, 0x16, 0x4c, 0xc8, 0x80, 0x22, 0x55,
+	0x8a, 0x45, 0x2b, 0xa6, 0x8a, 0x81, 0x32, 0x81, 0xc4, 0x92, 0x6e, 0x5d, 0x22, 0x9f, 0xed, 0xa4,
+	0x56, 0x12, 0x3b, 0xb2, 0x9d, 0x22, 0x3a, 0xf5, 0x23, 0xf0, 0x31, 0xf8, 0x28, 0x8c, 0x37, 0x76,
+	0xe4, 0x72, 0x0b, 0x62, 0xea, 0x47, 0x40, 0xc9, 0x25, 0xc7, 0x31, 0x80, 0xd4, 0xc9, 0xf2, 0xef,
+	0xfd, 0xff, 0x4f, 0xff, 0xf7, 0xf4, 0xe0, 0xdb, 0xa6, 0x2c, 0x30, 0x23, 0x96, 0x18, 0x6e, 0x31,
+	0x97, 0x54, 0x31, 0x21, 0x0b, 0xfc, 0x59, 0x68, 0x4e, 0x15, 0xe3, 0x14, 0x0b, 0x69, 0xb9, 0x96,
+	0xa4, 0xc2, 0x44, 0x6b, 0xf2, 0xa5, 0x66, 0xd3, 0x9b, 0x34, 0x5a, 0x59, 0xe5, 0x07, 0x85, 0x26,
+	0x39, 0x91, 0x24, 0x19, 0x5b, 0x24, 0x43, 0x39, 0xb9, 0x79, 0x1d, 0xfd, 0x02, 0xd0, 0x7b, 0xd7,
+	0x7f, 0xfc, 0x97, 0x70, 0x31, 0x35, 0xce, 0x34, 0xcf, 0x03, 0x10, 0x82, 0x78, 0x96, 0x1e, 0x4d,
+	0x2c, 0xe5, 0xb9, 0x7f, 0x02, 0x97, 0x7b, 0x49, 0xcd, 0x2d, 0xe9, 0xbb, 0x05, 0x4f, 0x42, 0x10,
+	0x2f, 0xd2, 0xe3, 0xa9, 0xf0, 0x69, 0xe4, 0xfe, 0x73, 0x08, 0x57, 0x6d, 0x9e, 0x73, 0x9d, 0x09,
+	0x66, 0x02, 0x37, 0x74, 0xe3, 0x59, 0x3a, 0xdf, 0x91, 0x0f, 0xcc, 0xf8, 0xe7, 0xf0, 0x19, 0xbd,
+	0x16, 0x15, 0xd3, 0x5c, 0x06, 0xb3, 0xd0, 0x8d, 0x8f, 0x4e, 0x5f, 0x24, 0xff, 0x4a, 0x99, 0x0c,
+	0x09, 0xd3, 0xbd, 0xc1, 0x7f, 0x03, 0x3d, 0x63, 0x89, 0x35, 0x81, 0x17, 0x82, 0xff, 0x3b, 0x2f,
+	0x7b, 0x59, 0xba, 0x53, 0x47, 0xaf, 0xa0, 0x37, 0xfc, 0xfb, 0x6c, 0xb2, 0xad, 0xaa, 0x8c, 0xaa,
+	0x56, 0xda, 0x61, 0x52, 0x37, 0x9d, 0xf7, 0xe4, 0x7d, 0x0f, 0xa2, 0x53, 0xb8, 0xbc, 0x10, 0xb6,
+	0x21, 0xb4, 0xe4, 0xec, 0xaf, 0x79, 0x2a, 0x45, 0xcb, 0xcc, 0x88, 0x5b, 0x3e, 0x6e, 0x67, 0x3e,
+	0x90, 0x4b, 0x71, 0xcb, 0xa3, 0x73, 0xb8, 0xb8, 0x32, 0xf6, 0x8f, 0xfc, 0x04, 0x2e, 0x5b, 0x49,
+	0x55, 0xdd, 0x68, 0x6e, 0x0c, 0x67, 0x87, 0xae, 0xe3, 0xc3, 0x42, 0x6f, 0xbe, 0xb8, 0x03, 0xeb,
+	0x0d, 0x72, 0xee, 0x37, 0xc8, 0x79, 0xd8, 0x20, 0x70, 0xd7, 0x21, 0xf0, 0xad, 0x43, 0xe0, 0x7b,
+	0x87, 0xc0, 0xba, 0x43, 0xe0, 0x47, 0x87, 0xc0, 0xcf, 0x0e, 0x39, 0x0f, 0x1d, 0x02, 0x5f, 0xb7,
+	0xc8, 0x59, 0x6f, 0x91, 0x73, 0xbf, 0x45, 0xce, 0xd5, 0xc7, 0x42, 0xd8, 0xeb, 0x76, 0x95, 0x50,
+	0x55, 0xe3, 0x71, 0x03, 0xb8, 0x52, 0xa5, 0xc0, 0x37, 0x67, 0xf8, 0x91, 0x07, 0xb3, 0x7a, 0x3a,
+	0x5c, 0xca, 0xd9, 0xef, 0x00, 0x00, 0x00, 0xff, 0xff, 0xda, 0x91, 0x9f, 0x8b, 0x6a, 0x02, 0x00,
+	0x00,
 }
 
 func (this *Array) Equal(that interface{}) bool {
@@ -260,6 +354,54 @@ func (this *Stats) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *BitpackedMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*BitpackedMetadata)
+	if !ok {
+		that2, ok := that.(BitpackedMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.BlockSize != that1.BlockSize {
+		return false
+	}
+	return true
+}
+func (this *ZstdMetadata) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ZstdMetadata)
+	if !ok {
+		that2, ok := that.(ZstdMetadata)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.UncompressedSize != that1.UncompressedSize {
+		return false
+	}
+	return true
+}
 func (this *Array) GoString() string {
 	if this == nil {
 		return "nil"
@@ -285,6 +427,26 @@ func (this *Stats) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&arraymd.Stats{")
 	s = append(s, "NullCount: "+fmt.Sprintf("%#v", this.NullCount)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *BitpackedMetadata) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&arraymd.BitpackedMetadata{")
+	s = append(s, "BlockSize: "+fmt.Sprintf("%#v", this.BlockSize)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ZstdMetadata) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&arraymd.ZstdMetadata{")
+	s = append(s, "UncompressedSize: "+fmt.Sprintf("%#v", this.UncompressedSize)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -403,6 +565,62 @@ func (m *Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *BitpackedMetadata) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *BitpackedMetadata) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *BitpackedMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.BlockSize != 0 {
+		i = encodeVarintArraymd(dAtA, i, uint64(m.BlockSize))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ZstdMetadata) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ZstdMetadata) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ZstdMetadata) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.UncompressedSize != 0 {
+		i = encodeVarintArraymd(dAtA, i, uint64(m.UncompressedSize))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintArraymd(dAtA []byte, offset int, v uint64) int {
 	offset -= sovArraymd(v)
 	base := offset
@@ -459,6 +677,30 @@ func (m *Stats) Size() (n int) {
 	return n
 }
 
+func (m *BitpackedMetadata) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.BlockSize != 0 {
+		n += 1 + sovArraymd(uint64(m.BlockSize))
+	}
+	return n
+}
+
+func (m *ZstdMetadata) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.UncompressedSize != 0 {
+		n += 1 + sovArraymd(uint64(m.UncompressedSize))
+	}
+	return n
+}
+
 func sovArraymd(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -490,6 +732,26 @@ func (this *Stats) String() string {
 	}
 	s := strings.Join([]string{`&Stats{`,
 		`NullCount:` + fmt.Sprintf("%v", this.NullCount) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *BitpackedMetadata) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&BitpackedMetadata{`,
+		`BlockSize:` + fmt.Sprintf("%v", this.BlockSize) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ZstdMetadata) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ZstdMetadata{`,
+		`UncompressedSize:` + fmt.Sprintf("%v", this.UncompressedSize) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -798,6 +1060,150 @@ func (m *Stats) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.NullCount |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipArraymd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthArraymd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthArraymd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BitpackedMetadata) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowArraymd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BitpackedMetadata: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BitpackedMetadata: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockSize", wireType)
+			}
+			m.BlockSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowArraymd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.BlockSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipArraymd(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthArraymd
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthArraymd
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ZstdMetadata) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowArraymd
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ZstdMetadata: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ZstdMetadata: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UncompressedSize", wireType)
+			}
+			m.UncompressedSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowArraymd
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UncompressedSize |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
