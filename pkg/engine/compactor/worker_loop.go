@@ -87,3 +87,57 @@ func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window t
 	}
 	return indexes[tenant], true
 }
+
+// runLogMergePhase schedules one LogMerge task per index file for the [tenant]
+// in the current [window]. Any error retries. Retries are safe because swapping
+// an index that already swapped is a no-op. Context cancellation is not an
+// error.
+func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, window time.Time) phaseOutcome {
+	start := c.clock()
+	entries, ok := c.tenantEntries(ctx, tenant, window)
+	if !ok {
+		return phaseOutcomeError
+	}
+	if len(entries) == 0 {
+		c.metrics.observeTenantLogCycle(tenant, "converged", c.clock().Sub(start), compactionStats{})
+		return phaseOutcomeNoWork
+	}
+
+	var agg compactionStats
+	anySwapped := false
+	anyError := false
+	for _, entry := range entries {
+		if ctx.Err() != nil {
+			return phaseOutcomeError
+		}
+		_, stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return phaseOutcomeError
+			}
+			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
+				"tenant", tenant, "window", window, "index", entry.Path, "err", err)
+			anyError = true
+			continue
+		}
+		if stats.added > 0 {
+			anySwapped = true
+			agg.removed += stats.removed
+			agg.added += stats.added
+			agg.dispatched += stats.dispatched
+		}
+	}
+
+	dur := c.clock().Sub(start)
+	switch {
+	case anyError:
+		c.metrics.observeTenantLogCycle(tenant, "failed", dur, compactionStats{})
+		return phaseOutcomeError
+	case anySwapped:
+		c.metrics.observeTenantLogCycle(tenant, "compacted", dur, agg)
+		return phaseOutcomeSwapped
+	default:
+		c.metrics.observeTenantLogCycle(tenant, "converged", dur, compactionStats{})
+		return phaseOutcomeNoWork
+	}
+}
