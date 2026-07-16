@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/apache/arrow-go/v18/arrow/bitutil"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/columnar"
-	"github.com/grafana/loki/v3/pkg/compute"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -330,47 +329,33 @@ func refOf(row Row) SectionRef {
 
 // unionStreams returns the bitwise OR of acc and bits, treating a nil acc as
 // empty. Per-row stream bitmaps vary in length, so the shorter operand is
-// zero-extended to the longer before delegating to compute.Or, which requires
-// equal-length operands.
-//
-// The result is allocated from alloc and escapes the scan in the returned
-// per-section map, so alloc must outlive that map.
+// zero-extended to the longer.
 func unionStreams(alloc *memory.Allocator, acc *memory.Bitmap, bits memory.Bitmap) *memory.Bitmap {
 	if acc == nil {
-		empty := memory.NewBitmap(alloc, 0)
-		acc = &empty
+		out := memory.NewBitmap(alloc, bits.Len())
+		out.AppendBitmap(bits)
+		return &out
 	}
 
-	left, right := *acc, bits
-	if n := max(left.Len(), right.Len()); left.Len() != right.Len() {
-		left = extendBitmap(alloc, left, n)
-		right = extendBitmap(alloc, right, n)
+	if bits.Len() > acc.Len() {
+		oldLen := acc.Len()
+		acc.Resize(bits.Len())
+		// Allocator-backed memory may be reused without being zeroed.
+		acc.SetRange(oldLen, acc.Len(), false)
 	}
 
-	result, err := compute.Or(
-		alloc,
-		columnar.NewBool(left, memory.Bitmap{}),
-		columnar.NewBool(right, memory.Bitmap{}),
-		memory.Bitmap{},
+	accData, accOffset := acc.Bytes()
+	bitsData, bitsOffset := bits.Bytes()
+	bitutil.BitmapOr(
+		accData,
+		bitsData,
+		int64(accOffset),
+		int64(bitsOffset),
+		accData,
+		int64(accOffset),
+		int64(bits.Len()),
 	)
-	if err != nil {
-		panic("unionStreams: " + err.Error())
-	}
-	out := result.(*columnar.Bool).Values()
-	return &out
-}
-
-// extendBitmap returns a length-n copy of b with the trailing bits cleared,
-// leaving b unmodified. The copy is allocated from alloc. If b already has at
-// least n bits, b is returned as-is without copying.
-func extendBitmap(alloc *memory.Allocator, b memory.Bitmap, n int) memory.Bitmap {
-	if b.Len() >= n {
-		return b
-	}
-	out := memory.NewBitmap(alloc, n)
-	out.AppendBitmap(b)
-	out.AppendCount(false, n-b.Len())
-	return out
+	return acc
 }
 
 // MatcherHits scans the section against [matchers]. The first return is the

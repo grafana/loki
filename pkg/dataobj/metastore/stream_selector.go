@@ -236,7 +236,7 @@ func (s *streamSelector) matchMatchers(
 				ms := perMatcher[i]
 				acc.streamLabels[cms[i].Matcher().Name] = struct{}{}
 				foldTimeOverlap(acc, ms.Matched, ms.MinNS, ms.MaxNS, ms.Has, startNanos, endNanos)
-				perMatcherHits[i][ref] = unionBitmaps(perMatcherHits[i][ref], ms.Matched)
+				perMatcherHits[i][ref] = unionInto(perMatcherHits[i][ref], ms.Matched)
 			}
 		}
 	}
@@ -283,8 +283,8 @@ func (s *streamSelector) matchFilters(
 				ls := perMatcher[i]
 				acc.streamLabels[cms[i].Matcher().Name] = struct{}{}
 				foldTimeOverlap(acc, ls.Present, ls.MinNS, ls.MaxNS, ls.Has, startNanos, endNanos)
-				present[i][ref] = unionBitmaps(present[i][ref], ls.Present)
-				matched[i][ref] = unionBitmaps(matched[i][ref], ls.Matched)
+				present[i][ref] = unionInto(present[i][ref], ls.Present)
+				matched[i][ref] = unionInto(matched[i][ref], ls.Matched)
 			}
 		}
 	}
@@ -293,7 +293,7 @@ func (s *streamSelector) matchFilters(
 		hits := make(map[postings.SectionRef]*memory.Bitmap, len(accums))
 		for ref, acc := range accums {
 			missing := differenceBitmaps(acc.result, present[i][ref])
-			hits[ref] = unionBitmaps(matched[i][ref], missing)
+			hits[ref] = unionInto(matched[i][ref], missing)
 		}
 		combine(accums, hits, false)
 		if len(accums) == 0 {
@@ -331,7 +331,7 @@ func combine(accums map[postings.SectionRef]*accum, hits map[postings.SectionRef
 			delete(accums, ref)
 			continue
 		}
-		acc.result = intersectBitmaps(acc.result, hit)
+		acc.result = intersectInto(acc.result, hit)
 		if acc.result.SetCount() == 0 {
 			delete(accums, ref)
 		}
@@ -348,7 +348,7 @@ func foldTimeOverlap(acc *accum, overlap *memory.Bitmap, minNS, maxNS int64, has
 	if maxNS < startNanos || minNS > endNanos {
 		return
 	}
-	acc.timeOverlap = unionBitmaps(acc.timeOverlap, overlap)
+	acc.timeOverlap = unionInto(acc.timeOverlap, overlap)
 	if !acc.hasTS {
 		acc.minTS, acc.maxTS, acc.hasTS = minNS, maxNS, true
 		return
@@ -371,7 +371,7 @@ func (s *streamSelector) finalize(ref postings.SectionRef, acc *accum, startNano
 		if acc.timeOverlap == nil {
 			return SectionStreams{}, false
 		}
-		result = intersectBitmaps(result, acc.timeOverlap)
+		result = intersectInto(result, acc.timeOverlap)
 		if result.SetCount() == 0 {
 			return SectionStreams{}, false
 		}
