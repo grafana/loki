@@ -237,3 +237,39 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 	t.region.Record(schedulerstat.TaskFinishTime.Observe(now.UnixNano()))
 	t.region.End()
 }
+
+// releaseTerminalResources drops the scheduler's references to the task's
+// large, no-longer-needed state after it has produced a terminal result and
+// its result notification has been dispatched.
+//
+// The scheduler keeps a lightweight task entry in its map until the owning
+// manifest is unregistered (so deregistration, late worker results, and
+// redundant cancellations stay well-defined). The per-task capture, however,
+// can be sizable once worker-supplied observations are merged into it, and
+// holding one for every finished task until the whole manifest is
+// deregistered retains memory unnecessarily. We therefore release it as soon
+// as the task finishes.
+//
+// The result notification carries its own reference to the capture, so
+// consumers still receive the full capture; only the scheduler's retained
+// references are dropped here. After a task has a terminal result no code path
+// reads its capture again, so releasing it is safe. The terminal result
+// itself is preserved (only its Capture is cleared) so [task.HasResult] and
+// [task.Result] keep reporting the outcome.
+//
+// releaseTerminalResources must only be called with the task already holding a
+// terminal result, after the result notification has been queued, while
+// [Scheduler.resourcesMut] is held.
+func (t *task) releaseTerminalResources() {
+	// capture and region are only ever accessed under [Scheduler.resourcesMut],
+	// which the caller holds.
+	t.capture = nil
+	t.region = nil
+
+	// result is guarded by t.mut.
+	t.mut.Lock()
+	if t.result != nil {
+		t.result.Capture = nil
+	}
+	t.mut.Unlock()
+}

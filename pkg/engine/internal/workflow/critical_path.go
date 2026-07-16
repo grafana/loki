@@ -10,6 +10,13 @@ type pendingSummary struct {
 	result TaskResult
 
 	taskFinishNanos int64
+
+	// Fragment-derived summary fields, captured when the task produces a
+	// terminal result so its (potentially large) Fragment can be released
+	// immediately rather than held until Close. See Workflow.recordTaskResult.
+	operatorType   string
+	isScanTask     bool
+	isPostingsScan bool
 }
 
 // flushTaskSummaries logs the deferred per-task summaries at Close, flagging the
@@ -29,7 +36,7 @@ func (wf *Workflow) flushTaskSummaries() {
 	// a sibling that finishes at the instant of teardown (failing task unaffected).
 	for t, s := range wf.taskResults {
 		_, critical := onPath[t]
-		wf.printTaskSummary(t, s.result, critical)
+		wf.printTaskSummary(t, s, critical)
 	}
 }
 
