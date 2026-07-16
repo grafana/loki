@@ -55,7 +55,7 @@ type CreateGlobalReplicationGroupInput struct {
 	GlobalReplicationGroupIdSuffix *string
 
 	// The name of the primary cluster that accepts writes and will replicate updates
-	// to the secondary cluster.
+	// to the secondary cluster. This value is stored as a lowercase string.
 	//
 	// This member is required.
 	PrimaryReplicationGroupId *string
@@ -117,7 +117,7 @@ func (c *Client) addOperationCreateGlobalReplicationGroupMiddlewares(stack *midd
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -139,9 +139,6 @@ func (c *Client) addOperationCreateGlobalReplicationGroupMiddlewares(stack *midd
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

@@ -98,6 +98,8 @@ type CreateDBInstanceInput struct {
 	//
 	//   - db2-ae
 	//
+	//   - db2-ce
+	//
 	//   - db2-se
 	//
 	//   - mariadb
@@ -768,7 +770,7 @@ type CreateDBInstanceInput struct {
 	//
 	//   - RDS for MariaDB - general-public-license
 	//
-	//   - RDS for Microsoft SQL Server - license-included
+	//   - RDS for Microsoft SQL Server - license-included | bring-your-own-media
 	//
 	//   - RDS for MySQL - general-public-license
 	//
@@ -1226,7 +1228,7 @@ func (c *Client) addOperationCreateDBInstanceMiddlewares(stack *middleware.Stack
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -1248,9 +1250,6 @@ func (c *Client) addOperationCreateDBInstanceMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

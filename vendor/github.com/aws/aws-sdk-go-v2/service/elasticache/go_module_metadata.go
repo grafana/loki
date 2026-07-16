@@ -3,4 +3,4 @@
 package elasticache
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.51.12"
+const goModuleVersion = "1.54.3"

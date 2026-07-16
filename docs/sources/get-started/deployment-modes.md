@@ -30,8 +30,8 @@ Query parallelization is limited by the number of instances and the setting `max
 
 ## Simple Scalable
 
-{{< admonition type="note" >}}
-Simple Scalable Deployment (SSD) mode is being deprecated. The timeline for the deprecation is to be determined (TBD), but will happen before Loki 4.0 is released.
+{{< admonition type="caution" >}}
+Simple Scalable Deployment (SSD) mode is being deprecated and will be removed with the Loki 4.0 release. You should plan to migrate from SSD to microservices or HA monolithic deployment. You will not be able to run Loki 4.0 in SSD mode.
 {{< /admonition >}}
 
 The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode). Simple scalable deployment is also referred to as SSD.

@@ -68,11 +68,17 @@ type DeleteCustomDBEngineVersionInput struct {
 	//
 	//   - custom-sqlserver-se
 	//
-	//   - ccustom-sqlserver-web
+	//   - custom-sqlserver-web
 	//
 	//   - custom-sqlserver-dev
 	//
-	// RDS for SQL Server supports only sqlserver-dev-ee .
+	// RDS for SQL Server supports the following values:
+	//
+	//   - sqlserver-ee (Bring Your Own Media)
+	//
+	//   - sqlserver-se (Bring Your Own Media)
+	//
+	//   - sqlserver-dev-ee
 	//
 	// This member is required.
 	Engine *string
@@ -106,8 +112,12 @@ type DeleteCustomDBEngineVersionOutput struct {
 	// The description of the database engine.
 	DBEngineDescription *string
 
-	// A value that indicates the source media provider of the AMI based on the usage
-	// operation. Applicable for RDS Custom for SQL Server.
+	// The source of the installation media for this engine version. A value of
+	// Customer Provided indicates that the engine version was created from
+	// customer-supplied installation media using CreateCustomDBEngineVersion .
+	// Applicable to RDS Custom for SQL Server and to RDS for SQL Server engine
+	// versions ( sqlserver-ee and sqlserver-se with the bring-your-own-media license
+	// model, and sqlserver-dev-ee ).
 	DBEngineMediaType *string
 
 	// The ARN of the custom engine version.
@@ -119,8 +129,10 @@ type DeleteCustomDBEngineVersionOutput struct {
 	// The name of the DB parameter group family for the database engine.
 	DBParameterGroupFamily *string
 
-	// The database installation files (ISO and EXE) uploaded to Amazon S3 for your
-	// database engine version to import to Amazon RDS. Required for sqlserver-dev-ee .
+	// The database installation files (ISO and EXE) that were uploaded to Amazon S3
+	// and used to import the database engine version to Amazon RDS. Returned for RDS
+	// for SQL Server engine versions ( sqlserver-ee , sqlserver-se , and
+	// sqlserver-dev-ee ) created from customer-supplied installation media.
 	DatabaseInstallationFiles []string
 
 	// The name of the Amazon S3 bucket that contains your database installation files.
@@ -144,8 +156,9 @@ type DeleteCustomDBEngineVersionOutput struct {
 	// CloudWatch Logs.
 	ExportableLogTypes []string
 
-	// The reason that the custom engine version creation for sqlserver-dev-ee failed
-	// with an incompatible-installation-media status.
+	// The reason that the custom engine version creation failed with an
+	// incompatible-installation-media status. Applicable to RDS for SQL Server engine
+	// versions ( sqlserver-ee , sqlserver-se , and sqlserver-dev-ee ).
 	FailureReason *string
 
 	// The EC2 image
@@ -299,7 +312,7 @@ func (c *Client) addOperationDeleteCustomDBEngineVersionMiddlewares(stack *middl
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -321,9 +334,6 @@ func (c *Client) addOperationDeleteCustomDBEngineVersionMiddlewares(stack *middl
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

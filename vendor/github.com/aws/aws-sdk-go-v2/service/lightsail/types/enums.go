@@ -1704,6 +1704,27 @@ func (OperationType) Values() []OperationType {
 	}
 }
 
+type OriginIpAddressTypeEnum string
+
+// Enum values for OriginIpAddressTypeEnum
+const (
+	OriginIpAddressTypeEnumIpv4      OriginIpAddressTypeEnum = "ipv4"
+	OriginIpAddressTypeEnumIpv6      OriginIpAddressTypeEnum = "ipv6"
+	OriginIpAddressTypeEnumDualstack OriginIpAddressTypeEnum = "dualstack"
+)
+
+// Values returns all known values for OriginIpAddressTypeEnum. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (OriginIpAddressTypeEnum) Values() []OriginIpAddressTypeEnum {
+	return []OriginIpAddressTypeEnum{
+		"ipv4",
+		"ipv6",
+		"dualstack",
+	}
+}
+
 type OriginProtocolPolicyEnum string
 
 // Enum values for OriginProtocolPolicyEnum
@@ -1866,14 +1887,15 @@ const (
 	RegionNameEuWest2      RegionName = "eu-west-2"
 	RegionNameEuWest3      RegionName = "eu-west-3"
 	RegionNameEuCentral1   RegionName = "eu-central-1"
+	RegionNameEuNorth1     RegionName = "eu-north-1"
 	RegionNameCaCentral1   RegionName = "ca-central-1"
 	RegionNameApSouth1     RegionName = "ap-south-1"
 	RegionNameApSoutheast1 RegionName = "ap-southeast-1"
 	RegionNameApSoutheast2 RegionName = "ap-southeast-2"
 	RegionNameApNortheast1 RegionName = "ap-northeast-1"
 	RegionNameApNortheast2 RegionName = "ap-northeast-2"
-	RegionNameEuNorth1     RegionName = "eu-north-1"
 	RegionNameApSoutheast3 RegionName = "ap-southeast-3"
+	RegionNameApSoutheast5 RegionName = "ap-southeast-5"
 )
 
 // Values returns all known values for RegionName. Note that this can be expanded
@@ -1890,14 +1912,15 @@ func (RegionName) Values() []RegionName {
 		"eu-west-2",
 		"eu-west-3",
 		"eu-central-1",
+		"eu-north-1",
 		"ca-central-1",
 		"ap-south-1",
 		"ap-southeast-1",
 		"ap-southeast-2",
 		"ap-northeast-1",
 		"ap-northeast-2",
-		"eu-north-1",
 		"ap-southeast-3",
+		"ap-southeast-5",
 	}
 }
 

@@ -46,4 +46,4 @@ The following guides provide step-by-step instructions for deploying Loki on clo
 
 ## Reference
 
-You can find reference documentation for the Loki Helm chart in the [values.yaml file](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml).
+You can find reference documentation for the Loki Helm chart values in the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/) or view the source [values.yaml file](https://github.com/grafana-community/helm-charts/blob/main/charts/loki/values.yaml).

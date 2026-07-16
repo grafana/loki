@@ -108,8 +108,6 @@ else
     "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}/g" production/helm/loki/CHANGELOG.md
 fi
 
-make TTY='' helm-docs
-
 # shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"
 if ${k_release}; then

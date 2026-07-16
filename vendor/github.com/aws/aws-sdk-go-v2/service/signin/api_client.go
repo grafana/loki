@@ -4,6 +4,7 @@ package signin
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,13 +16,12 @@ import (
 	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
 	internalauthsmithy "github.com/aws/aws-sdk-go-v2/internal/auth/smithy"
 	internalConfig "github.com/aws/aws-sdk-go-v2/internal/configsources"
-	internalmiddleware "github.com/aws/aws-sdk-go-v2/internal/middleware"
 	smithy "github.com/aws/smithy-go"
-	smithyauth "github.com/aws/smithy-go/auth"
 	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/metrics"
 	"github.com/aws/smithy-go/middleware"
+	smithyrand "github.com/aws/smithy-go/rand"
 	"github.com/aws/smithy-go/tracing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"net"
@@ -202,6 +202,8 @@ func New(options Options, optFns ...func(*Options)) *Client {
 	resolveHTTPClient(&options)
 
 	resolveHTTPSignerV4(&options)
+
+	resolveIdempotencyTokenProvider(&options)
 
 	resolveEndpointResolverV2(&options)
 
@@ -711,10 +713,18 @@ func addIsPaginatorUserAgent(o *Options) {
 	})
 }
 
-func addRetry(stack *middleware.Stack, o Options) error {
+func resolveIdempotencyTokenProvider(o *Options) {
+	if o.IdempotencyTokenProvider != nil {
+		return
+	}
+	o.IdempotencyTokenProvider = smithyrand.NewUUIDIdempotencyToken(cryptorand.Reader)
+}
+
+func addRetry(stack *middleware.Stack, o Options, c *Client) error {
 	attempt := retry.NewAttemptMiddleware(o.Retryer, smithyhttp.RequestCloner, func(m *retry.Attempt) {
 		m.LogAttempts = o.ClientLogMode.IsRetries()
 		m.OperationMeter = o.MeterProvider.Meter("github.com/aws/aws-sdk-go-v2/service/signin")
+		m.ClientSkew = c.timeOffset
 	})
 	if err := stack.Finalize.Insert(attempt, "ResolveAuthScheme", middleware.Before); err != nil {
 		return err
@@ -755,25 +765,6 @@ func resolveUseFIPSEndpoint(cfg aws.Config, o *Options) error {
 	return nil
 }
 
-func resolveAccountID(identity smithyauth.Identity, mode aws.AccountIDEndpointMode) *string {
-	if mode == aws.AccountIDEndpointModeDisabled {
-		return nil
-	}
-
-	if ca, ok := identity.(*internalauthsmithy.CredentialsAdapter); ok && ca.Credentials.AccountID != "" {
-		return aws.String(ca.Credentials.AccountID)
-	}
-
-	return nil
-}
-
-func addTimeOffsetBuild(stack *middleware.Stack, c *Client) error {
-	mw := internalmiddleware.AddTimeOffsetMiddleware{Offset: c.timeOffset}
-	if err := stack.Build.Add(&mw, middleware.After); err != nil {
-		return err
-	}
-	return stack.Deserialize.Insert(&mw, "RecordResponseTiming", middleware.Before)
-}
 func initializeTimeOffsetResolver(c *Client) {
 	c.timeOffset = new(atomic.Int64)
 }
@@ -834,6 +825,11 @@ func resolveMeterProvider(options *Options) {
 	if options.MeterProvider == nil {
 		options.MeterProvider = metrics.NopMeterProvider{}
 	}
+}
+
+// IdempotencyTokenProvider interface for providing idempotency token
+type IdempotencyTokenProvider interface {
+	GetIdempotencyToken() (string, error)
 }
 
 func addRecursionDetection(stack *middleware.Stack) error {

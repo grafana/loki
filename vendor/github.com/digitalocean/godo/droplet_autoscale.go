@@ -57,6 +57,7 @@ type DropletAutoscaleResourceTemplate struct {
 	ProjectID        string   `json:"project_id"`
 	IPV6             bool     `json:"ipv6"`
 	UserData         string   `json:"user_data"`
+	PublicNetworking *bool    `json:"public_networking"`
 }
 
 // DropletAutoscaleResourceUtilization represents a DigitalOcean droplet autoscale pool resource utilization

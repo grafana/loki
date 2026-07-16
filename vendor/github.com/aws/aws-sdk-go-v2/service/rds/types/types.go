@@ -1712,8 +1712,12 @@ type DBEngineVersion struct {
 	// The description of the database engine.
 	DBEngineDescription *string
 
-	// A value that indicates the source media provider of the AMI based on the usage
-	// operation. Applicable for RDS Custom for SQL Server.
+	// The source of the installation media for this engine version. A value of
+	// Customer Provided indicates that the engine version was created from
+	// customer-supplied installation media using CreateCustomDBEngineVersion .
+	// Applicable to RDS Custom for SQL Server and to RDS for SQL Server engine
+	// versions ( sqlserver-ee and sqlserver-se with the bring-your-own-media license
+	// model, and sqlserver-dev-ee ).
 	DBEngineMediaType *string
 
 	// The ARN of the custom engine version.
@@ -1725,8 +1729,10 @@ type DBEngineVersion struct {
 	// The name of the DB parameter group family for the database engine.
 	DBParameterGroupFamily *string
 
-	// The database installation files (ISO and EXE) uploaded to Amazon S3 for your
-	// database engine version to import to Amazon RDS. Required for sqlserver-dev-ee .
+	// The database installation files (ISO and EXE) that were uploaded to Amazon S3
+	// and used to import the database engine version to Amazon RDS. Returned for RDS
+	// for SQL Server engine versions ( sqlserver-ee , sqlserver-se , and
+	// sqlserver-dev-ee ) created from customer-supplied installation media.
 	DatabaseInstallationFiles []string
 
 	// The name of the Amazon S3 bucket that contains your database installation files.
@@ -1750,8 +1756,9 @@ type DBEngineVersion struct {
 	// CloudWatch Logs.
 	ExportableLogTypes []string
 
-	// The reason that the custom engine version creation for sqlserver-dev-ee failed
-	// with an incompatible-installation-media status.
+	// The reason that the custom engine version creation failed with an
+	// incompatible-installation-media status. Applicable to RDS for SQL Server engine
+	// versions ( sqlserver-ee , sqlserver-se , and sqlserver-dev-ee ).
 	FailureReason *string
 
 	// The EC2 image
@@ -4716,6 +4723,8 @@ type PendingMaintenanceAction struct {
 	//
 	//   - os-upgrade
 	//
+	//   - serverless-platform-version-update
+	//
 	//   - system-update
 	//
 	// For more information about these actions, see [Maintenance actions for Amazon Aurora] or [Maintenance actions for Amazon RDS].
@@ -4811,6 +4820,7 @@ type PendingModifiedValues struct {
 	// The license model for the DB instance.
 	//
 	// Valid values: license-included | bring-your-own-license | general-public-license
+	// | bring-your-own-media
 	LicenseModel *string
 
 	// The master credentials for the DB instance.
@@ -5399,6 +5409,39 @@ type ServerlessV2FeaturesSupport struct {
 	// If the minimum capacity is 0 ACUs, the engine version or platform version
 	// supports the automatic pause/resume feature of Aurora Serverless v2.
 	MinCapacity *float64
+
+	noSmithyDocumentSerde
+}
+
+// This data type is used as a response element in the action
+// DescribeServerlessV2PlatformVersions .
+type ServerlessV2PlatformVersionInfo struct {
+
+	// The name of the database engine.
+	Engine *string
+
+	// Indicates whether this platform version is the default version for the engine.
+	// The default platform version is the version used for new DB clusters.
+	IsDefault *bool
+
+	// Specifies any Aurora Serverless v2 properties or limits that differ between
+	// Aurora Serverless v2 platform versions. You can retrieve the platform version of
+	// an existing DB cluster and check whether that version supports certain Aurora
+	// Serverless v2 features before you attempt to use those features.
+	ServerlessV2FeaturesSupport *ServerlessV2FeaturesSupport
+
+	// The version number of the serverless platform.
+	ServerlessV2PlatformVersion *string
+
+	// The description of the serverless platform.
+	ServerlessV2PlatformVersionDescription *string
+
+	// The status of the serverless platform. Valid statuses are the following:
+	//
+	//   - enabled - The platform version is in use.
+	//
+	//   - disabled - The platform version is not in use.
+	Status *string
 
 	noSmithyDocumentSerde
 }

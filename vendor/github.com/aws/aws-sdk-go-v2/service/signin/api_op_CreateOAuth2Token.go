@@ -8,6 +8,7 @@ import (
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/service/signin/types"
 	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/ptr"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
@@ -84,6 +85,11 @@ type CreateOAuth2TokenInput struct {
 	noSmithyDocumentSerde
 }
 
+func (in *CreateOAuth2TokenInput) bindEndpointParams(p *EndpointParameters) {
+
+	p.IsControlPlane = ptr.Bool(false)
+}
+
 // Output structure for CreateOAuth2Token operation
 //
 // Contains flattened token operation outputs for both authorization code and
@@ -134,7 +140,7 @@ func (c *Client) addOperationCreateOAuth2TokenMiddlewares(stack *middleware.Stac
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -156,9 +162,6 @@ func (c *Client) addOperationCreateOAuth2TokenMiddlewares(stack *middleware.Stac
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

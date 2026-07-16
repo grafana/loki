@@ -88,6 +88,32 @@ func CalculateContentCrc32cFromFile(fileName string) (string, error) {
 	return CalculateContentCrc32c(file, fileInfo.Size())
 }
 
+func CalculateContentCrc32(data io.Reader, size int64) (string, error) {
+	hashCrc32 := crc32.NewIEEE()
+	n, err := io.CopyN(hashCrc32, data, size)
+	if err != nil {
+		return "", fmt.Errorf("calculate content-crc32 occurs error: %w", err)
+	}
+	if n != size {
+		return "", fmt.Errorf("calculate content-crc32 writing size %d != size %d", n, size)
+	}
+	return strconv.FormatUint(uint64(hashCrc32.Sum32()), 10), nil
+}
+
+func CalculateContentCrc32FromFile(file *os.File, offset, size int64) (string, error) {
+	curOffset, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		file.Seek(curOffset, io.SeekStart)
+	}()
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return "", err
+	}
+	return CalculateContentCrc32(file, size)
+}
+
 func UriEncode(uri string, encodeSlash bool) string {
 	var byte_buf bytes.Buffer
 	for _, b := range []byte(uri) {
@@ -135,6 +161,13 @@ func StringValue(p *string) string {
 	return *p
 }
 
+func Int32PtrToString(p *int32) string {
+	if p == nil {
+		return ""
+	}
+	return strconv.FormatInt(int64(*p), 10)
+}
+func PtrInt(v int) *int             { return &v }
 func PtrInt32(v int32) *int32       { return &v }
 func PtrInt64(v int64) *int64       { return &v }
 func PtrFloat32(v float32) *float32 { return &v }

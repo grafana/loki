@@ -153,6 +153,11 @@ type CreateClientVpnEndpointInput struct {
 	// access both IPv4 and IPv6 resources through the VPN .
 	TrafficIpAddressType types.TrafficIpAddressType
 
+	// The Transit Gateway configuration for the Client VPN endpoint. Use this
+	// parameter to associate the endpoint with a Transit Gateway instead of a VPC. You
+	// cannot specify both TransitGatewayConfiguration and VpcId / SecurityGroupIds .
+	TransitGatewayConfiguration *types.TransitGatewayConfigurationInputStructure
+
 	// The transport protocol to be used by the VPN session.
 	//
 	// Default value: udp
@@ -224,7 +229,7 @@ func (c *Client) addOperationCreateClientVpnEndpointMiddlewares(stack *middlewar
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRetry(stack, options); err != nil {
+	if err = addRetry(stack, options, c); err != nil {
 		return err
 	}
 	if err = addRawResponseToMetadata(stack); err != nil {
@@ -246,9 +251,6 @@ func (c *Client) addOperationCreateClientVpnEndpointMiddlewares(stack *middlewar
 		return err
 	}
 	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
-		return err
-	}
-	if err = addTimeOffsetBuild(stack, c); err != nil {
 		return err
 	}
 	if err = addUserAgentRetryMode(stack, options); err != nil {

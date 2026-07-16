@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -223,7 +222,7 @@ func osTime(L *LState) int {
 }
 
 func osTmpname(L *LState) int {
-	file, err := ioutil.TempFile("", "")
+	file, err := os.CreateTemp("", "")
 	if err != nil {
 		L.RaiseError("unable to generate a unique filename")
 	}

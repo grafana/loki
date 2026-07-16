@@ -64,7 +64,7 @@ import will be the Bubble Tea library, which we'll call `tea` for short.
 ```go
 package main
 
-// These imports will be used later on the tutorial. If you save the file
+// These imports will be used later in the tutorial. If you save the file
 // now, Go might complain they are unused, but that's fine.
 // You may also need to run `go mod tidy` to download bubbletea and its
 // dependencies.
@@ -397,6 +397,6 @@ of days past.
 
 Part of [Charm](https://charm.sh).
 
-<a href="https://charm.sh/"><img alt="The Charm logo" src="https://stuff.charm.sh/charm-banner-next.jpg" width="400"></a>
+<a href="https://charm.sh/"><img alt="The Charm logo" src="https://stuff.charm.sh/charm-banner-softy.jpg" width="400"></a>
 
 Charm热爱开源 • Charm loves open source • نحنُ نحب المصادر المفتوحة

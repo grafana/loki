@@ -26,9 +26,7 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.2
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
+GO_VERSION         := 1.26.5
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -67,7 +65,7 @@ DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
 
 # Image names
 IMAGE_PREFIX           ?= grafana
-BUILD_IMAGE            := $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG)
+BUILD_IMAGE            := $(IMAGE_PREFIX)/loki-build-image:$(GIT_REVISION)
 LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
 CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
@@ -110,6 +108,9 @@ define run_in_container
 				echo "-v $$ABS_GIT_DIR:/src/loki/.git$(MOUNT_FLAGS)"; \
 			fi; \
 		fi))
+	@echo ">>> Building loki-build-image locally ..."
+	DOCKER_BUILDKIT=1 docker build --build-arg GO_VERSION=$(GO_VERSION) -t $(BUILD_IMAGE) ./loki-build-image
+
 	docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
 		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
@@ -248,9 +249,6 @@ production/helm/loki/src/helm-test/helm-test:
 
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
-
-helm-docs: ## generate reference documentation
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
 
 #################
 # Loki-QueryTee #
@@ -473,7 +471,7 @@ define build-rootfs
 	docker rmi rootfsimage -f
 endef
 
-docker-driver: docker-driver-clean ## build the docker-driver executable
+docker-driver: docker-driver-clean build-image ## build the docker-driver executable
 	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
 
@@ -576,7 +574,7 @@ images: loki-image loki-canary-image helm-test-image docker-driver
 # Loki image
 loki-image: ## build the loki docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
-loki-debug-image: ## build the loki debug docker image
+loki-debug-image: build-image ## build the loki debug docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE)-debug -f cmd/loki/Dockerfile.debug .
 
 # Loki local image
@@ -626,11 +624,6 @@ loki-operator-image: ## build the operator docker image
 #################
 # Documentation #
 #################
-
-documentation-helm-reference-check:
-	@echo "Checking diff"
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
-	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
 
 ########
 # Misc #
@@ -817,7 +810,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check

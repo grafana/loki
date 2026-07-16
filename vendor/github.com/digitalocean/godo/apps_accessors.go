@@ -405,12 +405,44 @@ func (a *AppAutoscalingSpecMetricCPU) GetPercent() int64 {
 	return a.Percent
 }
 
+// GetP95Milliseconds returns the P95Milliseconds field.
+func (a *AppAutoscalingSpecMetricRequestDuration) GetP95Milliseconds() int64 {
+	if a == nil {
+		return 0
+	}
+	return a.P95Milliseconds
+}
+
+// GetPerInstance returns the PerInstance field.
+func (a *AppAutoscalingSpecMetricRequestsPerSecond) GetPerInstance() int64 {
+	if a == nil {
+		return 0
+	}
+	return a.PerInstance
+}
+
 // GetCPU returns the CPU field.
 func (a *AppAutoscalingSpecMetrics) GetCPU() *AppAutoscalingSpecMetricCPU {
 	if a == nil {
 		return nil
 	}
 	return a.CPU
+}
+
+// GetRequestDuration returns the RequestDuration field.
+func (a *AppAutoscalingSpecMetrics) GetRequestDuration() *AppAutoscalingSpecMetricRequestDuration {
+	if a == nil {
+		return nil
+	}
+	return a.RequestDuration
+}
+
+// GetRequestsPerSecond returns the RequestsPerSecond field.
+func (a *AppAutoscalingSpecMetrics) GetRequestsPerSecond() *AppAutoscalingSpecMetricRequestsPerSecond {
+	if a == nil {
+		return nil
+	}
+	return a.RequestsPerSecond
 }
 
 // GetCNBVersioning returns the CNBVersioning field.
@@ -1047,18 +1079,18 @@ func (a *AppIngressSpecRuleRoutingRedirect) GetUri() string {
 
 // GetExact returns the Exact field.
 func (a *AppIngressSpecRuleStringMatch) GetExact() string {
-	if a == nil {
+	if a == nil || a.Exact == nil {
 		return ""
 	}
-	return a.Exact
+	return *a.Exact
 }
 
 // GetPrefix returns the Prefix field.
 func (a *AppIngressSpecRuleStringMatch) GetPrefix() string {
-	if a == nil {
+	if a == nil || a.Prefix == nil {
 		return ""
 	}
-	return a.Prefix
+	return *a.Prefix
 }
 
 // GetComponentName returns the ComponentName field.
@@ -2635,6 +2667,14 @@ func (a *AutoscalerActionScaleChange) GetTo() int64 {
 		return 0
 	}
 	return a.To
+}
+
+// GetTriggeringMetric returns the TriggeringMetric field.
+func (a *AutoscalerActionScaleChange) GetTriggeringMetric() string {
+	if a == nil {
+		return ""
+	}
+	return a.TriggeringMetric
 }
 
 // GetFrom returns the From field.

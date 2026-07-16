@@ -1,6 +1,22 @@
 # Changes
 
 
+## [1.11.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.11.0) (2026-05-07)
+
+## [1.10.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.10.0) (2026-04-30)
+
+## [1.9.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.9.0) (2026-04-13)
+
+## [1.8.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.8.0) (2026-04-09)
+
+## [1.7.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.7.0) (2026-04-02)
+
+## [1.6.0](https://github.com/googleapis/google-cloud-go/releases/tag/iam%2Fv1.6.0) (2026-03-26)
+
+### Features
+
+* update image to us-central1-docker.pkg.dev/cloud-sdk-librarian-prod/images-prod/librarian-go@sha256:f9f9065a893591ad505df3384f409e9d404132d8c83b5d4bcbb8ae1650553b3b ([9a2be95](https://github.com/googleapis/google-cloud-go/commit/9a2be95cffe44aa7e6d68c08fff6d85a3a13a9b7))
+
 ## [1.5.3](https://github.com/googleapis/google-cloud-go/compare/iam/v1.5.2...iam/v1.5.3) (2025-10-08)
 
 

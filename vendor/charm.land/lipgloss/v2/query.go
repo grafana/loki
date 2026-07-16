@@ -54,13 +54,16 @@ func BackgroundColor(in term.File, out term.File) (bg color.Color, err error) {
 	}
 
 	// NOTE: On Unix, one of the given files must be a tty.
+	if !term.IsTerminal(in.Fd()) || !term.IsTerminal(out.Fd()) {
+		return nil, fmt.Errorf("input/output is not a terminal")
+	}
 	for _, f := range []term.File{in, out} {
 		if bg, err = backgroundColor(f, f); err == nil {
 			return bg, nil
 		}
 	}
 
-	return
+	return bg, err
 }
 
 // HasDarkBackground detects whether the terminal has a light or dark

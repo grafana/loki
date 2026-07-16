@@ -2,7 +2,9 @@ package runewidth
 
 import (
 	"os"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/clipperhouse/uax29/v2/graphemes"
 )
@@ -23,8 +25,52 @@ var (
 	}
 )
 
+var (
+	zerowidth       table // combining + nonprint merged for faster zero-width lookup
+	widewidth       table // ambiguous + doublewidth merged for EA path
+	eastAsianWidth  widthTable
+	eastAsianWidth0 [0x300]byte
+)
+
 func init() {
+	zerowidth = mergeIntervals(combining, nonprint)
+	widewidth = mergeIntervals(ambiguous, doublewidth)
+	eastAsianWidth = makeWidthTable(zerowidth, widewidth)
+	for r := range eastAsianWidth0 {
+		eastAsianWidth0[r] = byte(runeWidthEastAsian(rune(r)))
+	}
 	handleEnv()
+}
+
+func mergeIntervals(t1, t2 table) table {
+	merged := make(table, 0, len(t1)+len(t2))
+	i, j := 0, 0
+	for i < len(t1) && j < len(t2) {
+		if t1[i].first <= t2[j].first {
+			merged = append(merged, t1[i])
+			i++
+		} else {
+			merged = append(merged, t2[j])
+			j++
+		}
+	}
+	merged = append(merged, t1[i:]...)
+	merged = append(merged, t2[j:]...)
+	if len(merged) == 0 {
+		return merged
+	}
+	result := merged[:1]
+	for _, iv := range merged[1:] {
+		last := &result[len(result)-1]
+		if iv.first <= last.last+1 {
+			if iv.last > last.last {
+				last.last = iv.last
+			}
+		} else {
+			result = append(result, iv)
+		}
+	}
+	return result
 }
 
 func handleEnv() {
@@ -51,14 +97,13 @@ type interval struct {
 
 type table []interval
 
-func inTables(r rune, ts ...table) bool {
-	for _, t := range ts {
-		if inTable(r, t) {
-			return true
-		}
-	}
-	return false
+type widthInterval struct {
+	first rune
+	last  rune
+	width byte
 }
+
+type widthTable []widthInterval
 
 func inTable(r rune, t table) bool {
 	if r < t[0].first {
@@ -84,6 +129,71 @@ func inTable(r rune, t table) bool {
 	}
 
 	return false
+}
+
+func makeWidthTable(zero, two table) widthTable {
+	wt := make(widthTable, 0, len(zero)+len(two))
+	zi := 0
+	for _, iv := range two {
+		start := iv.first
+		for zi < len(zero) && zero[zi].last < start {
+			zi++
+		}
+		for i := zi; i < len(zero) && zero[i].first <= iv.last; i++ {
+			if start < zero[i].first {
+				wt = append(wt, widthInterval{start, zero[i].first - 1, 2})
+			}
+			if start <= zero[i].last {
+				start = zero[i].last + 1
+			}
+			if start > iv.last {
+				break
+			}
+		}
+		if start <= iv.last {
+			wt = append(wt, widthInterval{start, iv.last, 2})
+		}
+	}
+	for _, iv := range zero {
+		wt = append(wt, widthInterval{iv.first, iv.last, 0})
+	}
+	sort.Slice(wt, func(i, j int) bool {
+		return wt[i].first < wt[j].first
+	})
+	return wt
+}
+
+func inWidthTable(r rune, t widthTable) (int, bool) {
+	if r < t[0].first {
+		return 0, false
+	}
+	if r > t[len(t)-1].last {
+		return 0, false
+	}
+
+	bot := 0
+	top := len(t) - 1
+	for top >= bot {
+		mid := (bot + top) >> 1
+
+		switch {
+		case t[mid].last < r:
+			bot = mid + 1
+		case t[mid].first > r:
+			top = mid - 1
+		default:
+			return int(t[mid].width), true
+		}
+	}
+
+	return 0, false
+}
+
+func runeWidthEastAsian(r rune) int {
+	if w, ok := inWidthTable(r, eastAsianWidth); ok {
+		return w
+	}
+	return 1
 }
 
 var private = table{
@@ -123,36 +233,35 @@ func (c *Condition) RuneWidth(r rune) int {
 	}
 	// optimized version, verified by TestRuneWidthChecksums()
 	if !c.EastAsianWidth {
+		if r < 0x20 {
+			return 0
+		}
+		if (r >= 0x7F && r <= 0x9F) || r == 0xAD { // nonprint
+			return 0
+		}
+		if r < 0x300 {
+			return 1
+		}
 		switch {
-		case r < 0x20:
-			return 0
-		case (r >= 0x7F && r <= 0x9F) || r == 0xAD: // nonprint
-			return 0
-		case r < 0x300:
-			return 1
-		case inTable(r, narrow):
-			return 1
-		case inTables(r, nonprint, combining):
+		case inTable(r, zerowidth):
 			return 0
 		case inTable(r, doublewidth):
 			return 2
 		default:
 			return 1
 		}
-	} else {
-		switch {
-		case inTables(r, nonprint, combining):
-			return 0
-		case inTable(r, narrow):
-			return 1
-		case inTables(r, ambiguous, doublewidth):
-			return 2
-		case !c.StrictEmojiNeutral && inTables(r, ambiguous, emoji, narrow):
-			return 2
-		default:
-			return 1
-		}
 	}
+
+	if r < 0x300 {
+		return int(eastAsianWidth0[r])
+	}
+	if w, ok := inWidthTable(r, eastAsianWidth); ok {
+		return w
+	}
+	if !c.StrictEmojiNeutral && inTable(r, emoji) {
+		return 2
+	}
+	return 1
 }
 
 // CreateLUT will create an in-memory lookup table of 557056 bytes for faster operation.
@@ -178,6 +287,33 @@ func (c *Condition) CreateLUT() {
 
 // StringWidth return width as you can see
 func (c *Condition) StringWidth(s string) (width int) {
+	if len(s) == 1 {
+		b := s[0]
+		if b < 0x20 || b == 0x7F {
+			return 0
+		}
+		return 1
+	}
+	if len(s) > 0 && len(s) <= utf8.UTFMax {
+		r, size := utf8.DecodeRuneInString(s)
+		if size == len(s) {
+			return c.RuneWidth(r)
+		}
+	}
+	// ASCII fast path: no grapheme clustering needed for pure ASCII
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x80 {
+			goto graphemes
+		}
+		if b >= 0x20 && b != 0x7F {
+			width++
+		}
+	}
+	return
+
+graphemes:
+	width = 0
 	g := graphemes.FromString(s)
 	for g.Next() {
 		var chWidth int
@@ -257,24 +393,25 @@ func (c *Condition) TruncateLeft(s string, w int, prefix string) string {
 // Wrap return string wrapped with w cells
 func (c *Condition) Wrap(s string, w int) string {
 	width := 0
-	out := ""
+	var out strings.Builder
+	out.Grow(len(s) + len(s)/w + 1)
 	for _, r := range s {
 		cw := c.RuneWidth(r)
 		if r == '\n' {
-			out += string(r)
+			out.WriteRune(r)
 			width = 0
 			continue
 		} else if width+cw > w {
-			out += "\n"
+			out.WriteByte('\n')
 			width = 0
-			out += string(r)
+			out.WriteRune(r)
 			width += cw
 			continue
 		}
-		out += string(r)
+		out.WriteRune(r)
 		width += cw
 	}
-	return out
+	return out.String()
 }
 
 // FillLeft return string filled in left by spaces in w cells
@@ -313,7 +450,12 @@ func RuneWidth(r rune) int {
 
 // IsAmbiguousWidth returns whether is ambiguous width or not.
 func IsAmbiguousWidth(r rune) bool {
-	return inTables(r, private, ambiguous)
+	return inTable(r, private) || inTable(r, ambiguous)
+}
+
+// IsCombiningWidth returns whether is combining width or not.
+func IsCombiningWidth(r rune) bool {
+	return inTable(r, combining)
 }
 
 // IsNeutralWidth returns whether is neutral width or not.

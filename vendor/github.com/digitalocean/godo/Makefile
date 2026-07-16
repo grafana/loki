@@ -73,3 +73,9 @@ tag: ## Tags a release and prints changelog info
 	@ORIGIN=$(ORIGIN) scripts/tag.sh; \
 	NEW_TAG=$$(git describe --tags --abbrev=0); \
 	echo "==> Generating changelog for tag $$NEW_TAG"; \
+
+.PHONY: beta_tag
+beta_tag: ## Tags a beta pre-release for the current libraryVersion (e.g. v1.23.0-beta.1)
+	@echo "==> ORIGIN=$(ORIGIN) COMMIT=$(COMMIT) beta_tag"
+	@echo ""
+	@ORIGIN=$(ORIGIN) COMMIT=$(COMMIT) scripts/beta_tag.sh
