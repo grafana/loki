@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -446,6 +447,69 @@ func TestIndexBuilder_oldEvents(t *testing.T) {
 
 	require.Equal(t, 30, len(readAllSectionPointers(t, bucket)))
 	require.Equal(t, 0, readFirstPartitionStateEventsCount(p)) // Events should be gone now they've been processed
+}
+
+func TestIndexBuilder_endToEndProcessingTimeBetweenFlushes(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+
+	p, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    16, // high so append does not trigger a build
+			FlushInterval:     time.Hour,
+			MaxIdleTime:       time.Hour,
+			MaxAge:            time.Hour,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		log.NewNopLogger(),
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	p.client.Close()
+	p.client = &mockKafkaClient{}
+
+	p.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	oldRecordTime := time.Now().Add(-30 * time.Minute)
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath:         "test-path-0",
+		WriteTime:          time.Now().Format(time.RFC3339),
+		EarliestRecordTime: oldRecordTime.Format(time.RFC3339),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+
+	p.processRecord(ctx, &kgo.Record{
+		Value:     eventBytes,
+		Partition: 0,
+	})
+	require.Equal(t, 1, readFirstPartitionStateEventsCount(p))
+
+	// Tick flush check without flushing: E2E gauge should reflect buffered lag.
+	p.checkAndFlushPartitions(ctx)
+	require.Equal(t, 1, readFirstPartitionStateEventsCount(p))
+	e2e := testutil.ToFloat64(p.indexerMetrics.endToEndProcessingTime)
+	require.InDelta(t, (30 * time.Minute).Seconds(), e2e, 5)
+
+	// Empty the buffer and tick again: E2E gauge should reset to ~0.
+	p.partitionsMutex.Lock()
+	p.partitionStates[0].events = nil
+	p.partitionsMutex.Unlock()
+
+	p.checkAndFlushPartitions(ctx)
+	e2e = testutil.ToFloat64(p.indexerMetrics.endToEndProcessingTime)
+	require.Less(t, e2e, 1.0)
 }
 
 func readFirstPartitionStateEventsCount(p *Builder) int {

@@ -105,7 +105,8 @@ type Builder struct {
 	flushTicker     *time.Ticker
 
 	// Only kafka commit functionality
-	metrics *builderMetrics
+	metrics        *builderMetrics
+	indexerMetrics *indexerMetrics
 
 	// Control and coordination
 	wg                 sync.WaitGroup
@@ -161,6 +162,7 @@ func NewIndexBuilder(
 		mCfg:               mCfg,
 		logger:             logger,
 		metrics:            builderMetrics,
+		indexerMetrics:     indexerMetrics,
 		partitionStates:    make(map[int32]*partitionState),
 		activeCalculations: make(map[int32]context.CancelCauseFunc),
 	}
@@ -430,11 +432,39 @@ func (p *Builder) checkAndFlushPartitions(ctx context.Context) {
 		// This is to avoid leaving partitions with no recent activity with high processing delay metrics.
 		p.metrics.setProcessingDelay(partition, recordTime)
 	}
+
+	// Update E2E processing time from the oldest buffered EarliestRecordTime (or
+	// now if no events are buffered) so the gauge does not stay stale between flushes.
+	p.indexerMetrics.setEndToEndProcessingTime(time.Since(oldestBufferedRecordTime(p.partitionStates, p.logger)))
+
 	p.partitionsMutex.Unlock()
 
 	for partition, triggerType := range partitionsToFlush {
 		p.flushPartition(ctx, partition, triggerType)
 	}
+}
+
+// oldestBufferedRecordTime returns the earliest EarliestRecordTime across all
+// buffered events. If no events are buffered, it returns time.Now() so the E2E
+// gauge resets to ~0.
+func oldestBufferedRecordTime(states map[int32]*partitionState, logger log.Logger) time.Time {
+	var earliest time.Time
+	for _, state := range states {
+		for _, ev := range state.events {
+			ts, err := time.Parse(time.RFC3339, ev.event.EarliestRecordTime)
+			if err != nil {
+				level.Warn(logger).Log("msg", "failed to parse earliest record time", "err", err)
+				continue
+			}
+			if earliest.IsZero() || ts.Before(earliest) {
+				earliest = ts
+			}
+		}
+	}
+	if earliest.IsZero() {
+		return time.Now()
+	}
+	return earliest
 }
 
 func (p *Builder) flushPartition(ctx context.Context, partition int32, triggerType triggerType) {
