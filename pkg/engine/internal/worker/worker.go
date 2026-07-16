@@ -26,8 +26,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
-	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/scratch"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -42,6 +43,12 @@ type Config struct {
 
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
+
+	// DataBucket reads source log objects during LogMerge compaction. When the
+	// compaction wiring prefixes Bucket with the index-storage prefix, source
+	// log objects (stored at the unprefixed dataobj root) must be read through
+	// this bucket. Optional; nil falls back to Bucket.
+	DataBucket objstore.Bucket
 
 	// Metastore client to access indexes.
 	Metastore metastore.Metastore
@@ -102,6 +109,7 @@ type Config struct {
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
+	LogMergeObserver   executor.LogMergeObserver
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -119,7 +127,7 @@ type Worker struct {
 	dialer   wire.Dialer
 	listener wire.Listener
 
-	resourcesMut sync.RWMutex
+	resourcesMut obslock.RWMutex
 	sources      map[ulid.ULID]*streamSource
 	sinks        map[ulid.ULID]*streamSink
 	jobs         map[ulid.ULID]*threadJob
@@ -155,7 +163,7 @@ func New(config Config) (*Worker, error) {
 		numThreads = runtime.GOMAXPROCS(0)
 	}
 
-	return &Worker{
+	w := &Worker{
 		config:      config,
 		logger:      config.Logger,
 		wireMetrics: wire.NewMetrics(),
@@ -173,7 +181,9 @@ func New(config Config) (*Worker, error) {
 		collector: newCollector(),
 
 		jobManager: newJobManager(),
-	}, nil
+	}
+	w.resourcesMut.Init("resourcesMut", w.metrics.lock)
+	return w, nil
 }
 
 // Service returns the service used to manage the lifecycle of the worker.
@@ -199,6 +209,7 @@ func (w *Worker) run(ctx context.Context) error {
 			PrefetchBytes:  w.config.PrefetchBytes,
 			Logger:         log.With(w.logger, "thread", i),
 			Bucket:         w.config.Bucket,
+			DataBucket:     w.config.DataBucket,
 			Metastore:      w.config.Metastore,
 			StreamFilterer: w.config.StreamFilterer,
 			TaskCaches:     w.taskCaches,
@@ -206,6 +217,7 @@ func (w *Worker) run(ctx context.Context) error {
 			IndexobjCfg:    w.config.IndexobjCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
+			LogMergeObserver:   w.config.LogMergeObserver,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,
@@ -303,13 +315,11 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 		// Allow for a backlog of 8 frames before backpressure is applied.
 		Buffer: 8,
 
-		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) error {
-			switch msg := msg.(type) {
-			case wire.StreamDataMessage:
-				return w.handleDataMessage(ctx, msg)
-			default:
-				return fmt.Errorf("unsupported message type %T", msg)
-			}
+		Handler: func(ctx context.Context, _ *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
+			return w.handleDataMessage(ctx, msg, phases)
 		},
 	}
 
@@ -388,12 +398,23 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			return err
 		}
 
-		if err := w.jobManager.Send(ctx, job); err != nil {
+		// Time the handoff once into job_handoff_seconds; the handler no longer
+		// double-records it as a job_manager_send phase.
+		handoff, err := metrictimer.Time(func() error {
+			return w.jobManager.Send(ctx, job)
+		})
+		if err != nil {
+			outcome := outcomeNoReady429
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				outcome = outcomeCtxError
+			}
+			w.metrics.observeJobHandoff(outcome, handoff)
 			job.Close()                 // Clean up resources associated with the job.
 			_ = handleWorkerSubscribe() // handleWorkerSubscribe can only return nil
 			w.metrics.rejectedAssignmentsTotal.Inc()
 			return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 		}
+		w.metrics.observeJobHandoff(outcomeSent, handoff)
 
 		w.metrics.tasksAssignedTotal.Inc()
 		return nil
@@ -407,7 +428,10 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		// Allow for a backlog of 128 frames before backpressure is applied.
 		Buffer: 128,
 
-		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+		Handler: func(_ context.Context, peer *wire.Peer, msg wire.Message) (err error) {
+			phases := w.metrics.startHandler(msg.Kind())
+			defer func() { phases.Done(handlerOutcome(err)) }()
+
 			switch msg := msg.(type) {
 			case wire.WorkerSubscribeMessage:
 				return handleWorkerSubscribe()
@@ -419,10 +443,10 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 				return w.handleCancelMessage(msg)
 
 			case wire.StreamBindMessage:
-				return w.handleBindMessage(ctx, msg)
+				return w.handleBindMessage(msg)
 
-			case wire.StreamStatusMessage:
-				return w.handleStreamStatusMessage(msg)
+			case wire.StreamClosedMessage:
+				return w.handleStreamClosedMessage(msg)
 
 			default:
 				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
@@ -452,7 +476,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 			case <-waitReady:
 			}
 
-			// Wait for a thread to become ready for another job
+			// Wait for a thread to become ready for another job. Per-slot
+			// ready->filled latency is measured on the thread itself as
+			// slot_ready_wait_seconds.
 			if err := w.jobManager.WaitReady(ctx); err != nil {
 				return nil
 			}
@@ -477,8 +503,8 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 // newJob returns an error if there was a ULID collision for the job or any of
 // its streams.
 func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Logger, msg wire.TaskAssignMessage) (job *threadJob, err error) {
-	w.resourcesMut.Lock()
-	defer w.resourcesMut.Unlock()
+	guard := w.resourcesMut.Lock("new_job")
+	defer guard.Unlock()
 
 	var (
 		sources = make(map[ulid.ULID]*streamSource)
@@ -506,6 +532,11 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		w.sinks = make(map[ulid.ULID]*streamSink)
 	}
 
+	closedSources := make(map[ulid.ULID]struct{}, len(msg.ClosedSourceIDs))
+	for _, id := range msg.ClosedSourceIDs {
+		closedSources[id] = struct{}{}
+	}
+
 	for _, taskSources := range msg.Task.Sources {
 		for _, taskSource := range taskSources {
 			source := new(streamSource)
@@ -516,7 +547,7 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 			// To handle this, we immediately close the source before adding it
 			// to the job. This will ensure that the stream returns EOF
 			// immediately and doesn't block forever.
-			if msg.StreamStates != nil && msg.StreamStates[taskSource.ULID] == workflow.StreamStateClosed {
+			if _, closed := closedSources[taskSource.ULID]; closed {
 				source.Close()
 			}
 
@@ -533,9 +564,10 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		for _, taskSink := range taskSinks {
 			sink := &streamSink{
 				Logger:      log.With(logger, "stream", taskSink.ULID),
+				Metrics:     w.metrics,
 				WireMetrics: w.wireMetrics,
-				Scheduler:   scheduler,
 				Stream:      taskSink,
+				TaskType:    taskTypeLabel(msg.Task),
 				Dialer:      w.dial,
 			}
 
@@ -570,8 +602,8 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 		Sinks:   sinks,
 
 		Close: func() {
-			w.resourcesMut.Lock()
-			defer w.resourcesMut.Unlock()
+			guard := w.resourcesMut.Lock("close_job")
+			defer guard.Unlock()
 
 			for sourceID := range sources {
 				delete(w.sources, sourceID)
@@ -593,9 +625,9 @@ func (w *Worker) newJob(ctx context.Context, scheduler *wire.Peer, logger log.Lo
 }
 
 func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
-	w.resourcesMut.RLock()
+	guard := w.resourcesMut.RLock("handle_cancel")
 	job, found := w.jobs[msg.ID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("task %s not found", msg.ID)
@@ -609,42 +641,49 @@ func (w *Worker) handleCancelMessage(msg wire.TaskCancelMessage) error {
 	return nil
 }
 
-func (w *Worker) handleBindMessage(ctx context.Context, msg wire.StreamBindMessage) error {
-	w.resourcesMut.RLock()
+func (w *Worker) handleBindMessage(msg wire.StreamBindMessage) error {
+	guard := w.resourcesMut.RLock("handle_bind")
 	sink, found := w.sinks[msg.StreamID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
-	return sink.Bind(ctx, msg.Receiver)
+
+	err := sink.Bind(msg.Receiver)
+	return err
 }
 
-func (w *Worker) handleStreamStatusMessage(msg wire.StreamStatusMessage) error {
-	w.resourcesMut.RLock()
+func (w *Worker) handleStreamClosedMessage(msg wire.StreamClosedMessage) error {
+	guard := w.resourcesMut.RLock("handle_stream_closed")
 	source, found := w.sources[msg.StreamID]
-	w.resourcesMut.RUnlock()
+	guard.RUnlock()
 
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
 
-	// At the moment, workers only care about the stream being closed.
-	if msg.State == workflow.StreamStateClosed {
-		source.Close()
-	}
+	source.Close()
 	return nil
 }
 
-func (w *Worker) handleDataMessage(ctx context.Context, msg wire.StreamDataMessage) error {
-	w.resourcesMut.RLock()
-	source, found := w.sources[msg.StreamID]
-	w.resourcesMut.RUnlock()
+func (w *Worker) handleDataMessage(ctx context.Context, msg wire.Message, phases *metrictimer.Timer) error {
+	streamData, ok := msg.(wire.StreamDataMessage)
+	if !ok {
+		return fmt.Errorf("unsupported message type %T", msg)
+	}
+
+	guard := w.resourcesMut.RLock("handle_stream_data")
+	source, found := w.sources[streamData.StreamID]
+	guard.RUnlock()
 
 	if !found {
-		return fmt.Errorf("stream %s not found for receiving data", msg.StreamID)
+		return fmt.Errorf("stream %s not found for receiving data", streamData.StreamID)
 	}
-	return source.Write(ctx, msg.Data)
+
+	return phases.Region(phaseSourceWriteWait, func() error {
+		return source.Write(ctx, streamData.Data)
+	})
 }
 
 // RegisterMetrics registers metrics about s to report to reg.

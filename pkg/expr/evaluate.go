@@ -24,9 +24,23 @@ import (
 //
 // The return type of Evaluate depends on the expression provided. See the
 // documentation for implementations of Expression for what they produce when
-// evaluated.
+// evaluated. Scalar results are broadcast to the length of an Array input.
 func Evaluate(alloc *memory.Allocator, expr Expression, input columnar.Datum, selection memory.Bitmap) (columnar.Datum, error) {
-	return evaluateWithSelection(alloc, expr, input, selection)
+	result, err := evaluateWithSelection(alloc, expr, input, selection)
+	if err != nil {
+		return nil, err
+	}
+
+	return materializeScalar(alloc, result, input), nil
+}
+
+func materializeScalar(alloc *memory.Allocator, result, input columnar.Datum) columnar.Datum {
+	scalar, isScalar := result.(columnar.Scalar)
+	inputArray, isArray := input.(columnar.Array)
+	if isScalar && isArray {
+		return columnar.Broadcast(alloc, scalar, inputArray.Len())
+	}
+	return result
 }
 
 // inputNumRows returns the number of rows for the given input datum.
@@ -180,6 +194,7 @@ func evaluateMakeStruct(alloc *memory.Allocator, expr *MakeStruct, input columna
 		if err != nil {
 			return nil, err
 		}
+		val = materializeScalar(alloc, val, input)
 		arr, ok := val.(columnar.Array)
 		if !ok {
 			return nil, fmt.Errorf("value %d (%q) must be an array, got %T", i, name, val)

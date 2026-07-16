@@ -583,6 +583,38 @@ func TestSectionsForLabelsByStreamID(t *testing.T) {
 			wantCount:  1,
 			wantLabels: []string{"env"},
 		},
+		{
+			// A non-equality label filter (e.g. `| env!="prod"`) references a
+			// stream label by name just like an equality filter. Its label name
+			// must be recognized as a stream label so the physical planner keeps
+			// it ambiguous instead of mistyping it as structured metadata and
+			// pushing it to the dataobj scan (which would drop all matching rows).
+			name: "not-equal predicate returns predicate label names",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+			},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
+		},
+		{
+			// Same as above but for a regex-match label filter (e.g. `| env=~"d.*"`).
+			name: "regex-match predicate returns predicate label names",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "bar"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "env", "d.*"),
+			},
+			start:      now.Add(-4 * time.Hour),
+			end:        now.Add(time.Hour),
+			wantCount:  1,
+			wantLabels: []string{"env"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -876,7 +908,16 @@ func TestIndexSectionsReader_SelectsPostingsWhenPresent(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.IsType(t, &postingsIndexSectionsReader{}, resp.Reader)
+	require.IsType(t, &postingsIndexSectionsReader{}, unwrapReader(resp.Reader))
+}
+
+// unwrapReader returns the reader that IndexSectionsReader selected, unwrapping
+// the metrics decorator applied when read_postings_sections is enabled.
+func unwrapReader(r ArrowRecordBatchReader) ArrowRecordBatchReader {
+	if ir, ok := r.(*instrumentedReader); ok {
+		return ir.ArrowRecordBatchReader
+	}
+	return r
 }
 
 func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
@@ -892,7 +933,7 @@ func TestIndexSectionsReader_FallbackWhenNoPostings(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.IsType(t, &indexSectionsReader{}, resp.Reader)
+	require.IsType(t, &indexSectionsReader{}, unwrapReader(resp.Reader))
 }
 
 // TestCollectSections_PostingsAndLegacyParity builds the same logical stream

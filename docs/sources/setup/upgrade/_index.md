@@ -73,10 +73,11 @@ As a result, the following have been removed:
 - The `-ruler.enable-wal-replay` flag and its per-tenant equivalent `ruler_enable_wal_replay` (in `limits_config`). The ruler no longer replays the WAL, so these settings no longer have any effect. Remove them from your configuration; the `deprecated-config-checker` tool will flag them.
 - The ruler WAL metrics that only ever reported replay or repair activity: `loki_ruler_wal_corruptions_total`, `loki_ruler_wal_corruptions_repair_failed_total`, `loki_ruler_wal_corruptions_repair_succeeded_total`, and `loki_ruler_wal_replay_duration`. Remove any dashboards or alerts that reference them.
 
-### Breaking change: Removal of various configuration options
+### Breaking change: Removal of various deprecated configuration options
 
-- The deprecated per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
-- The deprecated setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
+- The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
+- The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
+- The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
 - The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
 
@@ -126,6 +127,14 @@ With the legacy backends removed, also the `table-manager` target and `table_man
 The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
 Supported clients should check the configuration options for max send message size if applicable.
+
+### Ruler WAL directory now honors `common.path_prefix`
+
+The default `-ruler.wal.dir` (`ruler-wal`) is now composed against `common.path_prefix` when one is set, matching the behavior of the other path-bearing defaults already rewritten by Loki: `-ruler.rule-path`, `-ingester.wal-dir`, `-compactor.working-directory`, and `-bloom.shipper.working-directory`. Previously the ruler WAL stayed at the cwd-relative `ruler-wal`, which fails on `mkdir` in read-only-rootfs containers (#7377).
+
+Deployments that set `common.path_prefix` but did not explicitly set `-ruler.wal.dir` will see the ruler create a new WAL directory at `<path_prefix>/ruler-wal` after the upgrade. The previous cwd-relative `ruler-wal` directory is not migrated; any un-remote-written recording-rule samples buffered there are dropped on first restart.
+
+To preserve the previous location, set `-ruler.wal.dir` explicitly to the old path (e.g. `ruler-wal` or its absolute equivalent) in your config before upgrading. Deployments that already set `-ruler.wal.dir` explicitly are unaffected.
 
 ## Helm Chart Upgrades
 

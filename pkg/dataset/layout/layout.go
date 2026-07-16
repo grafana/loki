@@ -34,6 +34,13 @@ type (
 		Type   types.Type
 		Chunks []Layout
 	}
+
+	// Struct holds a layout per field of a struct type.
+	Struct struct {
+		Type     types.Type
+		Fields   []Layout
+		Validity Layout // Optional; nil if non-nullable.
+	}
 )
 
 // Kind returns [KindArray].
@@ -70,9 +77,33 @@ func (l *Chunked) Len() int {
 	return total
 }
 
+// Kind returns [KindStruct].
+func (l *Struct) Kind() Kind {
+	return KindStruct
+}
+
+// DataType returns the data type of the Struct layout.
+func (l *Struct) DataType() types.Type {
+	return l.Type
+}
+
+// Len returns the number of rows in the Struct. Returns 0 if there are no
+// fields and no validity layout.
+func (l *Struct) Len() int {
+	// All fields must have the same number of rows.
+	if len(l.Fields) > 0 {
+		return l.Fields[0].Len()
+	}
+	if l.Validity != nil {
+		return l.Validity.Len()
+	}
+	return 0
+}
+
 //
 // Sealed marker implementations.
 //
 
 func (l *Array) isLayout()   {}
 func (l *Chunked) isLayout() {}
+func (l *Struct) isLayout()  {}

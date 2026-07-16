@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"slices"
 	"sync"
 	"time"
 
@@ -14,28 +13,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var errUnassignable = fmt.Errorf("task is in a terminal state or has been interrupted")
+var errUnassignable = fmt.Errorf("task has a terminal result or cancellation has been requested")
 
-// task wraps a [workflow.Task] with its handler and scheduler-side state.
+// task wraps a [workflow.Task] with its handler and scheduler-side facts.
 type task struct {
 	createTime time.Time // Time when task was created.
 	inner      *workflow.Task
-	handler    workflow.TaskEventHandler
+	handler    workflow.TaskResultHandler
 	scope      fair.Scope // Queue scope this task belongs to.
 
-	mut         sync.RWMutex
-	status      workflow.TaskStatus
-	queueTime   time.Time // Time when task was enqueued.
-	assignTime  time.Time // Time when task was assigned to a worker.
-	interrupted bool      // Cancellation requested but not yet confirmed.
-	requeues    int       // Number of times the task was requeued after a failed assignment.
+	mut           sync.RWMutex
+	result        *workflow.TaskResult
+	queued        bool      // Task was submitted to the assignment queue.
+	queueTime     time.Time // Time when task was enqueued.
+	assignTime    time.Time // Time when assignment was accepted by a worker.
+	pendingCancel bool      // Cancellation requested but not yet confirmed.
+	requeues      int       // Number of times the task was requeued after a failed assignment.
 
 	// capture holds individual task information from any source:
 	//
-	//   - The scheduler records its own per-task observations (e.g., timing
-	//     between state transitions) into capture via region.
+	//   - The scheduler records its own per-task observations (e.g., queue and
+	//     execution timing) into capture via region.
 	//   - Worker-supplied captures are merged into this capture when their
-	//     TaskStatusMessages arrive, so workflow consumers see a single
+	//     TaskResultMessages arrive, so workflow consumers see a single
 	//     unified capture per task.
 	//
 	// capture is distinct from wfRegion: wfRegion is used for workflow-level
@@ -57,38 +57,56 @@ type task struct {
 	owner *workerConn
 }
 
-var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
-	workflow.TaskStateCreated: {workflow.TaskStatePending, workflow.TaskStateRunning, workflow.TaskStateCancelled},
-	workflow.TaskStatePending: {workflow.TaskStateRunning, workflow.TaskStateCancelled, workflow.TaskStateFailed},
-	workflow.TaskStateRunning: {workflow.TaskStateCompleted, workflow.TaskStateCancelled, workflow.TaskStateFailed},
-
-	workflow.TaskStateCompleted: {}, // Terminal state, can't transition
-	workflow.TaskStateCancelled: {}, // Terminal state, can't transition
-	workflow.TaskStateFailed:    {}, // Terminal state, can't transition
-}
-
-// State returns the task's current [workflow.TaskState].
-func (t *task) State() workflow.TaskState {
+// Result returns the task's terminal result, if one has been recorded. The
+// returned result's Capture field is shared by reference; callers should not
+// mutate it.
+func (t *task) Result() (workflow.TaskResult, bool) {
 	t.mut.RLock()
 	defer t.mut.RUnlock()
-	return t.status.State
+	if t.result == nil {
+		return workflow.TaskResult{}, false
+	}
+	return *t.result, true
 }
 
-// Status returns a snapshot of the task's current [workflow.TaskStatus].
-// The returned status's Capture field is shared by reference; callers should
-// not mutate it.
-func (t *task) Status() workflow.TaskStatus {
+// HasResult reports whether the task has a terminal result.
+func (t *task) HasResult() bool {
 	t.mut.RLock()
 	defer t.mut.RUnlock()
-	return t.status
+	return t.result != nil
 }
 
-// Interrupted reports whether [Scheduler.Cancel] has requested cancellation
-// of this task while it was assigned to a worker. See [task.MarkInterrupted].
-func (t *task) Interrupted() bool {
+// SetResult records the first terminal result for the task. Later duplicate or
+// conflicting results do not overwrite the first result.
+func (t *task) SetResult(m *metrics, result workflow.TaskResult) (bool, error) {
+	if !result.Outcome.Valid() {
+		return false, fmt.Errorf("invalid task outcome %s", result.Outcome)
+	}
+
+	t.mut.Lock()
+	defer t.mut.Unlock()
+	if t.result != nil {
+		return false, nil
+	}
+
+	t.result = &result
+	m.taskResultsTotal.WithLabelValues(result.Outcome.String()).Inc()
+	return true, nil
+}
+
+// PendingCancel reports whether [Scheduler.Cancel] has requested cancellation
+// of this task while it was assigned to a worker.
+func (t *task) PendingCancel() bool {
 	t.mut.RLock()
 	defer t.mut.RUnlock()
-	return t.interrupted
+	return t.pendingCancel
+}
+
+// Queued reports whether the task has been submitted to the assignment queue.
+func (t *task) Queued() bool {
+	t.mut.RLock()
+	defer t.mut.RUnlock()
+	return t.queued
 }
 
 // AssignTime returns the time at which [task.TryAssign] successfully sent
@@ -108,50 +126,18 @@ func (t *task) QueueTime() time.Time {
 	return t.queueTime
 }
 
-// SetState updates the state of the task. SetState returns an error if the
-// transition is invalid.
-//
-// Returns true if the state was updated, false otherwise (such as if the task
-// is already in the desired state).
-func (t *task) SetState(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
+// MarkQueued records the first submission of a task to the assignment queue.
+// It returns false if the task was already queued or already has a result.
+func (t *task) MarkQueued() bool {
 	t.mut.Lock()
 	defer t.mut.Unlock()
-	return t.setStateLocked(m, newStatus)
-}
-
-// setStateLocked implements the logic of [SetState]. Callers must hold t.mut.
-func (t *task) setStateLocked(m *metrics, newStatus workflow.TaskStatus) (bool, error) {
-	oldState, newState := t.status.State, newStatus.State
-
-	switch {
-	case newStatus != t.status && newState == oldState:
-		// State is the same (so we don't have to validate transitions), but
-		// there's a new payload about the status, so we should store it.
-		t.status = newStatus
-		return true, nil
-
-	case newState == oldState:
-		// Status is the exact same, no need to update.
-		return false, nil
-
-	default:
-		validStates := validTaskTransitions[oldState]
-		if !slices.Contains(validStates, newState) {
-			return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
-		}
-
-		t.status = newStatus
-		m.tasksTotal.WithLabelValues(newState.String()).Inc()
-		return true, nil
+	if t.queued || t.result != nil {
+		return false
 	}
-}
 
-// MarkQueued records that the task has been enqueued for assignment by
-// setting queueTime to the current time.
-func (t *task) MarkQueued() {
-	t.mut.Lock()
-	defer t.mut.Unlock()
+	t.queued = true
 	t.queueTime = time.Now()
+	return true
 }
 
 // MarkRequeued records that the task was requeued after a failed assignment
@@ -162,32 +148,32 @@ func (t *task) MarkRequeued() {
 	t.requeues++
 }
 
-// MarkInterrupted records that cancellation has been requested for this task.
-func (t *task) MarkInterrupted() bool {
+// RequestCancel records that cancellation has been requested for this task.
+func (t *task) RequestCancel() bool {
 	t.mut.Lock()
 	defer t.mut.Unlock()
 
-	if t.interrupted {
+	if t.pendingCancel {
 		return false
 	}
-	t.interrupted = true
+	t.pendingCancel = true
 	return true
 }
 
 // TryAssign calls doAssign, holding a mutex on the task to prevent concurrent
-// modification to t's state.
+// modification to the task's assignment and result facts.
 //
 // If doAssign returns nil, the assign time is recorded and TryAssign returns
 // nil. Otherwise, TryAssign returns the error from doAssign without making any
 // changes.
 //
-// If the task is in a terminal state or has been interrupted, TryAssign
-// returns [errUnassignable] without calling doAssign.
+// If the task has a terminal result or cancellation has been requested,
+// TryAssign returns [errUnassignable] without calling doAssign.
 func (t *task) TryAssign(doAssign func() error) error {
 	t.mut.Lock()
 	defer t.mut.Unlock()
 
-	if t.status.State.Terminal() || t.interrupted {
+	if t.result != nil || t.pendingCancel {
 		return errUnassignable
 	}
 
@@ -200,16 +186,16 @@ func (t *task) TryAssign(doAssign func() error) error {
 }
 
 // RecordTerminalObservations records the scheduler-side per-task duration
-// observations for a task that has just reached a terminal state and ends
+// observations for a task that has just produced a terminal result and ends
 // the scheduler region within the task's capture.
 //
 // The recorded durations partition the task's total lifetime:
 //
 //   - [schedulerstat.TaskQueueDuration] is recorded for any task that was
 //     enqueued. It spans from enqueue until assignment, or until the terminal
-//     state if the task was never assigned. Recording it here, rather than in
-//     [finalizeAssignment] to ensure we record it before the region ends for
-//     tasks that reach terminal state even before assignment finalization.
+//     result if the task was never assigned. Recording it here, rather than in
+//     [finalizeAssignment], ensures it is recorded before the region ends for
+//     tasks that produce a terminal result before assignment finalization.
 //
 //   - [schedulerstat.TaskExecutionDuration] is recorded for any task that
 //     was assigned to a worker.
@@ -219,8 +205,8 @@ func (t *task) TryAssign(doAssign func() error) error {
 // It also records [schedulerstat.TaskFinishTime], the absolute terminal
 // timestamp, which the workflow uses to approximate the query's critical path.
 //
-// RecordTerminalObservations must only be called once per task and only when
-// the task has reached a terminal state.
+// RecordTerminalObservations must only be called once per task and only after
+// the task has produced a terminal result.
 func (t *task) RecordTerminalObservations(now time.Time) {
 	t.mut.RLock()
 	queueTime, assignTime, requeues := t.queueTime, t.assignTime, t.requeues
@@ -231,7 +217,7 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 	if !queueTime.IsZero() {
 		t.region.Record(schedulerstat.TaskStagingDuration.Observe(queueTime.Sub(t.createTime).Nanoseconds()))
 
-		// Queue time ends at assignment, or at the terminal state if the task
+		// Queue time ends at assignment, or at the terminal result if the task
 		// was never assigned.
 		queueEnd := now
 		if !assignTime.IsZero() {
@@ -240,7 +226,7 @@ func (t *task) RecordTerminalObservations(now time.Time) {
 		t.region.Record(schedulerstat.TaskQueueDuration.Observe(queueEnd.Sub(queueTime).Nanoseconds()))
 	} else {
 		// For a task that was never enqueued, record the entire duration
-		// from creation to terminal state as staging duration.
+		// from creation to terminal result as staging duration.
 		t.region.Record(schedulerstat.TaskStagingDuration.Observe(now.Sub(t.createTime).Nanoseconds()))
 	}
 

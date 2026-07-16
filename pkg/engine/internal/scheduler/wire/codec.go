@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/httpgrpc"
@@ -30,6 +31,52 @@ type protobufCodec struct {
 	*arrowcodec.ArrowCodec
 }
 
+// encode encodes a frame as protobuf and returns the on-wire bytes.
+// Format: [uvarint length][protobuf payload].
+//
+// scratch is a reusable buffer whose backing array encode grows and reuses to
+// avoid allocating a fresh length-prefix+payload buffer per frame. Callers pass
+// the previous return value back in; because a connection serializes its sends
+// under its write lock, the buffer is safe to reuse across that connection's
+// sends. The returned slice aliases scratch's array and stays valid only until
+// the next encode call on the same buffer.
+func (c *protobufCodec) encode(frame Frame, m *Metrics, scratch []byte) []byte {
+	mc := &metricCodec{protobufCodec: c, m: m}
+
+	// Convert wire.Frame to protobuf.
+	pbFrame, err := mc.frameToPbFrame(frame)
+	if err != nil {
+		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
+	}
+
+	// Marshal to bytes.
+	marshalStart := time.Now()
+	payload, err := proto.Marshal(pbFrame)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
+	}
+	mc.observeCodecStage(codecOperationEncode, codecStageProtobufMarshal, frame, time.Since(marshalStart))
+
+	// Write the length prefix (uvarint) then the payload into the reusable
+	// buffer.
+	var prefix [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(prefix[:], uint64(len(payload)))
+	buf := append(scratch[:0], prefix[:n]...)
+	buf = append(buf, payload...)
+	return buf
+}
+
+func readUvarint(r io.Reader) (length uint64, prefixBytes int, err error) {
+	byteReader, ok := r.(io.ByteReader)
+	if !ok {
+		byteReader = &byteReaderAdapter{r: r}
+	}
+
+	countingReader := &countingByteReader{r: byteReader}
+	length, err = binary.ReadUvarint(countingReader)
+	return length, countingReader.n, err
+}
+
 // byteReaderAdapter adapts an io.Reader to io.ByteReader without buffering.
 // This is used to read uvarint length prefixes byte-by-byte without
 // consuming extra data that might be needed for subsequent reads.
@@ -43,82 +90,99 @@ func (br *byteReaderAdapter) ReadByte() (byte, error) {
 	return b[0], err
 }
 
-// EncodeTo encodes a frame as protobuf and writes it to the writer.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) EncodeTo(w io.Writer, frame Frame) error {
-	// Convert wire.Frame to protobuf
-	pbFrame, err := c.frameToPbFrame(frame)
-	if err != nil {
-		panic(fmt.Errorf("failed to convert frame to protobuf: %w", err))
-	}
-
-	// Marshal to bytes
-	data, err := proto.Marshal(pbFrame)
-	if err != nil {
-		panic(fmt.Errorf("failed to marshal protobuf: %w", err))
-	}
-
-	// Write length prefix (uvarint)
-	length := uint64(len(data))
-	buf := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutUvarint(buf, length)
-	if _, err := w.Write(buf[:n]); err != nil {
-		return fmt.Errorf("failed to write length prefix: %w", err)
-	}
-
-	// Write payload
-	written, err := w.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write payload: %w", err)
-	}
-	if written != len(data) {
-		return fmt.Errorf("incomplete write: wrote %d bytes, expected %d", written, len(data))
-	}
-
-	return nil
+type countingByteReader struct {
+	r io.ByteReader
+	n int
 }
 
-// DecodeFrom reads and decodes a frame from the bound reader.
-// Format: [uvarint length][protobuf payload]
-func (c *protobufCodec) DecodeFrom(r io.Reader) (Frame, error) {
-	// Read length prefix (uvarint)
-	// binary.ReadUvarint requires a ByteReader, so we wrap if needed
-	byteReader, ok := r.(io.ByteReader)
-	if !ok {
-		byteReader = &byteReaderAdapter{r: r}
+func (br *countingByteReader) ReadByte() (byte, error) {
+	b, err := br.r.ReadByte()
+	if err == nil {
+		br.n++
 	}
+	return b, err
+}
 
-	length, err := binary.ReadUvarint(byteReader)
+// metricCodec binds a [protobufCodec] to the [*Metrics] used for one encode or
+// decode call. It is instantiated per call so the conversion helpers and
+// codec-stage timing can read Metrics from a field instead of threading it
+// through every signature. A nil m records nothing.
+type metricCodec struct {
+	*protobufCodec
+	m *Metrics
+}
+
+func (c *metricCodec) observeCodecStage(operation codecOperation, stage codecStage, frame Frame, d time.Duration) {
+	if c.m == nil || d < 0 {
+		return
+	}
+	labels := labelsForFrame(frame, "")
+	c.m.frameCodecStageSeconds.WithLabelValues(operation.String(), stage.String(), labels.frameType, labels.messageType).Observe(d.Seconds())
+}
+
+func (c *metricCodec) observeMessageCodecStage(operation codecOperation, stage codecStage, kind MessageKind, d time.Duration) {
+	if c.m == nil || d < 0 {
+		return
+	}
+	c.m.frameCodecStageSeconds.WithLabelValues(operation.String(), stage.String(), FrameKindMessage.String(), kind.String()).Observe(d.Seconds())
+}
+
+// decode reads and decodes the next frame from r, returning the frame and the
+// number of on-wire bytes consumed (including the length prefix). It emits its
+// own frame_receive_seconds read and deserialize phases; the receive path has
+// no outcome dimension. decode is only reached over HTTP/2.
+func (c *protobufCodec) decode(r io.Reader, m *Metrics) (Frame, int, error) {
+	mc := &metricCodec{protobufCodec: c, m: m}
+
+	readStart := time.Now()
+
+	// Read length prefix (uvarint).
+	length, prefixBytes, err := readUvarint(r)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read length prefix: %w", err)
+		return nil, 0, fmt.Errorf("failed to read length prefix: %w", err)
 	}
 
 	// Read payload
 	data := make([]byte, length)
 	n, err := io.ReadFull(r, data)
+	readDuration := time.Since(readStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read payload: %w", err)
+		return nil, 0, fmt.Errorf("failed to read payload: %w", err)
 	}
 	if uint64(n) != length {
-		return nil, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
+		return nil, 0, fmt.Errorf("incomplete read: read %d bytes, expected %d", n, length)
 	}
 
-	// Unmarshal protobuf
+	deserializeStart := time.Now()
+
+	// Unmarshal protobuf.
+	unmarshalStart := time.Now()
 	pbFrame := &wirepb.Frame{}
 	if err := proto.Unmarshal(data, pbFrame); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal protobuf: %w", err)
+		return nil, 0, fmt.Errorf("failed to unmarshal protobuf: %w", err)
 	}
+	protobufUnmarshalDuration := time.Since(unmarshalStart)
 
-	// Convert protobuf to wire.Frame
-	frame, err := c.frameFromPbFrame(pbFrame)
+	// Convert protobuf to wire.Frame.
+	frame, err := mc.frameFromPbFrame(pbFrame)
+	deserializeDuration := time.Since(deserializeStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert protobuf to frame: %w", err)
+		return nil, 0, fmt.Errorf("failed to convert protobuf to frame: %w", err)
 	}
+	mc.observeCodecStage(codecOperationDecode, codecStageProtobufUnmarshal, frame, protobufUnmarshalDuration)
 
-	return frame, nil
+	// Emit our own receive-side read and deserialize phases now that the frame
+	// (and thus its labels) is known.
+	receive := m.startFrameReceive(transportHTTP2, frame, sendModeInternal)
+	receive.Observe(phaseReadBytes, readDuration)
+	receive.Observe(phaseDeserialize, deserializeDuration)
+	receive.Done()
+
+	return frame, prefixBytes + n, nil
 }
 
-func (c *protobufCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
+func (c *metricCodec) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
+
 	if f == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -162,7 +226,8 @@ func (c *protobufCodec) errorFromPb(errPb *wirepb.Error) *Error {
 	}
 }
 
-func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
+func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
+
 	if mf == nil {
 		return nil, errors.New("nil message frame")
 	}
@@ -183,17 +248,13 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			return nil, err
 		}
 
-		streamStates := make(map[ulid.ULID]workflow.StreamState)
-		for idStr, statePb := range k.TaskAssign.StreamStates {
+		closedSourceIDs := make([]ulid.ULID, 0, len(k.TaskAssign.ClosedSourceIds))
+		for _, idStr := range k.TaskAssign.ClosedSourceIds {
 			id, err := ulid.Parse(idStr)
 			if err != nil {
-				return nil, fmt.Errorf("invalid stream ID %q: %w", idStr, err)
+				return nil, fmt.Errorf("invalid closed source ID %q: %w", idStr, err)
 			}
-			state, err := c.streamStateFromPbStreamState(statePb)
-			if err != nil {
-				return nil, fmt.Errorf("stream state from pb stream state (%s): %w", idStr, err)
-			}
-			streamStates[id] = state
+			closedSourceIDs = append(closedSourceIDs, id)
 		}
 
 		var metadata http.Header
@@ -203,9 +264,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}
 
 		return TaskAssignMessage{
-			Task:         task,
-			StreamStates: streamStates,
-			Metadata:     metadata,
+			Task:            task,
+			ClosedSourceIDs: closedSourceIDs,
+			Metadata:        metadata,
 		}, nil
 
 	case *wirepb.MessageFrame_TaskCancel:
@@ -213,21 +274,15 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			ID: ulid.ULID(k.TaskCancel.Id),
 		}, nil
 
-	case *wirepb.MessageFrame_TaskFlag:
-		return TaskFlagMessage{
-			ID:            ulid.ULID(k.TaskFlag.Id),
-			Interruptible: k.TaskFlag.Interruptible,
-		}, nil
-
-	case *wirepb.MessageFrame_TaskStatus:
-		status, err := c.taskStatusFromPbTaskStatus(&k.TaskStatus.Status)
+	case *wirepb.MessageFrame_TaskResult:
+		result, err := c.taskResultFromPbTaskResult(&k.TaskResult.Result)
 		if err != nil {
 			return nil, err
 		}
 
-		return TaskStatusMessage{
-			ID:     ulid.ULID(k.TaskStatus.Id),
-			Status: status,
+		return TaskResultMessage{
+			ID:     ulid.ULID(k.TaskResult.Id),
+			Result: result,
 		}, nil
 
 	case *wirepb.MessageFrame_StreamBind:
@@ -241,7 +296,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}, nil
 
 	case *wirepb.MessageFrame_StreamData:
+		arrowStart := time.Now()
 		record, err := c.DeserializeArrowRecord(k.StreamData.Data)
+		c.observeMessageCodecStage(codecOperationDecode, codecStageArrowDecode, MessageKindStreamData, time.Since(arrowStart))
 		if err != nil {
 			return nil, fmt.Errorf("failed to deserialize arrow record: %w", err)
 		}
@@ -250,14 +307,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 			Data:     record,
 		}, nil
 
-	case *wirepb.MessageFrame_StreamStatus:
-		streamState, err := c.streamStateFromPbStreamState(k.StreamStatus.State)
-		if err != nil {
-			return nil, fmt.Errorf("stream state from pb stream state: %w", err)
-		}
-		return StreamStatusMessage{
-			StreamID: ulid.ULID(k.StreamStatus.StreamId),
-			State:    streamState,
+	case *wirepb.MessageFrame_StreamClosed:
+		return StreamClosedMessage{
+			StreamID: ulid.ULID(k.StreamClosed.StreamId),
 		}, nil
 
 	default:
@@ -265,12 +317,15 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 	}
 }
 
-func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
+func (c *metricCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
+
 	if t == nil {
 		return nil, fmt.Errorf("nil task")
 	}
 
+	planStart := time.Now()
 	fragment, err := t.Fragment.MarshalPhysical()
+	c.observeMessageCodecStage(codecOperationDecode, codecStageTaskAssignDecode, MessageKindTaskAssign, time.Since(planStart))
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal fragment: %w", err)
 	}
@@ -297,79 +352,47 @@ func (c *protobufCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		Sources:       sources,
 		Sinks:         sinks,
 		CachedSources: cachedSources,
-		MaxTimeRange: physical.TimeRange{
-			Start: t.MaxTimeRange.Start,
-			End:   t.MaxTimeRange.End,
-		},
 	}, nil
 }
 
-func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workflow.TaskStatus, error) {
-	if ts == nil {
-		return workflow.TaskStatus{}, fmt.Errorf("nil task status")
+func (c *protobufCodec) taskResultFromPbTaskResult(tr *wirepb.TaskResult) (workflow.TaskResult, error) {
+	if tr == nil {
+		return workflow.TaskResult{}, fmt.Errorf("nil task result")
 	}
 
-	state, err := c.taskStateFromPbTaskState(ts.State)
+	outcome, err := c.taskOutcomeFromPbTaskOutcome(tr.Outcome)
 	if err != nil {
-		return workflow.TaskStatus{}, err
+		return workflow.TaskResult{}, err
 	}
 
-	status := workflow.TaskStatus{State: state}
-	pbErr := ts.GetError()
+	result := workflow.TaskResult{Outcome: outcome}
+	pbErr := tr.GetError()
 	if pbErr != nil {
-		status.Error = errors.New(pbErr.Description)
+		result.Error = errors.New(pbErr.Description)
 	}
 
-	if captureData := ts.GetCapture(); len(captureData) > 0 {
+	if captureData := tr.GetCapture(); len(captureData) > 0 {
 		capture := &xcap.Capture{}
 		if err := capture.UnmarshalBinary(captureData); err != nil {
-			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
+			return workflow.TaskResult{}, fmt.Errorf("failed to unmarshal capture: %w", err)
 		}
 
-		status.Capture = capture
+		result.Capture = capture
 	}
 
-	if ts.ContributingTimeRange != nil {
-		status.ContributingTimeRange = workflow.ContributingTimeRange{
-			Timestamp: ts.ContributingTimeRange.Timestamp,
-			LessThan:  ts.ContributingTimeRange.LessThan,
-		}
-	}
-
-	return status, nil
+	return result, nil
 }
 
-func (c *protobufCodec) taskStateFromPbTaskState(state wirepb.TaskState) (workflow.TaskState, error) {
-	switch state {
-	case wirepb.TASK_STATE_CREATED:
-		return workflow.TaskStateCreated, nil
-	case wirepb.TASK_STATE_PENDING:
-		return workflow.TaskStatePending, nil
-	case wirepb.TASK_STATE_RUNNING:
-		return workflow.TaskStateRunning, nil
-	case wirepb.TASK_STATE_COMPLETED:
-		return workflow.TaskStateCompleted, nil
-	case wirepb.TASK_STATE_CANCELLED:
-		return workflow.TaskStateCancelled, nil
-	case wirepb.TASK_STATE_FAILED:
-		return workflow.TaskStateFailed, nil
+func (c *protobufCodec) taskOutcomeFromPbTaskOutcome(outcome wirepb.TaskOutcome) (workflow.TaskOutcome, error) {
+	switch outcome {
+	case wirepb.TASK_OUTCOME_COMPLETED:
+		return workflow.TaskOutcomeCompleted, nil
+	case wirepb.TASK_OUTCOME_CANCELLED:
+		return workflow.TaskOutcomeCancelled, nil
+	case wirepb.TASK_OUTCOME_FAILED:
+		return workflow.TaskOutcomeFailed, nil
 	default:
-		return workflow.TaskStateCancelled, fmt.Errorf("task state %v is unknown", state)
-	}
-}
-
-func (c *protobufCodec) streamStateFromPbStreamState(state wirepb.StreamState) (workflow.StreamState, error) {
-	switch state {
-	case wirepb.STREAM_STATE_IDLE:
-		return workflow.StreamStateIdle, nil
-	case wirepb.STREAM_STATE_OPEN:
-		return workflow.StreamStateOpen, nil
-	case wirepb.STREAM_STATE_BLOCKED:
-		return workflow.StreamStateBlocked, nil
-	case wirepb.STREAM_STATE_CLOSED:
-		return workflow.StreamStateClosed, nil
-	default:
-		return workflow.StreamStateIdle, fmt.Errorf("stream state %v is unknown", state)
+		return 0, fmt.Errorf("task outcome %v is unknown", outcome)
 	}
 }
 
@@ -398,8 +421,7 @@ func (c *protobufCodec) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wire
 		streams := make([]*workflow.Stream, len(streamList.Streams))
 		for i, s := range streamList.Streams {
 			streams[i] = &workflow.Stream{
-				ULID:     ulid.ULID(s.Ulid),
-				TenantID: s.TenantId,
+				ULID: ulid.ULID(s.Ulid),
 			}
 		}
 
@@ -437,7 +459,8 @@ func (c *protobufCodec) cachedSourcesFromPb(pbMap map[string]*wirepb.CachedSourc
 	return result, nil
 }
 
-func (c *protobufCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
+func (c *metricCodec) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
+
 	if from == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -489,7 +512,8 @@ func (c *protobufCodec) errorToPb(e *Error) *wirepb.Error {
 	}
 }
 
-func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
+func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
+
 	if from == nil {
 		return nil, errors.New("nil message")
 	}
@@ -518,16 +542,16 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			return nil, err
 		}
 
-		streamStates := make(map[string]wirepb.StreamState)
-		for id, state := range v.StreamStates {
-			streamStates[id.String()] = c.streamStateToPbStreamState(state)
+		closedSourceIDs := make([]string, len(v.ClosedSourceIDs))
+		for i, id := range v.ClosedSourceIDs {
+			closedSourceIDs[i] = id.String()
 		}
 
 		mf.Kind = &wirepb.MessageFrame_TaskAssign{
 			TaskAssign: &wirepb.TaskAssignMessage{
-				Task:         task,
-				StreamStates: streamStates,
-				Metadata:     httpgrpc.FromHeader(v.Metadata),
+				Task:            task,
+				ClosedSourceIds: closedSourceIDs,
+				Metadata:        httpgrpc.FromHeader(v.Metadata),
 			},
 		}
 
@@ -538,24 +562,16 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			},
 		}
 
-	case TaskFlagMessage:
-		mf.Kind = &wirepb.MessageFrame_TaskFlag{
-			TaskFlag: &wirepb.TaskFlagMessage{
-				Id:            protoUlid.ULID(v.ID),
-				Interruptible: v.Interruptible,
-			},
-		}
-
-	case TaskStatusMessage:
-		status, err := c.taskStatusToPbTaskStatus(v.Status)
+	case TaskResultMessage:
+		result, err := c.taskResultToPbTaskResult(v.Result)
 		if err != nil {
 			return nil, err
 		}
 
-		mf.Kind = &wirepb.MessageFrame_TaskStatus{
-			TaskStatus: &wirepb.TaskStatusMessage{
+		mf.Kind = &wirepb.MessageFrame_TaskResult{
+			TaskResult: &wirepb.TaskResultMessage{
 				Id:     protoUlid.ULID(v.ID),
-				Status: *status,
+				Result: *result,
 			},
 		}
 
@@ -568,8 +584,10 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		}
 
 	case StreamDataMessage:
-		// Serialize Arrow record to bytes
+		// Serialize Arrow record to bytes.
+		arrowStart := time.Now()
 		data, err := c.SerializeArrowRecord(v.Data)
+		c.observeMessageCodecStage(codecOperationEncode, codecStageArrowEncode, MessageKindStreamData, time.Since(arrowStart))
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize arrow record: %w", err)
 		}
@@ -580,11 +598,10 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 			},
 		}
 
-	case StreamStatusMessage:
-		mf.Kind = &wirepb.MessageFrame_StreamStatus{
-			StreamStatus: &wirepb.StreamStatusMessage{
+	case StreamClosedMessage:
+		mf.Kind = &wirepb.MessageFrame_StreamClosed{
+			StreamClosed: &wirepb.StreamClosedMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
-				State:    c.streamStateToPbStreamState(v.State),
 			},
 		}
 
@@ -595,15 +612,19 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 	return mf, nil
 }
 
-func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
+func (c *metricCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
+
 	if from == nil {
 		return nil, errors.New("nil task")
 	}
 
 	fragment := &physicalpb.Plan{}
+	planStart := time.Now()
 	if err := fragment.UnmarshalPhysical(from.Fragment); err != nil {
+		c.observeMessageCodecStage(codecOperationEncode, codecStageTaskAssignEncode, MessageKindTaskAssign, time.Since(planStart))
 		return nil, fmt.Errorf("failed to unmarshal fragment: %w", err)
 	}
+	c.observeMessageCodecStage(codecOperationEncode, codecStageTaskAssignEncode, MessageKindTaskAssign, time.Since(planStart))
 
 	sources, err := c.nodeStreamMapToPbNodeStreamList(from.Sources)
 	if err != nil {
@@ -624,24 +645,16 @@ func (c *protobufCodec) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) 
 		Sources:       sources,
 		Sinks:         sinks,
 		CachedSources: cachedSources,
-		MaxTimeRange: &physicalpb.TimeRange{
-			Start: from.MaxTimeRange.Start,
-			End:   from.MaxTimeRange.End,
-		},
 	}, nil
 }
 
-func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
-	ts := &wirepb.TaskStatus{
-		State: c.taskStateToPbTaskState(from.State),
-		ContributingTimeRange: &wirepb.ContributingTimeRange{
-			Timestamp: from.ContributingTimeRange.Timestamp,
-			LessThan:  from.ContributingTimeRange.LessThan,
-		},
+func (c *protobufCodec) taskResultToPbTaskResult(from workflow.TaskResult) (*wirepb.TaskResult, error) {
+	tr := &wirepb.TaskResult{
+		Outcome: c.taskOutcomeToPbTaskOutcome(from.Outcome),
 	}
 
 	if from.Error != nil {
-		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
+		tr.Error = &wirepb.TaskError{Description: from.Error.Error()}
 	}
 
 	if from.Capture != nil {
@@ -650,43 +663,22 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 			return nil, fmt.Errorf("failed to marshal capture: %w", err)
 		}
 
-		ts.Capture = captureData
+		tr.Capture = captureData
 	}
 
-	return ts, nil
+	return tr, nil
 }
 
-func (c *protobufCodec) taskStateToPbTaskState(state workflow.TaskState) wirepb.TaskState {
-	switch state {
-	case workflow.TaskStateCreated:
-		return wirepb.TASK_STATE_CREATED
-	case workflow.TaskStatePending:
-		return wirepb.TASK_STATE_PENDING
-	case workflow.TaskStateRunning:
-		return wirepb.TASK_STATE_RUNNING
-	case workflow.TaskStateCompleted:
-		return wirepb.TASK_STATE_COMPLETED
-	case workflow.TaskStateCancelled:
-		return wirepb.TASK_STATE_CANCELLED
-	case workflow.TaskStateFailed:
-		return wirepb.TASK_STATE_FAILED
+func (c *protobufCodec) taskOutcomeToPbTaskOutcome(outcome workflow.TaskOutcome) wirepb.TaskOutcome {
+	switch outcome {
+	case workflow.TaskOutcomeCompleted:
+		return wirepb.TASK_OUTCOME_COMPLETED
+	case workflow.TaskOutcomeCancelled:
+		return wirepb.TASK_OUTCOME_CANCELLED
+	case workflow.TaskOutcomeFailed:
+		return wirepb.TASK_OUTCOME_FAILED
 	default:
-		return wirepb.TASK_STATE_INVALID
-	}
-}
-
-func (c *protobufCodec) streamStateToPbStreamState(state workflow.StreamState) wirepb.StreamState {
-	switch state {
-	case workflow.StreamStateIdle:
-		return wirepb.STREAM_STATE_IDLE
-	case workflow.StreamStateOpen:
-		return wirepb.STREAM_STATE_OPEN
-	case workflow.StreamStateBlocked:
-		return wirepb.STREAM_STATE_BLOCKED
-	case workflow.StreamStateClosed:
-		return wirepb.STREAM_STATE_CLOSED
-	default:
-		return wirepb.STREAM_STATE_INVALID
+		return wirepb.TASK_OUTCOME_UNSPECIFIED
 	}
 }
 
@@ -701,8 +693,7 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 		pbStreams := make([]*wirepb.Stream, len(streams))
 		for i, s := range streams {
 			pbStreams[i] = &wirepb.Stream{
-				Ulid:     protoUlid.ULID(s.ULID),
-				TenantId: s.TenantID,
+				Ulid: protoUlid.ULID(s.ULID),
 			}
 		}
 

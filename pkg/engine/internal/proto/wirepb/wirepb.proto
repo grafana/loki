@@ -6,7 +6,6 @@ package loki.wire;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
-import "google/protobuf/timestamp.proto";
 import "pkg/engine/internal/proto/physicalpb/physicalpb.proto";
 import "pkg/engine/internal/proto/ulid/ulid.proto";
 
@@ -54,13 +53,15 @@ message MessageFrame {
 
     TaskAssignMessage task_assign = 3;
     TaskCancelMessage task_cancel = 4;
-    TaskFlagMessage task_flag = 5;
-    TaskStatusMessage task_status = 6;
+    TaskResultMessage task_result = 12;
 
     StreamBindMessage stream_bind = 7;
     StreamDataMessage stream_data = 8;
-    StreamStatusMessage stream_status = 9;
+    StreamClosedMessage stream_closed = 13;
   }
+
+  reserved 5, 6, 9;
+  reserved "task_flag", "task_status", "stream_status";
 }
 
 // WorkerHelloMessage is sent by a peer to the scheduler to establish
@@ -96,13 +97,15 @@ message WorkerReadyMessage {}
 message TaskAssignMessage {
   Task task = 1;
 
-  // StreamStates holds the most recent state of each stream that the task
-  // reads from. The key is the stream ULID.
-  map<string, StreamState> stream_states = 2;
-
   // Metadata holds additional metadata to propagate with the task, such as
   // trace context.
   repeated httpgrpc.Header metadata = 3;
+
+  // ClosedSourceIDs identifies source streams that closed before assignment.
+  repeated string closed_source_ids = 4;
+
+  reserved 2;
+  reserved "stream_states";
 }
 
 // TaskCancelMessage is sent by the scheduler to a worker when a task is no
@@ -114,27 +117,15 @@ message TaskCancelMessage {
   ];
 }
 
-// TaskFlagMessage is sent by the scheduler to update the runtime flags of a task.
-message TaskFlagMessage {
+// TaskResultMessage is sent by the worker to the scheduler with the terminal
+// result of a task.
+message TaskResultMessage {
   ulid.loki.v1.ProtoULID id = 1 [
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
-  // Interruptible indicates that tasks blocked on writing or reading to a
-  // stream can be paused, and that worker can accept new tasks to run.
-  bool interruptible = 2;
-}
-
-// TaskStatusMessage is sent by the worker to the scheduler to inform the
-// scheduler of the current status of a task.
-message TaskStatusMessage {
-  ulid.loki.v1.ProtoULID id = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
-    (gogoproto.nullable) = false
-  ];
-
-  TaskStatus status = 2 [(gogoproto.nullable) = false];
+  TaskResult result = 2 [(gogoproto.nullable) = false];
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -164,14 +155,16 @@ message StreamDataMessage {
   bytes data = 2;
 }
 
-// StreamStatusMessage communicates the status of the sending side of a stream.
-message StreamStatusMessage {
+// StreamClosedMessage is sent by the scheduler to a stream receiver after the
+// stream's producer finishes or is cancelled or disconnected.
+message StreamClosedMessage {
   ulid.loki.v1.ProtoULID stream_id = 1 [
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
     (gogoproto.nullable) = false
   ];
 
-  StreamState state = 2;
+  reserved 2;
+  reserved "state";
 }
 
 // Task is a single unit of work within a workflow.
@@ -194,12 +187,8 @@ message Task {
   // The key is the node ID string representation.
   map<string, StreamList> sinks = 5;
 
-  // The maximum boundary of timestamps that the task can possibly emit.
-  // Does not account for predicates.
-  // MaxTimeRange is not read when executing a task fragment. It can be used
-  // as metadata to control execution (such as cancelling ongoing tasks based
-  // on their maximum time range).
-  loki.physical.TimeRange max_time_range = 6;
+  reserved 6;
+  reserved "max_time_range";
 
   // cached_source defines a set of already processed arrow batches ready to be consumed by the physical node.
   // The key is the node ID string representation.
@@ -224,52 +213,33 @@ message Stream {
     (gogoproto.nullable) = false
   ];
 
-  string tenant_id = 2;
+  reserved 2;
+  reserved "tenant_id";
 }
 
-// TaskStatus represents the current status of a task.
-message TaskStatus {
-  TaskState state = 1;
+// TaskResult represents the terminal result of a task.
+message TaskResult {
+  TaskOutcome outcome = 1;
 
-  // Error is set only when state is TASK_STATE_FAILED.
+  // Error is set only when outcome is TASK_OUTCOME_FAILED.
   TaskError error = 2;
 
   // Capture is the capture data for this task, if available.
   // This is an opaque binary representation of the capture payload.
   bytes capture = 3;
 
-  ContributingTimeRange contributing_time_range = 4;
-}
-
-message ContributingTimeRange {
-  google.protobuf.Timestamp timestamp = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false
-  ];
-
-  bool less_than = 2;
+  reserved 4;
+  reserved "contributing_time_range";
 }
 
 message TaskError {
   string description = 1;
 }
 
-// TaskState represents the execution state of a task.
-enum TaskState {
-  TASK_STATE_INVALID = 0; // Invalid/unspecified state.
-  TASK_STATE_CREATED = 1; // Created but not given to Runner.
-  TASK_STATE_PENDING = 2; // Pending execution.
-  TASK_STATE_RUNNING = 3; // Currently being executed.
-  TASK_STATE_COMPLETED = 4; // Completed successfully.
-  TASK_STATE_CANCELLED = 5; // Cancelled.
-  TASK_STATE_FAILED = 6; // Failed during execution.
-}
-
-// StreamState represents the state of a stream.
-enum StreamState {
-  STREAM_STATE_INVALID = 0; // Invalid/unspecified state.
-  STREAM_STATE_IDLE = 1; // Stream waiting for sender and receiver.
-  STREAM_STATE_OPEN = 2; // Stream open and transmitting data.
-  STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
-  STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
+// TaskOutcome represents the terminal outcome of a task.
+enum TaskOutcome {
+  TASK_OUTCOME_UNSPECIFIED = 0;
+  TASK_OUTCOME_COMPLETED = 1;
+  TASK_OUTCOME_CANCELLED = 2;
+  TASK_OUTCOME_FAILED = 3;
 }

@@ -724,7 +724,6 @@ func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
 		limits: map[string]*validation.Limits{
 			additionalHeadersRWTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
-				RulerEnableWALReplay:    true,
 			},
 		},
 	}
@@ -783,7 +782,6 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 		limits: map[string]*validation.Limits{
 			headersRaceTenant: {
 				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(sharedHeaders),
-				RulerEnableWALReplay:    true,
 			},
 		},
 	}

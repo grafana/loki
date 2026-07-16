@@ -58,11 +58,11 @@ type logsCalculationContext struct {
 }
 
 // These steps are applied to all logs and are unique to a section
-func getLogsCalculationSteps() []logsIndexCalculation {
+func getLogsCalculationSteps(sortSchemaKeys []string) []logsIndexCalculation {
 	return []logsIndexCalculation{
 		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
-		&statsCalculation{sortSchemaKeys: defaultSortSchemaKeys},
+		&statsCalculation{sortSchemaKeys: sortSchemaKeys},
 		&labelPostingsCalculation{},
 	}
 }
@@ -226,6 +226,11 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		return fmt.Errorf("failed to open logs section: %w", err)
 	}
 
+	schemaLabels, err := logsSection.SchemaLabels()
+	if err != nil {
+		return fmt.Errorf("failed to read logs section schema labels: %w", err)
+	}
+
 	tenantID := section.Tenant
 
 	// Fetch the column statistics in order to init the bloom filters for each column
@@ -250,7 +255,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	lockFreeContext := *calculationContext
 	lockFreeContext.builder = nil
 
-	calculationSteps := getLogsCalculationSteps()
+	calculationSteps := getLogsCalculationSteps(schemaSortKeys(schemaLabels))
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))
