@@ -1184,6 +1184,10 @@ func findLiteralFollowingLeadingLoop(node *RegexNode) *LiteralAfterLoop {
 		}
 		nextChild = node.Children[2]
 	}
+	nextChild = unwrapImmediateLiteralAfterLoopNode(nextChild)
+	if nextChild == nil {
+		return nil
+	}
 
 	// Is the set loop followed by a case-sensitive string we can search for?
 	if prefix := findPrefix(nextChild); len(prefix) >= 1 {
@@ -1230,16 +1234,6 @@ func findLiteralFollowingLeadingLoop(node *RegexNode) *LiteralAfterLoop {
 		}
 	}
 
-	// Is the set loop followed by a set we can search for? Whereas the above helpers will drill down into
-	// children as is appropriate, to examine a set here, we need to drill in ourselves. We can drill through
-	// atomic and capture nodes, as they don't affect flow control, and into the left-most node of a concatenate,
-	// as the first child is guaranteed next. We can also drill into a loop or lazy loop that has a guaranteed
-	// iteration, for the same reason as with concatenate.
-	for nextChild.T == NtAtomic || nextChild.T == NtCapture || nextChild.T == NtConcatenate ||
-		(nextChild.T == NtLoop || nextChild.T == NtLazyloop && nextChild.M >= 1) {
-		nextChild = nextChild.Children[0]
-	}
-
 	// If the resulting node is a set with at least one iteration, we can search for it.
 	if nextChild.IsSetFamily() &&
 		!nextChild.Set.IsNegated() &&
@@ -1264,6 +1258,22 @@ func findLiteralFollowingLeadingLoop(node *RegexNode) *LiteralAfterLoop {
 	return nil
 }
 
+func unwrapImmediateLiteralAfterLoopNode(node *RegexNode) *RegexNode {
+	for {
+		node = unwrapTransparentNodes(node)
+		if node == nil {
+			return nil
+		}
+		if node.T != NtConcatenate {
+			return node
+		}
+		if len(node.Children) == 0 {
+			return nil
+		}
+		node = node.Children[0]
+	}
+}
+
 func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 	if (node.Options & RightToLeft) != 0 {
 		return nil
@@ -1286,6 +1296,8 @@ func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 	for _, child := range node.Children[1:] {
 		if landmark, ok := extractRequiredLandmark(child); ok {
 			landmarks = append(landmarks, landmark)
+		} else if len(landmarks) == 0 && !isZeroWidthLandmarkGap(child) {
+			return nil
 		}
 	}
 	if len(landmarks) < 2 {
@@ -1295,6 +1307,21 @@ func findRequiredLandmarkChain(node *RegexNode) *RequiredLandmarkChain {
 	return &RequiredLandmarkChain{
 		LeadingLoopSet: firstChild.Set,
 		Landmarks:      landmarks,
+	}
+}
+
+func isZeroWidthLandmarkGap(node *RegexNode) bool {
+	node = unwrapTransparentNodes(node)
+	if node == nil {
+		return true
+	}
+	switch node.T {
+	case NtEmpty, NtUpdateBumpalong,
+		NtBeginning, NtBol, NtStart, NtEndZ, NtEnd, NtEol,
+		NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1352,7 +1379,7 @@ func extractRequiredLandmarkAlternative(node *RegexNode) (RequiredLandmarkAltern
 	i := 0
 	if i < len(children) {
 		if whitespaceSet, min, ok := whitespaceLoop(children[i]); ok {
-			alt.WhitespaceSet = whitespaceSet
+			alt.LeadingWhitespaceSet = whitespaceSet
 			alt.RequireWhitespaceBefore = min > 0
 			i++
 		}
@@ -1367,11 +1394,11 @@ func extractRequiredLandmarkAlternative(node *RegexNode) (RequiredLandmarkAltern
 	core := unwrapTransparentNodes(children[i])
 	switch core.T {
 	case NtOne:
-		alt.Literal = string(core.Ch)
+		alt.Literal = []rune{core.Ch}
 		alt.MinRepeat = 1
 		alt.MaxRepeat = 1
 	case NtMulti:
-		alt.Literal = string(core.Str)
+		alt.Literal = core.Str
 		alt.MinRepeat = 1
 		alt.MaxRepeat = 1
 	case NtSet, NtSetloop, NtSetloopatomic, NtSetlazy:
@@ -1392,7 +1419,6 @@ func extractRequiredLandmarkAlternative(node *RegexNode) (RequiredLandmarkAltern
 			return RequiredLandmarkAlternative{}, false
 		}
 		alt.Set = core.Set
-		alt.Chars = chars
 	default:
 		return RequiredLandmarkAlternative{}, false
 	}
@@ -1400,9 +1426,7 @@ func extractRequiredLandmarkAlternative(node *RegexNode) (RequiredLandmarkAltern
 
 	if i < len(children) {
 		if whitespaceSet, min, ok := whitespaceLoop(children[i]); ok {
-			if alt.WhitespaceSet == nil {
-				alt.WhitespaceSet = whitespaceSet
-			}
+			alt.TrailingWhitespaceSet = whitespaceSet
 			alt.RequireWhitespaceAfter = min > 0
 			i++
 		}

@@ -88,9 +88,21 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
-# if true. If false, the OrgID will always be set to 'fake'.
+# if true. If false, the OrgID will always be set to the value of
+# -auth.no-auth-tenant.
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
+
+lbac:
+  # Enables label based access control through the X-Prom-Label-Policy header.
+  # CLI flag: -lbac.enabled
+  [enabled: <boolean> | default = false]
+
+# Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
+# compatibility. Safe to change on a fresh cluster; on an existing cluster, data
+# stored under the old tenant path must be migrated first (see cmd/migrate).
+# CLI flag: -auth.no-auth-tenant
+[no_auth_tenant: <string> | default = "fake"]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
@@ -1592,6 +1604,11 @@ dataobj:
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
 
+    # Experimental: When enabled, reads from new-format postings sections in
+    # index objects instead of the streams sections. Defaults to false.
+    # CLI flag: -dataobj-metastore.read-postings-sections
+    [read_postings_sections: <boolean> | default = false]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -1604,6 +1621,11 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
+    # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
+    # by the coordinator. 0 means unlimited.
+    # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
+    [logs_max_running_compaction_tasks: <int> | default = 16]
+
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
@@ -1612,6 +1634,17 @@ dataobj:
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Maximum runs per LogMerge task (K for log compaction).
+    # Separate from max-runs-per-task to scale independently
+    # CLI flag: -dataobj.compaction.logs.max-runs-per-task
+    [logs_max_runs_per_task: <int> | default = 3]
+
+    # Experimental: Minimum total compactable data (sum of all runs'
+    # uncompressed size) that justifies log compaction. Converged windows below
+    # this floor are skipped.
+    # CLI flag: -dataobj.compaction.logs.min-compaction-size
+    [logs_min_compaction_size: <int> | default = 4MiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -2159,6 +2192,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Alibabacloud Region to use.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -2167,6 +2204,13 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# Specify the RAM role name of the ECS instance. ECS RAM role authentication is
+# used only when neither access_key_id nor secret_access_key is configured and
+# requires signature_version=v4. If not set, the role name will be automatically
+# retrieved from the ECS instance metadata.
+# CLI flag: -<prefix>.oss.ram-role-name
+[ram_role_name: <string> | default = ""]
+
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 30]
@@ -2174,6 +2218,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 60]
+
+# The signature version to use for authenticating against OSS. Supported values
+# are: v1, v4. ECS RAM role authentication requires signature_version=v4.
+# CLI flag: -<prefix>.oss.signature-version
+[signature_version: <string> | default = "v1"]
 ```
 
 ### analytics
@@ -3358,6 +3407,10 @@ ring:
 # CLI flag: -distributor.max-decompressed-size
 [max_decompressed_size: <int> | default = 5242880000]
 
+# The maximum number of inflight bytes at a time. 0 means disabled.
+# CLI flag: -distributor.max-inflight-bytes
+[max_inflight_bytes: <int> | default = 0]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -3442,6 +3495,25 @@ dataobj_tee:
   # used instead.
   # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
   [use_rendezvous_hashing: <boolean> | default = false]
+
+circuit_breaker:
+  # Enable circuit breakers.
+  # CLI flag: -distributor.circuit-breaker.enabled
+  [enabled: <boolean> | default = false]
+
+  # The open period.
+  # CLI flag: -distributor.circuit-breaker.open-period
+  [open_period: <duration> | default = 1s]
+
+  # The minimum number of successive failures required to open the circuit
+  # breaker.
+  # CLI flag: -distributor.circuit-breaker.min-failures
+  [min_failures: <int> | default = 1]
+
+  # The number of permitted trial requests in the half-open state. All requests
+  # must succeed to close the circuit breaker, any failure re-opens it.
+  # CLI flag: -distributor.circuit-breaker.permitted-trials
+  [permitted_trials: <int> | default = 1]
 ```
 
 ### etcd
@@ -4667,11 +4739,6 @@ discover_generic_fields:
 # CLI flag: -ruler.tenant-shard-size
 [ruler_tenant_shard_size: <int> | default = 0]
 
-# Enable WAL replay on ruler startup. Disabling this can reduce memory usage on
-# startup at the cost of not recovering in-memory WAL metrics on restart.
-# CLI flag: -ruler.enable-wal-replay
-[ruler_enable_wal_replay: <boolean> | default = true]
-
 # Disable recording rules remote-write.
 [ruler_remote_write_disabled: <boolean>]
 
@@ -4786,16 +4853,6 @@ ruler_remote_write_sigv4_config:
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
-
-# Feature renamed to 'runtime configuration', flag deprecated in favor of
-# -runtime-config.file (runtime_config.file in YAML).
-# CLI flag: -limits.per-user-override-config
-[per_tenant_override_config: <string> | default = ""]
-
-# Feature renamed to 'runtime configuration'; flag deprecated in favor of
-# -runtime-config.reload-period (runtime_config.period in YAML).
-# CLI flag: -limits.per-user-override-period
-[per_tenant_override_period: <duration> | default = 10s]
 
 # Define streams sharding behavior.
 shard_streams:
@@ -5052,12 +5109,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Controls the amount of scan tasks that can be running in
-# parallel in the new query engine. The default of 0 means unlimited parallelism
-# and all tasks will be scheduled at once.
-# CLI flag: -limits.max-scan-task-parallelism
-[max_scan_task_parallelism: <int> | default = 0]
 
 # Experimental: Toggles verbose debug logging of tasks in the new query engine.
 # CLI flag: -limits.debug-engine-tasks
@@ -6087,8 +6138,7 @@ remote_write:
   [enabled: <boolean> | default = false]
 
   # Minimum period to wait between refreshing remote-write reconfigurations.
-  # This should be greater than or equivalent to
-  # -limits.per-user-override-period.
+  # This should be greater than or equivalent to -runtime-config.reload-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
@@ -6208,7 +6258,8 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 
 # Delimiter used to replace the default delimiter ':' in chunk IDs when storing
 # chunks. This is mainly intended when you run a MinIO instance on a Windows
-# machine. You should not change this value inflight.
+# machine. You must not change this value during operations, otherwise you may
+# not be able to read existing chunks from object storage.
 # CLI flag: -<prefix>.s3.chunk-delimiter
 [chunk_delimiter: <string> | default = ""]
 
@@ -6750,7 +6801,7 @@ congestion_control:
 # `storage_config.object_store` or `common.storage.object_store` block takes
 # effect.
 # CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
+[use_thanos_objstore: <boolean> | default = true]
 
 object_store:
   # The thanos_object_store_config block configures the connection to object
@@ -7560,7 +7611,7 @@ Configuration for `tracing`.
 
 ## Runtime Configuration file
 
-Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag.
 
 At the moment, two components use runtime configuration: limits and multi KV store.
 

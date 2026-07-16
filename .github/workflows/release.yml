@@ -5,8 +5,9 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
+  PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "00f0ddb8d0d0b5e53ee1bf87a6d8a2e007e6e501"
+  RELEASE_LIB_REF: "a02bbf94332600fbf72b9258861b32c4559cd134"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -118,7 +119,7 @@ jobs:
         gh release upload --clobber $(echo $OUTPUTS_NAME | tr -d '"') dist/*
       working-directory: "release"
     - env:
-        path: "release/dist"
+        path: "dist"
       if: "${{ fromJSON(env.PUBLISH_TO_GCS) }}"
       name: "release artifacts"
       run: |
@@ -127,7 +128,7 @@ jobs:
           --project="grafanalabs-global" \
           --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
           --location="us" \
-          --source-directory=${{ env.path }}, \
+          --source-directory=${{ env.path }} \
           --package=binaries \
           --version=${{ github.sha }}
       working-directory: "release"

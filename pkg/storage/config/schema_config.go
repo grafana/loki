@@ -195,10 +195,7 @@ func (d DayTime) MarshalYAML() (interface{}, error) {
 
 // UnmarshalYAML implements yaml.Unmarshaller.
 func (d *DayTime) UnmarshalYAML(value *yaml.Node) error {
-	var from string
-	if err := value.Decode(&from); err != nil {
-		return err
-	}
+	from := strings.TrimSpace(value.Value)
 	t, err := time.Parse("2006-01-02", from)
 	if err != nil {
 		return err
@@ -429,6 +426,16 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	default:
 		return index.FormatV3, nil
 	}
+}
+
+// SupportsIngestedAt reports whether this period persists the per-chunk
+// IngestedAt timestamp (TSDB index FormatV4, schema v14).
+func (cfg *PeriodConfig) SupportsIngestedAt() bool {
+	if cfg.IndexType != types.IndexTypeTSDB {
+		return false
+	}
+	format, err := cfg.TSDBFormat()
+	return err == nil && format >= index.FormatV4
 }
 
 // Validate the period config.
@@ -706,6 +713,16 @@ func (cfg SchemaConfig) SchemaForTime(t model.Time) (PeriodConfig, error) {
 		}
 	}
 	return PeriodConfig{}, fmt.Errorf("no schema config found for time %v", t)
+}
+
+// SupportsIngestedAtForTime reports whether the schema active at time t persists
+// the per-chunk IngestedAt timestamp (TSDB index FormatV4, schema v14).
+func (cfg SchemaConfig) SupportsIngestedAtForTime(t model.Time) bool {
+	p, err := cfg.SchemaForTime(t)
+	if err != nil {
+		return false
+	}
+	return p.SupportsIngestedAt()
 }
 
 // TableFor calculates the table shard for a given point in time.

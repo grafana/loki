@@ -6,6 +6,7 @@ package otlploggrpc // import "go.opentelemetry.io/otel/exporters/otlp/otlplog/o
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc/internal/observ"
@@ -28,9 +30,10 @@ import (
 
 // The methods of this type are not expected to be called concurrently.
 type client struct {
-	metadata      metadata.MD
-	exportTimeout time.Duration
-	requestFunc   retry.RequestFunc
+	metadata       metadata.MD
+	exportTimeout  time.Duration
+	maxRequestSize int
+	requestFunc    retry.RequestFunc
 
 	// ourConn keeps track of where conn was created: true if created here in
 	// NewClient, or false if passed with an option. This is important on
@@ -49,9 +52,10 @@ var newGRPCClientFn = grpc.NewClient
 // newClient creates a new gRPC log client.
 func newClient(cfg config) (*client, error) {
 	c := &client{
-		exportTimeout: cfg.timeout.Value,
-		requestFunc:   cfg.retryCfg.Value.RequestFunc(retryable),
-		conn:          cfg.gRPCConn.Value,
+		exportTimeout:  cfg.timeout.Value,
+		maxRequestSize: cfg.maxRequestSize.Value,
+		requestFunc:    cfg.retryCfg.Value.RequestFunc(retryable),
+		conn:           cfg.gRPCConn.Value,
 	}
 
 	if len(cfg.headers.Value) > 0 {
@@ -146,18 +150,26 @@ func (c *client) UploadLogs(ctx context.Context, rl []*logpb.ResourceLogs) (uplo
 	ctx, cancel := c.exportContext(ctx)
 	defer cancel()
 
-	count := int64(len(rl))
+	pbRequest := &collogpb.ExportLogsServiceRequest{ResourceLogs: rl}
 	if c.instrumentation != nil {
+		var count int64
+		for _, resLogs := range rl {
+			for _, scopeLogs := range resLogs.ScopeLogs {
+				count += int64(len(scopeLogs.LogRecords))
+			}
+		}
 		eo := c.instrumentation.ExportLogs(ctx, count)
 		defer func() {
 			eo.End(uploadErr)
 		}()
 	}
 
+	if maxSize := c.maxRequestSize; maxSize > 0 && proto.Size(pbRequest) > maxSize {
+		return fmt.Errorf("request message too large: exceeded %d bytes", maxSize)
+	}
+
 	return errors.Join(uploadErr, c.requestFunc(ctx, func(ctx context.Context) error {
-		resp, err := c.lsc.Export(ctx, &collogpb.ExportLogsServiceRequest{
-			ResourceLogs: rl,
-		})
+		resp, err := c.lsc.Export(ctx, pbRequest)
 		if resp != nil && resp.PartialSuccess != nil {
 			msg := resp.PartialSuccess.GetErrorMessage()
 			n := resp.PartialSuccess.GetRejectedLogRecords()

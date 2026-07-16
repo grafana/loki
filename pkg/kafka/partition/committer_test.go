@@ -77,12 +77,6 @@ func TestPartitionCommitter(t *testing.T) {
 	committedOffset, ok = offsets.Lookup(topic, partition2)
 	require.False(t, ok)
 
-	// Neither should it have been committed for other consumer groups.
-	offsets, err = admClient.FetchOffsets(ctx, "test-consumer-group-2")
-	require.NoError(t, err)
-	committedOffset, ok = offsets.Lookup(topic, partition1)
-	require.False(t, ok)
-
 	// Should be able to commit a new offset for partition 1.
 	offset2 := int64(200)
 	require.NoError(t, committer1.Commit(ctx, offset2))

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -482,4 +483,22 @@ func buildTableNumber(idx int) int64 {
 
 func buildTableName(idx int) string {
 	return fmt.Sprintf("%s%d", indexTablePrefix, buildTableNumber(idx))
+}
+
+// TestTableManager_TriggerSyncRecordsManualMetric exercises the manual-sync wiring
+// through the real syncTables: TriggerSync delegates to the syncManager, the
+// injected work runs syncTables with the "manual" trigger, and the success is
+// recorded under that label. (The guard/status lifecycle is covered in
+// sync_manager_test.go.)
+func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
+	tm, stop := buildTestTableManager(t, t.TempDir(), nil)
+	defer stop()
+
+	require.True(t, tm.TriggerSync())
+
+	// TriggerSync runs the sync on a background goroutine; Wait blocks until it has
+	// finished so the recorded success metric can be asserted directly.
+	tm.syncManager.Wait()
+	require.Equal(t, float64(1), testutil.ToFloat64(
+		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
 }

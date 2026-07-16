@@ -839,41 +839,34 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedRows := arrowtest.Rows{
-			// Row 1: JSON parsed status="200", logfmt fails (null) → keep "200"
+			// Row 1: JSON parsed status="200", logfmt fails → keep "200".
+			// Non-strict logfmt does not add [__error__] / [__error_details__].
 			{
-				"utf8.builtin.message":             `{"level":"info","status":200}`,
-				"utf8.generated.__error__":         "LogfmtParserErr",
-				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
-				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
-				"utf8.parsed.method":               nil,
-				"utf8.parsed.status":               "200", // Kept from original JSON parse
+				"utf8.builtin.message": `{"level":"info","status":200}`,
+				"utf8.parsed.level":    nil, // logfmt didn't parse, so null
+				"utf8.parsed.method":   nil,
+				"utf8.parsed.status":   "200", // Kept from original JSON parse
 			},
 			// Row 2: No previous status (null), logfmt parses status="404" → use "404"
 			{
-				"utf8.builtin.message":             `level=info status=404 method=GET`,
-				"utf8.generated.__error__":         "",
-				"utf8.generated.__error_details__": "",
-				"utf8.parsed.level":                "info",
-				"utf8.parsed.method":               "GET",
-				"utf8.parsed.status":               "404",
+				"utf8.builtin.message": `level=info status=404 method=GET`,
+				"utf8.parsed.level":    "info",
+				"utf8.parsed.method":   "GET",
+				"utf8.parsed.status":   "404",
 			},
-			// Row 3: JSON parsed status="500", logfmt fails (null) → keep "500"
+			// Row 3: JSON parsed status="500", logfmt fails → keep "500"
 			{
-				"utf8.builtin.message":             `{"level":"error","status":500}`,
-				"utf8.generated.__error__":         "LogfmtParserErr",
-				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
-				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
-				"utf8.parsed.method":               nil,
-				"utf8.parsed.status":               "500", // Kept from original JSON parse
+				"utf8.builtin.message": `{"level":"error","status":500}`,
+				"utf8.parsed.level":    nil,
+				"utf8.parsed.method":   nil,
+				"utf8.parsed.status":   "500",
 			},
 			// Row 4: No previous status (null), logfmt also does't parse status
 			{
-				"utf8.builtin.message":             `level=info method=GET`,
-				"utf8.generated.__error__":         "",
-				"utf8.generated.__error_details__": "",
-				"utf8.parsed.level":                "info",
-				"utf8.parsed.method":               "GET",
-				"utf8.parsed.status":               nil,
+				"utf8.builtin.message": `level=info method=GET`,
+				"utf8.parsed.level":    "info",
+				"utf8.parsed.method":   "GET",
+				"utf8.parsed.status":   nil,
 			},
 		}
 

@@ -3,6 +3,7 @@ package syntax
 import (
 	"bytes"
 	"cmp"
+	"fmt"
 	"slices"
 )
 
@@ -10,13 +11,14 @@ type FindOptimizations struct {
 	rightToLeft  bool
 	asciiLookups [][]uint
 
-	FindMode          FindNextStartingPositionMode
-	LeadingAnchor     NodeType
-	TrailingAnchor    NodeType
-	MinRequiredLength int
-	MaxPossibleLength int
-	LeadingPrefix     string
-	LeadingPrefixes   []string
+	FindMode             FindNextStartingPositionMode
+	LeadingAnchor        NodeType
+	TrailingAnchor       NodeType
+	MinRequiredLength    int
+	MaxPossibleLength    int
+	LeadingPrefix        string
+	LeadingPrefixes      []string
+	LeadingPrefixesRunes [][]rune
 	//LeadingStrings    *helpers.StringSearchValues
 
 	FixedDistanceLiteral FixedDistanceLiteral
@@ -49,21 +51,56 @@ type FixedDistanceLiteral struct {
 }
 
 type RequiredLandmarkChain struct {
+	// LeadingLoopSet is the unbounded leading set loop that precedes every
+	// landmark in the original concatenation. At run time, after the first
+	// landmark alternative is found, the scanner walks backward over this set
+	// to recover the earliest plausible regex start position.
 	LeadingLoopSet *CharSet
-	Landmarks      []RequiredLandmark
+
+	// Landmarks must all be found, in slice order, for the chain prefilter to
+	// produce a candidate. Each landmark is satisfied by exactly one matching
+	// alternative; alternatives are tried independently by the runner.
+	Landmarks []RequiredLandmark
 }
 
 type RequiredLandmark struct {
+	// Alternatives describes the mutually exclusive shapes that can satisfy
+	// this single required landmark. A landmark matches when any one alternative
+	// matches at a position in the input.
 	Alternatives []RequiredLandmarkAlternative
 }
 
 type RequiredLandmarkAlternative struct {
-	Literal                 string
-	Chars                   []rune
-	Set                     *CharSet
-	WhitespaceSet           *CharSet
-	MinRepeat               int
-	MaxRepeat               int
+	// Literal is the core token for literal alternatives. When non-empty, it
+	// must match exactly at the candidate core position, and Set must be nil.
+	Literal []rune
+
+	// Set is the core token for character-class alternatives. When non-nil, it
+	// must match between MinRepeat and MaxRepeat runes at the candidate core
+	// position, and Literal must be empty. The analyzer only builds set
+	// alternatives for non-negated sets that can be cheaply enumerated, but the
+	// runner uses Set for membership checks.
+	Set *CharSet
+
+	// LeadingWhitespaceSet is the optional or required whitespace immediately
+	// before the core token. If RequireWhitespaceBefore is true, at least one
+	// rune from this set must precede the core. When this alternative is the
+	// first matched landmark, the runner may rewind over additional contiguous
+	// leading whitespace from this set before rewinding over LeadingLoopSet.
+	LeadingWhitespaceSet *CharSet
+
+	// TrailingWhitespaceSet is the optional or required whitespace immediately
+	// after the core token. If RequireWhitespaceAfter is true, at least one rune
+	// from this set must follow the core. The runner validates the requirement,
+	// but does not consume optional trailing whitespace into the landmark end.
+	TrailingWhitespaceSet *CharSet
+
+	// MinRepeat and MaxRepeat describe the core token width. Literal alternatives
+	// use 1..1 regardless of literal length because the literal is matched as one
+	// fixed core token; Set alternatives use the source set repetition.
+	MinRepeat int
+	MaxRepeat int
+
 	RequireWhitespaceBefore bool
 	RequireWhitespaceAfter  bool
 }
@@ -125,6 +162,183 @@ const (
 	// A sequence of required landmarks after a leading loop.
 	RequiredLandmarkChain_LeftToRight
 )
+
+func (m FindNextStartingPositionMode) String() string {
+	switch m {
+	case NoSearch:
+		return "NoSearch"
+	case LeadingAnchor_LeftToRight_Beginning:
+		return "LeadingAnchor_LeftToRight_Beginning"
+	case LeadingAnchor_LeftToRight_Start:
+		return "LeadingAnchor_LeftToRight_Start"
+	case LeadingAnchor_LeftToRight_EndZ:
+		return "LeadingAnchor_LeftToRight_EndZ"
+	case LeadingAnchor_LeftToRight_End:
+		return "LeadingAnchor_LeftToRight_End"
+	case LeadingAnchor_RightToLeft_Beginning:
+		return "LeadingAnchor_RightToLeft_Beginning"
+	case LeadingAnchor_RightToLeft_Start:
+		return "LeadingAnchor_RightToLeft_Start"
+	case LeadingAnchor_RightToLeft_EndZ:
+		return "LeadingAnchor_RightToLeft_EndZ"
+	case LeadingAnchor_RightToLeft_End:
+		return "LeadingAnchor_RightToLeft_End"
+	case TrailingAnchor_FixedLength_LeftToRight_End:
+		return "TrailingAnchor_FixedLength_LeftToRight_End"
+	case TrailingAnchor_FixedLength_LeftToRight_EndZ:
+		return "TrailingAnchor_FixedLength_LeftToRight_EndZ"
+	case LeadingString_LeftToRight:
+		return "LeadingString_LeftToRight"
+	case LeadingString_RightToLeft:
+		return "LeadingString_RightToLeft"
+	case LeadingString_OrdinalIgnoreCase_LeftToRight:
+		return "LeadingString_OrdinalIgnoreCase_LeftToRight"
+	case LeadingStrings_LeftToRight:
+		return "LeadingStrings_LeftToRight"
+	case LeadingStrings_OrdinalIgnoreCase_LeftToRight:
+		return "LeadingStrings_OrdinalIgnoreCase_LeftToRight"
+	case LeadingSet_LeftToRight:
+		return "LeadingSet_LeftToRight"
+	case LeadingSet_RightToLeft:
+		return "LeadingSet_RightToLeft"
+	case LeadingChar_RightToLeft:
+		return "LeadingChar_RightToLeft"
+	case FixedDistanceChar_LeftToRight:
+		return "FixedDistanceChar_LeftToRight"
+	case FixedDistanceString_LeftToRight:
+		return "FixedDistanceString_LeftToRight"
+	case FixedDistanceSets_LeftToRight:
+		return "FixedDistanceSets_LeftToRight"
+	case LiteralAfterLoop_LeftToRight:
+		return "LiteralAfterLoop_LeftToRight"
+	case RequiredLandmarkChain_LeftToRight:
+		return "RequiredLandmarkChain_LeftToRight"
+	default:
+		return fmt.Sprintf("FindNextStartingPositionMode(%d)", int(m))
+	}
+}
+
+func (f *FindOptimizations) Dump() string {
+	buf := &bytes.Buffer{}
+	if f == nil {
+		fmt.Fprintln(buf, "Find mode:  n/a")
+		return buf.String()
+	}
+
+	fmt.Fprintf(buf, "Find mode:  %s\n", f.FindMode)
+	fmt.Fprintf(buf, "Min length: %d\n", f.MinRequiredLength)
+	if f.MaxPossibleLength > 0 {
+		fmt.Fprintf(buf, "Max length: %d\n", f.MaxPossibleLength)
+	}
+
+	switch f.FindMode {
+	case LeadingAnchor_LeftToRight_Beginning, LeadingAnchor_LeftToRight_Start,
+		LeadingAnchor_LeftToRight_EndZ, LeadingAnchor_LeftToRight_End,
+		LeadingAnchor_RightToLeft_Beginning, LeadingAnchor_RightToLeft_Start,
+		LeadingAnchor_RightToLeft_EndZ, LeadingAnchor_RightToLeft_End:
+		fmt.Fprintf(buf, "Anchor:     %v\n", f.LeadingAnchor)
+
+	case TrailingAnchor_FixedLength_LeftToRight_End, TrailingAnchor_FixedLength_LeftToRight_EndZ:
+		fmt.Fprintf(buf, "Anchor:     %v\n", f.TrailingAnchor)
+
+	case LeadingString_LeftToRight, LeadingString_RightToLeft, LeadingString_OrdinalIgnoreCase_LeftToRight:
+		fmt.Fprintf(buf, "Prefix:     %q\n", f.LeadingPrefix)
+
+	case LeadingStrings_LeftToRight, LeadingStrings_OrdinalIgnoreCase_LeftToRight:
+		fmt.Fprintf(buf, "Prefixes:   %q\n", f.LeadingPrefixes)
+
+	case FixedDistanceChar_LeftToRight:
+		fmt.Fprintf(buf, "Literal:    %q at distance %d\n", f.FixedDistanceLiteral.C, f.FixedDistanceLiteral.Distance)
+
+	case FixedDistanceString_LeftToRight:
+		fmt.Fprintf(buf, "Literal:    %q at distance %d\n", f.FixedDistanceLiteral.S, f.FixedDistanceLiteral.Distance)
+
+	case FixedDistanceSets_LeftToRight:
+		for i, set := range f.FixedDistanceSets {
+			fmt.Fprintf(buf, "Set[%d]:     distance=%d %s\n", i, set.Distance, fixedDistanceSetDescription(set))
+		}
+
+	case LiteralAfterLoop_LeftToRight:
+		fmt.Fprintf(buf, "Literal:    %s\n", literalAfterLoopDescription(f.LiteralAfterLoop))
+
+	case RequiredLandmarkChain_LeftToRight:
+		fmt.Fprintf(buf, "Landmarks:  %s\n", landmarkChainDescription(f.LandmarkChain))
+	}
+
+	return buf.String()
+}
+
+func fixedDistanceSetDescription(set FixedDistanceSet) string {
+	switch {
+	case len(set.Chars) > 0:
+		return fmt.Sprintf("chars=%q negated=%t", string(set.Chars), set.Negated)
+	case set.Range != nil:
+		return fmt.Sprintf("range=%q-%q negated=%t", set.Range.First, set.Range.Last, set.Negated)
+	case set.Set != nil:
+		return fmt.Sprintf("set=%s", set.Set.String())
+	default:
+		return "set=<nil>"
+	}
+}
+
+func literalAfterLoopDescription(literal *LiteralAfterLoop) string {
+	if literal == nil {
+		return "<nil>"
+	}
+	loopSet := "<nil>"
+	if literal.LoopNode != nil && literal.LoopNode.Set != nil {
+		loopSet = literal.LoopNode.Set.String()
+	}
+	switch {
+	case literal.String != "":
+		return fmt.Sprintf("string=%q ignoreCase=%t after loop set %s", literal.String, literal.StringIgnoreCase, loopSet)
+	case len(literal.Chars) > 0:
+		return fmt.Sprintf("chars=%q after loop set %s", string(literal.Chars), loopSet)
+	default:
+		return fmt.Sprintf("char=%q after loop set %s", literal.Char, loopSet)
+	}
+}
+
+func landmarkChainDescription(chain *RequiredLandmarkChain) string {
+	if chain == nil {
+		return "<nil>"
+	}
+	loopSet := "<nil>"
+	if chain.LeadingLoopSet != nil {
+		loopSet = chain.LeadingLoopSet.String()
+	}
+	buf := &bytes.Buffer{}
+	fmt.Fprintf(buf, "leadingLoop=%s", loopSet)
+	for i, landmark := range chain.Landmarks {
+		fmt.Fprintf(buf, " landmark[%d]=", i)
+		for j, alt := range landmark.Alternatives {
+			if j > 0 {
+				buf.WriteString("|")
+			}
+			buf.WriteString(requiredLandmarkAlternativeDescription(alt))
+		}
+	}
+	return buf.String()
+}
+
+func requiredLandmarkAlternativeDescription(alt RequiredLandmarkAlternative) string {
+	core := ""
+	switch {
+	case len(alt.Literal) > 0:
+		core = fmt.Sprintf("literal=%q", string(alt.Literal))
+	case alt.Set != nil:
+		core = fmt.Sprintf("set=%s repeat=%d..%d", alt.Set.String(), alt.MinRepeat, alt.MaxRepeat)
+	default:
+		core = "<empty>"
+	}
+	if alt.LeadingWhitespaceSet != nil {
+		core += fmt.Sprintf(" leadingWhitespace=%s required=%t", alt.LeadingWhitespaceSet.String(), alt.RequireWhitespaceBefore)
+	}
+	if alt.TrailingWhitespaceSet != nil {
+		core += fmt.Sprintf(" trailingWhitespace=%s required=%t", alt.TrailingWhitespaceSet.String(), alt.RequireWhitespaceAfter)
+	}
+	return core
+}
 
 func newFindOptimizations(tree *RegexTree, opt ParseOptions) *FindOptimizations {
 	f := newFindOptimizationsForNode(tree.Root, opt, false)
@@ -253,6 +467,7 @@ func newFindOptimizationsForNode(root *RegexNode, opt ParseOptions, isLeadingPar
 		ciPrefixes := findPrefixes(root, true)
 		if len(ciPrefixes) > 1 {
 			f.LeadingPrefixes = ciPrefixes
+			f.LeadingPrefixesRunes = toRunePrefixes(ciPrefixes)
 			f.FindMode = LeadingStrings_OrdinalIgnoreCase_LeftToRight
 			/*SYSTEM_TEXT_REGULAREXPRESSIONS
 			if usesRfoTryFind {
@@ -307,6 +522,7 @@ func newFindOptimizationsForNode(root *RegexNode, opt ParseOptions, isLeadingPar
 			caseSensitivePrefixes := findPrefixes(root, false)
 			if len(caseSensitivePrefixes) > 1 {
 				f.LeadingPrefixes = caseSensitivePrefixes
+				f.LeadingPrefixesRunes = toRunePrefixes(caseSensitivePrefixes)
 				f.FindMode = LeadingStrings_LeftToRight
 				return f
 			}
@@ -358,6 +574,17 @@ func newFindOptimizationsForNode(root *RegexNode, opt ParseOptions, isLeadingPar
 
 func (f *FindOptimizations) isUseful() bool {
 	return f.FindMode != NoSearch || f.LeadingAnchor == NtBol
+}
+
+func toRunePrefixes(prefixes []string) [][]rune {
+	if len(prefixes) == 0 {
+		return nil
+	}
+	runes := make([][]rune, len(prefixes))
+	for i, prefix := range prefixes {
+		runes[i] = []rune(prefix)
+	}
+	return runes
 }
 
 func getFindMode(rtl bool, t NodeType) FindNextStartingPositionMode {

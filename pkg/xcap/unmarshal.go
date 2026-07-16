@@ -22,6 +22,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 		statsIndex[uint32(i)] = stat
 	}
 
+	capture.regionByName = make(map[string][]*Region)
+
 	// Unmarshal regions
 	for _, protoRegion := range protoCapture.Regions {
 		region, err := fromProtoRegion(protoRegion, statsIndex)

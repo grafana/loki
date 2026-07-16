@@ -80,6 +80,13 @@ These HTTP endpoints are exposed by the `ingester`, `write`, and `all` component
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
 
+### Index gateway endpoints
+
+These HTTP endpoints are exposed by the `index-gateway`, `backend`, and `all` components:
+
+- [`PUT /sync-indexes`](#sync-indexes-from-object-storage)
+- [`GET /sync-indexes`](#sync-indexes-from-object-storage)
+
 ### Rule endpoints
 
 These HTTP endpoints are exposed by the `ruler` component:
@@ -1314,6 +1321,77 @@ chunks have been flushed, so the request can be long-running. Set a generous
 client timeout when calling it.
 
 In microservices mode, the `/flush/tenant` endpoint is exposed by the ingester.
+
+## Sync indexes from object storage
+
+```bash
+PUT /sync-indexes
+GET /sync-indexes
+```
+
+`/sync-indexes` lets a caller force an index-gateway to refresh its object-storage
+listing cache and download any newly shipped index files on demand, instead of
+waiting for the periodic resync (which re-lists through a cache that can take up
+to a minute to expire). It is the second step of making a freshly flushed index
+queryable across read nodes:
+
+1. `POST /flush/tenant` on the ingester ships the new index to object storage.
+1. `PUT /sync-indexes` on the index-gateway downloads it.
+1. `POST /loki/api/v1/cache/generation_numbers/increase` on the compactor
+   invalidates any cached query results so the new data is reflected.
+
+This endpoint is not tenant-scoped; it refreshes the listing for all tables the
+index-gateway already tracks.
+
+A `PUT` request triggers a sync asynchronously and returns immediately:
+
+- `202 Accepted` if a new sync was started.
+- `409 Conflict` if a sync (manual or the periodic one) is already in progress, in
+  which case the request is a no-op.
+
+Because a `PUT` is a no-op while another sync is running, and a sync can be
+long-running on a gateway that tracks many tables, callers should not assume a
+single `PUT` ran the sync: re-issue the `PUT` until it is accepted, then poll
+`GET` until the sync completes.
+
+A `GET` request reports the sync status of each synced index as a JSON array, with
+one entry per index (the index-gateway runs an independent sync per schema period):
+
+```json
+[
+  {
+    "name": "s3_2024-04-01",
+    "in_progress": true,
+    "last_trigger": "manual",
+    "current_duration": "12s",
+    "last_duration": "1m30s"
+  },
+  {
+    "name": "s3_2024-10-01",
+    "in_progress": false,
+    "last_trigger": "periodic",
+    "last_duration": "5s"
+  },
+  {
+    "name": "s3_2025-04-01",
+    "in_progress": false,
+    "last_trigger": "never_triggered",
+    "last_duration": "0s"
+  }
+]
+```
+
+Each entry reports (durations are Go duration strings, e.g. `"1m30s"`):
+
+- `name`: identifies the index (the schema period's store name).
+- `in_progress`: whether a sync (manual or periodic) is currently running for this index.
+- `last_trigger`: what triggered the current or most recent sync — `manual` or `periodic`, or `never_triggered` if no sync has run yet.
+- `current_duration`: how long the in-progress sync has been running (present only when `in_progress` is `true`).
+- `last_duration`: how long the previous completed sync took (`"0s"` if none has completed yet).
+
+If the configured index store does not support on-demand syncing, both `PUT` and `GET` return `503 Service Unavailable`.
+
+In microservices mode, the `/sync-indexes` endpoint is exposed by the index-gateway.
 
 ## Prepare ingester shutdown
 

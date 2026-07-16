@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -26,8 +27,8 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 	})
@@ -36,8 +37,8 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should reject existing stream")
@@ -47,8 +48,8 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Zero}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Zero}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should reject zero-value ULID")
 	})
@@ -66,8 +67,8 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 					nil: {stream},
 				},
 			}},
-			StreamEventHandler: nopStreamHandler,
-			TaskEventHandler:   nopTaskHandler,
+			StreamClosedHandler: nopStreamHandler,
+			TaskResultHandler:   nopTaskHandler,
 		}
 
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should not accept manifest with unrecognized source stream")
@@ -86,8 +87,8 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 					nil: {stream},
 				},
 			}},
-			StreamEventHandler: nopStreamHandler,
-			TaskEventHandler:   nopTaskHandler,
+			StreamClosedHandler: nopStreamHandler,
+			TaskResultHandler:   nopTaskHandler,
 		}
 
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should not accept manifest with unrecognized sink stream")
@@ -146,6 +147,36 @@ func TestScheduler_RegisterManifest(t *testing.T) {
 
 		require.Error(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should reject task with bound source")
 	})
+
+	t.Run("Counts resources only after successful manifest validation", func(t *testing.T) {
+		sched := newTestScheduler(t)
+
+		valid := &workflow.Manifest{
+			ID:                  ulid.Make(),
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			Tasks:               []*workflow.Task{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
+			TaskResultHandler:   nopTaskHandler,
+		}
+		require.NoError(t, sched.RegisterManifest(t.Context(), valid))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.tasksRegisteredTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.streamsRegisteredTotal))
+
+		duplicateID := ulid.Make()
+		invalid := &workflow.Manifest{
+			ID:                  ulid.Make(),
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
+			Tasks: []*workflow.Task{
+				{ULID: duplicateID},
+				{ULID: duplicateID},
+			},
+			TaskResultHandler: nopTaskHandler,
+		}
+		require.Error(t, sched.RegisterManifest(t.Context(), invalid))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.tasksRegisteredTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.streamsRegisteredTotal))
+	})
 }
 
 func TestScheduler_UnregisterManifest(t *testing.T) {
@@ -153,8 +184,8 @@ func TestScheduler_UnregisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.Error(t, sched.UnregisterManifest(t.Context(), manifest), "Scheduler should reject unrecognized stream")
 	})
@@ -163,8 +194,8 @@ func TestScheduler_UnregisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.UnregisterManifest(t.Context(), manifest), "Scheduler should unregister valid manifest")
@@ -174,8 +205,8 @@ func TestScheduler_UnregisterManifest(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.UnregisterManifest(t.Context(), manifest), "Scheduler should unregister valid manifest")
@@ -183,20 +214,20 @@ func TestScheduler_UnregisterManifest(t *testing.T) {
 	})
 
 	t.Run("Streams move to closed state before removal", func(t *testing.T) {
-		var streamState workflow.StreamState
-		handler := func(_ context.Context, _ *workflow.Stream, newState workflow.StreamState) {
-			streamState = newState
+		var streamClosed bool
+		handler := func(_ context.Context, _ *workflow.Stream) {
+			streamClosed = true
 		}
 
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: handler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: handler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.UnregisterManifest(t.Context(), manifest), "Scheduler should allow removing manifest")
-		require.Equal(t, workflow.StreamStateClosed, streamState)
+		require.True(t, streamClosed)
 	})
 }
 
@@ -205,8 +236,8 @@ func TestScheduler_Listen(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		manifest := &workflow.Manifest{
-			Streams:            []*workflow.Stream{{ULID: ulid.Make()}},
-			StreamEventHandler: nopStreamHandler,
+			Streams:             []*workflow.Stream{{ULID: ulid.Make()}},
+			StreamClosedHandler: nopStreamHandler,
 		}
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 
@@ -230,8 +261,8 @@ func TestScheduler_Listen(t *testing.T) {
 					},
 				}},
 
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -247,8 +278,8 @@ func TestScheduler_Listen(t *testing.T) {
 		var (
 			stream   = &workflow.Stream{ULID: ulid.Make()}
 			manifest = &workflow.Manifest{
-				Streams:            []*workflow.Stream{stream},
-				StreamEventHandler: nopStreamHandler,
+				Streams:             []*workflow.Stream{stream},
+				StreamClosedHandler: nopStreamHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -268,13 +299,13 @@ func TestScheduler_Listen(t *testing.T) {
 		var (
 			stream   = &workflow.Stream{ULID: ulid.Make()}
 			manifest = &workflow.Manifest{
-				Streams:            []*workflow.Stream{stream},
-				StreamEventHandler: nopStreamHandler,
+				Streams:             []*workflow.Stream{stream},
+				StreamClosedHandler: nopStreamHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 
-		var writer mockRecordWriter
+		writer := mockRecordWriter{wrote: make(chan struct{}, 1)}
 		err := sched.Listen(t.Context(), &writer, stream)
 		require.NoError(t, err, "Listen should succeed on stream with no listener or receiver")
 
@@ -304,18 +335,19 @@ func TestScheduler_Listen(t *testing.T) {
 			require.NoError(t, err, "Scheduler should accept message")
 		})
 
-		// Wait for data to be written to the capture writer
-		require.Eventually(t, func() bool {
-			return writer.writes.Load() == 1
-		}, time.Second, 10*time.Millisecond, "Data should be forwarded to listener")
-
+		select {
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for data to reach listener")
+		case <-writer.wrote:
+		}
+		require.Equal(t, int64(1), writer.writes.Load())
 		wg.Wait()
 	})
 
 	t.Run("Stream is automatically closed with terminated sender", func(t *testing.T) {
-		var streamState workflow.StreamState
-		handler := func(_ context.Context, _ *workflow.Stream, newState workflow.StreamState) {
-			streamState = newState
+		var streamClosed bool
+		handler := func(_ context.Context, _ *workflow.Stream) {
+			streamClosed = true
 		}
 
 		sched := newTestScheduler(t)
@@ -330,23 +362,23 @@ func TestScheduler_Listen(t *testing.T) {
 						nil: {stream},
 					},
 				}},
-				StreamEventHandler: handler,
-				TaskEventHandler:   nopTaskHandler,
+				StreamClosedHandler: handler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 
 		// Cancel the tasks; this should cause the stream the close.
 		require.NoError(t, sched.Cancel(t.Context(), manifest.Tasks...), "Scheduler should allow cancelling tasks")
-		require.Equal(t, workflow.StreamStateClosed, streamState)
+		require.True(t, streamClosed)
 	})
 }
 
 func TestScheduler_Start(t *testing.T) {
-	t.Run("New tasks are moved to pending state", func(t *testing.T) {
-		var taskStatus workflow.TaskStatus
-		handler := func(_ context.Context, _ *workflow.Task, newStatus workflow.TaskStatus) {
-			taskStatus = newStatus
+	t.Run("Starts new tasks without emitting a task result", func(t *testing.T) {
+		var results atomic.Int64
+		handler := func(_ context.Context, _ *workflow.Task, _ workflow.TaskResult) {
+			results.Inc()
 		}
 
 		sched := newTestScheduler(t)
@@ -354,15 +386,16 @@ func TestScheduler_Start(t *testing.T) {
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make(), Fragment: nil}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   handler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   handler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 
-		require.Equal(t, workflow.TaskStatePending, taskStatus.State, "Started tasks should move to pending state")
+		require.True(t, sched.tasks[exampleTask.ULID].Queued())
+		require.Zero(t, results.Load(), "Start should not emit a terminal task result")
 	})
 
 	t.Run("Ignores already started tasks", func(t *testing.T) {
@@ -371,14 +404,15 @@ func TestScheduler_Start(t *testing.T) {
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make(), Fragment: nil}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should ignore already started tasks")
+		require.Equal(t, 1, sched.taskQueue.Len())
 	})
 }
 
@@ -391,9 +425,9 @@ func TestScheduler_Cancel(t *testing.T) {
 	})
 
 	t.Run("Handler is notified of canceled tasks", func(t *testing.T) {
-		var taskStatus workflow.TaskStatus
-		handler := func(_ context.Context, _ *workflow.Task, newStatus workflow.TaskStatus) {
-			taskStatus = newStatus
+		var taskResult workflow.TaskResult
+		handler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
+			taskResult = result
 		}
 
 		sched := newTestScheduler(t)
@@ -401,16 +435,16 @@ func TestScheduler_Cancel(t *testing.T) {
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make(), Fragment: nil}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   handler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   handler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
 		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 
 		require.NoError(t, sched.Cancel(t.Context(), exampleTask), "Scheduler should permit canceling tasks")
-		require.Equal(t, workflow.TaskStateCancelled, taskStatus.State, "Canceled tasks should be in the canceled state")
+		require.Equal(t, workflow.TaskOutcomeCancelled, taskResult.Outcome, "cancelled tasks should produce a cancelled result")
 	})
 }
 
@@ -445,36 +479,6 @@ func TestScheduler_worker(t *testing.T) {
 		require.Error(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should not accept ready message without hello")
 	})
 
-	t.Run("Worker must send WorkerHello with at least one thread", func(t *testing.T) {
-		sched := newTestScheduler(t)
-
-		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-		defer cancel()
-
-		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
-		require.NoError(t, err)
-		defer conn.Close()
-
-		messages := make(chan wire.Message, 10)
-
-		peer := wire.Peer{
-			Logger:  log.NewNopLogger(),
-			Metrics: wire.NewMetrics(),
-			Conn:    conn,
-			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
-				select {
-				case <-ctx.Done():
-				case messages <- message:
-				}
-				return nil
-			},
-		}
-		go func() { _ = peer.Serve(ctx) }()
-
-		// Send a ready message so we get a task as soon as we create one.
-		require.Error(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 0}), "Scheduler should reject WorkerHello with <= 0 threads")
-	})
-
 	t.Run("Tasks are assigned to ready worker", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
@@ -502,15 +506,15 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get a task as soon as we create one.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make()}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -525,8 +529,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					assignedTask = msg.Task
 					break WaitAssign
@@ -540,9 +542,9 @@ func TestScheduler_worker(t *testing.T) {
 
 		// Validate that the scheduler is not tracking thread counts with
 		// WorkerReady.
-		terminalStatus := workflow.TaskStatus{State: workflow.TaskStateFailed}
+		result := workflow.TaskResult{Outcome: workflow.TaskOutcomeFailed}
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should not reject ReadyMessage beyond total count")
-		require.NoError(t, peer.SendMessage(ctx, wire.TaskStatusMessage{ID: assignedTask.ULID, Status: terminalStatus}), "Scheduler should accept TaskStatusMessage")
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{ID: assignedTask.ULID, Result: result}), "Scheduler should accept TaskResultMessage")
 	})
 
 	t.Run("Owner is notified of canceled tasks", func(t *testing.T) {
@@ -572,15 +574,15 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get a task as soon as we create one.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make()}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -594,8 +596,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving expected message")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -621,85 +621,89 @@ func TestScheduler_worker(t *testing.T) {
 		}
 	})
 
-	t.Run("Owned tasks are canceled upon connection loss", func(t *testing.T) {
-		var taskStatus atomic.Pointer[workflow.TaskStatus]
-		handler := func(_ context.Context, _ *workflow.Task, newStatus workflow.TaskStatus) {
-			taskStatus.Store(&newStatus)
-		}
+	t.Run("Owned tasks and their sinks terminate upon connection loss", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			taskResults := make(chan workflow.TaskResult, 1)
+			streamClosed := make(chan struct{}, 1)
+			taskHandler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
+				taskResults <- result
+			}
+			streamHandler := func(_ context.Context, _ *workflow.Stream) {
+				streamClosed <- struct{}{}
+			}
 
-		sched := newTestScheduler(t)
+			sched := newTestScheduler(t)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+			defer cancel()
 
-		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
-		defer cancel()
+			conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+			require.NoError(t, err)
 
-		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
-		require.NoError(t, err)
+			messages := make(chan wire.Message, 10)
+			peer := wire.Peer{
+				Logger:  log.NewNopLogger(),
+				Metrics: wire.NewMetrics(),
+				Conn:    conn,
+				Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+					select {
+					case <-ctx.Done():
+					case messages <- message:
+					}
+					return nil
+				},
+			}
+			go func() { _ = peer.Serve(ctx) }()
 
-		messages := make(chan wire.Message, 10)
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}))
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
 
-		peer := wire.Peer{
-			Logger:  log.NewNopLogger(),
-			Metrics: wire.NewMetrics(),
-			Conn:    conn,
-			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+			stream := &workflow.Stream{ULID: ulid.Make()}
+			exampleTask := &workflow.Task{
+				ULID:  ulid.Make(),
+				Sinks: map[physical.Node][]*workflow.Stream{nil: {stream}},
+			}
+			manifest := &workflow.Manifest{
+				Streams:             []*workflow.Stream{stream},
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: streamHandler,
+				TaskResultHandler:   taskHandler,
+			}
+			require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+			require.NoError(t, sched.Start(t.Context(), exampleTask))
+
+		WaitAssign:
+			for {
 				select {
 				case <-ctx.Done():
-				case messages <- message:
+					t.Fatal("timed out waiting for assignment")
+				case msg := <-messages:
+					switch msg.(type) {
+					case wire.TaskAssignMessage:
+						break WaitAssign
+					default:
+						t.Fatalf("unexpected message type %T", msg)
+					}
 				}
-				return nil
-			},
-		}
-		go func() { _ = peer.Serve(ctx) }()
-
-		// Send a ready message so we get a task as soon as we create one.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
-
-		var (
-			exampleTask = &workflow.Task{ULID: ulid.Make()}
-			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   handler,
 			}
-		)
-		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
-		require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
 
-		// Wait for assignment.
-	WaitAssign:
-		for {
+			synctest.Wait()
+			guard := sched.resourcesMut.RLock("test_wait_assignment_owner")
+			require.NotNil(t, sched.tasks[exampleTask.ULID].owner)
+			guard.RUnlock()
+
+			require.NoError(t, conn.Close())
 			select {
 			case <-ctx.Done():
-				require.Fail(t, "time out before receiving expected message")
-			case msg := <-messages:
-				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
-				case wire.TaskAssignMessage:
-					break WaitAssign
-				default:
-					require.Fail(t, "Unexpected message type", "Unexpected message type %T", msg)
-				}
+				t.Fatal("timed out waiting for disconnected task result")
+			case result := <-taskResults:
+				require.True(t, result.Outcome.Valid())
 			}
-		}
-
-		// We can't close the connection immediately, because the scheduler may
-		// be waiting for an ACK. To hack around this, we'll send a status
-		// update, which will guarantee that the scheduler has received the ACK
-		// since it can't process this message until it finished task assignment.
-		require.NoError(t, peer.SendMessage(ctx, wire.TaskStatusMessage{
-			ID:     exampleTask.ULID,
-			Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
-		}), "Sending status message should succeed")
-
-		// Close the connection, then wait for the task to be canceled.
-		require.NoError(t, conn.Close(), "Closing connection should succeed")
-
-		maxWait, _ := ctx.Deadline()
-		require.Eventually(t, func() bool {
-			return taskStatus.Load().State.Terminal()
-		}, time.Until(maxWait), 25*time.Millisecond, "Owned task should have been canceled")
+			select {
+			case <-ctx.Done():
+				t.Fatal("timed out waiting for disconnected task sink closure")
+			case <-streamClosed:
+			}
+		})
 	})
 
 	t.Run("Sender receives bind once listener is available", func(t *testing.T) {
@@ -724,10 +728,10 @@ func TestScheduler_worker(t *testing.T) {
 				}
 
 				manifest = &workflow.Manifest{
-					Streams:            []*workflow.Stream{&stream},
-					Tasks:              []*workflow.Task{&task},
-					StreamEventHandler: nopStreamHandler,
-					TaskEventHandler:   nopTaskHandler,
+					Streams:             []*workflow.Stream{&stream},
+					Tasks:               []*workflow.Task{&task},
+					StreamClosedHandler: nopStreamHandler,
+					TaskResultHandler:   nopTaskHandler,
 				}
 			)
 			require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -754,7 +758,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send a ready message so we get the task.
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			for {
@@ -767,8 +771,6 @@ func TestScheduler_worker(t *testing.T) {
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalScheduler, msg.Receiver, "Should have seen expected receiver")
 						return
-					case wire.WorkerSubscribeMessage:
-						// Ignore; we already sent WorkerReady
 					case wire.TaskAssignMessage:
 					default:
 						require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
@@ -798,10 +800,10 @@ func TestScheduler_worker(t *testing.T) {
 				}
 
 				manifest = &workflow.Manifest{
-					Streams:            []*workflow.Stream{&stream},
-					Tasks:              []*workflow.Task{&task},
-					StreamEventHandler: nopStreamHandler,
-					TaskEventHandler:   nopTaskHandler,
+					Streams:             []*workflow.Stream{&stream},
+					Tasks:               []*workflow.Task{&task},
+					StreamClosedHandler: nopStreamHandler,
+					TaskResultHandler:   nopTaskHandler,
 				}
 			)
 			require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -824,7 +826,7 @@ func TestScheduler_worker(t *testing.T) {
 			go func() { _ = peer.Serve(ctx) }()
 
 			// Send a ready message so we get the task.
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Wait for assignment.
@@ -835,8 +837,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.TaskAssignMessage:
 						break WaitAssign
 					default:
@@ -890,10 +890,10 @@ func TestScheduler_worker(t *testing.T) {
 				}
 
 				manifest = &workflow.Manifest{
-					Streams:            []*workflow.Stream{&stream},
-					Tasks:              []*workflow.Task{&receiver, &sender},
-					StreamEventHandler: nopStreamHandler,
-					TaskEventHandler:   nopTaskHandler,
+					Streams:             []*workflow.Stream{&stream},
+					Tasks:               []*workflow.Task{&receiver, &sender},
+					StreamClosedHandler: nopStreamHandler,
+					TaskResultHandler:   nopTaskHandler,
 				}
 			)
 			require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -914,7 +914,7 @@ func TestScheduler_worker(t *testing.T) {
 			}
 			go func() { _ = peer.Serve(ctx) }()
 
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Scheduler the receiver first; we'll schedule the sender once the task has been assigned.
@@ -926,8 +926,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -966,10 +964,10 @@ func TestScheduler_worker(t *testing.T) {
 				}
 
 				manifest = &workflow.Manifest{
-					Streams:            []*workflow.Stream{&stream},
-					Tasks:              []*workflow.Task{&receiver, &sender},
-					StreamEventHandler: nopStreamHandler,
-					TaskEventHandler:   nopTaskHandler,
+					Streams:             []*workflow.Stream{&stream},
+					Tasks:               []*workflow.Task{&receiver, &sender},
+					StreamClosedHandler: nopStreamHandler,
+					TaskResultHandler:   nopTaskHandler,
 				}
 			)
 			require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -990,7 +988,7 @@ func TestScheduler_worker(t *testing.T) {
 			}
 			go func() { _ = peer.Serve(ctx) }()
 
-			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
+			require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 			require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 			// Schedule the sender first; we'll schedule the receiver once the task has been assigned.
@@ -1002,8 +1000,6 @@ func TestScheduler_worker(t *testing.T) {
 					require.Fail(t, "time out before receiving task")
 				case msg := <-messages:
 					switch msg := msg.(type) {
-					case wire.WorkerSubscribeMessage:
-						continue // Ignore; we already sent WorkerReady
 					case wire.StreamBindMessage:
 						require.Equal(t, stream.ULID, msg.StreamID, "Should have seen expected stream")
 						require.Equal(t, wire.LocalWorker, msg.Receiver, "Should have seen expected receiver")
@@ -1020,10 +1016,10 @@ func TestScheduler_worker(t *testing.T) {
 		})
 	})
 
-	t.Run("Task state change propagates to handler", func(t *testing.T) {
-		var taskStatus atomic.Pointer[workflow.TaskStatus]
-		handler := func(_ context.Context, _ *workflow.Task, newStatus workflow.TaskStatus) {
-			taskStatus.Store(&newStatus)
+	t.Run("Task result propagates to handler", func(t *testing.T) {
+		var taskResult atomic.Pointer[workflow.TaskResult]
+		handler := func(_ context.Context, _ *workflow.Task, result workflow.TaskResult) {
+			taskResult.Store(&result)
 		}
 
 		sched := newTestScheduler(t)
@@ -1038,9 +1034,9 @@ func TestScheduler_worker(t *testing.T) {
 		var (
 			exampleTask = &workflow.Task{ULID: ulid.Make()}
 			manifest    = &workflow.Manifest{
-				Tasks:              []*workflow.Task{exampleTask},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   handler,
+				Tasks:               []*workflow.Task{exampleTask},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   handler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -1063,7 +1059,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the task.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
@@ -1074,8 +1070,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1084,22 +1078,25 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, peer.SendMessage(ctx, wire.TaskStatusMessage{
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
 			ID:     exampleTask.ULID,
-			Status: workflow.TaskStatus{State: workflow.TaskStateRunning},
-		}), "Scheduler should accept status message")
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted},
+		}), "Scheduler should accept task result")
 
-		// Wait for the handler to receive the state change.
-		maxWait, _ := ctx.Deadline()
-		require.Eventually(t, func() bool {
-			return taskStatus.Load().State == workflow.TaskStateRunning
-		}, time.Until(maxWait), 25*time.Millisecond, "Handler should be notified of state change")
+		require.Equal(t, workflow.TaskOutcomeCompleted, taskResult.Load().Outcome, "handler should be notified before the result is acknowledged")
+
+		// The first result is authoritative; a conflicting duplicate is ignored.
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
+			ID:     exampleTask.ULID,
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeFailed, Error: context.Canceled},
+		}))
+		require.Equal(t, workflow.TaskOutcomeCompleted, taskResult.Load().Outcome)
 	})
 
-	t.Run("Stream state change propagates to handler", func(t *testing.T) {
-		var streamState atomic.Pointer[workflow.StreamState]
-		handler := func(_ context.Context, _ *workflow.Stream, newState workflow.StreamState) {
-			streamState.Store(&newState)
+	t.Run("Stream closure propagates to handler", func(t *testing.T) {
+		var closeNotifications atomic.Int64
+		handler := func(_ context.Context, _ *workflow.Stream) {
+			closeNotifications.Inc()
 		}
 
 		sched := newTestScheduler(t)
@@ -1122,10 +1119,10 @@ func TestScheduler_worker(t *testing.T) {
 			}
 
 			manifest = &workflow.Manifest{
-				Streams:            []*workflow.Stream{&stream},
-				Tasks:              []*workflow.Task{&task},
-				StreamEventHandler: handler,
-				TaskEventHandler:   nopTaskHandler,
+				Streams:             []*workflow.Stream{&stream},
+				Tasks:               []*workflow.Task{&task},
+				StreamClosedHandler: handler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -1148,7 +1145,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the task.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment.
@@ -1159,8 +1156,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1169,19 +1164,28 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, peer.SendMessage(ctx, wire.StreamStatusMessage{
-			StreamID: stream.ULID,
-			State:    workflow.StreamStateBlocked,
-		}), "Scheduler should accept status message")
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
+			ID:     task.ULID,
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted},
+		}), "Scheduler should accept producer result")
+		require.Equal(t, int64(1), closeNotifications.Load(), "producer result should close its sink")
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.streamClosuresTotal))
 
-		// Wait for the handler to receive the state change.
-		maxWait, _ := ctx.Deadline()
-		require.Eventually(t, func() bool {
-			return *streamState.Load() == workflow.StreamStateBlocked
-		}, time.Until(maxWait), 25*time.Millisecond, "Handler should be notified of state change")
+		// A conflicting duplicate result must not close or notify twice.
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
+			ID:     task.ULID,
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeFailed, Error: context.Canceled},
+		}))
+		require.Equal(t, int64(1), closeNotifications.Load())
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.streamClosuresTotal))
+
+		// A later cancellation follows another close path but remains idempotent.
+		require.NoError(t, sched.Cancel(t.Context(), &task))
+		require.Equal(t, int64(1), closeNotifications.Load())
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.streamClosuresTotal))
 	})
 
-	t.Run("Stream state change propagates to receiver", func(t *testing.T) {
+	t.Run("Stream closure propagates to receiver", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -1204,10 +1208,10 @@ func TestScheduler_worker(t *testing.T) {
 			}
 
 			manifest = &workflow.Manifest{
-				Streams:            []*workflow.Stream{&stream},
-				Tasks:              []*workflow.Task{&receiver, &sender},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				Streams:             []*workflow.Stream{&stream},
+				Tasks:               []*workflow.Task{&receiver, &sender},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -1230,7 +1234,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the tasks.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for assignment of both tasks.
@@ -1241,7 +1245,6 @@ func TestScheduler_worker(t *testing.T) {
 			case msg := <-messages:
 				switch msg := msg.(type) {
 				case wire.StreamBindMessage: // Ignore bindings
-				case wire.WorkerSubscribeMessage: // Ignore subscriptions
 				case wire.TaskAssignMessage:
 					assigned++
 				default:
@@ -1250,12 +1253,12 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, peer.SendMessage(ctx, wire.StreamStatusMessage{
-			StreamID: stream.ULID,
-			State:    workflow.StreamStateBlocked,
-		}), "Scheduler should accept status message")
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
+			ID:     sender.ULID,
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted},
+		}), "Scheduler should accept producer result")
 
-		// Wait for get the status change.
+		// Wait for the close event.
 		for {
 			select {
 			case <-ctx.Done():
@@ -1263,9 +1266,8 @@ func TestScheduler_worker(t *testing.T) {
 			case msg := <-messages:
 				switch msg := msg.(type) {
 				case wire.StreamBindMessage: // Ignore bindings
-				case wire.StreamStatusMessage:
-					require.Equal(t, stream.ULID, msg.StreamID, "Unexpected stream ID")
-					require.Equal(t, workflow.StreamStateBlocked, msg.State, "Unexpected stream state")
+				case wire.StreamClosedMessage:
+					require.Equal(t, stream.ULID, msg.StreamID, "unexpected stream ID")
 					return
 				default:
 					require.Fail(t, "Unexpected message", "Unexpected message type %T", msg)
@@ -1274,7 +1276,7 @@ func TestScheduler_worker(t *testing.T) {
 		}
 	})
 
-	t.Run("Receiver is provided most recent stream state", func(t *testing.T) {
+	t.Run("Receiver is assigned with already-closed sources", func(t *testing.T) {
 		sched := newTestScheduler(t)
 
 		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -1297,10 +1299,10 @@ func TestScheduler_worker(t *testing.T) {
 			}
 
 			manifest = &workflow.Manifest{
-				Streams:            []*workflow.Stream{&stream},
-				Tasks:              []*workflow.Task{&receiver, &sender},
-				StreamEventHandler: nopStreamHandler,
-				TaskEventHandler:   nopTaskHandler,
+				Streams:             []*workflow.Stream{&stream},
+				Tasks:               []*workflow.Task{&receiver, &sender},
+				StreamClosedHandler: nopStreamHandler,
+				TaskResultHandler:   nopTaskHandler,
 			}
 		)
 		require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
@@ -1323,7 +1325,7 @@ func TestScheduler_worker(t *testing.T) {
 		go func() { _ = peer.Serve(ctx) }()
 
 		// Send a ready message so we get the tasks.
-		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 2}), "Scheduler should accept hello message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}), "Scheduler should accept hello message")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
 		// Wait for task assignment.
@@ -1334,8 +1336,6 @@ func TestScheduler_worker(t *testing.T) {
 				require.Fail(t, "time out before receiving task")
 			case msg := <-messages:
 				switch msg := msg.(type) {
-				case wire.WorkerSubscribeMessage:
-					continue // Ignore; we already sent WorkerReady
 				case wire.TaskAssignMessage:
 					break WaitAssign
 				default:
@@ -1344,13 +1344,13 @@ func TestScheduler_worker(t *testing.T) {
 			}
 		}
 
-		require.NoError(t, peer.SendMessage(ctx, wire.StreamStatusMessage{
-			StreamID: stream.ULID,
-			State:    workflow.StreamStateOpen,
-		}), "Scheduler should accept state change")
+		require.NoError(t, peer.SendMessage(ctx, wire.TaskResultMessage{
+			ID:     sender.ULID,
+			Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted},
+		}), "Scheduler should accept producer result")
 
-		// Start the receiver. It should be assigned with a message indicating
-		// the existing state of the stream it uses.
+		// Start the receiver. Its acknowledged assignment must identify the
+		// source that was already closed.
 		require.NoError(t, sched.Start(t.Context(), &receiver), "Scheduler should start registered task")
 		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
 
@@ -1362,11 +1362,9 @@ func TestScheduler_worker(t *testing.T) {
 			case msg := <-messages:
 				switch msg := msg.(type) {
 				case wire.StreamBindMessage: // Ignore bindings
+				case wire.TaskCancelMessage: // Sender result may beat assignment finalization.
 				case wire.TaskAssignMessage:
-					require.NotNil(t, msg.StreamStates, "Stream states should exist")
-					value, ok := msg.StreamStates[stream.ULID]
-					require.True(t, ok, "Stream state should exist for source")
-					require.Equal(t, workflow.StreamStateOpen, value, "Current stream state should be sent with assignment")
+					require.Contains(t, msg.ClosedSourceIDs, stream.ULID, "already-closed source should be sent with assignment")
 					return
 
 				default:
@@ -1377,10 +1375,58 @@ func TestScheduler_worker(t *testing.T) {
 	})
 }
 
-// TestScheduler_workerParkOnBackoff verifies that a 429 from a worker parks the
-// worker's assignment loop, and that a subsequent ready message resumes assignment of
-// the requeued task.
-func TestScheduler_workerParkOnBackoff(t *testing.T) {
+func TestScheduler_RejectsWorkerStreamClosedMessages(t *testing.T) {
+	sched := newTestScheduler(t)
+	worker := &workerConn{ty: connectionTypeControlPlane}
+
+	err := sched.handleMessage(t.Context(), worker, wire.StreamClosedMessage{StreamID: ulid.Make()})
+	require.ErrorContains(t, err, "unsupported message kind")
+}
+
+func TestScheduler_DisconnectAfterAssignmentAckBeforeFinalize(t *testing.T) {
+	var (
+		result       workflow.TaskResult
+		streamClosed bool
+	)
+	taskHandler := func(_ context.Context, _ *workflow.Task, taskResult workflow.TaskResult) {
+		result = taskResult
+	}
+	streamHandler := func(_ context.Context, _ *workflow.Stream) {
+		streamClosed = true
+	}
+
+	sched := newTestScheduler(t)
+	stream := &workflow.Stream{ULID: ulid.Make()}
+	workflowTask := &workflow.Task{
+		ULID:  ulid.Make(),
+		Sinks: map[physical.Node][]*workflow.Stream{nil: {stream}},
+	}
+	manifest := &workflow.Manifest{
+		Streams:             []*workflow.Stream{stream},
+		Tasks:               []*workflow.Task{workflowTask},
+		StreamClosedHandler: streamHandler,
+		TaskResultHandler:   taskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+	require.NoError(t, sched.Start(t.Context(), workflowTask))
+
+	tracked, err := sched.findTasks([]*workflow.Task{workflowTask})
+	require.NoError(t, err)
+	require.NoError(t, tracked[0].TryAssign(func() error { return nil }), "worker should accept assignment")
+
+	// The connection closes after the assignment ACK records assignTime, but
+	// before finalizeAssignment can install ownership.
+	var worker workerConn
+	worker.MarkClosed(context.Canceled)
+	sched.finalizeAssignment(t.Context(), tracked[0], &worker, nil)
+
+	require.Equal(t, workflow.TaskOutcomeFailed, result.Outcome)
+	require.ErrorIs(t, result.Error, context.Canceled)
+	require.True(t, streamClosed, "task sinks should close when finalization observes a disconnected worker")
+	require.Nil(t, tracked[0].owner, "disconnected worker must not gain task ownership")
+}
+
+func TestScheduler_StreamClosesWhileAssignmentIsInFlight(t *testing.T) {
 	sched := newTestScheduler(t)
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -1390,18 +1436,187 @@ func TestScheduler_workerParkOnBackoff(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// reject controls whether the worker NACKs assignments with a 429.
-	var reject atomic.Bool
-	reject.Store(true)
-
-	assigns := make(chan *workflow.Task, 10)
-
+	var (
+		assignmentReceived = make(chan struct{})
+		allowAssignmentAck = make(chan struct{})
+		closeForwarded     = make(chan ulid.ULID, 1)
+	)
 	peer := wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Metrics: wire.NewMetrics(),
 		Conn:    conn,
 		Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
-			if msg, ok := message.(wire.TaskAssignMessage); ok {
+			switch msg := message.(type) {
+			case wire.TaskAssignMessage:
+				close(assignmentReceived)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-allowAssignmentAck:
+					return nil
+				}
+			case wire.StreamClosedMessage:
+				closeForwarded <- msg.StreamID
+			}
+			return nil
+		},
+	}
+	go func() { _ = peer.Serve(ctx) }()
+
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}))
+	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
+
+	stream := &workflow.Stream{ULID: ulid.Make()}
+	receiver := &workflow.Task{
+		ULID:    ulid.Make(),
+		Sources: map[physical.Node][]*workflow.Stream{nil: {stream}},
+	}
+	producer := &workflow.Task{
+		ULID:  ulid.Make(),
+		Sinks: map[physical.Node][]*workflow.Stream{nil: {stream}},
+	}
+	manifest := &workflow.Manifest{
+		Streams:             []*workflow.Stream{stream},
+		Tasks:               []*workflow.Task{receiver, producer},
+		StreamClosedHandler: nopStreamHandler,
+		TaskResultHandler:   nopTaskHandler,
+	}
+	require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+	require.NoError(t, sched.Start(t.Context(), receiver))
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for assignment")
+	case <-assignmentReceived:
+	}
+
+	// The assignment snapshot did not include this closure, and the receiver
+	// owner is not installed until the assignment ACK arrives. Cancelling the
+	// producer closes its sink while the receiver assignment is in flight.
+	require.NoError(t, sched.Start(t.Context(), producer))
+	require.NoError(t, sched.Cancel(t.Context(), producer))
+	close(allowAssignmentAck)
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for reconciled stream closure")
+	case got := <-closeForwarded:
+		require.Equal(t, stream.ULID, got)
+	}
+}
+
+func TestScheduler_assignmentMetricsUseBoundedLabels(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sched := newTestScheduler(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		messages := make(chan wire.Message, 10)
+		peer := wire.Peer{
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
+			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case messages <- message:
+					return nil
+				}
+			},
+		}
+		go func() { _ = peer.Serve(ctx) }()
+
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}))
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
+
+		exampleTask := &workflow.Task{ULID: ulid.Make()}
+		manifest := &workflow.Manifest{
+			Tasks:               []*workflow.Task{exampleTask},
+			StreamClosedHandler: nopStreamHandler,
+			TaskResultHandler:   nopTaskHandler,
+		}
+		require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+		require.NoError(t, sched.Start(t.Context(), exampleTask))
+
+	WaitAssign:
+		for {
+			select {
+			case <-ctx.Done():
+				t.Fatal("timed out before assignment")
+			case msg := <-messages:
+				switch msg := msg.(type) {
+				case wire.TaskAssignMessage:
+					require.Equal(t, exampleTask.ULID, msg.Task.ULID)
+					break WaitAssign
+				default:
+					t.Fatalf("unexpected message type %T", msg)
+				}
+			}
+		}
+
+		synctest.Wait()
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal.WithLabelValues(outcomeSuccess.String())))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.tasksAssignedTotal))
+
+		requireMetricLabelsBounded(t, sched.metrics.reg, "loki_engine_scheduler_handler_phase_seconds", map[string]map[string]struct{}{
+			"message_type": stringSet(wire.WorkerHelloMessage{}.Kind().String(), wire.WorkerReadyMessage{}.Kind().String()),
+			"phase":        stringSet(phaseTotal),
+			"outcome":      stringSet(outcomeAck),
+		})
+		requireMetricLabelsBounded(t, sched.metrics.reg, "loki_engine_scheduler_assignment_hop_seconds", map[string]map[string]struct{}{
+			"phase": stringSet(
+				"worker_ready_handler", "prepare_assignment", "tasks_ch_handoff_wait",
+				"wait_assignment", "taskassign_roundtrip", "error_requeue",
+				"finalize_assignment", "park_worker_wait",
+			),
+			"outcome": stringSet(
+				outcomeAck, outcomeNack, outcomeSuccess, outcomeEmpty, outcomeAssigned,
+				outcomeCanceled, outcomeConnClosed, outcomeReady, outcomeUnassignable,
+				outcomeNack429, outcomeTimeout, outcomeSendError,
+			),
+		})
+
+		require.GreaterOrEqual(t, histogramSampleCount(t, sched.metrics.reg, "loki_engine_scheduler_handler_phase_seconds", map[string]string{
+			"message_type": wire.WorkerReadyMessage{}.Kind().String(),
+			"phase":        phaseTotal.String(),
+			"outcome":      outcomeAck.String(),
+		}), uint64(1))
+	})
+}
+
+// TestScheduler_workerParkOnBackoff verifies that a 429 from a worker parks the
+// worker's assignment loop, and that a subsequent ready message resumes the
+// requeued task.
+func TestScheduler_workerParkOnBackoff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sched := newTestScheduler(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		conn, err := sched.DialFrom(ctx, wire.LocalWorker)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		var reject atomic.Bool
+		reject.Store(true)
+		assigns := make(chan *workflow.Task, 10)
+
+		peer := wire.Peer{
+			Logger:  log.NewNopLogger(),
+			Metrics: wire.NewMetrics(),
+			Conn:    conn,
+			Handler: func(ctx context.Context, _ *wire.Peer, message wire.Message) error {
+				msg, ok := message.(wire.TaskAssignMessage)
+				if !ok {
+					return nil
+				}
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -1410,54 +1625,48 @@ func TestScheduler_workerParkOnBackoff(t *testing.T) {
 				if reject.Load() {
 					return wire.Errorf(http.StatusTooManyRequests, "no threads available")
 				}
-			}
-			return nil
-		},
-	}
-	go func() { _ = peer.Serve(ctx) }()
-
-	require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{Threads: 1}), "Scheduler should accept hello message")
-	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
-
-	exampleTask := &workflow.Task{ULID: ulid.Make()}
-	manifest := &workflow.Manifest{
-		Tasks:              []*workflow.Task{exampleTask},
-		StreamEventHandler: nopStreamHandler,
-		TaskEventHandler:   nopTaskHandler,
-	}
-	require.NoError(t, sched.RegisterManifest(t.Context(), manifest), "Scheduler should accept valid manifest")
-	require.NoError(t, sched.Start(t.Context(), exampleTask), "Scheduler should start registered task")
-
-	// First attempt: the worker NACKs with a 429.
-	select {
-	case <-ctx.Done():
-		require.Fail(t, "timed out before first assignment attempt")
-	case got := <-assigns:
-		require.Equal(t, exampleTask.ULID, got.ULID)
-	}
-
-	// After the 429 the scheduler should record a backoff but keep the worker
-	// in the ready set: the loop parks rather than being torn down.
-	require.Eventually(t, func() bool {
-		if testutil.ToFloat64(sched.metrics.backoffsTotal) < 1 {
-			return false
+				return nil
+			},
 		}
-		sched.assignMut.RLock()
-		defer sched.assignMut.RUnlock()
-		return len(sched.connectedWorkers) == 1
-	}, 5*time.Second, 10*time.Millisecond, "worker should remain ready (loop parks, not torn down) after a 429")
+		go func() { _ = peer.Serve(ctx) }()
 
-	// Now accept assignments and signal a freed thread. The parked loop should
-	// resume and re-assign the requeued task.
-	reject.Store(false)
-	require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}), "Scheduler should accept ready message")
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerHelloMessage{}))
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
 
-	select {
-	case <-ctx.Done():
-		require.Fail(t, "timed out before requeued task was reassigned")
-	case got := <-assigns:
-		require.Equal(t, exampleTask.ULID, got.ULID, "requeued task should be reassigned once the worker readies again")
-	}
+		exampleTask := &workflow.Task{ULID: ulid.Make()}
+		manifest := &workflow.Manifest{
+			Tasks:               []*workflow.Task{exampleTask},
+			StreamClosedHandler: nopStreamHandler,
+			TaskResultHandler:   nopTaskHandler,
+		}
+		require.NoError(t, sched.RegisterManifest(t.Context(), manifest))
+		require.NoError(t, sched.Start(t.Context(), exampleTask))
+
+		select {
+		case <-ctx.Done():
+			t.Fatal("timed out before first assignment attempt")
+		case got := <-assigns:
+			require.Equal(t, exampleTask.ULID, got.ULID)
+		}
+
+		synctest.Wait()
+		require.GreaterOrEqual(t, testutil.ToFloat64(sched.metrics.backoffsTotal), float64(1))
+		guard := sched.assignMut.RLock("collector_assign_stats")
+		require.Len(t, sched.connectedWorkers, 1)
+		guard.RUnlock()
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal))
+		require.Equal(t, float64(1), testutil.ToFloat64(sched.metrics.assignmentAttemptsTotal.WithLabelValues(outcomeNack429.String())))
+
+		reject.Store(false)
+		require.NoError(t, peer.SendMessage(ctx, wire.WorkerReadyMessage{}))
+
+		select {
+		case <-ctx.Done():
+			t.Fatal("timed out before requeued task was reassigned")
+		case got := <-assigns:
+			require.Equal(t, exampleTask.ULID, got.ULID)
+		}
+	})
 }
 
 func newTestScheduler(t *testing.T) *Scheduler {
@@ -1480,14 +1689,21 @@ func newTestScheduler(t *testing.T) *Scheduler {
 	return sched
 }
 
-func nopStreamHandler(_ context.Context, _ *workflow.Stream, _ workflow.StreamState) {}
-func nopTaskHandler(context.Context, *workflow.Task, workflow.TaskStatus)            {}
+func nopStreamHandler(context.Context, *workflow.Stream)                  {}
+func nopTaskHandler(context.Context, *workflow.Task, workflow.TaskResult) {}
 
 type mockRecordWriter struct {
 	writes atomic.Int64
+	wrote  chan struct{}
 }
 
 func (m *mockRecordWriter) Write(_ context.Context, _ arrow.RecordBatch) error {
 	m.writes.Inc()
+	if m.wrote != nil {
+		select {
+		case m.wrote <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }

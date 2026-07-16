@@ -28,14 +28,19 @@ const (
 	//
 	// Cloud Run jobs env vars:
 	// https://cloud.google.com/run/docs/container-contract#jobs-env-vars
-	cloudFunctionsTargetEnv  = "FUNCTION_TARGET"
-	cloudRunConfigurationEnv = "K_CONFIGURATION"
-	cloudRunJobsEnv          = "CLOUD_RUN_JOB"
-	faasServiceEnv           = "K_SERVICE"
-	faasRevisionEnv          = "K_REVISION"
-	cloudRunJobExecutionEnv  = "CLOUD_RUN_EXECUTION"
-	cloudRunJobTaskIndexEnv  = "CLOUD_RUN_TASK_INDEX"
-	regionMetadataAttr       = "instance/region"
+	//
+	// Cloud Run worker pool env vars:
+	// https://cloud.google.com/run/docs/container-contract#worker-pools-env-vars
+	cloudFunctionsTargetEnv    = "FUNCTION_TARGET"
+	cloudRunConfigurationEnv   = "K_CONFIGURATION"
+	cloudRunJobsEnv            = "CLOUD_RUN_JOB"
+	faasServiceEnv             = "K_SERVICE"
+	faasRevisionEnv            = "K_REVISION"
+	cloudRunJobExecutionEnv = "CLOUD_RUN_EXECUTION"
+	cloudRunJobTaskIndexEnv = "CLOUD_RUN_TASK_INDEX"
+	cloudRunWorkerPoolEnv   = "CLOUD_RUN_WORKER_POOL"
+	cloudRunRevisionEnv     = "CLOUD_RUN_REVISION"
+	regionMetadataAttr      = "instance/region"
 )
 
 func (d *Detector) onCloudFunctions() bool {
@@ -53,6 +58,11 @@ func (d *Detector) onCloudRunJob() bool {
 	return found
 }
 
+func (d *Detector) onCloudRunWorkerPool() bool {
+	_, found := d.os.LookupEnv(cloudRunWorkerPoolEnv)
+	return found
+}
+
 // FaaSName returns the name of the Cloud Run, Cloud Run jobs or Cloud Functions service.
 func (d *Detector) FaaSName() (string, error) {
 	if name, found := d.os.LookupEnv(faasServiceEnv); found {
@@ -61,11 +71,17 @@ func (d *Detector) FaaSName() (string, error) {
 	if name, found := d.os.LookupEnv(cloudRunJobsEnv); found {
 		return name, nil
 	}
+	if name, found := d.os.LookupEnv(cloudRunWorkerPoolEnv); found {
+		return name, nil
+	}
 	return "", errEnvVarNotFound
 }
 
 // FaaSVersion returns the revision of the Cloud Run or Cloud Functions service.
 func (d *Detector) FaaSVersion() (string, error) {
+	if version, found := d.os.LookupEnv(cloudRunRevisionEnv); found {
+		return version, nil
+	}
 	if version, found := d.os.LookupEnv(faasRevisionEnv); found {
 		return version, nil
 	}

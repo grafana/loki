@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -59,6 +60,11 @@ type IndexShipper interface {
 	ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error
 	// FlushIndexes synchronously uploads any pending index files to object storage.
 	FlushIndexes(ctx context.Context) error
+	// TriggerSync starts a background sync (refreshing the list cache first) if
+	// none is already in progress. It returns true if a new sync was started.
+	TriggerSync() bool
+	// SyncStatus reports the current/last sync status.
+	SyncStatus() indexstore.SyncStatus
 	Stop()
 }
 
@@ -69,6 +75,9 @@ type Config struct {
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
+
+	// Temporary experimental feature
+	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -82,6 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
@@ -253,6 +263,20 @@ func (s *indexShipper) FlushIndexes(ctx context.Context) error {
 	return nil
 }
 
+func (s *indexShipper) TriggerSync() bool {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.TriggerSync()
+	}
+	return false
+}
+
+func (s *indexShipper) SyncStatus() indexstore.SyncStatus {
+	if s.downloadsManager != nil {
+		return s.downloadsManager.SyncStatus()
+	}
+	return indexstore.SyncStatus{}
+}
+
 func (s *indexShipper) Stop() {
 	s.stopOnce.Do(s.stop)
 }
@@ -277,4 +301,6 @@ func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachInd
 	return nil
 }
 func (Noop) FlushIndexes(_ context.Context) error { return nil }
+func (Noop) TriggerSync() bool                    { return false }
+func (Noop) SyncStatus() indexstore.SyncStatus    { return indexstore.SyncStatus{} }
 func (Noop) Stop()                                {}

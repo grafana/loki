@@ -1,11 +1,14 @@
 package compactor
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
 // TestIndexMergePath_Build_Deterministic verifies the same inputs always
@@ -143,4 +146,41 @@ func BenchmarkIndexMergePath_Build(b *testing.B) {
 		}
 		_ = sink
 	})
+}
+
+func TestLogTaskSectionIDs_LabelTupleDisambiguates(t *testing.T) {
+	var buf bytes.Buffer
+	runsA := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}},
+	}}}
+	runsB := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"billing"}},
+	}}}
+
+	require.NotEqual(t, logTaskSectionIDs(runsA, &buf), logTaskSectionIDs(runsB, &buf))
+	// Golden encoding: ObjectPath, SectionIndex, then each MinKey value, all
+	// separated by NUL.
+	require.Equal(t, []string{"logs/log-0" + "\x00" + "0" + "\x00" + "auth"}, logTaskSectionIDs(runsA, &buf))
+}
+
+func TestLogTaskSectionIDs_DistinctTuplesDistinctIDs(t *testing.T) {
+	var buf bytes.Buffer
+	runs1 := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		{ObjectPath: "o", SectionIndex: 0, MinKey: []string{"a", "bc"}},
+	}}}
+	runs2 := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		{ObjectPath: "o", SectionIndex: 0, MinKey: []string{"ab", "c"}},
+	}}}
+	require.NotEqual(t, logTaskSectionIDs(runs1, &buf), logTaskSectionIDs(runs2, &buf))
+}
+
+func TestLogTaskSectionIDs_BufferReuseAcrossCalls(t *testing.T) {
+	var buf bytes.Buffer
+	runs := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}},
+	}}}
+	first := logTaskSectionIDs(runs, &buf)
+	// The same buffer reused for a second call must not corrupt results.
+	second := logTaskSectionIDs(runs, &buf)
+	require.Equal(t, first, second)
 }

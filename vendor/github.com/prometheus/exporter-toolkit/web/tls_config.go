@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ import (
 
 var (
 	errNoTLSConfig = errors.New("TLS config is not present")
+	ErrMissingFlag = errors.New("missing required flag configuration")
 	ErrNoListeners = errors.New("no web listen address or systemd socket flag specified")
 )
 
@@ -65,9 +67,27 @@ type TLSConfig struct {
 }
 
 type FlagConfig struct {
+	// WebListenAddresses contains the listen addresses for the HTTP server.
 	WebListenAddresses *[]string
-	WebSystemdSocket   *bool
-	WebConfigFile      *string
+	// WebSystemdSocket enables systemd socket activation listeners.
+	WebSystemdSocket *bool
+	// WebConfigFile points to the TLS and authentication configuration file.
+	WebConfigFile *string
+}
+
+// checkFlags validates that the flag configuration contains the required
+// listener and web config fields needed by the web package.
+func (c *FlagConfig) checkFlags() error {
+	if c == nil {
+		return ErrMissingFlag
+	}
+	if c.WebConfigFile == nil {
+		return ErrMissingFlag
+	}
+	if c.WebSystemdSocket == nil && (c.WebListenAddresses == nil || len(*c.WebListenAddresses) == 0) {
+		return ErrNoListeners
+	}
+	return nil
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -97,10 +117,8 @@ func (t *TLSConfig) VerifyPeerCertificate(rawCerts [][]byte, _ [][]*x509.Certifi
 	}
 
 	for _, sanValue := range sanValues {
-		for _, allowedSan := range t.ClientAllowedSans {
-			if sanValue == allowedSan {
-				return nil
-			}
+		if slices.Contains(t.ClientAllowedSans, sanValue) {
+			return nil
 		}
 	}
 
@@ -291,8 +309,8 @@ func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagCon
 // FlagConfig is true.
 // The FlagConfig is also passed on to ServeMultiple.
 func ListenAndServe(server *http.Server, flags *FlagConfig, logger *slog.Logger) error {
-	if flags.WebSystemdSocket == nil && (flags.WebListenAddresses == nil || len(*flags.WebListenAddresses) == 0) {
-		return ErrNoListeners
+	if err := flags.checkFlags(); err != nil {
+		return err
 	}
 
 	if flags.WebSystemdSocket != nil && *flags.WebSystemdSocket {
@@ -440,7 +458,7 @@ func Validate(tlsConfigPath string) error {
 
 type Cipher uint16
 
-func (c *Cipher) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Cipher) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	err := unmarshal(&s)
 	if err != nil {
@@ -455,7 +473,7 @@ func (c *Cipher) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return errors.New("unknown cipher: " + s)
 }
 
-func (c Cipher) MarshalYAML() (interface{}, error) {
+func (c Cipher) MarshalYAML() (any, error) {
 	return tls.CipherSuiteName((uint16)(c)), nil
 }
 
@@ -468,7 +486,7 @@ var curves = map[string]Curve{
 	"X25519":    (Curve)(tls.X25519),
 }
 
-func (c *Curve) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Curve) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	err := unmarshal(&s)
 	if err != nil {
@@ -481,7 +499,7 @@ func (c *Curve) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return errors.New("unknown curve: " + s)
 }
 
-func (c *Curve) MarshalYAML() (interface{}, error) {
+func (c *Curve) MarshalYAML() (any, error) {
 	for s, curveid := range curves {
 		if *c == curveid {
 			return s, nil
@@ -499,7 +517,7 @@ var tlsVersions = map[string]TLSVersion{
 	"TLS10": (TLSVersion)(tls.VersionTLS10),
 }
 
-func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (tv *TLSVersion) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	err := unmarshal(&s)
 	if err != nil {
@@ -512,7 +530,7 @@ func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return errors.New("unknown TLS version: " + s)
 }
 
-func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
+func (tv *TLSVersion) MarshalYAML() (any, error) {
 	for s, v := range tlsVersions {
 		if *tv == v {
 			return s, nil

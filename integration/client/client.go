@@ -303,6 +303,65 @@ func (c *Client) FlushTenant(selector string) error {
 	return fmt.Errorf("request failed with status code %d", res.StatusCode)
 }
 
+// TriggerSyncIndexes asks the index-gateway to asynchronously refresh its
+// object-listing cache and download any newly shipped indexes. It returns
+// whether a new sync was started: true on 202 Accepted, false on 409 Conflict
+// (a sync was already in progress). The endpoint is cluster-wide, so no tenant
+// scoping is required.
+func (c *Client) TriggerSyncIndexes() (started bool, err error) {
+	req, err := c.request(context.Background(), "PUT", fmt.Sprintf("%s/sync-indexes", c.baseURL))
+	if err != nil {
+		return false, err
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	switch res.StatusCode {
+	case http.StatusAccepted:
+		return true, nil
+	case http.StatusConflict:
+		return false, nil
+	default:
+		return false, fmt.Errorf("request failed with status code %d", res.StatusCode)
+	}
+}
+
+// SyncIndexesInProgress reports whether the index-gateway currently has an index
+// sync in progress for any tracked index (GET /sync-indexes).
+func (c *Client) SyncIndexesInProgress() (bool, error) {
+	req, err := c.request(context.Background(), "GET", fmt.Sprintf("%s/sync-indexes", c.baseURL))
+	if err != nil {
+		return false, err
+	}
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode/100 != 2 {
+		return false, fmt.Errorf("request failed with status code %d", res.StatusCode)
+	}
+
+	var statuses []struct {
+		InProgress bool `json:"in_progress"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&statuses); err != nil {
+		return false, err
+	}
+	for _, s := range statuses {
+		if s.InProgress {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 type DeleteRequestParams struct {
 	Query string `json:"query"`
 	Start string `json:"start,omitempty"`
@@ -509,7 +568,7 @@ type Header struct {
 }
 
 // RunRangeQuery runs a 7d query and returns an error if anything went wrong
-// This function is kept to keep backwards copatibility of existing tests.
+// This function is kept to keep backwards compatibility of existing tests.
 // Better use (*Client).RunRangeQueryWithStartEnd()
 func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	end := c.Now.Add(time.Second)
@@ -673,6 +732,8 @@ func (c *Client) Series(ctx context.Context, matcher string) ([]map[string]strin
 
 	v := url.Values{}
 	v.Set("match[]", matcher)
+	v.Set("end", FormatTS(c.Now.Add(time.Second)))
+	v.Set("start", FormatTS(c.Now.Add(-7*24*time.Hour)))
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {

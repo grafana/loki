@@ -23,14 +23,9 @@ var (
 	//go:embed prometheus-rules.yaml
 	rulesYAMLTmplFile embed.FS
 
-	//go:embed prometheus-rules-openshift.yaml
-	rulesOpenshiftYAMLTmplFile embed.FS
-
 	alertsYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(alertsYAMLTmplFile, "prometheus-alerts.yaml"))
 
 	rulesYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(rulesYAMLTmplFile, "prometheus-rules.yaml"))
-
-	rulesOpenshiftYAMLTmpl = template.Must(template.New("").Delims("[[", "]]").ParseFS(rulesOpenshiftYAMLTmplFile, "prometheus-rules-openshift.yaml"))
 )
 
 // Build creates Prometheus alerts for the Loki stack
@@ -40,22 +35,13 @@ func Build(opts Options) (*monitoringv1.PrometheusRuleSpec, error) {
 		return nil, kverrors.Wrap(err, "failed to create prometheus alerts")
 	}
 
-	spec := alerts.DeepCopy()
-
 	recordingRules, err := ruleSpec("prometheus-rules.yaml", rulesYAMLTmpl, opts)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed to create prometheus rules")
 	}
-	spec.Groups = append(spec.Groups, recordingRules.Groups...)
 
-	// Only include OpenShift telemetry recording rules when OpenShift is enabled
-	if opts.OpenShiftEnabled {
-		openshiftRules, err := ruleSpec("prometheus-rules-openshift.yaml", rulesOpenshiftYAMLTmpl, opts)
-		if err != nil {
-			return nil, kverrors.Wrap(err, "failed to create openshift prometheus rules")
-		}
-		spec.Groups = append(spec.Groups, openshiftRules.Groups...)
-	}
+	spec := alerts.DeepCopy()
+	spec.Groups = append(alerts.Groups, recordingRules.Groups...)
 
 	return spec, nil
 }

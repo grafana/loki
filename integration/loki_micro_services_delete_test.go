@@ -46,7 +46,6 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			"-compactor.delete-request-cancel-period=-60s",
 			"-compactor.deletion-mode=filter-only",
 			"-compactor.delete-max-interval=0",
-			"-limits.per-user-override-period=1s",
 		)
 		tDistributor = clu.AddComponent(
 			"distributor",
