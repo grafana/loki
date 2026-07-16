@@ -25,7 +25,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-var ErrPartitionRevoked = errors.New("partition revoked")
+var (
+	ErrPartitionRevoked  = errors.New("partition revoked")
+	ErrIndexerNotRunning = errors.New("indexer service is not running")
+)
 
 type triggerType string
 
@@ -280,14 +283,17 @@ func (p *Builder) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			// Do not return ctx.Err(): a non-nil RunningFn error marks the
+			// dskit service Failed, which Loki surfaces as "failed services"
+			// on normal shutdown.
+			return nil
 		default:
 		}
 
 		fetches := p.client.PollRecords(ctx, -1)
 		if err := fetches.Err0(); err != nil {
 			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
-				return err
+				return nil
 			}
 			// Some other error occurred. We will check it in
 			// [processFetchTopicPartition] instead.
@@ -308,17 +314,27 @@ func (p *Builder) running(ctx context.Context) error {
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	// Stop indexer service first - this handles calculation cleanup via context cancelation.
+	// Stop accepting new timed flushes first, then drain in-flight flush
+	// workers while the indexer is still Running so they can finish or abort
+	// cleanly instead of racing Stopping.
+	if p.flushTicker != nil {
+		p.flushTicker.Stop()
+	}
+
+	p.partitionsMutex.Lock()
+	for partition, cancel := range p.activeCalculations {
+		cancel(nil)
+		delete(p.activeCalculations, partition)
+	}
+	p.partitionsMutex.Unlock()
+
+	p.wg.Wait()
+
 	ctx := context.TODO()
 	if err := services.StopAndAwaitTerminated(ctx, p.indexer); err != nil {
 		level.Error(p.logger).Log("msg", "failed to stop indexer", "err", err)
 	}
 
-	// Stop other components
-	if p.flushTicker != nil {
-		p.flushTicker.Stop()
-	}
-	p.wg.Wait()
 	p.client.Close()
 	return failureCase
 }
@@ -443,8 +459,8 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 	// Submit to indexer service and wait for completion
 	records, err := p.indexer.submitBuild(ctx, events, partition, triggerType)
 	if err != nil {
-		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", partition, "trigger", triggerType)
+		if isExpectedBuildAbort(ctx, err) {
+			level.Debug(p.logger).Log("msg", "index build aborted", "partition", partition, "err", err, "trigger", triggerType)
 			return
 		}
 		level.Error(p.logger).Log("msg", "failed to build index", "partition", partition, "err", err, "trigger", triggerType)
@@ -453,8 +469,8 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 
 	// Commit the records
 	if err := p.commitRecords(ctx, records); err != nil {
-		if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", partition, "trigger", triggerType)
+		if isExpectedBuildAbort(ctx, err) {
+			level.Debug(p.logger).Log("msg", "index commit aborted", "partition", partition, "err", err, "trigger", triggerType)
 			return
 		}
 		level.Error(p.logger).Log("msg", "failed to commit records", "partition", partition, "err", err, "trigger", triggerType)
@@ -462,6 +478,14 @@ func (p *Builder) buildAndCommitIndex(ctx context.Context, events []bufferedEven
 	}
 
 	p.markEventsCompleted(partition, len(records))
+}
+
+// isExpectedBuildAbort reports whether err is an expected abort from partition
+// revocation or service shutdown, not a real build failure.
+func isExpectedBuildAbort(ctx context.Context, err error) bool {
+	return errors.Is(context.Cause(ctx), ErrPartitionRevoked) ||
+		errors.Is(err, context.Canceled) ||
+		errors.Is(err, ErrIndexerNotRunning)
 }
 
 // bufferAndTryProcess is the unified method that handles both buffering and processing decisions
