@@ -442,27 +442,45 @@ func (tc *testQueryAndLabelResults) metricsRangeQuery(t *testing.T, qc *client.C
 		require.NoError(t, err)
 		require.Equal(t, "success", output.Status)
 		require.Equal(t, "matrix", output.Data.ResultType)
-		require.EqualValues(t, len(tc.lines), sumMatrixValues(t, output.Data.Matrix))
+		require.EqualValues(t, len(tc.lines), maxStepValue(t, output.Data.Matrix))
 	})
 }
 
-func sumMatrixValues(t *testing.T, matrix []client.MatrixValues) float64 {
+// maxStepValue returns the largest per-step sum across all series in the matrix.
+//
+// The query is count_over_time(...[2h]) evaluated as a range query. Because the
+// lookback window (2h) is much larger than the range step, the recently pushed
+// lines fall inside several consecutive steps' windows, so each of those steps
+// reports the full count. Summing every sample would therefore multiply the true
+// count by the (timing-dependent) number of overlapping steps. The step whose
+// window fully covers the pushed data reports exactly the total we want, so take
+// the largest per-step sum.
+func maxStepValue(t *testing.T, matrix []client.MatrixValues) float64 {
 	t.Helper()
 
-	var total float64
+	perStep := map[float64]float64{}
 	for _, row := range matrix {
 		for _, sample := range row.Values {
 			require.Len(t, sample, 2)
+			ts, ok := sample[0].(float64)
+			require.True(t, ok)
 			value, ok := sample[1].(string)
 			require.True(t, ok)
 
 			parsed, err := strconv.ParseFloat(value, 64)
 			require.NoError(t, err)
-			total += parsed
+			perStep[ts] += parsed
 		}
 	}
 
-	return total
+	var maxValue float64
+	for _, total := range perStep {
+		if total > maxValue {
+			maxValue = total
+		}
+	}
+
+	return maxValue
 }
 
 func normalizeLabelsData(labels map[string][]string) map[string][]string {
