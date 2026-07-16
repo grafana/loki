@@ -64,23 +64,23 @@ func (r *RowReader) next() (Row, error) {
 	if r.batch == nil || r.index >= int(r.batch.NumRows()) {
 		r.batch = nil
 
-		batch, err := r.reader.Read(r.ctx, 8192)
-		if errors.Is(err, io.EOF) && batch == nil {
-			return Row{}, io.EOF
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return Row{}, fmt.Errorf("reading batch: %w", err)
-		}
-
-		if batch != nil && batch.NumRows() > 0 {
-			r.batch = batch
-			r.index = 0
-			if r.columns == nil {
-				r.columns = BuildColumnIndex(batch.Schema())
+		for r.batch == nil {
+			batch, err := r.reader.Read(r.ctx, 8192)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return Row{}, fmt.Errorf("reading batch: %w", err)
 			}
-		} else {
-			// Empty or nil batch: treat as end of section.
-			return Row{}, io.EOF
+
+			if (batch == nil || batch.NumRows() == 0) && errors.Is(err, io.EOF) {
+				return Row{}, io.EOF
+			}
+
+			if batch != nil && batch.NumRows() > 0 {
+				r.batch = batch
+				r.index = 0
+				if r.columns == nil {
+					r.columns = BuildColumnIndex(batch.Schema())
+				}
+			}
 		}
 	}
 

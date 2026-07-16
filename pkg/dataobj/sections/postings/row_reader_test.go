@@ -2,6 +2,7 @@ package postings_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -452,4 +453,67 @@ func TestRowReader_NotRegexMatchPredicate(t *testing.T) {
 	require.NoError(t, rr.Err())
 
 	require.Equal(t, []string{"baz"}, got)
+}
+
+func TestRowReader_ContinuesPastEmptyBatches(t *testing.T) {
+	ctx := context.Background()
+
+	b := postings.NewBuilder(nil, 0, 10000, 1<<24)
+	ts := time.Unix(0, 0).UTC()
+
+	// Make one entire batch of values that won't match the predicate.
+	for i := range 8192 {
+		b.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath:       "/obj",
+			SectionIndex:     0,
+			ColumnName:       "pod",
+			LabelValue:       fmt.Sprintf("pod-%d", i),
+			StreamID:         int64(i + 1),
+			Timestamp:        ts,
+			UncompressedSize: 100,
+		})
+	}
+
+	b.ObserveLabelPosting(postings.LabelObservation{
+		ObjectPath:       "/obj",
+		SectionIndex:     0,
+		ColumnName:       "pod",
+		LabelValue:       "pod-z", // lexigraphically after 'a' so it is sorted after the previous batch
+		StreamID:         int64(8193),
+		Timestamp:        ts,
+		UncompressedSize: 100,
+	})
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(b))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	var sec *postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err = postings.Open(ctx, s)
+		require.NoError(t, err)
+		break
+	}
+	require.NotNil(t, sec)
+
+	lvCol := getSectionColumn(t, sec, postings.ColumnTypeLabelValue)
+	require.NotNil(t, lvCol)
+
+	rr := newRowReader(ctx, t, sec, []postings.Predicate{
+		postings.EqualPredicate{Column: lvCol, Value: scalar.MakeScalar("pod-z")},
+	})
+	defer func() { _ = rr.Close() }()
+
+	var got []string
+	for rr.Next() {
+		got = append(got, rr.At().LabelValue)
+	}
+	require.NoError(t, rr.Err())
+
+	require.Equal(t, []string{"pod-z"}, got)
 }
