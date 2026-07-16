@@ -87,6 +87,16 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return cmp.Compare(a.name, b.name)
 		})
 
+		// Names of all colliding source columns. Used below to recognise a source
+		// column that is itself the _extracted destination of a lower-named
+		// duplicate (e.g. a parsed "foo_extracted" column present when parsed "foo"
+		// also collides). Such a column cannot simply be merged into the recreated
+		// destination; its value must cascade up another _extracted level.
+		dupNames := make(map[string]bool, len(duplicates))
+		for i := range duplicates {
+			dupNames[duplicates[i].name] = true
+		}
+
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		oldSchema := batch.Schema()
 
@@ -110,6 +120,15 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 			if destinationNames[ident.ShortName()] {
 				if ident.ColumnType() == compat.Destination {
+					if dupNames[ident.ShortName()] {
+						// This _extracted column is itself a colliding source (it has its
+						// own duplicate). Its slot is taken over by the lower-named
+						// duplicate's destination, and its value cascades to
+						// <name>_extracted (processed as a "cascading source" below).
+						// Skip it here WITHOUT recording it as an existing destination to
+						// merge, so the lower-named duplicate recreates a fresh column.
+						continue
+					}
 					// Skip existing _extracted columns that we're going to recreate
 					// But save a reference to their data so we can preserve values
 					existingDestCols[ident.ShortName()] = batch.Column(oldIdx).(*array.String)
@@ -186,10 +205,26 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				collisionCols[i] = batch.Column(collIdx)
 			}
 
-			// Get the new index for this source field
-			sourceNewIdx, ok := oldFieldToNewIdx[oldIdx]
-			if !ok {
-				panic("sourceNewIdx not foud")
+			// Get the new index for this source field.
+			sourceNewIdx, hasSourceSlot := oldFieldToNewIdx[oldIdx]
+			if !hasSourceSlot {
+				// Cascading source: this column's original slot was taken over by a
+				// lower-named duplicate's destination (e.g. parsed.foo_extracted's slot
+				// is reused by parsed.foo's destination). Its value moves up one
+				// _extracted level into its own destination, matching the classic engine
+				// which appends an additional _extracted suffix on repeated collisions.
+				// There is no source slot left to clear.
+				srcCol := col.(*array.String)
+				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
+				for i := range int(batch.NumRows()) {
+					if srcCol.IsNull(i) || !srcCol.IsValid(i) {
+						destinationFieldBuilder.AppendNull()
+					} else {
+						destinationFieldBuilder.Append(srcCol.Value(i))
+					}
+				}
+				newSchemaColumns[duplicate.destinationIdx] = destinationFieldBuilder.NewArray()
+				continue
 			}
 
 			switch sourceFieldBuilder := builder.Field(sourceNewIdx).(type) {

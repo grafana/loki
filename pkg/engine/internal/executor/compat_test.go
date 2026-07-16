@@ -721,3 +721,38 @@ func TestMultipleColumnCompatPreservesValues(t *testing.T) {
 		})
 	}
 }
+
+func TestNewColumnCompatibilityPipeline_LiteralExtractedCollision(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN("utf8.label.foo", true),
+		semconv.FieldFromFQN("utf8.label.foo_extracted", true),
+		semconv.FieldFromFQN("utf8.parsed.foo", true),
+		semconv.FieldFromFQN("utf8.parsed.foo_extracted", true),
+	}, nil)
+	input := NewArrowtestPipeline(schema, arrowtest.Rows{{
+		"utf8.label.foo":            "L",
+		"utf8.label.foo_extracted":  "L2",
+		"utf8.parsed.foo":           "P",
+		"utf8.parsed.foo_extracted": "Q",
+	}})
+	pipeline := newColumnCompatibilityPipeline(&physical.ColumnCompat{
+		Source:      types.ColumnTypeParsed,
+		Destination: types.ColumnTypeParsed,
+		Collisions:  []types.ColumnType{types.ColumnTypeLabel, types.ColumnTypeMetadata},
+	}, input)
+	t.Cleanup(pipeline.Close)
+
+	record, err := pipeline.Read(t.Context())
+	require.NoError(t, err)
+	actual, err := arrowtest.RecordRows(record)
+	require.NoError(t, err)
+
+	expect := arrowtest.Rows{{
+		"utf8.label.foo":                      "L",
+		"utf8.label.foo_extracted":            nil,
+		"utf8.parsed.foo":                     nil,
+		"utf8.parsed.foo_extracted":           "P",
+		"utf8.parsed.foo_extracted_extracted": "Q",
+	}}
+	require.Equal(t, expect, actual)
+}
