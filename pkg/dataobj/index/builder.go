@@ -188,7 +188,10 @@ func NewIndexBuilder(
 		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.ConsumerGroup(consumerGroup),
-		kgo.Balancers(kgo.RoundRobinBalancer()),
+		// Offer both cooperative-sticky and round-robin during migration from eager
+		// rebalancing (KIP-429). A follow-up change removes RoundRobin once every
+		// index-builder member advertises cooperative-sticky.
+		kgo.Balancers(kgo.CooperativeStickyBalancer(), kgo.RoundRobinBalancer()),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
