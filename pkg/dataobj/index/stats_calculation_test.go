@@ -239,7 +239,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 

@@ -76,6 +76,10 @@ const (
 type calculator interface {
 	Calculate(context.Context, log.Logger, *dataobj.Object, string) error
 	Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error)
+	// Reset discards any pending state without flushing. Used to clean up after
+	// a failed or cancelled build so the next request starts clean; a
+	// successful Flush already consumes all state.
+	Reset()
 	IsFull() bool
 }
 

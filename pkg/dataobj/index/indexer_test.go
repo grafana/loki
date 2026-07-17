@@ -307,6 +307,7 @@ type mockCalculator struct {
 	count           int
 	object          *dataobj.Object
 	flushCallCount  int
+	resetCallCount  int
 	errOnCallNumber int  // Which Calculate call should set full flag (0 = never)
 	full            bool // Track when builder becomes full
 }
@@ -332,6 +333,11 @@ func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.Tim
 		},
 	}
 	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), ranges, nil
+}
+
+func (c *mockCalculator) Reset() {
+	c.resetCallCount++
+	c.full = false
 }
 
 func (c *mockCalculator) IsFull() bool {
