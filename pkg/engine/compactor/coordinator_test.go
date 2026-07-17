@@ -596,14 +596,12 @@ func TestRun_DedupesTenants(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
 	c.cfg.CompactionTenants = []string{"acme", "acme", "bravo", "acme"}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
+	done := make(chan error, 1)
 	go func() {
-		defer wg.Done()
-		c.Run(ctx)
+		done <- c.Run(ctx)
 	}()
 
 	time.Sleep(50 * time.Millisecond)
 	cancel()
-	wg.Wait()
+	require.ErrorIs(t, <-done, context.Canceled)
 }
