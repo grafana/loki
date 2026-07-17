@@ -70,15 +70,17 @@ func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 // Calculator is used to calculate the indexes for a logs object and write them to the builder.
 // It reads data from the logs object in order to build bloom filters and per-section stream metadata.
 type Calculator struct {
-	indexobjBuilder *indexobj.Builder
-	builderMtx      sync.Mutex
-	metrics         *calculatorMetrics
+	indexobjBuilder      *indexobj.Builder
+	builderMtx           sync.Mutex
+	metrics              *calculatorMetrics
+	uncompressedByTenant map[string]uint64
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
 	return &Calculator{
-		indexobjBuilder: indexobjBuilder,
-		metrics:         newCalculatorMetrics(),
+		indexobjBuilder:      indexobjBuilder,
+		metrics:              newCalculatorMetrics(),
+		uncompressedByTenant: make(map[string]uint64),
 	}
 }
 
@@ -94,14 +96,33 @@ func (c *Calculator) UnregisterMetrics(reg prometheus.Registerer) {
 
 func (c *Calculator) Reset() {
 	c.indexobjBuilder.Reset()
+	clear(c.uncompressedByTenant)
 }
 
 func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
-	return c.indexobjBuilder.TimeRanges()
+	ranges := c.indexobjBuilder.TimeRanges()
+	for i := range ranges {
+		ranges[i].UncompressedLogsSize = c.uncompressedByTenant[ranges[i].Tenant]
+	}
+	return ranges
 }
 
-func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return c.indexobjBuilder.Flush()
+// Flush consumes the calculator's state and returns the built object together
+// with the time ranges captured for it. The uncompressed-size accumulator is
+// tied to the underlying builder's lifecycle: [indexobj.Builder.Flush] resets
+// the builder, so we clear the accumulator in the same step to keep the two in
+// sync. Otherwise a failed upload or ToC write followed by a Kafka retry would
+// add the reprocessed bytes on top of the stale count.
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+	ranges := c.TimeRanges()
+
+	obj, closer, err := c.indexobjBuilder.Flush()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	clear(c.uncompressedByTenant)
+	return obj, closer, ranges, nil
 }
 
 func (c *Calculator) IsFull() bool {
@@ -207,6 +228,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 				}
 				streamIDLookup[stream.ID] = newStreamID
 				streamLabels[stream.ID] = stream.Labels
+				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil
 		}()

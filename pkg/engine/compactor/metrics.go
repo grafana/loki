@@ -48,6 +48,12 @@ type coordinatorMetrics struct {
 	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
 	// duration. Excludes the converged-skip path.
 	tenantCycleDurationSeconds *prometheus.HistogramVec // outcome=compacted|failed
+
+	// fileSizeStatDurationSeconds measures the latency of a single
+	// bucket.Attributes call issued while filling in index FileSize. These
+	// stats run concurrently before a ToC replace; the histogram surfaces
+	// per-call latency early so it can be caught before it dominates a cycle.
+	fileSizeStatDurationSeconds prometheus.Histogram
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -101,6 +107,11 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Help:    "Per-tenant cycle wall-clock duration. Excludes the converged-skip path.",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14),
 		}, []string{"outcome"}),
+		fileSizeStatDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_file_size_stat_duration_seconds",
+			Help:    "Latency of a single object-storage Attributes call issued to fill in index file size before a ToC replace.",
+			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms .. ~8s
+		}),
 	}
 }
 
@@ -206,6 +217,15 @@ func (m *coordinatorMetrics) recordTenantCycle(
 		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
 		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
 	}
+}
+
+// observeFileSizeStat records the latency of a single bucket.Attributes call.
+// Safe to call concurrently from the fillFileSizes goroutines.
+func (m *coordinatorMetrics) observeFileSizeStat(duration time.Duration) {
+	if m == nil {
+		return
+	}
+	m.fileSizeStatDurationSeconds.Observe(duration.Seconds())
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

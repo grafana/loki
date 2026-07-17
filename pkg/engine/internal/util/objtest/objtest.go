@@ -182,9 +182,7 @@ func (b *Builder) buildIndex(ctx context.Context) error {
 }
 
 func (b *Builder) flushAndUpload(ctx context.Context, calculator *index.Calculator) error {
-	timeRanges := calculator.TimeRanges()
-
-	obj, closer, err := calculator.Flush()
+	obj, closer, timeRanges, err := calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush index: %w", err)
 	}
