@@ -325,6 +325,20 @@ func (c *coordinator) compactTenantLogs(
 	oldPaths := []string{converged.Path}
 	newEntries := makeTocEntries(tasks, outputs)
 
+	// makeTocEntries recomputes sizes from the source object's internal section
+	// stats. A converged row of 0 means unknown, but legacy objects carry
+	// positive internal stats from the old statsCalculation that counted only
+	// len(log.Line) and omitted structured metadata. Summing those undercounts
+	// yields a positive total. Persisting 0 keeps the row unknown, which is the
+	// only way to later distinguish indexes written with incorrect line-only
+	// stats and backfill them from authoritative data without rescanning every
+	// object.
+	if converged.UncompressedLogsSize == 0 {
+		for i := range newEntries {
+			newEntries[i].UncompressedLogsSize = 0
+		}
+	}
+
 	// removed = the single converged index this window replaces; added = the
 	// merged indexes written; dispatched = log-merge tasks run this cycle.
 	stats := compactionStats{

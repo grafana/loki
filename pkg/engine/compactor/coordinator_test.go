@@ -587,6 +587,62 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 	}
 }
 
+// TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown guards the
+// upgrade path: an index already in storage has a legacy ToC row (unknown, 0)
+// but positive internal section stats from the old line-only statsCalculation.
+// makeTocEntries would sum those undercounts into a positive total that looks
+// exact, laundering the unknown into a falsely-known value. The replacement
+// rows must stay 0 so we can still identify and backfill these indexes later.
+func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	// Internal section stats are positive (100 + 100), so makeTocEntries would
+	// otherwise publish 200.
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	// Converged ToC row is unknown (0), i.e. a legacy pre-upgrade index.
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 0}
+	_, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.NotEmpty(t, calls[0].newEntries)
+	for _, e := range calls[0].newEntries {
+		require.Equal(t, uint64(0), e.UncompressedLogsSize,
+			"an unknown converged row must not be healed into a positive size from legacy line-only stats")
+	}
+}
+
+// TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize is the complement:
+// when the converged ToC row is known (nonzero), the computed replacement size
+// is trustworthy and must be persisted rather than zeroed.
+func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 200}
+	_, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.Len(t, calls[0].newEntries, 1)
+	require.Equal(t, uint64(200), calls[0].newEntries[0].UncompressedLogsSize,
+		"a known converged row keeps the computed section sum (100+100)")
+}
+
 func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
