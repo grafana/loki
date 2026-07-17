@@ -14,8 +14,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 
 	// Build statistics map from proto statistics
 	statsIndex := make(map[uint32]Statistic, len(protoCapture.Statistics))
-	for i, protoStat := range protoCapture.Statistics {
-		stat, err := unmarshalStatistic(protoStat)
+	for i := range protoCapture.Statistics {
+		stat, err := unmarshalStatistic(&protoCapture.Statistics[i])
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal statistic: %w", err)
 		}
@@ -25,8 +25,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 	capture.regionByName = make(map[string][]*Region)
 
 	// Unmarshal regions
-	for _, protoRegion := range protoCapture.Regions {
-		region, err := fromProtoRegion(protoRegion, statsIndex)
+	for i := range protoCapture.Regions {
+		region, err := fromProtoRegion(&protoCapture.Regions[i], statsIndex)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal region: %w", err)
 		}
@@ -43,13 +43,14 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Statistic) (*Region, error) {
 	// Unmarshal observations
 	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.Observations))
-	for _, protoObs := range protoRegion.Observations {
+	for i := range protoRegion.Observations {
+		protoObs := &protoRegion.Observations[i]
 		stat, exists := statIndexToStat[protoObs.StatisticId]
 		if !exists {
 			return nil, fmt.Errorf("invalid statistic_id %d in observation", protoObs.StatisticId)
 		}
 
-		value, err := unmarshalObservationValue(protoObs.Value)
+		value, err := unmarshalObservationValue(&protoObs.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal observation value: %w", err)
 		}

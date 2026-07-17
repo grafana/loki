@@ -29,11 +29,11 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	// Build the statistics index from deduplicated wire statistics.
 	statistics := statisticsFromRegions(regions)
 	statsIndex := make(map[StatisticKey]uint32, len(statistics))
-	protoStats := make([]*proto.Statistic, 0, len(statistics))
+	protoStats := make([]proto.Statistic, 0, len(statistics))
 
 	for _, stat := range statistics {
 		statsIndex[stat.Key()] = uint32(len(protoStats))
-		protoStats = append(protoStats, &proto.Statistic{
+		protoStats = append(protoStats, proto.Statistic{
 			Name:            stat.Name(),
 			DataType:        marshalDataType(stat.DataType()),
 			AggregationType: marshalAggregationType(stat.Aggregation()),
@@ -41,16 +41,14 @@ func toProtoCapture(c *Capture) (*proto.Capture, error) {
 	}
 
 	// Convert regions to proto regions.
-	protoRegions := make([]*proto.Region, 0, len(regions))
+	protoRegions := make([]proto.Region, 0, len(regions))
 	for _, region := range regions {
 		protoRegion, err := toProtoRegion(region, statsIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal region: %w", err)
 		}
 
-		if protoRegion != nil {
-			protoRegions = append(protoRegions, protoRegion)
-		}
+		protoRegions = append(protoRegions, protoRegion)
 	}
 
 	return &proto.Capture{
@@ -114,49 +112,49 @@ func statisticsFromRegions(regions []*Region) map[StatisticKey]Statistic {
 }
 
 // toProtoRegion converts a Region to its protobuf representation.
-func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (*proto.Region, error) {
-	protoObservations := make([]*proto.Observation, 0, len(region.observations))
+func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (proto.Region, error) {
+	protoObservations := make([]proto.Observation, 0, len(region.observations))
 	for key, observation := range region.observations {
 		statIndex, exists := statsIndex[key]
 		if !exists {
-			return nil, fmt.Errorf("statistic not found in index: %v", key)
+			return proto.Region{}, fmt.Errorf("statistic not found in index: %v", key)
 		}
 
 		protoValue, err := marshalObservationValue(observation.Value)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal observation: %w", err)
+			return proto.Region{}, fmt.Errorf("failed to marshal observation: %w", err)
 		}
 
-		protoObservations = append(protoObservations, &proto.Observation{
+		protoObservations = append(protoObservations, proto.Observation{
 			StatisticId: statIndex,
 			Value:       protoValue,
 			Count:       uint32(observation.Count),
 		})
 	}
 
-	return &proto.Region{
+	return proto.Region{
 		Name:         region.name,
 		Observations: protoObservations,
 	}, nil
 }
 
 // marshalObservationValue converts an observation value to proto ObservationValue.
-func marshalObservationValue(value any) (*proto.ObservationValue, error) {
+func marshalObservationValue(value any) (proto.ObservationValue, error) {
 	switch v := value.(type) {
 	case int64:
-		return &proto.ObservationValue{
+		return proto.ObservationValue{
 			Kind: &proto.ObservationValue_IntValue{IntValue: v},
 		}, nil
 	case float64:
-		return &proto.ObservationValue{
+		return proto.ObservationValue{
 			Kind: &proto.ObservationValue_FloatValue{FloatValue: v},
 		}, nil
 	case bool:
-		return &proto.ObservationValue{
+		return proto.ObservationValue{
 			Kind: &proto.ObservationValue_BoolValue{BoolValue: v},
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported observation value type: %T", value)
+		return proto.ObservationValue{}, fmt.Errorf("unsupported observation value type: %T", value)
 	}
 }
 
