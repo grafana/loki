@@ -79,7 +79,7 @@ func TestRecordTaskResult_FragmentIsCollectable(t *testing.T) {
 
 	collected := make(chan struct{})
 	runtime.SetFinalizer(frag, func(*physical.Plan) { close(collected) })
-	frag = nil // drop the test's own reference to the plan
+	frag = nil //nolint:ineffassign // drop the test's own reference to the plan
 
 	wf.tasksMut.Lock()
 	wf.recordTaskResult(task, TaskResult{Outcome: TaskOutcomeCompleted})
