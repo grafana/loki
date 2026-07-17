@@ -454,16 +454,6 @@ func commOutcome(err error) metrictimer.Outcome {
 	return outcomeError
 }
 
-// recordBatchBytes returns the total in-memory size in bytes of all column
-// buffers in a RecordBatch.
-func recordBatchBytes(rec arrow.RecordBatch) int64 {
-	var n int64
-	for i := 0; i < int(rec.NumCols()); i++ {
-		n += int64(rec.Column(i).Data().SizeInBytes())
-	}
-	return n
-}
-
 func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (totalRows int, retErr error) {
 	region := xcap.RegionFromContext(ctx)
 
