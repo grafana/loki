@@ -2,11 +2,9 @@ package hedging
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -18,17 +16,10 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 	return fn(req)
 }
 
-func resetMetrics() *prometheus.Registry {
-	//TODO: clean up this massive hack...
-	reg := prometheus.NewRegistry()
-	prometheus.DefaultRegisterer = reg
-	prometheus.DefaultGatherer = reg
-	initMetrics()
-	return reg
-}
-
 func TestHedging(t *testing.T) {
-	reg := resetMetrics()
+	beforeTotal := testutil.ToFloat64(totalHedgeRequests)
+	beforeLimited := testutil.ToFloat64(totalRateLimitedHedgeRequests)
+
 	cfg := &Config{
 		At:           time.Duration(1),
 		UpTo:         3,
@@ -43,27 +34,21 @@ func TestHedging(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		}),
-	}, reg)
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(3), count.Load())
-	require.NoError(t, testutil.GatherAndCompare(reg,
-		strings.NewReader(`
-# HELP hedged_requests_rate_limited_total The total number of hedged requests rejected via rate limiting.
-# TYPE hedged_requests_rate_limited_total counter
-hedged_requests_rate_limited_total 0
-# HELP hedged_requests_total The total number of hedged requests.
-# TYPE hedged_requests_total counter
-hedged_requests_total 2
-`,
-		), "hedged_requests_total", "hedged_requests_rate_limited_total"))
+	require.Equal(t, 2.0, testutil.ToFloat64(totalHedgeRequests)-beforeTotal)
+	require.Equal(t, 0.0, testutil.ToFloat64(totalRateLimitedHedgeRequests)-beforeLimited)
 }
 
 func TestHedgingRateLimit(t *testing.T) {
-	reg := resetMetrics()
+	beforeTotal := testutil.ToFloat64(totalHedgeRequests)
+	beforeLimited := testutil.ToFloat64(totalRateLimitedHedgeRequests)
+
 	cfg := &Config{
 		At:           time.Duration(1),
 		UpTo:         20,
@@ -78,21 +63,13 @@ func TestHedgingRateLimit(t *testing.T) {
 				StatusCode: http.StatusOK,
 			}, nil
 		}),
-	}, reg)
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(2), count.Load())
-	require.NoError(t, testutil.GatherAndCompare(reg,
-		strings.NewReader(`
-# HELP hedged_requests_rate_limited_total The total number of hedged requests rejected via rate limiting.
-# TYPE hedged_requests_rate_limited_total counter
-hedged_requests_rate_limited_total 18
-# HELP hedged_requests_total The total number of hedged requests.
-# TYPE hedged_requests_total counter
-hedged_requests_total 1
-`,
-		), "hedged_requests_total", "hedged_requests_rate_limited_total"))
+	require.Equal(t, 1.0, testutil.ToFloat64(totalHedgeRequests)-beforeTotal)
+	require.Equal(t, 18.0, testutil.ToFloat64(totalRateLimitedHedgeRequests)-beforeLimited)
 }
