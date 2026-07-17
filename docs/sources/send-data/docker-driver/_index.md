@@ -8,9 +8,13 @@ weight:  400
 ---
 # Docker driver client
 
-Grafana Loki officially supports a Docker plugin that will read logs from Docker
+Loki provides a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or Grafana Cloud.
+
+{{< admonition type="note" >}}
+The Docker driver is maintained as part of the Loki project, but is listed among Loki's [third-party clients](../#third-party-clients) and does not carry the same support commitment as [Grafana Alloy](https://grafana.com/docs/alloy/latest/).
+{{< /admonition >}}
 
 {{< admonition type="note" >}}
 Docker plugins are not supported on Windows; see the [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
@@ -77,7 +81,7 @@ docker plugin rm loki
 
 ## Known Issue: Deadlocked Docker Daemon
 
-The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the driver will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
+The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `loki-retries` has been exceeded. To avoid the dropping of log entries, setting `loki-retries` to zero allows unlimited retries; the driver will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
 
 The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the JSON log files will be retained on disk when the Loki client is unable to re-connect.
 

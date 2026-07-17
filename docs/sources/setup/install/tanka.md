@@ -56,10 +56,8 @@ jb install github.com/grafana/loki/production/ksonnet/promtail@main
 Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 
 - Update the `username`, `password`, and the relevant `htpasswd` variable values.
-- Update the S3 or GCS variable values, depending on your object storage type. See [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#storage_config) for more configuration details.
-- Remove from the configuration the S3 or GCS object storage variables that are not part of your setup.
-- Update the Promtail configuration `container_root_path` variable's value to reflect your root path for the Docker daemon. Run `docker info | grep "Root Dir"` to acquire your root path.
-- Update the `from` value in the Loki `schema_config` section to no more than 14 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-01`. This recommendation is based on the Loki default acceptance of log lines up to 14 days in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range.
+- Update object storage variables for one backend (`s3`, `gcs`, or `azure`) and remove variables for backends that are not part of your setup. In this module, `storage_backend` must be a single value. Refer to [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configuration/#storage_config) for configuration details.
+- Update the `from` value in the Loki `schema_config` section to no more than 7 days prior to the current date. The `from` date represents the first day for which the `schema_config` section is valid. For example, if today is `2021-01-15`, set `from` to `2021-01-08`. This recommendation is based on the Loki default acceptance of log lines up to 1 week (`168h`) in the past. The `reject_old_samples_max_age` configuration variable controls the acceptance range. Use TSDB (`store: tsdb`, `schema: v13`) for new installs.
 
 ```jsonnet
 local gateway = import 'loki/gateway.libsonnet';
