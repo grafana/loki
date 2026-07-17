@@ -133,8 +133,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, timeRanges, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -177,8 +176,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, timeRanges, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 

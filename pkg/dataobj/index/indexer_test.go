@@ -307,7 +307,6 @@ type mockCalculator struct {
 	count           int
 	object          *dataobj.Object
 	flushCallCount  int
-	resetCallCount  int
 	errOnCallNumber int  // Which Calculate call should set full flag (0 = never)
 	full            bool // Track when builder becomes full
 }
@@ -322,24 +321,17 @@ func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *data
 	return nil
 }
 
-func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
+func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
 	c.flushCallCount++
-	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), nil
-}
-
-func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
-	return []multitenancy.TimeRange{
+	c.full = false
+	ranges := []multitenancy.TimeRange{
 		{
 			Tenant:  "test",
 			MinTime: time.Now(),
 			MaxTime: time.Now().Add(time.Hour),
 		},
 	}
-}
-
-func (c *mockCalculator) Reset() {
-	c.resetCallCount++
-	c.full = false
+	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), ranges, nil
 }
 
 func (c *mockCalculator) IsFull() bool {
@@ -415,8 +407,7 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 
 	// Verify calculator behavior
 	require.Equal(t, 2, mockCalc.count)          // 2 calls (no retries)
-	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
-	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
+	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only; Flush consumes all state
 
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
@@ -497,6 +488,60 @@ func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
 		}
 	}
 	require.True(t, foundTenant, "tenant should be found in timeRanges")
+}
+
+func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "app", "objects/test-object", bucket)
+
+	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 22,
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+		TargetSectionSize:       1,
+	}, nil)
+	require.NoError(t, err)
+
+	calculator := NewCalculator(indexBuilder)
+
+	logObj, err := dataobj.FromBucket(ctx, bucket, "objects/test-object", 0)
+	require.NoError(t, err)
+
+	// First calculation and flush.
+	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
+	_, closer, firstRanges, err := calculator.Flush()
+	require.NoError(t, err)
+	closer.Close()
+
+	firstSize := tenantUncompressed(t, firstRanges, "tenant")
+	require.Equal(t, uint64(60), firstSize)
+
+	// Simulate a retry after a failed upload / ToC write: the same calculator
+	// reprocesses the same event against a builder that Flush already reset.
+	// Flush must have consumed all prior state so the byte count does not
+	// accumulate across the retry.
+	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
+	_, closer, secondRanges, err := calculator.Flush()
+	require.NoError(t, err)
+	closer.Close()
+
+	secondSize := tenantUncompressed(t, secondRanges, "tenant")
+	require.Equal(t, firstSize, secondSize, "retry must not double uncompressed_logs_size")
+}
+
+func tenantUncompressed(t *testing.T, ranges []multitenancy.TimeRange, tenant string) uint64 {
+	t.Helper()
+	for _, r := range ranges {
+		if r.Tenant == tenant {
+			return r.UncompressedLogsSize
+		}
+	}
+	t.Fatalf("tenant %q not found in ranges", tenant)
+	return 0
 }
 
 func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {

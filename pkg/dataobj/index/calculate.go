@@ -107,8 +107,22 @@ func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
 	return ranges
 }
 
-func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return c.indexobjBuilder.Flush()
+// Flush consumes the calculator's state and returns the built object together
+// with the time ranges captured for it. The uncompressed-size accumulator is
+// tied to the underlying builder's lifecycle: [indexobj.Builder.Flush] resets
+// the builder, so we clear the accumulator in the same step to keep the two in
+// sync. Otherwise a failed upload or ToC write followed by a Kafka retry would
+// add the reprocessed bytes on top of the stale count.
+func (c *Calculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+	ranges := c.TimeRanges()
+
+	obj, closer, err := c.indexobjBuilder.Flush()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	clear(c.uncompressedByTenant)
+	return obj, closer, ranges, nil
 }
 
 func (c *Calculator) IsFull() bool {
