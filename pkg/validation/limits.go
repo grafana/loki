@@ -14,7 +14,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
 	yaml "go.yaml.in/yaml/v4"
@@ -26,7 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -162,10 +161,10 @@ type Limits struct {
 	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
-	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
-	RulerTenantShardSize        int                              `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup   int                             `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int                             `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerAlertManagerConfig     *rulerconfig.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
+	RulerTenantShardSize        int                             `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 
 	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
 	// Ruler remote-write limits.
@@ -201,7 +200,7 @@ type Limits struct {
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
-	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
+	RulerRemoteWriteConfig map[string]rulerconfig.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
 	// TODO(dannyk): possible enhancement is to align this with rule group interval
 	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
@@ -348,13 +347,6 @@ type StreamRetention struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
-}
-
-// LimitError are errors that do not comply with the limits specified.
-type LimitError string
-
-func (e LimitError) Error() string {
-	return string(e)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -1002,7 +994,7 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 }
 
 // RulerAlertManagerConfig returns the alertmanager configurations to use for a given user.
-func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertManagerConfig {
+func (o *Overrides) RulerAlertManagerConfig(userID string) *rulerconfig.AlertManagerConfig {
 	return o.getOverridesForUser(userID).RulerAlertManagerConfig
 }
 
@@ -1089,7 +1081,7 @@ func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Confi
 }
 
 // RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.
-func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig {
+func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig {
 	if c, ok := o.getOverridesForUser(userID).RulerRemoteWriteConfig[id]; ok {
 		return &c
 	}

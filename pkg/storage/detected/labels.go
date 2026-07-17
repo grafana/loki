@@ -51,10 +51,18 @@ func MergeLabels(labels []*logproto.DetectedLabel) (result []*logproto.DetectedL
 	}
 
 	for _, label := range mergedLabels {
+		// Keep the marshalled sketch so the result can be merged again, e.g. when
+		// the query frontend merges responses that MultiTenantQuerier already
+		// merged across tenants.
+		sketch, err := label.Sketch.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+
 		detectedLabel := &logproto.DetectedLabel{
 			Label:       label.Label,
 			Cardinality: label.Sketch.Estimate(),
-			Sketch:      nil,
+			Sketch:      sketch,
 		}
 
 		result = append(result, detectedLabel)
