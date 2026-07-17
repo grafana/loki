@@ -30,9 +30,13 @@ A typical Loki-based logging stack consists of 3 components:
 
 ## Loki features
 
-- **Scalability** - Loki is designed for scalability, and can scale from as small as running on a Raspberry Pi to ingesting petabytes a day. 
-In its most common deployment, “simple scalable mode”, Loki decouples requests into separate read and write paths, so that you can independently scale them, which leads to flexible large-scale installations that can quickly adapt to meet your workload at any given time.
-If needed, each of the Loki components can also be run as microservices designed to run natively within Kubernetes.
+- **Scalability** - Loki is designed for scalability, and can scale from as small as running on a Raspberry Pi to ingesting petabytes a day.
+Loki can run as a single binary for simple setups, in [HA monolithic mode](../deployment-modes/#ha-monolithic-mode) for moderate horizontal scalability without added operational complexity, or as fine-grained microservices designed to run natively within Kubernetes for the largest, highest-scale installations.
+<!-- vale Google.Will = NO -->
+{{< admonition type="note" >}}
+Simple Scalable Deployment (SSD) mode, which decoupled requests into separate read and write paths, is deprecated and will be removed in Loki 4.0. The new HA monolithic mode will be the recommended replacement for most SSD use cases. See [deployment modes](../deployment-modes/) for details.
+{{< /admonition >}}
+<!-- vale Google.Will = YES -->
 
 - **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
 Multi-tenancy is [configured](../../operations/multi-tenancy/) by assigning a tenant ID in the agent.

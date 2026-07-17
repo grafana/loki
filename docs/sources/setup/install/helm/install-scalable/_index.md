@@ -309,4 +309,4 @@ For both options, if `apiVersion` is not set, the chart auto-detects the latest 
 ## Next Steps
 
 * Configure an agent to [send log data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/).
-* Monitor the Loki deployment using the [Meta Monitoring Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/)
+* [Monitor the Loki deployment](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/), using the recommended Kubernetes monitoring Helm chart.
