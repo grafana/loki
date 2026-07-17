@@ -32,6 +32,13 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			break
 		}
 		streamLbls := calcCtx.streamLabels[log.StreamID]
+		// The uncompressed byte contract is line bytes plus structured metadata
+		// value bytes, matching streams.Stream.UncompressedSize and the stats
+		// calculation so every producer reports the same quantity.
+		uncompressedSize := int64(len(log.Line))
+		log.Metadata.Range(func(md labels.Label) {
+			uncompressedSize += int64(len(md.Value))
+		})
 		streamLbls.Range(func(lbl labels.Label) {
 			if batchErr != nil {
 				return
@@ -43,7 +50,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 				LabelValue:       lbl.Value,
 				StreamID:         log.StreamID,
 				Timestamp:        log.Timestamp,
-				UncompressedSize: int64(len(log.Line)),
+				UncompressedSize: uncompressedSize,
 			})
 		})
 	}
