@@ -21,7 +21,7 @@ func buildIndexPointersObject(ctx context.Context, t *testing.T, bucket objstore
 
 	ib := indexpointers.NewBuilder(nil, 1024, 0)
 	ib.SetTenant(tenant)
-	ib.Append(ptrPath, start, end)
+	ib.Append(ptrPath, start, end, 0, 0)
 
 	b := dataobj.NewBuilder(nil)
 	require.NoError(t, b.Append(ib))
