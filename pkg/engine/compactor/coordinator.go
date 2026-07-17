@@ -115,7 +115,7 @@ func (c *coordinator) runCycle(ctx context.Context) {
 	start := c.clock()
 	window := start.UTC().Truncate(metastore.MetastoreWindowSize)
 
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window, c.logger)
+	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for current window", "window", window)
@@ -492,12 +492,12 @@ func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []strin
 }
 
 // fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
-// backfilling index FileSize, in both fillFileSizes and loadTenantIndexes.
+// filling in index FileSize before a ToC replace.
 const fileSizeStatConcurrency = 16
 
-// fillFileSizes stats each entry's object and sets FileSize. Best-effort: a
-// missing or not-yet-visible object leaves FileSize zero; the next cycle's
-// planning-read backfill recovers it.
+// fillFileSizes stats each entry's object and sets FileSize. Best-effort: when
+// the stat fails (missing or not-yet-visible object) the entry keeps its zero
+// FileSize and is persisted as-is.
 //
 // Stats run concurrently (bounded by fileSizeStatConcurrency) because each
 // bucket.Attributes call can take tens of milliseconds; serializing hundreds

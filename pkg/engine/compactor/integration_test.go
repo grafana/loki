@@ -213,7 +213,7 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 
 func mustLoadTenants(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
 	t.Helper()
-	got, err := loadTenantIndexes(ctx, b, window, log.NewNopLogger())
+	got, err := loadTenantIndexes(ctx, b, window)
 	require.NoError(t, err)
 	return got
 }

@@ -224,7 +224,7 @@ func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
 	// runCycle swallows per-tenant errors; check directly via the lower API.
-	indexes, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
+	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
 	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
 	require.NoError(t, runErr)
@@ -251,7 +251,7 @@ func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 	replacer := &fakeReplacer{swapped: false, err: swapErr}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
-	indexes, err := loadTenantIndexes(ctx, bucket, window, log.NewNopLogger())
+	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
 	_, runErr := c.compactTenant(ctx, "acme", window, indexes["acme"])
 	require.ErrorIs(t, runErr, swapErr)
