@@ -181,18 +181,10 @@ func (r *postingsIndexSectionsReader) Read(ctx context.Context) (arrow.RecordBat
 	batch := r.rows[start:end]
 	r.offset = end
 
-	r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(int64(len(batch))))
 	return sectionResultsToRecordBatch(batch), nil
 }
 
 func (r *postingsIndexSectionsReader) resolveStreamsFromSelector(ctx context.Context, selector *streamSelector) error {
-	region := xcap.RegionFromContext(ctx)
-	startTime := time.Now()
-	defer func() {
-		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
-		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(startTime).Seconds()))
-	}()
-
 	results, err := selector.selectStreams(ctx)
 	if err != nil {
 		return fmt.Errorf("resolving postings sections: %w", err)
@@ -200,7 +192,6 @@ func (r *postingsIndexSectionsReader) resolveStreamsFromSelector(ctx context.Con
 	r.rows = expandResults(results)
 	r.resolvedRefs = uint64(len(r.rows))
 
-	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.rows))))
 	return nil
 }
 

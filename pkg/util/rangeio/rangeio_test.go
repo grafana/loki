@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func FuzzReadRanges(f *testing.F) {
@@ -191,6 +192,16 @@ func TestReadRanges(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadRangesDoesNotCreateXCapRegion(t *testing.T) {
+	ctx, capture := xcap.NewCapture(t.Context(), nil)
+	ctx, parent := xcap.StartRegion(ctx, "parent")
+	defer parent.End()
+
+	ranges := []rangeio.Range{{Data: make([]byte, 3)}}
+	require.NoError(t, rangeio.ReadRanges(ctx, byteRangeReader("abc"), ranges))
+	require.Len(t, capture.Regions(), 1)
 }
 
 type byteRangeReader []byte
