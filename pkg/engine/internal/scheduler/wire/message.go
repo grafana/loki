@@ -9,6 +9,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // MessageKind represents the type of a message.
@@ -111,6 +112,10 @@ type (
 	TaskResultMessage struct {
 		ID     ulid.ULID           // ID of the task that finished.
 		Result workflow.TaskResult // Terminal result of the task.
+
+		// Capture is the validated worker capture, decoded only once before
+		// the scheduler merges it into the task capture.
+		Capture *xcap.DecodedCapture
 	}
 )
 

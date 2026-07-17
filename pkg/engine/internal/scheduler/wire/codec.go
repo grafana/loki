@@ -272,14 +272,15 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 		}, nil
 
 	case *wirepb.MessageFrame_TaskResult:
-		result, err := c.taskResultFromPbTaskResult(&k.TaskResult.Result)
+		result, capture, err := c.taskResultFromPbTaskResult(&k.TaskResult.Result)
 		if err != nil {
 			return nil, err
 		}
 
 		return TaskResultMessage{
-			ID:     ulid.ULID(k.TaskResult.Id),
-			Result: result,
+			ID:      ulid.ULID(k.TaskResult.Id),
+			Result:  result,
+			Capture: capture,
 		}, nil
 
 	case *wirepb.MessageFrame_StreamBind:
@@ -352,14 +353,14 @@ func (c *metricCodec) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 	}, nil
 }
 
-func (c *protobufCodec) taskResultFromPbTaskResult(tr *wirepb.TaskResult) (workflow.TaskResult, error) {
+func (c *protobufCodec) taskResultFromPbTaskResult(tr *wirepb.TaskResult) (workflow.TaskResult, *xcap.DecodedCapture, error) {
 	if tr == nil {
-		return workflow.TaskResult{}, fmt.Errorf("nil task result")
+		return workflow.TaskResult{}, nil, fmt.Errorf("nil task result")
 	}
 
 	outcome, err := c.taskOutcomeFromPbTaskOutcome(tr.Outcome)
 	if err != nil {
-		return workflow.TaskResult{}, err
+		return workflow.TaskResult{}, nil, err
 	}
 
 	result := workflow.TaskResult{Outcome: outcome}
@@ -368,16 +369,11 @@ func (c *protobufCodec) taskResultFromPbTaskResult(tr *wirepb.TaskResult) (workf
 		result.Error = errors.New(pbErr.Description)
 	}
 
-	if captureData := tr.GetCapture(); len(captureData) > 0 {
-		capture := &xcap.Capture{}
-		if err := capture.UnmarshalBinary(captureData); err != nil {
-			return workflow.TaskResult{}, fmt.Errorf("failed to unmarshal capture: %w", err)
-		}
-
-		result.Capture = capture
+	capture, err := xcap.DecodeBinary(tr.GetCapture())
+	if err != nil {
+		return workflow.TaskResult{}, nil, fmt.Errorf("failed to unmarshal capture: %w", err)
 	}
-
-	return result, nil
+	return result, capture, nil
 }
 
 func (c *protobufCodec) taskOutcomeFromPbTaskOutcome(outcome wirepb.TaskOutcome) (workflow.TaskOutcome, error) {

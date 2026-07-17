@@ -1,5 +1,7 @@
 package xcap
 
+import "math"
+
 // AggregatedObservation holds an aggregated value for a statistic within a region.
 type AggregatedObservation struct {
 	Statistic Statistic
@@ -21,6 +23,40 @@ func (a *AggregatedObservation) Merge(other *AggregatedObservation) {
 	}
 	a.aggregate(a.Statistic.Aggregation(), other.Value)
 	a.Count += other.Count
+}
+
+// mergeV2 merges a flattened V2 value without first constructing an
+// intermediate AggregatedObservation.
+func (a *AggregatedObservation) mergeV2(valueBits uint64, count int) {
+	switch a.Statistic.DataType() {
+	case DataTypeInt64:
+		a.aggregateInt64(a.Statistic.Aggregation(), int64(valueBits))
+	case DataTypeFloat64:
+		a.aggregateFloat64(a.Statistic.Aggregation(), math.Float64frombits(valueBits))
+	case DataTypeBool:
+		a.aggregateBool(a.Statistic.Aggregation(), valueBits != 0)
+	}
+	a.Count += count
+}
+
+// newAggregatedObservationV2 creates an aggregated observation from a
+// flattened V2 value.
+func newAggregatedObservationV2(stat Statistic, valueBits uint64, count int) *AggregatedObservation {
+	var value any
+	switch stat.DataType() {
+	case DataTypeInt64:
+		value = int64(valueBits)
+	case DataTypeFloat64:
+		value = math.Float64frombits(valueBits)
+	case DataTypeBool:
+		value = valueBits != 0
+	}
+
+	return &AggregatedObservation{
+		Statistic: stat,
+		Value:     value,
+		Count:     count,
+	}
 }
 
 func (a *AggregatedObservation) aggregate(aggType AggregationType, val any) {
@@ -66,6 +102,51 @@ func (a *AggregatedObservation) aggregate(aggType AggregationType, val any) {
 		if a.Value == nil {
 			a.Value = val
 		}
+	}
+}
+
+func (a *AggregatedObservation) aggregateInt64(aggType AggregationType, value int64) {
+	switch aggType {
+	case AggregationTypeSum:
+		a.Value = a.Value.(int64) + value
+	case AggregationTypeMin:
+		if value < a.Value.(int64) {
+			a.Value = value
+		}
+	case AggregationTypeMax:
+		if value > a.Value.(int64) {
+			a.Value = value
+		}
+	case AggregationTypeLast:
+		a.Value = value
+	}
+}
+
+func (a *AggregatedObservation) aggregateFloat64(aggType AggregationType, value float64) {
+	switch aggType {
+	case AggregationTypeSum:
+		a.Value = a.Value.(float64) + value
+	case AggregationTypeMin:
+		if value < a.Value.(float64) {
+			a.Value = value
+		}
+	case AggregationTypeMax:
+		if value > a.Value.(float64) {
+			a.Value = value
+		}
+	case AggregationTypeLast:
+		a.Value = value
+	}
+}
+
+func (a *AggregatedObservation) aggregateBool(aggType AggregationType, value bool) {
+	switch aggType {
+	case AggregationTypeMax:
+		if value {
+			a.Value = true
+		}
+	case AggregationTypeLast:
+		a.Value = value
 	}
 }
 
