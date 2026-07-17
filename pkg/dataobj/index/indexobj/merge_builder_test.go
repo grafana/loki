@@ -3,6 +3,7 @@ package indexobj
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -109,7 +110,7 @@ func TestMergeBuilder_AppendPostingsLabelEntry(t *testing.T) {
 	ts := int64(1000) // unix nanoseconds
 
 	// Create a valid label entry
-	bitmapBytes := []byte{0x01, 0x00}
+	bitmapBytes := []byte{0x01}
 	entry := postings.LabelEntry{
 		ObjectPath:       "/obj1",
 		SectionIndex:     0,
@@ -187,7 +188,7 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 
 	// Now create the entry
 	ts := int64(500) // unix nanoseconds
-	bitmapBytes := []byte{0x01, 0x00}
+	bitmapBytes := []byte{0x01}
 	entry := postings.BloomEntry{
 		ObjectPath:       "/obj2",
 		SectionIndex:     1,
@@ -230,6 +231,71 @@ func TestMergeBuilder_AppendPostingsBloomEntry(t *testing.T) {
 	require.Equal(t, entry.ColumnName, row.ColumnName)
 	require.Equal(t, entry.BloomFilter, row.BloomFilter)
 	require.Equal(t, entry.StreamIDBitmap, row.StreamIDBitmap)
+}
+
+// TestMergeBuilder_PostingsSpillSectionsAtTargetSize verifies that postings are
+// cut into sections mid-stream once accumulation reaches TargetSectionSize, so
+// the builder never buffers the whole merged output in memory, and that every
+// appended row survives the round-trip across the resulting multiple sections.
+func TestMergeBuilder_PostingsSpillSectionsAtTargetSize(t *testing.T) {
+	b, err := NewMergeBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 30, // large: isolate section-cutting from IsFull
+		TargetSectionSize:       1 << 12, // 4 KiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}, nil)
+	require.NoError(t, err)
+
+	// Each entry is ~300 bytes (256-byte bitmap + keys), so 100 entries far
+	// exceed a 4 KiB section and force several mid-stream cuts.
+	const numEntries = 100
+	bitmap := make([]byte, 256)
+	want := make(map[string]struct{}, numEntries)
+	for i := range numEntries {
+		val := fmt.Sprintf("value-%05d", i)
+		want[val] = struct{}{}
+		require.NoError(t, b.AppendPostingsLabelEntry("tenant-1", postings.LabelEntry{
+			ObjectPath:     "/obj",
+			SectionIndex:   0,
+			ColumnName:     "env",
+			LabelValue:     val,
+			StreamIDBitmap: bitmap,
+			MinTimestamp:   int64(i),
+			MaxTimestamp:   int64(i),
+		}))
+	}
+
+	// A section must have been cut before Flush — proof that the builder is not
+	// holding the whole output in memory.
+	require.Greater(t, b.builder.Bytes(), 0, "expected a section to be cut mid-stream")
+
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	require.NotNil(t, obj)
+	defer closer.Close()
+
+	// The output spans multiple postings sections...
+	sections := obj.Sections()
+	require.Greater(t, len(sections), 1, "expected multiple postings sections")
+
+	// ...and every appended row survives across them, none lost or duplicated at
+	// the section boundaries.
+	ctx := context.Background()
+	got := make(map[string]struct{}, numEntries)
+	for _, sec := range sections {
+		require.True(t, postings.CheckSection(sec))
+		ps, err := postings.Open(ctx, sec)
+		require.NoError(t, err)
+		for _, row := range readAllPostingsRows(ctx, t, ps) {
+			require.Equal(t, postings.KindLabel, row.Kind)
+			_, dup := got[row.LabelValue]
+			require.False(t, dup, "duplicate row across sections: %s", row.LabelValue)
+			got[row.LabelValue] = struct{}{}
+		}
+	}
+	require.Equal(t, want, got)
 }
 
 // TestMergeBuilder_MultiTenant verifies that the merge builder handles multiple tenants.

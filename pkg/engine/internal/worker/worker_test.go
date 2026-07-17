@@ -137,8 +137,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a stream that will feed data to the TopK node
 		inputStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 
 		// Create a workflow task manually with the TopK node and stream source
@@ -154,19 +153,25 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 
 		// Create a results stream for the workflow output
 		resultsStream := &workflow.Stream{
-			ULID:     ulid.Make(),
-			TenantID: objtest.Tenant,
+			ULID: ulid.Make(),
 		}
 		task.Sinks[topkNode] = []*workflow.Stream{resultsStream}
 
-		// Create a workflow with the task
+		// Register a producer for the input stream. The test injects its data
+		// directly, then cancels this task to drive authoritative stream closure.
+		producer := &workflow.Task{
+			ULID:  ulid.Make(),
+			Sinks: map[physical.Node][]*workflow.Stream{nil: {inputStream}},
+		}
+
+		// Create a workflow with the tasks.
 		manifest := &workflow.Manifest{
 			Streams: []*workflow.Stream{inputStream, resultsStream},
-			Tasks:   []*workflow.Task{task},
-			TaskEventHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskStatus) {
+			Tasks:   []*workflow.Task{task, producer},
+			TaskResultHandler: func(_ context.Context, _ *workflow.Task, _ workflow.TaskResult) {
 				// Empty
 			},
-			StreamEventHandler: func(_ context.Context, _ *workflow.Stream, _ workflow.StreamState) {
+			StreamClosedHandler: func(_ context.Context, _ *workflow.Stream) {
 				// Empty
 			},
 		}
@@ -224,29 +229,6 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		// the connection will not be accepted.
 		cancel()
 
-		// Connect to the scheduler on behalf of worker 2
-		schedulerConn, err := net.schedulerListener.DialFrom(ctx, testAddr("worker2"))
-		require.NoError(t, err)
-		defer schedulerConn.Close()
-
-		schedulerPeer := &wire.Peer{
-			Logger:  logger,
-			Metrics: wire.NewMetrics(),
-			Conn:    schedulerConn,
-			Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
-				return nil
-			},
-		}
-		go func() { _ = schedulerPeer.Serve(ctx) }()
-
-		// Say hello to the scheduler on behalf of worker 2
-		err = schedulerPeer.SendMessage(ctx, wire.WorkerHelloMessage{
-			Threads: 1,
-		})
-		require.NoError(t, err)
-
-		synctest.Wait()
-
 		// Send the data message
 		err = workerPeer.SendMessage(ctx, wire.StreamDataMessage{
 			StreamID: inputStream.ULID,
@@ -254,12 +236,9 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		// Close the stream to signal EOF by sending a StreamStatusMessage
-		err = schedulerPeer.SendMessage(ctx, wire.StreamStatusMessage{
-			StreamID: inputStream.ULID,
-			State:    workflow.StreamStateClosed,
-		})
-		require.NoError(t, err)
+		// Cancelling the registered producer closes its sink and signals EOF to
+		// the consumer task.
+		require.NoError(t, sched.Cancel(ctx, producer))
 
 		// Wait for results - the worker should have processed the data
 		// even though its context was canceled

@@ -579,7 +579,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, "service",
+	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
 		map[string]string{"service": "api"},
 		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
@@ -632,7 +632,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
-		SortSchema:       "service,namespace",
+		SortSchema:       "label:service,label:namespace",
 		Labels:           map[string]string{"service": "api", "namespace": "default"},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano() + 1000,
@@ -704,9 +704,18 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 // with the given label observations, then uploads it to the bucket.
 func buildSourcePostingsObject(t *testing.T, bucket objstore.Bucket, tenant, path string, observations []postings.LabelObservation) {
 	t.Helper()
+	buildSourcePostingsObjectSized(t, bucket, tenant, path, math.MaxInt, observations)
+}
+
+// buildSourcePostingsObjectSized is buildSourcePostingsObject with a caller-chosen
+// target section size. A small size splits the postings into multiple sections
+// within the object, which exercises the per-object section concatenation in the
+// merge readers.
+func buildSourcePostingsObjectSized(t *testing.T, bucket objstore.Bucket, tenant, path string, targetSectionSize int, observations []postings.LabelObservation) {
+	t.Helper()
 	ctx := context.Background()
 
-	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, targetSectionSize)
 	postingsBuilder.SetTenant(tenant)
 	for _, obs := range observations {
 		postingsBuilder.ObserveLabelPosting(obs)
@@ -764,7 +773,9 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 
 	require.NotNil(t, sec, "expected postings section in output object")
 
-	reader := postings.NewRowReader(ctx, sec, nil)
+	inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+	require.NoError(t, inner.Open(ctx))
+	reader := postings.NewRowReader(ctx, inner)
 	defer reader.Close()
 
 	var rows []postings.Row
@@ -776,6 +787,90 @@ func readPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objsto
 	}
 
 	return rows
+}
+
+// readAllPostingsRowsFromBucket reads rows from ALL postings sections of the
+// object, in section order (unlike readPostingsRowsFromBucket, which reads only
+// the first section). Merge output can span multiple postings sections.
+func readAllPostingsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []postings.Row {
+	t.Helper()
+
+	obj := openObjectFromBucket(ctx, t, bucket, path)
+
+	var rows []postings.Row
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(ctx, s)
+		require.NoError(t, err)
+		inner := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+		require.NoError(t, inner.Open(ctx))
+		reader := postings.NewRowReader(ctx, inner)
+		for reader.Next() {
+			rows = append(rows, reader.At())
+		}
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
+	}
+	return rows
+}
+
+// TestExecuteIndexMerge_StorageOrderConcat verifies that the postings merge
+// orders rows by physical storage order (ColumnName-primary), not by the
+// identity-key order (ObjectPath-primary), and that per-object section
+// concatenation is correct.
+func TestExecuteIndexMerge_StorageOrderConcat(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	ts := time.Unix(0, 100)
+
+	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/a", 1, []postings.LabelObservation{
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "us", StreamID: 2, Timestamp: ts, UncompressedSize: 20},
+	})
+	buildSourcePostingsObjectSized(t, bucket, "tenant", "src/b", 1, []postings.LabelObservation{
+		// (log-B, 0, svc, api) duplicates src/a's first row exactly (same ts).
+		{ObjectPath: "log-B", SectionIndex: 0, ColumnName: "svc", LabelValue: "api", StreamID: 1, Timestamp: ts, UncompressedSize: 10},
+		{ObjectPath: "log-A", SectionIndex: 0, ColumnName: "zone", LabelValue: "eu", StreamID: 3, Timestamp: ts, UncompressedSize: 30},
+	})
+
+	outputPath := "output/merged.dat"
+	node := &physical.IndexMerge{
+		NodeID:          ulid.Make(),
+		Tenant:          "tenant",
+		OutputIndexPath: outputPath,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/a", SectionIndex: 0}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "src/b", SectionIndex: 0}}},
+		},
+	}
+
+	execCtx := newTestExecutorContext(t, bucket)
+	require.NoError(t, execCtx.doIndexMerge(ctx, node))
+
+	rows := readAllPostingsRowsFromBucket(ctx, t, bucket, outputPath)
+
+	// Three unique identity keys; the (log-B, svc, api) duplicate collapsed.
+	require.Len(t, rows, 3)
+
+	// Output is in physical storage order (ColumnName-primary).
+	for i := range len(rows) - 1 {
+		require.Negative(t, comparePostingsRow(rows[i], rows[i+1]),
+			"rows not in storage order at %d: %+v vs %+v", i, rows[i], rows[i+1])
+	}
+
+	// Every expected identity key is present exactly once.
+	type key struct{ obj, col, val string }
+	got := map[key]int{}
+	for _, r := range rows {
+		got[key{r.ObjectPath, r.ColumnName, r.LabelValue}]++
+	}
+	require.Equal(t, map[key]int{
+		{"log-B", "svc", "api"}: 1,
+		{"log-A", "zone", "us"}: 1,
+		{"log-A", "zone", "eu"}: 1,
+	}, got)
 }
 
 // readStatsRowsFromBucket downloads an object from the bucket, finds its
@@ -1031,7 +1126,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     ts1, // identical to source B
 			MaxTimestamp:     ts2, // identical to source B
@@ -1045,7 +1140,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     ts1, // identical to source A
 			MaxTimestamp:     ts2, // identical to source A
@@ -1081,7 +1176,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	row := rows[0]
 	require.Equal(t, "log-X", row.ObjectPath)
 	require.Equal(t, int64(0), row.SectionIndex)
-	require.Equal(t, "service", row.SortSchema)
+	require.Equal(t, "label:service", row.SortSchema)
 	require.Equal(t, map[string]string{"service": "api"}, row.Labels)
 
 	// Timestamps unchanged (both inputs match).
@@ -1119,7 +1214,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 		{
 			ObjectPath:       "log-A",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1256,7 +1351,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 			{
 				ObjectPath:       "log-X",
 				SectionIndex:     0,
-				SortSchema:       "service",
+				SortSchema:       "label:service",
 				Labels:           map[string]string{"service": "api"},
 				MinTimestamp:     ts1, // identical across all sources
 				MaxTimestamp:     ts2, // identical across all sources
@@ -1342,7 +1437,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
 		SectionIndex:     0,
-		SortSchema:       "my.svc",
+		SortSchema:       "label:my.svc",
 		Labels:           map[string]string{"my.svc": "api"},
 		MinTimestamp:     100,
 		MaxTimestamp:     200,
@@ -1382,7 +1477,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	}
 
 	// Verify the label name is NOT truncated: should be "my.svc", not "my"
-	require.Equal(t, "my.svc", row.SortSchema)
+	require.Equal(t, "label:my.svc", row.SortSchema)
 	require.Equal(t, map[string]string{"my.svc": "api"}, row.Labels)
 	require.Equal(t, "api", row.Labels["my.svc"])
 
@@ -1404,7 +1499,7 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service,job",
+			SortSchema:       "label:service,label:job",
 			Labels:           map[string]string{"service": "api", "job": "j1"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1418,7 +1513,7 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "job,service", // Different SortSchema
+			SortSchema:       "label:job,label:service", // Different SortSchema
 			Labels:           map[string]string{"job": "j1", "service": "api"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1492,7 +1587,7 @@ func buildMultiTenantSourceObject(t *testing.T, bucket objstore.Bucket, path str
 			statsBuilder.Append(stats.Stat{
 				ObjectPath:       objectPath,
 				SectionIndex:     int64(i),
-				SortSchema:       "service_name",
+				SortSchema:       "label:service_name",
 				Labels:           map[string]string{"service_name": fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i)},
 				MinTimestamp:     ts.UnixNano(),
 				MaxTimestamp:     ts.UnixNano() + 1000,

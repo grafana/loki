@@ -204,7 +204,7 @@ func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
 
 	_, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeAppend)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "indexer service is not running")
+	require.ErrorIs(t, err, ErrIndexerNotRunning)
 }
 
 func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
@@ -418,6 +418,100 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
+}
+
+func TestSerialIndexer_ResetsCalculatorOnCancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+	record := &kgo.Record{Partition: int32(0)}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+	record.Value = eventBytes
+
+	mockCalc := &blockingMockCalculator{
+		entered: make(chan struct{}),
+	}
+	indexStorageBucket := objstore.NewInMemBucket()
+
+	reg := prometheus.NewRegistry()
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		builderMetrics,
+		indexerMetrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	buildCtx, buildCancel := context.WithCancel(ctx)
+	defer buildCancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := indexer.submitBuild(buildCtx, []bufferedEvent{{
+			event:  event,
+			record: record,
+		}}, 0, triggerTypeAppend)
+		errCh <- err
+	}()
+
+	select {
+	case <-mockCalc.entered:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for Calculate to start")
+	}
+
+	buildCancel()
+
+	select {
+	case err := <-errCh:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for submitBuild to return")
+	}
+
+	// submitBuild may return on ctx.Done before the worker finishes unwinding;
+	// wait for the deferred Reset from the cancelled buildIndex.
+	require.Eventually(t, func() bool {
+		return mockCalc.resetCallCount >= 1
+	}, 5*time.Second, 10*time.Millisecond, "calculator should be reset after cancelled build")
+	require.Equal(t, 0, mockCalc.flushCallCount, "cancelled build should not flush")
+}
+
+// blockingMockCalculator blocks inside Calculate until the context is cancelled.
+type blockingMockCalculator struct {
+	mockCalculator
+	entered chan struct{}
+}
+
+func (c *blockingMockCalculator) Calculate(ctx context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
+	c.count++
+	c.object = object
+	close(c.entered)
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func TestDownloadObject_Success(t *testing.T) {

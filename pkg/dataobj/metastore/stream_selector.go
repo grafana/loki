@@ -3,6 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -30,6 +31,12 @@ type streamSelector struct {
 	matchers        []*labels.Matcher
 	equalPredicates []*labels.Matcher
 	start, end      time.Time
+
+	compiledMatchers []postings.CompiledMatcher
+	compiledFilters  []postings.CompiledMatcher
+	scanners         []*postings.Scanner
+	stats            *statsTracker
+	opened           bool
 }
 
 func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.Time) *streamSelector {
@@ -40,6 +47,83 @@ func newStreamSelector(matchers, predicates []*labels.Matcher, start, end time.T
 		}
 	}
 	return &streamSelector{matchers: matchers, equalPredicates: eq, start: start, end: end}
+}
+
+func (s *streamSelector) open(ctx context.Context, sections []*postings.Section, maxConcurrency int) error {
+	if s.opened {
+		return nil
+	}
+	if len(s.matchers) == 0 {
+		s.opened = true
+		return nil
+	}
+
+	filters, matchers := s.splitFiltersAndMatchers()
+	if len(matchers) == 0 {
+		return fmt.Errorf("stream selector requires at least one non-filter matcher")
+	}
+
+	var err error
+	s.compiledMatchers, err = compileAll(matchers)
+	if err != nil {
+		return err
+	}
+	s.compiledFilters, err = compileAll(filters)
+	if err != nil {
+		return err
+	}
+
+	s.stats = newStatsTracker(len(sections))
+	s.scanners = make([]*postings.Scanner, len(sections))
+
+	labelStats := make([]*sectionStatsTracker, len(sections))
+	bloomStats := make([]*sectionStatsTracker, len(sections))
+	for i := range sections {
+		labelStats[i] = s.stats.SectionLabelTracker(i)
+		bloomStats[i] = s.stats.SectionBloomTracker(i)
+	}
+
+	g, groupCtx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency) // Each ScannerReader opens 4 readers, so share the concurrent limit
+	for i, section := range sections {
+		g.Go(func() error {
+			readers, err := postings.NewScannerReaders(
+				section,
+				s.compiledMatchers,
+				s.compiledFilters,
+				s.equalPredicates,
+				labelStats[i],
+				bloomStats[i],
+			)
+			if err != nil {
+				return fmt.Errorf("creating postings scanner readers: %w", err)
+			}
+			if err := readers.Open(groupCtx); err != nil {
+				return fmt.Errorf("opening postings scanner readers: %w", err)
+			}
+			s.scanners[i] = postings.NewScanner(section, readers)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		_ = s.close()
+		return err
+	}
+
+	s.opened = true
+	return nil
+}
+
+func (s *streamSelector) close() error {
+	var errs []error
+	for _, scanner := range s.scanners {
+		if scanner != nil {
+			errs = append(errs, scanner.Close())
+		}
+	}
+	s.scanners = nil
+	s.opened = false
+	return errors.Join(errs...)
 }
 
 // accum holds the per-logs-section state. result is the running intersection of
@@ -53,39 +137,27 @@ type accum struct {
 	hasTS        bool
 }
 
-// selectStreams scans the already-opened sections and returns matching
+// selectStreams scans it's attached readers and returns matching
 // SectionStreams, one per logs section with at least one matching stream. The
-// caller owns opening and closing the sections.
-func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings.Section) ([]SectionStreams, error) {
+// caller owns opening and closing the selector.
+func (s *streamSelector) selectStreams(ctx context.Context) ([]SectionStreams, error) {
+	if !s.opened {
+		return nil, fmt.Errorf("stream selector not opened")
+	}
 	if len(s.matchers) == 0 {
 		return nil, nil
 	}
 
-	filters, matchers := s.splitFiltersAndMatchers()
-	if len(matchers) == 0 {
-		return nil, fmt.Errorf("stream selector requires at least one non-filter matcher")
-	}
-
-	compiledMatchers, err := compileAll(matchers)
-	if err != nil {
-		return nil, err
-	}
-	compiledFilters, err := compileAll(filters)
-	if err != nil {
-		return nil, err
-	}
-
-	stats := newStatsTracker(len(sections))
-	defer stats.Report(ctx)
+	defer s.stats.Report(ctx)
 
 	startNanos, endNanos := s.start.UnixNano(), s.end.UnixNano()
 
-	accums, err := s.eval(ctx, sections, compiledMatchers, compiledFilters, startNanos, endNanos, stats)
+	accums, err := s.eval(ctx, s.compiledMatchers, s.compiledFilters, startNanos, endNanos)
 	if err != nil {
 		return nil, err
 	}
 
-	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, sections, accums, stats)
+	survivors, ambiguousNamesByRef, err := s.admitSections(ctx, accums)
 	if err != nil {
 		return nil, err
 	}
@@ -111,16 +183,14 @@ func (s *streamSelector) selectStreams(ctx context.Context, sections []*postings
 // surviving accumulators keyed by logs SectionRef.
 func (s *streamSelector) eval(
 	ctx context.Context,
-	sections []*postings.Section,
 	matchers []postings.CompiledMatcher,
 	filters []postings.CompiledMatcher,
 	startNanos, endNanos int64,
-	stats *statsTracker,
 ) (map[postings.SectionRef]*accum, error) {
 	accums := make(map[postings.SectionRef]*accum)
 
 	if len(matchers) > 0 {
-		if err := s.matchMatchers(ctx, sections, matchers, accums, startNanos, endNanos, stats); err != nil {
+		if err := s.matchMatchers(ctx, matchers, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -129,7 +199,7 @@ func (s *streamSelector) eval(
 	}
 
 	if len(filters) > 0 {
-		if err := s.matchFilters(ctx, sections, filters, accums, startNanos, endNanos, stats); err != nil {
+		if err := s.matchFilters(ctx, filters, accums, startNanos, endNanos); err != nil {
 			return nil, err
 		}
 		if len(accums) == 0 {
@@ -146,20 +216,17 @@ func (s *streamSelector) eval(
 // matcher are pruned from accums.
 func (s *streamSelector) matchMatchers(
 	ctx context.Context,
-	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
-	stats *statsTracker,
 ) error {
 	perMatcherHits := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
 	for i := range perMatcherHits {
 		perMatcherHits[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for sID, sec := range sections {
-		sectionStats := stats.SectionLabelTracker(sID)
-		matches, err := postings.NewScanner(sec).MatchLabels(ctx, nil, cms, sectionStats)
+	for _, scanner := range s.scanners {
+		matches, err := scanner.MatchLabels(ctx, nil, cms)
 		if err != nil {
 			return err
 		}
@@ -191,11 +258,9 @@ func (s *streamSelector) matchMatchers(
 // pruned from accums.
 func (s *streamSelector) matchFilters(
 	ctx context.Context,
-	sections []*postings.Section,
 	cms []postings.CompiledMatcher,
 	accums map[postings.SectionRef]*accum,
 	startNanos, endNanos int64,
-	stats *statsTracker,
 ) error {
 	present := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
 	matched := make([]map[postings.SectionRef]*memory.Bitmap, len(cms))
@@ -204,9 +269,8 @@ func (s *streamSelector) matchFilters(
 		matched[i] = make(map[postings.SectionRef]*memory.Bitmap)
 	}
 
-	for sID, sec := range sections {
-		sectionStats := stats.SectionLabelTracker(sID)
-		streams, err := postings.NewScanner(sec).LabelStreams(ctx, nil, cms, sectionStats)
+	for _, scanner := range s.scanners {
+		streams, err := scanner.LabelStreams(ctx, nil, cms)
 		if err != nil {
 			return err
 		}
@@ -323,7 +387,7 @@ func (s *streamSelector) finalize(ref postings.SectionRef, acc *accum, startNano
 }
 
 // admitSections applies blooms and collects ambiguous names in a single pass.
-func (s *streamSelector) admitSections(ctx context.Context, sections []*postings.Section, accums map[postings.SectionRef]*accum, stats *statsTracker) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
+func (s *streamSelector) admitSections(ctx context.Context, accums map[postings.SectionRef]*accum) (map[postings.SectionRef]struct{}, map[postings.SectionRef]map[string]struct{}, error) {
 	if len(s.equalPredicates) == 0 {
 		return nil, nil, nil
 	}
@@ -333,14 +397,12 @@ func (s *streamSelector) admitSections(ctx context.Context, sections []*postings
 		streamLabelsByRef[ref] = acc.streamLabels
 	}
 
-	bloomHits := make([]map[postings.SectionRef]map[postings.PredicateValue]struct{}, len(sections))
-	ambiguousHits := make([]map[postings.SectionRef]map[string]struct{}, len(sections))
-	g, ctx := errgroup.WithContext(ctx)
-	for i := range sections {
-		sectionStats := stats.SectionBloomTracker(i)
+	bloomHits := make([]map[postings.SectionRef]map[postings.PredicateValue]struct{}, len(s.scanners))
+	ambiguousHits := make([]map[postings.SectionRef]map[string]struct{}, len(s.scanners))
+	g, groupCtx := errgroup.WithContext(ctx)
+	for i := range s.scanners {
 		g.Go(func() error {
-			scanner := postings.NewScanner(sections[i])
-			matched, ambiguous, err := scanner.MatcherHits(ctx, s.equalPredicates, sectionStats)
+			matched, ambiguous, err := s.scanners[i].MatcherHits(groupCtx, s.equalPredicates)
 			if err != nil {
 				return err
 			}

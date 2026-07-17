@@ -7,16 +7,16 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
 	"go.yaml.in/yaml/v4"
 
-	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 )
 
 type Config struct {
-	ruler.Config `yaml:",inline"`
+	rulerbase.Config `yaml:",inline"`
 
 	WAL instance.Config `yaml:"wal,omitempty"`
 	// we cannot define this in the WAL config since it creates an import cycle
@@ -53,11 +53,11 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
-	Enabled             bool                                `yaml:"enabled"`
-	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
-	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add an X-Scope-OrgID header in remote write requests with the tenant ID of a Loki tenant that the recording rules are part of."`
+	Client              *promconfig.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
+	Clients             map[string]promconfig.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
+	Enabled             bool                                    `yaml:"enabled"`
+	ConfigRefreshPeriod time.Duration                           `yaml:"config_refresh_period"`
+	AddOrgIDHeader      bool                                    `yaml:"add_org_id_header" doc:"description=Add an X-Scope-OrgID header in remote write requests with the tenant ID of a Loki tenant that the recording rules are part of."`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
@@ -125,6 +125,6 @@ func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -runtime-config.reload-period.")
 
 	if c.Clients == nil {
-		c.Clients = make(map[string]config.RemoteWriteConfig)
+		c.Clients = make(map[string]promconfig.RemoteWriteConfig)
 	}
 }
