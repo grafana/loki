@@ -26,7 +26,6 @@ func TestMarshalWritesFlattenedObservationsV2(t *testing.T) {
 	protoCapture, err := toProtoCapture(capture)
 	require.NoError(t, err)
 	require.Len(t, protoCapture.Regions, 1)
-	require.Empty(t, protoCapture.Regions[0].Observations)
 	require.Len(t, protoCapture.Regions[0].ObservationsV2, 3)
 
 	observations := make(map[string]proto.ObservationV2, len(protoCapture.Regions[0].ObservationsV2))
@@ -80,35 +79,4 @@ func TestUnmarshalObservationsV2(t *testing.T) {
 	require.Equal(t, 3, observations[floatStat.Key()].Count)
 	require.Equal(t, true, observations[boolStat.Key()].Value)
 	require.Equal(t, 4, observations[boolStat.Key()].Count)
-}
-
-func TestUnmarshalPrefersV1Observations(t *testing.T) {
-	stat := NewStatisticInt64("requests", AggregationTypeSum)
-	protoCapture := &proto.Capture{
-		Statistics: []proto.Statistic{{
-			Name:            stat.Name(),
-			DataType:        proto.DATA_TYPE_INT64,
-			AggregationType: proto.AGGREGATION_TYPE_SUM,
-		}},
-		Regions: []proto.Region{{
-			Name: "region",
-			Observations: []proto.Observation{{
-				StatisticId: 0,
-				Value:       proto.ObservationValue{Kind: &proto.ObservationValue_IntValue{IntValue: 3}},
-				Count:       1,
-			}},
-			ObservationsV2: []proto.ObservationV2{{
-				StatisticId: 0,
-				Count:       2,
-				ValueBits:   7,
-			}},
-		}},
-	}
-
-	capture := &Capture{}
-	require.NoError(t, fromProtoCapture(protoCapture, capture))
-
-	observation := capture.Regions()[0].observations[stat.Key()]
-	require.Equal(t, int64(3), observation.Value)
-	require.Equal(t, 1, observation.Count)
 }

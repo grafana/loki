@@ -42,34 +42,6 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 
 // fromProtoRegion converts a protobuf Region to its Go representation.
 func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Statistic) (*Region, error) {
-	// V1 was the only representation before observations_v2 was added.
-	// Prefer it whenever present so that a capture containing both forms remains
-	// compatible with the original encoding. New writers populate only V2.
-	if len(protoRegion.Observations) > 0 {
-		observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.Observations))
-		for i := range protoRegion.Observations {
-			protoObs := &protoRegion.Observations[i]
-			stat, exists := statIndexToStat[protoObs.StatisticId]
-			if !exists {
-				return nil, fmt.Errorf("invalid statistic_id %d in observation", protoObs.StatisticId)
-			}
-
-			value, err := unmarshalObservationValue(&protoObs.Value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal observation value: %w", err)
-			}
-
-			key := stat.Key()
-			observations[key] = &AggregatedObservation{
-				Statistic: stat,
-				Value:     value,
-				Count:     int(protoObs.Count),
-			}
-		}
-
-		return protoRegionWithObservations(protoRegion.Name, observations), nil
-	}
-
 	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.ObservationsV2))
 	for i := range protoRegion.ObservationsV2 {
 		protoObs := &protoRegion.ObservationsV2[i]
@@ -114,24 +86,6 @@ func unmarshalObservationV2Value(valueBits uint64, dataType DataType) (any, erro
 		return valueBits != 0, nil
 	default:
 		return nil, fmt.Errorf("unsupported observation data type: %v", dataType)
-	}
-}
-
-// unmarshalObservationValue converts a protobuf ObservationValue to a Go value.
-func unmarshalObservationValue(protoValue *proto.ObservationValue) (any, error) {
-	if protoValue == nil || protoValue.Kind == nil {
-		return nil, fmt.Errorf("invalid observation value")
-	}
-
-	switch v := protoValue.Kind.(type) {
-	case *proto.ObservationValue_IntValue:
-		return v.IntValue, nil
-	case *proto.ObservationValue_FloatValue:
-		return v.FloatValue, nil
-	case *proto.ObservationValue_BoolValue:
-		return v.BoolValue, nil
-	default:
-		return nil, fmt.Errorf("unsupported observation value type: %T", protoValue.Kind)
 	}
 }
 
