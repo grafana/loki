@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"fmt"
 	"hash/fnv"
 	"slices"
 	"strings"
@@ -15,8 +16,9 @@ import (
 
 // created for and scoped to each logs section
 type statsCalculation struct {
-	sortSchemaKeys []string                   // label keys to aggregate by
-	aggregates     map[uint64]*statsAggregate // keyed by hash of composite label values
+	schema     []string                   // schema is the fully-qualified sort schema ("label:<name>")
+	labelKeys  []string                   // labelKeys are the bare Prometheus label names derived from schema
+	aggregates map[uint64]*statsAggregate // keyed by hash of composite label values
 }
 
 type statsAggregate struct {
@@ -35,6 +37,11 @@ func (c *statsCalculation) Name() string { return "stats" }
 func (c *statsCalculation) ProcessBatchNeedsBuilderLock() bool { return false }
 
 func (c *statsCalculation) Prepare(_ context.Context, _ *logsCalculationContext, _ *dataobj.Section, _ logs.Stats) error {
+	labelKeys, err := schemaLabelNames(c.schema)
+	if err != nil {
+		return fmt.Errorf("stats calculation: %w", err)
+	}
+	c.labelKeys = labelKeys
 	c.aggregates = make(map[uint64]*statsAggregate)
 	return nil
 }
@@ -52,7 +59,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		// Build the composite key from all sort schema keys.
 		// Uses key=value pairs separated by \x00 to avoid ambiguity.
 		buf.Reset()
-		for i, key := range c.sortSchemaKeys {
+		for i, key := range c.labelKeys {
 			if i > 0 {
 				buf.WriteByte(0)
 			}
@@ -68,8 +75,8 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		agg, ok := c.aggregates[aggKey]
 		if !ok {
 			// Only allocate the labels map when creating a new aggregate.
-			labelMap := make(map[string]string, len(c.sortSchemaKeys))
-			for _, key := range c.sortSchemaKeys {
+			labelMap := make(map[string]string, len(c.labelKeys))
+			for _, key := range c.labelKeys {
 				labelMap[key] = streamLbls.Get(key)
 			}
 			agg = &statsAggregate{
@@ -103,7 +110,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		sorted = append(sorted, agg)
 	}
 	slices.SortFunc(sorted, func(a, b *statsAggregate) int {
-		for _, key := range c.sortSchemaKeys {
+		for _, key := range c.labelKeys {
 			if n := cmp.Compare(a.labels[key], b.labels[key]); n != 0 {
 				return n
 			}
@@ -111,7 +118,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		return 0
 	})
 
-	sortSchema := strings.Join(c.sortSchemaKeys, ",")
+	sortSchema := strings.Join(c.schema, ",")
 	for _, agg := range sorted {
 		err := calcCtx.builder.AppendStat(
 			calcCtx.tenantID,
