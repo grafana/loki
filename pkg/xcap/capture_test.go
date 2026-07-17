@@ -476,7 +476,7 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 	require.Nil(t, capture.ValueFromRegion("logs.Reader.", stat))
 }
 
-func TestCapture_GetAllStatistics(t *testing.T) {
+func TestStatisticsFromRegions(t *testing.T) {
 	tests := []struct {
 		name      string
 		setup     func() *Capture
@@ -598,7 +598,7 @@ func TestCapture_GetAllStatistics(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			capture := tt.setup()
-			stats := capture.getAllStatistics()
+			stats := statisticsFromRegions(capture.Regions())
 
 			gotStats := make([]StatisticKey, 0, len(stats))
 			for _, stat := range stats {

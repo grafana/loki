@@ -31,7 +31,7 @@ func TestReader_RoundTrip(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj",
 		SectionIndex:     0,
-		SortSchema:       "service_name",
+		SortSchema:       "label:service_name",
 		Labels:           map[string]string{"service_name": "svc"},
 		MinTimestamp:     100,
 		MaxTimestamp:     200,
@@ -71,7 +71,7 @@ func TestReader_RoundTrip(t *testing.T) {
 	require.Len(t, actual, 1)
 	row := actual[0]
 	require.Equal(t, "/obj", row["object_path.utf8"])
-	require.Equal(t, "service_name", row["sort_schema.utf8"])
+	require.Equal(t, "label:service_name", row["sort_schema.utf8"])
 	require.Equal(t, int64(5), row["row_count.int64"])
 	require.Equal(t, int64(50), row["uncompressed_size.int64"])
 	require.Equal(t, "svc", row["service_name.label.utf8"])

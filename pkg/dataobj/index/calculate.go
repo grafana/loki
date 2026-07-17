@@ -58,11 +58,11 @@ type logsCalculationContext struct {
 }
 
 // These steps are applied to all logs and are unique to a section
-func getLogsCalculationSteps(sortSchemaKeys []string) []logsIndexCalculation {
+func getLogsCalculationSteps(sortSchema []string) []logsIndexCalculation {
 	return []logsIndexCalculation{
 		&streamStatisticsCalculation{},
 		&columnValuesCalculation{},
-		&statsCalculation{sortSchemaKeys: sortSchemaKeys},
+		&statsCalculation{schema: sortSchema},
 		&labelPostingsCalculation{},
 	}
 }
@@ -255,7 +255,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	lockFreeContext := *calculationContext
 	lockFreeContext.builder = nil
 
-	calculationSteps := getLogsCalculationSteps(schemaSortKeys(schemaLabels))
+	calculationSteps := getLogsCalculationSteps(sectionSortSchema(schemaLabels))
 
 	// Track cumulative duration per calculation step across all batches + flush.
 	stepDurations := make([]time.Duration, len(calculationSteps))

@@ -252,7 +252,7 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       path,
 		SectionIndex:     0,
-		SortSchema:       "service",
+		SortSchema:       "label:service",
 		Labels:           map[string]string{"service": "api"},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano() + 1000,

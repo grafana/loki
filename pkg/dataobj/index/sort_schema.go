@@ -1,26 +1,35 @@
 package index
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
-// defaultSortSchemaKeys defines the label keys used for stats and postings
-// sections when a logs section carries no schema sort of its own.
-var defaultSortSchemaKeys = []string{"service_name"}
+// defaultSortSchema is the fully-qualified sort schema used for stats and
+// postings sections when a logs section carries no schema sort of its own.
+// It mirrors validation.DefaultSortSchema.
+var defaultSortSchema = []string{"label:service_name"}
 
-// schemaSortKeys converts a logs section's fully-qualified schema labels (e.g.
-// "label:service_name") into label keys
-func schemaSortKeys(fqns []string) []string {
+// sectionSortSchema returns the fully-qualified sort schema to record for a logs
+// section, falling back to the default when the section carries none.
+func sectionSortSchema(fqns []string) []string {
 	if len(fqns) == 0 {
-		return defaultSortSchemaKeys
+		return defaultSortSchema
 	}
-	keys := make([]string, 0, len(fqns))
+	return fqns
+}
+
+// schemaLabelNames converts fully-qualified sort keys ("label:<name>") into
+// their bare Prometheus label names. Only "label:<name>" keys are supported; any
+// other form is an error.
+func schemaLabelNames(fqns []string) ([]string, error) {
+	names := make([]string, 0, len(fqns))
 	for _, fqn := range fqns {
-		// Only "label:<name>" keys are supported. Anything else means we cannot
-		// reproduce the sort key here, so fall back to the default.
 		typ, name, ok := strings.Cut(fqn, ":")
 		if !ok || typ != "label" || name == "" {
-			return defaultSortSchemaKeys
+			return nil, fmt.Errorf("unsupported sort key %q — expected \"label:<name>\"", fqn)
 		}
-		keys = append(keys, name)
+		names = append(names, name)
 	}
-	return keys
+	return names, nil
 }
