@@ -52,7 +52,7 @@ func TestIndexBuilder_CleanShutdown(t *testing.T) {
 	require.NoError(t, err)
 
 	var logBuf bytes.Buffer
-	logger := log.NewLogfmtLogger(&logBuf)
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(&logBuf))
 
 	builder, err := NewIndexBuilder(
 		Config{
