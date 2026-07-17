@@ -508,7 +508,9 @@ func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.Tab
 	g.SetLimit(fileSizeStatConcurrency)
 	for i := range entries {
 		g.Go(func() error {
+			start := time.Now()
 			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
+			c.metrics.observeFileSizeStat(time.Since(start))
 			if err != nil {
 				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
 				return nil
