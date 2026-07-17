@@ -96,7 +96,7 @@ type Capture struct {
 	Regions []Region `protobuf:"bytes,1,rep,name=regions,proto3" json:"regions"`
 	// A list of statistic definitions used in the Capture across all
 	// Regions. The index into this list is used as the statistic_id field
-	// in Observation.
+	// in ObservationV2.
 	Statistics []Statistic `protobuf:"bytes,2,rep,name=statistics,proto3" json:"statistics"`
 }
 
@@ -150,10 +150,7 @@ func (m *Capture) GetStatistics() []Statistic {
 type Region struct {
 	// Name is the name of the region.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Observations are all observations recorded in this region.
-	Observations []Observation `protobuf:"bytes,4,rep,name=observations,proto3" json:"observations"`
-	// ObservationsV2 is the flattened observation representation. New writers
-	// populate this field; readers use it when observations is empty.
+	// ObservationsV2 is the flattened observation representation.
 	ObservationsV2 []ObservationV2 `protobuf:"bytes,10,rep,name=observations_v2,json=observationsV2,proto3" json:"observations_v2"`
 }
 
@@ -194,13 +191,6 @@ func (m *Region) GetName() string {
 		return m.Name
 	}
 	return ""
-}
-
-func (m *Region) GetObservations() []Observation {
-	if m != nil {
-		return m.Observations
-	}
-	return nil
 }
 
 func (m *Region) GetObservationsV2() []ObservationV2 {
@@ -273,169 +263,6 @@ func (m *Statistic) GetAggregationType() AggregationType {
 	return AGGREGATION_TYPE_INVALID
 }
 
-// Observation represents an aggregated observation value for a statistic.
-type Observation struct {
-	// StatisticId is the index into the statistics list in Capture.
-	StatisticId uint32 `protobuf:"varint,1,opt,name=statistic_id,json=statisticId,proto3" json:"statistic_id,omitempty"`
-	// Value is the aggregated observation value.
-	Value ObservationValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value"`
-	// Count is the number of observations aggregated.
-	Count uint32 `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
-}
-
-func (m *Observation) Reset()      { *m = Observation{} }
-func (*Observation) ProtoMessage() {}
-func (*Observation) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{3}
-}
-func (m *Observation) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *Observation) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_Observation.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *Observation) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Observation.Merge(m, src)
-}
-func (m *Observation) XXX_Size() int {
-	return m.Size()
-}
-func (m *Observation) XXX_DiscardUnknown() {
-	xxx_messageInfo_Observation.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Observation proto.InternalMessageInfo
-
-func (m *Observation) GetStatisticId() uint32 {
-	if m != nil {
-		return m.StatisticId
-	}
-	return 0
-}
-
-func (m *Observation) GetValue() ObservationValue {
-	if m != nil {
-		return m.Value
-	}
-	return ObservationValue{}
-}
-
-func (m *Observation) GetCount() uint32 {
-	if m != nil {
-		return m.Count
-	}
-	return 0
-}
-
-// ObservationValue represents a single observation value.
-type ObservationValue struct {
-	// Types that are valid to be assigned to Kind:
-	//
-	//	*ObservationValue_IntValue
-	//	*ObservationValue_FloatValue
-	//	*ObservationValue_BoolValue
-	Kind isObservationValue_Kind `protobuf_oneof:"kind"`
-}
-
-func (m *ObservationValue) Reset()      { *m = ObservationValue{} }
-func (*ObservationValue) ProtoMessage() {}
-func (*ObservationValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{4}
-}
-func (m *ObservationValue) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ObservationValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ObservationValue.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ObservationValue) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ObservationValue.Merge(m, src)
-}
-func (m *ObservationValue) XXX_Size() int {
-	return m.Size()
-}
-func (m *ObservationValue) XXX_DiscardUnknown() {
-	xxx_messageInfo_ObservationValue.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ObservationValue proto.InternalMessageInfo
-
-type isObservationValue_Kind interface {
-	isObservationValue_Kind()
-	Equal(interface{}) bool
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type ObservationValue_IntValue struct {
-	IntValue int64 `protobuf:"varint,1,opt,name=int_value,json=intValue,proto3,oneof"`
-}
-type ObservationValue_FloatValue struct {
-	FloatValue float64 `protobuf:"fixed64,2,opt,name=float_value,json=floatValue,proto3,oneof"`
-}
-type ObservationValue_BoolValue struct {
-	BoolValue bool `protobuf:"varint,3,opt,name=bool_value,json=boolValue,proto3,oneof"`
-}
-
-func (*ObservationValue_IntValue) isObservationValue_Kind()   {}
-func (*ObservationValue_FloatValue) isObservationValue_Kind() {}
-func (*ObservationValue_BoolValue) isObservationValue_Kind()  {}
-
-func (m *ObservationValue) GetKind() isObservationValue_Kind {
-	if m != nil {
-		return m.Kind
-	}
-	return nil
-}
-
-func (m *ObservationValue) GetIntValue() int64 {
-	if x, ok := m.GetKind().(*ObservationValue_IntValue); ok {
-		return x.IntValue
-	}
-	return 0
-}
-
-func (m *ObservationValue) GetFloatValue() float64 {
-	if x, ok := m.GetKind().(*ObservationValue_FloatValue); ok {
-		return x.FloatValue
-	}
-	return 0
-}
-
-func (m *ObservationValue) GetBoolValue() bool {
-	if x, ok := m.GetKind().(*ObservationValue_BoolValue); ok {
-		return x.BoolValue
-	}
-	return false
-}
-
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*ObservationValue) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*ObservationValue_IntValue)(nil),
-		(*ObservationValue_FloatValue)(nil),
-		(*ObservationValue_BoolValue)(nil),
-	}
-}
-
 // ObservationV2 represents an aggregated observation without a nested message
 // or oneof. ValueBits is interpreted according to the data type of
 // statistics[statistic_id]: two's-complement int64 bits, IEEE 754 float64 bits,
@@ -452,7 +279,7 @@ type ObservationV2 struct {
 func (m *ObservationV2) Reset()      { *m = ObservationV2{} }
 func (*ObservationV2) ProtoMessage() {}
 func (*ObservationV2) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{5}
+	return fileDescriptor_cfc78bf5da060d84, []int{3}
 }
 func (m *ObservationV2) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -508,8 +335,6 @@ func init() {
 	proto.RegisterType((*Capture)(nil), "loki.xcap.Capture")
 	proto.RegisterType((*Region)(nil), "loki.xcap.Region")
 	proto.RegisterType((*Statistic)(nil), "loki.xcap.Statistic")
-	proto.RegisterType((*Observation)(nil), "loki.xcap.Observation")
-	proto.RegisterType((*ObservationValue)(nil), "loki.xcap.ObservationValue")
 	proto.RegisterType((*ObservationV2)(nil), "loki.xcap.ObservationV2")
 }
 
@@ -518,53 +343,45 @@ func init() {
 }
 
 var fileDescriptor_cfc78bf5da060d84 = []byte{
-	// 722 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0xcd, 0x4e, 0xeb, 0x46,
-	0x14, 0xf6, 0x24, 0x4e, 0xb0, 0x4f, 0x80, 0x98, 0x21, 0x20, 0x97, 0x16, 0x03, 0x59, 0x21, 0x16,
-	0x49, 0x1b, 0xaa, 0x56, 0xea, 0xaa, 0x4e, 0x81, 0x10, 0x14, 0x48, 0x35, 0x49, 0x51, 0xdb, 0x8d,
-	0x35, 0x89, 0x8d, 0x19, 0x11, 0xec, 0xc8, 0x9e, 0x44, 0xb0, 0xa8, 0xda, 0x47, 0xe8, 0xb2, 0x8f,
-	0xd0, 0x07, 0xe8, 0x43, 0xb0, 0x64, 0xc9, 0xaa, 0x2a, 0x61, 0xd3, 0x25, 0xeb, 0xbb, 0xba, 0xf2,
-	0x38, 0x09, 0x0e, 0x04, 0xe9, 0xae, 0x72, 0xfc, 0xfd, 0x9c, 0xf3, 0xcd, 0x99, 0x51, 0xa0, 0xd8,
-	0xbf, 0x72, 0xcb, 0x37, 0x5d, 0xda, 0x2f, 0x33, 0x8f, 0x3b, 0x81, 0x47, 0x7b, 0xe5, 0x7e, 0xe0,
-	0x73, 0x5f, 0x60, 0x25, 0x51, 0x62, 0xb5, 0xe7, 0x5f, 0xb1, 0x52, 0x04, 0x6c, 0x14, 0x5c, 0xdf,
-	0xf5, 0x63, 0x41, 0x54, 0xc5, 0x82, 0xe2, 0x0d, 0x2c, 0xfc, 0x40, 0xfb, 0x7c, 0x10, 0x38, 0xf8,
-	0x2b, 0x58, 0x08, 0x1c, 0x97, 0xf9, 0x5e, 0xa8, 0xa3, 0xed, 0xf4, 0x6e, 0xae, 0xb2, 0x52, 0x9a,
-	0xba, 0x4b, 0x44, 0x30, 0x55, 0xf9, 0xee, 0xdf, 0x2d, 0x89, 0x4c, 0x74, 0xf8, 0x3b, 0x80, 0x90,
-	0x53, 0xce, 0x42, 0xce, 0xba, 0xa1, 0x9e, 0x12, 0xae, 0x42, 0xc2, 0xd5, 0x9a, 0x90, 0x63, 0x63,
-	0x42, 0x5d, 0xfc, 0x80, 0x20, 0x1b, 0x77, 0xc5, 0x18, 0x64, 0x8f, 0x5e, 0x3b, 0x3a, 0xda, 0x46,
-	0xbb, 0x2a, 0x11, 0x35, 0xfe, 0x1e, 0x16, 0xfd, 0x4e, 0xe8, 0x04, 0x43, 0xca, 0x45, 0x24, 0x59,
-	0x34, 0x5f, 0x4f, 0x34, 0x6f, 0xbe, 0xd0, 0xe3, 0xf6, 0x33, 0x0e, 0x5c, 0x83, 0x7c, 0xf2, 0xdb,
-	0x1a, 0x56, 0x74, 0x10, 0x4d, 0xf4, 0xf9, 0x4d, 0xce, 0x2b, 0xe3, 0x36, 0xcb, 0x49, 0xdb, 0x79,
-	0xe5, 0x44, 0x56, 0x52, 0x5a, 0xfa, 0x44, 0x56, 0xd2, 0x9a, 0x7c, 0x22, 0x2b, 0x19, 0x0d, 0xc4,
-	0x39, 0x02, 0x6e, 0x71, 0x76, 0xed, 0x10, 0xc5, 0xf1, 0xec, 0xb8, 0x4a, 0x31, 0x9b, 0xa8, 0x7d,
-	0x1a, 0x38, 0x1e, 0xb7, 0x98, 0x4d, 0x80, 0x72, 0x1e, 0xb0, 0xce, 0x80, 0x3b, 0x21, 0xc9, 0x3a,
-	0x43, 0xc7, 0xe3, 0x21, 0xc9, 0x46, 0x0b, 0x18, 0x84, 0xc5, 0xbf, 0x10, 0xa8, 0xd3, 0xe5, 0xcc,
-	0x3d, 0xff, 0x97, 0xa0, 0xda, 0x94, 0x53, 0x8b, 0xdf, 0xf6, 0x1d, 0x3d, 0xb5, 0x8d, 0x76, 0x97,
-	0x2b, 0xab, 0x89, 0xdc, 0x07, 0x94, 0xd3, 0xf6, 0x6d, 0xdf, 0x21, 0x8a, 0x3d, 0xae, 0xf0, 0x21,
-	0x68, 0xd4, 0x75, 0x03, 0xc7, 0x15, 0xc1, 0x63, 0x63, 0x5a, 0x18, 0x37, 0x12, 0x46, 0xf3, 0x45,
-	0x22, 0xfc, 0x79, 0x3a, 0x0b, 0x14, 0x7f, 0x87, 0x5c, 0x62, 0x29, 0x78, 0x07, 0x16, 0xa7, 0x97,
-	0x66, 0x31, 0x5b, 0x64, 0x5c, 0x22, 0xb9, 0x29, 0x56, 0xb7, 0xf1, 0xb7, 0x90, 0x19, 0xd2, 0xde,
-	0x20, 0x8e, 0x99, 0xab, 0x7c, 0xfe, 0xce, 0x7a, 0x23, 0xc9, 0x78, 0xc3, 0xb1, 0x1e, 0x17, 0x20,
-	0xd3, 0xf5, 0x07, 0x1e, 0x17, 0x31, 0x97, 0x48, 0xfc, 0x51, 0xfc, 0x0d, 0xb4, 0xd7, 0x36, 0xbc,
-	0x09, 0x2a, 0xf3, 0xb8, 0x15, 0x8f, 0x89, 0x22, 0xa4, 0x8f, 0x25, 0xa2, 0x30, 0x8f, 0xc7, 0xf4,
-	0x0e, 0xe4, 0x2e, 0x7a, 0x3e, 0x9d, 0x08, 0xa2, 0x1c, 0xe8, 0x58, 0x22, 0x20, 0xc0, 0x58, 0xb2,
-	0x05, 0xd0, 0xf1, 0xfd, 0xde, 0x58, 0x11, 0x0d, 0x54, 0x8e, 0x25, 0xa2, 0x46, 0x58, 0x9c, 0x2c,
-	0x0b, 0xf2, 0x15, 0xf3, 0xec, 0xa2, 0x0b, 0x4b, 0x33, 0x8f, 0xe2, 0x53, 0x36, 0x30, 0x3d, 0x48,
-	0x2a, 0x71, 0x10, 0xbc, 0x09, 0x20, 0xa6, 0x59, 0x1d, 0xc6, 0x43, 0x31, 0x32, 0x4b, 0x54, 0x81,
-	0x54, 0x19, 0x0f, 0xf7, 0x28, 0x28, 0x93, 0x5b, 0xc4, 0x6b, 0xb0, 0x72, 0x60, 0xb6, 0x4d, 0xab,
-	0xfd, 0xcb, 0x8f, 0x87, 0x56, 0xfd, 0xec, 0xdc, 0x6c, 0xd4, 0x0f, 0x34, 0x09, 0xaf, 0x42, 0x3e,
-	0x09, 0xb7, 0xbf, 0xf9, 0x5a, 0x43, 0xb3, 0xda, 0xa3, 0x46, 0xd3, 0x8c, 0xe0, 0x14, 0xc6, 0xb0,
-	0xfc, 0x02, 0x57, 0x9b, 0xcd, 0x86, 0x96, 0xde, 0xfb, 0x07, 0x41, 0xfe, 0xd5, 0x85, 0xe3, 0x2f,
-	0x40, 0x37, 0x6b, 0x35, 0x72, 0x58, 0x33, 0xdb, 0xf5, 0xe6, 0xd9, 0xeb, 0x89, 0x3a, 0x14, 0xde,
-	0xb0, 0xad, 0x9f, 0x4e, 0x35, 0x34, 0x97, 0x39, 0xad, 0x9f, 0x69, 0xa9, 0xf9, 0x8c, 0xf9, 0xb3,
-	0x96, 0xc6, 0x9f, 0xc1, 0xda, 0x1b, 0xa6, 0x61, 0xb6, 0xda, 0x9a, 0x8c, 0x37, 0x60, 0xfd, 0x0d,
-	0x75, 0x54, 0x27, 0xad, 0xb6, 0x96, 0xa9, 0x5e, 0xde, 0x3f, 0x1a, 0xd2, 0xc3, 0xa3, 0x21, 0x3d,
-	0x3f, 0x1a, 0xe8, 0x8f, 0x91, 0x81, 0xfe, 0x1e, 0x19, 0xe8, 0x6e, 0x64, 0xa0, 0xfb, 0x91, 0x81,
-	0xfe, 0x1b, 0x19, 0xe8, 0xff, 0x91, 0x21, 0x3d, 0x8f, 0x0c, 0xf4, 0xe7, 0x93, 0x21, 0xdd, 0x3f,
-	0x19, 0xd2, 0xc3, 0x93, 0x21, 0xfd, 0x5a, 0x71, 0x19, 0xbf, 0x1c, 0x74, 0x4a, 0x5d, 0xff, 0xba,
-	0xec, 0x06, 0xf4, 0x82, 0x7a, 0xb4, 0x1c, 0xbd, 0xc4, 0xf2, 0x70, 0xbf, 0xfc, 0xce, 0x5f, 0x65,
-	0x27, 0x2b, 0x7e, 0xf6, 0x3f, 0x06, 0x00, 0x00, 0xff, 0xff, 0x49, 0x3c, 0x6e, 0x66, 0x4c, 0x05,
-	0x00, 0x00,
+	// 601 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x53, 0x4d, 0x53, 0xd3, 0x40,
+	0x18, 0xce, 0xb6, 0xa5, 0xb4, 0x2f, 0x1f, 0x0d, 0x4b, 0x71, 0x22, 0xa3, 0x2b, 0xf6, 0xc4, 0x70,
+	0x68, 0xb4, 0x38, 0x1e, 0xbc, 0xa5, 0x02, 0x9d, 0x3a, 0x85, 0x3a, 0xdb, 0xc8, 0xa8, 0x97, 0xcc,
+	0xb6, 0x59, 0xc3, 0x0e, 0x90, 0x64, 0x92, 0x6d, 0x07, 0x6e, 0xfe, 0x04, 0x8f, 0xfe, 0x04, 0x7f,
+	0x80, 0x27, 0x7f, 0x01, 0x47, 0x8e, 0x9c, 0x1c, 0x09, 0x17, 0x8f, 0xfc, 0x04, 0xa7, 0x1b, 0x28,
+	0xe1, 0xc3, 0x53, 0xde, 0x3c, 0x1f, 0xef, 0xf3, 0xec, 0x66, 0x02, 0xb5, 0x70, 0xdf, 0x33, 0x8f,
+	0x06, 0x2c, 0x34, 0x85, 0x2f, 0x79, 0xe4, 0xb3, 0x03, 0x33, 0x8c, 0x02, 0x19, 0x28, 0xac, 0xae,
+	0x46, 0x5c, 0x3e, 0x08, 0xf6, 0x45, 0x7d, 0x0c, 0x2c, 0x57, 0xbd, 0xc0, 0x0b, 0x52, 0xc1, 0x78,
+	0x4a, 0x05, 0xb5, 0x23, 0x98, 0x7e, 0xcb, 0x42, 0x39, 0x8c, 0x38, 0x7e, 0x09, 0xd3, 0x11, 0xf7,
+	0x44, 0xe0, 0xc7, 0x06, 0x5a, 0xc9, 0xaf, 0xce, 0x34, 0x16, 0xea, 0x13, 0x77, 0x9d, 0x2a, 0xa6,
+	0x59, 0x38, 0xf9, 0xfd, 0x4c, 0xa3, 0xd7, 0x3a, 0xfc, 0x06, 0x20, 0x96, 0x4c, 0x8a, 0x58, 0x8a,
+	0x41, 0x6c, 0xe4, 0x94, 0xab, 0x9a, 0x71, 0xf5, 0xae, 0xc9, 0x2b, 0x63, 0x46, 0x5d, 0xfb, 0x85,
+	0xa0, 0x98, 0x6e, 0xc5, 0x18, 0x0a, 0x3e, 0x3b, 0xe4, 0x06, 0x5a, 0x41, 0xab, 0x65, 0xaa, 0x66,
+	0xdc, 0x82, 0x4a, 0xd0, 0x8f, 0x79, 0x34, 0x62, 0x72, 0x1c, 0xe5, 0x8c, 0x1a, 0x06, 0xa8, 0xfd,
+	0x46, 0x66, 0x7f, 0xf7, 0x46, 0xb1, 0xdb, 0xb8, 0xca, 0x98, 0xcf, 0xda, 0x76, 0x1b, 0xef, 0x0a,
+	0xa5, 0x9c, 0x0e, 0x2a, 0x39, 0x92, 0x8e, 0x14, 0x87, 0x9c, 0x96, 0xb8, 0xef, 0xa6, 0x53, 0x4e,
+	0xb8, 0xb4, 0x1c, 0xb2, 0x88, 0xfb, 0xd2, 0x11, 0x2e, 0x05, 0x26, 0x65, 0x24, 0xfa, 0x43, 0xc9,
+	0x63, 0x5a, 0xe4, 0x23, 0xee, 0xcb, 0x98, 0x16, 0xc7, 0x95, 0x87, 0x31, 0x9d, 0xcd, 0xae, 0xad,
+	0x7d, 0x47, 0x50, 0x9e, 0x1c, 0xee, 0xc1, 0xfe, 0x2f, 0xa0, 0xec, 0x32, 0xc9, 0x1c, 0x79, 0x1c,
+	0x72, 0x23, 0xb7, 0x82, 0x56, 0xe7, 0x1b, 0x8b, 0x99, 0xe6, 0x1b, 0x4c, 0x32, 0xfb, 0x38, 0xe4,
+	0xb4, 0xe4, 0x5e, 0x4d, 0x78, 0x13, 0x74, 0xe6, 0x79, 0x11, 0xf7, 0x54, 0x46, 0x6a, 0xcc, 0x2b,
+	0xe3, 0x72, 0xc6, 0x68, 0xdd, 0x48, 0x94, 0xbf, 0xc2, 0x6e, 0x03, 0x35, 0x0f, 0xe6, 0x6e, 0x5d,
+	0x0b, 0x7e, 0x0e, 0xb3, 0x93, 0x6b, 0x77, 0x84, 0xab, 0x5a, 0xce, 0xd1, 0x99, 0x09, 0xd6, 0x76,
+	0x71, 0x15, 0xa6, 0x06, 0xc1, 0xd0, 0x97, 0xaa, 0xe8, 0x1c, 0x4d, 0x5f, 0xf0, 0x53, 0x80, 0x11,
+	0x3b, 0x18, 0x72, 0xa7, 0x2f, 0x64, 0xac, 0xaa, 0x14, 0x69, 0x59, 0x21, 0x4d, 0x21, 0xe3, 0x35,
+	0x06, 0xa5, 0xeb, 0x53, 0xe0, 0x25, 0x58, 0xd8, 0xb0, 0x6c, 0xcb, 0xb1, 0x3f, 0xbd, 0xdf, 0x74,
+	0xda, 0x3b, 0xbb, 0x56, 0xa7, 0xbd, 0xa1, 0x6b, 0x78, 0x11, 0x2a, 0x59, 0xd8, 0x7e, 0xfd, 0x4a,
+	0x47, 0xb7, 0xb5, 0x5b, 0x9d, 0xae, 0x35, 0x86, 0x73, 0x18, 0xc3, 0xfc, 0x0d, 0xdc, 0xec, 0x76,
+	0x3b, 0x7a, 0x7e, 0xed, 0x27, 0x82, 0xca, 0x9d, 0x03, 0xe3, 0x27, 0x60, 0x58, 0xad, 0x16, 0xdd,
+	0x6c, 0x59, 0x76, 0xbb, 0xbb, 0x73, 0x37, 0xd1, 0x80, 0xea, 0x3d, 0xb6, 0xf7, 0x61, 0x5b, 0x47,
+	0x0f, 0x32, 0xdb, 0xed, 0x1d, 0x3d, 0xf7, 0x30, 0x63, 0x7d, 0xd4, 0xf3, 0xf8, 0x31, 0x2c, 0xdd,
+	0x63, 0x3a, 0x56, 0xcf, 0xd6, 0x0b, 0x78, 0x19, 0x1e, 0xdd, 0xa3, 0xb6, 0xda, 0xb4, 0x67, 0xeb,
+	0x53, 0xcd, 0xbd, 0xd3, 0x73, 0xa2, 0x9d, 0x9d, 0x13, 0xed, 0xf2, 0x9c, 0xa0, 0xaf, 0x09, 0x41,
+	0x3f, 0x12, 0x82, 0x4e, 0x12, 0x82, 0x4e, 0x13, 0x82, 0xfe, 0x24, 0x04, 0xfd, 0x4d, 0x88, 0x76,
+	0x99, 0x10, 0xf4, 0xed, 0x82, 0x68, 0xa7, 0x17, 0x44, 0x3b, 0xbb, 0x20, 0xda, 0xe7, 0x86, 0x27,
+	0xe4, 0xde, 0xb0, 0x5f, 0x1f, 0x04, 0x87, 0xa6, 0x17, 0xb1, 0x2f, 0xcc, 0x67, 0xe6, 0xf8, 0xbb,
+	0x9b, 0xa3, 0x75, 0xf3, 0x3f, 0xbf, 0x7a, 0xbf, 0xa8, 0x1e, 0xeb, 0xff, 0x02, 0x00, 0x00, 0xff,
+	0xff, 0x56, 0x57, 0xa2, 0x61, 0x0c, 0x04, 0x00, 0x00,
 }
 
 func (x DataType) String() string {
@@ -640,14 +457,6 @@ func (this *Region) Equal(that interface{}) bool {
 	if this.Name != that1.Name {
 		return false
 	}
-	if len(this.Observations) != len(that1.Observations) {
-		return false
-	}
-	for i := range this.Observations {
-		if !this.Observations[i].Equal(&that1.Observations[i]) {
-			return false
-		}
-	}
 	if len(this.ObservationsV2) != len(that1.ObservationsV2) {
 		return false
 	}
@@ -684,138 +493,6 @@ func (this *Statistic) Equal(that interface{}) bool {
 		return false
 	}
 	if this.AggregationType != that1.AggregationType {
-		return false
-	}
-	return true
-}
-func (this *Observation) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*Observation)
-	if !ok {
-		that2, ok := that.(Observation)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.StatisticId != that1.StatisticId {
-		return false
-	}
-	if !this.Value.Equal(&that1.Value) {
-		return false
-	}
-	if this.Count != that1.Count {
-		return false
-	}
-	return true
-}
-func (this *ObservationValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*ObservationValue)
-	if !ok {
-		that2, ok := that.(ObservationValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if that1.Kind == nil {
-		if this.Kind != nil {
-			return false
-		}
-	} else if this.Kind == nil {
-		return false
-	} else if !this.Kind.Equal(that1.Kind) {
-		return false
-	}
-	return true
-}
-func (this *ObservationValue_IntValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*ObservationValue_IntValue)
-	if !ok {
-		that2, ok := that.(ObservationValue_IntValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.IntValue != that1.IntValue {
-		return false
-	}
-	return true
-}
-func (this *ObservationValue_FloatValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*ObservationValue_FloatValue)
-	if !ok {
-		that2, ok := that.(ObservationValue_FloatValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.FloatValue != that1.FloatValue {
-		return false
-	}
-	return true
-}
-func (this *ObservationValue_BoolValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*ObservationValue_BoolValue)
-	if !ok {
-		that2, ok := that.(ObservationValue_BoolValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.BoolValue != that1.BoolValue {
 		return false
 	}
 	return true
@@ -877,16 +554,9 @@ func (this *Region) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 6)
 	s = append(s, "&proto.Region{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
-	if this.Observations != nil {
-		vs := make([]*Observation, len(this.Observations))
-		for i := range vs {
-			vs[i] = &this.Observations[i]
-		}
-		s = append(s, "Observations: "+fmt.Sprintf("%#v", vs)+",\n")
-	}
 	if this.ObservationsV2 != nil {
 		vs := make([]*ObservationV2, len(this.ObservationsV2))
 		for i := range vs {
@@ -908,54 +578,6 @@ func (this *Statistic) GoString() string {
 	s = append(s, "AggregationType: "+fmt.Sprintf("%#v", this.AggregationType)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
-}
-func (this *Observation) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 7)
-	s = append(s, "&proto.Observation{")
-	s = append(s, "StatisticId: "+fmt.Sprintf("%#v", this.StatisticId)+",\n")
-	s = append(s, "Value: "+strings.Replace(this.Value.GoString(), `&`, ``, 1)+",\n")
-	s = append(s, "Count: "+fmt.Sprintf("%#v", this.Count)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *ObservationValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 7)
-	s = append(s, "&proto.ObservationValue{")
-	if this.Kind != nil {
-		s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *ObservationValue_IntValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&proto.ObservationValue_IntValue{` +
-		`IntValue:` + fmt.Sprintf("%#v", this.IntValue) + `}`}, ", ")
-	return s
-}
-func (this *ObservationValue_FloatValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&proto.ObservationValue_FloatValue{` +
-		`FloatValue:` + fmt.Sprintf("%#v", this.FloatValue) + `}`}, ", ")
-	return s
-}
-func (this *ObservationValue_BoolValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&proto.ObservationValue_BoolValue{` +
-		`BoolValue:` + fmt.Sprintf("%#v", this.BoolValue) + `}`}, ", ")
-	return s
 }
 func (this *ObservationV2) GoString() string {
 	if this == nil {
@@ -1062,20 +684,6 @@ func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0x52
 		}
 	}
-	if len(m.Observations) > 0 {
-		for iNdEx := len(m.Observations) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Observations[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintXcap(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x22
-		}
-	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
@@ -1126,120 +734,6 @@ func (m *Statistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Observation) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *Observation) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Observation) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Count != 0 {
-		i = encodeVarintXcap(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x18
-	}
-	{
-		size, err := m.Value.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintXcap(dAtA, i, uint64(size))
-	}
-	i--
-	dAtA[i] = 0x12
-	if m.StatisticId != 0 {
-		i = encodeVarintXcap(dAtA, i, uint64(m.StatisticId))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ObservationValue) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *ObservationValue) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *ObservationValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Kind != nil {
-		{
-			size := m.Kind.Size()
-			i -= size
-			if _, err := m.Kind.MarshalTo(dAtA[i:]); err != nil {
-				return 0, err
-			}
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *ObservationValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *ObservationValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = encodeVarintXcap(dAtA, i, uint64(m.IntValue))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
-func (m *ObservationValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *ObservationValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= 8
-	encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.FloatValue))))
-	i--
-	dAtA[i] = 0x11
-	return len(dAtA) - i, nil
-}
-func (m *ObservationValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *ObservationValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i--
-	if m.BoolValue {
-		dAtA[i] = 1
-	} else {
-		dAtA[i] = 0
-	}
-	i--
-	dAtA[i] = 0x18
-	return len(dAtA) - i, nil
-}
 func (m *ObservationV2) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1321,12 +815,6 @@ func (m *Region) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovXcap(uint64(l))
 	}
-	if len(m.Observations) > 0 {
-		for _, e := range m.Observations {
-			l = e.Size()
-			n += 1 + l + sovXcap(uint64(l))
-		}
-	}
 	if len(m.ObservationsV2) > 0 {
 		for _, e := range m.ObservationsV2 {
 			l = e.Size()
@@ -1355,62 +843,6 @@ func (m *Statistic) Size() (n int) {
 	return n
 }
 
-func (m *Observation) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.StatisticId != 0 {
-		n += 1 + sovXcap(uint64(m.StatisticId))
-	}
-	l = m.Value.Size()
-	n += 1 + l + sovXcap(uint64(l))
-	if m.Count != 0 {
-		n += 1 + sovXcap(uint64(m.Count))
-	}
-	return n
-}
-
-func (m *ObservationValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Kind != nil {
-		n += m.Kind.Size()
-	}
-	return n
-}
-
-func (m *ObservationValue_IntValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + sovXcap(uint64(m.IntValue))
-	return n
-}
-func (m *ObservationValue_FloatValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 9
-	return n
-}
-func (m *ObservationValue_BoolValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 2
-	return n
-}
 func (m *ObservationV2) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1460,11 +892,6 @@ func (this *Region) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForObservations := "[]Observation{"
-	for _, f := range this.Observations {
-		repeatedStringForObservations += strings.Replace(strings.Replace(f.String(), "Observation", "Observation", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForObservations += "}"
 	repeatedStringForObservationsV2 := "[]ObservationV2{"
 	for _, f := range this.ObservationsV2 {
 		repeatedStringForObservationsV2 += strings.Replace(strings.Replace(f.String(), "ObservationV2", "ObservationV2", 1), `&`, ``, 1) + ","
@@ -1472,7 +899,6 @@ func (this *Region) String() string {
 	repeatedStringForObservationsV2 += "}"
 	s := strings.Join([]string{`&Region{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
-		`Observations:` + repeatedStringForObservations + `,`,
 		`ObservationsV2:` + repeatedStringForObservationsV2 + `,`,
 		`}`,
 	}, "")
@@ -1486,58 +912,6 @@ func (this *Statistic) String() string {
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
 		`DataType:` + fmt.Sprintf("%v", this.DataType) + `,`,
 		`AggregationType:` + fmt.Sprintf("%v", this.AggregationType) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *Observation) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&Observation{`,
-		`StatisticId:` + fmt.Sprintf("%v", this.StatisticId) + `,`,
-		`Value:` + strings.Replace(strings.Replace(this.Value.String(), "ObservationValue", "ObservationValue", 1), `&`, ``, 1) + `,`,
-		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *ObservationValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&ObservationValue{`,
-		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *ObservationValue_IntValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&ObservationValue_IntValue{`,
-		`IntValue:` + fmt.Sprintf("%v", this.IntValue) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *ObservationValue_FloatValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&ObservationValue_FloatValue{`,
-		`FloatValue:` + fmt.Sprintf("%v", this.FloatValue) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *ObservationValue_BoolValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&ObservationValue_BoolValue{`,
-		`BoolValue:` + fmt.Sprintf("%v", this.BoolValue) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1744,40 +1118,6 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Observations", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Observations = append(m.Observations, Observation{})
-			if err := m.Observations[len(m.Observations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ObservationsV2", wireType)
@@ -1935,235 +1275,6 @@ func (m *Statistic) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipXcap(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *Observation) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowXcap
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Observation: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Observation: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StatisticId", wireType)
-			}
-			m.StatisticId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.StatisticId |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := m.Value.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipXcap(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ObservationValue) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowXcap
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ObservationValue: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ObservationValue: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IntValue", wireType)
-			}
-			var v int64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Kind = &ObservationValue_IntValue{v}
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FloatValue", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.Kind = &ObservationValue_FloatValue{float64(math.Float64frombits(v))}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BoolValue", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			b := bool(v != 0)
-			m.Kind = &ObservationValue_BoolValue{b}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipXcap(dAtA[iNdEx:])

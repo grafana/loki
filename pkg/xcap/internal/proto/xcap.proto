@@ -14,7 +14,7 @@ message Capture {
 
   // A list of statistic definitions used in the Capture across all
   // Regions. The index into this list is used as the statistic_id field
-  // in Observation.
+  // in ObservationV2.
   repeated Statistic statistics = 2 [(gogoproto.nullable) = false];
 }
 
@@ -23,15 +23,11 @@ message Region {
   // Name is the name of the region.
   string name = 1;
 
-  // Observations are all observations recorded in this region.
-  repeated Observation observations = 4 [(gogoproto.nullable) = false];
-
-  // ObservationsV2 is the flattened observation representation. New writers
-  // populate this field; readers use it when observations is empty.
+  // ObservationsV2 is the flattened observation representation.
   repeated ObservationV2 observations_v2 = 10 [(gogoproto.nullable) = false];
 
-  reserved 2, 3, 5 to 9;
-  reserved "start_time", "end_time", "id", "parent_id", "attributes", "events", "status";
+  reserved 2 to 9;
+  reserved "start_time", "end_time", "id", "parent_id", "attributes", "events", "status", "observations";
 }
 
 // Statistic represents a statistic definition.
@@ -44,27 +40,6 @@ message Statistic {
 
   // AggregationType is how multiple observations are aggregated.
   AggregationType aggregation_type = 3;
-}
-
-// Observation represents an aggregated observation value for a statistic.
-message Observation {
-  // StatisticId is the index into the statistics list in Capture.
-  uint32 statistic_id = 1;
-
-  // Value is the aggregated observation value.
-  ObservationValue value = 2 [(gogoproto.nullable) = false];
-
-  // Count is the number of observations aggregated.
-  uint32 count = 3;
-}
-
-// ObservationValue represents a single observation value.
-message ObservationValue {
-  oneof kind {
-    int64 int_value = 1;
-    double float_value = 2;
-    bool bool_value = 3;
-  }
 }
 
 // ObservationV2 represents an aggregated observation without a nested message
