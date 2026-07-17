@@ -643,6 +643,35 @@ func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
 	require.Equal(t, time.Unix(0, task2Max).UTC(), entries[1].EndTime, "second task EndTime = max(task2Max, task2Min)")
 }
 
+// TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
+// means "unknown", e.g. a legacy ToC row written before sizes were recorded)
+// poisons the whole task's sum. Publishing a partial sum would look exact even
+// though the true total is larger, so an unknown input must yield an unknown
+// (zero) output.
+func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	minTS := window.UnixNano()
+	maxTS := window.Add(time.Hour).UnixNano()
+
+	tasks := []*compactionv2pb.TaskSpec{
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 0},    // legacy: unknown
+						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 4096}, // known
+					},
+				},
+			},
+		},
+	}
+
+	entries := makeTocEntries(tasks, []string{"output1"})
+	require.Len(t, entries, 1)
+	require.Equal(t, uint64(0), entries[0].UncompressedLogsSize,
+		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
+}
+
 func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()

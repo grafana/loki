@@ -529,6 +529,12 @@ func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.Tab
 // Time bounds: min(MinTimestamp) / max(MaxTimestamp) across all SectionRefs
 // in the task. UncompressedLogsSize is the sum of UncompressedSize across all
 // sections in the task.
+//
+// A section size of 0 means "unknown" (e.g. a legacy ToC row written before
+// sizes were recorded). Summing an unknown into a known total would publish a
+// partial sum that looks exact, so a single unknown input poisons the whole
+// task's total: the result is 0 (unknown) unless every contributing section is
+// known.
 func makeTocEntries(
 	tasks []*compactionv2pb.TaskSpec,
 	outputs []string,
@@ -537,6 +543,7 @@ func makeTocEntries(
 	for i, ts := range tasks {
 		minTS, maxTS := int64(0), int64(0)
 		var uncompressed uint64
+		sizeKnown := true
 		first := true
 		for _, run := range ts.Runs {
 			for _, sec := range run.Sections {
@@ -552,8 +559,14 @@ func makeTocEntries(
 						maxTS = sec.MaxTimestamp
 					}
 				}
+				if sec.UncompressedSize == 0 {
+					sizeKnown = false
+				}
 				uncompressed += uint64(sec.UncompressedSize)
 			}
+		}
+		if !sizeKnown {
+			uncompressed = 0
 		}
 		entries[i] = metastore.TableOfContentsEntry{
 			Path:                 outputs[i],
