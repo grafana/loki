@@ -26,7 +26,7 @@ import (
 // multiple logs sections. It requires that the input sections are sorted
 // according to sort.
 func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortOrder(sort)})
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortOrder(sort), prefetch: true})
 }
 
 // IteratorForSchema returns an iterator that performs a k-way merge of records
@@ -35,19 +35,25 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 //
 // It expects sortKeys to contain a mapping from StreamID to schema sort key.
 func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(sortKeys)})
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(sortKeys), prefetch: true})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
 // multiple source objects. Each section's stream IDs are rewritten into a single global space
 // via remaps[i] (the map for sections[i]) before records are compared, so one
 // merge can order records across objects.
+//
+// Prefetch is disabled: this path opens one reader per source section and all
+// sections stay open for the whole merge, so eager page prefetch multiplies peak
+// memory by the section count. Compaction reads each section once, in order, so
+// on-demand reads cost little throughput while sharply cutting peak memory.
 func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{
 		less:     logs.CompareForSortSchema(globalSortKeys),
 		remaps:   remaps,
 		sortKeys: globalSortKeys,
 		schema:   expectedSchema,
+		prefetch: false,
 	})
 }
 
@@ -58,6 +64,9 @@ type iteratorOptions struct {
 	remaps   []map[int64]int64
 	sortKeys []string
 	schema   []string
+	// prefetch controls whether each section's row reader eagerly prefetches
+	// pages. Off for merges that keep many sections open at once (compaction).
+	prefetch bool
 }
 
 func iterator(
@@ -101,7 +110,7 @@ func iterator(
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
 			Dataset:  ds,
 			Columns:  columns,
-			Prefetch: true,
+			Prefetch: opts.prefetch,
 		})
 		if err := r.Open(ctx); err != nil {
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)
