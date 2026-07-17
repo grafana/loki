@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 	"runtime/pprof"
 	gotrace "runtime/trace"
 	"sync"
@@ -473,8 +474,21 @@ func recordBatchBytes(rec arrow.RecordBatch) int64 {
 	return n
 }
 
-func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (totalRows int, retErr error) {
 	region := xcap.RegionFromContext(ctx)
+
+	// Draining runs on the worker thread's goroutine, which is not covered by any
+	// request-level recovery middleware. An unrecovered panic here (e.g. from a
+	// pipeline operator) would crash the entire worker process and abort every
+	// in-flight task. Convert it into a task error so only this task fails.
+	defer func() {
+		if p := recover(); p != nil {
+			stack := make([]byte, 8*1024)
+			stack = stack[:runtime.Stack(stack, false)]
+			level.Error(logger).Log("msg", "recovered from panic while draining pipeline", "panic", p, "stack", string(stack))
+			retErr = fmt.Errorf("panic while draining pipeline: %v", p)
+		}
+	}()
 
 	var (
 		openDuration  time.Duration
@@ -501,7 +515,6 @@ func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase
 		return 0, openErr
 	}
 
-	var totalRows int
 	for {
 		startRead := time.Now()
 		rec, err := pipeline.Read(ctx)

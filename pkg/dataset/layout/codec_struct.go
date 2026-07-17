@@ -33,6 +33,11 @@ func newStructWriter(alloc *memory.Allocator, sink buffer.Sink, spec Spec, typ t
 		return nil, fmt.Errorf("spec has %d fields, type has %d", len(structSpec.Fields), len(structType.Fields))
 	}
 
+	hasValidity := structSpec.Validity != nil
+	if structType.Nullable != hasValidity {
+		return nil, fmt.Errorf("expected %s to have validity %t, got %t", structType, structType.Nullable, hasValidity)
+	}
+
 	fields := make([]Writer, len(structSpec.Fields))
 	for i, fieldSpec := range structSpec.Fields {
 		w, err := NewWriter(alloc, sink, fieldSpec, structType.Fields[i].Type)
@@ -43,7 +48,7 @@ func newStructWriter(alloc *memory.Allocator, sink buffer.Sink, spec Spec, typ t
 	}
 
 	var validity Writer
-	if structType.Nullable && structSpec.Validity != nil {
+	if hasValidity {
 		w, err := NewWriter(alloc, sink, structSpec.Validity, &types.Bool{})
 		if err != nil {
 			return nil, fmt.Errorf("creating validity writer: %w", err)
@@ -437,12 +442,19 @@ func (r *structReader) fieldIndex(name string) int {
 }
 
 func (r *structReader) Project(ctx context.Context, alloc *memory.Allocator, projection expr.Expression, mask memory.Bitmap) (columnar.Array, error) {
-	fieldNames := make([]string, len(r.typ.Fields))
-	for i, f := range r.typ.Fields {
-		fieldNames[i] = f.Name
+	if projection == nil {
+		return nil, fmt.Errorf("nil projection expression is invalid")
 	}
 
-	simplified := simplifyProjection(projection, fieldNames)
+	fieldNames := make([]string, len(r.typ.Fields))
+	for i, field := range r.typ.Fields {
+		fieldNames[i] = field.Name
+	}
+
+	var (
+		simplified       = simplifyProjection(projection, fieldNames)
+		preserveValidity = preservesInputStruct(projection)
+	)
 
 	var validity memory.Bitmap
 	if r.validity != nil {
@@ -453,9 +465,19 @@ func (r *structReader) Project(ctx context.Context, alloc *memory.Allocator, pro
 		validity = vArr.(*columnar.Bool).Values()
 	}
 
-	result, err := r.walkProject(ctx, alloc, simplified, mask, validity)
+	projectValidity := validity
+	if preserveValidity {
+		projectValidity = memory.Bitmap{}
+	}
+	result, err := r.walkProject(ctx, alloc, simplified, mask, projectValidity)
 	if err != nil {
 		return nil, err
+	}
+	if preserveValidity && validity.Len() > 0 {
+		result, err = compute.PropagateNulls(alloc, result, validity)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	arr, ok := result.(columnar.Array)
@@ -463,6 +485,81 @@ func (r *structReader) Project(ctx context.Context, alloc *memory.Allocator, pro
 		return nil, fmt.Errorf("projection produced %T, expected Array", result)
 	}
 	return arr, nil
+}
+
+func preservesInputStruct(e expr.Expression) bool {
+	switch e := e.(type) {
+	case *expr.Identity, *expr.Column:
+		return true
+	case *expr.Include:
+		return preservesInputStruct(e.Value)
+	case *expr.Exclude:
+		return preservesInputStruct(e.Value)
+	default:
+		return false
+	}
+}
+
+func (r *structReader) walkProject(ctx context.Context, alloc *memory.Allocator, e expr.Expression, mask, validity memory.Bitmap) (columnar.Datum, error) {
+	if e == nil {
+		return nil, fmt.Errorf("nil projection expression is invalid")
+	}
+
+	switch e := e.(type) {
+	case *expr.Constant:
+		empty := columnar.NewStruct(columnar.NewSchema(nil), nil, r.length, memory.Bitmap{})
+		return expr.Evaluate(alloc, e, empty, mask)
+
+	case *expr.Identity:
+		return r.projectIdentity(ctx, alloc, mask, validity)
+
+	case *expr.Column:
+		return r.projectField(ctx, alloc, e.Name, mask, validity)
+
+	case *expr.MakeStruct:
+		if len(e.Values) == 0 {
+			empty := columnar.NewStruct(columnar.NewSchema(nil), nil, r.length, memory.Bitmap{})
+			return expr.Evaluate(alloc, e, empty, mask)
+		}
+	}
+
+	return expr.Reduce(alloc, e, func(child expr.Expression) (columnar.Datum, error) {
+		return r.walkProject(ctx, alloc, child, mask, validity)
+	}, mask)
+}
+
+func (r *structReader) projectIdentity(ctx context.Context, alloc *memory.Allocator, mask, validity memory.Bitmap) (columnar.Datum, error) {
+	var (
+		columns = make([]columnar.Column, len(r.typ.Fields))
+		fields  = make([]columnar.Array, len(r.typ.Fields))
+	)
+	for i, fieldType := range r.typ.Fields {
+		field, err := r.fields[i].Project(ctx, alloc, &expr.Identity{}, mask)
+		if err != nil {
+			return nil, fmt.Errorf("projecting field %q: %w", fieldType.Name, err)
+		}
+		columns[i] = columnar.Column{Name: fieldType.Name}
+		fields[i] = field
+	}
+	return columnar.NewStruct(columnar.NewSchema(columns), fields, r.length, validity), nil
+}
+
+func (r *structReader) projectField(ctx context.Context, alloc *memory.Allocator, name string, mask, validity memory.Bitmap) (columnar.Datum, error) {
+	idx := r.fieldIndex(name)
+	if idx < 0 {
+		missing := memory.NewBitmap(alloc, r.length)
+		missing.AppendCount(false, r.length)
+		return columnar.NewNull(missing), nil
+	}
+
+	field, err := r.fields[idx].Project(ctx, alloc, &expr.Identity{}, mask)
+	if err != nil {
+		return nil, fmt.Errorf("projecting field %q: %w", name, err)
+	}
+	if validity.Len() == 0 {
+		return field, nil
+	}
+	return compute.PropagateNulls(alloc, field, validity)
 }
 
 func (r *structReader) Reset() {
@@ -491,49 +588,4 @@ func (r *structReader) Close() error {
 		r.validity.Close()
 	}
 	return nil
-}
-
-func (r *structReader) walkProject(ctx context.Context, alloc *memory.Allocator, e expr.Expression, mask, validity memory.Bitmap) (columnar.Datum, error) {
-	if e == nil {
-		return nil, fmt.Errorf("nil projection expression is invalid")
-	}
-
-	cols := collectColumns(e)
-
-	switch len(cols) {
-	case 0: // No column references: evaluate directly (constants, etc.).
-		empty := columnar.NewStruct(columnar.NewSchema(nil), nil, r.length, memory.Bitmap{})
-		return expr.Evaluate(alloc, e, empty, mask)
-
-	case 1: // Single-field reference: scope-rewrite and push to child reader.
-		var colName string
-		for name := range cols {
-			colName = name
-		}
-		idx := r.fieldIndex(colName)
-		if idx < 0 {
-			empty := columnar.NewStruct(columnar.NewSchema(nil), nil, r.length, memory.Bitmap{})
-			return expr.Evaluate(alloc, e, empty, mask)
-		}
-		rewritten := rewriteColumnsToIdentity(e, colName)
-		projected, err := r.fields[idx].Project(ctx, alloc, rewritten, mask)
-		if err != nil {
-			return nil, err
-		}
-		if validity.Len() == 0 {
-			return projected, nil
-		}
-		return compute.PropagateNulls(alloc, projected, validity)
-
-	default:
-		// Multi-field reference: Reduce calls walkProject on each child.
-		// Each child gets categorized by its own column count — single-column
-		// sub-expressions get pushed to child readers, constants evaluate
-		// directly, and multi-column children recurse further.
-		// All children return full-window arrays; mask is forwarded as a
-		// selection hint so compute ops can skip unselected rows.
-		return expr.Reduce(alloc, e, func(child expr.Expression) (columnar.Datum, error) {
-			return r.walkProject(ctx, alloc, child, mask, validity)
-		}, mask)
-	}
 }
