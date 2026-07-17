@@ -4,8 +4,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/util/loser"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 type List struct {
