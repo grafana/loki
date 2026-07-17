@@ -7,9 +7,7 @@ import (
 	"io"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
@@ -24,37 +22,18 @@ type RowReader struct {
 	batch   arrow.RecordBatch
 	index   int
 	columns ColumnIndex
-	opened  bool
 
 	cur       Row   // current value, valid between Next() returning true and the next Next() call
 	err       error // captured if iteration ends with anything other than io.EOF
 	exhausted bool  // set when Next has returned false; further calls return false without work
 }
 
-type ReaderOption func(*ReaderOptions)
-
-func WithStatsTracker(tracker dataset.RowReaderStatsTracker) ReaderOption {
-	return func(r *ReaderOptions) {
-		r.StatsTracker = tracker
-	}
-}
-
-// NewRowReader creates a RowReader over all of sec's columns, applying the
-// provided predicates when scanning. The underlying reader is opened lazily on
-// the first call to Next. The provided ctx governs all subsequent I/O (Open and
-// Read).
-func NewRowReader(ctx context.Context, sec *Section, preds []Predicate, optFuncs ...ReaderOption) *RowReader {
-	opts := ReaderOptions{
-		Columns:    sec.Columns(),
-		Predicates: preds,
-		Allocator:  memory.DefaultAllocator,
-	}
-	for _, optFunc := range optFuncs {
-		optFunc(&opts)
-	}
+// NewRowReader creates a RowReader over an already-opened reader. The provided
+// ctx governs all subsequent reads.
+func NewRowReader(ctx context.Context, reader *Reader) *RowReader {
 	return &RowReader{
 		ctx:    ctx,
-		reader: NewReader(opts),
+		reader: reader,
 	}
 }
 
@@ -82,33 +61,26 @@ func (r *RowReader) Next() bool {
 
 // next reads the next Row from the section. Returns io.EOF when exhausted.
 func (r *RowReader) next() (Row, error) {
-	if !r.opened {
-		if err := r.reader.Open(r.ctx); err != nil {
-			return Row{}, fmt.Errorf("opening reader: %w", err)
-		}
-		r.opened = true
-	}
-
 	if r.batch == nil || r.index >= int(r.batch.NumRows()) {
 		r.batch = nil
 
-		batch, err := r.reader.Read(r.ctx, 8192)
-		if errors.Is(err, io.EOF) && batch == nil {
-			return Row{}, io.EOF
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return Row{}, fmt.Errorf("reading batch: %w", err)
-		}
-
-		if batch != nil && batch.NumRows() > 0 {
-			r.batch = batch
-			r.index = 0
-			if r.columns == nil {
-				r.columns = BuildColumnIndex(batch.Schema())
+		for r.batch == nil {
+			batch, err := r.reader.Read(r.ctx, 8192)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return Row{}, fmt.Errorf("reading batch: %w", err)
 			}
-		} else {
-			// Empty or nil batch: treat as end of section.
-			return Row{}, io.EOF
+
+			if (batch == nil || batch.NumRows() == 0) && errors.Is(err, io.EOF) {
+				return Row{}, io.EOF
+			}
+
+			if batch != nil && batch.NumRows() > 0 {
+				r.batch = batch
+				r.index = 0
+				if r.columns == nil {
+					r.columns = BuildColumnIndex(batch.Schema())
+				}
+			}
 		}
 	}
 

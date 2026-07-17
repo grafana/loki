@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 // executeIndexMerge orchestrates the index merge: existence-check, classify sections,
@@ -273,13 +272,10 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, o
 
 		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
 		// ColumnName, LabelValue) means two source indexes reference the same
-		// physical section/column/label — this shouldn't happen so log a warning
-		// and emit a metric for tracking. The data is logically equivalent, so
-		// keep the first row and drop the later duplicate.
+		// physical section/column/label — this shouldn't happen, so log a
+		// warning. The data is logically equivalent, so keep the first row and
+		// drop the later duplicate.
 		if last != nil && samePostingsKey(*last, row) {
-			if region := xcap.RegionFromContext(ctx); region != nil {
-				region.Record(statIndexMergeDuplicatePostings.Observe(1))
-			}
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: postings full-key collision",
 				"tenant", tenant,
@@ -361,12 +357,8 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, obje
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
-		// keep the first row, drop the later duplicate, warn, and observe an
-		// xcap statistic.
+		// keep the first row, drop the later duplicate, and warn.
 		if last != nil && stats.Compare(*last, row) == 0 {
-			if region := xcap.RegionFromContext(ctx); region != nil {
-				region.Record(statIndexMergeDuplicateStats.Observe(1))
-			}
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: stats full-key collision",
 				"tenant", tenant,
@@ -472,7 +464,11 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIt
 	if err != nil {
 		return nil, err
 	}
-	return postings.NewRowReader(ctx, ps, nil), nil
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening postings reader: %w", err)
+	}
+	return postings.NewRowReader(ctx, reader), nil
 }
 
 // openStatsReader opens a stats section and returns a row iterator over it.

@@ -58,19 +58,12 @@
       memcached: true,
       // Whether or not to include consul in the operational dashboard
       consul: true,
-      // Whether or not to include big table in the operational dashboard
-      bigTable: true,
-      // Whether or not to include dynamo in the operational dashboard
-      dynamo: true,
       // Whether or not to include gcs in the operational dashboard
       gcs: true,
       // Whether or not to include s3 in the operational dashboard
       s3: true,
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
-      // Whether or not to include BoltDB Shipper in the operational dashboard.
-      // Kept as a legacy toggle; defaults to false since TSDB is the default index.
-      boltDB: false,
     },
 
     // Enable TSDB specific dashboards
@@ -84,6 +77,24 @@
     // Meta-monitoring related configuration
     meta_monitoring: {
       enabled: false,
+    },
+
+    // Enable panels that depend on autoscaler metrics
+    // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
+    autoscaling_metrics: false,
+    // Per-component autoscaling status.
+    // Only consulted when autoscaling_metrics is true.
+    // If true, min and max replicas for the component are shown.
+    // If false, a panel that says "not autoscaled" is shown instead.
+    autoscaled: {
+      gateway: false,  // only when internal_components=true
+      query_frontend: false,
+      query_scheduler: false,
+      querier: false,
+      index_gateway: false,
+      bloom_gateway: false,
+      ingester: false,
+      ruler: false,
     },
   },
 }

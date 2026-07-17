@@ -312,9 +312,9 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	// Same tuple, overlapping times -> 2 runs -> still dispatches after the
 	// terminal gate (total size 200 clears the test floor of 1).
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -359,7 +359,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	// Index has a stats section (so it flushes) but for a DIFFERENT tenant;
 	// "acme" gets zero refs -> no tasks -> converged.
 	buildIndexWithStats(ctx, t, bucket, "other", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -381,9 +381,9 @@ func TestRunCycle_ConvergedTenantTriggersLogCompaction(t *testing.T) {
 	convergedPath := "indexes/aa/converged"
 
 	buildIndexWithStats(ctx, t, bucket, "solo", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 	})
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
@@ -408,7 +408,7 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 
 	// Single stat row -> P=1 -> terminal regardless of size.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -433,9 +433,9 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 
 	// Two overlapping same-tuple rows -> P=2, total size 30, below the 1GiB floor.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 10},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 20},
 	})
 
@@ -457,9 +457,9 @@ func twoRunConvergedBucket(ctx context.Context, t *testing.T, tenant, path strin
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
 	buildIndexWithStats(ctx, t, bucket, tenant, path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 	})
 	return bucket

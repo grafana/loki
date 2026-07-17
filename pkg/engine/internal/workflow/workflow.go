@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -108,14 +109,13 @@ type Workflow struct {
 	capture      *xcap.Capture
 	parentRegion *xcap.Region
 
-	span *xcap.Span
+	span trace.Span
 
-	tasksMut         sync.RWMutex
-	taskStates       map[*Task]TaskState
-	pendingSummaries map[*Task]pendingSummary // Holds terminal task state until Close.
+	tasksMut    sync.RWMutex
+	taskResults map[*Task]pendingSummary // Holds terminal task results until Close.
 
-	streamsMut   sync.RWMutex
-	streamStates map[*Stream]StreamState
+	streamsMut          sync.RWMutex
+	resultsStreamClosed bool
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -143,12 +143,10 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 	if graph.Len() == 0 {
 		level.Debug(logger).Log("msg", "workflow plan is empty")
 		return &Workflow{
-			opts:             opts,
-			logger:           logger,
-			runner:           runner,
-			taskStates:       make(map[*Task]TaskState),
-			streamStates:     make(map[*Stream]StreamState),
-			pendingSummaries: make(map[*Task]pendingSummary),
+			opts:        opts,
+			logger:      logger,
+			runner:      runner,
+			taskResults: make(map[*Task]pendingSummary),
 		}, nil
 	}
 
@@ -166,9 +164,7 @@ func New(ctx context.Context, opts Options, logger log.Logger, runner Runner, pl
 		resultsStream:   results,
 		resultsPipeline: newStreamPipe(),
 
-		taskStates:       make(map[*Task]TaskState),
-		streamStates:     make(map[*Stream]StreamState),
-		pendingSummaries: make(map[*Task]pendingSummary),
+		taskResults: make(map[*Task]pendingSummary),
 	}
 	// Detach cancellation from the caller's ctx so a cancellation of the
 	// planning context does not abort the manifest registration, but keep
@@ -221,8 +217,8 @@ func (wf *Workflow) init(ctx context.Context) error {
 		Streams: wf.allStreams(),
 		Tasks:   wf.allTasks(),
 
-		StreamEventHandler: wf.onStreamChange,
-		TaskEventHandler:   wf.onTaskChange,
+		StreamClosedHandler: wf.onStreamClosed,
+		TaskResultHandler:   wf.onTaskResult,
 	}
 	if err := wf.runner.RegisterManifest(ctx, wf.manifest); err != nil {
 		return err
@@ -261,9 +257,9 @@ func (wf *Workflow) Close() {
 		level.Warn(wf.logger).Log("msg", "failed to unregister workflow manifest", "err", err)
 	}
 
-	// UnregisterManifest synchronously drives every remaining task to a terminal
-	// state and delivers its status, so by here the DAG and all per-task finish
-	// times are recorded and the critical path is complete.
+	// UnregisterManifest synchronously produces a result for every remaining
+	// task, so by here the DAG and all per-task finish times are recorded and the
+	// critical path is complete.
 	wf.flushTaskSummaries()
 }
 
@@ -282,7 +278,7 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 	wf.parentRegion = xcap.RegionFromContext(ctx)
 
 	// wf.Run tracks the lifetime of the workflow execution.
-	ctx, wf.span = xcap.StartSpan(ctx, tracer, "wf.Run")
+	ctx, wf.span = tracer.Start(ctx, "wf.Run")
 
 	// Start dispatching in background goroutine
 	gotrace.Log(ctx, "dispatch_tasks", "starting dispatch of "+strconv.Itoa(len(wf.manifest.Tasks))+" tasks")
@@ -356,25 +352,19 @@ func (wf *Workflow) allTasks() []*Task {
 	return tasks
 }
 
-func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState StreamState) {
+func (wf *Workflow) onStreamClosed(_ context.Context, stream *Stream) {
 	if wf.opts.DebugStreams {
-		level.Debug(wf.logger).Log("msg", "stream state change", "stream_id", stream.ULID, "new_state", newState)
+		level.Debug(wf.logger).Log("msg", "stream closed", "stream_id", stream.ULID)
+	}
+
+	if stream.ULID != wf.resultsStream.ULID {
+		return
 	}
 
 	wf.streamsMut.Lock()
-	wf.streamStates[stream] = newState
-	shouldCloseResults := newState == StreamStateClosed && stream.ULID == wf.resultsStream.ULID
+	wf.resultsStreamClosed = true
 	wf.streamsMut.Unlock()
-
-	if shouldCloseResults {
-		wf.maybeCloseResults()
-	}
-}
-
-// resultsStreamClosed reports whether the results stream has reached
-// StreamStateClosed. Callers must hold streamsMut.
-func (wf *Workflow) resultsStreamClosed() bool {
-	return wf.streamStates[wf.resultsStream] == StreamStateClosed
+	wf.maybeCloseResults()
 }
 
 // maybeCloseResults closes the results pipeline (signaling EOF) only once the
@@ -382,7 +372,7 @@ func (wf *Workflow) resultsStreamClosed() bool {
 // SetError happens-before the EOF. Idempotent; safe to call from any handler.
 func (wf *Workflow) maybeCloseResults() {
 	wf.streamsMut.RLock()
-	streamClosed := wf.resultsStreamClosed()
+	streamClosed := wf.resultsStreamClosed
 	wf.streamsMut.RUnlock()
 
 	if !streamClosed {
@@ -390,88 +380,55 @@ func (wf *Workflow) maybeCloseResults() {
 	}
 
 	wf.tasksMut.RLock()
-	for _, state := range wf.taskStates {
-		if !state.Terminal() {
-			wf.tasksMut.RUnlock()
-			return
-		}
-	}
+	allTasksFinished := len(wf.taskResults) == len(wf.manifest.Tasks)
 	wf.tasksMut.RUnlock()
+	if !allTasksFinished {
+		return
+	}
 
 	wf.resultsPipeline.Close()
 }
 
-func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
+func (wf *Workflow) onTaskResult(ctx context.Context, task *Task, result TaskResult) {
 	if wf.opts.DebugTasks {
-		level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+		level.Debug(wf.logger).Log("msg", "task result", "task_id", task.ULID, "outcome", result.Outcome)
 	}
 
 	wf.tasksMut.Lock()
-	oldState := wf.taskStates[task]
-	wf.taskStates[task] = newStatus.State
-	if newStatus.State.Terminal() && oldState != newStatus.State {
-		wf.recordTerminal(task, oldState, newStatus)
-	}
-	wf.tasksMut.Unlock()
-
-	if newStatus.State.Terminal() {
-		wf.handleTerminalStateChange(ctx, task, oldState, newStatus)
-	}
-}
-
-// recordTerminal stashes a terminal task's summary and finish time for Close to
-// emit. Recording both under one lock is what lets flushTaskSummaries trust that
-// observing every task terminal implies every summary and finish is present.
-// wf.tasksMut must be held.
-func (wf *Workflow) recordTerminal(task *Task, oldState TaskState, newStatus TaskStatus) {
-	summary := pendingSummary{
-		oldState: oldState,
-		status:   newStatus,
-	}
-	if newStatus.Capture != nil {
-		if finish, ok := xcap.TryValue[int64](newStatus.Capture, schedulerstat.TaskFinishTime); ok {
-			summary.taskFinishNanos = finish
-		}
-	}
-	wf.pendingSummaries[task] = summary
-}
-
-func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, oldState TaskState, newStatus TaskStatus) {
-	// State has not changed
-	if oldState == newStatus.State {
+	if _, exists := wf.taskResults[task]; exists {
+		wf.tasksMut.Unlock()
 		return
 	}
+	wf.recordTaskResult(task, result)
+	wf.tasksMut.Unlock()
 
-	if newStatus.State == TaskStateFailed {
+	if result.Outcome == TaskOutcomeFailed {
 		// Use the first failure from a task as the failure for the entire
 		// workflow.
-		wf.resultsPipeline.SetError(newStatus.Error)
+		wf.resultsPipeline.SetError(result.Error)
 	}
 
-	if newStatus.Capture != nil {
-		wf.mergeCapture(newStatus.Capture)
+	if result.Capture != nil {
+		wf.mergeCapture(result.Capture)
 	}
 
-	// task reached a terminal state. We need to detect if task's immediate
-	// children should be canceled. We only look at immediate unterminated
-	// children, since canceling them will trigger onTaskChange to process
-	// indirect children.
+	// The task has finished. Detect whether its immediate children should be
+	// cancelled. We only look at immediate unfinished children, since
+	// cancelling them will invoke onTaskResult to process indirect children.
 	var tasksToCancel []*Task
 
 	wf.tasksMut.RLock()
 	{
 	NextChild:
 		for _, child := range wf.graph.Children(task) {
-			// Ignore children in terminal states.
-			if childState := wf.taskStates[child]; childState.Terminal() {
+			if _, finished := wf.taskResults[child]; finished {
 				continue
 			}
 
 			// Cancel the child if and only if all of the child's parents (which
-			// includes the task that just updated) are in a terminal state.
+			// includes the task that just finished) have terminal results.
 			for _, parent := range wf.graph.Parents(child) {
-				parentState := wf.taskStates[parent]
-				if !parentState.Terminal() {
+				if _, finished := wf.taskResults[parent]; !finished {
 					continue NextChild
 				}
 			}
@@ -487,8 +444,25 @@ func (wf *Workflow) handleTerminalStateChange(ctx context.Context, task *Task, o
 	wf.maybeCloseResults()
 }
 
+// recordTaskResult stashes a task's result and finish time for Close to emit.
+// Recording both under one lock lets flushTaskSummaries trust that observing a
+// result for every task implies every summary and finish time is present.
+// wf.tasksMut must be held.
+func (wf *Workflow) recordTaskResult(task *Task, result TaskResult) {
+	summary := pendingSummary{result: result}
+	if result.Capture == nil {
+		wf.taskResults[task] = summary
+		return
+	}
+
+	if finish, ok := xcap.TryValue[int64](result.Capture, schedulerstat.TaskFinishTime); ok {
+		summary.taskFinishNanos = finish
+	}
+	wf.taskResults[task] = summary
+}
+
 func (wf *Workflow) cancelTasks(ctx context.Context, tasks []*Task) {
-	// Runners may re-invoke onTaskChange, so we don't want to hold the mutex
+	// Runners may re-invoke onTaskResult, so we don't want to hold the mutex
 	// when calling this.
 	if err := wf.runner.Cancel(ctx, tasks...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)

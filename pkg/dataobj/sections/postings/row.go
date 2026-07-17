@@ -2,10 +2,25 @@ package postings
 
 import (
 	"bytes"
+	"cmp"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
+
+// CompareRows reports whether row [a] sorts before (<0), after (>0), or equal to
+// (0) row [b].
+func CompareRows(a, b Row) int {
+	return cmp.Or(
+		cmp.Compare(a.Kind, b.Kind),
+		cmp.Compare(a.ColumnName, b.ColumnName),
+		cmp.Compare(a.LabelValue, b.LabelValue),
+		cmp.Compare(a.MinTimestamp, b.MinTimestamp),
+		cmp.Compare(a.MaxTimestamp, b.MaxTimestamp),
+		cmp.Compare(a.ObjectPath, b.ObjectPath),
+		cmp.Compare(a.SectionIndex, b.SectionIndex),
+	)
+}
 
 // Row is the decoded per-row representation of a postings section,
 // covering both Label and Bloom kinds.
@@ -49,6 +64,38 @@ func (r Row) BloomEntry() BloomEntry {
 		MinTimestamp:     r.MinTimestamp,
 		MaxTimestamp:     r.MaxTimestamp,
 		UncompressedSize: r.UncompressedSize,
+	}
+}
+
+// Row converts the LabelEntry to a [Row] with Kind set to [KindLabel]. It is
+// the inverse of [Row.LabelEntry].
+func (e LabelEntry) Row() Row {
+	return Row{
+		Kind:             KindLabel,
+		ObjectPath:       e.ObjectPath,
+		SectionIndex:     e.SectionIndex,
+		ColumnName:       e.ColumnName,
+		LabelValue:       e.LabelValue,
+		StreamIDBitmap:   e.StreamIDBitmap,
+		MinTimestamp:     e.MinTimestamp,
+		MaxTimestamp:     e.MaxTimestamp,
+		UncompressedSize: e.UncompressedSize,
+	}
+}
+
+// Row converts the BloomEntry to a [Row] with Kind set to [KindBloom]. It is
+// the inverse of [Row.BloomEntry].
+func (e BloomEntry) Row() Row {
+	return Row{
+		Kind:             KindBloom,
+		ObjectPath:       e.ObjectPath,
+		SectionIndex:     e.SectionIndex,
+		ColumnName:       e.ColumnName,
+		BloomFilter:      e.BloomFilter,
+		StreamIDBitmap:   e.StreamIDBitmap,
+		MinTimestamp:     e.MinTimestamp,
+		MaxTimestamp:     e.MaxTimestamp,
+		UncompressedSize: e.UncompressedSize,
 	}
 }
 

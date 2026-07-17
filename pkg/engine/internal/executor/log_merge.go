@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
@@ -56,6 +55,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	if exists {
 		level.Info(c.logger).Log("msg", "LogMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeShortCircuit}, time.Since(start))
 		return nil
 	}
 
@@ -64,6 +64,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if len(sources) == 0 {
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
 	}
 
@@ -103,6 +104,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return err
 	}
 	if stats.OutputObjects == 0 {
+		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
@@ -111,21 +113,19 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return fmt.Errorf("flushing index: %w", err)
 	}
 
-	idxBytes, err := c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
+	_, err = c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
 	if err != nil {
 		return errors.Join(fmt.Errorf("uploading index %q: %w", node.OutputIndexPath, err), idxCloser.Close())
 	}
 	if err := idxCloser.Close(); err != nil {
 		return fmt.Errorf("closing index %q: %w", node.OutputIndexPath, err)
 	}
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		region.Record(statLogMergeIndexBytes.Observe(idxBytes))
-	}
 
 	stats.SourceObjects = len(sources)
 	for _, s := range sources {
 		stats.InputSections += len(s.logsSections)
 	}
+	stats.Outcome = logMergeOutcomeSuccess
 
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
@@ -140,11 +140,20 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"sort_schema", strings.Join(node.SortSchema, ","),
 		"duration", time.Since(start),
 	)
+	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
 	return nil
 }
 
-// logMergeStats summarizes a completed LogMerge for the reference log line.
-type logMergeStats struct {
+const (
+	logMergeOutcomeSuccess      = "success"
+	logMergeOutcomeShortCircuit = "short_circuit"
+	logMergeOutcomeEmpty        = "empty"
+)
+
+// LogMergeObservedStats is the per-task compaction summary reported to
+// LogMergeObserver and xcap statistics.
+type LogMergeObservedStats struct {
+	Outcome                 string
 	SourceObjects           int
 	InputSections           int
 	OutputObjects           int
@@ -152,6 +161,20 @@ type logMergeStats struct {
 	OutputRecords           int
 	OutputBytesCompressed   int64
 	OutputBytesUncompressed int64
+}
+
+// logMergeObservedStats is the internal alias used while assembling stats.
+type logMergeObservedStats = LogMergeObservedStats
+
+// logMergeStats summarizes a completed LogMerge for the reference log line.
+type logMergeStats struct {
+	logMergeObservedStats
+}
+
+func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, duration time.Duration) {
+	if c.logMergeObserver != nil {
+		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
+	}
 }
 
 // logMergeOutputPath derives the deterministic object-storage key for the i-th

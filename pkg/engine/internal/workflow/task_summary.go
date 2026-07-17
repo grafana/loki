@@ -16,8 +16,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus TaskStatus, onCriticalPath bool) {
-	capture := newStatus.Capture
+func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPath bool) {
+	capture := result.Capture
 	if capture == nil {
 		// Every terminal notification carries the per-task capture. Skip
 		// rather than emit a log line that's all nils.
@@ -55,10 +55,10 @@ func (wf *Workflow) printTaskSummary(task *Task, oldState TaskState, newStatus T
 		"operator_type", taskOperatorType(task),
 
 		// Outcome
-		"status", taskStatusName(newStatus.State),
+		"status", taskOutcomeName(result.Outcome),
 		"on_critical_path", onCriticalPath,
-		"cancellation_phase", cancellationPhaseName(oldState, newStatus.State),
-		"error", newStatus.Error,
+		"cancellation_phase", cancellationPhaseName(result),
+		"error", result.Error,
 
 		// Timings
 		"duration_ms", time.Duration(durTotal).Milliseconds(),
@@ -266,40 +266,35 @@ func getRootChild(parent string, children []physical.Node) (physical.Node, error
 	}
 }
 
-// taskStatusName maps a terminal [TaskState] to the spec's status enum.
-func taskStatusName(state TaskState) string {
-	switch state {
-	case TaskStateCompleted:
+// taskOutcomeName maps a [TaskOutcome] to the summary's outcome label.
+func taskOutcomeName(outcome TaskOutcome) string {
+	switch outcome {
+	case TaskOutcomeCompleted:
 		return "success"
-	case TaskStateFailed:
+	case TaskOutcomeFailed:
 		return "fail"
-	case TaskStateCancelled:
+	case TaskOutcomeCancelled:
 		return "cancel"
 	default:
-		return state.String()
+		return outcome.String()
 	}
 }
 
-// cancellationPhaseName returns the cancellation phase when newState is
-// [TaskStateCancelled], or nil otherwise (so the log field is omitted for
-// non-cancellation outcomes).
-//
-//   - "pre_assignment" — cancellation happened before the task was assigned
-//     to a worker (oldState was Created or Pending).
-//   - "during_execution" — cancellation happened while a worker was running
-//     the task (oldState was Running).
-func cancellationPhaseName(oldState, newState TaskState) any {
-	if newState != TaskStateCancelled {
+// cancellationPhaseName returns the cancellation phase for a cancelled result,
+// or nil for other outcomes. The scheduler records execution duration only
+// after a worker accepted the task, making its presence direct assignment
+// evidence without retaining a lifecycle state solely for this log field.
+func cancellationPhaseName(result TaskResult) any {
+	if result.Outcome != TaskOutcomeCancelled {
 		return nil
 	}
-	switch oldState {
-	case TaskStateCreated, TaskStatePending:
+	if result.Capture == nil {
 		return "pre_assignment"
-	case TaskStateRunning:
-		return "during_execution"
-	default:
-		return nil
 	}
+	if _, assigned := xcap.TryValue[int64](result.Capture, schedulerstat.TaskExecutionDuration); !assigned {
+		return "pre_assignment"
+	}
+	return "during_execution"
 }
 
 // taskResultCacheOutcome derives the task result cache outcome for the task

@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
@@ -126,18 +128,20 @@ var testCases = []struct {
 	},
 }
 
+// Helpers for tests
+func listAt(s *List) uint64                      { return s.At() }
+func lessUint64(a, b uint64) bool                { return a < b }
+func treeAt(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
+
 func TestMerge(t *testing.T) {
-	at := func(s *List) uint64 { return s.At() }
-	less := func(a, b uint64) bool { return a < b }
-	at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
 			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(tt.args, math.MaxUint64, at, less, closeFn)
-			checkIterablesEqual(t, tt.want, lt, at, at2, less)
+			lt := loser.New(tt.args, math.MaxUint64, listAt, lessUint64, closeFn)
+			checkIterablesEqual(t, tt.want, lt, listAt, treeAt, lessUint64)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)
 			}
@@ -146,23 +150,39 @@ func TestMerge(t *testing.T) {
 }
 
 func TestPush(t *testing.T) {
-	at := func(s *List) uint64 { return s.At() }
-	less := func(a, b uint64) bool { return a < b }
-	at2 := func(s *loser.Tree[uint64, *List]) uint64 { return s.Winner().At() }
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			numCloses := 0
 			closeFn := func(_ *List) {
 				numCloses++
 			}
-			lt := loser.New(nil, math.MaxUint64, at, less, closeFn)
+			lt := loser.New(nil, math.MaxUint64, listAt, lessUint64, closeFn)
 			for _, s := range tt.args {
 				lt.Push(s)
 			}
-			checkIterablesEqual(t, tt.want, lt, at, at2, less)
+			checkIterablesEqual(t, tt.want, lt, listAt, treeAt, lessUint64)
 			if numCloses != len(tt.args) {
 				t.Errorf("Expected %d closes, got %d", len(tt.args), numCloses)
 			}
 		})
 	}
+}
+
+func TestPushDuringIteration(t *testing.T) {
+	// Start with {1, 2} then push {5, 6}, {3}, {4}, interleaved with some Next() calls.
+	lt := loser.New([]*List{NewList(1, 2)}, math.MaxUint64, func(s *List) uint64 { return s.At() }, lessUint64, func(*List) {})
+
+	require.True(t, lt.Next())
+	require.Equal(t, uint64(1), lt.Winner().At())
+
+	lt.Push(NewList(5, 6))
+
+	require.True(t, lt.Next())
+	require.Equal(t, uint64(2), lt.Winner().At())
+
+	lt.Push(NewList(3))
+	lt.Push(NewList(4))
+
+	want := NewList(3, 4, 5, 6)
+	checkIterablesEqual(t, want, lt, listAt, treeAt, lessUint64)
 }

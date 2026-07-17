@@ -101,7 +101,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 		serverReceived <- message
 
 		// Echo back a WorkerReadyMessage
-		if _, ok := message.(wire.TaskStatusMessage); ok {
+		if _, ok := message.(wire.TaskResultMessage); ok {
 			return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
 		}
 		return nil
@@ -169,13 +169,13 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Send message from client to server (synchronous)
-	err = clientPeer.SendMessage(ctx, wire.TaskStatusMessage{})
+	err = clientPeer.SendMessage(ctx, wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}})
 	require.NoError(t, err)
 
 	// Wait for server to receive the message
 	select {
 	case msg := <-serverReceived:
-		require.IsType(t, wire.TaskStatusMessage{}, msg)
+		require.IsType(t, wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}, msg)
 	case <-ctx.Done():
 		t.Fatal("timeout waiting for server to receive message")
 	}
@@ -323,7 +323,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			// Send messages
 			for j := 0; j < 3; j++ {
-				msg := wire.TaskStatusMessage{}
+				msg := wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}
 				err := peer.SendMessage(ctx, msg)
 				if err != nil {
 					t.Errorf("Client %d send failed: %v", clientIdx, err)
@@ -498,7 +498,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}{
 		{"WorkerReadyMessage", wire.WorkerReadyMessage{}},
 		{"TaskCancelMessage", wire.TaskCancelMessage{}},
-		{"TaskStatusMessage", wire.TaskStatusMessage{}},
+		{"TaskResultMessage", wire.TaskResultMessage{Result: workflow.TaskResult{Outcome: workflow.TaskOutcomeCompleted}}},
 		{"TaskAssignMessage", wire.TaskAssignMessage{
 			Task: &workflow.Task{
 				ULID:     ulid.Make(),
@@ -515,9 +515,9 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 					},
 				},
 			},
-			StreamStates: nil,
+			ClosedSourceIDs: nil,
 		}},
-		{"StreamStatusMessage", wire.StreamStatusMessage{}},
+		{"StreamClosedMessage", wire.StreamClosedMessage{}},
 	}
 
 	for _, tc := range testCases {

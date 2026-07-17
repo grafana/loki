@@ -307,9 +307,12 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 	require.True(t, checkBit(bitmaps[0], 7), "bit 7 should be set")
 }
 
-// TestBuilder_BitmapNormalization verifies that bitmaps of different sizes are
-// padded to the same length.
-func TestBuilder_BitmapNormalization(t *testing.T) {
+// TestBuilder_BitmapSizes verifies that each bitmap is stored at its natural
+// length (trailing zero bytes trimmed), not zero-padded to the section's
+// longest bitmap. Readers derive the bit count per row and zero-extend during
+// unions, so variable-length storage is correct and avoids padding every row to
+// the maximum length.
+func TestBuilder_BitmapSizes(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 0).UTC()
@@ -325,9 +328,12 @@ func TestBuilder_BitmapNormalization(t *testing.T) {
 	require.Len(t, rows, 2)
 
 	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
-	// All bitmaps should be the same length (3 bytes, the maximum for stream ID 23).
-	require.Len(t, bitmaps[0], 3, "short bitmap should be padded to max length")
-	require.Len(t, bitmaps[1], 3, "long bitmap should remain at max length")
+	// Rows are sorted by (kind, column_name, label_value): "a" (stream 0) then
+	// "b" (stream 23). Each keeps its natural byte length.
+	require.Len(t, bitmaps[0], 1, "bitmap for stream ID 0 should be 1 byte")
+	require.Len(t, bitmaps[1], 3, "bitmap for stream ID 23 should be 3 bytes")
+	require.True(t, checkBit(bitmaps[0], 0), "bit 0 should be set for stream 0")
+	require.True(t, checkBit(bitmaps[1], 23), "bit 23 should be set for stream 23")
 }
 
 // TestBuilder_SectionSplitting verifies that a small targetSectionSize causes

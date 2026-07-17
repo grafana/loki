@@ -170,9 +170,9 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	path := "indexes/aa/converged"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
 	})
 
@@ -206,7 +206,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	path := "indexes/aa/multikey"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name,namespace",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name,label:namespace",
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 

@@ -32,69 +32,32 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// TaskState represents the execution state of a task.
-type TaskState int32
+// TaskOutcome represents the terminal outcome of a task.
+type TaskOutcome int32
 
 const (
-	TASK_STATE_INVALID   TaskState = 0
-	TASK_STATE_CREATED   TaskState = 1
-	TASK_STATE_PENDING   TaskState = 2
-	TASK_STATE_RUNNING   TaskState = 3
-	TASK_STATE_COMPLETED TaskState = 4
-	TASK_STATE_CANCELLED TaskState = 5
-	TASK_STATE_FAILED    TaskState = 6
+	TASK_OUTCOME_UNSPECIFIED TaskOutcome = 0
+	TASK_OUTCOME_COMPLETED   TaskOutcome = 1
+	TASK_OUTCOME_CANCELLED   TaskOutcome = 2
+	TASK_OUTCOME_FAILED      TaskOutcome = 3
 )
 
-var TaskState_name = map[int32]string{
-	0: "TASK_STATE_INVALID",
-	1: "TASK_STATE_CREATED",
-	2: "TASK_STATE_PENDING",
-	3: "TASK_STATE_RUNNING",
-	4: "TASK_STATE_COMPLETED",
-	5: "TASK_STATE_CANCELLED",
-	6: "TASK_STATE_FAILED",
+var TaskOutcome_name = map[int32]string{
+	0: "TASK_OUTCOME_UNSPECIFIED",
+	1: "TASK_OUTCOME_COMPLETED",
+	2: "TASK_OUTCOME_CANCELLED",
+	3: "TASK_OUTCOME_FAILED",
 }
 
-var TaskState_value = map[string]int32{
-	"TASK_STATE_INVALID":   0,
-	"TASK_STATE_CREATED":   1,
-	"TASK_STATE_PENDING":   2,
-	"TASK_STATE_RUNNING":   3,
-	"TASK_STATE_COMPLETED": 4,
-	"TASK_STATE_CANCELLED": 5,
-	"TASK_STATE_FAILED":    6,
+var TaskOutcome_value = map[string]int32{
+	"TASK_OUTCOME_UNSPECIFIED": 0,
+	"TASK_OUTCOME_COMPLETED":   1,
+	"TASK_OUTCOME_CANCELLED":   2,
+	"TASK_OUTCOME_FAILED":      3,
 }
 
-func (TaskState) EnumDescriptor() ([]byte, []int) {
+func (TaskOutcome) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_9956cb67d4b0d2a4, []int{0}
-}
-
-// StreamState represents the state of a stream.
-type StreamState int32
-
-const (
-	STREAM_STATE_INVALID StreamState = 0
-	STREAM_STATE_IDLE    StreamState = 1
-	STREAM_STATE_OPEN    StreamState = 2
-	STREAM_STATE_CLOSED  StreamState = 4
-)
-
-var StreamState_name = map[int32]string{
-	0: "STREAM_STATE_INVALID",
-	1: "STREAM_STATE_IDLE",
-	2: "STREAM_STATE_OPEN",
-	4: "STREAM_STATE_CLOSED",
-}
-
-var StreamState_value = map[string]int32{
-	"STREAM_STATE_INVALID": 0,
-	"STREAM_STATE_IDLE":    1,
-	"STREAM_STATE_OPEN":    2,
-	"STREAM_STATE_CLOSED":  4,
-}
-
-func (StreamState) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{1}
 }
 
 type Frame struct {
@@ -402,14 +365,13 @@ type MessageFrame struct {
 	Id uint64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Types that are valid to be assigned to Kind:
 	//	*MessageFrame_WorkerHello
-	//	*MessageFrame_WorkerSubscribe
 	//	*MessageFrame_WorkerReady
 	//	*MessageFrame_TaskAssign
 	//	*MessageFrame_TaskCancel
-	//	*MessageFrame_TaskStatus
+	//	*MessageFrame_TaskResult
 	//	*MessageFrame_StreamBind
 	//	*MessageFrame_StreamData
-	//	*MessageFrame_StreamStatus
+	//	*MessageFrame_StreamClosed
 	Kind isMessageFrame_Kind `protobuf_oneof:"kind"`
 }
 
@@ -455,9 +417,6 @@ type isMessageFrame_Kind interface {
 type MessageFrame_WorkerHello struct {
 	WorkerHello *WorkerHelloMessage `protobuf:"bytes,10,opt,name=worker_hello,json=workerHello,proto3,oneof"`
 }
-type MessageFrame_WorkerSubscribe struct {
-	WorkerSubscribe *WorkerSubscribeMessage `protobuf:"bytes,11,opt,name=worker_subscribe,json=workerSubscribe,proto3,oneof"`
-}
 type MessageFrame_WorkerReady struct {
 	WorkerReady *WorkerReadyMessage `protobuf:"bytes,2,opt,name=worker_ready,json=workerReady,proto3,oneof"`
 }
@@ -467,8 +426,8 @@ type MessageFrame_TaskAssign struct {
 type MessageFrame_TaskCancel struct {
 	TaskCancel *TaskCancelMessage `protobuf:"bytes,4,opt,name=task_cancel,json=taskCancel,proto3,oneof"`
 }
-type MessageFrame_TaskStatus struct {
-	TaskStatus *TaskStatusMessage `protobuf:"bytes,6,opt,name=task_status,json=taskStatus,proto3,oneof"`
+type MessageFrame_TaskResult struct {
+	TaskResult *TaskResultMessage `protobuf:"bytes,12,opt,name=task_result,json=taskResult,proto3,oneof"`
 }
 type MessageFrame_StreamBind struct {
 	StreamBind *StreamBindMessage `protobuf:"bytes,7,opt,name=stream_bind,json=streamBind,proto3,oneof"`
@@ -476,19 +435,18 @@ type MessageFrame_StreamBind struct {
 type MessageFrame_StreamData struct {
 	StreamData *StreamDataMessage `protobuf:"bytes,8,opt,name=stream_data,json=streamData,proto3,oneof"`
 }
-type MessageFrame_StreamStatus struct {
-	StreamStatus *StreamStatusMessage `protobuf:"bytes,9,opt,name=stream_status,json=streamStatus,proto3,oneof"`
+type MessageFrame_StreamClosed struct {
+	StreamClosed *StreamClosedMessage `protobuf:"bytes,13,opt,name=stream_closed,json=streamClosed,proto3,oneof"`
 }
 
-func (*MessageFrame_WorkerHello) isMessageFrame_Kind()     {}
-func (*MessageFrame_WorkerSubscribe) isMessageFrame_Kind() {}
-func (*MessageFrame_WorkerReady) isMessageFrame_Kind()     {}
-func (*MessageFrame_TaskAssign) isMessageFrame_Kind()      {}
-func (*MessageFrame_TaskCancel) isMessageFrame_Kind()      {}
-func (*MessageFrame_TaskStatus) isMessageFrame_Kind()      {}
-func (*MessageFrame_StreamBind) isMessageFrame_Kind()      {}
-func (*MessageFrame_StreamData) isMessageFrame_Kind()      {}
-func (*MessageFrame_StreamStatus) isMessageFrame_Kind()    {}
+func (*MessageFrame_WorkerHello) isMessageFrame_Kind()  {}
+func (*MessageFrame_WorkerReady) isMessageFrame_Kind()  {}
+func (*MessageFrame_TaskAssign) isMessageFrame_Kind()   {}
+func (*MessageFrame_TaskCancel) isMessageFrame_Kind()   {}
+func (*MessageFrame_TaskResult) isMessageFrame_Kind()   {}
+func (*MessageFrame_StreamBind) isMessageFrame_Kind()   {}
+func (*MessageFrame_StreamData) isMessageFrame_Kind()   {}
+func (*MessageFrame_StreamClosed) isMessageFrame_Kind() {}
 
 func (m *MessageFrame) GetKind() isMessageFrame_Kind {
 	if m != nil {
@@ -507,13 +465,6 @@ func (m *MessageFrame) GetId() uint64 {
 func (m *MessageFrame) GetWorkerHello() *WorkerHelloMessage {
 	if x, ok := m.GetKind().(*MessageFrame_WorkerHello); ok {
 		return x.WorkerHello
-	}
-	return nil
-}
-
-func (m *MessageFrame) GetWorkerSubscribe() *WorkerSubscribeMessage {
-	if x, ok := m.GetKind().(*MessageFrame_WorkerSubscribe); ok {
-		return x.WorkerSubscribe
 	}
 	return nil
 }
@@ -539,9 +490,9 @@ func (m *MessageFrame) GetTaskCancel() *TaskCancelMessage {
 	return nil
 }
 
-func (m *MessageFrame) GetTaskStatus() *TaskStatusMessage {
-	if x, ok := m.GetKind().(*MessageFrame_TaskStatus); ok {
-		return x.TaskStatus
+func (m *MessageFrame) GetTaskResult() *TaskResultMessage {
+	if x, ok := m.GetKind().(*MessageFrame_TaskResult); ok {
+		return x.TaskResult
 	}
 	return nil
 }
@@ -560,9 +511,9 @@ func (m *MessageFrame) GetStreamData() *StreamDataMessage {
 	return nil
 }
 
-func (m *MessageFrame) GetStreamStatus() *StreamStatusMessage {
-	if x, ok := m.GetKind().(*MessageFrame_StreamStatus); ok {
-		return x.StreamStatus
+func (m *MessageFrame) GetStreamClosed() *StreamClosedMessage {
+	if x, ok := m.GetKind().(*MessageFrame_StreamClosed); ok {
+		return x.StreamClosed
 	}
 	return nil
 }
@@ -571,14 +522,13 @@ func (m *MessageFrame) GetStreamStatus() *StreamStatusMessage {
 func (*MessageFrame) XXX_OneofWrappers() []interface{} {
 	return []interface{}{
 		(*MessageFrame_WorkerHello)(nil),
-		(*MessageFrame_WorkerSubscribe)(nil),
 		(*MessageFrame_WorkerReady)(nil),
 		(*MessageFrame_TaskAssign)(nil),
 		(*MessageFrame_TaskCancel)(nil),
-		(*MessageFrame_TaskStatus)(nil),
+		(*MessageFrame_TaskResult)(nil),
 		(*MessageFrame_StreamBind)(nil),
 		(*MessageFrame_StreamData)(nil),
-		(*MessageFrame_StreamStatus)(nil),
+		(*MessageFrame_StreamClosed)(nil),
 	}
 }
 
@@ -587,11 +537,6 @@ func (*MessageFrame) XXX_OneofWrappers() []interface{} {
 //
 // WorkerHelloMessage must be sent by workers before any other worker messages.
 type WorkerHelloMessage struct {
-	// Threads is the maximum number of threads the worker has available.
-	//
-	// The scheduler uses threads to determine the maximum number of tasks that
-	// can be assigned concurrently to a worker.
-	Threads uint64 `protobuf:"varint,1,opt,name=threads,proto3" json:"threads,omitempty"`
 }
 
 func (m *WorkerHelloMessage) Reset()      { *m = WorkerHelloMessage{} }
@@ -626,63 +571,17 @@ func (m *WorkerHelloMessage) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_WorkerHelloMessage proto.InternalMessageInfo
 
-func (m *WorkerHelloMessage) GetThreads() uint64 {
-	if m != nil {
-		return m.Threads
-	}
-	return 0
-}
-
-// WorkerSubscribeMessage is sent by a scheduler to request a WorkerReadyMessage
-// from workers whenever they transition from being fully occupied to having worker threads available.
-type WorkerSubscribeMessage struct {
-}
-
-func (m *WorkerSubscribeMessage) Reset()      { *m = WorkerSubscribeMessage{} }
-func (*WorkerSubscribeMessage) ProtoMessage() {}
-func (*WorkerSubscribeMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{7}
-}
-func (m *WorkerSubscribeMessage) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *WorkerSubscribeMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_WorkerSubscribeMessage.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *WorkerSubscribeMessage) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_WorkerSubscribeMessage.Merge(m, src)
-}
-func (m *WorkerSubscribeMessage) XXX_Size() int {
-	return m.Size()
-}
-func (m *WorkerSubscribeMessage) XXX_DiscardUnknown() {
-	xxx_messageInfo_WorkerSubscribeMessage.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_WorkerSubscribeMessage proto.InternalMessageInfo
-
 // WorkerReadyMessage is sent by a worker to the scheduler to signal that
 // the worker has at least one worker thread available for running tasks.
-//
-// Workers may send WorkerReadyMessage at any time, but one must be sent in
-// response to a WorkerSubscribeMessage once at least one worker thread is
-// available.
+// Workers send it after establishing a control-plane connection and whenever
+// a previously saturated worker becomes available again.
 type WorkerReadyMessage struct {
 }
 
 func (m *WorkerReadyMessage) Reset()      { *m = WorkerReadyMessage{} }
 func (*WorkerReadyMessage) ProtoMessage() {}
 func (*WorkerReadyMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{8}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{7}
 }
 func (m *WorkerReadyMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -715,22 +614,21 @@ var xxx_messageInfo_WorkerReadyMessage proto.InternalMessageInfo
 // task to run.
 //
 // Workers that have no threads available should reject task assignment with a
-// HTTP 429 Too Many Requests. When this happens, the scheduler will remove the
-// ready state from the worker until it receives a WorkerReadyMessage.
+// HTTP 429 Too Many Requests. When this happens, the scheduler pauses assignments
+// to that worker until it receives a WorkerReadyMessage.
 type TaskAssignMessage struct {
 	Task *Task `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
-	// StreamStates holds the most recent state of each stream that the task
-	// reads from. The key is the stream ULID.
-	StreamStates map[string]StreamState `protobuf:"bytes,2,rep,name=stream_states,json=streamStates,proto3" json:"stream_states,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"varint,2,opt,name=value,proto3,enum=loki.wire.StreamState"`
 	// Metadata holds additional metadata to propagate with the task, such as
 	// trace context.
 	Metadata []*httpgrpc.Header `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty"`
+	// ClosedSourceIDs identifies source streams that closed before assignment.
+	ClosedSourceIds []string `protobuf:"bytes,4,rep,name=closed_source_ids,json=closedSourceIds,proto3" json:"closed_source_ids,omitempty"`
 }
 
 func (m *TaskAssignMessage) Reset()      { *m = TaskAssignMessage{} }
 func (*TaskAssignMessage) ProtoMessage() {}
 func (*TaskAssignMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{9}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{8}
 }
 func (m *TaskAssignMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -766,16 +664,16 @@ func (m *TaskAssignMessage) GetTask() *Task {
 	return nil
 }
 
-func (m *TaskAssignMessage) GetStreamStates() map[string]StreamState {
+func (m *TaskAssignMessage) GetMetadata() []*httpgrpc.Header {
 	if m != nil {
-		return m.StreamStates
+		return m.Metadata
 	}
 	return nil
 }
 
-func (m *TaskAssignMessage) GetMetadata() []*httpgrpc.Header {
+func (m *TaskAssignMessage) GetClosedSourceIds() []string {
 	if m != nil {
-		return m.Metadata
+		return m.ClosedSourceIds
 	}
 	return nil
 }
@@ -789,7 +687,7 @@ type TaskCancelMessage struct {
 func (m *TaskCancelMessage) Reset()      { *m = TaskCancelMessage{} }
 func (*TaskCancelMessage) ProtoMessage() {}
 func (*TaskCancelMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{10}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{9}
 }
 func (m *TaskCancelMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -818,24 +716,24 @@ func (m *TaskCancelMessage) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_TaskCancelMessage proto.InternalMessageInfo
 
-// TaskStatusMessage is sent by the worker to the scheduler to inform the
-// scheduler of the current status of a task.
-type TaskStatusMessage struct {
+// TaskResultMessage is sent by the worker to the scheduler with the terminal
+// result of a task.
+type TaskResultMessage struct {
 	Id     github_com_grafana_loki_v3_pkg_engine_internal_proto_ulid.ULID `protobuf:"bytes,1,opt,name=id,proto3,customtype=github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID" json:"id"`
-	Status TaskStatus                                                     `protobuf:"bytes,2,opt,name=status,proto3" json:"status"`
+	Result TaskResult                                                     `protobuf:"bytes,2,opt,name=result,proto3" json:"result"`
 }
 
-func (m *TaskStatusMessage) Reset()      { *m = TaskStatusMessage{} }
-func (*TaskStatusMessage) ProtoMessage() {}
-func (*TaskStatusMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{11}
+func (m *TaskResultMessage) Reset()      { *m = TaskResultMessage{} }
+func (*TaskResultMessage) ProtoMessage() {}
+func (*TaskResultMessage) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9956cb67d4b0d2a4, []int{10}
 }
-func (m *TaskStatusMessage) XXX_Unmarshal(b []byte) error {
+func (m *TaskResultMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TaskStatusMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *TaskResultMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TaskStatusMessage.Marshal(b, m, deterministic)
+		return xxx_messageInfo_TaskResultMessage.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -845,23 +743,23 @@ func (m *TaskStatusMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *TaskStatusMessage) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TaskStatusMessage.Merge(m, src)
+func (m *TaskResultMessage) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TaskResultMessage.Merge(m, src)
 }
-func (m *TaskStatusMessage) XXX_Size() int {
+func (m *TaskResultMessage) XXX_Size() int {
 	return m.Size()
 }
-func (m *TaskStatusMessage) XXX_DiscardUnknown() {
-	xxx_messageInfo_TaskStatusMessage.DiscardUnknown(m)
+func (m *TaskResultMessage) XXX_DiscardUnknown() {
+	xxx_messageInfo_TaskResultMessage.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TaskStatusMessage proto.InternalMessageInfo
+var xxx_messageInfo_TaskResultMessage proto.InternalMessageInfo
 
-func (m *TaskStatusMessage) GetStatus() TaskStatus {
+func (m *TaskResultMessage) GetResult() TaskResult {
 	if m != nil {
-		return m.Status
+		return m.Result
 	}
-	return TaskStatus{}
+	return TaskResult{}
 }
 
 // StreamBindMessage is sent by the scheduler to a worker to inform the
@@ -875,7 +773,7 @@ type StreamBindMessage struct {
 func (m *StreamBindMessage) Reset()      { *m = StreamBindMessage{} }
 func (*StreamBindMessage) ProtoMessage() {}
 func (*StreamBindMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{12}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{11}
 }
 func (m *StreamBindMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -925,7 +823,7 @@ type StreamDataMessage struct {
 func (m *StreamDataMessage) Reset()      { *m = StreamDataMessage{} }
 func (*StreamDataMessage) ProtoMessage() {}
 func (*StreamDataMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{13}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{12}
 }
 func (m *StreamDataMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -961,23 +859,23 @@ func (m *StreamDataMessage) GetData() []byte {
 	return nil
 }
 
-// StreamStatusMessage communicates the status of the sending side of a stream.
-type StreamStatusMessage struct {
+// StreamClosedMessage is sent by the scheduler to a stream receiver after the
+// stream's producer finishes or is cancelled or disconnected.
+type StreamClosedMessage struct {
 	StreamId github_com_grafana_loki_v3_pkg_engine_internal_proto_ulid.ULID `protobuf:"bytes,1,opt,name=stream_id,json=streamId,proto3,customtype=github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID" json:"stream_id"`
-	State    StreamState                                                    `protobuf:"varint,2,opt,name=state,proto3,enum=loki.wire.StreamState" json:"state,omitempty"`
 }
 
-func (m *StreamStatusMessage) Reset()      { *m = StreamStatusMessage{} }
-func (*StreamStatusMessage) ProtoMessage() {}
-func (*StreamStatusMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{14}
+func (m *StreamClosedMessage) Reset()      { *m = StreamClosedMessage{} }
+func (*StreamClosedMessage) ProtoMessage() {}
+func (*StreamClosedMessage) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9956cb67d4b0d2a4, []int{13}
 }
-func (m *StreamStatusMessage) XXX_Unmarshal(b []byte) error {
+func (m *StreamClosedMessage) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *StreamStatusMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *StreamClosedMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_StreamStatusMessage.Marshal(b, m, deterministic)
+		return xxx_messageInfo_StreamClosedMessage.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -987,24 +885,17 @@ func (m *StreamStatusMessage) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *StreamStatusMessage) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_StreamStatusMessage.Merge(m, src)
+func (m *StreamClosedMessage) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_StreamClosedMessage.Merge(m, src)
 }
-func (m *StreamStatusMessage) XXX_Size() int {
+func (m *StreamClosedMessage) XXX_Size() int {
 	return m.Size()
 }
-func (m *StreamStatusMessage) XXX_DiscardUnknown() {
-	xxx_messageInfo_StreamStatusMessage.DiscardUnknown(m)
+func (m *StreamClosedMessage) XXX_DiscardUnknown() {
+	xxx_messageInfo_StreamClosedMessage.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_StreamStatusMessage proto.InternalMessageInfo
-
-func (m *StreamStatusMessage) GetState() StreamState {
-	if m != nil {
-		return m.State
-	}
-	return STREAM_STATE_INVALID
-}
+var xxx_messageInfo_StreamClosedMessage proto.InternalMessageInfo
 
 // Task is a single unit of work within a workflow.
 type Task struct {
@@ -1027,7 +918,7 @@ type Task struct {
 func (m *Task) Reset()      { *m = Task{} }
 func (*Task) ProtoMessage() {}
 func (*Task) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{15}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{14}
 }
 func (m *Task) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1099,7 +990,7 @@ type StreamList struct {
 func (m *StreamList) Reset()      { *m = StreamList{} }
 func (*StreamList) ProtoMessage() {}
 func (*StreamList) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{16}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{15}
 }
 func (m *StreamList) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1143,7 +1034,7 @@ type CachedSources struct {
 func (m *CachedSources) Reset()      { *m = CachedSources{} }
 func (*CachedSources) ProtoMessage() {}
 func (*CachedSources) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{17}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{16}
 }
 func (m *CachedSources) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1187,7 +1078,7 @@ type Stream struct {
 func (m *Stream) Reset()      { *m = Stream{} }
 func (*Stream) ProtoMessage() {}
 func (*Stream) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{18}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{17}
 }
 func (m *Stream) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1216,27 +1107,27 @@ func (m *Stream) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Stream proto.InternalMessageInfo
 
-// TaskStatus represents the current status of a task.
-type TaskStatus struct {
-	State TaskState `protobuf:"varint,1,opt,name=state,proto3,enum=loki.wire.TaskState" json:"state,omitempty"`
-	// Error is set only when state is TASK_STATE_FAILED.
+// TaskResult represents the terminal result of a task.
+type TaskResult struct {
+	Outcome TaskOutcome `protobuf:"varint,1,opt,name=outcome,proto3,enum=loki.wire.TaskOutcome" json:"outcome,omitempty"`
+	// Error is set only when outcome is TASK_OUTCOME_FAILED.
 	Error *TaskError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
 	// Capture is the capture data for this task, if available.
 	// This is an opaque binary representation of the capture payload.
 	Capture []byte `protobuf:"bytes,3,opt,name=capture,proto3" json:"capture,omitempty"`
 }
 
-func (m *TaskStatus) Reset()      { *m = TaskStatus{} }
-func (*TaskStatus) ProtoMessage() {}
-func (*TaskStatus) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{19}
+func (m *TaskResult) Reset()      { *m = TaskResult{} }
+func (*TaskResult) ProtoMessage() {}
+func (*TaskResult) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9956cb67d4b0d2a4, []int{18}
 }
-func (m *TaskStatus) XXX_Unmarshal(b []byte) error {
+func (m *TaskResult) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TaskStatus) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *TaskResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TaskStatus.Marshal(b, m, deterministic)
+		return xxx_messageInfo_TaskResult.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1246,33 +1137,33 @@ func (m *TaskStatus) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *TaskStatus) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TaskStatus.Merge(m, src)
+func (m *TaskResult) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TaskResult.Merge(m, src)
 }
-func (m *TaskStatus) XXX_Size() int {
+func (m *TaskResult) XXX_Size() int {
 	return m.Size()
 }
-func (m *TaskStatus) XXX_DiscardUnknown() {
-	xxx_messageInfo_TaskStatus.DiscardUnknown(m)
+func (m *TaskResult) XXX_DiscardUnknown() {
+	xxx_messageInfo_TaskResult.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TaskStatus proto.InternalMessageInfo
+var xxx_messageInfo_TaskResult proto.InternalMessageInfo
 
-func (m *TaskStatus) GetState() TaskState {
+func (m *TaskResult) GetOutcome() TaskOutcome {
 	if m != nil {
-		return m.State
+		return m.Outcome
 	}
-	return TASK_STATE_INVALID
+	return TASK_OUTCOME_UNSPECIFIED
 }
 
-func (m *TaskStatus) GetError() *TaskError {
+func (m *TaskResult) GetError() *TaskError {
 	if m != nil {
 		return m.Error
 	}
 	return nil
 }
 
-func (m *TaskStatus) GetCapture() []byte {
+func (m *TaskResult) GetCapture() []byte {
 	if m != nil {
 		return m.Capture
 	}
@@ -1286,7 +1177,7 @@ type TaskError struct {
 func (m *TaskError) Reset()      { *m = TaskError{} }
 func (*TaskError) ProtoMessage() {}
 func (*TaskError) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9956cb67d4b0d2a4, []int{20}
+	return fileDescriptor_9956cb67d4b0d2a4, []int{19}
 }
 func (m *TaskError) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1323,8 +1214,7 @@ func (m *TaskError) GetDescription() string {
 }
 
 func init() {
-	proto.RegisterEnum("loki.wire.TaskState", TaskState_name, TaskState_value)
-	proto.RegisterEnum("loki.wire.StreamState", StreamState_name, StreamState_value)
+	proto.RegisterEnum("loki.wire.TaskOutcome", TaskOutcome_name, TaskOutcome_value)
 	proto.RegisterType((*Frame)(nil), "loki.wire.Frame")
 	proto.RegisterType((*AckFrame)(nil), "loki.wire.AckFrame")
 	proto.RegisterType((*NackFrame)(nil), "loki.wire.NackFrame")
@@ -1332,15 +1222,13 @@ func init() {
 	proto.RegisterType((*DiscardFrame)(nil), "loki.wire.DiscardFrame")
 	proto.RegisterType((*MessageFrame)(nil), "loki.wire.MessageFrame")
 	proto.RegisterType((*WorkerHelloMessage)(nil), "loki.wire.WorkerHelloMessage")
-	proto.RegisterType((*WorkerSubscribeMessage)(nil), "loki.wire.WorkerSubscribeMessage")
 	proto.RegisterType((*WorkerReadyMessage)(nil), "loki.wire.WorkerReadyMessage")
 	proto.RegisterType((*TaskAssignMessage)(nil), "loki.wire.TaskAssignMessage")
-	proto.RegisterMapType((map[string]StreamState)(nil), "loki.wire.TaskAssignMessage.StreamStatesEntry")
 	proto.RegisterType((*TaskCancelMessage)(nil), "loki.wire.TaskCancelMessage")
-	proto.RegisterType((*TaskStatusMessage)(nil), "loki.wire.TaskStatusMessage")
+	proto.RegisterType((*TaskResultMessage)(nil), "loki.wire.TaskResultMessage")
 	proto.RegisterType((*StreamBindMessage)(nil), "loki.wire.StreamBindMessage")
 	proto.RegisterType((*StreamDataMessage)(nil), "loki.wire.StreamDataMessage")
-	proto.RegisterType((*StreamStatusMessage)(nil), "loki.wire.StreamStatusMessage")
+	proto.RegisterType((*StreamClosedMessage)(nil), "loki.wire.StreamClosedMessage")
 	proto.RegisterType((*Task)(nil), "loki.wire.Task")
 	proto.RegisterMapType((map[string]*CachedSources)(nil), "loki.wire.Task.CachedSourcesEntry")
 	proto.RegisterMapType((map[string]*StreamList)(nil), "loki.wire.Task.SinksEntry")
@@ -1348,7 +1236,7 @@ func init() {
 	proto.RegisterType((*StreamList)(nil), "loki.wire.StreamList")
 	proto.RegisterType((*CachedSources)(nil), "loki.wire.CachedSources")
 	proto.RegisterType((*Stream)(nil), "loki.wire.Stream")
-	proto.RegisterType((*TaskStatus)(nil), "loki.wire.TaskStatus")
+	proto.RegisterType((*TaskResult)(nil), "loki.wire.TaskResult")
 	proto.RegisterType((*TaskError)(nil), "loki.wire.TaskError")
 }
 
@@ -1357,107 +1245,94 @@ func init() {
 }
 
 var fileDescriptor_9956cb67d4b0d2a4 = []byte{
-	// 1412 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x57, 0xcf, 0x6f, 0x1b, 0xc5,
-	0x17, 0xf7, 0xda, 0x6b, 0xc7, 0x7e, 0x76, 0xd3, 0xcd, 0x34, 0x6d, 0x57, 0xfe, 0x7e, 0xd9, 0x96,
-	0x45, 0x82, 0x92, 0xb6, 0x76, 0x69, 0x54, 0xc4, 0x0f, 0x09, 0x64, 0xc7, 0x5b, 0xe2, 0xd4, 0x75,
-	0xc2, 0x3a, 0xa5, 0x52, 0x2f, 0xd6, 0x78, 0x77, 0xea, 0xac, 0x6c, 0xef, 0x9a, 0xdd, 0x75, 0x42,
-	0x24, 0x0e, 0x1c, 0x38, 0x71, 0x40, 0x1c, 0x7a, 0x43, 0x1c, 0x91, 0xb8, 0x70, 0x45, 0xe2, 0xc8,
-	0xad, 0x27, 0xd4, 0x63, 0xc5, 0xa1, 0xa2, 0xee, 0x85, 0x63, 0xff, 0x04, 0x34, 0xb3, 0x3f, 0x3c,
-	0xf6, 0xba, 0x45, 0x42, 0xa8, 0xb9, 0x24, 0xb3, 0xef, 0x7d, 0xde, 0x67, 0x3e, 0x33, 0xf3, 0xde,
-	0x9b, 0x31, 0x5c, 0x1d, 0x0f, 0xfa, 0x55, 0x62, 0xf7, 0x2d, 0x9b, 0x54, 0x2d, 0xdb, 0x27, 0xae,
-	0x8d, 0x87, 0xd5, 0xb1, 0xeb, 0xf8, 0x4e, 0xf5, 0xc8, 0x72, 0xc9, 0xb8, 0x17, 0xfe, 0xab, 0x30,
-	0x1b, 0x2a, 0x0c, 0x9d, 0x81, 0x55, 0xa1, 0xa6, 0xf2, 0xb5, 0xbe, 0xe5, 0x1f, 0x4c, 0x7a, 0x15,
-	0xc3, 0x19, 0x55, 0xfb, 0x2e, 0xbe, 0x8f, 0x6d, 0x5c, 0x35, 0xbd, 0x81, 0xe5, 0x57, 0x0f, 0x7c,
-	0x7f, 0xdc, 0x77, 0xc7, 0x46, 0x3c, 0x08, 0x82, 0xcb, 0xeb, 0x7d, 0xa7, 0xef, 0x04, 0xdc, 0x74,
-	0x14, 0x5a, 0x6f, 0xbc, 0x58, 0xc1, 0xf8, 0xe0, 0xd8, 0xb3, 0x0c, 0x3c, 0x1c, 0xf7, 0xb8, 0x61,
-	0x18, 0xf6, 0xf6, 0x8b, 0xc3, 0x26, 0x43, 0xcb, 0x64, 0x7f, 0x02, 0xa8, 0xfa, 0xbb, 0x00, 0xd9,
-	0x9b, 0x2e, 0x1e, 0x11, 0xf4, 0x16, 0x64, 0xb0, 0x31, 0x90, 0x85, 0x8b, 0xc2, 0xa5, 0xe2, 0xf5,
-	0x33, 0x95, 0x78, 0x31, 0x95, 0x9a, 0x31, 0x60, 0x88, 0xed, 0x94, 0x4e, 0x11, 0x68, 0x03, 0x44,
-	0x9b, 0x22, 0xd3, 0x0c, 0xb9, 0xce, 0x21, 0xdb, 0x78, 0x06, 0x65, 0x18, 0xb4, 0x09, 0x2b, 0xa6,
-	0xe5, 0x19, 0xd8, 0x35, 0xe5, 0x0c, 0x83, 0x9f, 0xe7, 0xe0, 0x8d, 0xc0, 0x13, 0x45, 0x44, 0x48,
-	0x1a, 0x34, 0x22, 0x9e, 0x87, 0xfb, 0x44, 0x16, 0x13, 0x41, 0xb7, 0x03, 0x4f, 0x1c, 0x14, 0x22,
-	0xeb, 0x39, 0x10, 0x07, 0x96, 0x6d, 0xaa, 0x65, 0xc8, 0x47, 0x82, 0xd1, 0x2a, 0xa4, 0x2d, 0x93,
-	0xad, 0x48, 0xd4, 0xd3, 0x96, 0xa9, 0x36, 0xa1, 0x10, 0x4b, 0x5c, 0x74, 0xa2, 0x37, 0x21, 0x4b,
-	0x5c, 0xd7, 0x71, 0x43, 0xa1, 0x12, 0x37, 0xa7, 0x46, 0xed, 0x7a, 0xe0, 0xde, 0x11, 0xf3, 0x69,
-	0x29, 0xa3, 0xde, 0x80, 0x2c, 0xb3, 0x22, 0x04, 0xa2, 0xe1, 0x98, 0x84, 0x11, 0x65, 0x75, 0x36,
-	0x46, 0xf2, 0x6c, 0x01, 0x74, 0x93, 0x0a, 0xb1, 0x4a, 0x55, 0x81, 0x12, 0xbf, 0xea, 0x84, 0xc2,
-	0xef, 0xb3, 0x50, 0xe2, 0x57, 0x98, 0x50, 0x59, 0x87, 0xd2, 0x91, 0xe3, 0x0e, 0x88, 0xdb, 0x3d,
-	0x20, 0xc3, 0xa1, 0x23, 0x03, 0x13, 0xfb, 0x1a, 0x27, 0xf6, 0x2e, 0x73, 0x6f, 0x53, 0x6f, 0xc8,
-	0xb4, 0x9d, 0xd2, 0x8b, 0x47, 0x33, 0x2b, 0x6a, 0x83, 0x14, 0x72, 0x78, 0x93, 0x9e, 0x67, 0xb8,
-	0x56, 0x8f, 0xc8, 0x45, 0xc6, 0xf3, 0x7a, 0x82, 0xa7, 0x13, 0x21, 0x66, 0x5c, 0xa7, 0x8f, 0xe6,
-	0x3d, 0x9c, 0x26, 0x97, 0x60, 0xf3, 0x38, 0x4c, 0x8c, 0xa4, 0x26, 0x9d, 0x7a, 0x13, 0x9a, 0x98,
-	0x15, 0x7d, 0x0c, 0x45, 0x1f, 0x7b, 0x83, 0x2e, 0xf6, 0x3c, 0xab, 0x6f, 0x87, 0x67, 0xf0, 0x7f,
-	0x8e, 0x62, 0x1f, 0x7b, 0x83, 0x1a, 0x73, 0xce, 0x18, 0xc0, 0x8f, 0x8d, 0x31, 0x81, 0x81, 0x6d,
-	0x83, 0x0c, 0xc3, 0xc4, 0x59, 0x24, 0xd8, 0x62, 0xce, 0x05, 0x82, 0xc0, 0x18, 0x13, 0x78, 0x3e,
-	0xf6, 0x27, 0x9e, 0x9c, 0x5b, 0x4a, 0xd0, 0x61, 0xce, 0x05, 0x82, 0xc0, 0x48, 0x09, 0x3c, 0xdf,
-	0x25, 0x78, 0xd4, 0xed, 0x59, 0xb6, 0x29, 0xaf, 0x24, 0x08, 0x3a, 0xcc, 0x5b, 0xb7, 0x6c, 0x93,
-	0x23, 0xf0, 0x62, 0x23, 0x47, 0x60, 0x62, 0x1f, 0xcb, 0xf9, 0x17, 0x10, 0x34, 0xb0, 0x8f, 0x13,
-	0x04, 0xd4, 0x88, 0x34, 0x38, 0x15, 0x12, 0x84, 0x8b, 0x28, 0x30, 0x0a, 0x25, 0x41, 0xb1, 0xb8,
-	0x8c, 0x92, 0xc7, 0x99, 0xa3, 0x52, 0xda, 0x11, 0xf3, 0x59, 0x29, 0xa7, 0x17, 0xd8, 0xae, 0xdc,
-	0x1f, 0xe2, 0xbe, 0x5a, 0x01, 0x94, 0xcc, 0x2e, 0x9a, 0xed, 0xfe, 0x01, 0x3d, 0x79, 0x2f, 0xcc,
-	0xd3, 0xe8, 0x53, 0x95, 0xe1, 0xdc, 0xf2, 0x2c, 0x52, 0xd7, 0x23, 0x26, 0x3e, 0x27, 0xd4, 0x07,
-	0x69, 0x58, 0x4b, 0x9c, 0x33, 0x7a, 0x03, 0x44, 0x2a, 0x21, 0xec, 0x4c, 0xa7, 0x17, 0x4e, 0x44,
-	0x67, 0x4e, 0xd4, 0x99, 0x5b, 0x3a, 0xf1, 0xe4, 0xf4, 0xc5, 0xcc, 0xa5, 0xe2, 0xf5, 0xca, 0xcb,
-	0x32, 0x88, 0xdb, 0x0c, 0xe2, 0x69, 0xb6, 0xef, 0x1e, 0xf3, 0x1b, 0x41, 0x3c, 0x74, 0x05, 0xf2,
-	0x23, 0xe2, 0x63, 0x76, 0x1a, 0x19, 0xc6, 0x27, 0x55, 0xe2, 0xbe, 0xbd, 0x4d, 0xb0, 0x49, 0x5c,
-	0x3d, 0x46, 0x94, 0xef, 0xc2, 0x5a, 0x82, 0x10, 0x49, 0x90, 0x19, 0x90, 0x63, 0xa6, 0xbd, 0xa0,
-	0xd3, 0x21, 0xba, 0x02, 0xd9, 0x43, 0x3c, 0x9c, 0x04, 0xad, 0x61, 0xf5, 0xfa, 0xb9, 0xa5, 0x87,
-	0x43, 0xf4, 0x00, 0xf4, 0x41, 0xfa, 0x3d, 0x41, 0xfd, 0x5a, 0x08, 0xb6, 0x65, 0x2e, 0x7b, 0x91,
-	0x13, 0x77, 0x06, 0xda, 0x20, 0x59, 0x4b, 0x67, 0x4c, 0x87, 0xef, 0x54, 0xf6, 0x68, 0x6b, 0xbf,
-	0xd3, 0x6a, 0x36, 0xea, 0x37, 0x1f, 0x3e, 0xb9, 0x90, 0xfa, 0xe3, 0xc9, 0x85, 0x8f, 0x96, 0x5c,
-	0x48, 0x14, 0x5d, 0x3d, 0xdc, 0xac, 0xbe, 0xfc, 0xb2, 0xa8, 0x50, 0x1e, 0xd6, 0x9b, 0x7e, 0x0d,
-	0x65, 0xcc, 0x25, 0xcf, 0x2b, 0x97, 0x81, 0x36, 0x21, 0x17, 0x66, 0x77, 0xd0, 0x67, 0xce, 0x2e,
-	0x2d, 0xd1, 0xba, 0x48, 0xa7, 0xd4, 0x43, 0xa8, 0xfa, 0xb3, 0x10, 0x1d, 0x0e, 0x57, 0x7e, 0xe8,
-	0x4b, 0x28, 0x84, 0x49, 0xf3, 0xea, 0x96, 0x90, 0x0f, 0x66, 0x6c, 0x9a, 0xa8, 0x0c, 0x79, 0x97,
-	0x18, 0xc4, 0x3a, 0x24, 0x6e, 0x78, 0x4d, 0xc4, 0xdf, 0xea, 0x8f, 0xb1, 0x5e, 0xae, 0xda, 0x4f,
-	0x58, 0x2f, 0x02, 0x91, 0x55, 0x02, 0xd5, 0x5a, 0xd2, 0xd9, 0x58, 0xfd, 0x4d, 0x80, 0x33, 0x4b,
-	0x5a, 0xca, 0x09, 0x2b, 0xbd, 0x02, 0x59, 0xd6, 0x05, 0xfe, 0xa9, 0xc4, 0x18, 0x48, 0x7d, 0x90,
-	0x05, 0x91, 0x26, 0x0e, 0xf2, 0x40, 0xa4, 0x6c, 0xaf, 0x4a, 0x2f, 0x9b, 0x0c, 0xfd, 0x0f, 0x0a,
-	0x3e, 0xb1, 0xb1, 0xed, 0xd3, 0x9d, 0x0a, 0xd3, 0x20, 0x30, 0x34, 0x4d, 0x54, 0x85, 0xfc, 0x7d,
-	0x17, 0xf7, 0x47, 0xc4, 0xf6, 0xc3, 0x2b, 0x31, 0x7c, 0x98, 0x45, 0x4f, 0xbe, 0xca, 0xde, 0x10,
-	0xdb, 0x7a, 0x0c, 0x42, 0xef, 0xc2, 0x8a, 0xe7, 0x4c, 0x5c, 0x83, 0x78, 0xb2, 0xc8, 0x1a, 0xd6,
-	0xe2, 0x05, 0x56, 0xe9, 0x04, 0xee, 0xa0, 0xdd, 0x45, 0x60, 0x74, 0x0d, 0xb2, 0x9e, 0x65, 0x0f,
-	0x3c, 0x39, 0xcb, 0xa2, 0xca, 0x89, 0x28, 0xea, 0x0c, 0x62, 0x02, 0x20, 0x6a, 0xc2, 0xaa, 0x81,
-	0x8d, 0x03, 0x62, 0x76, 0xa3, 0x09, 0x57, 0x58, 0xa8, 0xba, 0x18, 0xba, 0xc5, 0x50, 0x73, 0xd3,
-	0x9e, 0x32, 0x78, 0x5b, 0xf9, 0x53, 0x28, 0xf1, 0xee, 0x25, 0x3d, 0xf3, 0x32, 0xdf, 0x33, 0xe7,
-	0x4b, 0x3e, 0x38, 0xd0, 0x96, 0xe5, 0xf9, 0x5c, 0xcb, 0x2c, 0xef, 0x02, 0xcc, 0x24, 0xff, 0x17,
-	0x84, 0xf7, 0x00, 0x25, 0x17, 0xb2, 0x84, 0xb8, 0x32, 0x4f, 0x2c, 0x73, 0xc4, 0x73, 0xf1, 0x1c,
-	0xf7, 0x8e, 0x98, 0xcf, 0x49, 0x2b, 0xfa, 0xea, 0x08, 0x7f, 0xd1, 0xf5, 0xad, 0x11, 0xe9, 0xba,
-	0xd8, 0xee, 0x13, 0xf5, 0x7d, 0x80, 0x99, 0x14, 0x74, 0x19, 0x56, 0x82, 0xf4, 0xa6, 0x97, 0x2c,
-	0xdd, 0xe7, 0xb5, 0x84, 0x64, 0x3d, 0x42, 0xa8, 0x9b, 0x70, 0x6a, 0x6e, 0x32, 0xa4, 0x42, 0x89,
-	0xdf, 0x72, 0x46, 0x51, 0xd2, 0xe7, 0x6c, 0xea, 0xb7, 0x02, 0xe4, 0x02, 0xa2, 0x13, 0x29, 0x84,
-	0xe0, 0x5d, 0xad, 0xcf, 0x8a, 0x41, 0xfd, 0x41, 0x00, 0x98, 0x35, 0x74, 0xb4, 0x11, 0x15, 0xb5,
-	0xc0, 0x8a, 0x7a, 0x7d, 0x49, 0xdb, 0x8f, 0x4a, 0x9a, 0x62, 0x83, 0xb7, 0x7c, 0xf2, 0x37, 0x0a,
-	0xc5, 0xf2, 0xef, 0x79, 0xfa, 0x7c, 0x31, 0xf0, 0xd8, 0x9f, 0xb8, 0x84, 0x95, 0x58, 0x49, 0x8f,
-	0x3e, 0x77, 0xc4, 0xbc, 0x28, 0x65, 0xf5, 0xf3, 0x86, 0x63, 0xfb, 0xae, 0xd5, 0x9b, 0xf8, 0x96,
-	0xdd, 0xe7, 0x0f, 0xe8, 0x2a, 0x14, 0x62, 0x32, 0x74, 0x11, 0x8a, 0x26, 0xa1, 0x6f, 0x9c, 0xb1,
-	0x6f, 0x39, 0x76, 0x98, 0x11, 0xbc, 0x69, 0xe3, 0x17, 0x21, 0xc0, 0x33, 0xa1, 0xe8, 0x1c, 0xa0,
-	0xfd, 0x5a, 0xe7, 0x56, 0xb7, 0xb3, 0x5f, 0xdb, 0xd7, 0xba, 0xcd, 0xf6, 0x67, 0xb5, 0x56, 0xb3,
-	0x21, 0xa5, 0x16, 0xec, 0x5b, 0xba, 0x56, 0xdb, 0xd7, 0x1a, 0x92, 0xb0, 0x60, 0xdf, 0xd3, 0xda,
-	0x8d, 0x66, 0xfb, 0x13, 0x29, 0xbd, 0x60, 0xd7, 0xef, 0xb4, 0xdb, 0xd4, 0x9e, 0x41, 0x32, 0xac,
-	0xf3, 0x3c, 0xbb, 0xb7, 0xf7, 0x5a, 0x1a, 0x65, 0x12, 0x17, 0x3d, 0xb5, 0xf6, 0x96, 0xd6, 0x6a,
-	0x69, 0x0d, 0x29, 0x8b, 0xce, 0xc2, 0x1a, 0xe7, 0xb9, 0x59, 0x6b, 0x52, 0x73, 0x6e, 0xe3, 0x1b,
-	0x01, 0x8a, 0x5c, 0xdb, 0xa4, 0x04, 0x9d, 0x7d, 0x5d, 0xab, 0xdd, 0x4e, 0x88, 0x3f, 0x0b, 0x6b,
-	0xf3, 0x9e, 0x46, 0x4b, 0x93, 0x84, 0x84, 0x79, 0x77, 0x4f, 0x6b, 0x4b, 0x69, 0x74, 0x1e, 0xce,
-	0xcc, 0x99, 0xb7, 0x5a, 0xbb, 0x1d, 0xaa, 0x50, 0x15, 0xf3, 0x19, 0x29, 0xb3, 0x31, 0x3f, 0x49,
-	0xbd, 0xb5, 0xbb, 0x75, 0x4b, 0x6b, 0xd4, 0x3f, 0x7f, 0xf4, 0x54, 0x49, 0x3d, 0x7e, 0xaa, 0xa4,
-	0x9e, 0x3f, 0x55, 0x84, 0xaf, 0xa6, 0x8a, 0xf0, 0xd3, 0x54, 0x11, 0x1e, 0x4e, 0x15, 0xe1, 0xd1,
-	0x54, 0x11, 0xfe, 0x9c, 0x2a, 0xc2, 0x5f, 0x53, 0x25, 0xf5, 0x7c, 0xaa, 0x08, 0xdf, 0x3d, 0x53,
-	0x52, 0x8f, 0x9e, 0x29, 0xa9, 0xc7, 0xcf, 0x94, 0xd4, 0xbd, 0x0f, 0xff, 0x55, 0x86, 0x06, 0xbf,
-	0xee, 0x7b, 0x39, 0xf6, 0xb5, 0xf9, 0x77, 0x00, 0x00, 0x00, 0xff, 0xff, 0x46, 0xff, 0x9d, 0x30,
-	0x0f, 0x10, 0x00, 0x00,
+	// 1323 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x57, 0xcf, 0x6e, 0xdb, 0xc6,
+	0x13, 0x16, 0x25, 0xca, 0xa2, 0xc6, 0xb2, 0x43, 0x6f, 0xf2, 0x4b, 0x08, 0xfd, 0x52, 0xc6, 0x60,
+	0x80, 0x36, 0x75, 0x1a, 0x29, 0x8d, 0x91, 0xa2, 0x7f, 0x80, 0x16, 0xb6, 0x2c, 0xc3, 0x52, 0x9d,
+	0xd8, 0xa5, 0x1d, 0x14, 0xc8, 0x45, 0x58, 0x91, 0x1b, 0x9a, 0x90, 0x44, 0xaa, 0xdc, 0x95, 0x53,
+	0x03, 0x39, 0xf4, 0xd0, 0x5b, 0x81, 0xa2, 0x87, 0x3e, 0x40, 0x81, 0xa2, 0x68, 0x2f, 0x7d, 0x80,
+	0xbe, 0x41, 0x4e, 0x45, 0x8e, 0x41, 0x0f, 0x41, 0xa3, 0x5c, 0x7a, 0xcc, 0x23, 0x14, 0xbb, 0x4b,
+	0x51, 0x94, 0xe8, 0xf4, 0x50, 0x14, 0xf1, 0x25, 0x59, 0xce, 0x7c, 0xf3, 0xed, 0xb7, 0xb3, 0x33,
+	0xa3, 0x35, 0xdc, 0x18, 0xf6, 0xbc, 0x3a, 0x09, 0x3c, 0x3f, 0x20, 0x75, 0x3f, 0x60, 0x24, 0x0a,
+	0x70, 0xbf, 0x3e, 0x8c, 0x42, 0x16, 0xd6, 0x1f, 0xfa, 0x11, 0x19, 0x76, 0xe3, 0xff, 0x6a, 0xc2,
+	0x86, 0xca, 0xfd, 0xb0, 0xe7, 0xd7, 0xb8, 0xa9, 0x7a, 0xd3, 0xf3, 0xd9, 0xd1, 0xa8, 0x5b, 0x73,
+	0xc2, 0x41, 0xdd, 0x8b, 0xf0, 0x03, 0x1c, 0xe0, 0xba, 0x4b, 0x7b, 0x3e, 0xab, 0x1f, 0x31, 0x36,
+	0xf4, 0xa2, 0xa1, 0x93, 0x2c, 0x64, 0x70, 0xf5, 0x82, 0x17, 0x7a, 0xa1, 0xe4, 0xe6, 0xab, 0xd8,
+	0x7a, 0xfb, 0xd5, 0x0a, 0x86, 0x47, 0x27, 0xd4, 0x77, 0x70, 0x7f, 0xd8, 0x4d, 0x2d, 0xe3, 0xb0,
+	0xb7, 0x5f, 0x1d, 0x36, 0xea, 0xfb, 0xae, 0xf8, 0x47, 0x42, 0xad, 0xdf, 0x15, 0x28, 0x6e, 0x47,
+	0x78, 0x40, 0xd0, 0x5b, 0x50, 0xc0, 0x4e, 0xcf, 0x50, 0x56, 0x95, 0x6b, 0x8b, 0xb7, 0xce, 0xd7,
+	0x92, 0xc3, 0xd4, 0x36, 0x9c, 0x9e, 0x40, 0xec, 0xe4, 0x6c, 0x8e, 0x40, 0x6b, 0xa0, 0x06, 0x1c,
+	0x99, 0x17, 0xc8, 0x0b, 0x29, 0xe4, 0x5d, 0x3c, 0x85, 0x0a, 0x0c, 0x5a, 0x87, 0x92, 0xeb, 0x53,
+	0x07, 0x47, 0xae, 0x51, 0x10, 0xf0, 0x4b, 0x29, 0xf8, 0x96, 0xf4, 0x4c, 0x22, 0x26, 0x48, 0x1e,
+	0x34, 0x20, 0x94, 0x62, 0x8f, 0x18, 0x6a, 0x26, 0xe8, 0x8e, 0xf4, 0x24, 0x41, 0x31, 0x72, 0x73,
+	0x01, 0xd4, 0x9e, 0x1f, 0xb8, 0x56, 0x15, 0xb4, 0x89, 0x60, 0xb4, 0x0c, 0x79, 0xdf, 0x15, 0x27,
+	0x52, 0xed, 0xbc, 0xef, 0x5a, 0x2d, 0x28, 0x27, 0x12, 0xe7, 0x9d, 0xe8, 0x4d, 0x28, 0x92, 0x28,
+	0x0a, 0xa3, 0x58, 0xa8, 0x9e, 0xda, 0xb3, 0xc9, 0xed, 0xb6, 0x74, 0xb7, 0x55, 0x2d, 0xaf, 0x17,
+	0xac, 0xdb, 0x50, 0x14, 0x56, 0x84, 0x40, 0x75, 0x42, 0x97, 0x08, 0xa2, 0xa2, 0x2d, 0xd6, 0xc8,
+	0x98, 0x1e, 0x80, 0x27, 0xa9, 0x9c, 0xa8, 0xb4, 0x4c, 0xa8, 0xa4, 0x4f, 0x9d, 0x51, 0xf8, 0x4d,
+	0x11, 0x2a, 0xe9, 0x13, 0x66, 0x54, 0x6e, 0x42, 0xe5, 0x61, 0x18, 0xf5, 0x48, 0xd4, 0x39, 0x22,
+	0xfd, 0x7e, 0x68, 0x80, 0x10, 0xfb, 0x46, 0x4a, 0xec, 0xe7, 0xc2, 0xbd, 0xc3, 0xbd, 0x31, 0xd3,
+	0x4e, 0xce, 0x5e, 0x7c, 0x38, 0xb5, 0xa6, 0x38, 0x22, 0x82, 0xdd, 0x93, 0xf8, 0x22, 0xb3, 0x1c,
+	0x36, 0xf7, 0x66, 0x38, 0x84, 0x15, 0x7d, 0x02, 0x8b, 0x0c, 0xd3, 0x5e, 0x07, 0x53, 0xea, 0x7b,
+	0x41, 0x9c, 0xb3, 0xcb, 0x29, 0x8a, 0x43, 0x4c, 0x7b, 0x1b, 0xc2, 0x39, 0x65, 0x00, 0x96, 0x18,
+	0x13, 0x02, 0x07, 0x07, 0x0e, 0xe9, 0xc7, 0x17, 0x3d, 0x4f, 0xd0, 0x10, 0xce, 0x39, 0x02, 0x69,
+	0x4c, 0x08, 0x22, 0x42, 0x47, 0x7d, 0x66, 0x54, 0x4e, 0x25, 0xb0, 0x85, 0x73, 0x8e, 0x40, 0x1a,
+	0x39, 0x01, 0x65, 0x11, 0xc1, 0x83, 0x4e, 0xd7, 0x0f, 0x5c, 0xa3, 0x94, 0x21, 0x38, 0x10, 0xde,
+	0x4d, 0x3f, 0x70, 0x53, 0x04, 0x34, 0x31, 0xa6, 0x08, 0x5c, 0xcc, 0xb0, 0xa1, 0xbd, 0x82, 0x60,
+	0x0b, 0x33, 0x9c, 0x21, 0xe0, 0x46, 0xd4, 0x84, 0xa5, 0x98, 0xc0, 0xe9, 0x87, 0x94, 0xb8, 0xc6,
+	0x92, 0xa0, 0x30, 0x33, 0x14, 0x0d, 0xe1, 0x9e, 0x92, 0x54, 0x68, 0xca, 0x3c, 0x29, 0xfd, 0xb6,
+	0xaa, 0x15, 0xf5, 0x85, 0xb6, 0xaa, 0x2d, 0xe8, 0xa5, 0xb6, 0xaa, 0x95, 0x75, 0x68, 0xab, 0xda,
+	0xa2, 0x5e, 0xb1, 0xcb, 0x22, 0x4f, 0x0f, 0xfa, 0xd8, 0xb3, 0x65, 0xca, 0x28, 0xc3, 0x6c, 0x44,
+	0xed, 0xc9, 0xe6, 0xf1, 0xa7, 0x1e, 0x17, 0x05, 0x1d, 0x75, 0xa9, 0x13, 0xf9, 0x5d, 0x62, 0x5d,
+	0x05, 0x94, 0xad, 0xa6, 0xb6, 0xaa, 0x29, 0x7a, 0xde, 0x2e, 0xb1, 0x23, 0x5e, 0x3d, 0xd4, 0xba,
+	0x30, 0x01, 0xa5, 0xcb, 0xc5, 0xfa, 0x59, 0x81, 0x95, 0x4c, 0x09, 0xa0, 0xab, 0xa0, 0x72, 0x01,
+	0xf1, 0x90, 0x39, 0x37, 0x7f, 0x59, 0xc2, 0x89, 0xde, 0x01, 0x6d, 0x40, 0x18, 0x16, 0x39, 0x2d,
+	0xac, 0x16, 0x44, 0x2f, 0x26, 0xd3, 0x72, 0x87, 0x60, 0x97, 0x44, 0x76, 0x82, 0x40, 0x6b, 0xb0,
+	0x22, 0x93, 0xd7, 0xa1, 0xe1, 0x28, 0x72, 0x48, 0xc7, 0x77, 0xa9, 0xa1, 0xae, 0x16, 0xae, 0x95,
+	0xed, 0x73, 0xd2, 0x71, 0x20, 0xec, 0x2d, 0x97, 0xca, 0xd6, 0x9d, 0x39, 0x36, 0xa1, 0xd6, 0xd7,
+	0xb1, 0xd2, 0x99, 0x5a, 0x43, 0x61, 0xd2, 0x77, 0x7c, 0xfc, 0x88, 0x81, 0x29, 0xc4, 0x1e, 0xbf,
+	0x5b, 0xdb, 0xe7, 0x83, 0xf3, 0xde, 0x6e, 0x6b, 0x6b, 0x73, 0xfb, 0xf1, 0xb3, 0x2b, 0xb9, 0x3f,
+	0x9e, 0x5d, 0xf9, 0xf8, 0x94, 0x71, 0xcf, 0xd1, 0xf5, 0xe3, 0xf5, 0xfa, 0x3f, 0x8f, 0xe2, 0x1a,
+	0xe7, 0x11, 0x9d, 0xff, 0x5b, 0x2c, 0x63, 0xa6, 0x62, 0x5f, 0xbb, 0x0c, 0xb4, 0x0e, 0x0b, 0x71,
+	0x43, 0xc9, 0xa9, 0xf0, 0xbf, 0x53, 0x1b, 0x6a, 0x53, 0xe5, 0x5b, 0xda, 0x31, 0xd4, 0xfa, 0x55,
+	0x81, 0x95, 0x4c, 0xb3, 0xa0, 0x47, 0x50, 0x8e, 0x33, 0xfd, 0xfa, 0x8e, 0xa0, 0xc9, 0x1d, 0x5b,
+	0x2e, 0xaa, 0x82, 0x16, 0x11, 0x87, 0xf8, 0xc7, 0x24, 0x8a, 0x87, 0x70, 0xf2, 0x6d, 0xfd, 0x94,
+	0xe8, 0x4d, 0xf5, 0xe6, 0x19, 0xeb, 0x45, 0xa0, 0x8a, 0x8a, 0xe7, 0x5a, 0x2b, 0xb6, 0x58, 0x5b,
+	0x3f, 0x28, 0x70, 0xfe, 0x94, 0x01, 0x70, 0xb6, 0x4a, 0xe3, 0x2e, 0x2a, 0x8a, 0xf6, 0xb1, 0xbe,
+	0x2f, 0x82, 0xca, 0xeb, 0x02, 0x51, 0x50, 0x39, 0xf8, 0x75, 0xc9, 0x11, 0x9b, 0xa1, 0xff, 0x43,
+	0x99, 0x91, 0x00, 0x07, 0x8c, 0x27, 0x22, 0xbe, 0x65, 0x69, 0x68, 0xb9, 0xa8, 0x0e, 0xda, 0x83,
+	0x08, 0x7b, 0x03, 0x12, 0xb0, 0xf8, 0xf7, 0x29, 0x7e, 0xd5, 0x4c, 0xde, 0x4b, 0xb5, 0xfd, 0x3e,
+	0x0e, 0xec, 0x04, 0x84, 0xde, 0x83, 0x92, 0x9c, 0x21, 0x72, 0x80, 0x64, 0x7f, 0x4d, 0x6a, 0x72,
+	0x94, 0xd0, 0x66, 0xc0, 0xa2, 0x13, 0x7b, 0x02, 0x46, 0x37, 0xa1, 0x48, 0xfd, 0xa0, 0x47, 0x8d,
+	0xa2, 0x88, 0xaa, 0x66, 0xa2, 0xb8, 0x53, 0xc6, 0x48, 0x20, 0x6a, 0xc1, 0xb2, 0x83, 0x9d, 0xa3,
+	0x64, 0x68, 0x51, 0xa3, 0x24, 0x42, 0xad, 0xf9, 0xd0, 0x86, 0x40, 0xcd, 0x6c, 0xbb, 0xe4, 0xa4,
+	0x6d, 0xd5, 0xcf, 0xa0, 0x92, 0x76, 0x23, 0x1d, 0x0a, 0x3d, 0x72, 0x22, 0xae, 0xa1, 0x6c, 0xf3,
+	0x25, 0xba, 0x0e, 0xc5, 0x63, 0xdc, 0x1f, 0x91, 0x53, 0x3a, 0x5a, 0x16, 0xd7, 0xae, 0x4f, 0x99,
+	0x2d, 0x31, 0x1f, 0xe6, 0xdf, 0x57, 0xaa, 0x7b, 0x00, 0x53, 0xc9, 0xff, 0x05, 0xe1, 0x7d, 0x40,
+	0xd9, 0x83, 0x9c, 0x42, 0x5c, 0x9b, 0x25, 0x36, 0x52, 0xc4, 0x33, 0xf1, 0x29, 0x6e, 0xf9, 0x73,
+	0x67, 0x2f, 0x0f, 0xf0, 0x97, 0x1d, 0xe6, 0x0f, 0x48, 0x27, 0xc2, 0x81, 0x47, 0xac, 0x0f, 0x00,
+	0xa6, 0x52, 0xd0, 0x75, 0x28, 0xc9, 0xea, 0xa5, 0x86, 0x22, 0xf2, 0xbc, 0x92, 0x91, 0x6c, 0x4f,
+	0x10, 0xd6, 0x3a, 0x2c, 0xcd, 0x6c, 0x86, 0x2c, 0xa8, 0xa4, 0x53, 0x2e, 0x28, 0x2a, 0xf6, 0x8c,
+	0xcd, 0xfa, 0x56, 0x81, 0x05, 0x49, 0x74, 0x26, 0x8d, 0x10, 0xf7, 0xe4, 0xb4, 0x19, 0xac, 0x1f,
+	0x15, 0x80, 0xe9, 0xbc, 0x46, 0x37, 0xa1, 0x14, 0x8e, 0x98, 0x13, 0x0e, 0xe4, 0x43, 0x75, 0xf9,
+	0xd6, 0xc5, 0xb9, 0x4a, 0xdb, 0x93, 0x5e, 0x7b, 0x02, 0x43, 0x6b, 0x93, 0xe7, 0x70, 0xf6, 0x99,
+	0xcf, 0xf1, 0xe9, 0x27, 0x31, 0x7f, 0xef, 0x3a, 0x78, 0xc8, 0x46, 0x11, 0x11, 0x8d, 0x56, 0xb1,
+	0x27, 0x9f, 0x6d, 0x55, 0x53, 0xf5, 0xa2, 0x7d, 0xc9, 0x09, 0x03, 0x16, 0xf9, 0xdd, 0x11, 0xf3,
+	0x03, 0x2f, 0x7d, 0x4d, 0x37, 0xa0, 0x9c, 0x90, 0xa1, 0x55, 0x58, 0x74, 0x09, 0x7f, 0x79, 0x0c,
+	0x99, 0x1f, 0x06, 0x71, 0x5d, 0xa4, 0x4d, 0x6b, 0x8f, 0x60, 0x31, 0xa5, 0x15, 0x5d, 0x06, 0xe3,
+	0x70, 0xe3, 0xe0, 0xd3, 0xce, 0xde, 0xbd, 0xc3, 0xc6, 0xde, 0x9d, 0x66, 0xe7, 0xde, 0xdd, 0x83,
+	0xfd, 0x66, 0xa3, 0xb5, 0xdd, 0x6a, 0x6e, 0xe9, 0x39, 0x54, 0x85, 0x8b, 0x33, 0xde, 0xc6, 0xde,
+	0x9d, 0xfd, 0xdd, 0xe6, 0x61, 0x73, 0x4b, 0x57, 0xb2, 0xbe, 0x8d, 0xbb, 0x8d, 0xe6, 0xee, 0x6e,
+	0x73, 0x4b, 0xcf, 0xa3, 0x4b, 0x70, 0x7e, 0xc6, 0xb7, 0xbd, 0xd1, 0xe2, 0x8e, 0xc2, 0xe6, 0x17,
+	0x4f, 0x9e, 0x9b, 0xb9, 0xa7, 0xcf, 0xcd, 0xdc, 0xcb, 0xe7, 0xa6, 0xf2, 0xd5, 0xd8, 0x54, 0x7e,
+	0x19, 0x9b, 0xca, 0xe3, 0xb1, 0xa9, 0x3c, 0x19, 0x9b, 0xca, 0x9f, 0x63, 0x53, 0xf9, 0x6b, 0x6c,
+	0xe6, 0x5e, 0x8e, 0x4d, 0xe5, 0xbb, 0x17, 0x66, 0xee, 0xc9, 0x0b, 0x33, 0xf7, 0xf4, 0x85, 0x99,
+	0xbb, 0xff, 0xd1, 0xbf, 0xba, 0x5f, 0xf9, 0x87, 0x65, 0x77, 0x41, 0x7c, 0xad, 0xff, 0x1d, 0x00,
+	0x00, 0xff, 0xff, 0x0a, 0x5d, 0xe7, 0xcb, 0x8a, 0x0e, 0x00, 0x00,
 }
 
-func (x TaskState) String() string {
-	s, ok := TaskState_name[int32(x)]
-	if ok {
-		return s
-	}
-	return strconv.Itoa(int(x))
-}
-func (x StreamState) String() string {
-	s, ok := StreamState_name[int32(x)]
+func (x TaskOutcome) String() string {
+	s, ok := TaskOutcome_name[int32(x)]
 	if ok {
 		return s
 	}
@@ -1748,30 +1623,6 @@ func (this *MessageFrame_WorkerHello) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *MessageFrame_WorkerSubscribe) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*MessageFrame_WorkerSubscribe)
-	if !ok {
-		that2, ok := that.(MessageFrame_WorkerSubscribe)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if !this.WorkerSubscribe.Equal(that1.WorkerSubscribe) {
-		return false
-	}
-	return true
-}
 func (this *MessageFrame_WorkerReady) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -1844,14 +1695,14 @@ func (this *MessageFrame_TaskCancel) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *MessageFrame_TaskStatus) Equal(that interface{}) bool {
+func (this *MessageFrame_TaskResult) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*MessageFrame_TaskStatus)
+	that1, ok := that.(*MessageFrame_TaskResult)
 	if !ok {
-		that2, ok := that.(MessageFrame_TaskStatus)
+		that2, ok := that.(MessageFrame_TaskResult)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1863,7 +1714,7 @@ func (this *MessageFrame_TaskStatus) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if !this.TaskStatus.Equal(that1.TaskStatus) {
+	if !this.TaskResult.Equal(that1.TaskResult) {
 		return false
 	}
 	return true
@@ -1916,14 +1767,14 @@ func (this *MessageFrame_StreamData) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *MessageFrame_StreamStatus) Equal(that interface{}) bool {
+func (this *MessageFrame_StreamClosed) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*MessageFrame_StreamStatus)
+	that1, ok := that.(*MessageFrame_StreamClosed)
 	if !ok {
-		that2, ok := that.(MessageFrame_StreamStatus)
+		that2, ok := that.(MessageFrame_StreamClosed)
 		if ok {
 			that1 = &that2
 		} else {
@@ -1935,7 +1786,7 @@ func (this *MessageFrame_StreamStatus) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if !this.StreamStatus.Equal(that1.StreamStatus) {
+	if !this.StreamClosed.Equal(that1.StreamClosed) {
 		return false
 	}
 	return true
@@ -1948,30 +1799,6 @@ func (this *WorkerHelloMessage) Equal(that interface{}) bool {
 	that1, ok := that.(*WorkerHelloMessage)
 	if !ok {
 		that2, ok := that.(WorkerHelloMessage)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.Threads != that1.Threads {
-		return false
-	}
-	return true
-}
-func (this *WorkerSubscribeMessage) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*WorkerSubscribeMessage)
-	if !ok {
-		that2, ok := that.(WorkerSubscribeMessage)
 		if ok {
 			that1 = &that2
 		} else {
@@ -2028,19 +1855,19 @@ func (this *TaskAssignMessage) Equal(that interface{}) bool {
 	if !this.Task.Equal(that1.Task) {
 		return false
 	}
-	if len(this.StreamStates) != len(that1.StreamStates) {
-		return false
-	}
-	for i := range this.StreamStates {
-		if this.StreamStates[i] != that1.StreamStates[i] {
-			return false
-		}
-	}
 	if len(this.Metadata) != len(that1.Metadata) {
 		return false
 	}
 	for i := range this.Metadata {
 		if !this.Metadata[i].Equal(that1.Metadata[i]) {
+			return false
+		}
+	}
+	if len(this.ClosedSourceIds) != len(that1.ClosedSourceIds) {
+		return false
+	}
+	for i := range this.ClosedSourceIds {
+		if this.ClosedSourceIds[i] != that1.ClosedSourceIds[i] {
 			return false
 		}
 	}
@@ -2070,14 +1897,14 @@ func (this *TaskCancelMessage) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *TaskStatusMessage) Equal(that interface{}) bool {
+func (this *TaskResultMessage) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TaskStatusMessage)
+	that1, ok := that.(*TaskResultMessage)
 	if !ok {
-		that2, ok := that.(TaskStatusMessage)
+		that2, ok := that.(TaskResultMessage)
 		if ok {
 			that1 = &that2
 		} else {
@@ -2092,7 +1919,7 @@ func (this *TaskStatusMessage) Equal(that interface{}) bool {
 	if !this.Id.Equal(that1.Id) {
 		return false
 	}
-	if !this.Status.Equal(&that1.Status) {
+	if !this.Result.Equal(&that1.Result) {
 		return false
 	}
 	return true
@@ -2151,14 +1978,14 @@ func (this *StreamDataMessage) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *StreamStatusMessage) Equal(that interface{}) bool {
+func (this *StreamClosedMessage) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*StreamStatusMessage)
+	that1, ok := that.(*StreamClosedMessage)
 	if !ok {
-		that2, ok := that.(StreamStatusMessage)
+		that2, ok := that.(StreamClosedMessage)
 		if ok {
 			that1 = &that2
 		} else {
@@ -2171,9 +1998,6 @@ func (this *StreamStatusMessage) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.StreamId.Equal(that1.StreamId) {
-		return false
-	}
-	if this.State != that1.State {
 		return false
 	}
 	return true
@@ -2314,14 +2138,14 @@ func (this *Stream) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *TaskStatus) Equal(that interface{}) bool {
+func (this *TaskResult) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TaskStatus)
+	that1, ok := that.(*TaskResult)
 	if !ok {
-		that2, ok := that.(TaskStatus)
+		that2, ok := that.(TaskResult)
 		if ok {
 			that1 = &that2
 		} else {
@@ -2333,7 +2157,7 @@ func (this *TaskStatus) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.State != that1.State {
+	if this.Outcome != that1.Outcome {
 		return false
 	}
 	if !this.Error.Equal(that1.Error) {
@@ -2460,7 +2284,7 @@ func (this *MessageFrame) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 14)
+	s := make([]string, 0, 13)
 	s = append(s, "&wirepb.MessageFrame{")
 	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
 	if this.Kind != nil {
@@ -2475,14 +2299,6 @@ func (this *MessageFrame_WorkerHello) GoString() string {
 	}
 	s := strings.Join([]string{`&wirepb.MessageFrame_WorkerHello{` +
 		`WorkerHello:` + fmt.Sprintf("%#v", this.WorkerHello) + `}`}, ", ")
-	return s
-}
-func (this *MessageFrame_WorkerSubscribe) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&wirepb.MessageFrame_WorkerSubscribe{` +
-		`WorkerSubscribe:` + fmt.Sprintf("%#v", this.WorkerSubscribe) + `}`}, ", ")
 	return s
 }
 func (this *MessageFrame_WorkerReady) GoString() string {
@@ -2509,12 +2325,12 @@ func (this *MessageFrame_TaskCancel) GoString() string {
 		`TaskCancel:` + fmt.Sprintf("%#v", this.TaskCancel) + `}`}, ", ")
 	return s
 }
-func (this *MessageFrame_TaskStatus) GoString() string {
+func (this *MessageFrame_TaskResult) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&wirepb.MessageFrame_TaskStatus{` +
-		`TaskStatus:` + fmt.Sprintf("%#v", this.TaskStatus) + `}`}, ", ")
+	s := strings.Join([]string{`&wirepb.MessageFrame_TaskResult{` +
+		`TaskResult:` + fmt.Sprintf("%#v", this.TaskResult) + `}`}, ", ")
 	return s
 }
 func (this *MessageFrame_StreamBind) GoString() string {
@@ -2533,30 +2349,20 @@ func (this *MessageFrame_StreamData) GoString() string {
 		`StreamData:` + fmt.Sprintf("%#v", this.StreamData) + `}`}, ", ")
 	return s
 }
-func (this *MessageFrame_StreamStatus) GoString() string {
+func (this *MessageFrame_StreamClosed) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&wirepb.MessageFrame_StreamStatus{` +
-		`StreamStatus:` + fmt.Sprintf("%#v", this.StreamStatus) + `}`}, ", ")
+	s := strings.Join([]string{`&wirepb.MessageFrame_StreamClosed{` +
+		`StreamClosed:` + fmt.Sprintf("%#v", this.StreamClosed) + `}`}, ", ")
 	return s
 }
 func (this *WorkerHelloMessage) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 5)
-	s = append(s, "&wirepb.WorkerHelloMessage{")
-	s = append(s, "Threads: "+fmt.Sprintf("%#v", this.Threads)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *WorkerSubscribeMessage) GoString() string {
-	if this == nil {
-		return "nil"
-	}
 	s := make([]string, 0, 4)
-	s = append(s, "&wirepb.WorkerSubscribeMessage{")
+	s = append(s, "&wirepb.WorkerHelloMessage{")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2578,22 +2384,10 @@ func (this *TaskAssignMessage) GoString() string {
 	if this.Task != nil {
 		s = append(s, "Task: "+fmt.Sprintf("%#v", this.Task)+",\n")
 	}
-	keysForStreamStates := make([]string, 0, len(this.StreamStates))
-	for k, _ := range this.StreamStates {
-		keysForStreamStates = append(keysForStreamStates, k)
-	}
-	github_com_gogo_protobuf_sortkeys.Strings(keysForStreamStates)
-	mapStringForStreamStates := "map[string]StreamState{"
-	for _, k := range keysForStreamStates {
-		mapStringForStreamStates += fmt.Sprintf("%#v: %#v,", k, this.StreamStates[k])
-	}
-	mapStringForStreamStates += "}"
-	if this.StreamStates != nil {
-		s = append(s, "StreamStates: "+mapStringForStreamStates+",\n")
-	}
 	if this.Metadata != nil {
 		s = append(s, "Metadata: "+fmt.Sprintf("%#v", this.Metadata)+",\n")
 	}
+	s = append(s, "ClosedSourceIds: "+fmt.Sprintf("%#v", this.ClosedSourceIds)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2607,14 +2401,14 @@ func (this *TaskCancelMessage) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *TaskStatusMessage) GoString() string {
+func (this *TaskResultMessage) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&wirepb.TaskStatusMessage{")
+	s = append(s, "&wirepb.TaskResultMessage{")
 	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
-	s = append(s, "Status: "+strings.Replace(this.Status.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "Result: "+strings.Replace(this.Result.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2640,14 +2434,13 @@ func (this *StreamDataMessage) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *StreamStatusMessage) GoString() string {
+func (this *StreamClosedMessage) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
-	s = append(s, "&wirepb.StreamStatusMessage{")
+	s := make([]string, 0, 5)
+	s = append(s, "&wirepb.StreamClosedMessage{")
 	s = append(s, "StreamId: "+fmt.Sprintf("%#v", this.StreamId)+",\n")
-	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -2736,13 +2529,13 @@ func (this *Stream) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *TaskStatus) GoString() string {
+func (this *TaskResult) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&wirepb.TaskStatus{")
-	s = append(s, "State: "+fmt.Sprintf("%#v", this.State)+",\n")
+	s = append(s, "&wirepb.TaskResult{")
+	s = append(s, "Outcome: "+fmt.Sprintf("%#v", this.Outcome)+",\n")
 	if this.Error != nil {
 		s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
 	}
@@ -3108,26 +2901,6 @@ func (m *MessageFrame_TaskCancel) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MessageFrame_TaskStatus) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *MessageFrame_TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.TaskStatus != nil {
-		{
-			size, err := m.TaskStatus.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintWirepb(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x32
-	}
-	return len(dAtA) - i, nil
-}
 func (m *MessageFrame_StreamBind) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
@@ -3168,26 +2941,6 @@ func (m *MessageFrame_StreamData) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MessageFrame_StreamStatus) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *MessageFrame_StreamStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	if m.StreamStatus != nil {
-		{
-			size, err := m.StreamStatus.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintWirepb(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x4a
-	}
-	return len(dAtA) - i, nil
-}
 func (m *MessageFrame_WorkerHello) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
@@ -3208,15 +2961,15 @@ func (m *MessageFrame_WorkerHello) MarshalToSizedBuffer(dAtA []byte) (int, error
 	}
 	return len(dAtA) - i, nil
 }
-func (m *MessageFrame_WorkerSubscribe) MarshalTo(dAtA []byte) (int, error) {
+func (m *MessageFrame_TaskResult) MarshalTo(dAtA []byte) (int, error) {
 	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
-func (m *MessageFrame_WorkerSubscribe) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MessageFrame_TaskResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.WorkerSubscribe != nil {
+	if m.TaskResult != nil {
 		{
-			size, err := m.WorkerSubscribe.MarshalToSizedBuffer(dAtA[:i])
+			size, err := m.TaskResult.MarshalToSizedBuffer(dAtA[:i])
 			if err != nil {
 				return 0, err
 			}
@@ -3224,7 +2977,27 @@ func (m *MessageFrame_WorkerSubscribe) MarshalToSizedBuffer(dAtA []byte) (int, e
 			i = encodeVarintWirepb(dAtA, i, uint64(size))
 		}
 		i--
-		dAtA[i] = 0x5a
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
+func (m *MessageFrame_StreamClosed) MarshalTo(dAtA []byte) (int, error) {
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
+}
+
+func (m *MessageFrame_StreamClosed) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.StreamClosed != nil {
+		{
+			size, err := m.StreamClosed.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintWirepb(dAtA, i, uint64(size))
+		}
+		i--
+		dAtA[i] = 0x6a
 	}
 	return len(dAtA) - i, nil
 }
@@ -3244,34 +3017,6 @@ func (m *WorkerHelloMessage) MarshalTo(dAtA []byte) (int, error) {
 }
 
 func (m *WorkerHelloMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Threads != 0 {
-		i = encodeVarintWirepb(dAtA, i, uint64(m.Threads))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *WorkerSubscribeMessage) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *WorkerSubscribeMessage) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *WorkerSubscribeMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -3322,6 +3067,15 @@ func (m *TaskAssignMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.ClosedSourceIds) > 0 {
+		for iNdEx := len(m.ClosedSourceIds) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.ClosedSourceIds[iNdEx])
+			copy(dAtA[i:], m.ClosedSourceIds[iNdEx])
+			i = encodeVarintWirepb(dAtA, i, uint64(len(m.ClosedSourceIds[iNdEx])))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if len(m.Metadata) > 0 {
 		for iNdEx := len(m.Metadata) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -3334,23 +3088,6 @@ func (m *TaskAssignMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			}
 			i--
 			dAtA[i] = 0x1a
-		}
-	}
-	if len(m.StreamStates) > 0 {
-		for k := range m.StreamStates {
-			v := m.StreamStates[k]
-			baseI := i
-			i = encodeVarintWirepb(dAtA, i, uint64(v))
-			i--
-			dAtA[i] = 0x10
-			i -= len(k)
-			copy(dAtA[i:], k)
-			i = encodeVarintWirepb(dAtA, i, uint64(len(k)))
-			i--
-			dAtA[i] = 0xa
-			i = encodeVarintWirepb(dAtA, i, uint64(baseI-i))
-			i--
-			dAtA[i] = 0x12
 		}
 	}
 	if m.Task != nil {
@@ -3401,7 +3138,7 @@ func (m *TaskCancelMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TaskStatusMessage) Marshal() (dAtA []byte, err error) {
+func (m *TaskResultMessage) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -3411,18 +3148,18 @@ func (m *TaskStatusMessage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TaskStatusMessage) MarshalTo(dAtA []byte) (int, error) {
+func (m *TaskResultMessage) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TaskStatusMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *TaskResultMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	{
-		size, err := m.Status.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Result.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -3524,7 +3261,7 @@ func (m *StreamDataMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *StreamStatusMessage) Marshal() (dAtA []byte, err error) {
+func (m *StreamClosedMessage) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -3534,21 +3271,16 @@ func (m *StreamStatusMessage) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *StreamStatusMessage) MarshalTo(dAtA []byte) (int, error) {
+func (m *StreamClosedMessage) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *StreamStatusMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *StreamClosedMessage) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.State != 0 {
-		i = encodeVarintWirepb(dAtA, i, uint64(m.State))
-		i--
-		dAtA[i] = 0x10
-	}
 	{
 		size := m.StreamId.Size()
 		i -= size
@@ -3794,7 +3526,7 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TaskStatus) Marshal() (dAtA []byte, err error) {
+func (m *TaskResult) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -3804,12 +3536,12 @@ func (m *TaskStatus) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TaskStatus) MarshalTo(dAtA []byte) (int, error) {
+func (m *TaskResult) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *TaskResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -3833,8 +3565,8 @@ func (m *TaskStatus) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	if m.State != 0 {
-		i = encodeVarintWirepb(dAtA, i, uint64(m.State))
+	if m.Outcome != 0 {
+		i = encodeVarintWirepb(dAtA, i, uint64(m.Outcome))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -4049,18 +3781,6 @@ func (m *MessageFrame_TaskCancel) Size() (n int) {
 	}
 	return n
 }
-func (m *MessageFrame_TaskStatus) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.TaskStatus != nil {
-		l = m.TaskStatus.Size()
-		n += 1 + l + sovWirepb(uint64(l))
-	}
-	return n
-}
 func (m *MessageFrame_StreamBind) Size() (n int) {
 	if m == nil {
 		return 0
@@ -4085,18 +3805,6 @@ func (m *MessageFrame_StreamData) Size() (n int) {
 	}
 	return n
 }
-func (m *MessageFrame_StreamStatus) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.StreamStatus != nil {
-		l = m.StreamStatus.Size()
-		n += 1 + l + sovWirepb(uint64(l))
-	}
-	return n
-}
 func (m *MessageFrame_WorkerHello) Size() (n int) {
 	if m == nil {
 		return 0
@@ -4109,31 +3817,31 @@ func (m *MessageFrame_WorkerHello) Size() (n int) {
 	}
 	return n
 }
-func (m *MessageFrame_WorkerSubscribe) Size() (n int) {
+func (m *MessageFrame_TaskResult) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.WorkerSubscribe != nil {
-		l = m.WorkerSubscribe.Size()
+	if m.TaskResult != nil {
+		l = m.TaskResult.Size()
+		n += 1 + l + sovWirepb(uint64(l))
+	}
+	return n
+}
+func (m *MessageFrame_StreamClosed) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.StreamClosed != nil {
+		l = m.StreamClosed.Size()
 		n += 1 + l + sovWirepb(uint64(l))
 	}
 	return n
 }
 func (m *WorkerHelloMessage) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Threads != 0 {
-		n += 1 + sovWirepb(uint64(m.Threads))
-	}
-	return n
-}
-
-func (m *WorkerSubscribeMessage) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -4161,17 +3869,15 @@ func (m *TaskAssignMessage) Size() (n int) {
 		l = m.Task.Size()
 		n += 1 + l + sovWirepb(uint64(l))
 	}
-	if len(m.StreamStates) > 0 {
-		for k, v := range m.StreamStates {
-			_ = k
-			_ = v
-			mapEntrySize := 1 + len(k) + sovWirepb(uint64(len(k))) + 1 + sovWirepb(uint64(v))
-			n += mapEntrySize + 1 + sovWirepb(uint64(mapEntrySize))
-		}
-	}
 	if len(m.Metadata) > 0 {
 		for _, e := range m.Metadata {
 			l = e.Size()
+			n += 1 + l + sovWirepb(uint64(l))
+		}
+	}
+	if len(m.ClosedSourceIds) > 0 {
+		for _, s := range m.ClosedSourceIds {
+			l = len(s)
 			n += 1 + l + sovWirepb(uint64(l))
 		}
 	}
@@ -4189,7 +3895,7 @@ func (m *TaskCancelMessage) Size() (n int) {
 	return n
 }
 
-func (m *TaskStatusMessage) Size() (n int) {
+func (m *TaskResultMessage) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -4197,7 +3903,7 @@ func (m *TaskStatusMessage) Size() (n int) {
 	_ = l
 	l = m.Id.Size()
 	n += 1 + l + sovWirepb(uint64(l))
-	l = m.Status.Size()
+	l = m.Result.Size()
 	n += 1 + l + sovWirepb(uint64(l))
 	return n
 }
@@ -4232,7 +3938,7 @@ func (m *StreamDataMessage) Size() (n int) {
 	return n
 }
 
-func (m *StreamStatusMessage) Size() (n int) {
+func (m *StreamClosedMessage) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -4240,9 +3946,6 @@ func (m *StreamStatusMessage) Size() (n int) {
 	_ = l
 	l = m.StreamId.Size()
 	n += 1 + l + sovWirepb(uint64(l))
-	if m.State != 0 {
-		n += 1 + sovWirepb(uint64(m.State))
-	}
 	return n
 }
 
@@ -4345,14 +4048,14 @@ func (m *Stream) Size() (n int) {
 	return n
 }
 
-func (m *TaskStatus) Size() (n int) {
+func (m *TaskResult) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.State != 0 {
-		n += 1 + sovWirepb(uint64(m.State))
+	if m.Outcome != 0 {
+		n += 1 + sovWirepb(uint64(m.Outcome))
 	}
 	if m.Error != nil {
 		l = m.Error.Size()
@@ -4517,16 +4220,6 @@ func (this *MessageFrame_TaskCancel) String() string {
 	}, "")
 	return s
 }
-func (this *MessageFrame_TaskStatus) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&MessageFrame_TaskStatus{`,
-		`TaskStatus:` + strings.Replace(fmt.Sprintf("%v", this.TaskStatus), "TaskStatusMessage", "TaskStatusMessage", 1) + `,`,
-		`}`,
-	}, "")
-	return s
-}
 func (this *MessageFrame_StreamBind) String() string {
 	if this == nil {
 		return "nil"
@@ -4547,16 +4240,6 @@ func (this *MessageFrame_StreamData) String() string {
 	}, "")
 	return s
 }
-func (this *MessageFrame_StreamStatus) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&MessageFrame_StreamStatus{`,
-		`StreamStatus:` + strings.Replace(fmt.Sprintf("%v", this.StreamStatus), "StreamStatusMessage", "StreamStatusMessage", 1) + `,`,
-		`}`,
-	}, "")
-	return s
-}
 func (this *MessageFrame_WorkerHello) String() string {
 	if this == nil {
 		return "nil"
@@ -4567,12 +4250,22 @@ func (this *MessageFrame_WorkerHello) String() string {
 	}, "")
 	return s
 }
-func (this *MessageFrame_WorkerSubscribe) String() string {
+func (this *MessageFrame_TaskResult) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&MessageFrame_WorkerSubscribe{`,
-		`WorkerSubscribe:` + strings.Replace(fmt.Sprintf("%v", this.WorkerSubscribe), "WorkerSubscribeMessage", "WorkerSubscribeMessage", 1) + `,`,
+	s := strings.Join([]string{`&MessageFrame_TaskResult{`,
+		`TaskResult:` + strings.Replace(fmt.Sprintf("%v", this.TaskResult), "TaskResultMessage", "TaskResultMessage", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *MessageFrame_StreamClosed) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&MessageFrame_StreamClosed{`,
+		`StreamClosed:` + strings.Replace(fmt.Sprintf("%v", this.StreamClosed), "StreamClosedMessage", "StreamClosedMessage", 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4582,16 +4275,6 @@ func (this *WorkerHelloMessage) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&WorkerHelloMessage{`,
-		`Threads:` + fmt.Sprintf("%v", this.Threads) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *WorkerSubscribeMessage) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&WorkerSubscribeMessage{`,
 		`}`,
 	}, "")
 	return s
@@ -4614,20 +4297,10 @@ func (this *TaskAssignMessage) String() string {
 		repeatedStringForMetadata += strings.Replace(fmt.Sprintf("%v", f), "Header", "httpgrpc.Header", 1) + ","
 	}
 	repeatedStringForMetadata += "}"
-	keysForStreamStates := make([]string, 0, len(this.StreamStates))
-	for k, _ := range this.StreamStates {
-		keysForStreamStates = append(keysForStreamStates, k)
-	}
-	github_com_gogo_protobuf_sortkeys.Strings(keysForStreamStates)
-	mapStringForStreamStates := "map[string]StreamState{"
-	for _, k := range keysForStreamStates {
-		mapStringForStreamStates += fmt.Sprintf("%v: %v,", k, this.StreamStates[k])
-	}
-	mapStringForStreamStates += "}"
 	s := strings.Join([]string{`&TaskAssignMessage{`,
 		`Task:` + strings.Replace(this.Task.String(), "Task", "Task", 1) + `,`,
-		`StreamStates:` + mapStringForStreamStates + `,`,
 		`Metadata:` + repeatedStringForMetadata + `,`,
+		`ClosedSourceIds:` + fmt.Sprintf("%v", this.ClosedSourceIds) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4642,13 +4315,13 @@ func (this *TaskCancelMessage) String() string {
 	}, "")
 	return s
 }
-func (this *TaskStatusMessage) String() string {
+func (this *TaskResultMessage) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&TaskStatusMessage{`,
+	s := strings.Join([]string{`&TaskResultMessage{`,
 		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
-		`Status:` + strings.Replace(strings.Replace(this.Status.String(), "TaskStatus", "TaskStatus", 1), `&`, ``, 1) + `,`,
+		`Result:` + strings.Replace(strings.Replace(this.Result.String(), "TaskResult", "TaskResult", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4675,13 +4348,12 @@ func (this *StreamDataMessage) String() string {
 	}, "")
 	return s
 }
-func (this *StreamStatusMessage) String() string {
+func (this *StreamClosedMessage) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&StreamStatusMessage{`,
+	s := strings.Join([]string{`&StreamClosedMessage{`,
 		`StreamId:` + fmt.Sprintf("%v", this.StreamId) + `,`,
-		`State:` + fmt.Sprintf("%v", this.State) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -4766,12 +4438,12 @@ func (this *Stream) String() string {
 	}, "")
 	return s
 }
-func (this *TaskStatus) String() string {
+func (this *TaskResult) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&TaskStatus{`,
-		`State:` + fmt.Sprintf("%v", this.State) + `,`,
+	s := strings.Join([]string{`&TaskResult{`,
+		`Outcome:` + fmt.Sprintf("%v", this.Outcome) + `,`,
 		`Error:` + strings.Replace(this.Error.String(), "TaskError", "TaskError", 1) + `,`,
 		`Capture:` + fmt.Sprintf("%v", this.Capture) + `,`,
 		`}`,
@@ -5498,41 +5170,6 @@ func (m *MessageFrame) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &MessageFrame_TaskCancel{v}
 			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TaskStatus", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowWirepb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &TaskStatusMessage{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Kind = &MessageFrame_TaskStatus{v}
-			iNdEx = postIndex
 		case 7:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StreamBind", wireType)
@@ -5603,41 +5240,6 @@ func (m *MessageFrame) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &MessageFrame_StreamData{v}
 			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StreamStatus", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowWirepb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			v := &StreamStatusMessage{}
-			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			m.Kind = &MessageFrame_StreamStatus{v}
-			iNdEx = postIndex
 		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field WorkerHello", wireType)
@@ -5673,9 +5275,9 @@ func (m *MessageFrame) Unmarshal(dAtA []byte) error {
 			}
 			m.Kind = &MessageFrame_WorkerHello{v}
 			iNdEx = postIndex
-		case 11:
+		case 12:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field WorkerSubscribe", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TaskResult", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -5702,11 +5304,46 @@ func (m *MessageFrame) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &WorkerSubscribeMessage{}
+			v := &TaskResultMessage{}
 			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			m.Kind = &MessageFrame_WorkerSubscribe{v}
+			m.Kind = &MessageFrame_TaskResult{v}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StreamClosed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &StreamClosedMessage{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Kind = &MessageFrame_StreamClosed{v}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -5759,78 +5396,6 @@ func (m *WorkerHelloMessage) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: WorkerHelloMessage: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Threads", wireType)
-			}
-			m.Threads = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowWirepb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Threads |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipWirepb(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *WorkerSubscribeMessage) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowWirepb
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: WorkerSubscribeMessage: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: WorkerSubscribeMessage: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -5975,119 +5540,6 @@ func (m *TaskAssignMessage) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StreamStates", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowWirepb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthWirepb
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.StreamStates == nil {
-				m.StreamStates = make(map[string]StreamState)
-			}
-			var mapkey string
-			var mapvalue StreamState
-			for iNdEx < postIndex {
-				entryPreIndex := iNdEx
-				var wire uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowWirepb
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					wire |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				fieldNum := int32(wire >> 3)
-				if fieldNum == 1 {
-					var stringLenmapkey uint64
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return ErrIntOverflowWirepb
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						stringLenmapkey |= uint64(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
-					}
-					intStringLenmapkey := int(stringLenmapkey)
-					if intStringLenmapkey < 0 {
-						return ErrInvalidLengthWirepb
-					}
-					postStringIndexmapkey := iNdEx + intStringLenmapkey
-					if postStringIndexmapkey < 0 {
-						return ErrInvalidLengthWirepb
-					}
-					if postStringIndexmapkey > l {
-						return io.ErrUnexpectedEOF
-					}
-					mapkey = string(dAtA[iNdEx:postStringIndexmapkey])
-					iNdEx = postStringIndexmapkey
-				} else if fieldNum == 2 {
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return ErrIntOverflowWirepb
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						mapvalue |= StreamState(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
-					}
-				} else {
-					iNdEx = entryPreIndex
-					skippy, err := skipWirepb(dAtA[iNdEx:])
-					if err != nil {
-						return err
-					}
-					if skippy < 0 {
-						return ErrInvalidLengthWirepb
-					}
-					if (iNdEx + skippy) > postIndex {
-						return io.ErrUnexpectedEOF
-					}
-					iNdEx += skippy
-				}
-			}
-			m.StreamStates[mapkey] = mapvalue
-			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Metadata", wireType)
@@ -6121,6 +5573,38 @@ func (m *TaskAssignMessage) Unmarshal(dAtA []byte) error {
 			if err := m.Metadata[len(m.Metadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClosedSourceIds", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowWirepb
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthWirepb
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ClosedSourceIds = append(m.ClosedSourceIds, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -6232,7 +5716,7 @@ func (m *TaskCancelMessage) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TaskStatusMessage) Unmarshal(dAtA []byte) error {
+func (m *TaskResultMessage) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6255,10 +5739,10 @@ func (m *TaskStatusMessage) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TaskStatusMessage: wiretype end group for non-group")
+			return fmt.Errorf("proto: TaskResultMessage: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TaskStatusMessage: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TaskResultMessage: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6296,7 +5780,7 @@ func (m *TaskStatusMessage) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Result", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -6323,7 +5807,7 @@ func (m *TaskStatusMessage) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Status.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Result.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -6589,7 +6073,7 @@ func (m *StreamDataMessage) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *StreamStatusMessage) Unmarshal(dAtA []byte) error {
+func (m *StreamClosedMessage) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6612,10 +6096,10 @@ func (m *StreamStatusMessage) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: StreamStatusMessage: wiretype end group for non-group")
+			return fmt.Errorf("proto: StreamClosedMessage: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: StreamStatusMessage: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StreamClosedMessage: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6651,25 +6135,6 @@ func (m *StreamStatusMessage) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
-			}
-			m.State = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowWirepb
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.State |= StreamState(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipWirepb(dAtA[iNdEx:])
@@ -7493,7 +6958,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TaskStatus) Unmarshal(dAtA []byte) error {
+func (m *TaskResult) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -7516,17 +6981,17 @@ func (m *TaskStatus) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TaskStatus: wiretype end group for non-group")
+			return fmt.Errorf("proto: TaskResult: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TaskStatus: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TaskResult: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field State", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Outcome", wireType)
 			}
-			m.State = 0
+			m.Outcome = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowWirepb
@@ -7536,7 +7001,7 @@ func (m *TaskStatus) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.State |= TaskState(b&0x7F) << shift
+				m.Outcome |= TaskOutcome(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

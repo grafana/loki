@@ -71,7 +71,7 @@ func Test(t *testing.T) {
 		defer p.Close()
 
 		synctest.Wait()
-		require.Equal(t, len(wf.taskStates), 2, "workflow should have enqueued two tasks")
+		require.Equal(t, 2, fr.startedTasks(), "workflow should have enqueued two tasks")
 
 		rs, ok := fr.streams[wf.resultsStream.ULID]
 		require.True(t, ok, "results stream should be registered in runner")
@@ -87,8 +87,7 @@ func Test(t *testing.T) {
 	})
 }
 
-// TestCancellation tests that a task entering a terminal state cancels all
-// downstream tasks.
+// TestCancellation tests that a task result cancels all downstream tasks.
 func TestCancellation(t *testing.T) {
 	var physicalGraph dag.Graph[physical.Node]
 
@@ -105,9 +104,9 @@ func TestCancellation(t *testing.T) {
 
 	physicalPlan := physical.FromGraph(physicalGraph)
 
-	terminalStates := []TaskState{TaskStateCancelled, TaskStateCompleted, TaskStateFailed}
-	for _, state := range terminalStates {
-		t.Run(state.String(), func(t *testing.T) {
+	outcomes := []TaskOutcome{TaskOutcomeCancelled, TaskOutcomeCompleted, TaskOutcomeFailed}
+	for _, outcome := range outcomes {
+		t.Run(outcome.String(), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				fr := newFakeRunner()
 				wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
@@ -137,11 +136,10 @@ func TestCancellation(t *testing.T) {
 				rt, ok := fr.tasks[rootTask.ULID]
 				require.True(t, ok, "root task should be registered with runner")
 
-				// Notify the workflow that the root task has entered a terminal
-				// state.
-				rt.handler(t.Context(), rootTask, TaskStatus{State: state})
+				// Notify the workflow that the root task has finished.
+				rt.handler(t.Context(), rootTask, TaskResult{Outcome: outcome})
 
-				// Wait for the workflow to process all status updates.
+				// Wait for the workflow to process all task results.
 				synctest.Wait()
 
 				_ = wf.graph.Walk(rootTask, func(n *Task) error {
@@ -149,7 +147,7 @@ func TestCancellation(t *testing.T) {
 						return nil
 					}
 
-					require.Equal(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should be canceled", n.ULID)
+					require.Equal(t, TaskOutcomeCancelled, wf.taskResults[n].result.Outcome, "downstream task %s should be cancelled", n.ULID)
 					return nil
 				}, dag.PreOrderWalk)
 			})
@@ -157,72 +155,12 @@ func TestCancellation(t *testing.T) {
 	}
 }
 
-func TestRunningTaskStatusDoesNotCancelDownstream(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
-
-	var (
-		scan        = physicalGraph.Add(&physical.DataObjScan{})
-		parallelize = physicalGraph.Add(&physical.Parallelize{})
-		rangeAgg    = physicalGraph.Add(&physical.RangeAggregation{})
-		vectorAgg   = physicalGraph.Add(&physical.VectorAggregation{})
-	)
-
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
-
-	physicalPlan := physical.FromGraph(physicalGraph)
-
-	synctest.Test(t, func(t *testing.T) {
-		fr := newFakeRunner()
-		wf, err := New(t.Context(), Options{}, log.NewNopLogger(), fr, physicalPlan)
-		require.NoError(t, err, "workflow should construct properly")
-		require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
-
-		defer func() {
-			if !t.Failed() {
-				return
-			}
-
-			t.Log("Failing workflow:")
-			t.Log(Sprint(wf))
-		}()
-
-		p, err := wf.Run(t.Context())
-		require.NoError(t, err, "Workflow should start properly")
-		defer p.Close()
-
-		synctest.Wait()
-
-		rootTask, err := wf.graph.Root()
-		require.NoError(t, err, "should be able to retrieve singular root task")
-
-		rt, ok := fr.tasks[rootTask.ULID]
-		require.True(t, ok, "root task should be registered with runner")
-
-		// A non-terminal update records state only. It must not cancel downstream
-		// work now that TopK short-circuit feedback has been removed.
-		rt.handler(t.Context(), rootTask, TaskStatus{State: TaskStateRunning})
-
-		synctest.Wait()
-
-		_ = wf.graph.Walk(rootTask, func(n *Task) error {
-			if n == rootTask {
-				return nil
-			}
-
-			require.NotEqual(t, TaskStateCancelled, wf.taskStates[n], "downstream task %s should not be canceled", n.ULID)
-			return nil
-		}, dag.PreOrderWalk)
-	})
-}
-
 // TestFailedTaskSurfacesErrorBeforeEOF reproduces a race where a failed task's
 // error is lost because the worker closes the results-stream sink (signaling
 // EOF) before the workflow learns the task failed and calls
 // resultsPipeline.SetError. A sink-only task (the root task emits no records
 // and is its own root) maximizes the window: the worker closes the results
-// sink immediately, then reports TaskStateFailed.
+// sink immediately, then reports TaskOutcomeFailed.
 //
 // The consumer (e.g. the dataobj compactor's runPlan) reads the results
 // pipeline to io.EOF and treats EOF as success. If the error is lost, a failed
@@ -230,8 +168,8 @@ func TestRunningTaskStatusDoesNotCancelDownstream(t *testing.T) {
 // at index objects that were never written.
 //
 // This drives the handlers in the order a real worker produces them:
-//  1. results stream -> StreamStateClosed   (worker closes all sinks on failure)
-//  2. root task      -> TaskStateFailed      (worker reports terminal status)
+//  1. results stream closes               (worker closes all sinks on failure)
+//  2. root task      -> TaskOutcomeFailed (worker reports its terminal result)
 //
 // and asserts the consumer pipeline surfaces the failure rather than EOF.
 func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
@@ -276,13 +214,13 @@ func TestFailedTaskSurfacesErrorBeforeEOF(t *testing.T) {
 		//    the workflow has learned the task failed, so errCond is not closed.
 		rs, ok := fr.streams[wf.resultsStream.ULID]
 		require.True(t, ok, "results stream should be registered with runner")
-		rs.Handler(t.Context(), wf.resultsStream, StreamStateClosed)
+		rs.Handler(t.Context(), wf.resultsStream)
 
 		// Let the consumer goroutine react to the stream close.
 		synctest.Wait()
 
 		// 2. Worker then reports the task failure.
-		rt.handler(t.Context(), rootTask, TaskStatus{State: TaskStateFailed, Error: wantErr})
+		rt.handler(t.Context(), rootTask, TaskResult{Outcome: TaskOutcomeFailed, Error: wantErr})
 
 		synctest.Wait()
 
@@ -342,7 +280,7 @@ func TestWorkflowDispatchesAllTasks(t *testing.T) {
 		defer p.Close()
 
 		synctest.Wait()
-		require.Len(t, wf.taskStates, len(wf.allTasks()), "expected every task to be dispatched")
+		require.Equal(t, len(wf.allTasks()), fr.startedTasks(), "expected every task to be dispatched")
 	})
 }
 
@@ -377,7 +315,7 @@ func (f *fakeRunner) RegisterManifest(_ context.Context, manifest *Manifest) err
 
 		manifestStreams[stream.ULID] = &runnerStream{
 			Stream:  stream,
-			Handler: manifest.StreamEventHandler,
+			Handler: manifest.StreamClosedHandler,
 		}
 	}
 	for _, task := range manifest.Tasks {
@@ -416,7 +354,7 @@ func (f *fakeRunner) RegisterManifest(_ context.Context, manifest *Manifest) err
 
 		manifestTasks[task.ULID] = &runnerTask{
 			task:    task,
-			handler: manifest.TaskEventHandler,
+			handler: manifest.TaskResultHandler,
 		}
 	}
 
@@ -468,7 +406,7 @@ func (f *fakeRunner) Listen(_ context.Context, writer RecordWriter, stream *Stre
 	return nil
 }
 
-func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
+func (f *fakeRunner) Start(_ context.Context, tasks ...*Task) error {
 	var errs []error
 
 	for _, task := range tasks {
@@ -483,8 +421,7 @@ func (f *fakeRunner) Start(ctx context.Context, tasks ...*Task) error {
 			continue
 		}
 
-		// Inform handler of task state change.
-		rt.handler(ctx, task, TaskStatus{State: TaskStatePending})
+		rt.started = true
 	}
 
 	if len(errs) > 0 {
@@ -508,8 +445,7 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 			continue
 		}
 
-		// Inform handler of task state change.
-		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
+		rt.handler(ctx, task, TaskResult{Outcome: TaskOutcomeCancelled})
 	}
 
 	if len(errs) > 0 {
@@ -523,7 +459,7 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 // pipeline owned by the runner, given to the workflow.
 type runnerStream struct {
 	Stream  *Stream
-	Handler StreamEventHandler
+	Handler StreamClosedHandler
 
 	TaskReceiver ulid.ULID    // Task listening for messages on stream.
 	Listener     RecordWriter // Pipeline listening for messages on stream.
@@ -533,5 +469,19 @@ type runnerStream struct {
 
 type runnerTask struct {
 	task    *Task
-	handler TaskEventHandler
+	handler TaskResultHandler
+	started bool
+}
+
+func (f *fakeRunner) startedTasks() int {
+	f.tasksMtx.RLock()
+	defer f.tasksMtx.RUnlock()
+
+	var count int
+	for _, task := range f.tasks {
+		if task.started {
+			count++
+		}
+	}
+	return count
 }
