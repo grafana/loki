@@ -2,6 +2,7 @@ package xcap
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
@@ -113,48 +114,46 @@ func statisticsFromRegions(regions []*Region) map[StatisticKey]Statistic {
 
 // toProtoRegion converts a Region to its protobuf representation.
 func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (proto.Region, error) {
-	protoObservations := make([]proto.Observation, 0, len(region.observations))
+	protoObservations := make([]proto.ObservationV2, 0, len(region.observations))
 	for key, observation := range region.observations {
 		statIndex, exists := statsIndex[key]
 		if !exists {
 			return proto.Region{}, fmt.Errorf("statistic not found in index: %v", key)
 		}
 
-		protoValue, err := marshalObservationValue(observation.Value)
+		protoValue, err := marshalObservationV2(observation.Value)
 		if err != nil {
 			return proto.Region{}, fmt.Errorf("failed to marshal observation: %w", err)
 		}
 
-		protoObservations = append(protoObservations, proto.Observation{
+		protoObservations = append(protoObservations, proto.ObservationV2{
 			StatisticId: statIndex,
-			Value:       protoValue,
 			Count:       uint32(observation.Count),
+			ValueBits:   protoValue,
 		})
 	}
 
 	return proto.Region{
-		Name:         region.name,
-		Observations: protoObservations,
+		Name:           region.name,
+		ObservationsV2: protoObservations,
 	}, nil
 }
 
-// marshalObservationValue converts an observation value to proto ObservationValue.
-func marshalObservationValue(value any) (proto.ObservationValue, error) {
+// marshalObservationV2 converts an observation value to its flattened V2 wire
+// representation. The statistic table supplies the value type on decode.
+func marshalObservationV2(value any) (uint64, error) {
 	switch v := value.(type) {
 	case int64:
-		return proto.ObservationValue{
-			Kind: &proto.ObservationValue_IntValue{IntValue: v},
-		}, nil
+		return uint64(v), nil
 	case float64:
-		return proto.ObservationValue{
-			Kind: &proto.ObservationValue_FloatValue{FloatValue: v},
-		}, nil
+		return math.Float64bits(v), nil
 	case bool:
-		return proto.ObservationValue{
-			Kind: &proto.ObservationValue_BoolValue{BoolValue: v},
-		}, nil
+		if v {
+			return 1, nil
+		}
+		return 0, nil
 	default:
-		return proto.ObservationValue{}, fmt.Errorf("unsupported observation value type: %T", value)
+		return 0, fmt.Errorf("unsupported observation value type: %T", value)
 	}
 }
 
