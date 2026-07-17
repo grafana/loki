@@ -139,7 +139,8 @@ func TestMarshalOmitsLocalStatistics(t *testing.T) {
 	require.Equal(t, "wire", protoCapture.Statistics[0].Name)
 	require.Len(t, protoCapture.Regions, 1)
 	require.Equal(t, "mixed", protoCapture.Regions[0].Name)
-	require.Len(t, protoCapture.Regions[0].Observations, 1)
+	require.Empty(t, protoCapture.Regions[0].Observations)
+	require.Len(t, protoCapture.Regions[0].ObservationsV2, 1)
 
 	require.Equal(t, int64(5), Value[int64](capture, localStat))
 
