@@ -3,7 +3,6 @@ package compactor
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -408,7 +407,11 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 	stats, err := c.compactTenant(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		// Only the coordinator context being cancelled means shutdown. A
+		// DeadlineExceeded from the child ToCConsolidateTimeout context is an
+		// ordinary phase failure and must be logged and retried, not silently
+		// swallowed as if the worker were draining.
+		if ctx.Err() != nil {
 			return phaseOutcomeError
 		}
 		level.Warn(c.logger).Log("msg", "index-merge phase failed",
@@ -468,7 +471,11 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		}
 		stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// Only shut down when the coordinator context is cancelled. A
+			// DeadlineExceeded from this index's child ToCConsolidateTimeout is
+			// an ordinary per-index failure: record it and move on so a single
+			// slow swap doesn't skip the remaining indexes.
+			if ctx.Err() != nil {
 				return phaseOutcomeError
 			}
 			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",

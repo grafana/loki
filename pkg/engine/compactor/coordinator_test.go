@@ -558,50 +558,146 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	}
 }
 
+// TestRunTenantLoop_ErrorRetries pins the flip-flop state machine: a failing
+// phase re-arms the same phase (it must never flip), while a successful phase
+// flips to the other one. The loop starts on IndexMerge.
 func TestRunTenantLoop_ErrorRetries(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	window := imWindow()
-	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{swapped: true}
 
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	t.Run("a failing phase retries and never flips", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	callCount := 0
-	prevRunPlan := c.runPlan
-	c.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error {
-		callCount++
-		if callCount >= 4 {
-			cancel()
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+
+		var mu sync.Mutex
+		var phases []string
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+			mu.Lock()
+			phases = append(phases, opts.Actor[1])
+			mu.Unlock()
+			return errors.New("dispatch boom")
 		}
-		return prevRunPlan(ctx, opts, plan)
-	}
 
-	c.runTenantLoop(ctx, "acme")
+		done := make(chan struct{})
+		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
 
-	require.GreaterOrEqual(t, callCount, 3, "loop made multiple dispatch cycles")
+		// Repeated failed cycles prove the loop keeps retrying the same phase
+		// rather than giving up or flipping.
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("failed")) >= 3
+		}, 2*time.Second, 5*time.Millisecond, "a failing phase must retry")
+		cancel()
+		<-done
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.NotEmpty(t, phases)
+		for _, p := range phases {
+			require.Equal(t, "index-merge", p, "a failing phase must re-arm itself, never flip to log-merge")
+		}
+		require.Empty(t, replacer.snapshot(), "a failing phase never swaps the ToC")
+	})
+
+	t.Run("a successful phase flips index-merge <-> log-merge", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		replacer := &fakeReplacer{swapped: true}
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+
+		var mu sync.Mutex
+		var phases []string
+		// Collapse the dispatches within a cycle to a single entry so the slice
+		// records the per-cycle phase order.
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+			mu.Lock()
+			if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
+				phases = append(phases, opts.Actor[1])
+			}
+			mu.Unlock()
+			return nil
+		}
+
+		done := make(chan struct{})
+		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+		require.Eventually(t, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(phases) >= 3
+		}, 2*time.Second, 5*time.Millisecond)
+		cancel()
+		<-done
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
+			"successful phases flip between index-merge and log-merge")
+	})
 }
 
+// TestRun_DedupesTenants verifies Run starts exactly one worker per unique
+// tenant even when the configured list repeats a tenant.
 func TestRun_DedupesTenants(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
-	runner := &fakeRunner{}
-	replacer := &fakeReplacer{}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/acme/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/acme/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		},
+		"bravo": {
+			{path: "indexes/bravo/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/bravo/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		},
+	})
 
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+	// One task at a time so a worker parks in a single in-flight dispatch; the
+	// number of parked dispatches then equals the number of live workers.
+	c.cfg.MaxRunningCompactionTasks = 1
 	c.cfg.CompactionTenants = []string{"acme", "acme", "bravo", "acme"}
+
+	var mu sync.Mutex
+	starts := map[string]int{}
+	// Block each worker in its first dispatch so it can neither loop nor flip;
+	// one blocked dispatch == one worker start for that tenant.
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		starts[opts.Tenant]++
+		mu.Unlock()
+		<-ctx.Done()
+		return ctx.Err()
+	}
 
 	done := make(chan error, 1)
 	go func() {
 		done <- c.Run(ctx)
 	}()
 
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return starts["acme"] >= 1 && starts["bravo"] >= 1
+	}, 2*time.Second, 5*time.Millisecond, "both unique tenants must start a worker")
+
+	// Give any erroneously spawned duplicate acme workers time to reach their
+	// dispatch before asserting the final count.
 	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	require.Equal(t, map[string]int{"acme": 1, "bravo": 1}, starts,
+		"duplicate tenant entries must not spawn extra workers")
+	mu.Unlock()
+
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
 }
