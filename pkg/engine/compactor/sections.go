@@ -240,14 +240,16 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				st := dest[i]
 
 				if !schemaDerived {
-					for k := range strings.SplitSeq(st.SortSchema, ",") {
-						if k != "" {
-							sortSchemaLbls = append(sortSchemaLbls, k)
+					// SortSchema is stored fully-qualified ("label:<name>"),
+					for fqn := range strings.SplitSeq(st.SortSchema, ",") {
+						if fqn == "" {
+							continue
 						}
-					}
-					schema = make([]string, len(sortSchemaLbls))
-					for j, k := range sortSchemaLbls {
-						schema[j] = "label:" + k
+						schema = append(schema, fqn)
+						typ, name, ok := strings.Cut(fqn, ":")
+						if ok && typ == "label" && name != "" {
+							sortSchemaLbls = append(sortSchemaLbls, name)
+						}
 					}
 					schemaDerived = true
 				}
