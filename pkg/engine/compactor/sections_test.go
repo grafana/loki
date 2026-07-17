@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,16 +166,19 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/converged"
 
+	// Record the full assumed schema so every label column is persisted and the
+	// MinKey/MaxKey sort bounds are fully populated.
+	fqn := strings.Join(experimentSortSchema, ",")
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: fqn,
+			Labels: map[string]string{"service_name": "auth", "cluster": "prod", "namespace": "eu", "job": "ingest"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: fqn,
+			Labels: map[string]string{"service_name": "billing", "cluster": "prod", "namespace": "us", "job": "query"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
 	})
 
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name"}, schema)
+	require.Equal(t, experimentSortSchema, schema)
 	require.Len(t, refs, 2)
 
 	byKey := map[string]*compactionv2pb.SectionRef{}
@@ -185,8 +189,8 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	auth := byKey["auth"]
 	require.NotNil(t, auth)
 	require.Equal(t, "logs/log-0", auth.ObjectPath)
-	require.Equal(t, []string{"auth"}, auth.MinKey)
-	require.Equal(t, []string{"auth"}, auth.MaxKey)
+	require.Equal(t, []string{"auth", "prod", "eu", "ingest"}, auth.MinKey, "values ordered by the assumed schema")
+	require.Equal(t, []string{"auth", "prod", "eu", "ingest"}, auth.MaxKey)
 	require.Equal(t, int64(300), auth.UncompressedSize)
 
 	require.Equal(t, int64(200), byKey["billing"].UncompressedSize)
@@ -196,24 +200,33 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	require.Equal(t, "auth", auth.MaxKey[0], "MaxKey must be a distinct slice from MinKey")
 }
 
-func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T) {
+// The recorded sort_schema is ignored: logSectionRefsFor always returns the
+// assumed experimentSortSchema and orders MinKey values by it, regardless of
+// the order recorded in the stats section.
+func TestLogSectionRefsFor_IgnoresRecordedSchema(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/multikey"
 
+	// Recorded in a different order than the assumed schema. All four label
+	// columns are still persisted, so MinKey is fully populated.
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name,label:namespace",
-			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:namespace,label:cluster,label:service_name,label:job",
+			Labels: map[string]string{"service_name": "auth", "cluster": "prod", "namespace": "eu", "job": "ingest"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
+	require.Equal(t, experimentSortSchema, schema)
 	require.Len(t, refs, 1)
-	require.Equal(t, []string{"auth", "eu"}, refs[0].MinKey, "values ordered by schema, not map order")
+	require.Equal(t, []string{"auth", "prod", "eu", "ingest"}, refs[0].MinKey, "values ordered by the assumed schema, not the recorded one")
 }
 
-func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
+// When the stats section stored no columns for the assumed schema keys (because
+// a wrong, narrower schema was recorded), each MinKey/MaxKey component falls
+// back to the empty string. Merge correctness is unaffected — the merge reads
+// the actual stream labels — but the planning-phase sort bounds are degraded.
+func TestLogSectionRefsFor_MissingLabelsYieldEmptyKeyComponents(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/emptyschema"
@@ -225,10 +238,10 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
-	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
+	require.Equal(t, experimentSortSchema, schema, "schema is assumed regardless of the recorded sort_schema")
 	require.Len(t, refs, 1)
-	require.Empty(t, refs[0].MinKey, "no sort keys -> empty MinKey")
-	require.Empty(t, refs[0].MaxKey)
+	require.Equal(t, []string{"", "", "", ""}, refs[0].MinKey)
+	require.Equal(t, []string{"", "", "", ""}, refs[0].MaxKey)
 	require.Equal(t, "logs/log-0", refs[0].ObjectPath)
 	require.Equal(t, int64(100), refs[0].UncompressedSize)
 }

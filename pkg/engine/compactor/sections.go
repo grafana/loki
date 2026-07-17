@@ -184,9 +184,36 @@ func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
 	return out
 }
 
+// experimentSortSchema is the fully-qualified sort schema assumed for tenant
+// log objects during log compaction. Some index files recorded an incorrect
+// sort_schema in their stats sections, so this path assumes the known-correct
+// schema instead of deriving it from those sections.
+//
+// TODO(experiment): remove once index files carry the correct sort schema.
+var experimentSortSchema = []string{
+	"label:service_name",
+	"label:cluster",
+	"label:namespace",
+	"label:job",
+}
+
+// experimentSortSchemaLabels holds the bare label names of experimentSortSchema,
+// in order, used to build per-section MinKey/MaxKey sort bounds.
+var experimentSortSchemaLabels = func() []string {
+	names := make([]string, len(experimentSortSchema))
+	for i, fqn := range experimentSortSchema {
+		names[i] = strings.TrimPrefix(fqn, "label:")
+	}
+	return names
+}()
+
 // logSectionRefsFor reads an index object's stats sections and
 // produces compactionv2pb.SectionRef values (one per stats row) plus the
 // tenant's sort schema.
+//
+// The sort schema is assumed (experimentSortSchema) rather than derived from
+// the stats sections, because some index files recorded an incorrect
+// sort_schema.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]*compactionv2pb.SectionRef, []string, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
@@ -194,16 +221,16 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 
 	var (
-		refs           []*compactionv2pb.SectionRef
-		schema         []string
-		reader         stats.Reader
-		sortSchemaLbls []string
-		schemaDerived  bool
+		refs   []*compactionv2pb.SectionRef
+		reader stats.Reader
 	)
 
 	defer reader.Close()
 	const batchSize = 1024
 	scratch := make([]stats.Stat, batchSize)
+
+	schema := experimentSortSchema
+	sortSchemaLbls := experimentSortSchemaLabels
 
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		if section.Tenant != tenant {
@@ -238,21 +265,6 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 			for i := range n {
 				st := dest[i]
-
-				if !schemaDerived {
-					// SortSchema is stored fully-qualified ("label:<name>"),
-					for fqn := range strings.SplitSeq(st.SortSchema, ",") {
-						if fqn == "" {
-							continue
-						}
-						schema = append(schema, fqn)
-						typ, name, ok := strings.Cut(fqn, ":")
-						if ok && typ == "label" && name != "" {
-							sortSchemaLbls = append(sortSchemaLbls, name)
-						}
-					}
-					schemaDerived = true
-				}
 
 				ref := &compactionv2pb.SectionRef{
 					ObjectPath:       st.ObjectPath,

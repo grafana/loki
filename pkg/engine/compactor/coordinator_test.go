@@ -340,7 +340,7 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	require.NoError(t, err)
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
-	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+	require.Equal(t, experimentSortSchema, node.SortSchema, "the assumed schema is used, not the recorded one")
 	require.NotEmpty(t, node.OutputIndexPath)
 
 	swaps := replacer.snapshot()
