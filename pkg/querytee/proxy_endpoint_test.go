@@ -694,26 +694,20 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	// Verify that the system processes the request successfully
 	assert.Equal(t, 200, w.Code)
 
-	// Wait briefly for goldfish async processing; sampling may not always complete.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && storage.SampleCount() == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
+	require.Eventually(t, func() bool {
+		return storage.SampleCount() > 0
+	}, 2*time.Second, 10*time.Millisecond, "goldfish async processing should store a sample")
 
 	t.Logf("Number of samples stored: %d", storage.SampleCount())
 	t.Logf("Number of results stored: %d", storage.ResultCount())
 
-	// For now, just verify that the system works end-to-end without panicking
-	// The actual trace ID verification will depend on proper goldfish triggering
-	if storage.SampleCount() > 0 {
-		sample := storage.GetSample(0)
-		assert.Equal(t, "test-tenant", sample.TenantID)
-		assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
+	sample := storage.GetSample(0)
+	assert.Equal(t, "test-tenant", sample.TenantID)
+	assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
 
-		// Verify that the TraceID fields exist and don't cause panics
-		assert.IsType(t, "", sample.CellATraceID)
-		assert.IsType(t, "", sample.CellBTraceID)
-	}
+	// Verify that the TraceID fields exist and don't cause panics
+	assert.IsType(t, "", sample.CellATraceID)
+	assert.IsType(t, "", sample.CellBTraceID)
 }
 
 // mockGoldfishStorage implements goldfish.Storage for testing.
