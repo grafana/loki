@@ -217,9 +217,6 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		},
 		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
 		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
-		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: true,
-		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating file size column: %w", err)
@@ -234,9 +231,6 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		},
 		Encoding:    datasetmd_v2.ENCODING_TYPE_DELTA,
 		Compression: datasetmd_v2.COMPRESSION_TYPE_NONE,
-		Statistics: dataset.StatisticsOptions{
-			StoreRangeStats: true,
-		},
 	})
 	if err != nil {
 		return fmt.Errorf("creating uncompressed logs size column: %w", err)

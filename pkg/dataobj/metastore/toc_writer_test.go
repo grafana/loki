@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 func TestTableOfContentsWriter(t *testing.T) {
@@ -31,7 +32,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil)
 		require.NoError(t, err)
 
-		err = tocBuilder.AppendIndexPointer("test", "testdata/metastore.obj", unixTime(10), unixTime(20), 0, 0)
+		err = tocBuilder.AppendIndexPointer("test", indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20), FileSize: 0, UncompressedLogsSize: 0})
 		require.NoError(t, err)
 
 		obj, closer, err := tocBuilder.Flush()

@@ -143,7 +143,13 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				// Append all the tenant time ranges that overlap with the current Table of Contents window.
 				for _, timeRange := range tenantTimeRanges {
 					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && !timeRange.MaxTime.Before(tocTimeRange.MinTime) {
-						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime, timeRange.FileSize, timeRange.UncompressedLogsSize)
+						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, indexpointers.IndexPointer{
+							Path:                 dataobjPath,
+							StartTs:              timeRange.MinTime,
+							EndTs:                timeRange.MaxTime,
+							FileSize:             timeRange.FileSize,
+							UncompressedLogsSize: timeRange.UncompressedLogsSize,
+						})
 						if err != nil {
 							return nil, errors.Wrap(err, "appending index pointer")
 						}
@@ -236,7 +242,7 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 				return errors.Wrap(err, "reading index pointers")
 			}
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs, indexPointer.FileSize, indexPointer.UncompressedLogsSize)
+				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer)
 				if err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}

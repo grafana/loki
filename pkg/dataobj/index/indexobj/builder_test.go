@@ -167,10 +167,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.AppendIndexPointer(testTenant, fmt.Sprintf("test/path-%d", i),
-			time.Unix(10, 0).Add(time.Duration(i)*time.Second).UTC(),
-			time.Unix(20, 0).Add(time.Duration(i)*time.Second).UTC(),
-			uint64(1000+i), uint64(100000+i))
+		err := builder.AppendIndexPointer(testTenant, indexpointers.IndexPointer{Path: fmt.Sprintf("test/path-%d", i), StartTs: time.Unix(10, 0).Add(time.Duration(i) * time.Second).UTC(), EndTs: time.Unix(20, 0).Add(time.Duration(i) * time.Second).UTC(), FileSize: uint64(1000 + i), UncompressedLogsSize: uint64(100000 + i)})
 		if builder.IsFull() {
 			break
 		}

@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
@@ -97,22 +98,31 @@ func loadTenantIndexes(
 		out[tenant] = append(out[tenant], entries...)
 	}
 
-	for tenant, entries := range out {
+	// Backfill missing FileSizes concurrently. Each bucket.Attributes call can
+	// take tens of milliseconds; serializing across every tenant's entries
+	// would dominate the read. Bounded by fileSizeStatConcurrency. Each
+	// goroutine writes a distinct slice element, so the writes do not race.
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(fileSizeStatConcurrency)
+	for _, entries := range out {
 		for i := range entries {
 			if entries[i].FileSize != 0 {
 				continue
 			}
-			attrs, err := bucket.Attributes(ctx, entries[i].Path)
-			if err != nil {
-				level.Warn(logger).Log("msg", "backfill file size failed", "path", entries[i].Path, "err", err)
-				continue
-			}
-			if attrs.Size > 0 {
-				entries[i].FileSize = uint64(attrs.Size)
-			}
+			g.Go(func() error {
+				attrs, err := bucket.Attributes(gctx, entries[i].Path)
+				if err != nil {
+					level.Warn(logger).Log("msg", "backfill file size failed", "path", entries[i].Path, "err", err)
+					return nil
+				}
+				if attrs.Size > 0 {
+					entries[i].FileSize = uint64(attrs.Size)
+				}
+				return nil
+			})
 		}
-		out[tenant] = entries
 	}
+	_ = g.Wait()
 
 	return out, nil
 }

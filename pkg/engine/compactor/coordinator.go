@@ -491,20 +491,35 @@ func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []strin
 	return ids
 }
 
+// fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
+// backfilling index FileSize, in both fillFileSizes and loadTenantIndexes.
+const fileSizeStatConcurrency = 16
+
 // fillFileSizes stats each entry's object and sets FileSize. Best-effort: a
 // missing or not-yet-visible object leaves FileSize zero; the next cycle's
 // planning-read backfill recovers it.
+//
+// Stats run concurrently (bounded by fileSizeStatConcurrency) because each
+// bucket.Attributes call can take tens of milliseconds; serializing hundreds
+// of entries would dominate the cycle. Each goroutine writes a distinct slice
+// element, so the concurrent writes do not race.
 func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(fileSizeStatConcurrency)
 	for i := range entries {
-		attrs, err := c.bucket.Attributes(ctx, entries[i].Path)
-		if err != nil {
-			level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
-			continue
-		}
-		if attrs.Size > 0 {
-			entries[i].FileSize = uint64(attrs.Size)
-		}
+		g.Go(func() error {
+			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
+			if err != nil {
+				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
+				return nil
+			}
+			if attrs.Size > 0 {
+				entries[i].FileSize = uint64(attrs.Size)
+			}
+			return nil
+		})
 	}
+	_ = g.Wait()
 }
 
 // makeTocEntries pairs each output path with the time bounds derived

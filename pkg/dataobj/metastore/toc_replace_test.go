@@ -87,12 +87,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	b, err := indexobj.NewBuilder(tocBuilderCfg, nil)
 	require.NoError(t, err)
 	for _, r := range rows {
-		require.NoError(t, b.AppendIndexPointer(
-			r.Tenant, r.Path,
-			time.Unix(r.StartUnix, 0).UTC(),
-			time.Unix(r.EndUnix, 0).UTC(),
-			r.FileSize, r.UncompressedLogsSize,
-		))
+		require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC(), FileSize: r.FileSize, UncompressedLogsSize: r.UncompressedLogsSize}))
 	}
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)
