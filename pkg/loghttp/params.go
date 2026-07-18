@@ -180,6 +180,13 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if strings.Contains(value, ".") {
 		if t, err := strconv.ParseFloat(value, 64); err == nil {
 			s, ns := math.Modf(t)
+			// If the integer part is large (> 9999999999), it is a nanosecond
+			// timestamp expressed in scientific notation (e.g. "1.767610546875e+18")
+			// rather than a second timestamp with fractional sub-seconds.
+			// Treat the entire value as nanoseconds to match the integer path.
+			if s > 9999999999 {
+				return time.Unix(0, int64(t)), nil
+			}
 			ns = math.Round(ns*1000) / 1000
 			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
 		}
