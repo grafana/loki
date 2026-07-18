@@ -275,7 +275,7 @@ func (client *client) Broker(brokerID int32) (*Broker, error) {
 }
 
 func (client *client) InitProducerID() (*InitProducerIDResponse, error) {
-	// FIXME: this InitProducerID seems to only be called from client_test.go (TestInitProducerIDConnectionRefused) and has been superceded by transaction_manager.go?
+	// FIXME: this InitProducerID seems to only be called from client_test.go (TestInitProducerIDConnectionRefused) and has been superseded by transaction_manager.go?
 	brokerErrors := make([]error, 0)
 	for broker := client.LeastLoadedBroker(); broker != nil; broker = client.LeastLoadedBroker() {
 		request := &InitProducerIDRequest{}
@@ -684,6 +684,32 @@ func (client *client) randomizeSeedBrokers(addrs []string) {
 	}
 }
 
+func (client *client) checkSeedBrokersHealth(brokers []*Broker) {
+	if len(brokers) == 0 {
+		return
+	}
+
+	for _, broker := range brokers {
+		if err := broker.getSockError(); err != nil {
+			Logger.Printf("client/seedbrokers close seed broker #%d at %s due to socket error: %v", broker.ID(), broker.Addr(), err)
+			safeAsyncClose(broker)
+		}
+	}
+}
+
+func (client *client) checkBrokersHealth() {
+	for id, broker := range client.brokers {
+		if err := broker.getSockError(); err != nil {
+			Logger.Printf("client/brokers close broker #%d at %s due to socket error: %v", broker.ID(), broker.Addr(), err)
+			safeAsyncClose(broker)
+			delete(client.brokers, id)
+		}
+	}
+
+	client.checkSeedBrokersHealth(client.seedBrokers)
+	client.checkSeedBrokersHealth(client.deadSeeds)
+}
+
 func (client *client) updateBroker(brokers []*Broker) {
 	if client.brokers == nil {
 		return
@@ -913,6 +939,10 @@ func (client *client) backgroundMetadataUpdater() {
 		select {
 		case <-ticker.C:
 			if err := client.refreshMetadata(); err != nil {
+				// expected no-op, not worth logging every tick
+				if errors.Is(err, ErrNoTopicsToUpdateMetadata) {
+					continue
+				}
 				Logger.Println("Client background metadata update:", err)
 			}
 		case <-client.closer:
@@ -951,7 +981,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 	}
 	retry := func(err error) error {
 		if attemptsRemaining > 0 {
-			backoff := client.computeBackoff(attemptsRemaining)
+			backoff := computeMetadataBackoff(client.conf, attemptsRemaining)
 			if pastDeadline(backoff) {
 				Logger.Println("client/metadata skipping last retries as we would go past the metadata timeout")
 				return err
@@ -985,7 +1015,6 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 
 		req := NewMetadataRequest(client.conf.Version, topics)
 		req.AllowAutoTopicCreation = allowAutoTopicCreation
-		client.updateMetadataMs.Store(time.Now().UnixMilli())
 
 		response, err := broker.GetMetadata(req)
 		var kerror KError
@@ -1003,8 +1032,11 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 			shouldRetry, err := client.updateMetadata(response, allKnownMetaData)
 			if shouldRetry {
 				Logger.Println("client/metadata found some partitions to be leaderless")
-				return retry(err) // note: err can be nil
+				return retry(err)
 			}
+			// only update on success; if we updated on every attempt then
+			// concurrent refreshes would short-circuit each other's retries
+			client.updateMetadataMs.Store(time.Now().UnixMilli())
 			return err
 		} else if errors.As(err, &packetEncodingError) {
 			// didn't even send, return the error
@@ -1045,13 +1077,21 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 }
 
 // if no fatal error, returns a list of topics that need retrying due to ErrLeaderNotAvailable
-func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bool) (retry bool, err error) {
+func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bool) (bool, error) {
 	if client.Closed() {
-		return
+		return false, nil
 	}
 
 	client.lock.Lock()
 	defer client.lock.Unlock()
+
+	// Check health of existing brokers, including seed brokers, dead
+	// seed brokers, and registered brokers.
+	// - if error occurred on broker's tcp socket, close the tcp
+	//   connection.
+	// - if it's seed broker or dead seed broker, remove it from
+	//   the list.
+	client.checkBrokersHealth()
 
 	// For all the brokers we received:
 	// - if it is a new ID, save it
@@ -1067,6 +1107,8 @@ func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bo
 		client.metadataTopics = make(map[string]none)
 		client.cachedPartitionsResults = make(map[string][maxPartitionIndex][]int32)
 	}
+	topicErrs := make(refreshError)
+	retry := false
 	for _, topic := range data.Topics {
 		// topics must be added firstly to `metadataTopics` to guarantee that all
 		// requested topics must be recorded to keep them trackable for periodically
@@ -1081,17 +1123,18 @@ func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bo
 		case ErrNoError:
 			// no-op
 		case ErrInvalidTopic, ErrTopicAuthorizationFailed: // don't retry, don't store partial results
-			err = topic.Err
+			topicErrs.addError(topic.Name, topic.Err)
 			continue
 		case ErrUnknownTopicOrPartition: // retry, do not store partial partition results
-			err = topic.Err
+			topicErrs.addError(topic.Name, topic.Err)
 			retry = true
 			continue
 		case ErrLeaderNotAvailable: // retry, but store partial partition results
+			topicErrs.addError(topic.Name, topic.Err)
 			retry = true
 		default: // don't retry, don't store partial results
 			Logger.Printf("Unexpected topic-level metadata error: %s", topic.Err)
-			err = topic.Err
+			topicErrs.addError(topic.Name, topic.Err)
 			continue
 		}
 
@@ -1099,6 +1142,7 @@ func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bo
 		for _, partition := range topic.Partitions {
 			client.metadata[topic.Name][partition.ID] = partition
 			if errors.Is(partition.Err, ErrLeaderNotAvailable) {
+				topicErrs.addError(topic.Name, partition.Err)
 				retry = true
 			}
 		}
@@ -1109,7 +1153,10 @@ func (client *client) updateMetadata(data *MetadataResponse, allKnownMetaData bo
 		client.cachedPartitionsResults[topic.Name] = partitionCache
 	}
 
-	return
+	if len(topicErrs) == 0 {
+		return retry, nil
+	}
+	return retry, topicErrs
 }
 
 func (client *client) cachedCoordinator(consumerGroup string) *Broker {
@@ -1137,19 +1184,19 @@ func (client *client) cachedController() *Broker {
 	return client.brokers[client.controllerID]
 }
 
-func (client *client) computeBackoff(attemptsRemaining int) time.Duration {
-	if client.conf.Metadata.Retry.BackoffFunc != nil {
-		maxRetries := client.conf.Metadata.Retry.Max
+func computeMetadataBackoff(conf *Config, attemptsRemaining int) time.Duration {
+	if conf.Metadata.Retry.BackoffFunc != nil {
+		maxRetries := conf.Metadata.Retry.Max
 		retries := maxRetries - attemptsRemaining
-		return client.conf.Metadata.Retry.BackoffFunc(retries, maxRetries)
+		return conf.Metadata.Retry.BackoffFunc(retries, maxRetries)
 	}
-	return client.conf.Metadata.Retry.Backoff
+	return conf.Metadata.Retry.Backoff
 }
 
 func (client *client) findCoordinator(coordinatorKey string, coordinatorType CoordinatorType, attemptsRemaining int) (*FindCoordinatorResponse, error) {
 	retry := func(err error) (*FindCoordinatorResponse, error) {
 		if attemptsRemaining > 0 {
-			backoff := client.computeBackoff(attemptsRemaining)
+			backoff := computeMetadataBackoff(client.conf, attemptsRemaining)
 			attemptsRemaining--
 			Logger.Printf("client/coordinator retrying after %dms... (%d attempts remaining)\n", backoff/time.Millisecond, attemptsRemaining)
 			time.Sleep(backoff)
@@ -1173,6 +1220,10 @@ func (client *client) findCoordinator(coordinatorKey string, coordinatorType Coo
 		// Version 2 is the same as version 1.
 		if client.conf.Version.IsAtLeast(V2_0_0_0) {
 			request.Version = 2
+		}
+		// Version 3 is the first flexible version
+		if client.conf.Version.IsAtLeast(V2_4_0_0) {
+			request.Version = 3
 		}
 
 		response, err := broker.FindCoordinator(request)

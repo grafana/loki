@@ -9,10 +9,10 @@ import (
 // TestReporter has methods matching go's testing.T to avoid importing
 // `testing` in the main part of the library.
 type TestReporter interface {
-	Error(...interface{})
-	Errorf(string, ...interface{})
-	Fatal(...interface{})
-	Fatalf(string, ...interface{})
+	Error(...any)
+	Errorf(string, ...any)
+	Fatal(...any)
+	Fatalf(string, ...any)
 	Helper()
 }
 
@@ -45,7 +45,7 @@ type MockSequence struct {
 	responses []MockResponse
 }
 
-func NewMockSequence(responses ...interface{}) *MockSequence {
+func NewMockSequence(responses ...any) *MockSequence {
 	ms := &MockSequence{}
 	ms.responses = make([]MockResponse, len(responses))
 	for i, res := range responses {
@@ -406,13 +406,13 @@ func (mfr *MockFetchResponse) getHighWaterMark(topic string, partition int32) in
 
 // MockConsumerMetadataResponse is a `ConsumerMetadataResponse` builder.
 type MockConsumerMetadataResponse struct {
-	coordinators map[string]interface{}
+	coordinators map[string]any
 	t            TestReporter
 }
 
 func NewMockConsumerMetadataResponse(t TestReporter) *MockConsumerMetadataResponse {
 	return &MockConsumerMetadataResponse{
-		coordinators: make(map[string]interface{}),
+		coordinators: make(map[string]any),
 		t:            t,
 	}
 }
@@ -443,15 +443,15 @@ func (mr *MockConsumerMetadataResponse) For(reqBody versionedDecoder) encoderWit
 
 // MockFindCoordinatorResponse is a `FindCoordinatorResponse` builder.
 type MockFindCoordinatorResponse struct {
-	groupCoordinators map[string]interface{}
-	transCoordinators map[string]interface{}
+	groupCoordinators map[string]any
+	transCoordinators map[string]any
 	t                 TestReporter
 }
 
 func NewMockFindCoordinatorResponse(t TestReporter) *MockFindCoordinatorResponse {
 	return &MockFindCoordinatorResponse{
-		groupCoordinators: make(map[string]interface{}),
-		transCoordinators: make(map[string]interface{}),
+		groupCoordinators: make(map[string]any),
+		transCoordinators: make(map[string]any),
 		t:                 t,
 	}
 }
@@ -479,7 +479,7 @@ func (mr *MockFindCoordinatorResponse) SetError(coordinatorType CoordinatorType,
 func (mr *MockFindCoordinatorResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	req := reqBody.(*FindCoordinatorRequest)
 	res := &FindCoordinatorResponse{Version: req.version()}
-	var v interface{}
+	var v any
 	switch req.CoordinatorType {
 	case CoordinatorGroup:
 		v = mr.groupCoordinators[req.CoordinatorKey]
@@ -644,9 +644,23 @@ func (mr *MockOffsetFetchResponse) SetError(kerror KError) *MockOffsetFetchRespo
 
 func (mr *MockOffsetFetchResponse) For(reqBody versionedDecoder) encoderWithHeader {
 	req := reqBody.(*OffsetFetchRequest)
-	group := req.ConsumerGroup
 	res := &OffsetFetchResponse{Version: req.Version}
 
+	if res.Version >= 8 {
+		res.Groups = make([]OffsetFetchResponseGroup, len(req.Groups))
+		for i, g := range req.Groups {
+			respGroup := OffsetFetchResponseGroup{GroupId: g.GroupId, Err: mr.error}
+			for topic, partitions := range mr.offsets[g.GroupId] {
+				for partition, block := range partitions {
+					respGroup.AddBlock(topic, partition, block)
+				}
+			}
+			res.Groups[i] = respGroup
+		}
+		return res
+	}
+
+	group := req.ConsumerGroup
 	for topic, partitions := range mr.offsets[group] {
 		for partition, block := range partitions {
 			res.AddBlock(topic, partition, block)
@@ -854,6 +868,7 @@ func (mr *MockDescribeConfigsResponse) For(reqBody versionedDecoder) encoderWith
 			)
 			res.Resources = append(res.Resources, &ResourceResponse{
 				Name:    r.Name,
+				Type:    r.Type,
 				Configs: configEntries,
 			})
 		case BrokerLoggerResource:
@@ -867,6 +882,7 @@ func (mr *MockDescribeConfigsResponse) For(reqBody versionedDecoder) encoderWith
 			)
 			res.Resources = append(res.Resources, &ResourceResponse{
 				Name:    r.Name,
+				Type:    r.Type,
 				Configs: configEntries,
 			})
 		case TopicResource:
@@ -914,6 +930,7 @@ func (mr *MockDescribeConfigsResponse) For(reqBody versionedDecoder) encoderWith
 				configEntries, maxMessageBytes, retentionMs, password)
 			res.Resources = append(res.Resources, &ResourceResponse{
 				Name:    r.Name,
+				Type:    r.Type,
 				Configs: configEntries,
 			})
 		}
@@ -1400,6 +1417,7 @@ func (m *MockHeartbeatResponse) For(reqBody versionedDecoder) encoderWithHeader 
 	req := reqBody.(*HeartbeatRequest)
 	resp := &HeartbeatResponse{
 		Version: req.version(),
+		Err:     m.Err,
 	}
 	return resp
 }
@@ -1526,6 +1544,25 @@ func (m *MockInitProducerIDResponse) For(reqBody versionedDecoder) encoderWithHe
 		Err:           m.err,
 		ProducerID:    m.producerID,
 		ProducerEpoch: m.producerEpoch,
+	}
+	return res
+}
+
+type MockUpdateFeaturesResponse struct {
+	t TestReporter
+}
+
+func NewMockUpdateFeaturesResponse(t TestReporter) *MockUpdateFeaturesResponse {
+	return &MockUpdateFeaturesResponse{t: t}
+}
+
+func (m *MockUpdateFeaturesResponse) For(reqBody versionedDecoder) encoderWithHeader {
+	req := reqBody.(*UpdateFeaturesRequest)
+	res := &UpdateFeaturesResponse{Version: req.version()}
+	for i := range req.FeatureUpdates {
+		res.Results = append(res.Results, UpdatableFeatureResult{
+			Feature: req.FeatureUpdates[i].Feature,
+		})
 	}
 	return res
 }

@@ -84,6 +84,10 @@ func (re *realEncoder) putRawBytes(in []byte) error {
 	return nil
 }
 
+func (re *realEncoder) putUuid(in Uuid) error {
+	return re.putRawBytes(in[:])
+}
+
 func (re *realEncoder) putBytes(in []byte) error {
 	if in == nil {
 		re.putInt32(-1)
@@ -204,6 +208,10 @@ func (re *realFlexibleEncoder) putArrayLength(in int) error {
 }
 
 func (re *realFlexibleEncoder) putBytes(in []byte) error {
+	if in == nil {
+		re.putUVarint(0)
+		return nil
+	}
 	re.putUVarint(uint64(len(in) + 1))
 	return re.putRawBytes(in)
 }
@@ -259,6 +267,15 @@ func (re *realFlexibleEncoder) putNullableInt32Array(in []int32) error {
 	re.putUVarint(uint64(len(in)) + 1)
 	for _, val := range in {
 		re.putInt32(val)
+	}
+	return nil
+}
+
+func (re *realFlexibleEncoder) putInt64Array(in []int64) error {
+	// 0 represents a null array, so +1 has to be added
+	re.putUVarint(uint64(len(in)) + 1)
+	for _, val := range in {
+		re.putInt64(val)
 	}
 	return nil
 }

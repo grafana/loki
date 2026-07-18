@@ -33,7 +33,8 @@ fmt:
 	gofmt -s -l -w $(FILES) $(TESTS)
 
 lint:
-	GOFLAGS="-tags=functional" golangci-lint run
+	golangci-lint run
+	golangci-lint run --build-tags functional
 
 test: $(GOTESTSUM) $(TESTSTAT) $(TPARSE)
 	@$(GOTESTSUM) $(if ${CI},--format github-actions,--format testdox) --jsonfile _test/unittests.json --junitfile _test/unittests.xml \

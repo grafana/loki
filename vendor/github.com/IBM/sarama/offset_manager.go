@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -30,7 +31,7 @@ type offsetManager struct {
 	conf            *Config
 	group           string
 	ticker          *time.Ticker
-	sessionCanceler func()
+	sessionCanceler context.CancelCauseFunc
 
 	memberID        string
 	groupInstanceId *string
@@ -53,7 +54,7 @@ func NewOffsetManagerFromClient(group string, client Client) (OffsetManager, err
 	return newOffsetManagerFromClient(group, "", GroupGenerationUndefined, client, nil)
 }
 
-func newOffsetManagerFromClient(group, memberID string, generation int32, client Client, sessionCanceler func()) (*offsetManager, error) {
+func newOffsetManagerFromClient(group, memberID string, generation int32, client Client, sessionCanceler context.CancelCauseFunc) (*offsetManager, error) {
 	// Check that we are not dealing with a closed Client before processing any other arguments
 	if client.Closed() {
 		return nil, ErrClosedClient
@@ -166,13 +167,17 @@ func (om *offsetManager) fetchInitialOffset(topic string, partition int32, retri
 
 	block := resp.GetBlock(topic, partition)
 	if block == nil {
-		return 0, 0, "", ErrIncompleteResponse
+		// v2+ surfaces some coordinator errors at the top level with no per-partition blocks
+		if resp.Err == ErrNoError {
+			return 0, 0, "", ErrIncompleteResponse
+		}
+		block = &OffsetFetchResponseBlock{Err: resp.Err}
 	}
 
 	switch block.Err {
 	case ErrNoError:
 		return block.Offset, block.LeaderEpoch, block.Metadata, nil
-	case ErrNotCoordinatorForConsumer:
+	case ErrNotCoordinatorForConsumer, ErrConsumerCoordinatorNotAvailable:
 		if retries <= 0 {
 			return 0, 0, "", block.Err
 		}
@@ -329,6 +334,10 @@ func (om *offsetManager) constructRequest() *OffsetCommitRequest {
 		r.Version = 7
 		r.GroupInstanceId = om.groupInstanceId
 	}
+	// Version 8 is the first flexible version.
+	if om.conf.Version.IsAtLeast(V2_4_0_0) {
+		r.Version = 8
+	}
 
 	// commit timestamp was only briefly supported in V1 where we set it to
 	// ReceiveTime (-1) to tell the broker to set it to the time when the commit
@@ -370,9 +379,10 @@ func (om *offsetManager) constructRequest() *OffsetCommitRequest {
 }
 
 func (om *offsetManager) handleResponse(broker *Broker, req *OffsetCommitRequest, resp *OffsetCommitResponse) {
-	om.pomsLock.RLock()
-	defer om.pomsLock.RUnlock()
+	// release coordinator after dropping pomsLock to avoid lock inversion (#3191)
+	shouldRelease := false
 
+	om.pomsLock.RLock()
 	for _, topicManagers := range om.poms {
 		for _, pom := range topicManagers {
 			if req.blocks[pom.topic] == nil || req.blocks[pom.topic][pom.partition] == nil {
@@ -398,7 +408,7 @@ func (om *offsetManager) handleResponse(broker *Broker, req *OffsetCommitRequest
 			case ErrNotLeaderForPartition, ErrLeaderNotAvailable,
 				ErrConsumerCoordinatorNotAvailable, ErrNotCoordinatorForConsumer:
 				// not a critical error, we just need to redispatch
-				om.releaseCoordinator(broker)
+				shouldRelease = true
 			case ErrOffsetMetadataTooLarge, ErrInvalidCommitOffsetSize:
 				// nothing we can do about this, just tell the user and carry on
 				pom.handleError(err)
@@ -417,9 +427,14 @@ func (om *offsetManager) handleResponse(broker *Broker, req *OffsetCommitRequest
 			default:
 				// dunno, tell the user and try redispatching
 				pom.handleError(err)
-				om.releaseCoordinator(broker)
+				shouldRelease = true
 			}
 		}
+	}
+	om.pomsLock.RUnlock()
+
+	if shouldRelease {
+		om.releaseCoordinator(broker)
 	}
 }
 
@@ -484,7 +499,7 @@ func (om *offsetManager) findPOM(topic string, partition int32) *partitionOffset
 
 func (om *offsetManager) tryCancelSession() {
 	if om.sessionCanceler != nil {
-		om.sessionCanceler()
+		om.sessionCanceler(ErrFencedInstancedId)
 	}
 }
 

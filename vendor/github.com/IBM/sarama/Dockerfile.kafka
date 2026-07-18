@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7@sha256:c7d44146f826037f6873d99da479299b889473492d3c1ab8af86f08af04ec8a0
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8@sha256:463cae32c6f6f5594b11a5c22de275016bd8545ce58a6373388e8b24f13fc15c
 
 USER root
 
@@ -17,7 +17,7 @@ RUN cd /etc/java/java-17-openjdk/*/conf/security \
  && echo 'networkaddress.cache.negative.ttl=0' >> java.security
 
 ARG SCALA_VERSION="2.13"
-ARG KAFKA_VERSION="3.9.1"
+ARG KAFKA_VERSION="4.2.0"
 
 WORKDIR /tmp
 
