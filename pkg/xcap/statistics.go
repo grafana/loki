@@ -1,5 +1,7 @@
 package xcap
 
+import "github.com/grafana/loki/v3/pkg/xcap/statid"
+
 // DataType specifies the data type of a statistic's values.
 type DataType int
 
@@ -56,6 +58,7 @@ type StatisticKey struct {
 
 // Statistic is the interface that all statistic types implement.
 type Statistic interface {
+	ID() statid.ID
 	Name() string
 	DataType() DataType
 	Aggregation() AggregationType
@@ -75,10 +78,16 @@ func Local() Option {
 
 // statistic holds the common definition of a statistic.
 type statistic struct {
+	id          statid.ID
 	name        string
 	dataType    DataType
 	aggregation AggregationType
 	scope       ExportScope
+}
+
+// ID returns the statistic's stable wire identifier.
+func (s *statistic) ID() statid.ID {
+	return s.id
 }
 
 // Name returns the name of the statistic.
@@ -158,30 +167,39 @@ func (s *StatisticFlag) Observe(value bool) Observation {
 	}
 }
 
-// NewStatisticInt64 creates a new int64 statistic with the given name and aggregation.
-func NewStatisticInt64(name string, aggregation AggregationType, opts ...Option) *StatisticInt64 {
-	return &StatisticInt64{
-		statistic: newStatistic(name, DataTypeInt64, aggregation, opts),
+// NewStatisticInt64 creates a new int64 statistic with the given stable ID,
+// name, and aggregation.
+func NewStatisticInt64(id statid.ID, name string, aggregation AggregationType, opts ...Option) *StatisticInt64 {
+	stat := &StatisticInt64{
+		statistic: newStatistic(id, name, DataTypeInt64, aggregation, opts),
 	}
+	registerStatistic(stat)
+	return stat
 }
 
-// NewStatisticFloat64 creates a new float64 statistic with the given name and aggregation.
-func NewStatisticFloat64(name string, aggregation AggregationType, opts ...Option) *StatisticFloat64 {
-	return &StatisticFloat64{
-		statistic: newStatistic(name, DataTypeFloat64, aggregation, opts),
+// NewStatisticFloat64 creates a new float64 statistic with the given stable
+// ID, name, and aggregation.
+func NewStatisticFloat64(id statid.ID, name string, aggregation AggregationType, opts ...Option) *StatisticFloat64 {
+	stat := &StatisticFloat64{
+		statistic: newStatistic(id, name, DataTypeFloat64, aggregation, opts),
 	}
+	registerStatistic(stat)
+	return stat
 }
 
-// NewStatisticFlag creates a new bool statistic (flag) with the given name.
-// Flags always use AggregationTypeMax (true > false).
-func NewStatisticFlag(name string, opts ...Option) *StatisticFlag {
-	return &StatisticFlag{
-		statistic: newStatistic(name, DataTypeBool, AggregationTypeMax, opts),
+// NewStatisticFlag creates a new bool statistic (flag) with the given stable
+// ID and name. Flags always use AggregationTypeMax (true > false).
+func NewStatisticFlag(id statid.ID, name string, opts ...Option) *StatisticFlag {
+	stat := &StatisticFlag{
+		statistic: newStatistic(id, name, DataTypeBool, AggregationTypeMax, opts),
 	}
+	registerStatistic(stat)
+	return stat
 }
 
-func newStatistic(name string, dataType DataType, aggregation AggregationType, opts []Option) statistic {
+func newStatistic(id statid.ID, name string, dataType DataType, aggregation AggregationType, opts []Option) statistic {
 	stat := statistic{
+		id:          id,
 		name:        name,
 		dataType:    dataType,
 		aggregation: aggregation,

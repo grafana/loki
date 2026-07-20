@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -162,7 +163,7 @@ func TestCapture_Merge(t *testing.T) {
 	})
 
 	t.Run("observations roll up across merged regions with distinct names", func(t *testing.T) {
-		stat := NewStatisticInt64("merged.value", AggregationTypeSum)
+		stat := NewStatisticInt64(statid.Invalid, "merged.value", AggregationTypeSum)
 
 		ctxDst, dst := NewCapture(context.Background(), nil)
 		_, dstRegion := StartRegion(ctxDst, "dst-region")
@@ -207,7 +208,7 @@ func TestCapture_Merge(t *testing.T) {
 	})
 
 	t.Run("same-named region observations are accumulated across merges", func(t *testing.T) {
-		stat := NewStatisticInt64("rows.scanned", AggregationTypeSum)
+		stat := NewStatisticInt64(statid.Invalid, "rows.scanned", AggregationTypeSum)
 		_, dst := NewCapture(context.Background(), nil)
 
 		// Simulate N task completions, each contributing a capture with the
@@ -231,8 +232,8 @@ func TestCapture_Merge(t *testing.T) {
 	})
 
 	t.Run("multiple distinct region names each accumulate independently", func(t *testing.T) {
-		statA := NewStatisticInt64("bytes.a", AggregationTypeSum)
-		statB := NewStatisticInt64("bytes.b", AggregationTypeSum)
+		statA := NewStatisticInt64(statid.Invalid, "bytes.a", AggregationTypeSum)
+		statB := NewStatisticInt64(statid.Invalid, "bytes.b", AggregationTypeSum)
 
 		_, dst := NewCapture(context.Background(), nil)
 
@@ -255,8 +256,8 @@ func TestCapture_Merge(t *testing.T) {
 	})
 
 	t.Run("accumulating merge handles Min and Max correctly", func(t *testing.T) {
-		statMin := NewStatisticFloat64("latency.min", AggregationTypeMin)
-		statMax := NewStatisticInt64("rows.max", AggregationTypeMax)
+		statMin := NewStatisticFloat64(statid.Invalid, "latency.min", AggregationTypeMin)
+		statMax := NewStatisticInt64(statid.Invalid, "rows.max", AggregationTypeMax)
 
 		_, dst := NewCapture(context.Background(), nil)
 
@@ -302,9 +303,9 @@ func TestCapture_Value(t *testing.T) {
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
 				_, region := StartRegion(ctx, "region1")
-				region.Record(NewStatisticInt64("other", AggregationTypeSum).Observe(1))
+				region.Record(NewStatisticInt64(statid.Invalid, "other", AggregationTypeSum).Observe(1))
 				region.End()
-				return capture, NewStatisticInt64("missing", AggregationTypeSum)
+				return capture, NewStatisticInt64(statid.Invalid, "missing", AggregationTypeSum)
 			},
 			wantNil: true,
 		},
@@ -312,7 +313,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "empty capture returns nil",
 			setup: func() (*Capture, Statistic) {
 				_, capture := NewCapture(context.Background(), nil)
-				return capture, NewStatisticInt64("missing", AggregationTypeSum)
+				return capture, NewStatisticInt64(statid.Invalid, "missing", AggregationTypeSum)
 			},
 			wantNil: true,
 		},
@@ -320,7 +321,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "single region with sum aggregation",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				stat := NewStatisticInt64("bytes.read", AggregationTypeSum)
+				stat := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
 				_, region := StartRegion(ctx, "region1")
 				region.Record(stat.Observe(100))
 				region.Record(stat.Observe(50))
@@ -334,7 +335,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "multiple regions sum across regions",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				stat := NewStatisticInt64("bytes.read", AggregationTypeSum)
+				stat := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
 				_, region1 := StartRegion(ctx, "region1")
 				region1.Record(stat.Observe(100))
 				region1.End()
@@ -351,7 +352,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "multiple regions min across regions",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				stat := NewStatisticFloat64("latency.ms", AggregationTypeMin)
+				stat := NewStatisticFloat64(statid.Invalid, "latency.ms", AggregationTypeMin)
 				_, region1 := StartRegion(ctx, "region1")
 				region1.Record(stat.Observe(10.0))
 				region1.End()
@@ -370,7 +371,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "multiple regions max across regions",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				stat := NewStatisticInt64("rows.scanned", AggregationTypeMax)
+				stat := NewStatisticInt64(statid.Invalid, "rows.scanned", AggregationTypeMax)
 				_, region1 := StartRegion(ctx, "region1")
 				region1.Record(stat.Observe(10))
 				region1.End()
@@ -389,7 +390,7 @@ func TestCapture_Value(t *testing.T) {
 			name: "flag aggregates as max (any true wins)",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				stat := NewStatisticFlag("cache.hit")
+				stat := NewStatisticFlag(statid.Invalid, "cache.hit")
 				_, region1 := StartRegion(ctx, "region1")
 				region1.Record(stat.Observe(false))
 				region1.End()
@@ -405,8 +406,8 @@ func TestCapture_Value(t *testing.T) {
 			name: "same name different aggregation does not collide",
 			setup: func() (*Capture, Statistic) {
 				ctx, capture := NewCapture(context.Background(), nil)
-				statSum := NewStatisticInt64("value", AggregationTypeSum)
-				statMax := NewStatisticInt64("value", AggregationTypeMax)
+				statSum := NewStatisticInt64(statid.Invalid, "value", AggregationTypeSum)
+				statMax := NewStatisticInt64(statid.Invalid, "value", AggregationTypeMax)
 				_, region1 := StartRegion(ctx, "region1")
 				region1.Record(statSum.Observe(10))
 				region1.Record(statMax.Observe(100))
@@ -442,7 +443,7 @@ func TestCapture_Value(t *testing.T) {
 
 func TestCapture_ValueFromRegion(t *testing.T) {
 	ctx, capture := NewCapture(context.Background(), nil)
-	stat := NewStatisticInt64("rows.scanned", AggregationTypeSum)
+	stat := NewStatisticInt64(statid.Invalid, "rows.scanned", AggregationTypeSum)
 
 	_, logsOpen := StartRegion(ctx, "logs.Reader.Open")
 	logsOpen.Record(stat.Observe(100))
@@ -474,138 +475,4 @@ func TestCapture_ValueFromRegion(t *testing.T) {
 
 	// Prefix is not a match — no region is named "logs.Reader." exactly.
 	require.Nil(t, capture.ValueFromRegion("logs.Reader.", stat))
-}
-
-func TestStatisticsFromRegions(t *testing.T) {
-	tests := []struct {
-		name      string
-		setup     func() *Capture
-		wantStats []StatisticKey
-	}{
-		{
-			name: "empty capture returns no statistics",
-			setup: func() *Capture {
-				_, capture := NewCapture(context.Background(), nil)
-				return capture
-			},
-		},
-		{
-			name: "single region with single statistic",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-				_, region := StartRegion(ctx, "read")
-				region.Record(bytesRead.Observe(1024))
-				region.End()
-				return capture
-			},
-			wantStats: []StatisticKey{
-				{Name: "bytes.read", DataType: DataTypeInt64, Aggregation: AggregationTypeSum},
-			},
-		},
-		{
-			name: "single region with multiple statistics",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-				latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
-				success := NewStatisticFlag("success")
-				_, region := StartRegion(ctx, "read")
-				region.Record(bytesRead.Observe(1024))
-				region.Record(latency.Observe(10.5))
-				region.Record(success.Observe(true))
-				region.End()
-				return capture
-			},
-			wantStats: []StatisticKey{
-				{Name: "bytes.read", DataType: DataTypeInt64, Aggregation: AggregationTypeSum},
-				{Name: "latency.ms", DataType: DataTypeFloat64, Aggregation: AggregationTypeMin},
-				{Name: "success", DataType: DataTypeBool, Aggregation: AggregationTypeMax},
-			},
-		},
-		{
-			name: "multiple regions with same statistic",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-
-				ctx, region1 := StartRegion(ctx, "read1")
-				region1.Record(bytesRead.Observe(1024))
-				region1.End()
-
-				_, region2 := StartRegion(ctx, "read2")
-				region2.Record(bytesRead.Observe(2048))
-				region2.End()
-
-				return capture
-			},
-			wantStats: []StatisticKey{
-				{Name: "bytes.read", DataType: DataTypeInt64, Aggregation: AggregationTypeSum},
-			},
-		},
-		{
-			name: "multiple regions with different statistics",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-				latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
-
-				ctx, region1 := StartRegion(ctx, "read1")
-				region1.Record(bytesRead.Observe(1024))
-				region1.End()
-
-				_, region2 := StartRegion(ctx, "read2")
-				region2.Record(latency.Observe(10.5))
-				region2.End()
-
-				return capture
-			},
-			wantStats: []StatisticKey{
-				{Name: "bytes.read", DataType: DataTypeInt64, Aggregation: AggregationTypeSum},
-				{Name: "latency.ms", DataType: DataTypeFloat64, Aggregation: AggregationTypeMin},
-			},
-		},
-		{
-			name: "statistics with same name but different aggregation types",
-			setup: func() *Capture {
-				ctx, capture := NewCapture(context.Background(), nil)
-				statSum := NewStatisticInt64("value", AggregationTypeSum)
-				statMin := NewStatisticInt64("value", AggregationTypeMin)
-				statMax := NewStatisticInt64("value", AggregationTypeMax)
-
-				ctx, region1 := StartRegion(ctx, "region1")
-				region1.Record(statSum.Observe(10))
-				region1.End()
-
-				ctx, region2 := StartRegion(ctx, "region2")
-				region2.Record(statMin.Observe(20))
-				region2.End()
-
-				_, region3 := StartRegion(ctx, "region3")
-				region3.Record(statMax.Observe(30))
-				region3.End()
-
-				return capture
-			},
-			wantStats: []StatisticKey{
-				{Name: "value", DataType: DataTypeInt64, Aggregation: AggregationTypeSum},
-				{Name: "value", DataType: DataTypeInt64, Aggregation: AggregationTypeMin},
-				{Name: "value", DataType: DataTypeInt64, Aggregation: AggregationTypeMax},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			capture := tt.setup()
-			stats := statisticsFromRegions(capture.Regions())
-
-			gotStats := make([]StatisticKey, 0, len(stats))
-			for _, stat := range stats {
-				gotStats = append(gotStats, stat.Key())
-			}
-
-			require.ElementsMatch(t, tt.wantStats, gotStats)
-		})
-	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -18,8 +19,8 @@ func TestXcapSpan(t *testing.T) {
 	tracer := tp.Tracer("xcap-test")
 
 	ctx, capture := NewCapture(context.Background(), nil)
-	pagesScanned := NewStatisticInt64("pages.scanned", AggregationTypeSum)
-	rowsRead := NewStatisticInt64("rows.read", AggregationTypeSum)
+	pagesScanned := NewStatisticInt64(statid.Invalid, "pages.scanned", AggregationTypeSum)
+	rowsRead := NewStatisticInt64(statid.Invalid, "rows.read", AggregationTypeSum)
 
 	ctx, span1 := StartSpan(ctx, tracer, "DataObjScan",
 		trace.WithAttributes(attribute.Int("num_targets", 5)),

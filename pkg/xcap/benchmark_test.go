@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 )
 
 func BenchmarkCaptureUnmarshalBinary(b *testing.B) {
@@ -68,12 +70,14 @@ func BenchmarkCaptureMergeDecoded(b *testing.B) {
 	}
 }
 
-var (
-	benchmarkRegions int
-)
+var benchmarkRegions int
 
 func benchmarkCapture(b *testing.B) *Capture {
 	b.Helper()
+	withTestStatisticRegistry(b)
+	if statid.Count <= 32 {
+		b.Fatal("not enough statistic IDs for benchmark")
+	}
 
 	ctx, capture := NewCapture(context.Background(), nil)
 
@@ -81,7 +85,7 @@ func benchmarkCapture(b *testing.B) *Capture {
 		var region *Region
 		ctx, region = StartRegion(ctx, fmt.Sprintf("region-%d", r))
 		for s := range 32 {
-			stat := NewStatisticInt64(fmt.Sprintf("stat.%d", s), AggregationTypeSum)
+			stat := NewStatisticInt64(statid.ID(s+1), fmt.Sprintf("stat.%d", s), AggregationTypeSum)
 			region.Record(stat.Observe(int64(s+1) << 20))
 		}
 		region.End()

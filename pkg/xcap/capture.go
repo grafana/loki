@@ -16,7 +16,9 @@
 //	ctx, region := xcap.StartRegion(ctx, "DataObjScan")
 //	defer region.End()
 //
-//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//	pagesScanned := xcap.NewStatisticInt64(
+//	    statid.DatasetPagesTotal, "dataobj.dataset.pages.total", xcap.AggregationTypeSum,
+//	)
 //
 //	// Record observations — multiple calls aggregate by statistic.
 //	region.Record(pagesScanned.Observe(1))
@@ -46,7 +48,9 @@
 //
 //	// Deep in the call stack, retrieve the region from context.
 //	region := xcap.RegionFromContext(ctx)
-//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//	pagesScanned := xcap.NewStatisticInt64(
+//	    statid.DatasetPagesTotal, "dataobj.dataset.pages.total", xcap.AggregationTypeSum,
+//	)
 //	region.Record(pagesScanned.Observe(1))
 //	region.Record(pagesScanned.Observe(1))
 //	// When span.End() is called:

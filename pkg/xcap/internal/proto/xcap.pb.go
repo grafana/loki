@@ -12,7 +12,6 @@ import (
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
-	strconv "strconv"
 	strings "strings"
 )
 
@@ -27,77 +26,10 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// DataType specifies the data type of a statistic's values.
-type DataType int32
-
-const (
-	DATA_TYPE_INVALID DataType = 0
-	DATA_TYPE_INT64   DataType = 1
-	DATA_TYPE_FLOAT64 DataType = 2
-	DATA_TYPE_BOOL    DataType = 3
-)
-
-var DataType_name = map[int32]string{
-	0: "DATA_TYPE_INVALID",
-	1: "DATA_TYPE_INT64",
-	2: "DATA_TYPE_FLOAT64",
-	3: "DATA_TYPE_BOOL",
-}
-
-var DataType_value = map[string]int32{
-	"DATA_TYPE_INVALID": 0,
-	"DATA_TYPE_INT64":   1,
-	"DATA_TYPE_FLOAT64": 2,
-	"DATA_TYPE_BOOL":    3,
-}
-
-func (DataType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{0}
-}
-
-// AggregationType specifies how to combine multiple observations of the
-// same statistic.
-type AggregationType int32
-
-const (
-	AGGREGATION_TYPE_INVALID AggregationType = 0
-	AGGREGATION_TYPE_SUM     AggregationType = 1
-	AGGREGATION_TYPE_MIN     AggregationType = 2
-	AGGREGATION_TYPE_MAX     AggregationType = 3
-	AGGREGATION_TYPE_LAST    AggregationType = 4
-	AGGREGATION_TYPE_FIRST   AggregationType = 5
-)
-
-var AggregationType_name = map[int32]string{
-	0: "AGGREGATION_TYPE_INVALID",
-	1: "AGGREGATION_TYPE_SUM",
-	2: "AGGREGATION_TYPE_MIN",
-	3: "AGGREGATION_TYPE_MAX",
-	4: "AGGREGATION_TYPE_LAST",
-	5: "AGGREGATION_TYPE_FIRST",
-}
-
-var AggregationType_value = map[string]int32{
-	"AGGREGATION_TYPE_INVALID": 0,
-	"AGGREGATION_TYPE_SUM":     1,
-	"AGGREGATION_TYPE_MIN":     2,
-	"AGGREGATION_TYPE_MAX":     3,
-	"AGGREGATION_TYPE_LAST":    4,
-	"AGGREGATION_TYPE_FIRST":   5,
-}
-
-func (AggregationType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{1}
-}
-
 // Capture is protobuf representation of a Capture.
 type Capture struct {
 	// A list of Regions recorded in the Capture.
 	Regions []Region `protobuf:"bytes,1,rep,name=regions,proto3" json:"regions"`
-	// A list of statistic definitions used in the Capture across all
-	// Regions. The index into this list is used as the statistic_id field
-	// in ObservationV2.
-	Statistics []Statistic `protobuf:"bytes,2,rep,name=statistics,proto3" json:"statistics"`
 }
 
 func (m *Capture) Reset()      { *m = Capture{} }
@@ -135,13 +67,6 @@ var xxx_messageInfo_Capture proto.InternalMessageInfo
 func (m *Capture) GetRegions() []Region {
 	if m != nil {
 		return m.Regions
-	}
-	return nil
-}
-
-func (m *Capture) GetStatistics() []Statistic {
-	if m != nil {
-		return m.Statistics
 	}
 	return nil
 }
@@ -200,75 +125,16 @@ func (m *Region) GetObservationsV2() []ObservationV2 {
 	return nil
 }
 
-// Statistic represents a statistic definition.
-type Statistic struct {
-	// Name is the name of the statistic.
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// DataType is the data type of the statistic's values.
-	DataType DataType `protobuf:"varint,2,opt,name=data_type,json=dataType,proto3,enum=loki.xcap.DataType" json:"data_type,omitempty"`
-	// AggregationType is how multiple observations are aggregated.
-	AggregationType AggregationType `protobuf:"varint,3,opt,name=aggregation_type,json=aggregationType,proto3,enum=loki.xcap.AggregationType" json:"aggregation_type,omitempty"`
-}
-
-func (m *Statistic) Reset()      { *m = Statistic{} }
-func (*Statistic) ProtoMessage() {}
-func (*Statistic) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{2}
-}
-func (m *Statistic) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *Statistic) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_Statistic.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *Statistic) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Statistic.Merge(m, src)
-}
-func (m *Statistic) XXX_Size() int {
-	return m.Size()
-}
-func (m *Statistic) XXX_DiscardUnknown() {
-	xxx_messageInfo_Statistic.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Statistic proto.InternalMessageInfo
-
-func (m *Statistic) GetName() string {
-	if m != nil {
-		return m.Name
-	}
-	return ""
-}
-
-func (m *Statistic) GetDataType() DataType {
-	if m != nil {
-		return m.DataType
-	}
-	return DATA_TYPE_INVALID
-}
-
-func (m *Statistic) GetAggregationType() AggregationType {
-	if m != nil {
-		return m.AggregationType
-	}
-	return AGGREGATION_TYPE_INVALID
-}
-
 // ObservationV2 represents an aggregated observation without a nested message
-// or oneof. ValueBits is interpreted according to the data type of
-// statistics[statistic_id].
+// or oneof. ValueBits is interpreted according to the data type registered
+// for stat_id.
 type ObservationV2 struct {
-	// StatisticId is the index into the statistics list in Capture.
-	StatisticId uint32 `protobuf:"varint,1,opt,name=statistic_id,json=statisticId,proto3" json:"statistic_id,omitempty"`
+	// StatId is the global stable ID assigned by pkg/xcap/statid.
+	//
+	// Field 4 is intentionally new: reserving the former statistic_id field
+	// ensures old worker observations are skipped rather than interpreted as
+	// global IDs during a rolling upgrade.
+	StatId uint32 `protobuf:"varint,4,opt,name=stat_id,json=statId,proto3" json:"stat_id,omitempty"`
 	// Count is the number of observations aggregated.
 	Count uint32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 	// ValueBits holds the encoded aggregated observation value.
@@ -278,7 +144,7 @@ type ObservationV2 struct {
 func (m *ObservationV2) Reset()      { *m = ObservationV2{} }
 func (*ObservationV2) ProtoMessage() {}
 func (*ObservationV2) Descriptor() ([]byte, []int) {
-	return fileDescriptor_cfc78bf5da060d84, []int{3}
+	return fileDescriptor_cfc78bf5da060d84, []int{2}
 }
 func (m *ObservationV2) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -307,9 +173,9 @@ func (m *ObservationV2) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ObservationV2 proto.InternalMessageInfo
 
-func (m *ObservationV2) GetStatisticId() uint32 {
+func (m *ObservationV2) GetStatId() uint32 {
 	if m != nil {
-		return m.StatisticId
+		return m.StatId
 	}
 	return 0
 }
@@ -329,11 +195,8 @@ func (m *ObservationV2) GetValueBits() uint64 {
 }
 
 func init() {
-	proto.RegisterEnum("loki.xcap.DataType", DataType_name, DataType_value)
-	proto.RegisterEnum("loki.xcap.AggregationType", AggregationType_name, AggregationType_value)
 	proto.RegisterType((*Capture)(nil), "loki.xcap.Capture")
 	proto.RegisterType((*Region)(nil), "loki.xcap.Region")
-	proto.RegisterType((*Statistic)(nil), "loki.xcap.Statistic")
 	proto.RegisterType((*ObservationV2)(nil), "loki.xcap.ObservationV2")
 }
 
@@ -342,61 +205,35 @@ func init() {
 }
 
 var fileDescriptor_cfc78bf5da060d84 = []byte{
-	// 601 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x53, 0x4d, 0x53, 0xd3, 0x40,
-	0x18, 0xce, 0xb6, 0xa5, 0xb4, 0x2f, 0x1f, 0x0d, 0x4b, 0x71, 0x22, 0xa3, 0x2b, 0xf6, 0xc4, 0x70,
-	0x68, 0xb4, 0x38, 0x1e, 0xbc, 0xa5, 0x02, 0x9d, 0x3a, 0x85, 0x3a, 0xdb, 0xc8, 0xa8, 0x97, 0xcc,
-	0xb6, 0x59, 0xc3, 0x0e, 0x90, 0x64, 0x92, 0x6d, 0x07, 0x6e, 0xfe, 0x04, 0x8f, 0xfe, 0x04, 0x7f,
-	0x80, 0x27, 0x7f, 0x01, 0x47, 0x8e, 0x9c, 0x1c, 0x09, 0x17, 0x8f, 0xfc, 0x04, 0xa7, 0x1b, 0x28,
-	0xe1, 0xc3, 0x53, 0xde, 0x3c, 0x1f, 0xef, 0xf3, 0xec, 0x66, 0x02, 0xb5, 0x70, 0xdf, 0x33, 0x8f,
-	0x06, 0x2c, 0x34, 0x85, 0x2f, 0x79, 0xe4, 0xb3, 0x03, 0x33, 0x8c, 0x02, 0x19, 0x28, 0xac, 0xae,
-	0x46, 0x5c, 0x3e, 0x08, 0xf6, 0x45, 0x7d, 0x0c, 0x2c, 0x57, 0xbd, 0xc0, 0x0b, 0x52, 0xc1, 0x78,
-	0x4a, 0x05, 0xb5, 0x23, 0x98, 0x7e, 0xcb, 0x42, 0x39, 0x8c, 0x38, 0x7e, 0x09, 0xd3, 0x11, 0xf7,
-	0x44, 0xe0, 0xc7, 0x06, 0x5a, 0xc9, 0xaf, 0xce, 0x34, 0x16, 0xea, 0x13, 0x77, 0x9d, 0x2a, 0xa6,
-	0x59, 0x38, 0xf9, 0xfd, 0x4c, 0xa3, 0xd7, 0x3a, 0xfc, 0x06, 0x20, 0x96, 0x4c, 0x8a, 0x58, 0x8a,
-	0x41, 0x6c, 0xe4, 0x94, 0xab, 0x9a, 0x71, 0xf5, 0xae, 0xc9, 0x2b, 0x63, 0x46, 0x5d, 0xfb, 0x85,
-	0xa0, 0x98, 0x6e, 0xc5, 0x18, 0x0a, 0x3e, 0x3b, 0xe4, 0x06, 0x5a, 0x41, 0xab, 0x65, 0xaa, 0x66,
-	0xdc, 0x82, 0x4a, 0xd0, 0x8f, 0x79, 0x34, 0x62, 0x72, 0x1c, 0xe5, 0x8c, 0x1a, 0x06, 0xa8, 0xfd,
-	0x46, 0x66, 0x7f, 0xf7, 0x46, 0xb1, 0xdb, 0xb8, 0xca, 0x98, 0xcf, 0xda, 0x76, 0x1b, 0xef, 0x0a,
-	0xa5, 0x9c, 0x0e, 0x2a, 0x39, 0x92, 0x8e, 0x14, 0x87, 0x9c, 0x96, 0xb8, 0xef, 0xa6, 0x53, 0x4e,
-	0xb8, 0xb4, 0x1c, 0xb2, 0x88, 0xfb, 0xd2, 0x11, 0x2e, 0x05, 0x26, 0x65, 0x24, 0xfa, 0x43, 0xc9,
-	0x63, 0x5a, 0xe4, 0x23, 0xee, 0xcb, 0x98, 0x16, 0xc7, 0x95, 0x87, 0x31, 0x9d, 0xcd, 0xae, 0xad,
-	0x7d, 0x47, 0x50, 0x9e, 0x1c, 0xee, 0xc1, 0xfe, 0x2f, 0xa0, 0xec, 0x32, 0xc9, 0x1c, 0x79, 0x1c,
-	0x72, 0x23, 0xb7, 0x82, 0x56, 0xe7, 0x1b, 0x8b, 0x99, 0xe6, 0x1b, 0x4c, 0x32, 0xfb, 0x38, 0xe4,
-	0xb4, 0xe4, 0x5e, 0x4d, 0x78, 0x13, 0x74, 0xe6, 0x79, 0x11, 0xf7, 0x54, 0x46, 0x6a, 0xcc, 0x2b,
-	0xe3, 0x72, 0xc6, 0x68, 0xdd, 0x48, 0x94, 0xbf, 0xc2, 0x6e, 0x03, 0x35, 0x0f, 0xe6, 0x6e, 0x5d,
-	0x0b, 0x7e, 0x0e, 0xb3, 0x93, 0x6b, 0x77, 0x84, 0xab, 0x5a, 0xce, 0xd1, 0x99, 0x09, 0xd6, 0x76,
-	0x71, 0x15, 0xa6, 0x06, 0xc1, 0xd0, 0x97, 0xaa, 0xe8, 0x1c, 0x4d, 0x5f, 0xf0, 0x53, 0x80, 0x11,
-	0x3b, 0x18, 0x72, 0xa7, 0x2f, 0x64, 0xac, 0xaa, 0x14, 0x69, 0x59, 0x21, 0x4d, 0x21, 0xe3, 0x35,
-	0x06, 0xa5, 0xeb, 0x53, 0xe0, 0x25, 0x58, 0xd8, 0xb0, 0x6c, 0xcb, 0xb1, 0x3f, 0xbd, 0xdf, 0x74,
-	0xda, 0x3b, 0xbb, 0x56, 0xa7, 0xbd, 0xa1, 0x6b, 0x78, 0x11, 0x2a, 0x59, 0xd8, 0x7e, 0xfd, 0x4a,
-	0x47, 0xb7, 0xb5, 0x5b, 0x9d, 0xae, 0x35, 0x86, 0x73, 0x18, 0xc3, 0xfc, 0x0d, 0xdc, 0xec, 0x76,
-	0x3b, 0x7a, 0x7e, 0xed, 0x27, 0x82, 0xca, 0x9d, 0x03, 0xe3, 0x27, 0x60, 0x58, 0xad, 0x16, 0xdd,
-	0x6c, 0x59, 0x76, 0xbb, 0xbb, 0x73, 0x37, 0xd1, 0x80, 0xea, 0x3d, 0xb6, 0xf7, 0x61, 0x5b, 0x47,
-	0x0f, 0x32, 0xdb, 0xed, 0x1d, 0x3d, 0xf7, 0x30, 0x63, 0x7d, 0xd4, 0xf3, 0xf8, 0x31, 0x2c, 0xdd,
-	0x63, 0x3a, 0x56, 0xcf, 0xd6, 0x0b, 0x78, 0x19, 0x1e, 0xdd, 0xa3, 0xb6, 0xda, 0xb4, 0x67, 0xeb,
-	0x53, 0xcd, 0xbd, 0xd3, 0x73, 0xa2, 0x9d, 0x9d, 0x13, 0xed, 0xf2, 0x9c, 0xa0, 0xaf, 0x09, 0x41,
-	0x3f, 0x12, 0x82, 0x4e, 0x12, 0x82, 0x4e, 0x13, 0x82, 0xfe, 0x24, 0x04, 0xfd, 0x4d, 0x88, 0x76,
-	0x99, 0x10, 0xf4, 0xed, 0x82, 0x68, 0xa7, 0x17, 0x44, 0x3b, 0xbb, 0x20, 0xda, 0xe7, 0x86, 0x27,
-	0xe4, 0xde, 0xb0, 0x5f, 0x1f, 0x04, 0x87, 0xa6, 0x17, 0xb1, 0x2f, 0xcc, 0x67, 0xe6, 0xf8, 0xbb,
-	0x9b, 0xa3, 0x75, 0xf3, 0x3f, 0xbf, 0x7a, 0xbf, 0xa8, 0x1e, 0xeb, 0xff, 0x02, 0x00, 0x00, 0xff,
-	0xff, 0x56, 0x57, 0xa2, 0x61, 0x0c, 0x04, 0x00, 0x00,
+	// 410 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x92, 0xb1, 0x6e, 0xd4, 0x30,
+	0x1c, 0xc6, 0xe3, 0xbb, 0x23, 0xd7, 0x98, 0x16, 0x8a, 0x55, 0x89, 0x08, 0x09, 0x13, 0x65, 0xca,
+	0x94, 0x88, 0xf4, 0x0d, 0x8e, 0x01, 0xc1, 0x00, 0x92, 0x87, 0x0e, 0x2c, 0x91, 0x93, 0x98, 0xd4,
+	0xea, 0x9d, 0x1d, 0xec, 0x7f, 0x22, 0x46, 0x1e, 0x81, 0xc7, 0xe0, 0x19, 0x78, 0x82, 0x8e, 0x37,
+	0x76, 0x42, 0x5c, 0x6e, 0x61, 0xec, 0x23, 0xa0, 0x38, 0x50, 0x8e, 0xa1, 0x53, 0xbe, 0x7c, 0xfe,
+	0xfe, 0xff, 0x9f, 0xf5, 0xc9, 0x38, 0x6e, 0xaf, 0x9a, 0xec, 0x73, 0xc5, 0xdb, 0x4c, 0x2a, 0x10,
+	0x46, 0xf1, 0x75, 0xd6, 0x1a, 0x0d, 0xda, 0x79, 0xa9, 0x93, 0x24, 0x58, 0xeb, 0x2b, 0x99, 0x8e,
+	0xc6, 0xb3, 0xb3, 0x46, 0x37, 0x7a, 0x0a, 0x8c, 0x6a, 0x0a, 0xc4, 0xef, 0xf0, 0xf2, 0x15, 0x6f,
+	0xa1, 0x33, 0x82, 0xbc, 0xc4, 0x4b, 0x23, 0x1a, 0xa9, 0x95, 0x0d, 0x51, 0x34, 0x4f, 0x1e, 0xe6,
+	0x4f, 0xd2, 0xbb, 0xe9, 0x94, 0xb9, 0x93, 0xd5, 0xe2, 0xfa, 0xc7, 0x0b, 0x8f, 0xfd, 0xcd, 0xbd,
+	0x5d, 0x1c, 0xcd, 0x4e, 0xe7, 0x0c, 0x5b, 0xe0, 0x20, 0x2d, 0xc8, 0xca, 0xc6, 0xdf, 0x11, 0xf6,
+	0xa7, 0x2c, 0x21, 0x78, 0xa1, 0xf8, 0x46, 0x84, 0x28, 0x42, 0x49, 0xc0, 0x9c, 0x26, 0xaf, 0xf1,
+	0x63, 0x5d, 0x5a, 0x61, 0x7a, 0x0e, 0xe3, 0x82, 0xa2, 0xcf, 0x43, 0xec, 0x58, 0xe1, 0x01, 0xeb,
+	0xfd, 0xbf, 0xc4, 0x45, 0xfe, 0x07, 0xf9, 0xe8, 0x70, 0xec, 0x22, 0x77, 0x64, 0xec, 0xc8, 0x06,
+	0x0a, 0x90, 0x1b, 0xc1, 0x8e, 0x84, 0xaa, 0x27, 0x35, 0x93, 0x35, 0x0b, 0x5a, 0x6e, 0x84, 0x82,
+	0x42, 0xd6, 0x0c, 0x73, 0x00, 0x23, 0xcb, 0x0e, 0x84, 0x65, 0xbe, 0xe8, 0x85, 0x02, 0xcb, 0xfc,
+	0xf1, 0xca, 0x9d, 0x65, 0xc7, 0x87, 0x6b, 0xe3, 0x4f, 0xf8, 0xe4, 0x3f, 0x36, 0x79, 0x8a, 0x97,
+	0x63, 0xb0, 0x90, 0x75, 0xb8, 0x88, 0x50, 0x72, 0x32, 0xcd, 0xbd, 0xa9, 0xc9, 0x19, 0x7e, 0x50,
+	0xe9, 0x4e, 0x41, 0x38, 0x73, 0xf6, 0xf4, 0x43, 0x9e, 0x63, 0xdc, 0xf3, 0x75, 0x27, 0x8a, 0x52,
+	0x82, 0x0d, 0xe7, 0x11, 0x4a, 0x7c, 0x16, 0x38, 0x67, 0x25, 0x61, 0x6c, 0x0b, 0x9d, 0xce, 0xd8,
+	0xf1, 0x5d, 0x5b, 0x85, 0xac, 0x57, 0x97, 0xdb, 0x1d, 0xf5, 0x6e, 0x76, 0xd4, 0xbb, 0xdd, 0x51,
+	0xf4, 0x65, 0xa0, 0xe8, 0xdb, 0x40, 0xd1, 0xf5, 0x40, 0xd1, 0x76, 0xa0, 0xe8, 0xe7, 0x40, 0xd1,
+	0xaf, 0x81, 0x7a, 0xb7, 0x03, 0x45, 0x5f, 0xf7, 0xd4, 0xdb, 0xee, 0xa9, 0x77, 0xb3, 0xa7, 0xde,
+	0x87, 0xbc, 0x91, 0x70, 0xd9, 0x95, 0x69, 0xa5, 0x37, 0x59, 0x63, 0xf8, 0x47, 0xae, 0x78, 0x36,
+	0xf6, 0x97, 0xf5, 0xe7, 0xd9, 0x3d, 0xaf, 0xa2, 0xf4, 0xdd, 0xe7, 0xfc, 0x77, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0x05, 0x16, 0x3d, 0xd4, 0x37, 0x02, 0x00, 0x00,
 }
 
-func (x DataType) String() string {
-	s, ok := DataType_name[int32(x)]
-	if ok {
-		return s
-	}
-	return strconv.Itoa(int(x))
-}
-func (x AggregationType) String() string {
-	s, ok := AggregationType_name[int32(x)]
-	if ok {
-		return s
-	}
-	return strconv.Itoa(int(x))
-}
 func (this *Capture) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -421,14 +258,6 @@ func (this *Capture) Equal(that interface{}) bool {
 	}
 	for i := range this.Regions {
 		if !this.Regions[i].Equal(&that1.Regions[i]) {
-			return false
-		}
-	}
-	if len(this.Statistics) != len(that1.Statistics) {
-		return false
-	}
-	for i := range this.Statistics {
-		if !this.Statistics[i].Equal(&that1.Statistics[i]) {
 			return false
 		}
 	}
@@ -466,36 +295,6 @@ func (this *Region) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *Statistic) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*Statistic)
-	if !ok {
-		that2, ok := that.(Statistic)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.Name != that1.Name {
-		return false
-	}
-	if this.DataType != that1.DataType {
-		return false
-	}
-	if this.AggregationType != that1.AggregationType {
-		return false
-	}
-	return true
-}
 func (this *ObservationV2) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -515,7 +314,7 @@ func (this *ObservationV2) Equal(that interface{}) bool {
 	} else if this == nil {
 		return false
 	}
-	if this.StatisticId != that1.StatisticId {
+	if this.StatId != that1.StatId {
 		return false
 	}
 	if this.Count != that1.Count {
@@ -530,7 +329,7 @@ func (this *Capture) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 5)
 	s = append(s, "&proto.Capture{")
 	if this.Regions != nil {
 		vs := make([]*Region, len(this.Regions))
@@ -538,13 +337,6 @@ func (this *Capture) GoString() string {
 			vs[i] = &this.Regions[i]
 		}
 		s = append(s, "Regions: "+fmt.Sprintf("%#v", vs)+",\n")
-	}
-	if this.Statistics != nil {
-		vs := make([]*Statistic, len(this.Statistics))
-		for i := range vs {
-			vs[i] = &this.Statistics[i]
-		}
-		s = append(s, "Statistics: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -566,25 +358,13 @@ func (this *Region) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Statistic) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 7)
-	s = append(s, "&proto.Statistic{")
-	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
-	s = append(s, "DataType: "+fmt.Sprintf("%#v", this.DataType)+",\n")
-	s = append(s, "AggregationType: "+fmt.Sprintf("%#v", this.AggregationType)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
 func (this *ObservationV2) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
 	s = append(s, "&proto.ObservationV2{")
-	s = append(s, "StatisticId: "+fmt.Sprintf("%#v", this.StatisticId)+",\n")
+	s = append(s, "StatId: "+fmt.Sprintf("%#v", this.StatId)+",\n")
 	s = append(s, "Count: "+fmt.Sprintf("%#v", this.Count)+",\n")
 	s = append(s, "ValueBits: "+fmt.Sprintf("%#v", this.ValueBits)+",\n")
 	s = append(s, "}")
@@ -618,20 +398,6 @@ func (m *Capture) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Statistics) > 0 {
-		for iNdEx := len(m.Statistics) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Statistics[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintXcap(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x12
-		}
-	}
 	if len(m.Regions) > 0 {
 		for iNdEx := len(m.Regions) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -693,46 +459,6 @@ func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Statistic) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *Statistic) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Statistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.AggregationType != 0 {
-		i = encodeVarintXcap(dAtA, i, uint64(m.AggregationType))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.DataType != 0 {
-		i = encodeVarintXcap(dAtA, i, uint64(m.DataType))
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = encodeVarintXcap(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *ObservationV2) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -753,6 +479,11 @@ func (m *ObservationV2) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.StatId != 0 {
+		i = encodeVarintXcap(dAtA, i, uint64(m.StatId))
+		i--
+		dAtA[i] = 0x20
+	}
 	if m.ValueBits != 0 {
 		i -= 8
 		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ValueBits))
@@ -763,11 +494,6 @@ func (m *ObservationV2) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintXcap(dAtA, i, uint64(m.Count))
 		i--
 		dAtA[i] = 0x10
-	}
-	if m.StatisticId != 0 {
-		i = encodeVarintXcap(dAtA, i, uint64(m.StatisticId))
-		i--
-		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
@@ -795,12 +521,6 @@ func (m *Capture) Size() (n int) {
 			n += 1 + l + sovXcap(uint64(l))
 		}
 	}
-	if len(m.Statistics) > 0 {
-		for _, e := range m.Statistics {
-			l = e.Size()
-			n += 1 + l + sovXcap(uint64(l))
-		}
-	}
 	return n
 }
 
@@ -823,39 +543,20 @@ func (m *Region) Size() (n int) {
 	return n
 }
 
-func (m *Statistic) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + sovXcap(uint64(l))
-	}
-	if m.DataType != 0 {
-		n += 1 + sovXcap(uint64(m.DataType))
-	}
-	if m.AggregationType != 0 {
-		n += 1 + sovXcap(uint64(m.AggregationType))
-	}
-	return n
-}
-
 func (m *ObservationV2) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.StatisticId != 0 {
-		n += 1 + sovXcap(uint64(m.StatisticId))
-	}
 	if m.Count != 0 {
 		n += 1 + sovXcap(uint64(m.Count))
 	}
 	if m.ValueBits != 0 {
 		n += 9
+	}
+	if m.StatId != 0 {
+		n += 1 + sovXcap(uint64(m.StatId))
 	}
 	return n
 }
@@ -875,14 +576,8 @@ func (this *Capture) String() string {
 		repeatedStringForRegions += strings.Replace(strings.Replace(f.String(), "Region", "Region", 1), `&`, ``, 1) + ","
 	}
 	repeatedStringForRegions += "}"
-	repeatedStringForStatistics := "[]Statistic{"
-	for _, f := range this.Statistics {
-		repeatedStringForStatistics += strings.Replace(strings.Replace(f.String(), "Statistic", "Statistic", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForStatistics += "}"
 	s := strings.Join([]string{`&Capture{`,
 		`Regions:` + repeatedStringForRegions + `,`,
-		`Statistics:` + repeatedStringForStatistics + `,`,
 		`}`,
 	}, "")
 	return s
@@ -903,26 +598,14 @@ func (this *Region) String() string {
 	}, "")
 	return s
 }
-func (this *Statistic) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&Statistic{`,
-		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
-		`DataType:` + fmt.Sprintf("%v", this.DataType) + `,`,
-		`AggregationType:` + fmt.Sprintf("%v", this.AggregationType) + `,`,
-		`}`,
-	}, "")
-	return s
-}
 func (this *ObservationV2) String() string {
 	if this == nil {
 		return "nil"
 	}
 	s := strings.Join([]string{`&ObservationV2{`,
-		`StatisticId:` + fmt.Sprintf("%v", this.StatisticId) + `,`,
 		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
 		`ValueBits:` + fmt.Sprintf("%v", this.ValueBits) + `,`,
+		`StatId:` + fmt.Sprintf("%v", this.StatId) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -995,40 +678,6 @@ func (m *Capture) Unmarshal(dAtA []byte) error {
 			}
 			m.Regions = append(m.Regions, Region{})
 			if err := m.Regions[len(m.Regions)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Statistics = append(m.Statistics, Statistic{})
-			if err := m.Statistics[len(m.Statistics)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1175,129 +824,6 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Statistic) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowXcap
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Statistic: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Statistic: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DataType", wireType)
-			}
-			m.DataType = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DataType |= DataType(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AggregationType", wireType)
-			}
-			m.AggregationType = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.AggregationType |= AggregationType(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipXcap(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *ObservationV2) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1327,25 +853,6 @@ func (m *ObservationV2) Unmarshal(dAtA []byte) error {
 			return fmt.Errorf("proto: ObservationV2: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StatisticId", wireType)
-			}
-			m.StatisticId = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.StatisticId |= uint32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
@@ -1375,6 +882,25 @@ func (m *ObservationV2) Unmarshal(dAtA []byte) error {
 			}
 			m.ValueBits = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StatId", wireType)
+			}
+			m.StatId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StatId |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipXcap(dAtA[iNdEx:])
