@@ -12,20 +12,20 @@ import (
 
 func TestCaptureMergeDecodedMatchesUnmarshalThenMerge(t *testing.T) {
 	ctx, src := NewCapture(context.Background(), nil)
-	sum := NewStatisticInt64("sum", AggregationTypeSum)
-	min := NewStatisticFloat64("min", AggregationTypeMin)
-	flag := NewStatisticFlag("flag")
+	statSum := NewStatisticInt64("sum", AggregationTypeSum)
+	statMin := NewStatisticFloat64("min", AggregationTypeMin)
+	statFlag := NewStatisticFlag("flag")
 
 	_, first := StartRegion(ctx, "worker.read")
-	first.Record(sum.Observe(10))
-	first.Record(min.Observe(4.5))
-	first.Record(flag.Observe(false))
+	first.Record(statSum.Observe(10))
+	first.Record(statMin.Observe(4.5))
+	first.Record(statFlag.Observe(false))
 	first.End()
 
 	_, second := StartRegion(ctx, "worker.read")
-	second.Record(sum.Observe(20))
-	second.Record(min.Observe(2.5))
-	second.Record(flag.Observe(true))
+	second.Record(statSum.Observe(20))
+	second.Record(statMin.Observe(2.5))
+	second.Record(statFlag.Observe(true))
 	second.End()
 	src.End()
 
