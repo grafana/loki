@@ -325,6 +325,20 @@ func (c *coordinator) compactTenantLogs(
 	oldPaths := []string{converged.Path}
 	newEntries := makeTocEntries(tasks, outputs)
 
+	// makeTocEntries recomputes sizes from the source object's internal section
+	// stats. A converged row of 0 means unknown, but legacy objects carry
+	// positive internal stats from the old statsCalculation that counted only
+	// len(log.Line) and omitted structured metadata. Summing those undercounts
+	// yields a positive total. Persisting 0 keeps the row unknown, which is the
+	// only way to later distinguish indexes written with incorrect line-only
+	// stats and backfill them from authoritative data without rescanning every
+	// object.
+	if converged.UncompressedLogsSize == 0 {
+		for i := range newEntries {
+			newEntries[i].UncompressedLogsSize = 0
+		}
+	}
+
 	// removed = the single converged index this window replaces; added = the
 	// merged indexes written; dispatched = log-merge tasks run this cycle.
 	stats := compactionStats{
@@ -346,6 +360,8 @@ func (c *coordinator) compactTenantLogs(
 		// added/removed; only report the tasks dispatched.
 		return tenantCycleLogCompacted, compactionStats{dispatched: len(tasks)}, nil
 	}
+
+	c.fillFileSizes(ctx, newEntries)
 
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
@@ -427,6 +443,8 @@ func (c *coordinator) compactTenant(
 		return compactionStats{}, nil
 	}
 
+	c.fillFileSizes(ctx, newEntries)
+
 	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
@@ -487,12 +505,52 @@ func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []strin
 	return ids
 }
 
+// fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
+// filling in index FileSize before a ToC replace.
+const fileSizeStatConcurrency = 16
+
+// fillFileSizes stats each entry's object and sets FileSize. Best-effort: when
+// the stat fails (missing or not-yet-visible object) the entry keeps its zero
+// FileSize and is persisted as-is.
+//
+// Stats run concurrently (bounded by fileSizeStatConcurrency) because each
+// bucket.Attributes call can take tens of milliseconds; serializing hundreds
+// of entries would dominate the cycle. Each goroutine writes a distinct slice
+// element, so the concurrent writes do not race.
+func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(fileSizeStatConcurrency)
+	for i := range entries {
+		g.Go(func() error {
+			start := time.Now()
+			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
+			c.metrics.observeFileSizeStat(time.Since(start))
+			if err != nil {
+				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
+				return nil
+			}
+			if attrs.Size > 0 {
+				entries[i].FileSize = uint64(attrs.Size)
+			}
+			return nil
+		})
+	}
+	_ = g.Wait()
+}
+
 // makeTocEntries pairs each output path with the time bounds derived
 // from its task's source SectionRefs. tasks[i] is the TaskSpec that produced
 // outputs[i].
 //
 // Time bounds: min(MinTimestamp) / max(MaxTimestamp) across all SectionRefs
-// in the task.
+// in the task. UncompressedLogsSize is the sum of UncompressedSize across all
+// sections in the task.
+//
+// A section size of 0 means "unknown" (e.g. a legacy ToC row written before
+// sizes were recorded). Summing an unknown into a known total would publish a
+// partial sum that looks exact, so a single unknown input poisons the whole
+// task's total: the result is 0 (unknown) unless every contributing section is
+// known.
 func makeTocEntries(
 	tasks []*compactionv2pb.TaskSpec,
 	outputs []string,
@@ -500,6 +558,8 @@ func makeTocEntries(
 	entries := make([]metastore.TableOfContentsEntry, len(outputs))
 	for i, ts := range tasks {
 		minTS, maxTS := int64(0), int64(0)
+		var uncompressed uint64
+		sizeKnown := true
 		first := true
 		for _, run := range ts.Runs {
 			for _, sec := range run.Sections {
@@ -507,20 +567,28 @@ func makeTocEntries(
 					minTS = sec.MinTimestamp
 					maxTS = sec.MaxTimestamp
 					first = false
-					continue
+				} else {
+					if sec.MinTimestamp < minTS {
+						minTS = sec.MinTimestamp
+					}
+					if sec.MaxTimestamp > maxTS {
+						maxTS = sec.MaxTimestamp
+					}
 				}
-				if sec.MinTimestamp < minTS {
-					minTS = sec.MinTimestamp
+				if sec.UncompressedSize == 0 {
+					sizeKnown = false
 				}
-				if sec.MaxTimestamp > maxTS {
-					maxTS = sec.MaxTimestamp
-				}
+				uncompressed += uint64(sec.UncompressedSize)
 			}
 		}
+		if !sizeKnown {
+			uncompressed = 0
+		}
 		entries[i] = metastore.TableOfContentsEntry{
-			Path:      outputs[i],
-			StartTime: time.Unix(0, minTS).UTC(),
-			EndTime:   time.Unix(0, maxTS).UTC(),
+			Path:                 outputs[i],
+			StartTime:            time.Unix(0, minTS).UTC(),
+			EndTime:              time.Unix(0, maxTS).UTC(),
+			UncompressedLogsSize: uncompressed,
 		}
 	}
 	return entries

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
 	"runtime/pprof"
 	gotrace "runtime/trace"
 	"sync"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/scratch"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -116,15 +116,6 @@ func (t *thread) State() threadState {
 	t.stateMut.RLock()
 	defer t.stateMut.RUnlock()
 	return t.state
-}
-
-// dataBucketXCap wraps the source-object bucket for tracing, returning nil when
-// no separate data bucket is configured so the executor falls back to Bucket.
-func (t *thread) dataBucketXCap() objstore.Bucket {
-	if t.DataBucket == nil {
-		return nil
-	}
-	return bucket.NewXCapBucket(t.DataBucket)
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
@@ -227,8 +218,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	cfg := executor.Config{
 		BatchSize:      t.BatchSize,
 		PrefetchBytes:  t.PrefetchBytes,
-		Bucket:         bucket.NewXCapBucket(t.Bucket),
-		DataBucket:     t.dataBucketXCap(),
+		Bucket:         t.Bucket,
+		DataBucket:     t.DataBucket,
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
@@ -463,18 +454,21 @@ func commOutcome(err error) metrictimer.Outcome {
 	return outcomeError
 }
 
-// recordBatchBytes returns the total in-memory size in bytes of all column
-// buffers in a RecordBatch.
-func recordBatchBytes(rec arrow.RecordBatch) int64 {
-	var n int64
-	for i := 0; i < int(rec.NumCols()); i++ {
-		n += int64(rec.Column(i).Data().SizeInBytes())
-	}
-	return n
-}
-
-func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (int, error) {
+func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (totalRows int, retErr error) {
 	region := xcap.RegionFromContext(ctx)
+
+	// Draining runs on the worker thread's goroutine, which is not covered by any
+	// request-level recovery middleware. An unrecovered panic here (e.g. from a
+	// pipeline operator) would crash the entire worker process and abort every
+	// in-flight task. Convert it into a task error so only this task fails.
+	defer func() {
+		if p := recover(); p != nil {
+			stack := make([]byte, 8*1024)
+			stack = stack[:runtime.Stack(stack, false)]
+			level.Error(logger).Log("msg", "recovered from panic while draining pipeline", "panic", p, "stack", string(stack))
+			retErr = fmt.Errorf("panic while draining pipeline: %v", p)
+		}
+	}()
 
 	var (
 		openDuration  time.Duration
@@ -501,7 +495,6 @@ func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase
 		return 0, openErr
 	}
 
-	var totalRows int
 	for {
 		startRead := time.Now()
 		rec, err := pipeline.Read(ctx)
@@ -548,7 +541,6 @@ func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase
 
 		region.Record(workerstat.TaskRecordsSent.Observe(1))
 		region.Record(workerstat.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(workerstat.TaskWireBytes.Observe(recordBatchBytes(rec)))
 	}
 
 	return totalRows, nil

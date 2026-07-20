@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -97,34 +96,19 @@ func (wc *workerConn) Type() connectionType {
 }
 
 // HandleHello handles a WorkerHelloMessage. Returns an error if the worker is
-// not in a valid state for a HelloMessage, or if the message is invalid.
+// not in a valid state for a HelloMessage.
 //
 // After HandleHello is called, the worker connection is marked as a control
 // plane connection.
-func (wc *workerConn) HandleHello(msg wire.WorkerHelloMessage) error {
+func (wc *workerConn) HandleHello() error {
 	wc.mut.Lock()
 	defer wc.mut.Unlock()
 
 	if got, want := wc.ty, connectionTypeInitial; got != want {
 		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
-	} else if msg.Threads <= 0 {
-		return errors.New("worker must advertise at least one thread")
 	}
 
 	wc.ty = connectionTypeControlPlane
-	return nil
-}
-
-// MarkReady marks the worker as ready to receive tasks. Returns an error if the
-// worker is not a control plane connection, or if the worker is at full
-// capacity.
-func (wc *workerConn) MarkReady() error {
-	wc.mut.Lock()
-	defer wc.mut.Unlock()
-
-	if got, want := wc.ty, connectionTypeControlPlane; got != want {
-		return fmt.Errorf("worker connection must be in state %q, got %q", want, got)
-	}
 	return nil
 }
 

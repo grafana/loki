@@ -608,8 +608,6 @@ func (page *readerPage) PageDesc() *PageDesc {
 }
 
 func (page *readerPage) ReadPage(ctx context.Context) (PageData, error) {
-	region := xcap.RegionFromContext(ctx)
-	region.Record(dataobj.StatDatasetPagesScanned.Observe(1))
 	if page.data != nil {
 		return page.data, nil
 	}

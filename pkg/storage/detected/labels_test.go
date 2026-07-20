@@ -271,4 +271,35 @@ func TestMergeLabels(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, result, 2) // Should treat App and app as different labels
 	})
+
+	// Reproduces grafana/loki#16315: a multi-tenant detected_labels query 500s
+	// with "too short binary".
+	//
+	// MergeLabels runs twice on the same response: first in
+	// MultiTenantQuerier.DetectedLabels, which merges the per-tenant sketches,
+	// and again in the query frontend when the request is split across time
+	// intervals. The first merge drops the sketch (Sketch: nil), so the second
+	// merge feeds nil into hyperloglog.UnmarshalBinary, which rejects it.
+	t.Run("re-merging a merged result must not fail", func(t *testing.T) {
+		var labels []*logproto.DetectedLabel
+		for _, name := range []string{"app", "env", "service"} {
+			sketch := hyperloglog.New()
+			for i := 0; i < 100; i++ {
+				sketch.Insert([]byte(name + "-value-" + string(rune(i))))
+			}
+			sketchData, err := sketch.MarshalBinary()
+			require.NoError(t, err)
+			labels = append(labels, &logproto.DetectedLabel{Label: name, Sketch: sketchData})
+		}
+
+		// First merge: MultiTenantQuerier.DetectedLabels merging tenant responses.
+		merged, err := MergeLabels(labels)
+		require.NoError(t, err)
+		require.Len(t, merged, 3)
+
+		// Second merge: query frontend merging split-interval responses.
+		remerged, err := MergeLabels(merged)
+		require.NoError(t, err)
+		require.Len(t, remerged, 3)
+	})
 }

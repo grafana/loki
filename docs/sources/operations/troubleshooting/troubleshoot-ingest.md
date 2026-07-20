@@ -886,7 +886,7 @@ These errors occur when using structured metadata incorrectly.
 
 **Cause:**
 
-Structured metadata is disabled in the Loki configuration. This feature must be explicitly enabled.
+`allow_structured_metadata` defaults to `true`, so this error usually means it has been explicitly disabled, either globally or as a per-tenant override.
 
 **Default configuration:**
 

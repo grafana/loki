@@ -234,10 +234,7 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 
 	switch k := mf.Kind.(type) {
 	case *wirepb.MessageFrame_WorkerHello:
-		return WorkerHelloMessage{Threads: int(k.WorkerHello.Threads)}, nil
-
-	case *wirepb.MessageFrame_WorkerSubscribe:
-		return WorkerSubscribeMessage{}, nil
+		return WorkerHelloMessage{}, nil
 
 	case *wirepb.MessageFrame_WorkerReady:
 		return WorkerReadyMessage{}, nil
@@ -523,12 +520,7 @@ func (c *metricCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, er
 	switch v := from.(type) {
 	case WorkerHelloMessage:
 		mf.Kind = &wirepb.MessageFrame_WorkerHello{
-			WorkerHello: &wirepb.WorkerHelloMessage{Threads: uint64(v.Threads)},
-		}
-
-	case WorkerSubscribeMessage:
-		mf.Kind = &wirepb.MessageFrame_WorkerSubscribe{
-			WorkerSubscribe: &wirepb.WorkerSubscribeMessage{},
+			WorkerHello: &wirepb.WorkerHelloMessage{},
 		}
 
 	case WorkerReadyMessage:

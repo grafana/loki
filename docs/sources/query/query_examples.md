@@ -105,7 +105,7 @@ further filters out log lines.
 It includes those log lines that contain a `status_code` label
 with any value other than the value 200,
 as well as log lines that contain a `duration` label
-with a value greater than 30 sections,
+with a value greater than 30 seconds,
 
 While every query will have a stream selector,
 not all queries will have line and label filters.

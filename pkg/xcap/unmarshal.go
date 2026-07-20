@@ -62,15 +62,7 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 		}
 	}
 
-	var regionID identifier
-	copy(regionID[:], protoRegion.Id)
-
-	var parentID identifier
-	copy(parentID[:], protoRegion.ParentId)
-
 	region := &Region{
-		id:           regionID,
-		parentID:     parentID,
 		name:         protoRegion.Name,
 		observations: observations,
 		ended:        true, // Regions from proto are always ended
@@ -109,16 +101,10 @@ func unmarshalStatistic(protoStat *proto.Statistic) (Statistic, error) {
 		return nil, fmt.Errorf("failed to unmarshal aggregation type: %w", err)
 	}
 
-	switch dataType {
-	case DataTypeInt64:
-		return NewStatisticInt64(protoStat.Name, aggType), nil
-	case DataTypeFloat64:
-		return NewStatisticFloat64(protoStat.Name, aggType), nil
-	case DataTypeBool:
-		return NewStatisticFlag(protoStat.Name), nil
-	default:
-		return nil, fmt.Errorf("unsupported data type: %v", protoStat.DataType)
-	}
+	// Statistics are immutable and shared across captures via the intern cache,
+	// so repeated captures referencing the same statistic do not each allocate a
+	// fresh instance.
+	return internStatistic(protoStat.Name, dataType, aggType)
 }
 
 // unmarshalDataType converts a proto DataType to Go DataType.
