@@ -2384,6 +2384,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Config:          t.Cfg.DataObj.Compaction,
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
+		Limits:          t.Overrides,
 		Logger:          logger,
 		Registerer:      prometheus.DefaultRegisterer,
 	})

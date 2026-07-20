@@ -33,4 +33,5 @@ type CombinedLimits interface {
 	pattern.Limits
 	bucket.SSEConfigProvider
 	SortSchemaLabels(userID string) []string
+	DataObjCompactionEnabled(userID string) bool
 }
