@@ -25,7 +25,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
 		func(path string) (index.Index, error) {
 			return openMockIndexFile(t, path), nil
-		}, util_log.Logger)
+		}, util_log.Logger, testDownloadTimeout)
 	require.NoError(t, err)
 
 	require.NoError(t, idxSet.Init(false, util_log.Logger))
@@ -211,7 +211,7 @@ func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
 			idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
 				func(path string) (index.Index, error) {
 					return openMockIndexFile(t, path), nil
-				}, util_log.Logger)
+				}, util_log.Logger, testDownloadTimeout)
 			require.NoError(t, err)
 			defer idxSet.Close()
 

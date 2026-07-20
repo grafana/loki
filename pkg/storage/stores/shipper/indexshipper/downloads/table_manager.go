@@ -67,7 +67,10 @@ type Config struct {
 	SyncInterval      time.Duration
 	CacheTTL          time.Duration
 	QueryReadyNumDays int
-	Limits            Limits
+	// DownloadTimeout bounds how long an indexSet's Init may take to download
+	// its files from object storage.
+	DownloadTimeout time.Duration
+	Limits          Limits
 }
 
 type tableManager struct {
@@ -265,7 +268,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
 			tm.tables[tableName] = table
 		}
 	}
@@ -511,7 +514,7 @@ func (tm *tableManager) loadLocalTables() error {
 		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
 		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
 		if err != nil {
 			return err
 		}
