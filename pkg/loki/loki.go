@@ -463,12 +463,14 @@ type Loki struct {
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
-	Tee                distributor.Tee
-	PushParserWrapper  push.RequestParserWrapper
-	HTTPAuthMiddleware middleware.Interface
+	Tee                   distributor.Tee
+	PushParserWrapper     push.RequestParserWrapper
+	HTTPAuthMiddleware    middleware.Interface
+	AuthMiddlewareSetupFn func() error
 
-	Codec   codec.Codec
-	Metrics *server.Metrics
+	Codec        codec.Codec
+	CodecWrapper func(codec.Codec) codec.Codec
+	Metrics      *server.Metrics
 
 	UsageTracker push.UsageTracker
 
