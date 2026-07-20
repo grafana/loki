@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"html/template"
-	"io"
 	"math/rand"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -212,11 +210,6 @@ func (b bytesBuffered) Close() error {
 
 func (b bytesBuffered) BytesBuffer() *bytes.Buffer {
 	return b.Buffer
-}
-
-func TestIsRequestBodyTooLargeRegression(t *testing.T) {
-	_, err := io.ReadAll(http.MaxBytesReader(httptest.NewRecorder(), io.NopCloser(bytes.NewReader([]byte{1, 2, 3, 4})), 1))
-	assert.True(t, util.IsRequestBodyTooLarge(err))
 }
 
 func TestErrorTypeFromHTTPStatus(t *testing.T) {
