@@ -34,5 +34,4 @@ var (
 	TaskRecordsSent          = xcap.NewStatisticInt64("task.records.sent", xcap.AggregationTypeSum)
 	TaskRowsSent             = xcap.NewStatisticInt64("task.rows.sent", xcap.AggregationTypeSum)
 	TaskDrainRecordsReceived = xcap.NewStatisticInt64("task.drain.records.received", xcap.AggregationTypeSum)
-	TaskWireBytes            = xcap.NewStatisticInt64("task.wire.bytes", xcap.AggregationTypeSum)
 )

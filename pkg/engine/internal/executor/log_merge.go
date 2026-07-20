@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
@@ -109,20 +108,17 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxObj, idxCloser, err := calc.Flush()
+	idxObj, idxCloser, _, err := calc.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing index: %w", err)
 	}
 
-	idxBytes, err := c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
+	_, err = c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
 	if err != nil {
 		return errors.Join(fmt.Errorf("uploading index %q: %w", node.OutputIndexPath, err), idxCloser.Close())
 	}
 	if err := idxCloser.Close(); err != nil {
 		return fmt.Errorf("closing index %q: %w", node.OutputIndexPath, err)
-	}
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		region.Record(statLogMergeIndexBytes.Observe(idxBytes))
 	}
 
 	stats.SourceObjects = len(sources)

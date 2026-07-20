@@ -144,7 +144,7 @@ With the move to the [Grafana-community/helm-charts repository](https://github.c
 
 ### Migrating from the Loki Repository Helm Chart to the Community Helm Chart
 
-If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 13.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
+If you are upgrading from the Helm chart previously hosted in the Loki repository (chart version 6.x) to the Grafana Community Helm chart (chart version 18.x), refer to the dedicated migration guide: [Upgrade to the Community Helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-community/).
 
 ### Helm Chart 6.50.0 - Respect the global registry in the sidecar image
 
@@ -568,7 +568,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 
 #### Write dedupe cache is deprecated
 
-Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/)).
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
 If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
@@ -1060,8 +1060,6 @@ Meanwhile, the legacy format is a string in the following format:
 This histogram reports the distribution of log line sizes by file. It has 8 buckets for every file being tailed.
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series generated so we are removing it.
-
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/metrics/#counter).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -1589,7 +1587,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#pipeline_stages) instead.
+The long deprecated `entry_parser` config in Promtail has been removed.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 

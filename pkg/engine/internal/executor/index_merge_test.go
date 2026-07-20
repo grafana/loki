@@ -579,7 +579,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, "service",
+	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
 		map[string]string{"service": "api"},
 		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
@@ -632,7 +632,7 @@ func buildSourceIndexWithBothKinds(t *testing.T, bucket objstore.Bucket, tenant,
 	statsBuilder.Append(stats.Stat{
 		ObjectPath:       "log-A",
 		SectionIndex:     0,
-		SortSchema:       "service,namespace",
+		SortSchema:       "label:service,label:namespace",
 		Labels:           map[string]string{"service": "api", "namespace": "default"},
 		MinTimestamp:     ts.UnixNano(),
 		MaxTimestamp:     ts.UnixNano() + 1000,
@@ -1126,7 +1126,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     ts1, // identical to source B
 			MaxTimestamp:     ts2, // identical to source B
@@ -1140,7 +1140,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     ts1, // identical to source A
 			MaxTimestamp:     ts2, // identical to source A
@@ -1176,7 +1176,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWins(t *testing.T) {
 	row := rows[0]
 	require.Equal(t, "log-X", row.ObjectPath)
 	require.Equal(t, int64(0), row.SectionIndex)
-	require.Equal(t, "service", row.SortSchema)
+	require.Equal(t, "label:service", row.SortSchema)
 	require.Equal(t, map[string]string{"service": "api"}, row.Labels)
 
 	// Timestamps unchanged (both inputs match).
@@ -1214,7 +1214,7 @@ func TestExecuteIndexMerge_MixedKinds(t *testing.T) {
 		{
 			ObjectPath:       "log-A",
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1351,7 +1351,7 @@ func TestExecuteIndexMerge_StatsDuplicateFirstWinsMultiSource(t *testing.T) {
 			{
 				ObjectPath:       "log-X",
 				SectionIndex:     0,
-				SortSchema:       "service",
+				SortSchema:       "label:service",
 				Labels:           map[string]string{"service": "api"},
 				MinTimestamp:     ts1, // identical across all sources
 				MaxTimestamp:     ts2, // identical across all sources
@@ -1437,7 +1437,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj1",
 		SectionIndex:     0,
-		SortSchema:       "my.svc",
+		SortSchema:       "label:my.svc",
 		Labels:           map[string]string{"my.svc": "api"},
 		MinTimestamp:     100,
 		MaxTimestamp:     200,
@@ -1477,7 +1477,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	}
 
 	// Verify the label name is NOT truncated: should be "my.svc", not "my"
-	require.Equal(t, "my.svc", row.SortSchema)
+	require.Equal(t, "label:my.svc", row.SortSchema)
 	require.Equal(t, map[string]string{"my.svc": "api"}, row.Labels)
 	require.Equal(t, "api", row.Labels["my.svc"])
 
@@ -1499,7 +1499,7 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "service,job",
+			SortSchema:       "label:service,label:job",
 			Labels:           map[string]string{"service": "api", "job": "j1"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1513,7 +1513,7 @@ func TestExecuteIndexMerge_StatsSortSchemaMismatch_FailsLoudly(t *testing.T) {
 		{
 			ObjectPath:       "log-X",
 			SectionIndex:     0,
-			SortSchema:       "job,service", // Different SortSchema
+			SortSchema:       "label:job,label:service", // Different SortSchema
 			Labels:           map[string]string{"job": "j1", "service": "api"},
 			MinTimestamp:     100,
 			MaxTimestamp:     200,
@@ -1587,7 +1587,7 @@ func buildMultiTenantSourceObject(t *testing.T, bucket objstore.Bucket, path str
 			statsBuilder.Append(stats.Stat{
 				ObjectPath:       objectPath,
 				SectionIndex:     int64(i),
-				SortSchema:       "service_name",
+				SortSchema:       "label:service_name",
 				Labels:           map[string]string{"service_name": fmt.Sprintf("svc-%s-%s-%d", tr.tenant, path, i)},
 				MinTimestamp:     ts.UnixNano(),
 				MaxTimestamp:     ts.UnixNano() + 1000,

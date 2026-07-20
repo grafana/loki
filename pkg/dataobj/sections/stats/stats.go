@@ -5,6 +5,7 @@ package stats
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -98,3 +99,23 @@ type Stat struct {
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
 type SectionEncoder func(rows []Stat, enc *columnar.Encoder) error
+
+// schemaLabelNames parses a comma-separated fully-qualified sort schema
+// ("label:svc,label:cluster") into its bare label names ("svc", "cluster").
+func schemaLabelNames(sortSchema string) []string {
+	if sortSchema == "" {
+		return nil
+	}
+	var names []string
+	for fqn := range strings.SplitSeq(sortSchema, ",") {
+		if fqn == "" {
+			continue
+		}
+		typ, name, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" || name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}

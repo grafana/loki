@@ -31,3 +31,13 @@ message Array {
 message Stats {
   int64 null_count = 1;
 }
+
+// BitpackedMetadata holds encoding-specific metadata for bitpacked arrays.
+message BitpackedMetadata {
+  uint64 block_size = 1;
+}
+
+// ZstdMetadata holds encoding-specific metadata for zstd-compressed arrays.
+message ZstdMetadata {
+  uint64 uncompressed_size = 1;
+}

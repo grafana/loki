@@ -3,6 +3,7 @@ package validation
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"reflect"
 	"testing"
@@ -1097,4 +1098,27 @@ otlp_config:
 			require.Equal(t, tc.exp, out)
 		})
 	}
+}
+
+func TestDataObjCompactionEnabled_DefaultsFalse(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	ov, err := NewOverrides(defaults, nil)
+	require.NoError(t, err)
+	require.False(t, ov.DataObjCompactionEnabled("tenant-29"))
+}
+
+func TestDataObjCompactionEnabled_PerTenantOverride(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	tenantLimits := map[string]*Limits{
+		"tenant-29": {DataObjCompactionEnabled: true},
+	}
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+	require.NoError(t, err)
+
+	require.True(t, ov.DataObjCompactionEnabled("tenant-29"))
+	require.False(t, ov.DataObjCompactionEnabled("tenant-1"))
 }

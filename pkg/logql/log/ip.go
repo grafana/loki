@@ -187,6 +187,15 @@ func (f *ipFilter) filter(line []byte) bool {
 
 	n := len(line)
 
+	// at returns line[idx], or 0 when idx is past the end of the line, so the
+	// IPv6 hint can still be evaluated for short addresses near the line end.
+	at := func(idx int) byte {
+		if idx < n {
+			return line[idx]
+		}
+		return 0
+	}
+
 	filterFn := func(line []byte, start int, charset string) (bool, int) {
 		iplen := bytesSpan(line[start:], []byte(charset))
 		if iplen < 0 {
@@ -213,7 +222,7 @@ func (f *ipFilter) filter(line []byte) bool {
 			continue
 		}
 
-		if i+4 < n && ipv6Hint([5]byte{line[i], line[i+1], line[i+2], line[i+3], line[i+4]}) {
+		if ipv6Hint([5]byte{at(i), at(i + 1), at(i + 2), at(i + 3), at(i + 4)}) {
 			ok, iplen := filterFn(line, i, IPv6Charset)
 			if ok {
 				return true

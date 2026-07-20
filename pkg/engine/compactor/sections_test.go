@@ -89,11 +89,13 @@ func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
 	require.Equal(t, window.Add(5*time.Hour).UnixNano(), got[1].MaxTimestamp)
 }
 
-// testIndex captures one (path, time range) entry to seed a ToC fixture.
+// testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
 type testIndex struct {
-	path  string
-	start time.Time
-	end   time.Time
+	path                 string
+	start                time.Time
+	end                  time.Time
+	fileSize             uint64
+	uncompressedLogsSize uint64
 }
 
 // writeToCWithIndexes writes a synthetic ToC containing one index pointer per
@@ -106,9 +108,11 @@ func writeToCWithIndexes(ctx context.Context, t *testing.T, bucket objstore.Buck
 	for tenant, paths := range entries {
 		for _, e := range paths {
 			require.NoError(t, w.WriteEntry(ctx, e.path, []multitenancy.TimeRange{{
-				Tenant:  tenant,
-				MinTime: e.start,
-				MaxTime: e.end,
+				Tenant:               tenant,
+				MinTime:              e.start,
+				MaxTime:              e.end,
+				FileSize:             e.fileSize,
+				UncompressedLogsSize: e.uncompressedLogsSize,
 			}}))
 		}
 	}
@@ -166,9 +170,9 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	path := "indexes/aa/converged"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
 	})
 
@@ -202,7 +206,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	path := "indexes/aa/multikey"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "service_name,namespace",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name,label:namespace",
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -219,7 +223,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	path := "indexes/aa/emptyschema"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "",
+		{ObjectPath: "[REDACTED]", SectionIndex: 0, SortSchema: "",
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -229,6 +233,60 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.Len(t, refs, 1)
 	require.Empty(t, refs[0].MinKey, "no sort keys -> empty MinKey")
 	require.Empty(t, refs[0].MaxKey)
-	require.Equal(t, "logs/log-0", refs[0].ObjectPath)
+	require.Equal(t, "[REDACTED]", refs[0].ObjectPath)
 	require.Equal(t, int64(100), refs[0].UncompressedSize)
+}
+
+// TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
+// populates indexEntry.FileSize and indexEntry.UncompressedLogsSize from a ToC
+// whose rows were written with non-zero sizes.
+func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"tenant-a": {
+			{path: "indexes/aa/idx-a-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour),
+				fileSize: 1024, uncompressedLogsSize: 2048},
+			{path: "indexes/bb/idx-a-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour),
+				fileSize: 512, uncompressedLogsSize: 4096},
+		},
+	})
+
+	got, err := loadTenantIndexes(ctx, bucket, window)
+	require.NoError(t, err)
+	require.Len(t, got["tenant-a"], 2)
+
+	// Build map by path to avoid order-dependent assertions (ToC order is not a contract).
+	byPath := make(map[string]indexEntry)
+	for _, e := range got["tenant-a"] {
+		byPath[e.Path] = e
+	}
+
+	idx0 := byPath["indexes/aa/idx-a-0"]
+	require.Equal(t, uint64(1024), idx0.FileSize)
+	require.Equal(t, uint64(2048), idx0.UncompressedLogsSize)
+
+	idx1 := byPath["indexes/bb/idx-a-1"]
+	require.Equal(t, uint64(512), idx1.FileSize)
+	require.Equal(t, uint64(4096), idx1.UncompressedLogsSize)
+}
+
+// TestSectionRefsFor_CopiesUncompressedSize verifies that sectionRefsFor
+// copies each entry's UncompressedLogsSize into the produced SectionRef.UncompressedSize.
+func TestSectionRefsFor_CopiesUncompressedSize(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
+	indexes := []indexEntry{
+		{Path: "indexes/aa/idx-0", Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour),
+			FileSize: 1024, UncompressedLogsSize: 2048},
+		{Path: "indexes/bb/idx-1", Start: window.Add(3 * time.Hour), End: window.Add(5 * time.Hour),
+			FileSize: 512, UncompressedLogsSize: 4096},
+	}
+
+	got := sectionRefsFor(indexes)
+	require.Len(t, got, 2)
+
+	require.Equal(t, int64(2048), got[0].UncompressedSize)
+	require.Equal(t, int64(4096), got[1].UncompressedSize)
 }

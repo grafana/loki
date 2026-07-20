@@ -12,7 +12,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -42,7 +42,7 @@ type RulesLimits interface {
 	RulerRemoteWriteTimeout(userID string) time.Duration
 	RulerRemoteWriteHeaders(userID string) map[string]string
 	RulerRemoteWriteRelabelConfigs(userID string) []*rulerutil.RelabelConfig
-	RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig
+	RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig
 	RulerRemoteWriteQueueCapacity(userID string) int
 	RulerRemoteWriteQueueMinShards(userID string) int
 	RulerRemoteWriteQueueMaxShards(userID string) int
