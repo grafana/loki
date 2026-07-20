@@ -1615,12 +1615,6 @@ dataobj:
     # CLI flag: -dataobj.compaction.enabled
     [enabled: <boolean> | default = false]
 
-    # Experimental: Comma-separated tenant IDs to compact. One worker is started
-    # per tenant at startup; changing the set requires a restart. Empty means no
-    # compaction workers run.
-    # CLI flag: -dataobj.compaction.tenants
-    [tenants: <string> | default = ""]
-
     # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
     # dispatched by the coordinator. 0 means unlimited (one goroutine per task
     # with no admission throttle).
@@ -4935,6 +4929,10 @@ shard_streams:
 # Experimental. Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj compaction runs for the tenant.
+# CLI flag: -dataobj-compaction.enable
+[dataobj_compaction_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
