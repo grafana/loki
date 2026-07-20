@@ -47,7 +47,7 @@ func BenchmarkCaptureUnmarshalAndMerge(b *testing.B) {
 	}
 }
 
-func BenchmarkCaptureMergeBinary(b *testing.B) {
+func BenchmarkCaptureMergeDecoded(b *testing.B) {
 	capture := benchmarkCapture(b)
 	data, err := capture.MarshalBinary()
 	if err != nil {
@@ -55,13 +55,15 @@ func BenchmarkCaptureMergeBinary(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for b.Loop() {
-		_, destination := NewCapture(context.Background(), nil)
-		if err := destination.MergeBinary(nil, data); err != nil {
+		decoded, err := DecodeBinary(data)
+		if err != nil {
 			b.Fatal(err)
 		}
+
+		_, destination := NewCapture(context.Background(), nil)
+		destination.MergeDecoded(nil, decoded)
 		benchmarkRegions = len(destination.Regions())
 	}
 }

@@ -956,7 +956,7 @@ func Test_Reader_Stats(t *testing.T) {
 	observations := region.Observations()
 	obsMap := make(map[string]int64)
 	for _, obs := range observations {
-		obsMap[obs.Statistic.Name()] = obs.Value.(int64)
+		obsMap[obs.Statistic.Name()] = obs.Value().(int64)
 	}
 
 	require.Equal(t, int64(2), obsMap[dataobj.StatDatasetReadCalls.Name()])

@@ -346,9 +346,7 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 	// Results may include a capture from the worker. Merge it into the
 	// scheduler's per-task capture so the handler sees one unified capture.
 	task.RecordTerminalObservations(time.Now())
-	if err := task.capture.MergeDecoded(nil, msg.Capture); err != nil {
-		return fmt.Errorf("failed to merge worker capture: %w", err)
-	}
+	task.capture.MergeDecoded(nil, msg.DecodedCapture)
 	result := msg.Result
 	result.Capture = task.capture
 

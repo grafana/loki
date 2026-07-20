@@ -278,9 +278,9 @@ func (c *metricCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 		}
 
 		return TaskResultMessage{
-			ID:      ulid.ULID(k.TaskResult.Id),
-			Result:  result,
-			Capture: capture,
+			ID:             ulid.ULID(k.TaskResult.Id),
+			Result:         result,
+			DecodedCapture: capture,
 		}, nil
 
 	case *wirepb.MessageFrame_StreamBind:

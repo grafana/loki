@@ -113,9 +113,9 @@ type (
 		ID     ulid.ULID           // ID of the task that finished.
 		Result workflow.TaskResult // Terminal result of the task.
 
-		// Capture is the validated worker capture, decoded only once before
+		// DecodedCapture is the validated worker capture, decoded only once before
 		// the scheduler merges it into the task capture.
-		Capture *xcap.DecodedCapture
+		DecodedCapture *xcap.DecodedCapture
 	}
 )
 

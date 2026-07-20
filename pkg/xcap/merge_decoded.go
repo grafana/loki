@@ -41,33 +41,18 @@ func DecodeBinary(data []byte) (*DecodedCapture, error) {
 	}, nil
 }
 
-// MergeBinary decodes a serialized Capture and merges it into c without first
-// constructing an intermediate Capture. Regions are merged using the same
-// semantics as [Capture.Merge].
-func (c *Capture) MergeBinary(parent *Region, data []byte) error {
-	if c == nil || len(data) == 0 {
-		return nil
-	}
-
-	decoded, err := DecodeBinary(data)
-	if err != nil {
-		return err
-	}
-	return c.MergeDecoded(parent, decoded)
-}
-
 // MergeDecoded merges a validated decoded Capture into c without constructing
 // an intermediate Capture.
-func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) error {
+func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) {
 	if c == nil || decoded == nil {
-		return nil
+		return
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.ended {
-		return nil
+		return
 	}
 
 	for regionIndex := range decoded.protoCapture.Regions {
@@ -79,7 +64,6 @@ func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) error {
 		dst.mu.Unlock()
 	}
 
-	return nil
 }
 
 func decodeProtoStatistics(protoStats []internal.Statistic) ([]Statistic, error) {

@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
-	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 	"github.com/stretchr/testify/require"
+
+	internal "github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
 
-func TestCaptureMergeBinaryMatchesUnmarshalThenMerge(t *testing.T) {
+func TestCaptureMergeDecodedMatchesUnmarshalThenMerge(t *testing.T) {
 	ctx, src := NewCapture(context.Background(), nil)
 	sum := NewStatisticInt64("sum", AggregationTypeSum)
 	min := NewStatisticFloat64("min", AggregationTypeMin)
@@ -32,32 +33,19 @@ func TestCaptureMergeBinaryMatchesUnmarshalThenMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	_, expected := NewCapture(context.Background(), nil)
-	decoded := &Capture{}
-	require.NoError(t, decoded.UnmarshalBinary(data))
-	expected.Merge(nil, decoded)
+	unmarshaled := &Capture{}
+	require.NoError(t, unmarshaled.UnmarshalBinary(data))
+	expected.Merge(nil, unmarshaled)
 
+	decoded, err := DecodeBinary(data)
+	require.NoError(t, err)
 	_, actual := NewCapture(context.Background(), nil)
-	require.NoError(t, actual.MergeBinary(nil, data))
+	actual.MergeDecoded(nil, decoded)
 
 	require.True(t, capturesEqual(expected, actual))
 }
 
-func TestCaptureMergeBinarySkipsLegacyV1Observations(t *testing.T) {
-	// A Region named "worker" with an unknown V1 observations field (4).
-	legacyV1Wire := []byte{
-		0x0a, 0x0c,
-		0x0a, 0x06, 'w', 'o', 'r', 'k', 'e', 'r',
-		0x22, 0x02, 0x08, 0x00,
-	}
-
-	_, capture := NewCapture(context.Background(), nil)
-	require.NoError(t, capture.MergeBinary(nil, legacyV1Wire))
-	require.Len(t, capture.Regions(), 1)
-	require.Empty(t, capture.Regions()[0].Observations())
-}
-
-func TestCaptureMergeBinaryDoesNotMutateOnInvalidCapture(t *testing.T) {
-	_, capture := NewCapture(context.Background(), nil)
+func TestDecodeBinaryRejectsInvalidStatisticID(t *testing.T) {
 	wireCapture := &internal.Capture{
 		Regions: []internal.Region{{
 			Name: "worker.read",
@@ -71,6 +59,7 @@ func TestCaptureMergeBinaryDoesNotMutateOnInvalidCapture(t *testing.T) {
 	data, err := proto.Marshal(wireCapture)
 	require.NoError(t, err)
 
-	require.Error(t, capture.MergeBinary(nil, data))
-	require.Empty(t, capture.Regions())
+	decoded, err := DecodeBinary(data)
+	require.Error(t, err)
+	require.Nil(t, decoded)
 }

@@ -265,8 +265,7 @@ func (m *Statistic) GetAggregationType() AggregationType {
 
 // ObservationV2 represents an aggregated observation without a nested message
 // or oneof. ValueBits is interpreted according to the data type of
-// statistics[statistic_id]: two's-complement int64 bits, IEEE 754 float64 bits,
-// or false (0) / true (1).
+// statistics[statistic_id].
 type ObservationV2 struct {
 	// StatisticId is the index into the statistics list in Capture.
 	StatisticId uint32 `protobuf:"varint,1,opt,name=statistic_id,json=statisticId,proto3" json:"statistic_id,omitempty"`
