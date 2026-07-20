@@ -724,13 +724,13 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 // into the next iteration. A productive (swapped) phase resets to min to keep
 // momentum; a no-work or error phase applies the current backoff now and
 // doubles it toward max for next time.
-func nextBackoff(outcome phaseOutcome, cur, min, max time.Duration) (wait, next time.Duration) {
+func nextBackoff(outcome phaseOutcome, cur, minWait, maxWait time.Duration) (wait, next time.Duration) {
 	if outcome == phaseOutcomeSwapped {
-		return min, min
+		return minWait, minWait
 	}
 	next = cur * 2
-	if next <= 0 || next > max {
-		next = max
+	if next <= 0 || next > maxWait {
+		next = maxWait
 	}
 	return cur, next
 }
