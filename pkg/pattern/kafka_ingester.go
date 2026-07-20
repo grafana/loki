@@ -341,8 +341,8 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 				i.cfg.ClientConfig.RemoteTimeout,
 			)
 
-			defer cancel()
 			_, err := i.Push(ctx, req)
+			cancel()
 			if err != nil {
 				return err
 			}
