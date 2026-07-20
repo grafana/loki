@@ -9,7 +9,7 @@ weight:
 # Use label-based access control with Loki
 
 {{< admonition type="note" >}}
-This feature is experimental and available from v3.7.3. For the latest releases, refer to the [Release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/).
+This feature is experimental and available from v4.0. For the latest releases, refer to the [Release notes](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/).
 {{< /admonition >}}
 
 Label-based access control (LBAC) restricts the logs a tenant can query to those that match one or more [Prometheus label selectors](https://prometheus.io/docs/prometheus/latest/querying/basics/#time-series-selectors). You associate a set of selectors with a tenant, and queries from that tenant only return data from log streams that match at least one of the selectors. Because the selectors are combined with OR, this corresponds to [disjunctive normal form](https://en.wikipedia.org/wiki/Disjunctive_normal_form), which lets you express any required policy.
