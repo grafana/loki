@@ -446,15 +446,8 @@ func (tc *testQueryAndLabelResults) metricsRangeQuery(t *testing.T, qc *client.C
 	})
 }
 
-// maxStepValue returns the largest per-step sum across all series in the matrix.
-//
-// The query is count_over_time(...[2h]) evaluated as a range query. Because the
-// lookback window (2h) is much larger than the range step, the recently pushed
-// lines fall inside several consecutive steps' windows, so each of those steps
-// reports the full count. Summing every sample would therefore multiply the true
-// count by the (timing-dependent) number of overlapping steps. The step whose
-// window fully covers the pushed data reports exactly the total we want, so take
-// the largest per-step sum.
+// maxStepValue returns the largest per-step sum across all series in the matrix
+// which will fully cover the time range without double-counting.
 func maxStepValue(t *testing.T, matrix []client.MatrixValues) float64 {
 	t.Helper()
 
