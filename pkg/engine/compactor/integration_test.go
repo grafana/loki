@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,9 +32,8 @@ import (
 // TestCoordinator_EndToEnd drives the coordinator against a real
 // scheduler + worker pair wired in-process via wire.Local transport. Asserts:
 //
-//   - Phase 1 wrote the expected number of merged index objects at
-//     deterministic paths.
-//   - Phase 2 atomically swapped the ToC: source paths removed, output paths
+//   - Merges create the expected number of index objects and report their paths.
+//   - The coordinator atomically swaps the ToC: source paths removed, output paths
 //     added with the right timestamps.
 //   - Other tenants' rows survive byte-equivalent across the swap.
 func TestCoordinator_EndToEnd(t *testing.T) {
@@ -58,16 +59,20 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	}
 	writeToCWithIndexes(ctx, t, bucket, seed)
 
-	// Upload an index with postings + stats per distinct path.
-	seenPaths := map[string]struct{}{}
-	for _, entries := range seed {
+	// Upload an index with postings + stats per distinct path, tenant-tagged.
+	// Build a path→tenants map so each path is seeded once with all its tenants.
+	pathTenants := map[string][]string{}
+	pathStart := map[string]time.Time{}
+	for tenant, entries := range seed {
 		for _, e := range entries {
-			if _, seen := seenPaths[e.path]; seen {
-				continue
+			if _, ok := pathStart[e.path]; !ok {
+				pathStart[e.path] = e.start
 			}
-			seenPaths[e.path] = struct{}{}
-			seedSourceIndexObject(ctx, t, bucket, e.path, e.start)
+			pathTenants[e.path] = append(pathTenants[e.path], tenant)
 		}
+	}
+	for path, tenants := range pathTenants {
+		seedSourceIndexObject(ctx, t, bucket, path, pathStart[path], tenants...)
 	}
 
 	// Bring up a real scheduler + worker pair using wire.Local transport.
@@ -87,7 +92,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		},
 		logger: log.NewNopLogger(),
 		bucket: bucket,
-		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) error {
+		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(rpCtx, log.NewNopLogger(), sched, opts, plan)
 		},
 		metastoreWriter: tocWriter,
@@ -108,7 +113,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 		pathsOf(postCycle1["untouched"]),
 		"untouched tenant must be byte-identical across the swap")
 
-	// Phase 1 output objects must exist at the deterministic paths.
+	// The merged output objects must exist in the bucket after the swap.
 	for _, entry := range postCycle1["acme"] {
 		_, err := bucket.Attributes(ctx, entry.Path)
 		require.NoError(t, err, "phase 1 output %q must exist after the swap", entry.Path)
@@ -232,37 +237,42 @@ func pathsOf(entries []indexEntry) []string {
 }
 
 // seedSourceIndexObject builds and uploads an index object at path, containing
-// one postings section and one stats section. The single observation/stat is
-// timestamped at ts so it falls inside the entry's seeded time range.
-func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time) {
+// one postings section and one stats section per tenant. Each section is tagged
+// with its tenant so classifyRuns can correctly filter by tenant. The single
+// observation/stat is timestamped at ts so it falls inside the entry's seeded
+// time range.
+func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, tenants ...string) {
 	t.Helper()
 
-	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
-	postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-		ObjectPath:       path,
-		SectionIndex:     0,
-		ColumnName:       "service",
-		LabelValue:       "api",
-		StreamID:         1,
-		Timestamp:        ts,
-		UncompressedSize: 100,
-	})
-
-	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
-	statsBuilder.Append(stats.Stat{
-		ObjectPath:       path,
-		SectionIndex:     0,
-		SortSchema:       "label:service",
-		Labels:           map[string]string{"service": "api"},
-		MinTimestamp:     ts.UnixNano(),
-		MaxTimestamp:     ts.UnixNano() + 1000,
-		RowCount:         10,
-		UncompressedSize: 1000,
-	})
-
 	objBuilder := dataobj.NewBuilder(nil)
-	require.NoError(t, objBuilder.Append(postingsBuilder))
-	require.NoError(t, objBuilder.Append(statsBuilder))
+	for _, tenant := range tenants {
+		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+		postingsBuilder.SetTenant(tenant)
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath:       path,
+			SectionIndex:     0,
+			ColumnName:       "service",
+			LabelValue:       "api",
+			StreamID:         1,
+			Timestamp:        ts,
+			UncompressedSize: 100,
+		})
+		require.NoError(t, objBuilder.Append(postingsBuilder))
+
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+		statsBuilder.SetTenant(tenant)
+		statsBuilder.Append(stats.Stat{
+			ObjectPath:       path,
+			SectionIndex:     0,
+			SortSchema:       "service",
+			Labels:           map[string]string{"service": "api"},
+			MinTimestamp:     ts.UnixNano(),
+			MaxTimestamp:     ts.UnixNano() + 1000,
+			RowCount:         10,
+			UncompressedSize: 1000,
+		})
+		require.NoError(t, objBuilder.Append(statsBuilder))
+	}
 
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
