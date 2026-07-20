@@ -1,13 +1,18 @@
 package distributor
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -17,7 +22,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -159,6 +168,236 @@ func TestRequestParserWrapping(t *testing.T) {
 
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 		// The test should complete without panicking
+	})
+}
+
+func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
+	const line = "the quick brown fox jumps over the lazy dog"
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	distributors[0].cfg.MaxRecvMsgSize = 10
+
+	t.Run("protobuf returns 413", func(t *testing.T) {
+		body, err := proto.Marshal(&logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels:  `{foo="bar"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/x-protobuf")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+
+	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
+		protoBytes, err := proto.Marshal(&logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels:  `{foo="bar"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
+				},
+			},
+		})
+		require.NoError(t, err)
+		body := snappy.Encode(nil, protoBytes)
+		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/x-protobuf")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+
+	t.Run("Loki JSON returns 413", func(t *testing.T) {
+		t.Skip() // Returns HTTP 400
+
+		// NOTE: this currently returns 400, not 413: an oversized JSON body is
+		// truncated by the max-recv-msg-size LimitReader and fails to decode
+		// before any size check maps to ErrRequestBodyTooLarge. We assert 413
+		// here as the desired behavior.
+		body := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
+		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+
+	t.Run("OTLP JSON returns 413", func(t *testing.T) {
+		otlpLogs := plog.NewLogs()
+		rl := otlpLogs.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+		lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+		lr.Body().SetStr(line)
+		lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+		body, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
+		require.NoError(t, err)
+		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.OTLP)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+}
+
+func TestPushHandlerMaxDecompressedSize(t *testing.T) {
+	const line = "the quick brown fox jumps over the lazy dog"
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	distributors[0].cfg.MaxDecompressedSize = 10
+
+	withGzip := func(t *testing.T, b []byte) []byte {
+		t.Helper()
+		buf := bytes.Buffer{}
+		w := gzip.NewWriter(&buf)
+		_, err := w.Write(b)
+		require.NoError(t, err)
+		require.NoError(t, w.Close())
+		return buf.Bytes()
+	}
+
+	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
+		t.Skip() // Returns HTTP 400
+		protoBytes, err := proto.Marshal(&logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels:  `{foo="bar"}`,
+					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: line}},
+				},
+			},
+		})
+		require.NoError(t, err)
+		body := snappy.Encode(nil, protoBytes)
+		require.Greater(t, int64(len(protoBytes)), distributors[0].cfg.MaxDecompressedSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/x-protobuf")
+		req.Header.Set("Content-Encoding", "snappy")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+
+	t.Run("gzip compressed Loki JSON returns 413", func(t *testing.T) {
+		t.Skip() // Returns HTTP 400
+		lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
+		body := withGzip(t, lokiJSON)
+		require.Greater(t, int64(len(lokiJSON)), distributors[0].cfg.MaxDecompressedSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.Loki)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+
+	t.Run("gzip compressed OTLP JSON returns 413", func(t *testing.T) {
+		t.Skip() // Returns HTTP 400
+		otlpLogs := plog.NewLogs()
+		rl := otlpLogs.ResourceLogs().AppendEmpty()
+		rl.Resource().Attributes().PutStr("service.name", "test-service")
+		lr := rl.ScopeLogs().AppendEmpty().LogRecords().AppendEmpty()
+		lr.Body().SetStr(line)
+		lr.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+		otlpJSON, err := plogotlp.NewExportRequestFromLogs(otlpLogs).MarshalJSON()
+		require.NoError(t, err)
+		body := withGzip(t, otlpJSON)
+		require.Greater(t, int64(len(otlpJSON)), distributors[0].cfg.MaxDecompressedSize)
+
+		req := httptest.NewRequest(http.MethodPost, "/otlp/v1/logs", bytes.NewReader(body))
+		ctx := user.InjectOrgID(t.Context(), "test")
+		req = req.WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Encoding", "gzip")
+
+		// The metric is a global counter shared across tests, so measure the
+		// delta produced by this request rather than an absolute value.
+		discardedBytes := validation.DiscardedBytes.WithLabelValues(validation.RequestBodyTooLarge, "test", "", "", constants.OTLP)
+		before := testutil.ToFloat64(discardedBytes)
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, push.ParseOTLPRequest, push.OTLPError, constants.OTLP)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
 	})
 }
 
