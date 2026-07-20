@@ -181,7 +181,18 @@ func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback i
 				return indexSet.Err()
 			}
 
-			return indexSet.ForEachConcurrent(ctx, callback)
+			err = indexSet.ForEachConcurrent(ctx, callback)
+
+			// The pre-check above races with Init's defer: if Init was still in
+			// flight when we checked Err(), we entered ForEachConcurrent with
+			// Err() == nil, parked on the readiness gate, and only saw the
+			// error once Init's defer marked it ready. In that case cleanup
+			// hasn't run yet — do it now so the next caller creates a fresh
+			// indexSet instead of hitting the same broken one.
+			if err != nil && indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+			}
+			return err
 		})
 	}
 	return g.Wait()
@@ -202,6 +213,12 @@ func (t *table) ForEach(ctx context.Context, userID string, callback index.ForEa
 
 		err = indexSet.ForEach(ctx, callback)
 		if err != nil {
+			// See the comment in ForEachConcurrent above: the pre-check races
+			// with Init's defer, so an error surfaced here may reflect a broken
+			// indexSet that hasn't been cleaned up yet.
+			if indexSet.Err() != nil {
+				t.cleanupBrokenIndexSet(ctx, uid)
+			}
 			return err
 		}
 	}
