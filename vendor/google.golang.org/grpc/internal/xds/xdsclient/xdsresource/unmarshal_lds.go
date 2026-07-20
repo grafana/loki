@@ -30,6 +30,7 @@ import (
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	v3httppb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	v3tlspb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/xds/clients/xdsclient"
 	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
@@ -178,6 +179,7 @@ func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilt
 	m := make(map[string]httpfilter.FilterConfig)
 	for name, cfg := range cfgs {
 		optional := false
+		disabled := false
 		s := new(v3routepb.FilterConfig)
 		if cfg.MessageIs(s) {
 			if err := cfg.UnmarshalTo(s); err != nil {
@@ -185,6 +187,14 @@ func processHTTPFilterOverrides(cfgs map[string]*anypb.Any) (map[string]httpfilt
 			}
 			cfg = s.GetConfig()
 			optional = s.GetIsOptional()
+			if envconfig.XDSClientExtProcEnabled {
+				disabled = s.GetDisabled()
+			}
+		}
+
+		if disabled {
+			m[name] = httpfilter.DisabledFilterConfig{}
+			continue
 		}
 
 		httpFilter, config, err := validateHTTPFilterConfig(cfg, false, optional)
@@ -235,8 +245,12 @@ func processHTTPFilters(filters []*v3httppb.HttpFilter, server bool) ([]HTTPFilt
 			return nil, fmt.Errorf("HTTP filter %q not supported client-side", name)
 		}
 
+		disabled := false
+		if envconfig.XDSClientExtProcEnabled {
+			disabled = filter.GetDisabled()
+		}
 		// Save name/config
-		ret = append(ret, HTTPFilter{Name: name, Filter: httpFilter, Config: config})
+		ret = append(ret, HTTPFilter{Name: name, Filter: httpFilter, Config: config, Disabled: disabled})
 	}
 	// "Validation will fail if a terminal filter is not the last filter in the
 	// chain or if a non-terminal filter is the last filter in the chain." - A39

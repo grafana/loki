@@ -358,6 +358,7 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 				creds:                creds,
 				metadata:             metadata,
 				clientUniverseDomain: opts.UniverseDomain,
+				endpoint:             transportCreds.Endpoint,
 			}),
 		)
 		// Attempt Direct Path
@@ -405,6 +406,7 @@ type grpcCredentialsProvider struct {
 	// Additional metadata attached as headers.
 	metadata             map[string]string
 	clientUniverseDomain string
+	endpoint             string
 }
 
 // getClientUniverseDomain returns the default service domain for a given Cloud
@@ -447,7 +449,7 @@ func (c *grpcCredentialsProvider) GetRequestMetadata(ctx context.Context, uri ..
 		}
 	}
 	metadata := make(map[string]string, len(c.metadata)+1)
-	headers.SetAuthMetadata(token, metadata)
+	headers.SetAuthMetadata(ctx, token, c.endpoint, metadata)
 	for k, v := range c.metadata {
 		metadata[k] = v
 	}
