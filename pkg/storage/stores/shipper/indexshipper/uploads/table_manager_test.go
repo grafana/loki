@@ -33,6 +33,9 @@ func buildTestTableManager(t *testing.T, testDir string) (TableManager, stopFunc
 
 	cfg := Config{
 		UploadInterval: time.Hour,
+		// Ensure we retain longer than any test run so UploadTables' cleanup doesn't
+		// delete indexes that the test just added
+		DBRetainPeriod: time.Hour,
 	}
 	tm, err := NewTableManager(cfg, storageClient, nil, log.NewNopLogger())
 	require.NoError(t, err)
