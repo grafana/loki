@@ -144,6 +144,9 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		c.startWorker(ctx, workers, wg, tenant)
 	}
 
+	// Workers just started above are all in discovered, so this cancel-absent
+	// pass can never cancel a freshly-started worker. Any new startWorker call
+	// must keep that invariant (only start tenants present in discovered).
 	for tenant, cancel := range workers {
 		if _, present := discovered[tenant]; !present {
 			cancel()

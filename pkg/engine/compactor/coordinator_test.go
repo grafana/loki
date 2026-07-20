@@ -786,6 +786,8 @@ func TestReconcile_DisabledDuringToCReadFailure_CancelsWorker(t *testing.T) {
 
 	c.reconcile(ctx, workers, &wg)
 	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
+	require.Positive(t, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog),
+		"the running worker must have emitted a per-tenant series")
 
 	// Disable the tenant AND make the ToC read fail. Disable must still apply.
 	limits.set("acme", false)
@@ -796,6 +798,12 @@ func TestReconcile_DisabledDuringToCReadFailure_CancelsWorker(t *testing.T) {
 	require.Eventually(t, func() bool { return len(liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond,
 		"disable takes effect even when the ToC read fails")
 	require.NotContains(t, workers, "acme")
+
+	// Once the worker goroutine has fully exited, its deferred cleanup must have
+	// dropped the tenant's series.
+	wg.Wait()
+	require.Equal(t, 0, testutil.CollectAndCount(c.metrics.unconsolidatedBacklog),
+		"a cancelled worker's per-tenant series is deleted on exit")
 }
 
 func TestReconcile_ReadError_PreservesWorkers(t *testing.T) {
