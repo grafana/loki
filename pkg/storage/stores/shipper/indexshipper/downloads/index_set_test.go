@@ -2,9 +2,11 @@ package downloads
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -152,4 +154,109 @@ func TestIndexSet_Sync(t *testing.T) {
 
 	// verify that table has got only compacted db
 	checkIndexSet()
+}
+
+func TestIndexSet_ForEach_ErrorPropagation(t *testing.T) {
+	initErr := errors.New("simulated init failure")
+
+	tests := []struct {
+		name         string
+		filesInStore int
+		callInit     bool
+		injectErr    error
+		wantErr      error
+	}{
+		{
+			// Init failed and cleanup successfully emptied t.index — the
+			// original bug shape: parked readers unblock to len(t.index) == 0.
+			name:         "empty index with init error propagates",
+			filesInStore: 0,
+			callInit:     false, // bypass Init to simulate the "post-defer, error set" state
+			injectErr:    initErr,
+			wantErr:      initErr,
+		},
+		{
+			// Init failed, cleanupDB failed (df.Close returned an error) so
+			// t.index still holds surviving orphan entries. Without the fix,
+			// ForEach would iterate them and silently return partial data.
+			name:         "populated index with init error propagates (orphan cleanup)",
+			filesInStore: 3,
+			callInit:     true, // Init populates t.index with 3 files
+			injectErr:    initErr,
+			wantErr:      initErr,
+		},
+		{
+			// Legitimate empty state — no files anywhere, Init succeeded,
+			// t.err stays nil. Regression guard against over-eager propagation.
+			name:         "empty index without error returns nil",
+			filesInStore: 0,
+			callInit:     true,
+			injectErr:    nil,
+			wantErr:      nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+
+			if tc.filesInStore > 0 {
+				setupIndexesAtPath(t, userID, filepath.Join(tempDir, objectsStorageDirName, tableName, userID), 0, tc.filesInStore)
+			}
+
+			storageClient := buildTestStorageClient(t, tempDir)
+			cachePath := filepath.Join(tempDir, cacheDirName)
+			baseIndexSet := storage.NewIndexSet(storageClient, userID != "")
+
+			idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
+				func(path string) (index.Index, error) {
+					return openMockIndexFile(t, path), nil
+				}, util_log.Logger)
+			require.NoError(t, err)
+			defer idxSet.Close()
+
+			is := idxSet.(*indexSet)
+
+			if tc.callInit {
+				require.NoError(t, idxSet.Init(false, util_log.Logger))
+			} else {
+				// Bypass Init to simulate the exact post-defer state where
+				// the readiness gate is open but t.err is set and t.index is
+				// empty. Init would normally handle this via its defer at
+				// index_set.go:114 (markReady).
+				is.indexMtx.markReady()
+			}
+
+			if tc.injectErr != nil {
+				is.err = tc.injectErr
+			}
+
+			require.Len(t, is.index, tc.filesInStore, "pre-condition: t.index size")
+
+			// Both entry points must behave identically.
+			for _, forEach := range []struct {
+				name string
+				fn   func(ctx context.Context, cb index.ForEachIndexCallback) error
+			}{
+				{"ForEach", idxSet.ForEach},
+				{"ForEachConcurrent", idxSet.ForEachConcurrent},
+			} {
+				t.Run(forEach.name, func(t *testing.T) {
+					var invocations atomic.Int32
+					err := forEach.fn(context.Background(), func(_ bool, _ index.Index) error {
+						invocations.Add(1)
+						return nil
+					})
+
+					if tc.wantErr != nil {
+						require.ErrorIs(t, err, tc.wantErr, "must propagate t.err")
+						require.Equal(t, int32(0), invocations.Load(), "callback must not fire when the indexSet is broken")
+					} else {
+						require.NoError(t, err)
+						require.Equal(t, int32(tc.filesInStore), invocations.Load(), "callback must fire once per index file")
+					}
+				})
+			}
+		})
+	}
 }

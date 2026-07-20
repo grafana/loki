@@ -183,6 +183,10 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 	defer t.indexMtx.rUnlock()
 
+	if t.err != nil {
+		return t.err
+	}
+
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
@@ -201,6 +205,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		return err
 	}
 	defer t.indexMtx.rUnlock()
+
+	if t.err != nil {
+		return t.err
+	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
