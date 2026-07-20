@@ -2,7 +2,6 @@ package xcap
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
@@ -50,43 +49,18 @@ func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Stati
 			return nil, fmt.Errorf("invalid statistic_id %d in V2 observation", protoObs.StatisticId)
 		}
 
-		value, err := unmarshalObservationV2Value(protoObs.ValueBits, stat.DataType())
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal V2 observation value: %w", err)
-		}
-
-		key := stat.Key()
-		observations[key] = &AggregatedObservation{
+		observations[stat.Key()] = &AggregatedObservation{
 			Statistic: stat,
-			Value:     value,
+			value:     valueFromBits(protoObs.ValueBits),
 			Count:     int(protoObs.Count),
 		}
 	}
 
-	return protoRegionWithObservations(protoRegion.Name, observations), nil
-}
-
-func protoRegionWithObservations(name string, observations map[StatisticKey]*AggregatedObservation) *Region {
 	return &Region{
-		name:         name,
+		name:         protoRegion.Name,
 		observations: observations,
 		ended:        true, // Regions from proto are always ended
-	}
-}
-
-// unmarshalObservationV2Value converts flattened V2 value bits using the
-// declared data type of the referenced statistic.
-func unmarshalObservationV2Value(valueBits uint64, dataType DataType) (any, error) {
-	switch dataType {
-	case DataTypeInt64:
-		return int64(valueBits), nil
-	case DataTypeFloat64:
-		return math.Float64frombits(valueBits), nil
-	case DataTypeBool:
-		return valueBits != 0, nil
-	default:
-		return nil, fmt.Errorf("unsupported observation data type: %v", dataType)
-	}
+	}, nil
 }
 
 // unmarshalStatistic converts a protobuf Statistic to a Go Statistic.
