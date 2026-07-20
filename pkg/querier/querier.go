@@ -181,6 +181,18 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 		queryRequestCopy := *params.QueryRequest
+		// DoUntilQuorum may return while canceled ingester requests finish.
+		// Clone the plan so store-side pipeline mutations cannot race with their serialization.
+		if queryRequestCopy.Plan != nil {
+			queryPlanCopy := *queryRequestCopy.Plan
+			if queryPlanCopy.AST != nil {
+				queryPlanCopy.AST, err = syntax.Clone(queryPlanCopy.AST)
+				if err != nil {
+					return nil, err
+				}
+			}
+			queryRequestCopy.Plan = &queryPlanCopy
+		}
 		newParams := logql.SelectLogParams{
 			QueryRequest: &queryRequestCopy,
 		}
