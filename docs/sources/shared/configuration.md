@@ -1630,6 +1630,18 @@ dataobj:
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
 
+    # Experimental: Minimum wait a per-tenant worker applies between compaction
+    # phases, and the starting point of the exponential backoff idle or failing
+    # tenants grow toward max-backoff.
+    # CLI flag: -dataobj.compaction.min-backoff
+    [min_backoff: <duration> | default = 1m]
+
+    # Experimental: Maximum wait a per-tenant worker backs off to after
+    # consecutive no-work (converged or empty) or failing phases, so an idle
+    # worker stops hammering object storage.
+    # CLI flag: -dataobj.compaction.max-backoff
+    [max_backoff: <duration> | default = 15m]
+
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task

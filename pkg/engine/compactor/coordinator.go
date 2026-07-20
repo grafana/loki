@@ -49,7 +49,10 @@ type coordinator struct {
 	metastoreWriter tocReplacer
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
-	clock   func() time.Time
+	clock func() time.Time
+	// sleep blocks for the given duration or until ctx is cancelled. Injected
+	// so tests can make per-tenant backoff waits instant and deterministic.
+	sleep   func(ctx context.Context, d time.Duration)
 	metrics *coordinatorMetrics
 	limits  Limits
 }
@@ -76,8 +79,23 @@ func newCoordinator(
 		},
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
+		sleep:           sleepUntil,
 		metrics:         newCoordinatorMetrics(reg),
 		limits:          limits,
+	}
+}
+
+// sleepUntil blocks for d or returns early when ctx is cancelled. A
+// non-positive d returns immediately.
+func sleepUntil(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
 	}
 }
 
@@ -102,9 +120,9 @@ func (c *coordinator) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			for _, cancel := range workers {
-				cancel()
-			}
+			// Each worker's context derives from ctx (see startWorker), so
+			// ctx being cancelled already cancels every worker; just wait for
+			// them to drain.
 			wg.Wait()
 			return ctx.Err()
 		case <-ticker.C:
@@ -119,6 +137,14 @@ func (c *coordinator) Run(ctx context.Context) error {
 func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
 	window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	discovered, ok := c.discover(ctx, window)
+	// Only a successfully read ToC is authoritative enough to add or remove
+	// workers, so a read failure leaves the running set entirely untouched.
+	// Disabling a tenant is therefore deferred to the next successful pass (at
+	// most one PollingInterval); until then its worker simply backs off on the
+	// same failing reads, doing no compaction work.
+	if !ok {
+		return
+	}
 
 	// Per-tenant metric series are dropped by the worker goroutine on exit (see
 	// startWorker), not here, so a still-draining worker cannot resurrect a
@@ -128,10 +154,6 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 			cancel()
 			delete(workers, tenant)
 		}
-	}
-
-	if !ok {
-		return
 	}
 
 	for tenant := range discovered {
@@ -169,9 +191,9 @@ func (c *coordinator) startWorker(ctx context.Context, workers map[string]contex
 
 // discover reads the current-window ToC and returns the set of tenants it
 // references. ok is false on any read error (missing ToC or transient), which
-// tells reconcile to skip new-worker starts and absence-driven cancellation and
-// leave the running set untouched: only a successfully read ToC is authoritative
-// enough to conclude a tenant was removed. Membership is by map key.
+// tells reconcile to leave the running set untouched: only a successfully read
+// ToC is authoritative enough to add or remove workers. Membership is by map
+// key.
 func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
 	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
 	if err != nil {
@@ -661,10 +683,13 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 }
 
 // runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
-// is cancelled. It never returns an error and never sleeps: on error it retries
-// the same phase, otherwise it flips.
+// is cancelled. It never returns an error: on error it retries the same phase,
+// otherwise it flips. Between phases it waits at least MinBackoff; consecutive
+// no-work (converged or empty) or failing phases grow the wait exponentially up
+// to MaxBackoff so a worker with nothing to do stops hammering object storage.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	backoff := c.cfg.MinBackoff
 	for {
 		if ctx.Err() != nil {
 			return
@@ -687,7 +712,27 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		if outcome != phaseOutcomeError {
 			p = p.flip()
 		}
+
+		var wait time.Duration
+		wait, backoff = nextBackoff(outcome, backoff, c.cfg.MinBackoff, c.cfg.MaxBackoff)
+		c.metrics.observeBackoff(wait)
+		c.sleep(ctx, wait)
 	}
+}
+
+// nextBackoff returns the wait to apply after a phase and the backoff to carry
+// into the next iteration. A productive (swapped) phase resets to min to keep
+// momentum; a no-work or error phase applies the current backoff now and
+// doubles it toward max for next time.
+func nextBackoff(outcome phaseOutcome, cur, min, max time.Duration) (wait, next time.Duration) {
+	if outcome == phaseOutcomeSwapped {
+		return min, min
+	}
+	next = cur * 2
+	if next <= 0 || next > max {
+		next = max
+	}
+	return cur, next
 }
 
 // cycleOutcome maps a phaseOutcome to a cyclesTotal outcome label. The label set
