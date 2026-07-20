@@ -16,14 +16,15 @@ const (
 )
 
 // coordinatorMetrics holds every metric emitted from the coordinator's
-// per-cycle loop.
+// per-tenant worker loops.
 type coordinatorMetrics struct {
 	unconsolidatedBacklog      *prometheus.GaugeVec // tenant
 	oldestBacklogLogAgeSeconds *prometheus.GaugeVec // tenant
 	indexesPerTenantWindow     *prometheus.GaugeVec // tenant
 
-	// cyclesTotal counts coordinator cycles by outcome.
-	cyclesTotal *prometheus.CounterVec // outcome=toc_not_found|index_load_err|no_indexes|converged|compaction_failed|compacted_with_failures|compacted
+	// cyclesTotal counts worker-loop phase iterations by outcome.
+	// outcome=compacted|converged|failed
+	cyclesTotal *prometheus.CounterVec
 
 	// tenantCyclesTotal counts per-tenant index-compaction cycle outcomes.
 	tenantCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
@@ -42,7 +43,8 @@ type coordinatorMetrics struct {
 	// tasksTotal counts IndexMerge tasks dispatched per tenant (cumulative).
 	tasksTotal *prometheus.CounterVec // tenant
 
-	// cycleDurationSeconds measures full-cycle wall-clock duration.
+	// cycleDurationSeconds measures wall-clock duration of one worker-loop phase
+	// iteration (IndexMerge or LogMerge).
 	cycleDurationSeconds prometheus.Histogram
 
 	// tenantCycleDurationSeconds measures per-tenant cycle wall-clock
@@ -75,7 +77,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		// Operational counters / histograms.
 		cyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_cycles_total",
-			Help: "Total coordinator cycles by outcome.",
+			Help: "Total worker-loop phase iterations by outcome (compacted = ToC swap applied, converged = no work, failed = phase error).",
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
@@ -99,7 +101,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		cycleDurationSeconds: f.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_cycle_duration_seconds",
-			Help:    "Full coordinator-cycle wall-clock duration (load ToC, per-tenant loop, all I/O).",
+			Help:    "Wall-clock duration of one worker-loop phase iteration (IndexMerge or LogMerge).",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 14), // 10ms .. ~80s
 		}),
 		tenantCycleDurationSeconds: f.NewHistogramVec(prometheus.HistogramOpts{
@@ -156,8 +158,8 @@ func oldestEnd(entries []indexEntry) (oldest time.Time) {
 	return oldest
 }
 
-// observeCycle records the outcome and wall-clock duration of a full
-// coordinator cycle.
+// observeCycle records the outcome and wall-clock duration of one worker-loop
+// phase iteration.
 func (m *coordinatorMetrics) observeCycle(outcome string, duration time.Duration) {
 	if m == nil {
 		return
@@ -217,6 +219,26 @@ func (m *coordinatorMetrics) recordTenantCycle(
 		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
 		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
 	}
+}
+
+// deleteTenant drops every per-tenant coordinator series for the tenant so a
+// stopped worker's gauges do not linger and report a disabled tenant's
+// last-known values. cyclesTotal, cycleDurationSeconds, and
+// tenantCycleDurationSeconds are intentionally omitted: cyclesTotal and
+// cycleDurationSeconds carry no tenant label, and tenantCycleDurationSeconds
+// carries only an outcome label (no tenant label).
+func (m *coordinatorMetrics) deleteTenant(tenant string) {
+	if m == nil {
+		return
+	}
+	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
+	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
+	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.indexesRemovedTotal.DeleteLabelValues(tenant)
+	m.indexesAddedTotal.DeleteLabelValues(tenant)
+	m.tasksTotal.DeleteLabelValues(tenant)
+	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // observeFileSizeStat records the latency of a single bucket.Attributes call.

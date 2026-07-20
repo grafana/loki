@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,6 +15,33 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
+
+// fakeLimits reports per-tenant compaction enablement from a set. A tenant is
+// enabled iff it is present in `enabled`. The zero value enables nothing.
+type fakeLimits struct {
+	mu      sync.Mutex
+	enabled map[string]bool
+}
+
+func newFakeLimits(tenants ...string) *fakeLimits {
+	m := make(map[string]bool, len(tenants))
+	for _, t := range tenants {
+		m[t] = true
+	}
+	return &fakeLimits{enabled: m}
+}
+
+func (f *fakeLimits) DataObjCompactionEnabled(userID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.enabled[userID]
+}
+
+func (f *fakeLimits) set(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.enabled[userID] = on
+}
 
 // TestPlanner_BootShutdown boots the scaffold with an in-process-only
 // scheduler (empty AdvertiseAddr), waits for it to reach Running, then
@@ -38,6 +66,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		Config:          cfg,
 		Bucket:          bucket,
 		MetastoreWriter: tocWriter,
+		Limits:          newFakeLimits(),
 		Logger:          log.NewNopLogger(),
 	})
 	require.NoError(t, err)
@@ -114,8 +143,23 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 		Config:          cfg,
 		Bucket:          bucket,
 		MetastoreWriter: tocWriter,
+		Limits:          newFakeLimits(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)
+}
+
+// TestNew_NilLimitsErrors verifies that New returns an error when Limits is nil.
+func TestNew_NilLimitsErrors(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	_, err := New(PlannerParams{
+		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
+		Bucket:          bucket,
+		MetastoreWriter: tocWriter,
+		// Limits intentionally nil
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "limits is required")
 }
