@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -21,10 +20,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	ring_client "github.com/grafana/dskit/ring/client"
-
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/kafkav2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
@@ -61,20 +60,23 @@ type KafkaIngester struct {
 	flushQueuesDone sync.WaitGroup
 	loopQuit        chan struct{}
 
-	metrics       *ingesterMetrics
-	drainCfg      *drain.Config
-	records       chan *kgo.Record
-	consumer      *kafkav2.GroupConsumer
-	partitionRing ring.PartitionRingReader
+	metrics  *ingesterMetrics
+	drainCfg *drain.Config
+	records  chan *kgo.Record
+	consumer *kafkav2.GroupConsumer
+
 	decoder       *kafka.Decoder
 	flushRequests chan flushRequest
 	tenantCfgs    *runtime.TenantConfigs
+
+	ingestPartitionID       int32
+	partitionRingLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader         *partition.ReaderService
 }
 
 func NewKafka(
 	cfg Config,
 	limits Limits,
-	ringClient RingClient,
 	tenantCfgs *runtime.TenantConfigs,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
@@ -93,7 +95,6 @@ func NewKafka(
 	i := &KafkaIngester{
 		cfg:         cfg,
 		limits:      limits,
-		ringClient:  ringClient,
 		logger:      log.With(logger, "component", "pattern-ingester"),
 		registerer:  registerer,
 		metrics:     metrics,
@@ -130,12 +131,6 @@ func NewKafka(
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_pattern_consumer_", registerer),
 	)
-	kvClient, err := kv.NewClient(kv.Config{}, ring.GetPartitionRingCodec(), registerer, logger)
-	if err != nil {
-		return nil, err
-	}
-	ringOptions := ring.DefaultPartitionRingOptions()
-	i.partitionRing = ring.NewPartitionRingWatcherWithOptions(PartitionRingName+"watcher", PartitionRingKey, kvClient, ringOptions, logger, registerer)
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "pattern-ingester", "pattern-ring", true, i.logger, registerer)
@@ -145,6 +140,28 @@ func NewKafka(
 
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
+
+	i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
+
+	partitionRingKV := cfg.KafkaPartitionRingConfig.KVStore.Mock
+	if partitionRingKV == nil {
+		partitionRingKV, err = kv.NewClient(cfg.KafkaPartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
+		if err != nil {
+			return nil, fmt.Errorf("creating KV store for pattern ingester partition ring: %w", err)
+		}
+	}
+	i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.cfg.KafkaPartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
+		PartitionRingName,
+		PartitionRingKey,
+		partitionRingKV,
+		logger,
+		prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+	if err != nil {
+		return nil, err
+	}
+	i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
 
 	return i, nil
 }
@@ -165,6 +182,11 @@ func (i *KafkaIngester) starting(ctx context.Context) error {
 	err = i.lifecycler.AwaitRunning(ctx)
 	if err != nil {
 		return err
+	}
+	if i.partitionRingLifecycler != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+		}
 	}
 
 	if err := services.StartAndAwaitRunning(ctx, i.consumer); err != nil {
@@ -255,22 +277,20 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 			// when stopping the service.
 			return nil
 		case rec, ok := <-i.records:
+			if rec.Partition != i.ingestPartitionID {
+				continue
+			}
 			if !ok {
 				level.Info(i.logger).Log("msg", "channel closed")
 				return nil
 			}
-			tenant := string(rec.Key)
+			// tenant := string(rec.Key)
 			stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 			if err != nil {
 				// This is an unrecoverable error and no amount of retries will fix it.
 				return fmt.Errorf("failed to decode stream: %w", err)
 			}
-			ingesterAddr, err := i.ingesterForTenant(tenant, stream)
-			if err != nil {
-				return fmt.Errorf("failed to get ingester for tenant: %w", err)
-			}
-			req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-			i.sendReq(ctx, req)
+			i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
 		case req := <-i.flushRequests:
 			// Drain any records that are already in the channel before flushing
 			// so that all pending data is included in the flush.
@@ -281,18 +301,13 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 					if !ok {
 						break drain
 					}
-					tenant := string(rec.Key)
+					// tenant := string(rec.Key)
 					stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 					if err != nil {
 						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
 						continue
 					}
-					ingesterAddr, err := i.ingesterForTenant(tenant, stream)
-					if err != nil {
-						return fmt.Errorf("failed to get ingester for tenant: %w", err)
-					}
-					req := clientRequest{ingesterAddr: ingesterAddr, tenant: tenant, reqs: []*logproto.PushRequest{{Streams: []logproto.Stream{stream}}}, size: stream.Size()}
-					i.sendReq(ctx, req)
+					i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
 				default:
 					break drain
 				}
@@ -300,18 +315,6 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 			req.done <- nil
 		}
 	}
-}
-
-func (i *KafkaIngester) ingesterForTenant(_ string, stream logproto.Stream) (string, error) {
-	var descs [1]ring.InstanceDesc
-	replicationSet, err := i.ringClient.Ring().Get(uint32(stream.Hash), ring.WriteNoExtend, descs[:0], nil, nil)
-	if err != nil {
-		return "", err
-	}
-	if len(replicationSet.Instances) == 0 {
-		return "", errors.New("no pattern ingester instances in ring")
-	}
-	return replicationSet.Instances[0].Addr, nil
 }
 
 func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest) {
@@ -338,109 +341,50 @@ func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest
 				i.cfg.ClientConfig.RemoteTimeout,
 			)
 
-			// First try to send the request to the correct pattern ingester instance
 			defer cancel()
-			client, err := i.ringClient.GetClientFor(clientRequest.ingesterAddr)
-			if err == nil {
-				_, err = client.(logproto.PatternClient).Push(ctx, req)
-			}
-			if err == nil {
-				// Success here means the stream will be processed for both metrics and patterns
-				i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
-				i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
-
-				// limit logged labels to 1000
-				labelsLimit := len(req.Streams)
-				if labelsLimit > 1000 {
-					labelsLimit = 1000
-				}
-
-				labels := make([]string, 0, labelsLimit)
-				for _, stream := range req.Streams {
-					if len(labels) >= 1000 {
-						break
-					}
-
-					labels = append(labels, stream.Labels)
-				}
-
-				sp.LogKV(
-					"event", "forwarded push request to pattern ingester",
-					"num_streams", len(req.Streams),
-					"first_1k_labels", strings.Join(labels, ", "),
-					"tenant", clientRequest.tenant,
-				)
-
-				// this is basically the same as logging push request streams,
-				// so put it behind the same flag
-				if i.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
-					level.Debug(i.logger).
-						Log(
-							"msg", "forwarded push request to pattern ingester",
-							"num_streams", len(req.Streams),
-							"first_1k_labels", strings.Join(labels, ", "),
-							"tenant", clientRequest.tenant,
-						)
-				}
-
-				return nil
-			}
-
-			// The pattern ingester appends failed, but we can retry the metric append
-			i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
-			level.Error(i.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
-
-			// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
-			// Only owned streams are processed for patterns, however any pattern ingester can
-			// aggregate metrics for any stream. Therefore, if we can't send the owned stream,
-			// try to forward request to any pattern ingester so we at least capture the metrics.
-
-			if !i.limits.MetricAggregationEnabled(clientRequest.tenant) {
+			_, err := i.Push(ctx, req)
+			if err != nil {
 				return err
 			}
+			// Success here means the stream will be processed for both metrics and patterns
+			i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
+			i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
 
-			replicationSet, err := i.ringClient.Ring().
-				GetReplicationSetForOperation(ring.WriteNoExtend)
-			if err != nil || len(replicationSet.Instances) == 0 {
-				i.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
-				level.Error(i.logger).Log(
-					"msg", "failed to send metrics to fallback pattern ingesters",
-					"num_instances", len(replicationSet.Instances),
-					"err", err,
-				)
-				return errors.New("no instances found for fallback")
+			// limit logged labels to 1000
+			labelsLimit := len(req.Streams)
+			if labelsLimit > 1000 {
+				labelsLimit = 1000
 			}
 
-			fallbackAddrs := make([]string, 0, len(replicationSet.Instances))
-			for _, instance := range replicationSet.Instances {
-				addr := instance.Addr
-				fallbackAddrs = append(fallbackAddrs, addr)
-
-				var client ring_client.PoolClient
-				client, err = i.ringClient.GetClientFor(addr)
-				if err == nil {
-					ctx, cancel := context.WithTimeout(
-						user.InjectOrgID(ctx, clientRequest.tenant),
-						i.cfg.ClientConfig.RemoteTimeout,
-					)
-					_, err = client.(logproto.PatternClient).Push(ctx, req)
-					cancel()
-					if err != nil {
-						continue
-					}
-					i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
-					// bail after any success to prevent sending more than one
-					return nil
+			labels := make([]string, 0, labelsLimit)
+			for _, stream := range req.Streams {
+				if len(labels) >= 1000 {
+					break
 				}
+
+				labels = append(labels, stream.Labels)
 			}
 
-			i.metrics.ingesterMetricAppends.WithLabelValues("fail").Inc()
-			level.Error(i.logger).Log(
-				"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
-				"addresses", strings.Join(fallbackAddrs, ", "),
-				"err", err,
+			sp.LogKV(
+				"event", "forwarded push request to pattern ingester",
+				"num_streams", len(req.Streams),
+				"first_1k_labels", strings.Join(labels, ", "),
+				"tenant", clientRequest.tenant,
 			)
-			return err
+
+			// this is basically the same as logging push request streams,
+			// so put it behind the same flag
+			if i.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
+				level.Debug(i.logger).
+					Log(
+						"msg", "forwarded push request to pattern ingester",
+						"num_streams", len(req.Streams),
+						"first_1k_labels", strings.Join(labels, ", "),
+						"tenant", clientRequest.tenant,
+					)
+			}
+
+			return nil
 		})
 }
 

@@ -313,6 +313,9 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	if t.Cfg.Pattern.IngestMode == pattern.IngestModeKafka {
+		t.Cfg.Pattern.KafkaPartitionRingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	}
 
 	return t.runtimeConfig, err
 }
@@ -822,9 +825,9 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return t.PatternIngester, nil
 	case pattern.IngestModeKafka:
 		_ = level.Debug(logger).Log("msg", "initializing Kafka pattern ingester...")
+		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 		t.PatternIngester, err = pattern.NewKafka(t.Cfg.Pattern,
 			t.Overrides,
-			t.PatternRingClient,
 			t.tenantConfigs,
 			t.Cfg.MetricsNamespace,
 			prometheus.DefaultRegisterer,
@@ -1762,6 +1765,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.UI.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.DataObj.Consumer.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Pattern.KafkaPartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
