@@ -4,25 +4,21 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/kafkav2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -30,7 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 // A processor receives records and builds data objects from them.
@@ -71,7 +66,6 @@ type KafkaIngester struct {
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
-	partitionReader         *partition.ReaderService
 }
 
 func NewKafka(
@@ -290,7 +284,13 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 				// This is an unrecoverable error and no amount of retries will fix it.
 				return fmt.Errorf("failed to decode stream: %w", err)
 			}
-			i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+			_, err = i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+			if err != nil {
+				return fmt.Errorf("failed to push stream: %w", err)
+			} else {
+				i.metrics.ingesterAppends.WithLabelValues(i.lifecycler.Addr, "success").Inc()
+				i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
+			}
 		case req := <-i.flushRequests:
 			// Drain any records that are already in the channel before flushing
 			// so that all pending data is included in the flush.
@@ -307,7 +307,14 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
 						continue
 					}
-					i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+					_, err = i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+					if err != nil {
+						return fmt.Errorf("failed to push stream: %w", err)
+					} else {
+						i.metrics.ingesterAppends.WithLabelValues(i.lifecycler.Addr, "success").Inc()
+						i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
+					}
+
 				default:
 					break drain
 				}
@@ -315,77 +322,6 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 			req.done <- nil
 		}
 	}
-}
-
-func (i *KafkaIngester) sendReq(ctx context.Context, clientRequest clientRequest) {
-	ctx, cancel := context.WithTimeout(ctx, i.cfg.ConnectionTimeout)
-	defer cancel()
-
-	req := clientRequest.reqs[0]
-
-	if len(req.Streams) == 0 {
-		return
-	}
-
-	// Nothing to do with this error. It's recorded in the metrics that
-	// are gathered by this request
-	_ = instrument.CollectedRequest(
-		ctx,
-		"SendKafkaBatchToPatternIngester",
-		i.metrics.sendDuration,
-		instrument.ErrorCode,
-		func(ctx context.Context) error {
-			sp := spanlogger.FromContext(ctx, i.logger)
-			ctx, cancel := context.WithTimeout(
-				user.InjectOrgID(ctx, clientRequest.tenant),
-				i.cfg.ClientConfig.RemoteTimeout,
-			)
-
-			_, err := i.Push(ctx, req)
-			cancel()
-			if err != nil {
-				return err
-			}
-			// Success here means the stream will be processed for both metrics and patterns
-			i.metrics.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
-			i.metrics.ingesterMetricAppends.WithLabelValues("success").Inc()
-
-			// limit logged labels to 1000
-			labelsLimit := len(req.Streams)
-			if labelsLimit > 1000 {
-				labelsLimit = 1000
-			}
-
-			labels := make([]string, 0, labelsLimit)
-			for _, stream := range req.Streams {
-				if len(labels) >= 1000 {
-					break
-				}
-
-				labels = append(labels, stream.Labels)
-			}
-
-			sp.LogKV(
-				"event", "forwarded push request to pattern ingester",
-				"num_streams", len(req.Streams),
-				"first_1k_labels", strings.Join(labels, ", "),
-				"tenant", clientRequest.tenant,
-			)
-
-			// this is basically the same as logging push request streams,
-			// so put it behind the same flag
-			if i.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
-				level.Debug(i.logger).
-					Log(
-						"msg", "forwarded push request to pattern ingester",
-						"num_streams", len(req.Streams),
-						"first_1k_labels", strings.Join(labels, ", "),
-						"tenant", clientRequest.tenant,
-					)
-			}
-
-			return nil
-		})
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
