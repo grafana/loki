@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"sort"
@@ -11,12 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -40,20 +44,27 @@ type fakeRunner struct {
 type runCall struct {
 	opts workflow.Options
 	plan *physical.Plan
+	// path is the artifact path this invocation reported back in its result
+	// record. Distinct per call so swap tests can prove the coordinator builds
+	// ToC entries from the job-reported paths rather than precomputed ones.
+	path string
 }
 
-func (f *fakeRunner) run(_ context.Context, opts workflow.Options, plan *physical.Plan) error {
+func (f *fakeRunner) run(_ context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 	f.mu.Lock()
-	f.calls = append(f.calls, runCall{opts, plan})
-	n := len(f.calls)
+	n := len(f.calls) + 1
+	path := fmt.Sprintf("indexes/tenants/test/aa/artifact-%02d", n)
+	f.calls = append(f.calls, runCall{opts: opts, plan: plan, path: path})
 	f.mu.Unlock()
 	if f.err != nil {
-		return f.err
+		return nil, f.err
 	}
 	if f.failOnCall > 0 && n == f.failOnCall {
-		return errors.New("fakeRunner: forced failure on call")
+		return nil, errors.New("fakeRunner: forced failure on call")
 	}
-	return nil
+
+	rec := v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: path}})
+	return rec, nil
 }
 
 func (f *fakeRunner) snapshot() []runCall {
@@ -138,6 +149,95 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 
 // fixedClock returns a clock function pinned to t.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
+
+// TestRunCycle_FansOutPhase1ThenCommitsPhase2 verifies the full per-tenant
+// shape: K=2 with 3 indexes produces ⌈3/2⌉ = 2 IndexMerge plans, then one
+// ReplaceIndexPointers call carrying the original 3 paths in oldPaths and
+// 2 deterministic outputs in newEntries.
+func TestRunCycle_FansOutPhase1ThenCommitsPhase2(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(3 * time.Hour), end: window.Add(4 * time.Hour)},
+			{path: "indexes/cc/src-2", start: window.Add(5 * time.Hour), end: window.Add(6 * time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+
+	c.runIndexMergePhase(ctx, "acme", window)
+
+	// Phase 1: K=2 with 3 non-overlapping indexes ⇒ patience-sort produces
+	// 1 pile (non-overlap), so ⌈1/2⌉ = 1 task.
+	dispatches := runner.snapshot()
+	require.Len(t, dispatches, 1, "non-overlapping inputs collapse to one pile and one task")
+	require.Equal(t, "acme", dispatches[0].opts.Tenant)
+	require.Equal(t, []string{"compaction", "index-merge"}, dispatches[0].opts.Actor)
+
+	root, err := dispatches[0].plan.Root()
+	require.NoError(t, err)
+	merge, ok := root.(*physical.IndexMerge)
+	require.True(t, ok)
+	require.Equal(t, "acme", merge.Tenant)
+	require.Equal(t, window.UnixNano(), merge.ToCWindowStart)
+
+	// Phase 2: one ReplaceIndexPointers; oldPaths covers all 3 sources;
+	// newEntries has the deterministic output that Phase 1 produced.
+	swaps := replacer.snapshot()
+	require.Len(t, swaps, 1)
+	require.Equal(t, "acme", swaps[0].tenant)
+	require.Equal(t, window, swaps[0].window)
+	require.ElementsMatch(t,
+		[]string{"indexes/aa/src-0", "indexes/bb/src-1", "indexes/cc/src-2"},
+		swaps[0].oldPaths)
+	require.Len(t, swaps[0].newEntries, 1, "one task ⇒ one new entry")
+}
+
+// TestRunCycle_FansOutOverlappingPiles verifies that overlapping inputs do
+// fan out: 3 sections whose key ranges all overlap (timestamp range overlap
+// in v1.0's timestamp-only fallback) ⇒ patience-sort emits 3 piles ⇒ K=2 ⇒
+// 2 IndexMerge tasks dispatched.
+func TestRunCycle_FansOutOverlappingPiles(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+			{path: "indexes/cc/src-2", start: window.Add(3 * time.Hour), end: window.Add(7 * time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+
+	c.runIndexMergePhase(ctx, "acme", window)
+
+	dispatches := runner.snapshot()
+	require.Len(t, dispatches, 2, "3 overlapping piles ÷ K=2 ⇒ 2 tasks")
+
+	swaps := replacer.snapshot()
+	require.Len(t, swaps, 1)
+	require.Len(t, swaps[0].newEntries, 2, "2 tasks ⇒ 2 new entries")
+
+	var gotPaths, wantPaths []string
+	for _, e := range swaps[0].newEntries {
+		gotPaths = append(gotPaths, e.Path)
+	}
+	for _, d := range dispatches {
+		wantPaths = append(wantPaths, d.path)
+	}
+	require.ElementsMatch(t, wantPaths, gotPaths, "swap entries carry the job-reported artifact paths")
+}
 
 // TestRunTenantCycle_RaceLossIsSuccess verifies the (swapped=false, err=nil)
 // path is treated as success: the cycle returns nil and the next cycle
@@ -232,11 +332,12 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
 	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
-	require.NotEmpty(t, node.OutputIndexPath)
 
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
+	require.Len(t, swaps[0].newEntries, 1)
+	require.Equal(t, dispatches[0].path, swaps[0].newEntries[0].Path, "swap entry carries the job-reported artifact path")
 }
 
 func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
@@ -567,13 +668,13 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	started := make(chan struct{}, 1)
-	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		select {
 		case started <- struct{}{}:
 		default:
 		}
 		<-ctx.Done()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	done := make(chan error, 1)
@@ -618,12 +719,12 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 
 	var mu sync.Mutex
 	starts := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		starts[opts.Tenant]++
 		mu.Unlock()
 		<-ctx.Done()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	done := make(chan error, 1)
@@ -655,7 +756,7 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 
 	var mu sync.Mutex
 	live := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		live[opts.Tenant]++
 		mu.Unlock()
@@ -663,7 +764,7 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 		mu.Lock()
 		live[opts.Tenant]--
 		mu.Unlock()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 	tenantsWithLiveDispatch := func() []string {
 		mu.Lock()
@@ -912,11 +1013,11 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		var mu sync.Mutex
 		var phases []string
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 			mu.Lock()
 			phases = append(phases, opts.Actor[1])
 			mu.Unlock()
-			return errors.New("dispatch boom")
+			return nil, errors.New("dispatch boom")
 		}
 
 		done := make(chan struct{})
@@ -946,20 +1047,20 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
 		limits := newFakeLimits("acme")
-		limits.setLog("acme", true) // both phases enabled so the flip is exercised
+		limits.setLog("acme", true) // enable the LogMerge phase so the loop flips to it
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
 
 		var mu sync.Mutex
 		var phases []string
 		// Collapse the dispatches within a cycle to a single entry so the slice
 		// records the per-cycle phase order.
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 			mu.Lock()
 			if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 				phases = append(phases, opts.Actor[1])
 			}
 			mu.Unlock()
-			return nil
+			return nil, nil
 		}
 
 		done := make(chan struct{})
@@ -983,14 +1084,14 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 // TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown guards the
 // upgrade path: an index already in storage has a legacy ToC row (unknown, 0)
 // but positive internal section stats from the old line-only statsCalculation.
-// makeTocEntries would sum those undercounts into a positive total that looks
+// taskBounds would sum those undercounts into a positive total that looks
 // exact, laundering the unknown into a falsely-known value. The replacement
 // rows must stay 0 so we can still identify and backfill these indexes later.
 func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
-	// Internal section stats are positive (100 + 100), so makeTocEntries would
+	// Internal section stats are positive (100 + 100), so taskBounds would
 	// otherwise publish 200.
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
@@ -1036,7 +1137,7 @@ func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
 		"a known converged row keeps the computed section sum (100+100)")
 }
 
-func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
+func TestTaskBounds_SumsUncompressedLogsSize(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
 	// Task 1: sections with distinct timestamps
@@ -1076,28 +1177,25 @@ func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
 		},
 	}
 
-	outputs := []string{"output1", "output2"}
-	entries := makeTocEntries(tasks, outputs)
-
-	require.Len(t, entries, 2)
-
 	// Task 1: UncompressedLogsSize = 100+200+150
-	require.Equal(t, uint64(450), entries[0].UncompressedLogsSize, "first task sum: 100+200+150")
-	require.Equal(t, time.Unix(0, task1Min).UTC(), entries[0].StartTime, "first task StartTime = min(task1Min, task1Max, task1Min, task1Mid, task1Mid, task1Max)")
-	require.Equal(t, time.Unix(0, task1Max).UTC(), entries[0].EndTime, "first task EndTime = max(task1Max, task1Mid, task1Max)")
+	min0, max0, unc0 := taskBounds(tasks[0])
+	require.Equal(t, uint64(450), unc0, "first task sum: 100+200+150")
+	require.Equal(t, task1Min, min0, "first task min = min(task1Min, task1Max, task1Mid)")
+	require.Equal(t, task1Max, max0, "first task max = max(task1Max, task1Mid)")
 
 	// Task 2: UncompressedLogsSize = 300+50
-	require.Equal(t, uint64(350), entries[1].UncompressedLogsSize, "second task sum: 300+50")
-	require.Equal(t, time.Unix(0, task2Min).UTC(), entries[1].StartTime, "second task StartTime = min(task2Max, task2Min)")
-	require.Equal(t, time.Unix(0, task2Max).UTC(), entries[1].EndTime, "second task EndTime = max(task2Max, task2Min)")
+	min1, max1, unc1 := taskBounds(tasks[1])
+	require.Equal(t, uint64(350), unc1, "second task sum: 300+50")
+	require.Equal(t, task2Min, min1, "second task min = min(task2Max, task2Min)")
+	require.Equal(t, task2Max, max1, "second task max = max(task2Max, task2Min)")
 }
 
-// TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
+// TestTaskBounds_UnknownSizePropagates verifies that a size of 0 (which
 // means "unknown", e.g. a legacy ToC row written before sizes were recorded)
 // poisons the whole task's sum. Publishing a partial sum would look exact even
 // though the true total is larger, so an unknown input must yield an unknown
 // (zero) output.
-func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
+func TestTaskBounds_UnknownSizePropagates(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	minTS := window.UnixNano()
 	maxTS := window.Add(time.Hour).UnixNano()
@@ -1115,9 +1213,8 @@ func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
 		},
 	}
 
-	entries := makeTocEntries(tasks, []string{"output1"})
-	require.Len(t, entries, 1)
-	require.Equal(t, uint64(0), entries[0].UncompressedLogsSize,
+	_, _, unc := taskBounds(tasks[0])
+	require.Equal(t, uint64(0), unc,
 		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
 }
 
@@ -1160,154 +1257,4 @@ func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
 	c.fillFileSizes(ctx, entries)
 
 	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
-}
-
-// TestRunTenantLoop_IndexOnly verifies that a tenant with only index
-// compaction enabled runs IndexMerge cycles and never dispatches a LogMerge
-// task, because runTenantLoop skips the LogMerge phase when runLog is false.
-func TestRunTenantLoop_IndexOnly(t *testing.T) {
-	window := imWindow()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-
-	var mu sync.Mutex
-	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
-		mu.Lock()
-		phases = append(phases, opts.Actor[1])
-		mu.Unlock()
-		return nil
-	}
-
-	done := make(chan struct{})
-	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
-
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(phases) >= 3
-	}, 2*time.Second, 5*time.Millisecond)
-	cancel()
-	<-done
-
-	mu.Lock()
-	defer mu.Unlock()
-	require.NotEmpty(t, phases)
-	for _, p := range phases {
-		require.Equal(t, "index-merge", p, "index-only tenant must never dispatch a log-merge task")
-	}
-}
-
-// TestRunTenantLoop_LogEnabledRunsBothPhases verifies that enabling log
-// compaction (which implies index) restores the flip-flop: dispatches
-// alternate index-merge <-> log-merge.
-func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
-	window := imWindow()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
-	replacer := &fakeReplacer{swapped: true}
-	limits := newFakeLimits("acme")
-	limits.setLog("acme", true)
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
-
-	var mu sync.Mutex
-	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
-		mu.Lock()
-		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
-			phases = append(phases, opts.Actor[1])
-		}
-		mu.Unlock()
-		return nil
-	}
-
-	done := make(chan struct{})
-	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
-
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(phases) >= 3
-	}, 2*time.Second, 5*time.Millisecond)
-	cancel()
-	<-done
-
-	mu.Lock()
-	defer mu.Unlock()
-	// runPlan returns nil (success) on every call, so the loop flips every
-	// cycle and the phase order is deterministic; the exact prefix is safe to
-	// assert. The loop starts on IndexMerge.
-	require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
-		"log-enabled tenant flips between index-merge and log-merge")
-}
-
-// TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off
-// log compaction while the loop runs stops further log-merge dispatches on the
-// next iteration while index-merge continues, because runTenantLoop re-reads
-// CompactionPhases every cycle.
-func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
-	window := imWindow()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
-	replacer := &fakeReplacer{swapped: true}
-	limits := newFakeLimits("acme")
-	limits.setLog("acme", true)
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
-
-	var mu sync.Mutex
-	var phases []string
-	sawLog := make(chan struct{})
-	var closeOnce sync.Once
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
-		mu.Lock()
-		phases = append(phases, opts.Actor[1])
-		mu.Unlock()
-		if opts.Actor[1] == "log-merge" {
-			closeOnce.Do(func() { close(sawLog) })
-		}
-		return nil
-	}
-
-	done := make(chan struct{})
-	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
-
-	// Wait for at least one log-merge, then disable log compaction.
-	select {
-	case <-sawLog:
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected at least one log-merge dispatch before disabling")
-	}
-	limits.setLog("acme", false)
-
-	// Record how many phases exist at the cutoff, then let the loop run more.
-	mu.Lock()
-	cutoff := len(phases)
-	mu.Unlock()
-
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(phases) >= cutoff+4 // several more cycles after disabling
-	}, 2*time.Second, 5*time.Millisecond)
-	cancel()
-	<-done
-
-	mu.Lock()
-	defer mu.Unlock()
-	// The mid-run disable is not instantaneous: an in-flight log-merge cycle
-	// may still complete. Assert that dispatches eventually settle to
-	// index-merge only — i.e. the tail after the cutoff contains no log-merge.
-	tail := phases[cutoff:]
-	require.NotEmpty(t, tail)
-	for _, p := range tail[len(tail)-4:] {
-		require.Equal(t, "index-merge", p, "no log-merge after log compaction is disabled")
-	}
 }

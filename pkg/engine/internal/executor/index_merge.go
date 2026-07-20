@@ -1,16 +1,17 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -19,60 +20,45 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// executeIndexMerge orchestrates the index merge: existence-check, classify sections,
-// drive both merges, feed indexobj.Builder, and upload the result.
+// executeIndexMerge orchestrates the index merge: classify sections,
+// drive both merges, feed indexobj.Builder, upload the result, and emit a record
+// reporting the content-hash path.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		if err := c.doIndexMerge(ctx, node); err != nil {
+		arts, err := c.doIndexMerge(ctx, node)
+		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return emptyPipeline()
+		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
 	}, nil)
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) error {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
-		return errors.New("no object store bucket configured")
-	}
-
-	// Check if output already exists (short-circuit on retry).
-	//
-	// We probe with a GetObject rather than Exists/HeadObject: under IRSA roles
-	// that grant s3:GetObject/s3:PutObject but not s3:ListBucket, a HeadObject on
-	// a missing key returns 403 AccessDenied instead of 404 NoSuchKey, which
-	// objstore surfaces as a hard error. GetObject returns a genuine NoSuchKey on
-	// a missing key without requiring ListBucket. Treat access-denied here as
-	// "not present" too, so a restrictive read policy never blocks the merge.
-	exists, err := c.outputExists(ctx, node.OutputIndexPath)
-	if err != nil {
-		return fmt.Errorf("checking output existence: %w", err)
-	}
-	if exists {
-		level.Info(c.logger).Log("msg", "IndexMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
-		return nil
+		return nil, errors.New("no object store bucket configured")
 	}
 
 	// Classify sections from all runs, grouped by source object.
 	objects, err := c.classifyRuns(ctx, node)
 	if err != nil {
-		return fmt.Errorf("classifying runs: %w", err)
+		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
 	// Create index object builder
 	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
-		return fmt.Errorf("creating index builder: %w", err)
+		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
 
 	// Merge postings sections
 	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
-		return fmt.Errorf("merging postings: %w", err)
+		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 
 	// Merge stats sections
 	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
-		return fmt.Errorf("merging stats: %w", err)
+		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
 	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
@@ -84,22 +70,34 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Upload a zero-byte sentinel.
-			return c.bucket.Upload(ctx, node.OutputIndexPath, io.NopCloser(bytes.NewReader([]byte{})))
+			// Empty builder produces no artifact.
+			return nil, nil
 		}
-		return fmt.Errorf("flushing builder: %w", err)
+		return nil, fmt.Errorf("flushing builder: %w", err)
 	}
-	defer closer.Close()
 
-	// Stream object directly to upload
-	reader, err := obj.Reader(ctx)
+	// Compute content-hash path and upload
+	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return fmt.Errorf("getting object reader: %w", err)
+		return nil, errors.Join(err, closer.Close())
 	}
-	defer reader.Close()
+	path, hashErr := v2.CompactedIndexPath(node.Tenant, pathReader)
+	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
+		hashErr = cerr
+	}
+	if hashErr != nil {
+		return nil, errors.Join(hashErr, closer.Close())
+	}
 
-	if err := c.bucket.Upload(ctx, node.OutputIndexPath, reader); err != nil {
-		return fmt.Errorf("uploading merged index: %w", err)
+	uploadReader, err := obj.Reader(ctx)
+	if err != nil {
+		return nil, errors.Join(err, closer.Close())
+	}
+	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
+		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
+	}
+	if err := uploadReader.Close(); err != nil {
+		return nil, errors.Join(fmt.Errorf("closing upload reader: %w", err), closer.Close())
 	}
 
 	// Observe output sizes once the upload has succeeded. obj.Size() reflects
@@ -107,24 +105,12 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	if c.indexMergeObserver != nil {
 		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
 	}
-	return nil
-}
 
-// outputExists reports whether the IndexMerge output object is already present.
-// It probes with GetObject so a restrictive read policy (s3:GetObject without
-// s3:ListBucket) still yields a correct answer: a missing key returns
-// not-found, and an access-denied response is treated as not-present rather
-// than a fatal error.
-func (c *Context) outputExists(ctx context.Context, path string) (bool, error) {
-	rc, err := c.bucket.Get(ctx, path)
-	if err != nil {
-		if c.bucket.IsObjNotFoundErr(err) || c.bucket.IsAccessDeniedErr(err) {
-			return false, nil
-		}
-		return false, err
+	if err := closer.Close(); err != nil {
+		return nil, fmt.Errorf("closing merged index: %w", err)
 	}
-	_ = rc.Close()
-	return true, nil
+
+	return []v2.ResultArtifact{{Path: path}}, nil
 }
 
 // classifyRuns opens each unique source object once and groups its mergable

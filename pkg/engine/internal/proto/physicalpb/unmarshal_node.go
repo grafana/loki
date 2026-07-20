@@ -597,7 +597,6 @@ func (n *IndexMerge) UnmarshalPhysical(from physical.Node) error {
 		Tenant:                  indexMerge.Tenant,
 		TocWindowStartUnixNanos: indexMerge.ToCWindowStart,
 		Runs:                    copyRunRefs(indexMerge.Runs),
-		OutputIndexPath:         indexMerge.OutputIndexPath,
 	}
 	return nil
 }
@@ -622,7 +621,6 @@ func (n *LogMerge) UnmarshalPhysical(from physical.Node) error {
 		TocWindowStartUnixNanos: logMerge.ToCWindowStart,
 		Runs:                    copyRunRefs(logMerge.Runs),
 		SortSchema:              logMerge.SortSchema,
-		OutputIndexPath:         logMerge.OutputIndexPath,
 	}
 	return nil
 }
