@@ -945,7 +945,9 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
-		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		limits := newFakeLimits("acme")
+		limits.setLog("acme", true) // both phases enabled so the flip is exercised
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
 
 		var mu sync.Mutex
 		var phases []string

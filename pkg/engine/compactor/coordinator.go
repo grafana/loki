@@ -664,13 +664,24 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 
 // runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
 // is cancelled. It never returns an error and never sleeps: on error it retries
-// the same phase, otherwise it flips.
+// the same phase, otherwise it flips. It re-reads the per-tenant phase
+// enablement each iteration and skips the LogMerge phase when log compaction is
+// disabled, so an index-only tenant runs IndexMerge exclusively.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
 	for {
 		if ctx.Err() != nil {
 			return
 		}
+		runIndex, runLog := c.limits.CompactionPhases(tenant)
+		if !runIndex && !runLog {
+			return
+		}
+		if p == phaseLogMerge && !runLog {
+			p = p.flip()
+			continue
+		}
+
 		window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 
 		start := c.clock()
