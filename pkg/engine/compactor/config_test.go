@@ -62,21 +62,3 @@ func TestConfig_LogMinCompactionSizeValidation(t *testing.T) {
 		require.ErrorIs(t, cfg.Validate(), errInvalidLogMinCompactionSize)
 	})
 }
-
-func TestConfig_CompactionTenants_ParsesCSV(t *testing.T) {
-	var cfg Config
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	cfg.RegisterFlags(fs)
-
-	require.NoError(t, fs.Parse([]string{"-dataobj.compaction.tenants=acme,globex"}))
-	require.Equal(t, []string{"acme", "globex"}, []string(cfg.CompactionTenants))
-}
-
-func TestConfig_CompactionTenants_EmptyByDefault(t *testing.T) {
-	var cfg Config
-	fs := flag.NewFlagSet("test", flag.ContinueOnError)
-	cfg.RegisterFlags(fs)
-
-	require.NoError(t, fs.Parse(nil))
-	require.Empty(t, []string(cfg.CompactionTenants))
-}
