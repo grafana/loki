@@ -124,7 +124,9 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	// startWorker), not here, so a still-draining worker cannot resurrect a
 	// series after this cancel.
 	for tenant, cancel := range workers {
-		if !c.limits.DataObjCompactionEnabled(tenant) {
+		// A worker stays alive whenever any phase runs; runLog is irrelevant to
+		// liveness because it implies runIndex.
+		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
 			cancel()
 			delete(workers, tenant)
 		}
@@ -138,7 +140,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		if _, running := workers[tenant]; running {
 			continue
 		}
-		if !c.limits.DataObjCompactionEnabled(tenant) {
+		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
 			continue
 		}
 		c.startWorker(ctx, workers, wg, tenant)
