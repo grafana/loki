@@ -210,6 +210,26 @@ func (m *coordinatorMetrics) recordTenantCycle(
 	}
 }
 
+// deleteTenant drops every per-tenant coordinator series for the tenant so a
+// stopped worker's gauges do not linger and report a disabled tenant's
+// last-known values. cyclesTotal, cycleDurationSeconds, and
+// tenantCycleDurationSeconds are intentionally omitted: cyclesTotal and
+// cycleDurationSeconds carry no tenant label, and tenantCycleDurationSeconds
+// carries only an outcome label (no tenant label).
+func (m *coordinatorMetrics) deleteTenant(tenant string) {
+	if m == nil {
+		return
+	}
+	m.unconsolidatedBacklog.DeleteLabelValues(tenant)
+	m.oldestBacklogLogAgeSeconds.DeleteLabelValues(tenant)
+	m.indexesPerTenantWindow.DeleteLabelValues(tenant)
+	m.indexesRemovedTotal.DeleteLabelValues(tenant)
+	m.indexesAddedTotal.DeleteLabelValues(tenant)
+	m.tasksTotal.DeleteLabelValues(tenant)
+	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+}
+
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge
 // executors emit.
 type workerMetrics struct {
