@@ -80,10 +80,13 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
-	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
+	windowSections, err := buildWindowSections(node, sources, table)
 	if err != nil {
-		return fmt.Errorf("starting k-way log merge: %w", err)
+		return err
+	}
+	merged, err := sortmerge.WindowedIterator(ctx, windowSections, table.sortKeys, node.SortSchema)
+	if err != nil {
+		return fmt.Errorf("starting windowed k-way log merge: %w", err)
 	}
 
 	// Consume the globally-sorted stream and build compacted object
@@ -192,6 +195,11 @@ type logSource struct {
 	path         string
 	logsSections []*dataobj.Section
 	streams      map[int64]streams.Stream
+	// sectionsByIndex maps a logs section's SectionIndex (its ordinal among all
+	// logs sections in the object, matching the index calculator's numbering) to
+	// the section, for the tenant. Used to resolve a run's SectionRefs to the
+	// physical sections to merge.
+	sectionsByIndex map[int64]*dataobj.Section
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
@@ -231,15 +239,23 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			logsSections   []*dataobj.Section
 			streamSections []*dataobj.Section
 		)
+		sectionsByIndex := make(map[int64]*dataobj.Section)
+		// logsOrdinal counts logs sections across all tenants, matching the index
+		// calculator's SectionIndex numbering (Sections().Filter(logs)), so a
+		// run's SectionRef.SectionIndex resolves to the right physical section.
+		var logsOrdinal int64
 		for _, sec := range obj.Sections() {
-			if sec.Tenant != node.Tenant {
-				continue
-			}
 			switch {
 			case logs.CheckSection(sec):
-				logsSections = append(logsSections, sec)
+				if sec.Tenant == node.Tenant {
+					logsSections = append(logsSections, sec)
+					sectionsByIndex[logsOrdinal] = sec
+				}
+				logsOrdinal++
 			case streams.CheckSection(sec):
-				streamSections = append(streamSections, sec)
+				if sec.Tenant == node.Tenant {
+					streamSections = append(streamSections, sec)
+				}
 			}
 		}
 
@@ -260,9 +276,10 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		}
 
 		sources = append(sources, &logSource{
-			path:         path,
-			logsSections: logsSections,
-			streams:      srcStreams,
+			path:            path,
+			logsSections:    logsSections,
+			streams:         srcStreams,
+			sectionsByIndex: sectionsByIndex,
 		})
 	}
 
@@ -353,19 +370,63 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 	return table, nil
 }
 
-// sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *globalStreamTable) ([]*dataobj.Section, []map[int64]int64) {
-	var (
-		sections []*dataobj.Section
-		remaps   []map[int64]int64
-	)
-	for sourceIdx, src := range sources {
-		for _, sec := range src.logsSections {
-			sections = append(sections, sec)
-			remaps = append(remaps, table.streamIDRemaps[sourceIdx])
+// buildWindowSections resolves the run SectionRefs to the physical sections to
+// merge, deduplicated by (object, section) since a section carries many tuples
+// (one SectionRef each). Each section's MinKey is the smallest sort key across
+// its refs — the point at which the windowed merge must open it. The section's
+// stream remap is its source object's local->global mapping.
+func buildWindowSections(node *physical.LogMerge, sources []*logSource, table *globalStreamTable) ([]sortmerge.WindowSection, error) {
+	sourceIdxByPath := make(map[string]int, len(sources))
+	for i, s := range sources {
+		sourceIdxByPath[s.path] = i
+	}
+
+	type sectionKey struct {
+		path string
+		idx  int64
+	}
+	byKey := make(map[sectionKey]*sortmerge.WindowSection)
+	var order []sectionKey // preserve first-seen order for determinism
+
+	for _, run := range node.Runs {
+		if run == nil {
+			continue
+		}
+		for _, ref := range run.Sections {
+			if ref == nil {
+				continue
+			}
+			k := sectionKey{ref.ObjectPath, ref.SectionIndex}
+			minKey := strings.Join(ref.MinKey, "\x00")
+			if ws, ok := byKey[k]; ok {
+				if minKey < ws.MinKey {
+					ws.MinKey = minKey
+				}
+				continue
+			}
+
+			si, ok := sourceIdxByPath[ref.ObjectPath]
+			if !ok {
+				return nil, fmt.Errorf("run references object %q not among collected sources", ref.ObjectPath)
+			}
+			sec, ok := sources[si].sectionsByIndex[ref.SectionIndex]
+			if !ok {
+				return nil, fmt.Errorf("object %q has no logs section index %d for tenant %q", ref.ObjectPath, ref.SectionIndex, node.Tenant)
+			}
+			byKey[k] = &sortmerge.WindowSection{
+				Section: sec,
+				Remap:   table.streamIDRemaps[si],
+				MinKey:  minKey,
+			}
+			order = append(order, k)
 		}
 	}
-	return sections, remaps
+
+	out := make([]sortmerge.WindowSection, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
+	}
+	return out, nil
 }
 
 // logObjectWriter consumes the globally-sorted merged record stream and builds
