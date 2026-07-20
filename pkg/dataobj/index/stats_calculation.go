@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 )
@@ -94,7 +96,16 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 			agg.maxTimestamp = log.Timestamp
 		}
 		agg.rowCount++
-		agg.uncompressedSize += int64(len(log.Line))
+		// The uncompressed_logs_size byte contract is line bytes plus structured
+		// metadata value bytes, matching streams.Stream.UncompressedSize recorded
+		// during initial indexing (see consumer/logsobj Builder.Append). Counting
+		// only the line here would make compaction output disagree with the ToC
+		// values written on the initial index flush.
+		size := int64(len(log.Line))
+		log.Metadata.Range(func(md labels.Label) {
+			size += int64(len(md.Value))
+		})
+		agg.uncompressedSize += size
 	}
 	return nil
 }

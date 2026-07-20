@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -974,4 +976,186 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
 			"successful phases flip between index-merge and log-merge")
 	})
+}
+
+// TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown guards the
+// upgrade path: an index already in storage has a legacy ToC row (unknown, 0)
+// but positive internal section stats from the old line-only statsCalculation.
+// makeTocEntries would sum those undercounts into a positive total that looks
+// exact, laundering the unknown into a falsely-known value. The replacement
+// rows must stay 0 so we can still identify and backfill these indexes later.
+func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	// Internal section stats are positive (100 + 100), so makeTocEntries would
+	// otherwise publish 200.
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+
+	// Converged ToC row is unknown (0), i.e. a legacy pre-upgrade index.
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 0}
+	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.NotEmpty(t, calls[0].newEntries)
+	for _, e := range calls[0].newEntries {
+		require.Equal(t, uint64(0), e.UncompressedLogsSize,
+			"an unknown converged row must not be healed into a positive size from legacy line-only stats")
+	}
+}
+
+// TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize is the complement:
+// when the converged ToC row is known (nonzero), the computed replacement size
+// is trustworthy and must be persisted rather than zeroed.
+func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour), UncompressedLogsSize: 200}
+	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.Len(t, calls[0].newEntries, 1)
+	require.Equal(t, uint64(200), calls[0].newEntries[0].UncompressedLogsSize,
+		"a known converged row keeps the computed section sum (100+100)")
+}
+
+func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+
+	// Task 1: sections with distinct timestamps
+	task1Min := window.UnixNano()
+	task1Mid := window.Add(30 * time.Minute).UnixNano()
+	task1Max := window.Add(2 * time.Hour).UnixNano()
+
+	// Task 2: sections with different distinct timestamps
+	task2Min := window.Add(10 * time.Minute).UnixNano()
+	task2Max := window.Add(3 * time.Hour).UnixNano()
+
+	tasks := []*compactionv2pb.TaskSpec{
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task1Max, MaxTimestamp: task1Max, UncompressedSize: 100},
+						{MinTimestamp: task1Min, MaxTimestamp: task1Mid, UncompressedSize: 200},
+					},
+				},
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task1Mid, MaxTimestamp: task1Max, UncompressedSize: 150},
+					},
+				},
+			},
+		},
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: task2Max, MaxTimestamp: task2Max, UncompressedSize: 300},
+						{MinTimestamp: task2Min, MaxTimestamp: task2Min, UncompressedSize: 50},
+					},
+				},
+			},
+		},
+	}
+
+	outputs := []string{"output1", "output2"}
+	entries := makeTocEntries(tasks, outputs)
+
+	require.Len(t, entries, 2)
+
+	// Task 1: UncompressedLogsSize = 100+200+150
+	require.Equal(t, uint64(450), entries[0].UncompressedLogsSize, "first task sum: 100+200+150")
+	require.Equal(t, time.Unix(0, task1Min).UTC(), entries[0].StartTime, "first task StartTime = min(task1Min, task1Max, task1Min, task1Mid, task1Mid, task1Max)")
+	require.Equal(t, time.Unix(0, task1Max).UTC(), entries[0].EndTime, "first task EndTime = max(task1Max, task1Mid, task1Max)")
+
+	// Task 2: UncompressedLogsSize = 300+50
+	require.Equal(t, uint64(350), entries[1].UncompressedLogsSize, "second task sum: 300+50")
+	require.Equal(t, time.Unix(0, task2Min).UTC(), entries[1].StartTime, "second task StartTime = min(task2Max, task2Min)")
+	require.Equal(t, time.Unix(0, task2Max).UTC(), entries[1].EndTime, "second task EndTime = max(task2Max, task2Min)")
+}
+
+// TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
+// means "unknown", e.g. a legacy ToC row written before sizes were recorded)
+// poisons the whole task's sum. Publishing a partial sum would look exact even
+// though the true total is larger, so an unknown input must yield an unknown
+// (zero) output.
+func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	minTS := window.UnixNano()
+	maxTS := window.Add(time.Hour).UnixNano()
+
+	tasks := []*compactionv2pb.TaskSpec{
+		{
+			Runs: []*compactionv2pb.RunRef{
+				{
+					Sections: []*compactionv2pb.SectionRef{
+						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 0},    // legacy: unknown
+						{MinTimestamp: minTS, MaxTimestamp: maxTS, UncompressedSize: 4096}, // known
+					},
+				},
+			},
+		},
+	}
+
+	entries := makeTocEntries(tasks, []string{"output1"})
+	require.Len(t, entries, 1)
+	require.Equal(t, uint64(0), entries[0].UncompressedLogsSize,
+		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
+}
+
+func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	outputPath := "indexes/test/output"
+	testData := []byte("test data for size calculation")
+	err := bucket.Upload(ctx, outputPath, bytes.NewReader(testData))
+	require.NoError(t, err)
+
+	entries := []metastore.TableOfContentsEntry{
+		{Path: outputPath},
+	}
+
+	c := &coordinator{
+		logger: log.NewNopLogger(),
+		bucket: bucket,
+	}
+
+	c.fillFileSizes(ctx, entries)
+
+	require.Equal(t, uint64(len(testData)), entries[0].FileSize)
+}
+
+func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	entries := []metastore.TableOfContentsEntry{
+		{Path: "indexes/test/nonexistent"},
+	}
+
+	c := &coordinator{
+		logger: log.NewNopLogger(),
+		bucket: bucket,
+	}
+
+	c.fillFileSizes(ctx, entries)
+
+	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
 }

@@ -54,11 +54,11 @@ But what if the application itself generated logs that were out of order? Well, 
 
 It's also worth noting that the batching nature of the Loki push API can lead to some instances of out of order errors being received which are really false positives. (Perhaps a batch partially succeeded and was present; or anything that previously succeeded would return an out of order entry; or anything new would be accepted.)
 
-## Use `snappy` compression algorithm
+## Consider the `snappy` compression algorithm
 
-`Snappy` is currently the Loki compression algorithm of choice. It performs much better than `gzip` for speed, but it is not as efficient in storage. This was an acceptable tradeoff for us.
+The default `chunk_encoding` is `gzip`, which compresses well but is comparatively slow, and can cause slow query responses under load.
 
-Grafana Labs has found that `gzip` was very good for compression but was very slow, and this was causing slow query responses.
+`Snappy` is a recommended override for `chunk_encoding` in higher-throughput environments. It performs much better than `gzip` for speed, but it is not as efficient in storage. Whether that tradeoff is acceptable depends on your workload.
 
 `LZ4` is a good compromise of speed and compression performance. While compression is slightly slower than `snappy`, the compression ratio is higher, resulting in smaller chunks in object storage.
 
@@ -68,7 +68,7 @@ Using `chunk_target_size` instructs Loki to try to fill all chunks to a target _
 
 Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 2h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
-Depending on the compression used (Loki has been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
+Depending on the compression used (for example, `snappy`, which has less compressibility but faster performance than the `gzip` default), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
 
 Lots of small, unfilled chunks negatively affect Loki. The team is always working to improve this and may consider a compactor to improve this in some situations. But, in general, the guidance should stay about the same: try your best to fill chunks.
 

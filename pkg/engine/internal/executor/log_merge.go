@@ -108,7 +108,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
-	idxObj, idxCloser, err := calc.Flush()
+	idxObj, idxCloser, _, err := calc.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing index: %w", err)
 	}
