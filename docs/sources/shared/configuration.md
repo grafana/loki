@@ -6854,7 +6854,7 @@ tsdb_shipper:
   [query_ready_num_days: <int> | default = 0]
 
   # Timeout for downloading a table's initial set of index files from object
-  # storage when serving a query.Raise this for tenants with large indexes when
+  # storage when serving a query. Raise this for tenants with large indexes when
   # slow object-storage responses cause downloads to hit the deadline; lower it
   # to fail queries faster when storage is degraded.
   # CLI flag: -tsdb.shipper.download-timeout

@@ -99,7 +99,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
-	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query."+
+	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query. "+
 		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
 }
 
