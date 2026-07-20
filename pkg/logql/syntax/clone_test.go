@@ -89,6 +89,65 @@ func TestClone(t *testing.T) {
 	}
 }
 
+func TestCloneBinOpOptions(t *testing.T) {
+	tests := map[string]struct {
+		opts   *BinOpOptions
+		mutate func(*BinOpOptions)
+		want   *BinOpOptions
+	}{
+		"vector matching slices are independent": {
+			opts: &BinOpOptions{
+				VectorMatching: &VectorMatching{
+					Card:           CardManyToOne,
+					On:             true,
+					MatchingLabels: []string{"cluster"},
+					Include:        []string{"namespace"},
+				},
+			},
+			mutate: func(opts *BinOpOptions) {
+				opts.VectorMatching.MatchingLabels[0] = "mutated"
+				opts.VectorMatching.Include[0] = "mutated"
+			},
+			want: &BinOpOptions{
+				VectorMatching: &VectorMatching{
+					Card:           CardManyToOne,
+					On:             true,
+					MatchingLabels: []string{"cluster"},
+					Include:        []string{"namespace"},
+				},
+			},
+		},
+		"nil vector matching is preserved": {
+			opts: &BinOpOptions{
+				ReturnBool: true,
+			},
+			want: &BinOpOptions{
+				ReturnBool: true,
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			original := &BinOpExpr{
+				SampleExpr: &VectorExpr{Val: 1},
+				RHS:        &VectorExpr{Val: 2},
+				Op:         OpTypeAdd,
+				Opts:       test.opts,
+			}
+
+			cloned, err := Clone(original)
+			require.NoError(t, err)
+			if test.mutate != nil {
+				test.mutate(original.Opts)
+			}
+
+			require.Equal(t, test.want, cloned.Opts)
+			require.NotSame(t, original.Opts, cloned.Opts)
+		})
+	}
+}
+
 func TestCloneStringLabelFilter(t *testing.T) {
 	for name, tc := range map[string]struct {
 		expr Expr
