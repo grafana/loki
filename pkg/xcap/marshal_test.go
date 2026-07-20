@@ -84,17 +84,17 @@ func TestMarshalAggregatesRegionsByName(t *testing.T) {
 	region := unmarshaled.Regions()[0]
 	bytesReadObservation := region.observations[bytesRead.Key()]
 	require.NotNil(t, bytesReadObservation)
-	require.EqualValues(t, 150, bytesReadObservation.Value)
+	require.EqualValues(t, 150, bytesReadObservation.Value())
 	require.Equal(t, 2, bytesReadObservation.Count)
 
 	latencyObservation := region.observations[latency.Key()]
 	require.NotNil(t, latencyObservation)
-	require.Equal(t, 3.1, latencyObservation.Value)
+	require.Equal(t, 3.1, latencyObservation.Value())
 	require.Equal(t, 2, latencyObservation.Count)
 
 	requestsObservation := region.observations[requests.Key()]
 	require.NotNil(t, requestsObservation)
-	require.EqualValues(t, 2, requestsObservation.Value)
+	require.EqualValues(t, 2, requestsObservation.Value())
 	require.Equal(t, 1, requestsObservation.Count)
 }
 
@@ -229,7 +229,7 @@ func observationsEqual(obs1, obs2 *AggregatedObservation) bool {
 		return false
 	}
 
-	return valuesEqual(obs1.Value, obs2.Value)
+	return valuesEqual(obs1.Value(), obs2.Value())
 }
 
 func statisticsEqual(s1, s2 Statistic) bool {

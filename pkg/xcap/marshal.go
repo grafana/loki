@@ -2,7 +2,6 @@ package xcap
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/grafana/loki/v3/pkg/xcap/internal/proto"
 )
@@ -92,7 +91,7 @@ func aggregateRegionsByName(regions []*Region) []*Region {
 			}
 			dst.observations[key] = &AggregatedObservation{
 				Statistic: srcObs.Statistic,
-				Value:     srcObs.Value,
+				value:     srcObs.value,
 				Count:     srcObs.Count,
 			}
 		}
@@ -121,15 +120,10 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (proto.Re
 			return proto.Region{}, fmt.Errorf("statistic not found in index: %v", key)
 		}
 
-		protoValue, err := marshalObservationV2(observation.Value)
-		if err != nil {
-			return proto.Region{}, fmt.Errorf("failed to marshal observation: %w", err)
-		}
-
 		protoObservations = append(protoObservations, proto.ObservationV2{
 			StatisticId: statIndex,
 			Count:       uint32(observation.Count),
-			ValueBits:   protoValue,
+			ValueBits:   observation.value.bits,
 		})
 	}
 
@@ -137,24 +131,6 @@ func toProtoRegion(region *Region, statsIndex map[StatisticKey]uint32) (proto.Re
 		Name:           region.name,
 		ObservationsV2: protoObservations,
 	}, nil
-}
-
-// marshalObservationV2 converts an observation value to its flattened V2 wire
-// representation. The statistic table supplies the value type on decode.
-func marshalObservationV2(value any) (uint64, error) {
-	switch v := value.(type) {
-	case int64:
-		return uint64(v), nil
-	case float64:
-		return math.Float64bits(v), nil
-	case bool:
-		if v {
-			return 1, nil
-		}
-		return 0, nil
-	default:
-		return 0, fmt.Errorf("unsupported observation value type: %T", value)
-	}
 }
 
 // marshalDataType converts a DataType to proto DataType.

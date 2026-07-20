@@ -75,7 +75,7 @@ func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) error {
 		dst := c.mergeDestinationRegion(parent, protoRegion.Name)
 
 		dst.mu.Lock()
-		mergeProtoV2Observations(dst, protoRegion.ObservationsV2, decoded.statistics)
+		dst.mergeProtoObservations(protoRegion.ObservationsV2, decoded.statistics)
 		dst.mu.Unlock()
 	}
 
@@ -133,15 +133,25 @@ func (c *Capture) mergeDestinationRegion(parent *Region, name string) *Region {
 	return dst
 }
 
-func mergeProtoV2Observations(dst *Region, observations []internal.ObservationV2, stats []Statistic) {
+// mergeProtoObservations folds decoded V2 observations into r, reusing the
+// standard aggregation path. The caller must hold r.mu.
+func (r *Region) mergeProtoObservations(observations []internal.ObservationV2, stats []Statistic) {
 	for i := range observations {
 		obs := &observations[i]
 		stat := stats[obs.StatisticId]
+		val := valueFromBits(obs.ValueBits)
 		key := stat.Key()
-		if existing, ok := dst.observations[key]; ok {
-			existing.mergeV2(obs.ValueBits, int(obs.Count))
+
+		if existing, ok := r.observations[key]; ok {
+			existing.aggregate(stat.Aggregation(), val)
+			existing.Count += int(obs.Count)
 			continue
 		}
-		dst.observations[key] = newAggregatedObservationV2(stat, obs.ValueBits, int(obs.Count))
+
+		r.observations[key] = &AggregatedObservation{
+			Statistic: stat,
+			value:     val,
+			Count:     int(obs.Count),
+		}
 	}
 }
