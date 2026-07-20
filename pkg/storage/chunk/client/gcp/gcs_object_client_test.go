@@ -156,16 +156,15 @@ func TestUpstreamRetryableErrs(t *testing.T) {
 func TestTCPErrs(t *testing.T) {
 
 	tests := []struct {
-		name                  string
-		responseSleep         time.Duration
-		connectSleep          time.Duration
-		clientTimeout         time.Duration
-		serverTimeout         time.Duration
-		connectTimeout        time.Duration
-		responseHeaderTimeout time.Duration
-		closeOnNew            bool
-		closeOnActive         bool
-		retryable             bool
+		name           string
+		responseSleep  time.Duration
+		connectSleep   time.Duration
+		clientTimeout  time.Duration
+		serverTimeout  time.Duration
+		connectTimeout time.Duration
+		closeOnNew     bool
+		closeOnActive  bool
+		retryable      bool
 	}{
 		{
 			name:          "request took longer than client timeout, not retryable",
@@ -180,20 +179,13 @@ func TestTCPErrs(t *testing.T) {
 			retryable:     false,
 		},
 		{
-			// A transport timeout awaiting response headers is retryable: it's
-			// a server-side slowness, surfaced as a net timeout. We use the
-			// transport's ResponseHeaderTimeout rather than http.Client.Timeout
-			// because Go surfaces the latter inconsistently under load (as a
-			// "Client.Timeout" error or a bare "context deadline exceeded"),
-			// whereas ResponseHeaderTimeout is a deterministic net timeout.
-			// responseSleep only needs to exceed responseHeaderTimeout; it is
-			// interruptible so it doesn't slow teardown, and the client-context
-			// timeout is set high so it never wins the race.
-			name:                  "transport response header timeout exceeded, retryable",
-			responseSleep:         5 * time.Second,
-			responseHeaderTimeout: 100 * time.Millisecond,
-			clientTimeout:         30 * time.Second,
-			retryable:             true,
+			// there are retryable because it's a server-side timeout
+			name:           "transport connect timeout exceeded, retryable",
+			connectSleep:   time.Millisecond * 40,
+			connectTimeout: time.Millisecond * 20,
+			// even though the client timeout is set, the connect timeout will be hit first
+			clientTimeout: time.Millisecond * 100,
+			retryable:     true,
 		},
 		{
 			name:          "connection is closed server-side before being established",
@@ -219,9 +211,6 @@ func TestTCPErrs(t *testing.T) {
 
 			client := http.DefaultClient
 			transport := http.DefaultTransport.(*http.Transport).Clone()
-			if tc.responseHeaderTimeout != 0 {
-				transport.ResponseHeaderTimeout = tc.responseHeaderTimeout
-			}
 			client.Transport = transport
 			client.Timeout = tc.connectTimeout
 
@@ -256,24 +245,14 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 }
 
 func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
-	// done unblocks the sleeps below at teardown, so a sleep set longer than the
-	// client's timeout (to reliably win the timeout race under load) does not
-	// stall server.Close().
-	done := make(chan struct{})
-	sleep := func(d time.Duration) {
-		select {
-		case <-time.After(d):
-		case <-done:
-		}
-	}
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		// sleep on response to mimic server overload
-		sleep(responseSleep)
+		time.Sleep(responseSleep)
 	}))
 	server.Config.ConnState = func(conn net.Conn, state http.ConnState) {
 		// sleep on initial connection attempt to mimic server non-responsiveness
 		if state == http.StateNew {
-			sleep(connectSleep)
+			time.Sleep(connectSleep)
 			if closeOnNew {
 				require.NoError(t, conn.Close())
 			}
@@ -283,10 +262,7 @@ func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration,
 			require.NoError(t, conn.Close())
 		}
 	}
-	t.Cleanup(func() {
-		close(done)
-		server.Close()
-	})
+	t.Cleanup(server.Close)
 	server.Start()
 	return server
 }

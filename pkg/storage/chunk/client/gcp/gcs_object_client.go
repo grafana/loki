@@ -291,10 +291,7 @@ func IsStorageTimeoutErr(err error) bool {
 	if isContextErr(err) {
 		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
 		// while waiting for headers.  This is a server side timeout.
-		// The transport's ResponseHeaderTimeout also wraps a context deadline but is
-		// unambiguously a server-side slowness (never a caller cancellation), so retry it too.
-		return strings.Contains(err.Error(), "Client.Timeout") ||
-			strings.Contains(err.Error(), "timeout awaiting response headers")
+		return strings.Contains(err.Error(), "Client.Timeout")
 	}
 
 	// connection misconfiguration, or writing on a closed connection
