@@ -51,6 +51,7 @@ type coordinator struct {
 	// wiring sets it to time.Now.
 	clock   func() time.Time
 	metrics *coordinatorMetrics
+	limits  Limits
 }
 
 // newCoordinator constructs a coordinator wired to a real
@@ -64,6 +65,7 @@ func newCoordinator(
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
 	reg prometheus.Registerer,
+	limits Limits,
 ) *coordinator {
 	return &coordinator{
 		cfg:    cfg,
@@ -75,6 +77,7 @@ func newCoordinator(
 		metastoreWriter: metastoreWriter,
 		clock:           time.Now,
 		metrics:         newCoordinatorMetrics(reg),
+		limits:          limits,
 	}
 }
 

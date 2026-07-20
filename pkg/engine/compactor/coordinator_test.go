@@ -95,8 +95,11 @@ func (f *fakeReplacer) snapshot() []replaceCall {
 // newTestCoordinator builds a Coordinator wired to the supplied fakes plus a
 // default-configured Config (loop-friendly TTLs, K=2 so two indexes split
 // into two single-pile tasks).
-func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner, replacer *fakeReplacer, clock func() time.Time) *coordinator {
+func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner, replacer *fakeReplacer, clock func() time.Time, limits Limits) *coordinator {
 	t.Helper()
+	if limits == nil {
+		limits = newFakeLimits() // enables nothing by default
+	}
 	return &coordinator{
 		cfg: Config{
 			Enabled:                   true,
@@ -115,6 +118,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 		metastoreWriter: replacer,
 		clock:           clock,
 		metrics:         newCoordinatorMetrics(prometheus.NewRegistry()),
+		limits:          limits,
 	}
 }
 
@@ -138,7 +142,7 @@ func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: false, err: nil}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	// compactTenant surfaces the tenant error directly (the phase wrapper is
 	// what swallows/logs it); assert on it via the lower API here.
@@ -167,7 +171,7 @@ func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 	swapErr := errors.New("bucket: temporary failure")
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: false, err: swapErr}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	indexes, err := loadTenantIndexes(ctx, bucket, window)
 	require.NoError(t, err)
@@ -192,7 +196,7 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -236,7 +240,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -258,7 +262,7 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -285,7 +289,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 	c.cfg.LogMinCompactionSize = 1 << 30 // 1GiB floor; 30 bytes is below it
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
@@ -317,7 +321,7 @@ func TestCompactTenantLogs_SwapsToC(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -340,7 +344,7 @@ func TestCompactTenantLogs_SwapErrorFails(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{err: errors.New("boom")}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -356,7 +360,7 @@ func TestCompactTenantLogs_SwapRaceLossConverged(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: false}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -373,7 +377,7 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 	c.cfg.DryRun = true
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
@@ -393,7 +397,7 @@ func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
 
 	runner := &fakeRunner{failOnCall: 1}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
 	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
 	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -412,7 +416,7 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 		bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 		runner := &fakeRunner{}
 		replacer := &fakeReplacer{swapped: true}
-		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 		_, err := c.compactTenantLogs(ctx, "acme", window, entry)
 		require.NoError(t, err)
 		calls := replacer.snapshot()
@@ -447,7 +451,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	})
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
@@ -457,7 +461,7 @@ func TestRunIndexMergePhase_MissingToCIsNoWork(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 	bucket := objstore.NewInMemBucket() // no ToC written
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
 }
@@ -474,7 +478,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 	})
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
 	require.Len(t, replacer.snapshot(), 1)
@@ -502,7 +506,7 @@ func TestRunLogMergePhase_ZeroEntriesIsNoWork(t *testing.T) {
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{}) // no acme entries
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(ctx, "acme", window))
 }
@@ -513,7 +517,7 @@ func TestRunLogMergePhase_PerIndexSwaps(t *testing.T) {
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	require.Equal(t, phaseOutcomeSwapped, c.runLogMergePhase(ctx, "acme", window))
 	require.Len(t, replacer.snapshot(), 2, "one swap per index")
@@ -526,7 +530,7 @@ func TestRunLogMergePhase_CancelledMidIterationStops(t *testing.T) {
 	window := imWindow()
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	cancel() // cancel before running: the phase must not proceed
 	require.Equal(t, phaseOutcomeError, c.runLogMergePhase(ctx, "acme", window))
@@ -540,7 +544,7 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{}
 
-	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	c.cfg.CompactionTenants = []string{"acme"}
 
 	done := make(chan error, 1)
@@ -570,7 +574,7 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
-		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 		var mu sync.Mutex
 		var phases []string
@@ -607,7 +611,7 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
-		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 		var mu sync.Mutex
 		var phases []string
@@ -660,7 +664,7 @@ func TestRun_DedupesTenants(t *testing.T) {
 	})
 
 	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)))
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	// One task at a time so a worker parks in a single in-flight dispatch; the
 	// number of parked dispatches then equals the number of live workers.
 	c.cfg.MaxRunningCompactionTasks = 1
