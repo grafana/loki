@@ -19,19 +19,34 @@ import (
 
 func main() {
 	app := kingpin.New("dataobj-locality", "Measure label clustering depth across postings sections and logs-section locality over a time range.")
-	cmd := registerFlags(app)
-	if _, err := app.Parse(os.Args[1:]); err != nil {
+	report := &localityCommand{}
+	serve := &serveCommand{}
+	reportCmd := app.Command("report", "Run a one-shot locality report for one tenant.")
+	serveCmd := app.Command("serve", "Continuously scan locality windows and expose Prometheus metrics.")
+	registerReportFlags(reportCmd, report)
+	registerServeFlags(serveCmd, serve)
+
+	selected, err := app.Parse(os.Args[1:])
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := cmd.run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	var runErr error
+	switch selected {
+	case reportCmd.FullCommand():
+		runErr = report.run()
+	case serveCmd.FullCommand():
+		runErr = serve.run()
+	default:
+		runErr = fmt.Errorf("expected a subcommand")
+	}
+	if runErr != nil {
+		fmt.Fprintln(os.Stderr, runErr)
 		os.Exit(1)
 	}
 }
 
-// localityCommand holds the parsed flags for the tool. The tool has no
-// subcommands: flags are registered directly on the application.
+// localityCommand holds the parsed flags for the one-shot report command.
 type localityCommand struct {
 	lokiConfigFile         *string
 	expandEnv              *bool
@@ -53,6 +68,9 @@ func (cmd *localityCommand) run() error {
 	// errgroup and flush the export sink instead of killing the process outright.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if *cmd.tenant == "" {
+		return fmt.Errorf("--tenant is required for report")
+	}
 
 	// Diagnostics go to stderr so stdout stays clean for the report (or a
 	// redirected `> report.txt`).
@@ -74,10 +92,11 @@ func (cmd *localityCommand) run() error {
 		return fmt.Errorf("--sort-key must be set when --locality includes logs")
 	}
 
-	src, err := cmd.buildSource(ctx, logger, from, to)
+	b, mCfg, err := cmd.buildBucket(ctx, logger)
 	if err != nil {
 		return err
 	}
+	src := newIndexObjectSource(b, mCfg, *cmd.tenant, from, to, logger, *cmd.concurrency)
 
 	c := newCollector(opts)
 
@@ -110,9 +129,9 @@ func (cmd *localityCommand) run() error {
 	return nil
 }
 
-// buildSource constructs the section source from the mutually-exclusive
-// --dir (local) or --config.file (bucket) flags.
-func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, from, to time.Time) (sectionSource, error) {
+// buildBucket constructs the bucket and metastore configuration from the
+// mutually-exclusive --dir (local) or --config.file (bucket) flags.
+func (cmd *localityCommand) buildBucket(ctx context.Context, logger log.Logger) (objstore.Bucket, metastore.Config, error) {
 	var (
 		b    objstore.Bucket
 		mCfg metastore.Config
@@ -121,11 +140,11 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 	switch {
 	case *cmd.dir != "":
 		if *cmd.lokiConfigFile != "" {
-			return nil, fmt.Errorf("--dir cannot be combined with --config.file")
+			return nil, metastore.Config{}, fmt.Errorf("--dir cannot be combined with --config.file")
 		}
 		fsBucket, err := filesystem.NewBucket(*cmd.dir)
 		if err != nil {
-			return nil, fmt.Errorf("opening local directory %s: %w", *cmd.dir, err)
+			return nil, metastore.Config{}, fmt.Errorf("opening local directory %s: %w", *cmd.dir, err)
 		}
 		b = fsBucket
 		// Use the same defaults as metastore.Config.RegisterFlagsWithPrefix.
@@ -133,28 +152,31 @@ func (cmd *localityCommand) buildSource(ctx context.Context, logger log.Logger, 
 		mCfg = metastore.Config{IndexStoragePrefix: "index/v0", PartitionRatio: 10}
 
 	case *cmd.lokiConfigFile != "":
-		if *cmd.tenant == "" {
-			return nil, fmt.Errorf("--tenant is required for the bucket source")
-		}
 		var err error
 		b, mCfg, err = buildBucketFromLokiConfig(ctx, *cmd.lokiConfigFile, *cmd.expandEnv, logger)
 		if err != nil {
-			return nil, err
+			return nil, metastore.Config{}, err
 		}
 
 	default:
-		return nil, fmt.Errorf("one of --dir or --config.file must be provided")
+		return nil, metastore.Config{}, fmt.Errorf("one of --dir or --config.file must be provided")
 	}
 
+	return b, mCfg, nil
+}
+
+// newIndexObjectSource creates a source for one time range over a shared
+// bucket, allowing serve to avoid recreating clients for every window.
+func newIndexObjectSource(b objstore.Bucket, mCfg metastore.Config, tenant string, from, to time.Time, logger log.Logger, concurrency int) *indexObjectSource {
 	return &indexObjectSource{
 		rawBucket:    b,
 		metastoreCfg: mCfg,
-		tenant:       *cmd.tenant,
+		tenant:       tenant,
 		from:         from,
 		to:           to,
 		logger:       logger,
-		concurrency:  *cmd.concurrency,
-	}, nil
+		concurrency:  concurrency,
+	}
 }
 
 // parseTimeRange resolves the from/to flags, defaulting to the last 12h.
@@ -194,11 +216,8 @@ func parseMode(locality string) (collectorOptions, error) {
 	}
 }
 
-// registerFlags registers the tool's flags directly on the application and
-// returns the command whose fields they populate.
-func registerFlags(app *kingpin.Application) *localityCommand {
-	cmd := &localityCommand{}
-
+// registerReportFlags registers the existing one-shot report flags.
+func registerReportFlags(app *kingpin.CmdClause, cmd *localityCommand) {
 	cmd.lokiConfigFile = app.Flag("config.file", "Path to a Loki config YAML (bucket source). Storage credentials and prefixes are derived from the config, mirroring the engine.").String()
 	cmd.expandEnv = app.Flag("config.expand-env", "Expand ${VAR} references in the Loki config file.").Default("false").Bool()
 	cmd.dir = app.Flag("dir", "Local directory holding TOCs and index objects (local source). Mutually exclusive with --config.file.").String()
@@ -212,6 +231,4 @@ func registerFlags(app *kingpin.Application) *localityCommand {
 	cmd.concurrency = app.Flag("concurrency", "Maximum number of index objects to open and scan in parallel.").Default("8").Int()
 	cmd.exportPath = app.Flag("export", "Path prefix for raw-fact export. Writes <prefix>.parquet and/or <prefix>.csv with one row per label posting. Omit to skip export.").Default("").String()
 	cmd.exportFormat = app.Flag("export-format", "Output format for --export: parquet, csv, or both.").Default("both").Enum("parquet", "csv", "both")
-
-	return cmd
 }

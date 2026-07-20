@@ -5,9 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
@@ -55,6 +59,70 @@ func buildPostingsSection(t *testing.T, obs []postings.LabelObservation) (*datao
 	closer.Close()
 	t.Fatal("no postings section produced")
 	return nil, nil
+}
+
+func TestIndexObjectSource_AllTenants(t *testing.T) {
+	ctx := t.Context()
+	rawBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewPrefixedBucket(rawBucket, "index/v0")
+	window := time.Now().UTC().Truncate(metastore.MetastoreWindowSize)
+	objectPath := "indexes/ab/cdef"
+
+	objBuilder := dataobj.NewBuilder(nil)
+	for _, tenant := range []string{"tenant-a", "tenant-b"} {
+		builder := postings.NewBuilder(nil, 0, 0, 1<<20)
+		builder.SetTenant(tenant)
+		builder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath:       "logs/" + tenant,
+			SectionIndex:     0,
+			ColumnName:       "service_name",
+			LabelValue:       tenant,
+			StreamID:         1,
+			Timestamp:        window,
+			UncompressedSize: 100,
+		})
+		require.NoError(t, objBuilder.Append(builder))
+	}
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	require.NoError(t, indexBucket.Upload(ctx, objectPath, reader))
+	require.NoError(t, reader.Close())
+
+	toc := metastore.NewTableOfContentsWriter(indexBucket, log.NewNopLogger())
+	require.NoError(t, toc.WriteEntry(ctx, objectPath, []multitenancy.TimeRange{
+		{Tenant: "tenant-a", MinTime: window, MaxTime: window.Add(time.Hour)},
+		{Tenant: "tenant-b", MinTime: window, MaxTime: window.Add(time.Hour)},
+	}))
+
+	for _, tc := range []struct {
+		name       string
+		tenant     string
+		wantTenant []string
+	}{
+		{name: "all tenants", wantTenant: []string{"tenant-a", "tenant-b"}},
+		{name: "one tenant", tenant: "tenant-a", wantTenant: []string{"tenant-a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := newIndexObjectSource(
+				rawBucket,
+				metastore.Config{IndexStoragePrefix: "index/v0", PartitionRatio: 10},
+				tc.tenant,
+				window,
+				window.Add(time.Hour),
+				log.NewNopLogger(),
+				2,
+			)
+			var tenants []string
+			require.NoError(t, source.each(ctx, func(sec *dataobj.Section, _ string, _ int64) error {
+				tenants = append(tenants, sec.Tenant)
+				return nil
+			}))
+			require.ElementsMatch(t, tc.wantTenant, tenants)
+		})
+	}
 }
 
 // TestCollector_Fold verifies the two-level fold across sections and objects
@@ -165,6 +233,10 @@ func TestCollector_LogsLocality(t *testing.T) {
 	bar := c.logsBySortValue["bar"]
 	require.NotNil(t, bar)
 	require.Len(t, bar.sections, 1)
+
+	snapshot := logsSnapshotFromCollector("window", "tenant", c)
+	require.Equal(t, uint64(2), snapshot.sectionSpread.count)
+	require.Equal(t, 4.0, snapshot.sectionSpread.sum)
 
 	// env is not the sort key, so it is not tracked in the logs rollup.
 	require.NotContains(t, c.logsBySortValue, "prod")
