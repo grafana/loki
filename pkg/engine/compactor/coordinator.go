@@ -81,33 +81,111 @@ func newCoordinator(
 	}
 }
 
-// Run spawns one worker per configured tenant and blocks until ctx is
-// cancelled, then waits for all workers to drain.
+// Run reconciles the set of per-tenant workers against the current-window ToC
+// and filtered by the per-tenant runtime config every PollingInterval until ctx
+// is cancelled, then drains all workers.
 func (c *coordinator) Run(ctx context.Context) error {
-	tenants := []string(c.cfg.CompactionTenants)
 	level.Info(c.logger).Log(
-		"msg", "starting dataobj compaction workers",
-		"tenants", len(tenants),
+		"msg", "starting dataobj compaction coordinator",
+		"polling_interval", c.cfg.PollingInterval,
 		"plan_version", c.cfg.PlanVersion,
 	)
 
+	workers := make(map[string]context.CancelFunc)
 	var wg sync.WaitGroup
-	seen := make(map[string]struct{}, len(tenants))
-	for _, tenant := range tenants {
-		if _, dup := seen[tenant]; dup {
-			continue
+
+	c.reconcile(ctx, workers, &wg)
+
+	ticker := time.NewTicker(c.cfg.PollingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			for _, cancel := range workers {
+				cancel()
+			}
+			wg.Wait()
+			return ctx.Err()
+		case <-ticker.C:
+			c.reconcile(ctx, workers, &wg)
 		}
-		seen[tenant] = struct{}{}
-		wg.Add(1)
-		go func(tenant string) {
-			defer wg.Done()
-			c.runTenantLoop(ctx, tenant)
-		}(tenant)
+	}
+}
+
+// reconcile brings the live worker set in line with the current-window ToC and
+// the per-tenant enable override. workers is owned solely by the single Run
+// goroutine, so it needs no synchronization.
+func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
+	window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
+	discovered, ok := c.discover(ctx, window)
+
+	// Per-tenant metric series are dropped by the worker goroutine on exit (see
+	// startWorker), not here, so a still-draining worker cannot resurrect a
+	// series after this cancel.
+	for tenant, cancel := range workers {
+		if !c.limits.DataObjCompactionEnabled(tenant) {
+			cancel()
+			delete(workers, tenant)
+		}
 	}
 
-	<-ctx.Done()
-	wg.Wait()
-	return ctx.Err()
+	if !ok {
+		return
+	}
+
+	for tenant := range discovered {
+		if _, running := workers[tenant]; running {
+			continue
+		}
+		if !c.limits.DataObjCompactionEnabled(tenant) {
+			continue
+		}
+		c.startWorker(ctx, workers, wg, tenant)
+	}
+
+	for tenant, cancel := range workers {
+		if _, present := discovered[tenant]; !present {
+			cancel()
+			delete(workers, tenant)
+		}
+	}
+}
+
+// startWorker launches a long-lived runTenantLoop goroutine for tenant and
+// records its cancel func in workers. The goroutine deletes the tenant's
+// per-tenant metric series as its final action.
+func (c *coordinator) startWorker(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup, tenant string) {
+	wctx, cancel := context.WithCancel(ctx)
+	workers[tenant] = cancel
+	wg.Go(func() {
+		defer c.metrics.deleteTenant(tenant)
+		c.runTenantLoop(wctx, tenant)
+	})
+}
+
+// discover reads the current-window ToC and returns the set of tenants it
+// references. ok is false on any read error (missing ToC or transient), which
+// tells reconcile to skip new-worker starts and absence-driven cancellation and
+// leave the running set untouched: only a successfully read ToC is authoritative
+// enough to conclude a tenant was removed. Membership is by map key.
+func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
+	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+	if err != nil {
+		if c.bucket.IsObjNotFoundErr(err) {
+			level.Debug(c.logger).Log("msg", "no ToC for window; leaving workers as-is",
+				"window", window, "err", err)
+		} else {
+			level.Warn(c.logger).Log("msg", "discover: load tenant indexes failed; leaving workers as-is",
+				"window", window, "err", err)
+		}
+		return nil, false
+	}
+	out := make(map[string]struct{}, len(indexes))
+	for tenant := range indexes {
+		out[tenant] = struct{}{}
+	}
+	return out, true
 }
 
 // compactionStats reports the results of a single tenant compaction. The zero

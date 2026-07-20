@@ -3,6 +3,9 @@ package compactor
 import (
 	"context"
 	"errors"
+	"io"
+	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -91,6 +94,15 @@ func (f *fakeReplacer) snapshot() []replaceCall {
 	defer f.mu.Unlock()
 	return append([]replaceCall(nil), f.calls...)
 }
+
+// errBucket wraps a Bucket but fails Get with a non-not-found error, to exercise
+// the transient-read-error path in discover.
+type errBucket struct{ objstore.Bucket }
+
+func (errBucket) Get(context.Context, string) (io.ReadCloser, error) {
+	return nil, errors.New("errBucket: forced read failure")
+}
+func (errBucket) IsObjNotFoundErr(error) bool { return false }
 
 // newTestCoordinator builds a Coordinator wired to the supplied fakes plus a
 // default-configured Config (loop-friendly TTLs, K=2 so two indexes split
@@ -541,16 +553,35 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/acme/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/acme/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		},
+	})
 	runner := &fakeRunner{}
-	replacer := &fakeReplacer{}
+	replacer := &fakeReplacer{swapped: true}
 
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	c.cfg.CompactionTenants = []string{"acme"}
+
+	started := make(chan struct{}, 1)
+	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) error {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}
 
 	done := make(chan error, 1)
-	go func() {
-		done <- c.Run(ctx)
-	}()
+	go func() { done <- c.Run(ctx) }()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker never started; drain test would be vacuous")
+	}
 
 	cancel()
 
@@ -560,6 +591,299 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not drain within 2 seconds; possible goroutine leak")
 	}
+}
+
+func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/acme/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/acme/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		},
+		"bravo": {
+			{path: "indexes/bravo/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/bravo/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		},
+	})
+
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme", "bravo"))
+	c.cfg.MaxRunningCompactionTasks = 1
+
+	var mu sync.Mutex
+	starts := map[string]int{}
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		starts[opts.Tenant]++
+		mu.Unlock()
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return starts["acme"] >= 1 && starts["bravo"] >= 1
+	}, 2*time.Second, 5*time.Millisecond, "both enabled tenants must start a worker")
+
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	require.Equal(t, map[string]int{"acme": 1, "bravo": 1}, starts,
+		"one section per tenant must start exactly one worker per tenant")
+	mu.Unlock()
+
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+}
+
+// reconcileHarness parks every dispatched plan on ctx cancellation so a started
+// worker stays observable and a cancelled worker's goroutine actually exits.
+func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Time, limits Limits) (*coordinator, func() []string) {
+	t.Helper()
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, clock, limits)
+	c.cfg.MaxRunningCompactionTasks = 1
+
+	var mu sync.Mutex
+	live := map[string]int{}
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		live[opts.Tenant]++
+		mu.Unlock()
+		<-ctx.Done()
+		mu.Lock()
+		live[opts.Tenant]--
+		mu.Unlock()
+		return ctx.Err()
+	}
+	tenantsWithLiveDispatch := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		var out []string
+		for tn, n := range live {
+			if n > 0 {
+				out = append(out, tn)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	return c, tenantsWithLiveDispatch
+}
+
+func seededToC(ctx context.Context, t *testing.T, window time.Time, tenants ...string) objstore.Bucket {
+	t.Helper()
+	bucket := objstore.NewInMemBucket()
+	entries := map[string][]testIndex{}
+	for _, tn := range tenants {
+		entries[tn] = []testIndex{
+			{path: "indexes/" + tn + "/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/" + tn + "/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		}
+	}
+	writeToCWithIndexes(ctx, t, bucket, entries)
+	return bucket
+}
+
+func TestReconcile_FiltersToEnabledTenants(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+	bucket := seededToC(ctx, t, window, "acme", "bravo")
+
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+	}, 2*time.Second, 5*time.Millisecond, "only the enabled tenant runs a worker")
+	require.Contains(t, workers, "acme")
+	require.NotContains(t, workers, "bravo")
+}
+
+func TestReconcile_EnabledButAbsentFromToC_NoWorker(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+	bucket := seededToC(ctx, t, window, "acme") // bravo enabled but not in ToC
+
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme", "bravo"))
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+	}, 2*time.Second, 5*time.Millisecond)
+	require.NotContains(t, workers, "bravo", "an enabled tenant not in the ToC gets no worker")
+}
+
+func TestReconcile_RemovedFromToC_CancelsWorker(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+
+	limits := newFakeLimits("acme", "bravo")
+	bucketBoth := seededToC(ctx, t, window, "acme", "bravo")
+	c, liveTenants := reconcileHarness(t, bucketBoth, fixedClock(window.Add(time.Hour)), limits)
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+	require.Eventually(t, func() bool { return len(liveTenants()) == 2 }, 2*time.Second, 5*time.Millisecond)
+
+	// Point the coordinator at a ToC that no longer lists bravo.
+	c.bucket = seededToC(ctx, t, window, "acme")
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+	}, 2*time.Second, 5*time.Millisecond, "tenant removed from ToC has its worker cancelled")
+	require.NotContains(t, workers, "bravo")
+}
+
+func TestReconcile_DisabledDuringToCReadFailure_CancelsWorker(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+
+	limits := newFakeLimits("acme")
+	bucket := seededToC(ctx, t, window, "acme")
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), limits)
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	// Disable the tenant AND make the ToC read fail. Disable must still apply.
+	limits.set("acme", false)
+	c.bucket = errBucket{objstore.NewInMemBucket()} // Get returns a non-not-found error
+
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool { return len(liveTenants()) == 0 }, 2*time.Second, 5*time.Millisecond,
+		"disable takes effect even when the ToC read fails")
+	require.NotContains(t, workers, "acme")
+}
+
+func TestReconcile_ReadError_PreservesWorkers(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+
+	limits := newFakeLimits("acme")
+	bucket := seededToC(ctx, t, window, "acme")
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), limits)
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	// Transient read failure with the tenant still enabled: worker must persist.
+	c.bucket = errBucket{objstore.NewInMemBucket()}
+	c.reconcile(ctx, workers, &wg)
+
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, []string{"acme"}, liveTenants(), "read error must not tear down running workers")
+	require.Contains(t, workers, "acme")
+}
+
+func TestReconcile_Idempotent_NoDuplicateWorkers(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+	bucket := seededToC(ctx, t, window, "acme")
+
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+	require.Eventually(t, func() bool { return len(liveTenants()) == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	first := workers["acme"]
+	c.reconcile(ctx, workers, &wg) // second tick, same ToC
+
+	time.Sleep(50 * time.Millisecond)
+	require.Len(t, workers, 1, "a second reconcile must not add a duplicate worker")
+	require.Equal(t, []string{"acme"}, liveTenants())
+	require.Equal(t, reflect.ValueOf(first).Pointer(), reflect.ValueOf(workers["acme"]).Pointer(),
+		"the existing worker must be left in place, not replaced")
+}
+
+func TestReconcile_StartAndCancelSameTick(t *testing.T) {
+	ctx := t.Context()
+	window := imWindow()
+
+	limits := newFakeLimits("acme", "bravo")
+	c, liveTenants := reconcileHarness(t, seededToC(ctx, t, window, "acme"), fixedClock(window.Add(time.Hour)), limits)
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "acme"
+	}, 2*time.Second, 5*time.Millisecond)
+
+	// Next tick: ToC now lists bravo only. acme is removed and bravo started in
+	// the same reconcile.
+	c.bucket = seededToC(ctx, t, window, "bravo")
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "bravo"
+	}, 2*time.Second, 5*time.Millisecond, "one start and one cancel in a single tick")
+	require.Contains(t, workers, "bravo")
+	require.NotContains(t, workers, "acme")
 }
 
 // TestRunTenantLoop_ErrorRetries pins the flip-flop state machine: a failing
@@ -642,66 +966,4 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
 			"successful phases flip between index-merge and log-merge")
 	})
-}
-
-// TestRun_DedupesTenants verifies Run starts exactly one worker per unique
-// tenant even when the configured list repeats a tenant.
-func TestRun_DedupesTenants(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	window := imWindow()
-	bucket := objstore.NewInMemBucket()
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {
-			{path: "indexes/acme/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/acme/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-		},
-		"bravo": {
-			{path: "indexes/bravo/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/bravo/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-		},
-	})
-
-	replacer := &fakeReplacer{swapped: true}
-	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
-	// One task at a time so a worker parks in a single in-flight dispatch; the
-	// number of parked dispatches then equals the number of live workers.
-	c.cfg.MaxRunningCompactionTasks = 1
-	c.cfg.CompactionTenants = []string{"acme", "acme", "bravo", "acme"}
-
-	var mu sync.Mutex
-	starts := map[string]int{}
-	// Block each worker in its first dispatch so it can neither loop nor flip;
-	// one blocked dispatch == one worker start for that tenant.
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
-		mu.Lock()
-		starts[opts.Tenant]++
-		mu.Unlock()
-		<-ctx.Done()
-		return ctx.Err()
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- c.Run(ctx)
-	}()
-
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return starts["acme"] >= 1 && starts["bravo"] >= 1
-	}, 2*time.Second, 5*time.Millisecond, "both unique tenants must start a worker")
-
-	// Give any erroneously spawned duplicate acme workers time to reach their
-	// dispatch before asserting the final count.
-	time.Sleep(50 * time.Millisecond)
-
-	mu.Lock()
-	require.Equal(t, map[string]int{"acme": 1, "bravo": 1}, starts,
-		"duplicate tenant entries must not spawn extra workers")
-	mu.Unlock()
-
-	cancel()
-	require.ErrorIs(t, <-done, context.Canceled)
 }
