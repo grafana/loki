@@ -271,16 +271,16 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 			// when stopping the service.
 			return nil
 		case rec, ok := <-i.records:
+			if !ok {
+				level.Info(i.logger).Log("msg", "channel closed")
+				return nil
+			}
 			if rec == nil {
 				level.Info(i.logger).Log("msg", "Nil record passed to pattern ingester, skipping")
 				continue
 			}
 			if rec.Partition != i.ingestPartitionID {
 				continue
-			}
-			if !ok {
-				level.Info(i.logger).Log("msg", "channel closed")
-				return nil
 			}
 			// tenant := string(rec.Key)
 			stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
