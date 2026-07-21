@@ -49,11 +49,7 @@ type KafkaIngester struct {
 	instancesMtx sync.RWMutex
 	instances    map[string]*instance
 
-	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
-	flushQueues     []*util.PriorityQueue
-	flushQueuesDone sync.WaitGroup
-	loopQuit        chan struct{}
+	loopQuit chan struct{}
 
 	metrics  *ingesterMetrics
 	drainCfg *drain.Config
@@ -87,16 +83,15 @@ func NewKafka(
 	drainCfg.SampleInterval = cfg.PatternSampleInterval
 
 	i := &KafkaIngester{
-		cfg:         cfg,
-		limits:      limits,
-		logger:      log.With(logger, "component", "pattern-ingester"),
-		registerer:  registerer,
-		metrics:     metrics,
-		instances:   make(map[string]*instance),
-		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		loopQuit:    make(chan struct{}),
-		drainCfg:    drainCfg,
-		tenantCfgs:  tenantCfgs,
+		cfg:        cfg,
+		limits:     limits,
+		logger:     log.With(logger, "component", "pattern-ingester"),
+		registerer: registerer,
+		metrics:    metrics,
+		instances:  make(map[string]*instance),
+		loopQuit:   make(chan struct{}),
+		drainCfg:   drainCfg,
+		tenantCfgs: tenantCfgs,
 	}
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -248,12 +243,6 @@ func (i *KafkaIngester) stopping(_ error) error {
 		level.Warn(i.logger).Log("msg", "failed to stop kafka consumer", "err", err)
 	}
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
-	for _, flushQueue := range i.flushQueues {
-		if flushQueue != nil {
-			flushQueue.Close()
-		}
-	}
-	i.flushQueuesDone.Wait()
 
 	// Flush all patterns before stopping writers to ensure patterns are persisted
 	i.flushPatterns()
@@ -504,14 +493,6 @@ func (i *KafkaIngester) Flush() {
 
 func (i *KafkaIngester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
-
-	// Close the flush queues, to unblock waiting workers.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
-
-	i.flushQueuesDone.Wait()
-	level.Debug(i.logger).Log("msg", "flush queues have drained")
 }
 
 // sweepUsers periodically schedules series for flushing and garbage collects users with no series
