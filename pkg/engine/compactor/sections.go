@@ -225,96 +225,112 @@ func sectionRefsFor(indexes []indexEntry) []v2.Section[sortKey] {
 	return out
 }
 
-// logSectionRefsFor reads an index object's stats sections and
-// produces compactionv2pb.SectionRef values (one per stats row) plus the
-// tenant's sort schema.
+// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
-	var (
-		refs           []v2.Section[sortKey]
-		schema         []string
-		reader         stats.Reader
-		sortSchemaLbls []string
-		schemaDerived  bool
-	)
+	type sectionID struct {
+		path  string
+		index int64
+	}
 
+	var (
+		schema     []string
+		labelNames []string
+		schemaName string
+		reader     stats.Reader
+
+		bySection = make(map[sectionID]*v2.Section[sortKey])
+	)
 	defer reader.Close()
+
 	const batchSize = 1024
 	scratch := make([]stats.Stat, batchSize)
-
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		if section.Tenant != tenant {
 			continue
 		}
 
-		sec, err := stats.Open(ctx, section)
+		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
-		reader.Reset(stats.ReaderOptions{Columns: sec.Columns()})
+		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
 			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
-			rec, readErr := reader.Read(ctx, batchSize)
+			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
 				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
-			numRows := int(rec.NumRows())
+			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
 				break
 			}
 
-			dest := scratch[:numRows]
-			n, err := stats.FromRecordBatch(rec, dest)
+			rows := scratch[:numRows]
+			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
 				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
-			for i := range n {
-				st := dest[i]
-
-				if !schemaDerived {
-					// SortSchema is stored fully-qualified ("label:<name>"),
-					for fqn := range strings.SplitSeq(st.SortSchema, ",") {
-						if fqn == "" {
-							continue
-						}
-						schema = append(schema, fqn)
-						typ, name, ok := strings.Cut(fqn, ":")
-						if ok && typ == "label" && name != "" {
-							sortSchemaLbls = append(sortSchemaLbls, name)
-						}
+			for _, stat := range rows[:n] {
+				if schemaName == "" && len(bySection) == 0 {
+					schemaName = stat.SortSchema
+					schema, labelNames, err = parseSortSchema(stat.SortSchema)
+					if err != nil {
+						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 					}
-					schemaDerived = true
+				} else if stat.SortSchema != schemaName {
+					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
 				}
 
-				ref := &compactionv2pb.SectionRef{
-					ObjectPath:       st.ObjectPath,
-					SectionIndex:     st.SectionIndex,
-					MinTimestamp:     st.MinTimestamp,
-					MaxTimestamp:     st.MaxTimestamp,
-					UncompressedSize: st.UncompressedSize,
-				}
-				if len(sortSchemaLbls) > 0 {
-					minKey := make([]string, len(sortSchemaLbls))
-					for j, k := range sortSchemaLbls {
-						minKey[j] = st.Labels[k]
+				var labels []string
+				if len(labelNames) > 0 {
+					labels = make([]string, len(labelNames))
+					for i, name := range labelNames {
+						labels[i] = stat.Labels[name]
 					}
-					ref.MinKey = minKey
-					ref.MaxKey = slices.Clone(minKey)
 				}
-				refs = append(refs, v2.Section[sortKey]{
-					Ref: ref,
-					Min: sortKey{labels: ref.MinKey, timestamp: ref.MinTimestamp},
-					Max: sortKey{labels: ref.MaxKey, timestamp: ref.MaxTimestamp},
-				})
+				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
+				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+
+				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+				bounded, ok := bySection[id]
+				if !ok {
+					bySection[id] = &v2.Section[sortKey]{
+						Ref: &compactionv2pb.SectionRef{
+							ObjectPath:       stat.ObjectPath,
+							SectionIndex:     stat.SectionIndex,
+							MinKey:           minKey.labels,
+							MaxKey:           maxKey.labels,
+							MinTimestamp:     minKey.timestamp,
+							MaxTimestamp:     maxKey.timestamp,
+							UncompressedSize: stat.UncompressedSize,
+						},
+						Min: minKey,
+						Max: maxKey,
+					}
+					continue
+				}
+
+				if compareSortKey(minKey, bounded.Min) < 0 {
+					bounded.Min = minKey
+					bounded.Ref.MinKey = minKey.labels
+				}
+				if compareSortKey(maxKey, bounded.Max) > 0 {
+					bounded.Max = maxKey
+					bounded.Ref.MaxKey = maxKey.labels
+				}
+				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+				bounded.Ref.UncompressedSize += stat.UncompressedSize
 			}
 
 			if errors.Is(readErr, io.EOF) {
@@ -323,5 +339,30 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
+	refs := make([]v2.Section[sortKey], 0, len(bySection))
+	for _, ref := range bySection {
+		refs = append(refs, *ref)
+	}
+	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {
+		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
+			return n
+		}
+		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
+	})
 	return refs, schema, nil
+}
+
+func parseSortSchema(value string) (schema, labelNames []string, _ error) {
+	for entry := range strings.SplitSeq(value, ",") {
+		if entry == "" {
+			continue
+		}
+		typ, name, ok := strings.Cut(entry, ":")
+		if !ok || typ != "label" || name == "" {
+			return nil, nil, fmt.Errorf("invalid log sort key %q", entry)
+		}
+		schema = append(schema, entry)
+		labelNames = append(labelNames, name)
+	}
+	return schema, labelNames, nil
 }

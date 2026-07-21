@@ -292,6 +292,30 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "terminal window performs no swap")
 }
 
+func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	indexPath := "indexes/aa/converged"
+
+	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 30, UncompressedSize: 100},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{}, stats)
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
+}
+
 func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -509,9 +533,9 @@ func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant 
 	entries := make([]testIndex, 0, len(paths))
 	for _, p := range paths {
 		buildIndexWithStats(ctx, t, bucket, tenant, p, []stats.Stat{
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
+			{ObjectPath: p + ".log-0", SectionIndex: 0, SortSchema: "label:service_name",
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
+			{ObjectPath: p + ".log-1", SectionIndex: 0, SortSchema: "label:service_name",
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})
@@ -1039,6 +1063,33 @@ func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
 	require.Len(t, calls[0].newEntries, 1)
 	require.Equal(t, uint64(200), calls[0].newEntries[0].UncompressedLogsSize,
 		"a known converged row keeps the computed section sum (100+100)")
+}
+
+func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	indexPath := "indexes/converged"
+	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 500, MaxTimestamp: 1000, UncompressedSize: 100},
+		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, UncompressedSize: 100},
+		{ObjectPath: "logs/b", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 550, MaxTimestamp: 950, UncompressedSize: 100},
+		{ObjectPath: "logs/b", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 200, MaxTimestamp: 800, UncompressedSize: 100},
+	})
+
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	_, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath, UncompressedLogsSize: 400})
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.Equal(t, time.Unix(0, 100).UTC(), calls[0].newEntries[0].StartTime)
+	require.Equal(t, time.Unix(0, 1000).UTC(), calls[0].newEntries[0].EndTime)
 }
 
 func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -164,40 +165,36 @@ func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Buck
 	require.NoError(t, bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes))))
 }
 
-func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
+func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/converged"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 500, MaxTimestamp: 1000, RowCount: 3, UncompressedSize: 300},
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
-	require.Len(t, refs, 2)
-
-	byKey := map[string]*compactionv2pb.SectionRef{}
-	for _, section := range refs {
-		byKey[section.Min.labels[0]] = section.Ref
-	}
-
-	auth := byKey["auth"]
-	require.NotNil(t, auth)
-	require.Equal(t, "logs/log-0", auth.ObjectPath)
-	require.Equal(t, []string{"auth"}, auth.MinKey)
-	require.Equal(t, []string{"auth"}, auth.MaxKey)
-	require.Equal(t, int64(300), auth.UncompressedSize)
-
-	require.Equal(t, int64(200), byKey["billing"].UncompressedSize)
-
-	// MaxKey must be a distinct slice from MinKey, not a shared backing array.
-	auth.MinKey[0] = "MUTATED"
-	require.Equal(t, "auth", auth.MaxKey[0], "MaxKey must be a distinct slice from MinKey")
+	require.Equal(t, []v2.Section[sortKey]{
+		{
+			Ref: &compactionv2pb.SectionRef{
+				ObjectPath:       "logs/log-0",
+				SectionIndex:     0,
+				MinKey:           []string{"auth"},
+				MaxKey:           []string{"billing"},
+				MinTimestamp:     100,
+				MaxTimestamp:     1000,
+				UncompressedSize: 500,
+			},
+			Min: sortKey{labels: []string{"auth"}, timestamp: 500},
+			Max: sortKey{labels: []string{"billing"}, timestamp: 900},
+		},
+	}, refs)
 }
 
 func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T) {
@@ -213,8 +210,20 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
-	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{labels: []string{"auth", "eu"}, timestamp: 10}, refs[0].Min)
+	require.Equal(t, []v2.Section[sortKey]{
+		{
+			Ref: &compactionv2pb.SectionRef{
+				ObjectPath:       "logs/log-0",
+				MinKey:           []string{"auth", "eu"},
+				MaxKey:           []string{"auth", "eu"},
+				MinTimestamp:     10,
+				MaxTimestamp:     20,
+				UncompressedSize: 100,
+			},
+			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
+			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
+		},
+	}, refs)
 }
 
 func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
@@ -235,6 +244,22 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
+}
+
+func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/aa/mixed"
+
+	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 10, MaxTimestamp: 20},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:namespace",
+			Labels: map[string]string{"namespace": "prod"}, MinTimestamp: 10, MaxTimestamp: 20},
+	})
+
+	_, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	require.ErrorContains(t, err, `contains log sort schemas "label:service_name" and "label:namespace"`)
 }
 
 // TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
