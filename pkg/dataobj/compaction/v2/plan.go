@@ -6,11 +6,7 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// Run is a sorted sequence of sections that a K-way merge consumes as one input.
-//
-// Section bounds are inclusive [min, max]. Within a run each section's max is <=
-// the next's min, so touching sections (max == min) stay in one run and
-// overlapping sections (max > min) split.
+// Run is one non-overlapping layer of sections over the sort key.
 type Run interface {
 	// Sections returns the run's sections in sorted order.
 	Sections() []*compactionv2pb.SectionRef
@@ -18,8 +14,7 @@ type Run interface {
 	Size() uint64
 }
 
-// CalculateRuns sorts the provided sections in place and groups them into the
-// fewest [Run]s. The result is deterministic for a given input.
+// CalculateRuns sorts [sections] in place and returns the resulting runs.
 func CalculateRuns(sections []*compactionv2pb.SectionRef) []Run {
 	calculated := calculateRuns(sections)
 	runs := make([]Run, len(calculated))
@@ -42,7 +37,7 @@ func IsTerminal(runs []Run, minCompactionSize uint64) bool {
 	return total < minCompactionSize
 }
 
-// Plan groups runs into ceil(P/K) task batches: runs [0..K) -> task
+// Plan groups [runs] into ⌈P/K⌉ task batches: runs [0..K) -> task
 // 0, runs [K..2K) -> task 1, ... The output is deterministic for a given input.
 //
 // Special cases:
