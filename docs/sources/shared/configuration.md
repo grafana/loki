@@ -4930,9 +4930,15 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Whether dataobj compaction runs for the tenant.
-# CLI flag: -dataobj-compaction.enable
-[dataobj_compaction_enabled: <boolean> | default = false]
+# Experimental. Whether dataobj index compaction runs for the tenant.
+# CLI flag: -dataobj-compaction.index.enable
+[dataobj_index_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj log compaction runs for the tenant. Log
+# compaction implies index compaction; enabling log compaction without index
+# compaction is a configuration error.
+# CLI flag: -dataobj-compaction.log.enable
+[dataobj_log_compaction_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
