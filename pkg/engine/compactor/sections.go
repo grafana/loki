@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
@@ -27,6 +29,18 @@ type indexEntry struct {
 	End                  time.Time
 	FileSize             uint64
 	UncompressedLogsSize uint64
+}
+
+type sortKey struct {
+	labels    []string
+	timestamp int64
+}
+
+func compareSortKey(a, b sortKey) int {
+	if n := slices.Compare(a.labels, b.labels); n != 0 {
+		return n
+	}
+	return cmp.Compare(a.timestamp, b.timestamp)
 }
 
 // tenantIndexes maps tenant ID → ordered list of indexes the ToC references
@@ -192,15 +206,20 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 // bounds (empty MinKey/MaxKey); the planner's composite (MinKey, MinTimestamp)
 // sort key degrades to single-axis timestamp ordering, which is sufficient
 // for index-only compaction.
-func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
-	out := make([]*compactionv2pb.SectionRef, len(indexes))
-	for i, e := range indexes {
-		out[i] = &compactionv2pb.SectionRef{
-			ObjectPath:       e.Path,
+func sectionRefsFor(indexes []indexEntry) []v2.Section[sortKey] {
+	out := make([]v2.Section[sortKey], len(indexes))
+	for i, entry := range indexes {
+		ref := &compactionv2pb.SectionRef{
+			ObjectPath:       entry.Path,
 			SectionIndex:     0,
-			MinTimestamp:     e.Start.UnixNano(),
-			MaxTimestamp:     e.End.UnixNano(),
-			UncompressedSize: int64(e.UncompressedLogsSize),
+			MinTimestamp:     entry.Start.UnixNano(),
+			MaxTimestamp:     entry.End.UnixNano(),
+			UncompressedSize: int64(entry.UncompressedLogsSize),
+		}
+		out[i] = v2.Section[sortKey]{
+			Ref: ref,
+			Min: sortKey{timestamp: ref.MinTimestamp},
+			Max: sortKey{timestamp: ref.MaxTimestamp},
 		}
 	}
 	return out
@@ -209,14 +228,14 @@ func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
 // logSectionRefsFor reads an index object's stats sections and
 // produces compactionv2pb.SectionRef values (one per stats row) plus the
 // tenant's sort schema.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]*compactionv2pb.SectionRef, []string, error) {
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	var (
-		refs           []*compactionv2pb.SectionRef
+		refs           []v2.Section[sortKey]
 		schema         []string
 		reader         stats.Reader
 		sortSchemaLbls []string
@@ -291,7 +310,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					ref.MinKey = minKey
 					ref.MaxKey = slices.Clone(minKey)
 				}
-				refs = append(refs, ref)
+				refs = append(refs, v2.Section[sortKey]{
+					Ref: ref,
+					Min: sortKey{labels: ref.MinKey, timestamp: ref.MinTimestamp},
+					Max: sortKey{labels: ref.MaxKey, timestamp: ref.MaxTimestamp},
+				})
 			}
 
 			if errors.Is(readErr, io.EOF) {

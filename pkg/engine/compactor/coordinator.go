@@ -212,8 +212,8 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
 	}
 
-	runs := v2.CalculateRuns(sections)
-	if v2.IsTerminal(runs, uint64(c.cfg.LogMinCompactionSize)) {
+	runs := v2.CalculateRuns(sections, compareSortKey)
+	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
 		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
 			"tenant", tenant, "window", window)
 		return compactionStats{}, nil
@@ -318,7 +318,7 @@ func (c *coordinator) compactTenant(
 ) (compactionStats, error) {
 	// Plan.
 	sections := sectionRefsFor(entries)
-	runs := v2.CalculateRuns(sections)
+	runs := v2.CalculateRuns(sections, compareSortKey)
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	if len(tasks) == 0 {
 		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",

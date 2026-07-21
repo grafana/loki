@@ -77,16 +77,16 @@ func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
 	got := sectionRefsFor(indexes)
 	require.Len(t, got, 2)
 
-	require.Equal(t, "indexes/aa/idx-0", got[0].ObjectPath)
-	require.Equal(t, int64(0), got[0].SectionIndex)
-	require.Empty(t, got[0].MinKey, "timestamp-only bounds")
-	require.Empty(t, got[0].MaxKey, "timestamp-only bounds")
-	require.Equal(t, window.Add(1*time.Hour).UnixNano(), got[0].MinTimestamp)
-	require.Equal(t, window.Add(2*time.Hour).UnixNano(), got[0].MaxTimestamp)
+	require.Equal(t, "indexes/aa/idx-0", got[0].Ref.ObjectPath)
+	require.Equal(t, int64(0), got[0].Ref.SectionIndex)
+	require.Empty(t, got[0].Ref.MinKey, "timestamp-only bounds")
+	require.Empty(t, got[0].Ref.MaxKey, "timestamp-only bounds")
+	require.Equal(t, sortKey{timestamp: window.Add(1 * time.Hour).UnixNano()}, got[0].Min)
+	require.Equal(t, sortKey{timestamp: window.Add(2 * time.Hour).UnixNano()}, got[0].Max)
 
-	require.Equal(t, "indexes/bb/idx-1", got[1].ObjectPath)
-	require.Equal(t, window.Add(3*time.Hour).UnixNano(), got[1].MinTimestamp)
-	require.Equal(t, window.Add(5*time.Hour).UnixNano(), got[1].MaxTimestamp)
+	require.Equal(t, "indexes/bb/idx-1", got[1].Ref.ObjectPath)
+	require.Equal(t, sortKey{timestamp: window.Add(3 * time.Hour).UnixNano()}, got[1].Min)
+	require.Equal(t, sortKey{timestamp: window.Add(5 * time.Hour).UnixNano()}, got[1].Max)
 }
 
 // testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
@@ -182,8 +182,8 @@ func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
 	require.Len(t, refs, 2)
 
 	byKey := map[string]*compactionv2pb.SectionRef{}
-	for _, r := range refs {
-		byKey[r.MinKey[0]] = r
+	for _, section := range refs {
+		byKey[section.Min.labels[0]] = section.Ref
 	}
 
 	auth := byKey["auth"]
@@ -214,7 +214,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
 	require.Len(t, refs, 1)
-	require.Equal(t, []string{"auth", "eu"}, refs[0].MinKey, "values ordered by schema, not map order")
+	require.Equal(t, sortKey{labels: []string{"auth", "eu"}, timestamp: 10}, refs[0].Min)
 }
 
 func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
@@ -223,7 +223,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	path := "indexes/aa/emptyschema"
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
-		{ObjectPath: "[REDACTED]", SectionIndex: 0, SortSchema: "",
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "",
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
@@ -231,10 +231,10 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
-	require.Empty(t, refs[0].MinKey, "no sort keys -> empty MinKey")
-	require.Empty(t, refs[0].MaxKey)
-	require.Equal(t, "[REDACTED]", refs[0].ObjectPath)
-	require.Equal(t, int64(100), refs[0].UncompressedSize)
+	require.Equal(t, sortKey{timestamp: 10}, refs[0].Min)
+	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
+	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
+	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
 
 // TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
@@ -287,6 +287,6 @@ func TestSectionRefsFor_CopiesUncompressedSize(t *testing.T) {
 	got := sectionRefsFor(indexes)
 	require.Len(t, got, 2)
 
-	require.Equal(t, int64(2048), got[0].UncompressedSize)
-	require.Equal(t, int64(4096), got[1].UncompressedSize)
+	require.Equal(t, int64(2048), got[0].Ref.UncompressedSize)
+	require.Equal(t, int64(4096), got[1].Ref.UncompressedSize)
 }
