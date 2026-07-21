@@ -1,5 +1,6 @@
 ---
 title: Support Kafka-based Ingest Storage Architecture
+state: published
 authors:
   - @JoaoBraveCoding
 reviewers: 
@@ -299,11 +300,14 @@ type KafkaSpec struct {
 	// to track stream metadata. If not set, defaults to "{Topic}-metadata".
 	MetadataTopic string `json:"metadataTopic,omitempty"`
 
-	// ReaderAddress defines the broker addresses for consumers (host:port, comma-separated).
-	ReaderAddress string `json:"readerAddress"`
+	// Address defines the broker addresses for producers (host:port, comma-separated).
+	Address string `json:"address"`
 
-	// WriterAddress defines the broker addresses for producers (host:port, comma-separated).
-	WriterAddress string `json:"writerAddress"`
+	// ReaderAddress defines the broker addresses for consumers (host:port, comma-separated).
+	// If not set, defaults to Address.
+	//
+	// +optional
+	ReaderAddress string `json:"readerAddress,omitempty"`
 
 	// Authentication for Kafka SASL authentication.
 	// For mTLS authentication, configure the certificate and privateKey
@@ -375,8 +379,7 @@ spec:
   ingestStorage:
     kafka:
       topic: loki-logs
-      readerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
-      writerAddress: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
+      address: my-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093
       authentication:
         saslMechanism: SCRAM-SHA-512
         username:
