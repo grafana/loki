@@ -4,26 +4,26 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
-// TestLoadTenantIndexes_GroupsByTenant verifies that loadTenantIndexes reads
-// a multi-tenant ToC and returns each tenant's index references separately.
-// This is the per-cycle planning input: the coordinator iterates the result
-// map and skips tenants whose index slice has length ≤ 1 (convergence gate).
 func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -62,32 +62,6 @@ func TestLoadTenantIndexes_MissingToCReturnsNotFound(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, bucket.IsObjNotFoundErr(err),
 		"missing ToC must surface as IsObjNotFoundErr, got %v", err)
-}
-
-// TestSectionRefsFor_OneRefPerIndex verifies one SectionRef per index,
-// timestamp-only bounds, empty MinKey/MaxKey. The planner patience-sorts on the
-// composite (MinKey, MinTimestamp) key, so timestamp-only bounds remain a valid
-// (less granular) sort key.
-func TestSectionRefsFor_OneRefPerIndex(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
-	indexes := []indexEntry{
-		{Path: "indexes/aa/idx-0", Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)},
-		{Path: "indexes/bb/idx-1", Start: window.Add(3 * time.Hour), End: window.Add(5 * time.Hour)},
-	}
-
-	got := sectionRefsFor(indexes)
-	require.Len(t, got, 2)
-
-	require.Equal(t, "indexes/aa/idx-0", got[0].Ref.ObjectPath)
-	require.Equal(t, int64(0), got[0].Ref.SectionIndex)
-	require.Empty(t, got[0].Ref.MinKey, "timestamp-only bounds")
-	require.Empty(t, got[0].Ref.MaxKey, "timestamp-only bounds")
-	require.Equal(t, sortKey{timestamp: window.Add(1 * time.Hour).UnixNano()}, got[0].Min)
-	require.Equal(t, sortKey{timestamp: window.Add(2 * time.Hour).UnixNano()}, got[0].Max)
-
-	require.Equal(t, "indexes/bb/idx-1", got[1].Ref.ObjectPath)
-	require.Equal(t, sortKey{timestamp: window.Add(3 * time.Hour).UnixNano()}, got[1].Min)
-	require.Equal(t, sortKey{timestamp: window.Add(5 * time.Hour).UnixNano()}, got[1].Max)
 }
 
 // testIndex captures one index pointer entry (path, time range, sizes) to seed a ToC fixture.
@@ -131,32 +105,77 @@ func requireIndexPaths(t *testing.T, got []indexEntry, want ...string) {
 	require.ElementsMatch(t, want, gotPaths)
 }
 
-// buildIndexWithStats writes an index object with one stats section for tenant
-// containing the supplied rows, and uploads it at path. At least one row is
-// required; an index with no sections cannot be flushed.
+type testIndexObject struct {
+	tenant, path string
+	sectionSize  flagext.Bytes
+	stats        []stats.Stat
+	postings     []postings.Row
+}
+
 func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
+	t.Helper()
+	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})
+}
+
+func buildIndexWithPostings(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, sectionSize flagext.Bytes, rows []postings.Row) {
+	t.Helper()
+	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: sectionSize, postings: rows})
+}
+
+func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, object testIndexObject) {
 	t.Helper()
 	cfg := logsobj.BuilderBaseConfig{
 		TargetPageSize:          2048,
 		MaxPageRows:             10000,
 		TargetObjectSize:        1 << 22,
-		TargetSectionSize:       1 << 21,
+		TargetSectionSize:       object.sectionSize,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}
-	b, err := indexobj.NewBuilder(cfg, nil)
+	builder, err := indexobj.NewMergeBuilder(cfg, nil)
 	require.NoError(t, err)
-	for _, r := range rows {
-		require.NoError(t, b.AppendStat(
-			tenant, r.ObjectPath, r.SectionIndex, r.SortSchema, r.Labels,
-			time.Unix(0, r.MinTimestamp), time.Unix(0, r.MaxTimestamp),
-			int(r.RowCount), r.UncompressedSize,
-		))
+	for _, stat := range object.stats {
+		require.NoError(t, builder.AppendStat(object.tenant, stat))
 	}
-	obj, closer, err := b.Flush()
+	for _, row := range object.postings {
+		switch row.Kind {
+		case postings.KindBloom:
+			require.NoError(t, builder.AppendPostingsBloomEntry(object.tenant, row.BloomEntry()))
+		case postings.KindLabel:
+			require.NoError(t, builder.AppendPostingsLabelEntry(object.tenant, row.LabelEntry()))
+		default:
+			t.Fatalf("unsupported posting kind %d", row.Kind)
+		}
+	}
+
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	defer closer.Close()
 
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	defer reader.Close()
+	objBytes, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(ctx, object.path, io.NopCloser(bytes.NewReader(objBytes))))
+}
+
+func buildIndexWithPostingsSections(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, sections ...[]postings.Row) {
+	t.Helper()
+	builder := dataobj.NewBuilder(nil)
+	for _, rows := range sections {
+		postingsBuilder := postings.NewMergeBuilder(nil, 2048, 10000, math.MaxInt)
+		postingsBuilder.SetTenant(tenant)
+		for _, row := range rows {
+			require.Equal(t, postings.KindLabel, row.Kind)
+			require.NoError(t, postingsBuilder.AppendLabelEntry(row.LabelEntry()))
+		}
+		require.NoError(t, builder.Append(postingsBuilder))
+	}
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
 	reader, err := obj.Reader(ctx)
 	require.NoError(t, err)
 	defer reader.Close()
@@ -298,20 +317,77 @@ func TestLoadTenantIndexes_PopulatesSizeColumns(t *testing.T) {
 	require.Equal(t, uint64(4096), idx1.UncompressedLogsSize)
 }
 
-// TestSectionRefsFor_CopiesUncompressedSize verifies that sectionRefsFor
-// copies each entry's UncompressedLogsSize into the produced SectionRef.UncompressedSize.
-func TestSectionRefsFor_CopiesUncompressedSize(t *testing.T) {
-	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
-	indexes := []indexEntry{
-		{Path: "indexes/aa/idx-0", Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour),
-			FileSize: 1024, UncompressedLogsSize: 2048},
-		{Path: "indexes/bb/idx-1", Start: window.Add(3 * time.Hour), End: window.Add(5 * time.Hour),
-			FileSize: 512, UncompressedLogsSize: 4096},
+func TestCompareIndexSortKey(t *testing.T) {
+	base := indexSortKey{kind: postings.KindLabel, columnName: "service", labelValue: "api", minTimestamp: 10, maxTimestamp: 20}
+	tests := []indexSortKey{
+		{kind: postings.KindBloom, columnName: "z", labelValue: "z", minTimestamp: 99, maxTimestamp: 99},
+		{kind: postings.KindLabel, columnName: "namespace", labelValue: "z", minTimestamp: 99, maxTimestamp: 99},
+		{kind: postings.KindLabel, columnName: "service", labelValue: "aaa", minTimestamp: 99, maxTimestamp: 99},
+		{kind: postings.KindLabel, columnName: "service", labelValue: "api", minTimestamp: 9, maxTimestamp: 99},
+		{kind: postings.KindLabel, columnName: "service", labelValue: "api", minTimestamp: 10, maxTimestamp: 19},
 	}
+	for _, before := range tests {
+		require.Negative(t, compareIndexSortKey(before, base))
+		require.Positive(t, compareIndexSortKey(base, before))
+	}
+	require.Zero(t, compareIndexSortKey(base, base))
+}
 
-	got := sectionRefsFor(indexes)
-	require.Len(t, got, 2)
+func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/aa/idx-0"
+	buildIndexWithPostings(ctx, t, bucket, "acme", path, 1<<20, []postings.Row{
+		{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 30, MaxTimestamp: 40},
+		{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 10, MaxTimestamp: 20},
+		{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service_name", LabelValue: "web", MinTimestamp: 5, MaxTimestamp: 50},
+	})
 
-	require.Equal(t, int64(2048), got[0].Ref.UncompressedSize)
-	require.Equal(t, int64(4096), got[1].Ref.UncompressedSize)
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	require.NoError(t, err)
+	require.Equal(t, []v2.Section[indexSortKey]{
+		{
+			Ref: &compactionv2pb.SectionRef{ObjectPath: path},
+			Min: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+			Max: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+		},
+	}, refs)
+}
+
+func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/aa/idx-0"
+	buildIndex(ctx, t, bucket, testIndexObject{
+		tenant:      "acme",
+		path:        path,
+		sectionSize: 1,
+		stats: []stats.Stat{{
+			ObjectPath: "logs/a", SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "api"}, MinTimestamp: 1, MaxTimestamp: 2,
+		}},
+		postings: []postings.Row{
+			{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "a", LabelValue: "1", MinTimestamp: 1, MaxTimestamp: 2},
+			{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "b", LabelValue: "2", MinTimestamp: 3, MaxTimestamp: 4},
+		},
+	})
+
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
+	require.NoError(t, err)
+	require.Len(t, refs, 2)
+	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
+	require.Equal(t, int64(2), refs[1].Ref.SectionIndex)
+}
+
+func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	goodPath := "indexes/aa/good"
+	buildIndexWithPostings(ctx, t, bucket, "acme", goodPath, 1<<20, []postings.Row{{
+		Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service_name", LabelValue: "api", MinTimestamp: 1, MaxTimestamp: 2,
+	}})
+
+	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
+	require.Error(t, err)
+	require.Nil(t, refs)
 }

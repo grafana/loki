@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -308,32 +309,38 @@ func (c *coordinator) compactTenantLogs(
 	return stats, nil
 }
 
-// compactTenant performs the per-(tenant, window) IndexMerge. Stats are
-// zero-valued on any no-op success (no tasks planned or a race-loss swap).
-func (c *coordinator) compactTenant(
-	ctx context.Context,
-	tenant string,
-	window time.Time,
-	entries []indexEntry,
-) (compactionStats, error) {
-	// Plan.
-	sections := sectionRefsFor(entries)
-	runs := v2.CalculateRuns(sections, compareSortKey)
-	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
-	if len(tasks) == 0 {
-		level.Debug(c.logger).Log("msg", "tenant cycle: planner produced no tasks",
-			"tenant", tenant, "window", window)
+// compactTenant performs one index-compaction pass for a tenant and window.
+func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
+	}
+
+	runs := v2.CalculateRuns(sections, compareIndexSortKey)
+	inputRuns := len(runs)
+	c.metrics.observeIndexInputRuns(inputRuns)
+	converged := v2.IsConverged(sections, compareIndexSortKey)
+	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
+	if converged {
+		level.Debug(c.logger).Log("msg", "index-compaction: window converged, skipping",
+			"tenant", tenant, "window", window, "input_runs", inputRuns)
 		return compactionStats{}, nil
 	}
 
-	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
+	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
+	outputs := make([]string, len(tasks))
+
+	// IndexMerge opens each referenced object whole. Until it reads individual
+	// sections, one object may be repeated across task outputs and deduplicated
+	// by a later pass.
+	// TODO(rfratto): Preserve multiple log sort schemas in one IndexMerge output.
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
 	}
-	for i, ts := range tasks {
+	for i, task := range tasks {
 		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, ts)
+			plan := buildIndexMergePlan(tenant, window, task)
 			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "index-merge"}}
 			rec, err := c.runPlan(gctx, opts, plan)
 			if err != nil {
@@ -352,33 +359,30 @@ func (c *coordinator) compactTenant(
 			if len(artifacts) > 1 {
 				return fmt.Errorf("index-merge job produced %d artifacts, want 1", len(artifacts))
 			}
-			minTS, maxTS := taskBounds(ts)
-			resultEntries[i] = &metastore.TableOfContentsEntry{
-				Path:                 artifacts[0].Path,
-				StartTime:            time.Unix(0, minTS).UTC(),
-				EndTime:              time.Unix(0, maxTS).UTC(),
-				UncompressedLogsSize: taskUncompressedLogsSize(ts),
-			}
+			outputs[i] = artifacts[0].Path
 			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return compactionStats{}, fmt.Errorf("failed to execute compaction tasks: %w", err)
+		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
 	}
 
-	oldPaths := make([]string, len(entries))
-	for i, e := range entries {
-		oldPaths[i] = e.Path
-	}
-
-	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
-	for _, e := range resultEntries {
-		if e != nil {
-			newEntries = append(newEntries, *e)
+	completedTasks := make([]*compactionv2pb.TaskSpec, 0, len(tasks))
+	completedOutputs := make([]string, 0, len(tasks))
+	for i, output := range outputs {
+		if output != "" {
+			completedTasks = append(completedTasks, tasks[i])
+			completedOutputs = append(completedOutputs, output)
 		}
 	}
-	if len(newEntries) == 0 {
+	if len(completedTasks) == 0 {
 		return compactionStats{}, nil
+	}
+
+	oldPaths := taskObjectPaths(completedTasks)
+	newEntries, err := makeIndexTocEntries(completedTasks, completedOutputs, entries)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 
 	if c.cfg.DryRun {
@@ -391,13 +395,14 @@ func (c *coordinator) compactTenant(
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointers after compaction: %w", err)
+		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "ToC replace race-loss / already-converged",
+		level.Debug(c.logger).Log("msg", "index-compaction ToC replace race-loss",
 			"tenant", tenant, "window", window)
 		return compactionStats{}, nil
 	}
+
 	level.Info(c.logger).Log("msg", "tenant cycle complete",
 		"tenant", tenant, "window", window,
 		"removed_indexes", len(oldPaths),
@@ -446,6 +451,78 @@ func taskUncompressedLogsSize(task *compactionv2pb.TaskSpec) uint64 {
 		}
 	}
 	return total
+}
+
+func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
+	seen := make(map[string]struct{})
+	for _, task := range tasks {
+		for _, run := range task.Runs {
+			for _, section := range run.Sections {
+				seen[section.ObjectPath] = struct{}{}
+			}
+		}
+	}
+
+	paths := make([]string, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
+// makeIndexTocEntries derives output metadata from each task's source indexes.
+func makeIndexTocEntries(tasks []*compactionv2pb.TaskSpec, outputs []string, inputs []indexEntry) ([]metastore.TableOfContentsEntry, error) {
+	byPath := make(map[string]indexEntry, len(inputs))
+	for _, input := range inputs {
+		byPath[input.Path] = input
+	}
+
+	entries := make([]metastore.TableOfContentsEntry, len(outputs))
+	for i, task := range tasks {
+		var (
+			start, end   time.Time
+			uncompressed uint64
+
+			first     = true
+			sizeKnown = true
+			seen      = make(map[string]struct{})
+		)
+		for _, run := range task.Runs {
+			for _, section := range run.Sections {
+				if _, ok := seen[section.ObjectPath]; ok {
+					continue
+				}
+				seen[section.ObjectPath] = struct{}{}
+
+				input, ok := byPath[section.ObjectPath]
+				if !ok {
+					return nil, fmt.Errorf("task references unknown index %q", section.ObjectPath)
+				}
+				if first || input.Start.Before(start) {
+					start = input.Start
+				}
+				if first || input.End.After(end) {
+					end = input.End
+				}
+				first = false
+				if input.UncompressedLogsSize == 0 {
+					sizeKnown = false
+				}
+				uncompressed += input.UncompressedLogsSize
+			}
+		}
+		if !sizeKnown {
+			uncompressed = 0
+		}
+		entries[i] = metastore.TableOfContentsEntry{
+			Path:                 outputs[i],
+			StartTime:            start.UTC(),
+			EndTime:              end.UTC(),
+			UncompressedLogsSize: uncompressed,
+		}
+	}
+	return entries, nil
 }
 
 // fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
@@ -515,12 +592,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 		return phaseOutcomeError
 	}
 
-	c.metrics.observeEntries(tenant, entries, c.clock())
-
-	if len(entries) <= 1 {
-		c.metrics.observeTenantCycle(tenant, "converged", c.clock().Sub(start), compactionStats{})
-		return phaseOutcomeNoWork
-	}
+	c.metrics.observeEntries(tenant, entries)
 
 	stats, err := c.compactTenant(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
