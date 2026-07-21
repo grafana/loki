@@ -112,8 +112,12 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 				maxBytes:     rp.PartitionMaxBytes,
 				currentEpoch: rp.CurrentLeaderEpoch,
 			})
-			// Update session with this partition's state
-			session.updatePartition(rt.Topic, rp.Partition, rp.FetchOffset, rp.PartitionMaxBytes, rp.CurrentLeaderEpoch)
+			// Update session with this partition's state. An
+			// unresolvable v13 topic ID is answered above but not
+			// tracked: "" is not a valid session key.
+			if rt.Topic != "" || req.Version < 13 {
+				session.updatePartition(rt.Topic, rt.TopicID, rp.Partition, rp.FetchOffset, rp.PartitionMaxBytes, rp.CurrentLeaderEpoch)
+			}
 		}
 	}
 
@@ -126,9 +130,19 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 		}
 		for key, sp := range session.partitions {
 			if !inRequest[key] {
+				topic := key.t
+				if sp.topicID != (uuid{}) {
+					// v13+ entries are addressed by the ID they
+					// were added with: if it no longer resolves
+					// (deleted, or recreated with a new ID), the
+					// lookups below miss and the entry answers
+					// UNKNOWN_TOPIC_ID with the stored ID, like a
+					// real broker. It never re-addresses by name.
+					topic = c.data.id2t[sp.topicID]
+				}
 				toFetch = append(toFetch, fetchPartition{
-					topic:        key.t,
-					topicID:      c.data.t2id[key.t],
+					topic:        topic,
+					topicID:      sp.topicID,
 					partition:    key.p,
 					fetchOffset:  sp.fetchOffset,
 					maxBytes:     sp.maxBytes,
@@ -229,11 +243,15 @@ func (c *Cluster) handleFetch(creq *clientReq, w *watchFetch) (kmsg.Response, er
 	tidx := make(map[string]int)
 
 	donet := func(t string, id uuid) *kmsg.FetchResponseTopic {
-		if i, ok := tidx[t]; ok {
+		key := t
+		if t == "" {
+			key = string(id[:]) // unresolvable v13 IDs each get their own entry
+		}
+		if i, ok := tidx[key]; ok {
 			return &resp.Topics[i]
 		}
 		id2t[id] = t
-		tidx[t] = len(resp.Topics)
+		tidx[key] = len(resp.Topics)
 		st := kmsg.NewFetchResponseTopic()
 		st.Topic = t
 		st.TopicID = id
@@ -459,6 +477,11 @@ type fetchSession struct {
 
 // fetchSessionPartition tracks per-partition state within a session.
 type fetchSessionPartition struct {
+	// topicID is what the requester addressed this partition by (zero
+	// below fetch v13). v13+ sessions are topic-ID addressed: if this ID
+	// stops resolving (topic deleted, or recreated under a new ID), the
+	// entry answers UNKNOWN_TOPIC_ID rather than re-addressing by name.
+	topicID      uuid
 	fetchOffset  int64
 	maxBytes     int32
 	currentEpoch int32
@@ -542,18 +565,20 @@ func (fs *fetchSessions) getOrCreate(brokerNode, sessionID, sessionEpoch int32, 
 	return session, false, 0
 }
 
-func (s *fetchSession) updatePartition(topic string, partition int32, fetchOffset int64, maxBytes, currentEpoch int32) {
+func (s *fetchSession) updatePartition(topic string, topicID uuid, partition int32, fetchOffset int64, maxBytes, currentEpoch int32) {
 	if s == nil {
 		return
 	}
 	key := tp{topic, partition}
 	if existing, ok := s.partitions[key]; ok {
+		existing.topicID = topicID
 		existing.fetchOffset = fetchOffset
 		existing.maxBytes = maxBytes
 		existing.currentEpoch = currentEpoch
 		s.partitions[key] = existing
 	} else {
 		s.partitions[key] = fetchSessionPartition{
+			topicID:            topicID,
 			fetchOffset:        fetchOffset,
 			maxBytes:           maxBytes,
 			currentEpoch:       currentEpoch,

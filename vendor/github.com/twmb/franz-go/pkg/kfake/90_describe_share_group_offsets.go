@@ -37,8 +37,6 @@ func (c *Cluster) handleDescribeShareGroupOffsets(creq *clientReq) (kmsg.Respons
 		rsg := kmsg.NewDescribeShareGroupOffsetsResponseGroup()
 		rsg.GroupID = rg.GroupID
 
-		// Coordinator check: DescribeShareGroupOffsets is routed to
-		// the share coordinator.
 		if c.coordinator(rg.GroupID).node != creq.cc.b.node {
 			rsg.ErrorCode = kerr.NotCoordinator.Code
 			resp.Groups = append(resp.Groups, rsg)
