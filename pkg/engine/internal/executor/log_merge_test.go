@@ -232,6 +232,71 @@ func TestCollectLogSources_ReadsFromUnprefixedDataBucket(t *testing.T) {
 	require.Equal(t, "objects/09/abcdef", sources[0].path)
 }
 
+// TestDoLogObjectMerge_WritesCompactedLogsToDataBucket reproduces the bug where
+// compacted log objects were written next to the index (through the
+// index-prefixed bucket, under the indexes/ namespace) instead of to the objects/
+// namespace of the unprefixed data bucket. Because a query worker resolves object
+// paths recorded in an index against the unprefixed data bucket, a compacted log
+// written under the index prefix is unreadable at query time. Compacted logs must
+// land in the data bucket under objects/, and the index must reference that path.
+func TestDoLogObjectMerge_WritesCompactedLogsToDataBucket(t *testing.T) {
+	ctx := context.Background()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// root is the unprefixed data bucket; indexBucket is the index-prefixed view
+	// the compaction wiring hands the executor for index I/O.
+	root := objstore.NewInMemBucket()
+	indexBucket := objstore.NewPrefixedBucket(root, "dataobj/index/v0")
+
+	buildSourceLogObject(t, root, "objects/09/abcdef", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = root
+
+	node := &physical.LogMerge{
+		Tenant:          tenant,
+		SortSchema:      sortSchema,
+		OutputIndexPath: "indexes/tenants/T/ab/cdef",
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objects/09/abcdef"}}},
+		},
+	}
+
+	require.NoError(t, c.doLogObjectMerge(ctx, node))
+
+	compactedPath := logMergeOutputPath(node.OutputIndexPath, 0)
+	require.True(t, strings.HasPrefix(compactedPath, "objects/"),
+		"compacted log path must live in the objects/ namespace, got %q", compactedPath)
+	require.False(t, strings.HasPrefix(compactedPath, "indexes/"),
+		"compacted log path must not live in the indexes/ namespace, got %q", compactedPath)
+
+	// The compacted log object lands in the data bucket, alongside source objects.
+	ok, err := root.Exists(ctx, compactedPath)
+	require.NoError(t, err)
+	require.True(t, ok, "compacted log object must be written to the data bucket at %q", compactedPath)
+
+	// It must not leak into the index-prefixed bucket next to the index object.
+	ok, err = indexBucket.Exists(ctx, compactedPath)
+	require.NoError(t, err)
+	require.False(t, ok, "compacted log object must not be written through the index-prefixed bucket")
+
+	// The index object itself is still written to the index bucket.
+	ok, err = indexBucket.Exists(ctx, node.OutputIndexPath)
+	require.NoError(t, err)
+	require.True(t, ok, "index object must be written to the index bucket at OutputIndexPath")
+
+	// The index references the compacted log by its data-bucket path, so a query
+	// worker resolving that path against the unprefixed data bucket finds it.
+	_, postingsPaths := collectIndexSections(ctx, t, indexBucket, node)
+	require.Equal(t, map[string]bool{compactedPath: true}, postingsPaths,
+		"index postings must reference the compacted log's data-bucket path")
+}
+
 // newSmallObjectExecutorContext is like newTestExecutorContext but with a tiny
 // TargetObjectSize so the merge splits its output across multiple objects.
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {

@@ -32,11 +32,12 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	}, nil)
 }
 
-// sourceBucket returns the bucket to read source log objects from. Source
-// objects are stored at the unprefixed dataobj root, so it prefers dataBucket
-// and falls back to bucket when dataBucket is unset (e.g. query-only workers or
-// tests that share a single bucket).
-func (c *Context) sourceBucket() objstore.Bucket {
+// dataObjectBucket returns the bucket for reading source log objects and writing
+// compacted log objects. Both live at the unprefixed dataobj root (the objects/
+// namespace), not under the index-storage prefix that c.bucket carries, so it
+// prefers dataBucket and falls back to bucket when dataBucket is unset (e.g.
+// query-only workers or tests that share a single bucket).
+func (c *Context) dataObjectBucket() objstore.Bucket {
 	if c.dataBucket != nil {
 		return c.dataBucket
 	}
@@ -113,7 +114,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return fmt.Errorf("flushing index: %w", err)
 	}
 
-	_, err = c.uploadLogObject(ctx, node.OutputIndexPath, idxObj)
+	_, err = c.uploadObject(ctx, c.bucket, node.OutputIndexPath, idxObj)
 	if err != nil {
 		return errors.Join(fmt.Errorf("uploading index %q: %w", node.OutputIndexPath, err), idxCloser.Close())
 	}
@@ -178,10 +179,14 @@ func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, du
 }
 
 // logMergeOutputPath derives the deterministic object-storage key for the i-th
-// compacted log object from the node's OutputIndexPath. It stays in the same
-// bucket
+// compacted log object from the node's OutputIndexPath. Compacted logs are data
+// objects, so they live in the objects/ namespace of the unprefixed data bucket
+// alongside ingested source objects — not under the indexes/ namespace where the
+// index object itself is written. Deriving the key from OutputIndexPath keeps it
+// deterministic and unique per merge task.
 func logMergeOutputPath(outputIndexPath string, i int) string {
-	return fmt.Sprintf("%s.compacted-log.%d", outputIndexPath, i)
+	objectPath := "objects/" + strings.TrimPrefix(outputIndexPath, "indexes/")
+	return fmt.Sprintf("%s.compacted-log.%d", objectPath, i)
 }
 
 type logSource struct {
@@ -211,9 +216,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			paths = append(paths, sec.ObjectPath)
 		}
 	}
-	// Source log objects live at the unprefixed dataobj root, not under the
-	// index-storage prefix that c.bucket carries, so read them via dataBucket.
-	srcBucket := c.sourceBucket()
+	srcBucket := c.dataObjectBucket()
 
 	// Gather log and streams sections
 	sources := make([]*logSource, 0, len(paths))
@@ -480,7 +483,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 
 	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
 
-	size, upErr := w.c.uploadLogObject(ctx, path, obj)
+	size, upErr := w.c.uploadObject(ctx, w.c.dataObjectBucket(), path, obj)
 	if upErr != nil {
 		return errors.Join(fmt.Errorf("uploading %q: %w", path, upErr), closer.Close())
 	}
@@ -534,15 +537,17 @@ func logRecordSize(rec logs.Record) int {
 	return size
 }
 
-// uploadLogObject streams a built object to the bucket and returns its encoded size.
-func (c *Context) uploadLogObject(ctx context.Context, path string, obj *dataobj.Object) (int64, error) {
+// uploadObject streams a built object to the given bucket and returns its encoded
+// size. The index object goes to the index bucket; compacted log objects go to
+// the data bucket.
+func (c *Context) uploadObject(ctx context.Context, bucket objstore.Bucket, path string, obj *dataobj.Object) (int64, error) {
 	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("getting object reader: %w", err)
 	}
 	defer reader.Close()
 
-	if err := c.bucket.Upload(ctx, path, reader); err != nil {
+	if err := bucket.Upload(ctx, path, reader); err != nil {
 		return 0, err
 	}
 	return obj.Size(), nil
