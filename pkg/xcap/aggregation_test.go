@@ -3,12 +3,13 @@ package xcap
 import (
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAggregatedObservation_Record(t *testing.T) {
 	t.Run("sum aggregation int64", func(t *testing.T) {
-		stat := NewStatisticInt64("value", AggregationTypeSum)
+		stat := NewStatisticInt64(statid.Invalid, "value", AggregationTypeSum)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10))
@@ -20,7 +21,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("sum aggregation float64", func(t *testing.T) {
-		stat := NewStatisticFloat64("value", AggregationTypeSum)
+		stat := NewStatisticFloat64(statid.Invalid, "value", AggregationTypeSum)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10.5))
@@ -32,7 +33,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("min aggregation int64", func(t *testing.T) {
-		stat := NewStatisticInt64("value", AggregationTypeMin)
+		stat := NewStatisticInt64(statid.Invalid, "value", AggregationTypeMin)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(30))
@@ -44,7 +45,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("min aggregation float64", func(t *testing.T) {
-		stat := NewStatisticFloat64("value", AggregationTypeMin)
+		stat := NewStatisticFloat64(statid.Invalid, "value", AggregationTypeMin)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(30.5))
@@ -56,7 +57,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("max aggregation int64", func(t *testing.T) {
-		stat := NewStatisticInt64("value", AggregationTypeMax)
+		stat := NewStatisticInt64(statid.Invalid, "value", AggregationTypeMax)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10))
@@ -68,7 +69,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("max aggregation float64", func(t *testing.T) {
-		stat := NewStatisticFloat64("value", AggregationTypeMax)
+		stat := NewStatisticFloat64(statid.Invalid, "value", AggregationTypeMax)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10.0))
@@ -80,7 +81,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("max aggregation bool flag", func(t *testing.T) {
-		stat := NewStatisticFlag("success")
+		stat := NewStatisticFlag(statid.Invalid, "success")
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(false))
@@ -92,7 +93,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("last aggregation int64", func(t *testing.T) {
-		stat := NewStatisticInt64("value", AggregationTypeLast)
+		stat := NewStatisticInt64(statid.Invalid, "value", AggregationTypeLast)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10))
@@ -104,7 +105,7 @@ func TestAggregatedObservation_Record(t *testing.T) {
 	})
 
 	t.Run("first aggregation int64", func(t *testing.T) {
-		stat := NewStatisticInt64("value", AggregationTypeFirst)
+		stat := NewStatisticInt64(statid.Invalid, "value", AggregationTypeFirst)
 		agg := &AggregatedObservation{Statistic: stat}
 
 		agg.Record(stat.Observe(10))

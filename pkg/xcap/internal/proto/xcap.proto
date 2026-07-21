@@ -12,10 +12,8 @@ message Capture {
   // A list of Regions recorded in the Capture.
   repeated Region regions = 1 [(gogoproto.nullable) = false];
 
-  // A list of statistic definitions used in the Capture across all
-  // Regions. The index into this list is used as the statistic_id field
-  // in ObservationV2.
-  repeated Statistic statistics = 2 [(gogoproto.nullable) = false];
+  reserved 2;
+  reserved "statistics";
 }
 
 // Region is protobuf representation of a Region.
@@ -30,47 +28,23 @@ message Region {
   reserved "start_time", "end_time", "id", "parent_id", "attributes", "events", "status", "observations";
 }
 
-// Statistic represents a statistic definition.
-message Statistic {
-  // Name is the name of the statistic.
-  string name = 1;
-
-  // DataType is the data type of the statistic's values.
-  DataType data_type = 2;
-
-  // AggregationType is how multiple observations are aggregated.
-  AggregationType aggregation_type = 3;
-}
-
 // ObservationV2 represents an aggregated observation without a nested message
-// or oneof. ValueBits is interpreted according to the data type of
-// statistics[statistic_id].
+// or oneof. ValueBits is interpreted according to the data type registered
+// for stat_id.
 message ObservationV2 {
-  // StatisticId is the index into the statistics list in Capture.
-  uint32 statistic_id = 1;
+  // StatId is the global stable ID assigned by pkg/xcap/statid.
+  //
+  // Field 4 is intentionally new: reserving the former statistic_id field
+  // ensures old worker observations are skipped rather than interpreted as
+  // global IDs during a rolling upgrade.
+  uint32 stat_id = 4;
 
   // Count is the number of observations aggregated.
   uint32 count = 2;
 
   // ValueBits holds the encoded aggregated observation value.
   fixed64 value_bits = 3;
-}
 
-// DataType specifies the data type of a statistic's values.
-enum DataType {
-  DATA_TYPE_INVALID = 0; // Invalid/unspecified data type.
-  DATA_TYPE_INT64 = 1; // Signed 64-bit integer statistic.
-  DATA_TYPE_FLOAT64 = 2; // Double precision floating point statistic.
-  DATA_TYPE_BOOL = 3; // Boolean statistic (flag).
-}
-
-// AggregationType specifies how to combine multiple observations of the
-// same statistic.
-enum AggregationType {
-  AGGREGATION_TYPE_INVALID = 0; // Invalid/unspecified aggregation type.
-  AGGREGATION_TYPE_SUM = 1; // Sum all observations together.
-  AGGREGATION_TYPE_MIN = 2; // Use the smallest value.
-  AGGREGATION_TYPE_MAX = 3; // Use the largest value.
-  AGGREGATION_TYPE_LAST = 4; // Use the last recorded value.
-  AGGREGATION_TYPE_FIRST = 5; // Use the first recorded value.
+  reserved 1;
+  reserved "statistic_id";
 }

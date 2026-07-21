@@ -16,7 +16,9 @@
 //	ctx, region := xcap.StartRegion(ctx, "DataObjScan")
 //	defer region.End()
 //
-//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//	pagesScanned := xcap.NewStatisticInt64(
+//	    statid.DatasetPagesTotal, "dataobj.dataset.pages.total", xcap.AggregationTypeSum,
+//	)
 //
 //	// Record observations — multiple calls aggregate by statistic.
 //	region.Record(pagesScanned.Observe(1))
@@ -46,7 +48,9 @@
 //
 //	// Deep in the call stack, retrieve the region from context.
 //	region := xcap.RegionFromContext(ctx)
-//	pagesScanned := xcap.NewStatisticInt64("pages.scanned", xcap.AggregationTypeSum)
+//	pagesScanned := xcap.NewStatisticInt64(
+//	    statid.DatasetPagesTotal, "dataobj.dataset.pages.total", xcap.AggregationTypeSum,
+//	)
 //	region.Record(pagesScanned.Observe(1))
 //	region.Record(pagesScanned.Observe(1))
 //	// When span.End() is called:
@@ -174,7 +178,7 @@ func (c *Capture) Merge(parent *Region, src *Capture) {
 		dst := &Region{
 			id:           newID(),
 			name:         srcRegion.name,
-			observations: make(map[StatisticKey]*AggregatedObservation),
+			observations: make(map[StatisticKey]AggregatedObservation, len(srcRegion.observations)),
 		}
 
 		// Parent every merged region onto the provided parent.
@@ -252,7 +256,7 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 		if rolled == nil {
 			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
-			rolled.Merge(obs)
+			rolled.Merge(&obs)
 		}
 		region.mu.RUnlock()
 	}
@@ -285,7 +289,7 @@ func (c *Capture) ValueFromRegion(name string, stat Statistic) *AggregatedObserv
 		if rolled == nil {
 			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
-			rolled.Merge(obs)
+			rolled.Merge(&obs)
 		}
 		region.mu.RUnlock()
 	}

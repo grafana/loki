@@ -5,17 +5,20 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMarshalUnmarshal(t *testing.T) {
+	withTestStatisticRegistry(t)
+
 	ctx, capture := NewCapture(context.Background(), nil)
 
 	// Create statistics
-	bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-	latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
-	success := NewStatisticFlag("success")
-	requests := NewStatisticInt64("requests", AggregationTypeSum)
+	bytesRead := NewStatisticInt64(statid.ID(1), "bytes.read", AggregationTypeSum)
+	latency := NewStatisticFloat64(statid.ID(2), "latency.ms", AggregationTypeMin)
+	success := NewStatisticFlag(statid.ID(3), "success")
+	requests := NewStatisticInt64(statid.ID(4), "requests", AggregationTypeSum)
 
 	// Parent region with attributes and observations
 	ctx, parentRegion := StartRegion(ctx, "parent")
@@ -53,11 +56,13 @@ func TestMarshalUnmarshal(t *testing.T) {
 }
 
 func TestMarshalAggregatesRegionsByName(t *testing.T) {
+	withTestStatisticRegistry(t)
+
 	ctx, capture := NewCapture(context.Background(), nil)
 
-	bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-	latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
-	requests := NewStatisticInt64("requests", AggregationTypeSum)
+	bytesRead := NewStatisticInt64(statid.ID(1), "bytes.read", AggregationTypeSum)
+	latency := NewStatisticFloat64(statid.ID(2), "latency.ms", AggregationTypeMin)
+	requests := NewStatisticInt64(statid.ID(4), "requests", AggregationTypeSum)
 
 	_, first := StartRegion(ctx, "reader")
 	first.Record(bytesRead.Observe(100))
@@ -82,30 +87,32 @@ func TestMarshalAggregatesRegionsByName(t *testing.T) {
 	require.Len(t, unmarshaled.Regions(), 1)
 
 	region := unmarshaled.Regions()[0]
-	bytesReadObservation := region.observations[bytesRead.Key()]
-	require.NotNil(t, bytesReadObservation)
+	bytesReadObservation, ok := region.observations[bytesRead.Key()]
+	require.True(t, ok)
 	require.EqualValues(t, 150, bytesReadObservation.Value())
 	require.Equal(t, 2, bytesReadObservation.Count)
 
-	latencyObservation := region.observations[latency.Key()]
-	require.NotNil(t, latencyObservation)
+	latencyObservation, ok := region.observations[latency.Key()]
+	require.True(t, ok)
 	require.Equal(t, 3.1, latencyObservation.Value())
 	require.Equal(t, 2, latencyObservation.Count)
 
-	requestsObservation := region.observations[requests.Key()]
-	require.NotNil(t, requestsObservation)
+	requestsObservation, ok := region.observations[requests.Key()]
+	require.True(t, ok)
 	require.EqualValues(t, 2, requestsObservation.Value())
 	require.Equal(t, 1, requestsObservation.Count)
 }
 
 func TestMarshalDropsRegionsWithoutObservations(t *testing.T) {
+	withTestStatisticRegistry(t)
+
 	ctx, capture := NewCapture(context.Background(), nil)
 
 	_, empty := StartRegion(ctx, "empty")
 	empty.End()
 
 	_, observed := StartRegion(ctx, "observed")
-	stat := NewStatisticInt64("requests", AggregationTypeSum)
+	stat := NewStatisticInt64(statid.ID(1), "requests", AggregationTypeSum)
 	observed.Record(stat.Observe(1))
 	observed.End()
 
@@ -117,10 +124,25 @@ func TestMarshalDropsRegionsWithoutObservations(t *testing.T) {
 	require.Equal(t, "observed", protoCapture.Regions[0].Name)
 }
 
-func TestMarshalOmitsLocalStatistics(t *testing.T) {
+func TestMarshalRejectsWireStatisticWithoutID(t *testing.T) {
 	ctx, capture := NewCapture(context.Background(), nil)
-	wireStat := NewStatisticInt64("wire", AggregationTypeSum)
-	localStat := NewStatisticInt64("local", AggregationTypeSum, Local())
+	stat := NewStatisticInt64(statid.Invalid, "unregistered", AggregationTypeSum)
+
+	_, region := StartRegion(ctx, "region")
+	region.Record(stat.Observe(1))
+	region.End()
+	capture.End()
+
+	_, err := toProtoCapture(capture)
+	require.ErrorContains(t, err, "has no ID")
+}
+
+func TestMarshalOmitsLocalStatistics(t *testing.T) {
+	withTestStatisticRegistry(t)
+
+	ctx, capture := NewCapture(context.Background(), nil)
+	wireStat := NewStatisticInt64(statid.ID(1), "wire", AggregationTypeSum)
+	localStat := NewStatisticInt64(statid.Invalid, "local", AggregationTypeSum, Local())
 
 	_, mixed := StartRegion(ctx, "mixed")
 	mixed.Record(wireStat.Observe(1))
@@ -135,11 +157,10 @@ func TestMarshalOmitsLocalStatistics(t *testing.T) {
 
 	protoCapture, err := toProtoCapture(capture)
 	require.NoError(t, err)
-	require.Len(t, protoCapture.Statistics, 1)
-	require.Equal(t, "wire", protoCapture.Statistics[0].Name)
 	require.Len(t, protoCapture.Regions, 1)
 	require.Equal(t, "mixed", protoCapture.Regions[0].Name)
 	require.Len(t, protoCapture.Regions[0].ObservationsV2, 1)
+	require.Equal(t, uint32(wireStat.ID()), protoCapture.Regions[0].ObservationsV2[0].StatId)
 
 	require.Equal(t, int64(5), Value[int64](capture, localStat))
 
@@ -220,7 +241,7 @@ func regionsEqual(r1, r2 *Region) bool {
 	return true
 }
 
-func observationsEqual(obs1, obs2 *AggregatedObservation) bool {
+func observationsEqual(obs1, obs2 AggregatedObservation) bool {
 	if obs1.Count != obs2.Count {
 		return false
 	}

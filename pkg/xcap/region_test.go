@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/xcap/statid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,7 +13,7 @@ func TestRegion_Record(t *testing.T) {
 		ctx, _ := NewCapture(context.Background(), nil)
 		_, region := StartRegion(ctx, "test")
 
-		bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
+		bytesRead := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
 		obs := bytesRead.Observe(1024)
 
 		region.Record(obs)
@@ -30,7 +31,7 @@ func TestRegion_Record(t *testing.T) {
 		ctx, _ := NewCapture(context.Background(), nil)
 		_, region := StartRegion(ctx, "test")
 
-		bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
+		bytesRead := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
 
 		region.Record(bytesRead.Observe(1024))
 		region.Record(bytesRead.Observe(2048))
@@ -48,9 +49,9 @@ func TestRegion_Record(t *testing.T) {
 		ctx, _ := NewCapture(context.Background(), nil)
 		_, region := StartRegion(ctx, "test")
 
-		bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
-		latency := NewStatisticFloat64("latency.ms", AggregationTypeMin)
-		success := NewStatisticFlag("success")
+		bytesRead := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
+		latency := NewStatisticFloat64(statid.Invalid, "latency.ms", AggregationTypeMin)
+		success := NewStatisticFlag(statid.Invalid, "success")
 
 		// Record multiple observations for bytes.read (sum)
 		region.Record(bytesRead.Observe(1024))
@@ -92,7 +93,7 @@ func TestRegion_Record(t *testing.T) {
 		ctx, _ := NewCapture(context.Background(), nil)
 		_, region := StartRegion(ctx, "test")
 
-		bytesRead := NewStatisticInt64("bytes.read", AggregationTypeSum)
+		bytesRead := NewStatisticInt64(statid.Invalid, "bytes.read", AggregationTypeSum)
 		region.Record(bytesRead.Observe(1024))
 		region.End()
 
