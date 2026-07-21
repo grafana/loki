@@ -148,6 +148,13 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 	// indexPointers) are skipped silently. Make sure all stats sections share
 	// the same sort schema (checked from the first row of each). statsSeen
 	// counts stats sections across all objects, for stable error messages.
+	//
+	// Unlike LogMerge, this intentionally merges every mergable section of a
+	// referenced object rather than filtering by SectionIndex: index refs are
+	// whole-object (sectionRefsFor emits one SectionRef per index object with
+	// SectionIndex 0), so each object appears in exactly one run/task and there
+	// is no per-section partition to honor. Filtering by SectionIndex here would
+	// drop every section except index 0 and corrupt the merged index.
 	grouped := make([]objectSections, 0, len(paths))
 	var firstSortSchema string
 	statsSeen := 0
