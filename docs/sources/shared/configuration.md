@@ -4942,9 +4942,15 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Whether dataobj compaction runs for the tenant.
-# CLI flag: -dataobj-compaction.enable
-[dataobj_compaction_enabled: <boolean> | default = false]
+# Experimental. Whether dataobj index compaction runs for the tenant.
+# CLI flag: -dataobj-compaction.index.enable
+[dataobj_index_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj log compaction runs for the tenant. Log
+# compaction implies index compaction; enabling log compaction without index
+# compaction is a configuration error.
+# CLI flag: -dataobj-compaction.log.enable
+[dataobj_log_compaction_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -6868,6 +6874,13 @@ tsdb_shipper:
   # tenant index query readiness, use limits overrides config.
   # CLI flag: -tsdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
+
+  # Timeout for downloading a table's initial set of index files from object
+  # storage when serving a query. Raise this for tenants with large indexes when
+  # slow object-storage responses cause downloads to hit the deadline; lower it
+  # to fail queries faster when storage is degraded.
+  # CLI flag: -tsdb.shipper.download-timeout
+  [download_timeout: <duration> | default = 1m]
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate

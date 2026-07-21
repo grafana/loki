@@ -150,7 +150,9 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	// startWorker), not here, so a still-draining worker cannot resurrect a
 	// series after this cancel.
 	for tenant, cancel := range workers {
-		if !c.limits.DataObjCompactionEnabled(tenant) {
+		// A worker stays alive whenever any phase runs; runLog is irrelevant to
+		// liveness because it implies runIndex.
+		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
 			cancel()
 			delete(workers, tenant)
 		}
@@ -160,7 +162,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		if _, running := workers[tenant]; running {
 			continue
 		}
-		if !c.limits.DataObjCompactionEnabled(tenant) {
+		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
 			continue
 		}
 		c.startWorker(ctx, workers, wg, tenant)
@@ -684,9 +686,12 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 
 // runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
 // is cancelled. It never returns an error: on error it retries the same phase,
-// otherwise it flips. Between phases it waits at least MinBackoff; consecutive
-// no-work (converged or empty) or failing phases grow the wait exponentially up
-// to MaxBackoff so a worker with nothing to do stops hammering object storage.
+// otherwise it flips. It re-reads the per-tenant phase enablement each iteration
+// and skips the LogMerge phase when log compaction is disabled, so an index-only
+// tenant runs IndexMerge exclusively. Between phases it waits at least
+// MinBackoff; consecutive no-work (converged or empty) or failing phases grow
+// the wait exponentially up to MaxBackoff so a worker with nothing to do stops
+// hammering object storage.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
 	backoff := c.cfg.MinBackoff
@@ -694,6 +699,15 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		if ctx.Err() != nil {
 			return
 		}
+		runIndex, runLog := c.limits.CompactionPhases(tenant)
+		if !runIndex && !runLog {
+			return
+		}
+		if p == phaseLogMerge && !runLog {
+			p = p.flip()
+			continue
+		}
+
 		window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 
 		start := c.clock()

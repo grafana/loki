@@ -793,7 +793,7 @@ func TestReconcile_DisabledDuringToCReadFailure_DefersUntilNextSuccess(t *testin
 	// Disable the tenant AND make the ToC read fail. A read failure is not
 	// authoritative, so the worker persists rather than being torn down on a
 	// possibly-transient error.
-	limits.set("acme", false)
+	limits.setIndex("acme", false)
 	c.bucket = errBucket{objstore.NewInMemBucket()} // Get returns a non-not-found error
 	c.reconcile(ctx, workers, &wg)
 
@@ -955,7 +955,9 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
-		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+		limits := newFakeLimits("acme")
+		limits.setLog("acme", true) // both phases enabled so the flip is exercised
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
 
 		var mu sync.Mutex
 		var phases []string
@@ -1242,4 +1244,154 @@ func TestFillFileSizes_MissingObjectZeroSize(t *testing.T) {
 	c.fillFileSizes(ctx, entries)
 
 	require.Equal(t, uint64(0), entries[0].FileSize, "missing object should leave FileSize as zero")
+}
+
+// TestRunTenantLoop_IndexOnly verifies that a tenant with only index
+// compaction enabled runs IndexMerge cycles and never dispatches a LogMerge
+// task, because runTenantLoop skips the LogMerge phase when runLog is false.
+func TestRunTenantLoop_IndexOnly(t *testing.T) {
+	window := imWindow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	var mu sync.Mutex
+	var phases []string
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		phases = append(phases, opts.Actor[1])
+		mu.Unlock()
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(phases) >= 3
+	}, 2*time.Second, 5*time.Millisecond)
+	cancel()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.NotEmpty(t, phases)
+	for _, p := range phases {
+		require.Equal(t, "index-merge", p, "index-only tenant must never dispatch a log-merge task")
+	}
+}
+
+// TestRunTenantLoop_LogEnabledRunsBothPhases verifies that enabling log
+// compaction (which implies index) restores the flip-flop: dispatches
+// alternate index-merge <-> log-merge.
+func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
+	window := imWindow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	replacer := &fakeReplacer{swapped: true}
+	limits := newFakeLimits("acme")
+	limits.setLog("acme", true)
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+
+	var mu sync.Mutex
+	var phases []string
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
+			phases = append(phases, opts.Actor[1])
+		}
+		mu.Unlock()
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(phases) >= 3
+	}, 2*time.Second, 5*time.Millisecond)
+	cancel()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	// runPlan returns nil (success) on every call, so the loop flips every
+	// cycle and the phase order is deterministic; the exact prefix is safe to
+	// assert. The loop starts on IndexMerge.
+	require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
+		"log-enabled tenant flips between index-merge and log-merge")
+}
+
+// TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off
+// log compaction while the loop runs stops further log-merge dispatches on the
+// next iteration while index-merge continues, because runTenantLoop re-reads
+// CompactionPhases every cycle.
+func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
+	window := imWindow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	replacer := &fakeReplacer{swapped: true}
+	limits := newFakeLimits("acme")
+	limits.setLog("acme", true)
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+
+	var mu sync.Mutex
+	var phases []string
+	sawLog := make(chan struct{})
+	var closeOnce sync.Once
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		mu.Lock()
+		phases = append(phases, opts.Actor[1])
+		mu.Unlock()
+		if opts.Actor[1] == "log-merge" {
+			closeOnce.Do(func() { close(sawLog) })
+		}
+		return nil
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+	// Wait for at least one log-merge, then disable log compaction.
+	select {
+	case <-sawLog:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected at least one log-merge dispatch before disabling")
+	}
+	limits.setLog("acme", false)
+
+	// Record how many phases exist at the cutoff, then let the loop run more.
+	mu.Lock()
+	cutoff := len(phases)
+	mu.Unlock()
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(phases) >= cutoff+4 // several more cycles after disabling
+	}, 2*time.Second, 5*time.Millisecond)
+	cancel()
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	// The mid-run disable is not instantaneous: an in-flight log-merge cycle
+	// may still complete. Assert that dispatches eventually settle to
+	// index-merge only — i.e. the tail after the cutoff contains no log-merge.
+	tail := phases[cutoff:]
+	require.NotEmpty(t, tail)
+	for _, p := range tail[len(tail)-4:] {
+		require.Equal(t, "index-merge", p, "no log-merge after log compaction is disabled")
+	}
 }

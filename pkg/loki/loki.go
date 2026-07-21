@@ -435,6 +435,7 @@ type Loki struct {
 	frontend                            Frontend
 	ruler                               *base_ruler.Ruler
 	ruleEvaluator                       ruler.Evaluator
+	RulerEvaluatorWrapper               func(ruler.Evaluator) ruler.Evaluator
 	RulerStorage                        rulestore.RuleStore
 	rulerAPI                            *base_ruler.API
 	stopper                             queryrange.Stopper
