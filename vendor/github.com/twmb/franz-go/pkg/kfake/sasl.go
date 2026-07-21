@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"golang.org/x/crypto/pbkdf2"
+	"crypto/pbkdf2"
 
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
@@ -95,12 +95,12 @@ func saslSplitPlain(auth []byte) (user, pass string, err error) {
 
 func newScramAuth(mechanism, pass string) scramAuth {
 	var saltedPass []byte
-	salt := randBytes(10)
+	salt := randBytes(16)
 	switch mechanism {
 	case saslScram256:
-		saltedPass = pbkdf2.Key([]byte(pass), salt, scramIterations, sha256.Size, sha256.New)
+		saltedPass, _ = pbkdf2.Key(sha256.New, pass, salt, scramIterations, sha256.Size) // cannot fail: salt ≥ 16 B, keyLen = 32 B
 	case saslScram512:
-		saltedPass = pbkdf2.Key([]byte(pass), salt, scramIterations, sha512.Size, sha512.New)
+		saltedPass, _ = pbkdf2.Key(sha512.New, pass, salt, scramIterations, sha512.Size) // cannot fail: salt ≥ 16 B, keyLen = 64 B
 	default:
 		panic("unreachable")
 	}
