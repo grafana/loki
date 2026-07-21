@@ -28,7 +28,7 @@ type Region struct {
 
 	// observations are all observations recorded in this region.
 	// Map from statistic key to aggregated observation value.
-	observations map[StatisticKey]*AggregatedObservation
+	observations map[StatisticKey]AggregatedObservation
 
 	// ended indicates whether End() has been called.
 	ended bool
@@ -51,7 +51,7 @@ func StartRegion(ctx context.Context, name string) (context.Context, *Region) {
 	r := &Region{
 		id:           newID(),
 		name:         name,
-		observations: make(map[StatisticKey]*AggregatedObservation),
+		observations: make(map[StatisticKey]AggregatedObservation),
 	}
 
 	// extract parentID from context
@@ -82,10 +82,10 @@ func (r *Region) Record(o Observation) {
 	}
 
 	key := o.stat.Key()
-	agg, ok := r.observations[o.stat.Key()]
+	agg, ok := r.observations[key]
 	if !ok {
 		// First observation for this statistic.
-		r.observations[key] = &AggregatedObservation{
+		r.observations[key] = AggregatedObservation{
 			Statistic: o.stat,
 			value:     o.val,
 			Count:     1,
@@ -93,8 +93,9 @@ func (r *Region) Record(o Observation) {
 		return
 	}
 
-	// Aggregate with existing observations.
+	// Aggregate with existing observations, then write the updated copy back.
 	agg.Record(o)
+	r.observations[key] = agg
 }
 
 // Name returns the name of the region.
@@ -131,7 +132,7 @@ func (r *Region) Observations() []AggregatedObservation {
 
 	observations := make([]AggregatedObservation, 0, len(r.observations))
 	for _, agg := range r.observations {
-		observations = append(observations, *agg)
+		observations = append(observations, agg)
 	}
 
 	return observations
@@ -152,9 +153,10 @@ func (r *Region) MergeObservations(src *Region) {
 
 	for key, srcObs := range src.observations {
 		if existing, ok := r.observations[key]; ok {
-			existing.Merge(srcObs)
+			existing.Merge(&srcObs)
+			r.observations[key] = existing
 		} else {
-			r.observations[key] = &AggregatedObservation{
+			r.observations[key] = AggregatedObservation{
 				Statistic: srcObs.Statistic,
 				value:     srcObs.value,
 				Count:     srcObs.Count,
@@ -206,7 +208,7 @@ func (r *Region) flushToSpan(span trace.Span) {
 // observationToAttribute converts an aggregated observation to an
 // OpenTelemetry span attribute. The attribute key is the statistic name
 // and the value type matches the statistic's data type.
-func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attribute.KeyValue {
+func observationToAttribute(key StatisticKey, obs AggregatedObservation) attribute.KeyValue {
 	attrKey := attribute.Key(key.Name)
 
 	switch key.DataType {

@@ -65,17 +65,18 @@ func aggregateRegionsByName(regions []*Region) []*Region {
 				dst = &Region{
 					id:           newID(),
 					name:         src.name,
-					observations: make(map[StatisticKey]*AggregatedObservation),
+					observations: make(map[StatisticKey]AggregatedObservation),
 				}
 				byName[src.name] = dst
 				aggregated = append(aggregated, dst)
 			}
 
 			if dstObs, ok := dst.observations[key]; ok {
-				dstObs.Merge(srcObs)
+				dstObs.Merge(&srcObs)
+				dst.observations[key] = dstObs
 				continue
 			}
-			dst.observations[key] = &AggregatedObservation{
+			dst.observations[key] = AggregatedObservation{
 				Statistic: srcObs.Statistic,
 				value:     srcObs.value,
 				Count:     srcObs.Count,

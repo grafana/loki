@@ -64,7 +64,7 @@ func (c *Capture) mergeDestinationRegion(parent *Region, name string, hint int) 
 	dst := &Region{
 		id:           newID(),
 		name:         name,
-		observations: make(map[StatisticKey]*AggregatedObservation, hint),
+		observations: make(map[StatisticKey]AggregatedObservation, hint),
 	}
 	if parent != nil {
 		dst.parentID = parent.id
@@ -91,10 +91,11 @@ func (r *Region) mergeProtoObservations(observations []internal.ObservationV2) {
 		if existing, ok := r.observations[key]; ok {
 			existing.aggregate(stat.Aggregation(), val)
 			existing.Count += int(obs.Count)
+			r.observations[key] = existing
 			continue
 		}
 
-		r.observations[key] = &AggregatedObservation{
+		r.observations[key] = AggregatedObservation{
 			Statistic: stat,
 			value:     val,
 			Count:     int(obs.Count),

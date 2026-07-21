@@ -178,7 +178,7 @@ func (c *Capture) Merge(parent *Region, src *Capture) {
 		dst := &Region{
 			id:           newID(),
 			name:         srcRegion.name,
-			observations: make(map[StatisticKey]*AggregatedObservation, len(srcRegion.observations)),
+			observations: make(map[StatisticKey]AggregatedObservation, len(srcRegion.observations)),
 		}
 
 		// Parent every merged region onto the provided parent.
@@ -256,7 +256,7 @@ func (c *Capture) Value(stat Statistic) *AggregatedObservation {
 		if rolled == nil {
 			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
-			rolled.Merge(obs)
+			rolled.Merge(&obs)
 		}
 		region.mu.RUnlock()
 	}
@@ -289,7 +289,7 @@ func (c *Capture) ValueFromRegion(name string, stat Statistic) *AggregatedObserv
 		if rolled == nil {
 			rolled = &AggregatedObservation{Statistic: obs.Statistic, value: obs.value, Count: obs.Count}
 		} else {
-			rolled.Merge(obs)
+			rolled.Merge(&obs)
 		}
 		region.mu.RUnlock()
 	}

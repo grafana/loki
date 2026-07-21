@@ -23,7 +23,7 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 
 // fromProtoRegion converts a protobuf Region to its Go representation.
 func fromProtoRegion(protoRegion *proto.Region) *Region {
-	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.ObservationsV2))
+	observations := make(map[StatisticKey]AggregatedObservation, len(protoRegion.ObservationsV2))
 	for i := range protoRegion.ObservationsV2 {
 		protoObs := &protoRegion.ObservationsV2[i]
 		if statid.IsReserved(statid.ID(protoObs.StatId)) {
@@ -35,7 +35,7 @@ func fromProtoRegion(protoRegion *proto.Region) *Region {
 			continue
 		}
 
-		observations[stat.Key()] = &AggregatedObservation{
+		observations[stat.Key()] = AggregatedObservation{
 			Statistic: stat,
 			value:     valueFromBits(protoObs.ValueBits),
 			Count:     int(protoObs.Count),
