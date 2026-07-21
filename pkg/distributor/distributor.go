@@ -1570,7 +1570,7 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, tenant string, str
 		// TODO(grobinson): We should emit the write latency even when we failed.
 		// This has been kept as-is for now to preserve behavior.
 		writeLatency.ObserveDuration()
-		d.m.kafkaWriteBytesTotal.Add(float64(sizeBytes))
+		d.m.kafkaWriteBytesTotal.WithLabelValues(fmt.Sprintf("partition_%d", result.Record.Partition).Add(float64(sizeBytes))
 	}
 	var finalErr error
 	for _, result := range results {
