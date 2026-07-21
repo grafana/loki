@@ -540,13 +540,36 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "dry-run must not swap the ToC")
 }
 
-func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
+func TestCompactTenantLogs_RetrySucceeds(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
+	// twoRunConvergedBucket yields a single task; failOnCall:1 fails its first
+	// attempt, so a retry must run (and succeed) for the cycle to commit. The
+	// test coordinator leaves logMergeRetryBackoff at zero, so retries do not
+	// sleep.
 	runner := &fakeRunner{failOnCall: 1}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
+	result, _, err := c.compactTenantLogs(ctx, "acme", window, entry)
+
+	require.NoError(t, err)
+	require.Equal(t, tenantCycleLogCompacted, result)
+	require.Len(t, runner.snapshot(), 2, "task fails once then succeeds on retry")
+	require.Len(t, replacer.snapshot(), 1, "successful retry commits the ToC swap")
+}
+
+func TestCompactTenantLogs_RetryExhaustedFails(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{err: errors.New("connection closed")}
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)))
 
@@ -555,7 +578,8 @@ func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
 
 	require.Error(t, err)
 	require.Equal(t, tenantCycleFailed, result)
-	require.Empty(t, replacer.snapshot(), "partial failure must not swap the ToC")
+	require.Len(t, runner.snapshot(), logMergeTaskRetries+1, "one initial attempt plus logMergeTaskRetries retries")
+	require.Empty(t, replacer.snapshot(), "exhausted retries must not swap the ToC")
 }
 
 func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
