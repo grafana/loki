@@ -1681,6 +1681,10 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
+	if t.RulerEvaluatorWrapper != nil {
+		t.ruleEvaluator = t.RulerEvaluatorWrapper(t.ruleEvaluator)
+	}
+
 	return svc, nil
 }
 
@@ -2384,6 +2388,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Config:          t.Cfg.DataObj.Compaction,
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
+		Limits:          t.Overrides,
 		Logger:          logger,
 		Registerer:      prometheus.DefaultRegisterer,
 	})

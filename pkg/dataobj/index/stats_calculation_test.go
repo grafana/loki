@@ -236,6 +236,34 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	}, actual[0])
 }
 
+func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	ctx := makeTestCalcContext(builder)
+	calc := &statsCalculation{schema: defaultSortSchema}
+
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
+
+	// The uncompressed_logs_size byte contract is line bytes plus structured
+	// metadata value bytes, matching streams.Stream.UncompressedSize captured
+	// during initial indexing. A one-byte line with ten bytes of metadata must
+	// report eleven bytes so compaction output agrees with initial ToC values.
+	ts := time.Unix(500, 0).UTC()
+	batch := []logs.Record{
+		{
+			StreamID:  1,
+			Timestamp: ts,
+			Line:      []byte("x"),
+			Metadata:  labels.FromStrings("trace_id", "0123456789"),
+		},
+	}
+	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
+	require.NoError(t, calc.Flush(context.Background(), ctx))
+
+	actual := flushAndReadAllStatsTable(t, builder)
+	require.Len(t, actual, 1)
+	require.Equal(t, int64(len("x")+len("0123456789")), actual[0]["uncompressed_size.int64"])
+}
+
 func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)

@@ -17,8 +17,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 func TestSerialIndexer_BuildIndex(t *testing.T) {
@@ -319,19 +322,17 @@ func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *data
 	return nil
 }
 
-func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
+func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
 	c.flushCallCount++
-	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), nil
-}
-
-func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
-	return []multitenancy.TimeRange{
+	c.full = false
+	ranges := []multitenancy.TimeRange{
 		{
 			Tenant:  "test",
 			MinTime: time.Now(),
 			MaxTime: time.Now().Add(time.Hour),
 		},
 	}
+	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), ranges, nil
 }
 
 func (c *mockCalculator) Reset() {
@@ -412,8 +413,7 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 
 	// Verify calculator behavior
 	require.Equal(t, 2, mockCalc.count)          // 2 calls (no retries)
-	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
-	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
+	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only; Flush consumes all state
 
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
@@ -542,4 +542,239 @@ func TestDownloadObject_ObjectNotFound(t *testing.T) {
 	_, err := downloadObject(ctx, bucket, objectPath)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to fetch object from storage")
+}
+
+func TestCalculator_UncompressedLogsSizeAccumulator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "app", "test-path-0", bucket)
+
+	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 22,
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+		TargetSectionSize:       1,
+	}, nil)
+	require.NoError(t, err)
+
+	calculator := NewCalculator(indexBuilder)
+
+	logObj, err := dataobj.FromBucket(ctx, bucket, "test-path-0", 0)
+	require.NoError(t, err)
+
+	err = calculator.Calculate(ctx, log.NewNopLogger(), logObj, "test-path-0")
+	require.NoError(t, err)
+
+	timeRanges := calculator.TimeRanges()
+	require.Greater(t, len(timeRanges), 0)
+
+	// Verify per-tenant UncompressedLogsSize accumulator is populated.
+	// buildLogObject creates 10 streams with 1 entry each (lines "line 0" through "line 9").
+	expectedUncompressed := uint64(0)
+	for i := 0; i < 10; i++ {
+		// Each entry is the string "line %d" which is 5 + 1 = 6 bytes
+		expectedUncompressed += 6
+	}
+
+	var foundTenant bool
+	for _, tr := range timeRanges {
+		if tr.Tenant == "tenant" {
+			foundTenant = true
+			require.Equal(t, expectedUncompressed, tr.UncompressedLogsSize, "UncompressedLogsSize should equal sum of input stream sizes")
+			break
+		}
+	}
+	require.True(t, foundTenant, "tenant should be found in timeRanges")
+}
+
+func TestCalculator_FlushConsumesUncompressedState(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "app", "objects/test-object", bucket)
+
+	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 22,
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+		TargetSectionSize:       1,
+	}, nil)
+	require.NoError(t, err)
+
+	calculator := NewCalculator(indexBuilder)
+
+	logObj, err := dataobj.FromBucket(ctx, bucket, "objects/test-object", 0)
+	require.NoError(t, err)
+
+	// First calculation and flush.
+	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
+	_, closer, firstRanges, err := calculator.Flush()
+	require.NoError(t, err)
+	closer.Close()
+
+	firstSize := tenantUncompressed(t, firstRanges, "tenant")
+	require.Equal(t, uint64(60), firstSize)
+
+	// Simulate a retry after a failed upload / ToC write: the same calculator
+	// reprocesses the same event against a builder that Flush already reset.
+	// Flush must have consumed all prior state so the byte count does not
+	// accumulate across the retry.
+	require.NoError(t, calculator.Calculate(ctx, log.NewNopLogger(), logObj, "objects/test-object"))
+	_, closer, secondRanges, err := calculator.Flush()
+	require.NoError(t, err)
+	closer.Close()
+
+	secondSize := tenantUncompressed(t, secondRanges, "tenant")
+	require.Equal(t, firstSize, secondSize, "retry must not double uncompressed_logs_size")
+}
+
+func tenantUncompressed(t *testing.T, ranges []multitenancy.TimeRange, tenant string) uint64 {
+	t.Helper()
+	for _, r := range ranges {
+		if r.Tenant == tenant {
+			return r.UncompressedLogsSize
+		}
+	}
+	t.Fatalf("tenant %q not found in ranges", tenant)
+	return 0
+}
+
+func TestSerialIndexer_ToCSizesPopulated(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "myapp", "test-path-0", bucket)
+
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+
+	record := &kgo.Record{
+		Value:     nil,
+		Partition: int32(0),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+	record.Value = eventBytes
+
+	bufferedEvt := bufferedEvent{
+		event:  event,
+		record: record,
+	}
+
+	indexStorageBucket := objstore.NewInMemBucket()
+	reg := prometheus.NewRegistry()
+
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
+
+	indexBuilder, err := indexobj.NewBuilder(logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		TargetObjectSize:        1 << 22,
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+		TargetSectionSize:       1,
+	}, nil)
+	require.NoError(t, err)
+
+	indexer := newSerialIndexer(
+		NewCalculator(indexBuilder),
+		bucket,
+		indexStorageBucket,
+		builderMetrics,
+		indexerMetrics,
+		log.NewNopLogger(),
+		indexerConfig{QueueSize: 10},
+	)
+
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeAppend)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+
+	// Enumerate all ToC files actually written to the bucket and verify sizes
+	var foundAndVerified bool
+	err = indexStorageBucket.Iter(ctx, "tocs/", func(tocPath string) error {
+		rows := readToCEntries(ctx, t, indexStorageBucket, tocPath)
+
+		for _, row := range rows {
+			if row.Tenant == "tenant" {
+				require.Greater(t, row.FileSize, uint64(0), "FileSize should be populated in ToC")
+				require.Greater(t, row.UncompressedLogsSize, uint64(0), "UncompressedLogsSize should be populated in ToC")
+				foundAndVerified = true
+			}
+		}
+		return nil
+	}, objstore.WithRecursiveIter())
+	require.NoError(t, err)
+
+	require.True(t, foundAndVerified, "should have found and verified tenant entry in ToC")
+}
+
+func readToCEntries(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string) []tocEntryRow {
+	t.Helper()
+	rc, err := bucket.Get(ctx, path)
+	require.NoError(t, err)
+	defer rc.Close()
+
+	raw, err := io.ReadAll(rc)
+	require.NoError(t, err)
+
+	obj, err := dataobj.FromReaderAt(bytes.NewReader(raw), int64(len(raw)))
+	require.NoError(t, err)
+
+	var rows []tocEntryRow
+	var reader indexpointers.RowReader
+	defer reader.Close()
+
+	buf := make([]indexpointers.IndexPointer, 64)
+	for _, section := range obj.Sections().Filter(indexpointers.CheckSection) {
+		sec, err := indexpointers.Open(ctx, section)
+		require.NoError(t, err)
+
+		reader.Reset(sec)
+		require.NoError(t, reader.Open(ctx))
+
+		for {
+			n, err := reader.Read(ctx, buf)
+			for i := range n {
+				rows = append(rows, tocEntryRow{
+					Tenant:               section.Tenant,
+					FileSize:             buf[i].FileSize,
+					UncompressedLogsSize: buf[i].UncompressedLogsSize,
+				})
+			}
+			if err != nil && err != io.EOF {
+				require.NoError(t, err)
+			}
+			if n == 0 {
+				break
+			}
+		}
+	}
+
+	return rows
+}
+
+type tocEntryRow struct {
+	Tenant               string
+	FileSize             uint64
+	UncompressedLogsSize uint64
 }
