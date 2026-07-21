@@ -178,7 +178,7 @@ func (c *Capture) Merge(parent *Region, src *Capture) {
 		dst := &Region{
 			id:           newID(),
 			name:         srcRegion.name,
-			observations: make(map[StatisticKey]*AggregatedObservation),
+			observations: make(map[StatisticKey]*AggregatedObservation, len(srcRegion.observations)),
 		}
 
 		// Parent every merged region onto the provided parent.

@@ -47,7 +47,7 @@ func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) {
 
 	for regionIndex := range decoded.protoCapture.Regions {
 		protoRegion := &decoded.protoCapture.Regions[regionIndex]
-		dst := c.mergeDestinationRegion(parent, protoRegion.Name)
+		dst := c.mergeDestinationRegion(parent, protoRegion.Name, len(protoRegion.ObservationsV2))
 
 		dst.mu.Lock()
 		dst.mergeProtoObservations(protoRegion.ObservationsV2)
@@ -56,7 +56,7 @@ func (c *Capture) MergeDecoded(parent *Region, decoded *DecodedCapture) {
 
 }
 
-func (c *Capture) mergeDestinationRegion(parent *Region, name string) *Region {
+func (c *Capture) mergeDestinationRegion(parent *Region, name string, hint int) *Region {
 	if dsts := c.regionByName[name]; len(dsts) > 0 {
 		return dsts[len(dsts)-1]
 	}
@@ -64,7 +64,7 @@ func (c *Capture) mergeDestinationRegion(parent *Region, name string) *Region {
 	dst := &Region{
 		id:           newID(),
 		name:         name,
-		observations: make(map[StatisticKey]*AggregatedObservation),
+		observations: make(map[StatisticKey]*AggregatedObservation, hint),
 	}
 	if parent != nil {
 		dst.parentID = parent.id
