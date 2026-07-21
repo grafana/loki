@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // scriptedReader is a batchReader that returns a fixed sequence of batches, then
@@ -32,18 +33,14 @@ func (s *scriptedReader) Read(context.Context, int) (arrow.RecordBatch, error) {
 	return b, nil
 }
 
-// pathBatch builds a stats-schema record batch carrying one object_path per
-// argument (zero args => a valid empty, 0-row batch).
-func pathBatch(paths ...string) arrow.RecordBatch {
-	schema := arrow.NewSchema([]arrow.Field{{Name: "object_path.utf8", Type: arrow.BinaryTypes.String}}, nil)
-	bld := array.NewStringBuilder(memory.DefaultAllocator)
-	defer bld.Release()
+// pathRows builds stats rows carrying one object_path per argument (zero args =>
+// an empty, 0-row batch once rendered via [arrowtest.Rows.Record]).
+func pathRows(paths ...string) arrowtest.Rows {
+	rows := make(arrowtest.Rows, 0, len(paths))
 	for _, p := range paths {
-		bld.Append(p)
+		rows = append(rows, arrowtest.Row{"object_path.utf8": p})
 	}
-	arr := bld.NewArray()
-	defer arr.Release()
-	return array.NewRecordBatch(schema, []arrow.Array{arr}, int64(len(paths)))
+	return rows
 }
 
 // TestRowReader_SkipsEmptyNonEOFBatches guards against the reader treating an
@@ -51,10 +48,12 @@ func pathBatch(paths ...string) arrow.RecordBatch {
 // may return such a batch when a read window is fully filtered out; the rows in
 // later batches must still be returned rather than silently dropped.
 func TestRowReader_SkipsEmptyNonEOFBatches(t *testing.T) {
+	alloc := memory.DefaultAllocator
+	schema := pathRows("/a", "/b").Schema()
 	fake := &scriptedReader{batches: []arrow.RecordBatch{
-		pathBatch(),           // empty, non-EOF
-		pathBatch(),           // empty, non-EOF
-		pathBatch("/a", "/b"), // real rows after the empty batches
+		pathRows().Record(alloc, schema),           // empty, non-EOF
+		pathRows().Record(alloc, schema),           // empty, non-EOF
+		pathRows("/a", "/b").Record(alloc, schema), // real rows after the empty batches
 	}}
 
 	rr := &RowReader{ctx: context.Background(), reader: fake}
@@ -72,8 +71,9 @@ func TestRowReader_SkipsEmptyNonEOFBatches(t *testing.T) {
 // TestRowReader_NonEmptyBatchWithEOF ensures a batch that arrives together with
 // io.EOF is still fully consumed before iteration ends.
 func TestRowReader_NonEmptyBatchWithEOF(t *testing.T) {
+	rows := pathRows("/a", "/b")
 	fake := &scriptedReader{batches: []arrow.RecordBatch{
-		pathBatch("/a", "/b"),
+		rows.Record(memory.DefaultAllocator, rows.Schema()),
 	}}
 
 	rr := &RowReader{ctx: context.Background(), reader: fake}
