@@ -82,7 +82,7 @@ func IterSection(ctx context.Context, section *Section, opts ...IterOption) resu
 func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		columnarSection := section.inner
-		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
+		dset, err := columnar.MakeDataset(columnarSection, recognizedInnerColumns(section))
 		if err != nil {
 			return fmt.Errorf("creating columns dataset: %w", err)
 		}
@@ -127,6 +127,24 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 			}
 		}
 	})
+}
+
+// recognizedInnerColumns returns the underlying columnar columns for the
+// columns the section recognizes, preserving their order.
+//
+// Datasets and row readers must be built from these rather than from every
+// physical column in the section: it keeps each row's values positionally
+// aligned with sec.Columns() during decoding and transparently skips columns
+// written by a newer version of Loki that this reader doesn't understand.
+// Reading unrecognized columns would otherwise misalign or overrun decodeRow's
+// positional lookups.
+func recognizedInnerColumns(sec *Section) []*columnar.Column {
+	recognized := sec.Columns()
+	inner := make([]*columnar.Column, len(recognized))
+	for i, col := range recognized {
+		inner[i] = col.inner
+	}
+	return inner
 }
 
 // decodeRow decodes a stream from a [dataset.Row], using the provided columns to
