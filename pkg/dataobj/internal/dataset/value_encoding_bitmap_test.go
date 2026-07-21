@@ -212,11 +212,6 @@ func Fuzz_bitmap_EncodeN(f *testing.F) {
 
 func Benchmark_bitmapEncoder(b *testing.B) {
 	b.Run("width=1", func(b *testing.B) { benchmarkBitmapEncoder(b, 1) })
-	b.Run("width=3", func(b *testing.B) { benchmarkBitmapEncoder(b, 3) })
-	b.Run("width=5", func(b *testing.B) { benchmarkBitmapEncoder(b, 5) })
-	b.Run("width=8", func(b *testing.B) { benchmarkBitmapEncoder(b, 8) })
-	b.Run("width=32", func(b *testing.B) { benchmarkBitmapEncoder(b, 32) })
-	b.Run("width=64", func(b *testing.B) { benchmarkBitmapEncoder(b, 64) })
 }
 
 func benchmarkBitmapEncoder(b *testing.B, width int) {
