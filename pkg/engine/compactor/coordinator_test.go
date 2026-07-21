@@ -901,6 +901,122 @@ func TestReconcile_StartAndCancelSameTick(t *testing.T) {
 	require.NotContains(t, workers, "acme")
 }
 
+// seedWindowToC writes a two-index ToC entry per tenant into bucket for the
+// given window, so multiple windows can coexist in one bucket. The window is
+// encoded into each path to keep paths distinct across windows.
+func seedWindowToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, window time.Time, tenants ...string) {
+	t.Helper()
+	entries := map[string][]testIndex{}
+	for _, tn := range tenants {
+		prefix := "[REDACTED]" + window.Format("20060102T150405Z") + "/" + tn
+		entries[tn] = []testIndex{
+			{path: prefix + "/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: prefix + "/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+		}
+	}
+	writeToCWithIndexes(ctx, t, bucket, entries)
+}
+
+func keys(m map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
+	current := imWindow()
+	newC := func(lookback int) *coordinator {
+		return &coordinator{cfg: Config{WindowLookback: lookback}, clock: fixedClock(current.Add(time.Hour))}
+	}
+
+	require.Equal(t, []time.Time{current}, newC(0).windows(),
+		"lookback 0 compacts only the current window (original behaviour)")
+
+	require.Equal(t, []time.Time{
+		current,
+		current.Add(-metastore.MetastoreWindowSize),
+		current.Add(-2 * metastore.MetastoreWindowSize),
+	}, newC(2).windows(), "lookback N yields the current window plus N older ones, newest first")
+}
+
+func TestWorseOutcome(t *testing.T) {
+	require.Equal(t, phaseOutcomeError, worseOutcome(phaseOutcomeNoWork, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeError, worseOutcome(phaseOutcomeSwapped, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeSwapped, worseOutcome(phaseOutcomeNoWork, phaseOutcomeSwapped))
+	require.Equal(t, phaseOutcomeNoWork, worseOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
+}
+
+func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
+	ctx := t.Context()
+	current := imWindow()
+	prev := current.Add(-metastore.MetastoreWindowSize)
+
+	bucket := objstore.NewInMemBucket()
+	seedWindowToC(ctx, t, bucket, current, "acme")
+	seedWindowToC(ctx, t, bucket, prev, "bravo")
+
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("acme", "bravo"))
+	c.cfg.WindowLookback = 1
+
+	discovered, allOK := c.discoverAll(ctx)
+	require.True(t, allOK, "both windows read cleanly")
+	require.ElementsMatch(t, []string{"acme", "bravo"}, keys(discovered))
+}
+
+// TestDiscoverAll_CurrentMissingPreviousPresent reproduces the index-builder-lag
+// scenario: the current window has no ToC yet, but the previous window does.
+// The previous window's tenant is still discovered, and allOK is false so
+// reconcile will start-but-not-cancel.
+func TestDiscoverAll_CurrentMissingPreviousPresent(t *testing.T) {
+	ctx := t.Context()
+	current := imWindow()
+	prev := current.Add(-metastore.MetastoreWindowSize)
+
+	bucket := objstore.NewInMemBucket()
+	seedWindowToC(ctx, t, bucket, prev, "bravo") // current window intentionally unwritten
+
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("bravo"))
+	c.cfg.WindowLookback = 1
+
+	discovered, allOK := c.discoverAll(ctx)
+	require.False(t, allOK, "the missing current-window ToC makes the picture non-authoritative")
+	require.ElementsMatch(t, []string{"bravo"}, keys(discovered),
+		"the populated previous window still yields its tenant")
+}
+
+// TestReconcile_PreviousWindowStartsWorker is the end-to-end unblock: with
+// lookback=1 and only the previous window populated, reconcile starts a worker
+// that does real compaction work, even though the current window has no ToC.
+func TestReconcile_PreviousWindowStartsWorker(t *testing.T) {
+	ctx := t.Context()
+	current := imWindow()
+	prev := current.Add(-metastore.MetastoreWindowSize)
+
+	bucket := objstore.NewInMemBucket()
+	seedWindowToC(ctx, t, bucket, prev, "bravo")
+
+	c, liveTenants := reconcileHarness(t, bucket, fixedClock(current.Add(time.Hour)), newFakeLimits("bravo"))
+	c.cfg.WindowLookback = 1
+
+	workers := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer func() {
+		for _, cf := range workers {
+			cf()
+		}
+		wg.Wait()
+	}()
+
+	c.reconcile(ctx, workers, &wg)
+
+	require.Eventually(t, func() bool {
+		return len(liveTenants()) == 1 && liveTenants()[0] == "bravo"
+	}, 2*time.Second, 5*time.Millisecond, "previous-window tenant is compacted while the current window has no ToC")
+	require.Contains(t, workers, "bravo")
+}
+
 // TestRunTenantLoop_ErrorRetries pins the flip-flop state machine: a failing
 // phase re-arms the same phase (it must never flip), while a successful phase
 // flips to the other one. The loop starts on IndexMerge.
@@ -1174,11 +1290,11 @@ func TestRunTenantLoop_IndexOnly(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
-		return nil
+		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
 	}
 
 	done := make(chan struct{})
@@ -1216,13 +1332,13 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 			phases = append(phases, opts.Actor[1])
 		}
 		mu.Unlock()
-		return nil
+		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
 	}
 
 	done := make(chan struct{})
@@ -1238,9 +1354,9 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	// runPlan returns nil (success) on every call, so the loop flips every
-	// cycle and the phase order is deterministic; the exact prefix is safe to
-	// assert. The loop starts on IndexMerge.
+	// runPlan reports a swapped artifact (success) on every call, so the loop
+	// flips every cycle and the phase order is deterministic; the exact prefix
+	// is safe to assert. The loop starts on IndexMerge.
 	require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
 		"log-enabled tenant flips between index-merge and log-merge")
 }
@@ -1264,14 +1380,14 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	var phases []string
 	sawLog := make(chan struct{})
 	var closeOnce sync.Once
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
 		if opts.Actor[1] == "log-merge" {
 			closeOnce.Do(func() { close(sawLog) })
 		}
-		return nil
+		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
 	}
 
 	done := make(chan struct{})
