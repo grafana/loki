@@ -131,7 +131,7 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
+	dset, err := columnar.MakeDataset(r.sec.inner, recognizedInnerColumns(r.sec))
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}

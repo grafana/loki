@@ -139,7 +139,7 @@ func unsafeString(data []byte) string {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
+	dset, err := columnar.MakeDataset(r.sec.inner, recognizedInnerColumns(r.sec))
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
