@@ -16,31 +16,40 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
-// fakeLimits reports per-tenant compaction enablement from a set. A tenant is
-// enabled iff it is present in `enabled`. The zero value enables nothing.
+// fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
+// enables index-only compaction for the listed tenants (log stays off). Use
+// setLog / setIndex to adjust a tenant at runtime. The zero value enables
+// nothing.
 type fakeLimits struct {
-	mu      sync.Mutex
-	enabled map[string]bool
+	mu    sync.Mutex
+	index map[string]bool
+	log   map[string]bool
 }
 
-func newFakeLimits(tenants ...string) *fakeLimits {
-	m := make(map[string]bool, len(tenants))
-	for _, t := range tenants {
-		m[t] = true
+func newFakeLimits(indexTenants ...string) *fakeLimits {
+	idx := make(map[string]bool, len(indexTenants))
+	for _, t := range indexTenants {
+		idx[t] = true
 	}
-	return &fakeLimits{enabled: m}
+	return &fakeLimits{index: idx, log: map[string]bool{}}
 }
 
-func (f *fakeLimits) DataObjCompactionEnabled(userID string) bool {
+func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.enabled[userID]
+	return f.index[userID] || f.log[userID], f.log[userID]
 }
 
-func (f *fakeLimits) set(userID string, on bool) {
+func (f *fakeLimits) setIndex(userID string, on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.enabled[userID] = on
+	f.index[userID] = on
+}
+
+func (f *fakeLimits) setLog(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.log[userID] = on
 }
 
 // TestPlanner_BootShutdown boots the scaffold with an in-process-only
