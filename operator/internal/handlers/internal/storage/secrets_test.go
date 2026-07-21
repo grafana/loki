@@ -678,7 +678,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+			wantError: "endpoint for AWS S3 must include correct region: expected region region, got wrong",
 		},
 		{
 			name: "s3 endpoint format is not a valid s3 URL",
@@ -692,7 +692,35 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+			wantError: "endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://bucket.vpce-id.s3.region.vpce.amazonaws.com: got http://region.amazonaws.com",
+		},
+		{
+			name: "valid aws s3 vpc endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeStatic,
+		},
+		{
+			name: "aws s3 vpc endpoint wrong region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.eu-east-2.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 must include correct region: expected region us-east-1, got eu-east-2",
 		},
 	}
 	for _, tst := range table {
@@ -797,6 +825,25 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantError: `forcepathstyle must be "true" or "false": yes`,
+		},
+		{
+			desc: "aws s3 vpc endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com",
+				Region:         "us-east-1",
+				Buckets:        "this,that",
+				ForcePathStyle: false,
+			},
 		},
 	}
 
