@@ -11,9 +11,7 @@ type pendingSummary struct {
 
 	taskFinishNanos int64
 
-	// Fragment-derived summary fields, captured when the task produces a
-	// terminal result so its (potentially large) Fragment can be released
-	// immediately rather than held until Close. See Workflow.recordTaskResult.
+	// Fragment-derived fields, captured when the task produces a terminal result.
 	operatorType   string
 	isScanTask     bool
 	isPostingsScan bool

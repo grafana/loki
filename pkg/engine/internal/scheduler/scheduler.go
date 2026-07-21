@@ -356,10 +356,6 @@ func (s *Scheduler) handleTaskResult(ctx context.Context, worker *workerConn, ms
 		Result:  result,
 	})
 
-	// The task is finished. Release the scheduler's reference to its
-	// (potentially large) capture now rather than holding it until the manifest
-	// is unregistered; the notification above carries its own reference so the
-	// handler still sees the full capture.
 	task.releaseTerminalResources()
 	return nil
 }
@@ -470,8 +466,6 @@ func (s *Scheduler) recordDisconnectedTaskResult(ctx context.Context, n *notifie
 		Result:  result,
 	})
 
-	// The task is finished; release the scheduler's reference to its capture now
-	// rather than holding it until the manifest is unregistered.
 	task.releaseTerminalResources()
 }
 
@@ -1279,9 +1273,6 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 			Result:  result,
 		})
 
-		// The task reached a terminal result without ever running on a worker;
-		// release its capture now instead of holding it until the manifest is
-		// unregistered.
 		registered.releaseTerminalResources()
 		s.closeTaskSinks(ctx, &n, registered)
 	}

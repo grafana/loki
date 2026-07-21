@@ -466,13 +466,9 @@ func (wf *Workflow) recordTaskResult(task *Task, result TaskResult) {
 	wf.taskResults[task] = summary
 
 	// The task has a terminal result, so its physical plan fragment and any
-	// pre-fetched cached-source buffers are no longer needed: the scheduler
-	// serialized the fragment to its worker at assignment time, and we've just
-	// captured the only fragment-derived fields our summaries need. Release them
-	// now rather than retaining them (CachedSources in particular can be large)
-	// until the whole workflow is torn down at Close. The write is safe under
-	// tasksMut: the only other reader of these fields on a live workflow is
-	// Fprint, which takes tasksMut.RLock.
+	// pre-fetched cached-source buffers are no longer needed. The write is
+	// safe under tasksMut: the only other reader of these fields on a live
+	// workflow is Fprint, which takes tasksMut.RLock.
 	task.Fragment = nil
 	task.CachedSources = nil
 }
