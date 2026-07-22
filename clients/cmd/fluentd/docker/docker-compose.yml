@@ -24,7 +24,7 @@ services:
 
   # Read /var/log/syslog and send it to fluentd
   fluentbit:
-    image: fluent/fluent-bit:5.0@sha256:4468d776acbde3ea11ec53f3bef29f798affef23acbb40a277ac8f839ab22f3d
+    image: fluent/fluent-bit:5.0@sha256:ccda4cbd0f87be1e04cc1d5425bc84a6669051d4ac93a6b7a053c3ba9832aa14
     command: "/fluent-bit/bin/fluent-bit -c /srv/fluent-bit.conf"
     user: root
     volumes:
