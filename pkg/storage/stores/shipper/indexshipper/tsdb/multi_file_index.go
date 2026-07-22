@@ -4,7 +4,6 @@ import (
 	"context"
 	"math"
 	"runtime"
-	"sort"
 	"sync"
 
 	"github.com/prometheus/common/model"
@@ -135,35 +134,11 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	acc := newResultAccumulator(func(xs [][]logproto.ChunkRefWithSizingInfo) ([]logproto.ChunkRefWithSizingInfo, error) {
-		if res == nil {
-			res = ChunkRefsPool.Get()
-		}
-		res = res[:0]
-
-		// keep track of duplicates
-		seen := make(map[logproto.ChunkRef]struct{})
-
-		// TODO(owen-d): Do this more efficiently,
-		// not all indices overlap each other
-		// TODO(owen-d): loser-tree or some other heap?
-
-		for _, group := range xs {
-			g := group
-			for _, ref := range g {
-
-				_, ok := seen[ref.ChunkRef]
-				if ok {
-					continue
-				}
-				seen[ref.ChunkRef] = struct{}{}
-				res = append(res, ref)
-			}
+		merged := mergeChunkRefsSort(res, xs)
+		for _, g := range xs {
 			ChunkRefsPool.Put(g)
 		}
-
-		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j].ChunkRef) })
-
-		return res, nil
+		return merged, nil
 	})
 
 	if err := i.forMatchingIndices(

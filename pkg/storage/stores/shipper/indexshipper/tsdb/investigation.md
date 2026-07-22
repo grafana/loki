@@ -208,11 +208,102 @@ _(fill in during the investigation)_
 
 ### Phase 1 — current `sort.Slice` baseline
 
-| K | N/file | overlap | ns/op | B/op | allocs/op |
-| - | ------ | ------- | ----- | ---- | --------- |
-|   |        |         |       |      |           |
+Machine: Apple M4 Pro (12 logical cores), Go bench with `-benchtime=3x`
+(so each cell is the mean of three iterations; the largest cells swing
+±10% run-to-run). K=16/N=1M was skipped in the sweep (~1 GB of live
+inputs per iteration triggers heavy GC pressure that swamps the
+measurement); it appears once in the "peak memory" row below.
 
-**Verdict:**
+| K  | N/file    | overlap | ns/op         | B/op            | allocs/op |
+| -- | --------- | ------- | ------------- | --------------- | --------- |
+| 1  | 1,000     | 0%      | 118,792       | 319,512         | 24        |
+| 1  | 1,000     | 10%     | 94,139        | 319,512         | 24        |
+| 1  | 1,000     | 50%     | 90,736        | 319,512         | 24        |
+| 1  | 10,000    | 0%      | 1,125,986     | 4,687,605       | 92        |
+| 1  | 10,000    | 10%     | 1,034,959     | 4,687,573       | 92        |
+| 1  | 10,000    | 50%     | 995,028       | 4,687,568       | 92        |
+| 1  | 100,000   | 0%      | 8,687,722     | 48,985,072      | 556       |
+| 1  | 100,000   | 10%     | 8,481,333     | 48,983,208      | 554       |
+| 1  | 100,000   | 50%     | 8,796,333     | 48,983,218      | 554       |
+| 1  | 1,000,000 | 0%      | 154,333,931   | 581,192,173     | 8,231     |
+| 1  | 1,000,000 | 10%     | 153,531,833   | 581,323,304     | 8,234     |
+| 1  | 1,000,000 | 50%     | 152,856,903   | 581,061,037     | 8,227     |
+| 2  | 1,000     | 0%      | 162,833       | 803,000         | 35        |
+| 2  | 1,000     | 10%     | 153,806       | 803,000         | 35        |
+| 2  | 1,000     | 50%     | 110,778       | 409,624         | 25        |
+| 2  | 10,000    | 0%      | 1,922,653     | 10,063,405      | 161       |
+| 2  | 10,000    | 10%     | 1,835,250     | 8,703,528       | 160       |
+| 2  | 10,000    | 50%     | 1,791,347     | 7,499,240       | 155       |
+| 2  | 100,000   | 0%      | 18,742,778    | 97,858,984      | 1,070     |
+| 2  | 100,000   | 10%     | 18,954,680    | 97,858,984      | 1,070     |
+| 2  | 100,000   | 50%     | 15,135,792    | 74,175,912      | 1,068     |
+| 2  | 1,000,000 | 0%      | 350,563,903   | 1,149,610,152   | 16,406    |
+| 2  | 1,000,000 | 10%     | 331,013,569   | 1,108,914,280   | 15,165    |
+| 2  | 1,000,000 | 50%     | 260,052,597   | 759,076,264     | 8,250     |
+| 4  | 1,000     | 0%      | 392,334       | 1,745,400       | 54        |
+| 4  | 1,000     | 10%     | 285,153       | 1,657,976       | 52        |
+| 4  | 1,000     | 50%     | 190,556       | 983,224         | 36        |
+| 4  | 10,000    | 0%      | 3,921,694     | 20,838,440      | 293       |
+| 4  | 10,000    | 10%     | 3,564,361     | 18,126,888      | 292       |
+| 4  | 10,000    | 50%     | 2,372,903     | 11,775,528      | 162       |
+| 4  | 100,000   | 0%      | 45,699,972    | 194,300,072     | 2,098     |
+| 4  | 100,000   | 10%     | 43,399,319    | 194,300,109     | 2,098     |
+| 4  | 100,000   | 50%     | 32,855,306    | 147,646,504     | 2,088     |
+| 4  | 1,000,000 | 0%      | 776,609,819   | 2,272,773,800   | 32,762    |
+| 4  | 1,000,000 | 10%     | 703,593,111   | 2,056,311,976   | 26,160    |
+| 4  | 1,000,000 | 50%     | 503,678,278   | 1,304,794,536   | 16,445    |
+| 8  | 1,000     | 0%      | 940,195       | 4,024,016       | 91        |
+| 8  | 1,000     | 10%     | 818,917       | 3,849,168       | 86        |
+| 8  | 1,000     | 50%     | 536,542       | 2,057,296       | 56        |
+| 8  | 10,000    | 0%      | 7,624,680     | 42,273,960      | 553       |
+| 8  | 10,000    | 10%     | 7,362,680     | 36,916,392      | 552       |
+| 8  | 10,000    | 50%     | 4,666,931     | 20,838,440      | 293       |
+| 8  | 100,000   | 0%      | 104,854,931   | 384,429,480     | 4,150     |
+| 8  | 100,000   | 10%     | 101,382,833   | 384,429,480     | 4,150     |
+| 8  | 100,000   | 50%     | 63,715,264    | 212,275,176     | 2,647     |
+| 16 | 1,000     | 0%      | 1,825,722     | 8,703,528       | 160       |
+| 16 | 1,000     | 10%     | 1,433,639     | 6,668,712       | 129       |
+| 16 | 1,000     | 50%     | 946,139       | 4,024,016       | 91        |
+| 16 | 10,000    | 0%      | 16,083,500    | 84,694,477      | 1,069     |
+| 16 | 10,000    | 10%     | 14,583,458    | 74,175,912      | 1,068     |
+| 16 | 10,000    | 50%     | 8,809,861     | 42,273,997      | 553       |
+| 16 | 100,000   | 0%      | 244,188,347   | 759,076,264     | 8,250     |
+| 16 | 100,000   | 10%     | 222,771,847   | 759,076,264     | 8,250     |
+| 16 | 100,000   | 50%     | 136,442,972   | 385,759,272     | 4,191     |
+
+**Peak memory (K=16, N=1M, overlap=10%, `BenchmarkMergeChunkRefsSortPeakMem`):**
+
+| metric                        | value        |
+| ----------------------------- | ------------ |
+| wall-clock (single merge)     | 3.88 s       |
+| heap alloc delta (live)       | 2,378 MB     |
+| total alloc delta (churn)     | 7,994 MB     |
+| Sys delta                     | 4,039 MB     |
+| allocs                        | 88,592       |
+| merged output length          | 14,500,000   |
+
+**Verdict — proceed to phase 2.** This is measurably expensive well
+inside the realistic operating range. Concrete pain points:
+
+- **CPU.** At the low end of what shard planning sees on a busy tenant
+  (K=4, N=100k, 10% overlap) each merge is already **43 ms** and
+  climbs super-linearly with K. At K=16 / N=100k it is **223 ms per
+  merge** — a substantial chunk of a single LogQL query's shard-planning
+  latency for a `bounded`-strategy tenant.
+- **Allocations.** The `map[ChunkRef]struct{}` dedup dominates the
+  allocation count and total churn — 88k allocations and ~8 GB
+  allocated to produce one 14.5M-entry merge is exactly the profile
+  the investigation flagged as a motivation for streaming the merge.
+- **Overlap sensitivity.** More overlap → smaller output → less
+  sorting cost. But the map cost still tracks total input size, which
+  is why 50%-overlap cells only shave ~30–40% off ns/op despite
+  producing half as many output rows. Any replacement needs to keep
+  dedup cheap at the same input scale.
+
+The dedup map and the `O(N log N)` sort are both first-order costs,
+and the streaming/heap/loser-tree approaches all attack both at once
+(inline dedup on the last emitted value, no full-materialised sort).
+Continuing to phase 2.
 
 ### Phase 2 — binary-heap merge
 
