@@ -242,27 +242,27 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		switch expr.Operation {
 
 		case syntax.OpTypeSum:
-			// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
-			//
-			// This opaque per-shard rewrite is safe only if the per-shard
-			// partials can be combined by an outer sum. That fails when BOTH
-			// hold:
-			//   1. Downstream stages can collapse the same output labelset
-			//      across shards (drop/keep/labelfmt rename, or an explicit
-			//      by/without inside a range/vector aggregation), and
-			//   2. The inner range aggregation is non-additive
-			//      (max/min/avg/quantile/first/last/etc.). Its per-shard
-			//      partials require a semantically-appropriate combiner
-			//      (max/min/re-avg/sketch merge) before an outer sum.
-			//
-			// When both conditions hold, fall through to child-level mapping
-			// so mapRangeAggregationExpr can decompose with the right merger.
-			// Additive inners (count/rate/bytes/bytes_rate/sum_over_time) keep
-			// the fast leaf-compression path even under label reduction — an
-			// outer sum is the correct combiner regardless of collapse.
-			if syntax.ReducesLabels(expr.Left) && syntax.HasNonAdditiveAggr(expr.Left) {
-				break
-			}
+			// // sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+			// //
+			// // This opaque per-shard rewrite is safe only if the per-shard
+			// // partials can be combined by an outer sum. That fails when BOTH
+			// // hold:
+			// //   1. Downstream stages can collapse the same output labelset
+			// //      across shards (drop/keep/labelfmt rename, or an explicit
+			// //      by/without inside a range/vector aggregation), and
+			// //   2. The inner range aggregation is non-additive
+			// //      (max/min/avg/quantile/first/last/etc.). Its per-shard
+			// //      partials require a semantically-appropriate combiner
+			// //      (max/min/re-avg/sketch merge) before an outer sum.
+			// //
+			// // When both conditions hold, fall through to child-level mapping
+			// // so mapRangeAggregationExpr can decompose with the right merger.
+			// // Additive inners (count/rate/bytes/bytes_rate/sum_over_time) keep
+			// // the fast leaf-compression path even under label reduction — an
+			// // outer sum is the correct combiner regardless of collapse.
+			// if syntax.ReducesLabels(expr.Left) && syntax.HasNonAdditiveAggr(expr.Left) {
+			// 	break
+			// }
 			return m.wrappedShardedVectorAggr(expr, r)
 
 		case syntax.OpTypeMin, syntax.OpTypeMax:
