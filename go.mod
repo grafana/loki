@@ -245,7 +245,7 @@ require (
 	github.com/pires/go-proxyproto v0.12.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/prometheus/alertmanager v0.33.0 // indirect
+	github.com/prometheus/alertmanager v0.33.1 // indirect
 	github.com/prometheus/client_golang/exp v0.0.0-20260624042014-28914d017fba
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
