@@ -3,6 +3,8 @@ package ui
 import (
 	"flag"
 
+	"github.com/grafana/dskit/crypto/tls"
+
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -44,16 +46,24 @@ type StorageConfig struct {
 	MaxIdleTime    int `yaml:"max_idle_time_seconds"`
 }
 
+type ProxyConfig struct {
+	TLSEnabled bool             `yaml:"tls_enabled"`
+	TLS        tls.ClientConfig `yaml:",inline"`
+}
+
 type Config struct {
 	Enabled  bool                `yaml:"enabled"` // Whether to enable the UI.
 	Debug    bool                `yaml:"debug"`
 	Goldfish GoldfishConfig      `yaml:"goldfish"` // Goldfish query comparison configuration
 	Ring     lokiring.RingConfig `yaml:"ring"`     // UI ring configuration for cluster member discovery
+	Proxy    ProxyConfig         `yaml:"proxy"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "ui.enabled", false, "Enable the experimental Loki UI.")
 	f.BoolVar(&cfg.Debug, "ui.debug", false, "Enable debug logging for the UI.")
+	f.BoolVar(&cfg.Proxy.TLSEnabled, "ui.proxy.tls-enabled", false, "Enable TLS when proxying requests between UI nodes.")
+	cfg.Proxy.TLS.RegisterFlagsWithPrefix("ui.proxy", f)
 
 	// Ring configuration
 	cfg.Ring.RegisterFlagsWithPrefix("ui.", "collectors/", f)
