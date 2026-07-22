@@ -67,5 +67,5 @@ Query resource needs can greatly vary with usage patterns and correct configurat
 
 These are the node types we suggest from various cloud providers. Please see the relevant specifications in the provider's documentation.
 - For AWS any General Purpose machine available in your region that belongs to `M6` instance family and above for Intel chips and `T2` machine family and above for ARM chips.
-- For GCP any General Purpose machine available in your region that belongs to to `E2` instance family and above.
+- For GCP any General Purpose machine available in your region that belongs to `E2` instance family and above.
 - For memcached-extstore nodes we suggest storage optimised instances that can has NVMe storage so that the additional disk space is utilized.
