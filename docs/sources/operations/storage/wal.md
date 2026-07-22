@@ -46,9 +46,9 @@ The following metrics are available for monitoring the WAL:
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
 
-1. Following flags needs to be set
-    * `--ingester.wal-enabled` to `true` which enables writing to WAL during ingestion.
-    * `--ingester.wal-dir` to the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
+1. The following flags are relevant when deploying with a persistent volume:
+    * `--ingester.wal-enabled` enables writing to WAL during ingestion. It defaults to `true`, so this typically doesn't need to be set explicitly.
+    * `--ingester.wal-dir` sets the directory where the WAL data should be stored and/or recovered from. Note that this should be on the mounted volume.
     * `--ingester.checkpoint-duration` to the interval at which checkpoints should be created.
     * `--ingester.wal-replay-memory-ceiling` (default 4GB) may be set higher/lower depending on your resource settings. It handles memory pressure during WAL replays, allowing a WAL many times larger than available memory to be replayed. This is provided to minimize reconciliation time after very bad situations, i.e. an outage, and will likely not impact regular operations/rollouts _at all_. We suggest setting this to a high percentage (~75%) of available memory.
 

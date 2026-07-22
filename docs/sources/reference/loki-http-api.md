@@ -888,7 +888,7 @@ GET /loki/api/v1/index/volume_range
 ```
 
 {{< admonition type="note" >}}
-You must configure `volume_enabled: true` to enable this feature.
+This feature is controlled by `volume_enabled`, which defaults to `true`. Set it to `false` to disable it.
 {{< /admonition >}}
 
 The `/loki/api/v1/index/volume` and `/loki/api/v1/index/volume_range` endpoints can be used to query the index for volume information about label and label-value combinations. This is helpful in exploring the logs Loki has ingested to find high or low volume streams. The `volume` endpoint returns results for a single point in time, the time the query was processed. Each datapoint represents an aggregation of the matching label or series over the requested time period, returned in a Prometheus style vector response. The `volume_range` endoint returns a series of datapoints over a range of time, in Prometheus style matrix response, for each matching set of labels or series. The number of timestamps returned when querying `volume_range` will be determined by the provided `step` parameter and the requested time range.
@@ -905,7 +905,7 @@ URL query parameters:
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
 - `limit`: How many metric series to return. The parameter is optional, the default is `100`.
-- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. This parameter is optional, and only applicable for `query_range`. The default step configured for range queries will be used when not provided.
+- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. This parameter is optional, and only applicable when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. The default step configured for range queries will be used when not provided.
 - `targetLabels`: A comma separated list of labels to aggregate into. This parameter is optional. When not provided, volumes will be aggregated into the matching labels or label-value pairs.
 - `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
 
@@ -1352,7 +1352,7 @@ Displays a web page with the index gateway hash ring status, including the state
 The ruler API endpoints require to configure a backend object storage to store the recording rules and alerts. The ruler API uses the concept of a "namespace" when creating rule groups. This is a stand-in for the name of the rule file in Prometheus. Rule groups must be named uniquely within a namespace.
 
 {{< admonition type="note" >}}
-You must configure `enable_api: true` to enable this feature.
+This feature is controlled by `enable_api`, which defaults to `true`. Set it to `false` to disable it.
 {{< /admonition >}}
 
 ### Ruler ring status

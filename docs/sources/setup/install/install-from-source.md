@@ -17,7 +17,7 @@ Grafana Loki does not come with any included authentication layer. You must run 
 
 ## Prerequisites
 
-- [Go](https://golang.org/), version 1.23 or later;
+- [Go](https://golang.org/), version 1.26 or later (check the `go` directive in [go.mod](https://github.com/grafana/loki/blob/main/go.mod) for the exact minimum version);
 set your `$GOPATH` environment variable
 - `make`
 - Docker (for updating protobuf and yacc files)
