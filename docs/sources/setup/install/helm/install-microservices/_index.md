@@ -42,15 +42,17 @@ Zone-aware replication is enabled by default for ingesters. This creates three i
 We do not recommend running in microservices mode with `filesystem` storage. For the purpose of this guide, we will use the deprecated built-in MinIO subchart to provide a complete self-contained example. Configure a dedicated external object storage backend for production.
 {{< /admonition >}}
 
-
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - Kubernetes 1.25 or later.
 - A running Kubernetes cluster (must have at least 3 nodes for zone-aware replication, which is enabled by default).
 
-
 ## Deploying the Helm chart for development and testing
+
+{{< admonition type="note" >}}
+If this is the first time you have deployed the Loki Helm chart since the move to the Community managed Helm chart, note that the URL for the chart has changed. For more information see the [Upgrade documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-to-6x/).
+{{< /admonition >}}
 
 1. Add the [Grafana Community chart repository](https://github.com/grafana-community/helm-charts) to Helm:
 
@@ -149,19 +151,23 @@ We do not recommend running in microservices mode with `filesystem` storage. For
 
 1. Install or upgrade the Loki deployment.
      - To install:
+
         ```bash
        helm install --values values.yaml loki grafana-community/loki
        ```
-    - To upgrade:
+
+     - To upgrade:
+
        ```bash
        helm upgrade --values values.yaml loki grafana-community/loki
        ```
-       
 
 1. Verify that Loki is running:
+
     ```bash
     kubectl get pods -n loki
     ```
+
     The output should an output similar to the following:
 
     ```bash
@@ -197,7 +203,6 @@ After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/in
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
 {{< /admonition >}}
-
 
 {{< collapse title="S3" >}}
 
@@ -304,6 +309,7 @@ singleBinary:
   replicas: 0
 
 ```
+
 {{< /collapse >}}
 
 {{< collapse title="Azure" >}}
@@ -392,6 +398,7 @@ singleBinary:
   replicas: 0
 
 ```
+
 {{< /collapse >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
@@ -453,13 +460,15 @@ distributor:
 ## Deploying the Loki Helm chart to a Production Environment
 
 {{< admonition type="note" >}}
-We are actively working on providing more guides for deploying Loki in production. 
+We are actively working on providing more guides for deploying Loki in production.
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
 - [Deploy Loki on Azure](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/azure/)
 
-## Next Steps 
+## Next Steps
+
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
 * [Monitor the Loki deployment](/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/), using the recommended Kubernetes monitoring Helm chart.
