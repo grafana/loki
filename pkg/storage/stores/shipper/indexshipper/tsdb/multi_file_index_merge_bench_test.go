@@ -152,12 +152,29 @@ func BenchmarkMergeChunkRefsSort(b *testing.B) {
 	})
 }
 
+func BenchmarkMergeChunkRefsHeap(b *testing.B) {
+	runMergeBench(b, func(xs [][]logproto.ChunkRefWithSizingInfo) []logproto.ChunkRefWithSizingInfo {
+		return mergeChunkRefsHeap(nil, xs)
+	})
+}
+
 // BenchmarkMergeChunkRefsSortPeakMem materialises the largest cell once and
 // records peak resident memory delta using runtime.ReadMemStats before and
 // after. This is the memory equivalent of the ns/op sweep above — it is not
 // something go test can report directly for us. Run with -run='^$'
 // -bench=BenchmarkMergeChunkRefsSortPeakMem -benchtime=1x.
 func BenchmarkMergeChunkRefsSortPeakMem(b *testing.B) {
+	benchPeakMem(b, mergeChunkRefsSort)
+}
+
+func BenchmarkMergeChunkRefsHeapPeakMem(b *testing.B) {
+	benchPeakMem(b, mergeChunkRefsHeap)
+}
+
+func benchPeakMem(
+	b *testing.B,
+	merge func([]logproto.ChunkRefWithSizingInfo, [][]logproto.ChunkRefWithSizingInfo) []logproto.ChunkRefWithSizingInfo,
+) {
 	const (
 		k       = 16
 		n       = 1_000_000
@@ -170,7 +187,7 @@ func BenchmarkMergeChunkRefsSortPeakMem(b *testing.B) {
 	runtime.ReadMemStats(&before)
 
 	xs := cloneInputs(src)
-	out := mergeChunkRefsSort(nil, xs)
+	out := merge(nil, xs)
 	runtime.KeepAlive(out)
 
 	runtime.ReadMemStats(&after)
