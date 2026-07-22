@@ -1,7 +1,6 @@
 package unmarshal
 
 import (
-	"io"
 	"log"
 	"strings"
 	"testing"
@@ -14,29 +13,33 @@ import (
 
 // covers requests to /api/prom/push
 var pushTests = []struct {
-	expected []logproto.Stream
-	actual   string
+	expected    logproto.PushRequest
+	expectedErr bool
+	payload     string
 }{
 	{
-		[]logproto.Stream{
-			{
-				Entries: []logproto.Entry{
-					{
-						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
-						Line:      "super line",
-					},
-					{
-						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
-						Line:      "super line with labels",
-						StructuredMetadata: []logproto.LabelAdapter{
-							{Name: "a", Value: "1"},
-							{Name: "b", Value: "2"},
+		logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
+							Line:      "super line",
+						},
+						{
+							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
+							Line:      "super line with labels",
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "a", Value: "1"},
+								{Name: "b", Value: "2"},
+							},
 						},
 					},
+					Labels: `{test="test"}`,
 				},
-				Labels: `{test="test"}`,
 			},
 		},
+		false,
 		`{
 			"streams":[
 				{
@@ -59,18 +62,48 @@ var pushTests = []struct {
 			]
 		}`,
 	},
+
+	{
+		logproto.PushRequest{},
+		false,
+		`{}`,
+	},
+
+	{
+		logproto.PushRequest{},
+		true,
+		`{
+			"streams": [],
+			"invalid": true,
+		}`,
+	},
+
+	{
+		logproto.PushRequest{},
+		true,
+		`{
+			"streams": [
+			  {
+					"labels": "{}",
+					"invalid": [],
+				}
+			],
+		}`,
+	},
 }
 
 func Test_DecodePushRequest(t *testing.T) {
-
-	for i, pushTest := range pushTests {
+	for i, tt := range pushTests {
 		var actual logproto.PushRequest
-		closer := io.NopCloser(strings.NewReader(pushTest.actual))
+		r := strings.NewReader(tt.payload)
 
-		err := DecodePushRequest(closer, &actual)
-		require.NoError(t, err)
-
-		require.Equalf(t, pushTest.expected, actual.Streams, "Push Test %d failed", i)
+		err := DecodePushRequest(r, &actual)
+		if tt.expectedErr {
+			require.Error(t, err)
+		} else {
+			require.NoError(t, err)
+			require.Equalf(t, tt.expected, actual, "Push Test %d failed", i)
+		}
 	}
 }
 
