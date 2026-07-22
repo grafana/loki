@@ -134,7 +134,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	acc := newResultAccumulator(func(xs [][]logproto.ChunkRefWithSizingInfo) ([]logproto.ChunkRefWithSizingInfo, error) {
-		merged := mergeChunkRefsSort(res, xs)
+		merged := mergeChunkRefsHeap(res, xs)
 		for _, g := range xs {
 			ChunkRefsPool.Put(g)
 		}
