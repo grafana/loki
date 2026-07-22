@@ -30,6 +30,11 @@ type WorkerParams struct {
 
 	// IndexobjCfg controls index object construction parameters.
 	IndexobjCfg logsobj.BuilderBaseConfig
+
+	// LogsobjCfg controls the compacted log (data) object construction
+	// parameters used by LogMerge. Separate from IndexobjCfg so the merged log
+	// objects use data-object-scale sections rather than index-object sizes.
+	LogsobjCfg logsobj.BuilderBaseConfig
 }
 
 // Worker is the dataobj-compaction-worker target service. It wraps an
@@ -102,6 +107,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
 		IndexobjCfg:        params.IndexobjCfg,
+		LogsobjCfg:         params.LogsobjCfg,
 		IndexMergeObserver: wm,
 		LogMergeObserver:   wm,
 	}, registerer)

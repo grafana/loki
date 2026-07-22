@@ -50,6 +50,9 @@ type Config struct {
 	ScratchStore scratch.Store
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// LogsobjCfg is the builder config for the compacted log (data) objects that
+	// LogMerge writes. Separate from IndexobjCfg.
+	LogsobjCfg logsobj.BuilderBaseConfig
 
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
@@ -108,6 +111,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCaches:         cfg.TaskCaches,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		logsobjCfg:         cfg.LogsobjCfg,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
 	}
@@ -143,6 +147,7 @@ type Context struct {
 
 	scratchStore scratch.Store
 	indexobjCfg  logsobj.BuilderBaseConfig
+	logsobjCfg   logsobj.BuilderBaseConfig
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver

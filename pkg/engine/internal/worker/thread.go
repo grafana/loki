@@ -97,6 +97,7 @@ type thread struct {
 	TaskCaches     executor.TaskCacheRegistry
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
+	LogsobjCfg     logsobj.BuilderBaseConfig
 
 	// IndexMergeObserver is optional; nil for query-only workers.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -225,6 +226,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		TaskCaches:     t.TaskCaches,
 		ScratchStore:   t.ScratchStore,
 		IndexobjCfg:    t.IndexobjCfg,
+		LogsobjCfg:     t.LogsobjCfg,
 
 		IndexMergeObserver: t.IndexMergeObserver,
 		LogMergeObserver:   t.LogMergeObserver,

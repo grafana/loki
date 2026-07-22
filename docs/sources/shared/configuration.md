@@ -1737,6 +1737,45 @@ dataobj:
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
+    logsobj_builder:
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-page-size
+      [target_page_size: <int> | default = 2MiB]
+
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj.compaction.logsobj-builder.max-page-rows
+      [max_page_rows: <int> | default = 0]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-builder-memory-limit
+      [target_object_size: <int> | default = 1GiB]
+
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
+      # CLI flag: -dataobj.compaction.logsobj-builder.target-section-size
+      [target_section_size: <int> | default = 128MiB]
+
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
+      # CLI flag: -dataobj.compaction.logsobj-builder.buffer-size
+      [buffer_size: <int> | default = 16MiB]
+
+      # The maximum number of dataobj section stripes to merge into a section at
+      # once. Must be greater than 1.
+      # CLI flag: -dataobj.compaction.logsobj-builder.section-stripe-merge-limit
+      [section_stripe_merge_limit: <int> | default = 2]
+
+      # Expected compression ratio for log data, used to estimate compressed
+      # output size from uncompressed buffered records. Only takes effect with
+      # ordered append. Set to 0 or 1 to disable.
+      # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
+      [estimated_compression_ratio: <int> | default = 8]
+
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]

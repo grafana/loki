@@ -298,13 +298,14 @@ func TestDoLogObjectMerge_WritesCompactedLogsToDataBucket(t *testing.T) {
 }
 
 // newSmallObjectExecutorContext is like newTestExecutorContext but with a tiny
-// TargetObjectSize so the merge splits its output across multiple objects.
+// log-object TargetObjectSize so the merge splits its output across multiple
+// compacted log objects. The output data objects are sized by logsobjCfg.
 func newSmallObjectExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 	c := newTestExecutorContext(t, bucket)
-	c.indexobjCfg.TargetPageSize = 512
-	c.indexobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
-	c.indexobjCfg.TargetSectionSize = 800
+	c.logsobjCfg.TargetPageSize = 512
+	c.logsobjCfg.TargetObjectSize = 1000 // bytes; forces splitting
+	c.logsobjCfg.TargetSectionSize = 800
 	return c
 }
 

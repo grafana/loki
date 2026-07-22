@@ -106,6 +106,10 @@ type Config struct {
 	// Required for compaction tasks; may be nil for query-only workers.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// LogsobjCfg is the builder config for the compacted log (data) objects that
+	// LogMerge writes. Separate from IndexobjCfg; may be nil for query-only workers.
+	LogsobjCfg logsobj.BuilderBaseConfig
+
 	// IndexMergeObserver is used  by compaction to populate output-size
 	// histograms. Optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -215,6 +219,7 @@ func (w *Worker) run(ctx context.Context) error {
 			TaskCaches:     w.taskCaches,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
+			LogsobjCfg:     w.config.LogsobjCfg,
 
 			IndexMergeObserver: w.config.IndexMergeObserver,
 			LogMergeObserver:   w.config.LogMergeObserver,
