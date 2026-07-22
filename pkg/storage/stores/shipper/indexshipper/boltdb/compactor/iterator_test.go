@@ -113,6 +113,63 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	require.Len(t, actual, 1)
 }
 
+// Test_RemoveChunk_SpansIndexPeriodBoundary reproduces #23358: a chunk that
+// spans an index-period (day) boundary is indexed in two tables. RemoveChunk
+// must only require/delete the entries that belong to the table currently
+// being processed; keys for the adjacent period are legitimately absent.
+func Test_RemoveChunk_SpansIndexPeriodBoundary(t *testing.T) {
+	// v12 covers a long window in the shared schemaCfg; pick a midnight fully
+	// inside that period so Put writes entries into two daily tables.
+	tt := allSchemas[3]
+	cm := storage.NewClientMetrics()
+	defer cm.Unregister()
+	store := newTestStore(t, cm)
+	chunkfmt, headfmt, err := tt.config.ChunkFormat()
+	require.NoError(t, err)
+
+	// First midnight at least one full day after the schema period starts.
+	dayBoundary := model.TimeFromUnix((tt.from.Unix()/86400 + 2) * 86400)
+	chunkFrom := dayBoundary.Add(-2 * time.Hour)
+	chunkThrough := dayBoundary.Add(2 * time.Hour)
+
+	lbs := labels.New(labels.Label{Name: "foo", Value: "span"})
+	c := createChunk(t, chunkfmt, headfmt, "fake", lbs, chunkFrom, chunkThrough)
+	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c}))
+	store.Stop()
+
+	chunkID := store.schemaCfg.ExternalKey(c.ChunkRef)
+	tables := store.indexTables()
+
+	tablesWithChunk := 0
+	for _, tbl := range tables {
+		err := tbl.Update(func(tx *bbolt.Tx) error {
+			bucket := tx.Bucket(local.IndexBucketName)
+			cleaner := newSeriesCleaner(bucket, tt.config, tbl.name)
+			return ForEachSeries(context.Background(), bucket, tt.config, func(series retention.Series) error {
+				for _, chk := range series.Chunks() {
+					if chk.ChunkID != chunkID {
+						continue
+					}
+					tablesWithChunk++
+					// Full chunk time range, as markForDelete does — must not fail
+					// because adjacent-period keys are missing from this table.
+					existed, err := cleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+					require.NoError(t, err)
+					require.True(t, existed, "table %s should remove its entry for spanning chunk", tbl.name)
+
+					// Entry should already be gone on a second pass.
+					removedAgain, err := cleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+					require.NoError(t, err)
+					require.False(t, removedAgain, "table %s entry should already be deleted", tbl.name)
+				}
+				return nil
+			})
+		})
+		require.NoError(t, err)
+	}
+	require.GreaterOrEqual(t, tablesWithChunk, 2, "chunk spanning a day boundary should be indexed in at least two tables")
+}
+
 func Test_SeriesCleaner(t *testing.T) {
 	for _, tt := range allSchemas {
 		t.Run(tt.schema, func(t *testing.T) {
