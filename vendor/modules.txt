@@ -222,7 +222,7 @@ github.com/Masterminds/semver/v3
 # github.com/Masterminds/sprig/v3 v3.3.0
 ## explicit; go 1.21
 github.com/Masterminds/sprig/v3
-# github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29
+# github.com/Microsoft/go-winio v0.6.3-0.20260107145400-75610162e7da
 ## explicit; go 1.23.0
 github.com/Microsoft/go-winio
 github.com/Microsoft/go-winio/internal/fs
