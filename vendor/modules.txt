@@ -1308,7 +1308,7 @@ github.com/opentracing/opentracing-go/log
 # github.com/oschwald/geoip2-golang/v2 v2.2.0
 ## explicit; go 1.25.0
 github.com/oschwald/geoip2-golang/v2
-# github.com/oschwald/maxminddb-golang/v2 v2.4.0
+# github.com/oschwald/maxminddb-golang/v2 v2.4.1
 ## explicit; go 1.25.0
 github.com/oschwald/maxminddb-golang/v2
 github.com/oschwald/maxminddb-golang/v2/internal/decoder

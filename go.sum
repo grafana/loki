@@ -725,8 +725,8 @@ github.com/oracle/oci-go-sdk/v65 v65.117.1/go.mod h1:oo33NDf2XPqx3/N6oLG4jFlrqJ0
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/oschwald/geoip2-golang/v2 v2.2.0 h1:gdkhpnHQMiH9ymOI+zSB0QKFGH+n4TntNt7vz+TxGPY=
 github.com/oschwald/geoip2-golang/v2 v2.2.0/go.mod h1:xW4tCeQiNU1gqMD1x7zEH2CDNM3d796Ls50yxYDaX0U=
-github.com/oschwald/maxminddb-golang/v2 v2.4.0 h1:3ftnrR1/XwiQ788bWIRhsE1DK3GOgJ6tm6S2qTktLm8=
-github.com/oschwald/maxminddb-golang/v2 v2.4.0/go.mod h1:7jcFtmhWVDEV+UopVv9NjcPm200uMyEHN14LIVV4hW8=
+github.com/oschwald/maxminddb-golang/v2 v2.4.1 h1:OffzqSABE3Sw354GdBThqDsKfpA4GWBqOY2P91V8tjI=
+github.com/oschwald/maxminddb-golang/v2 v2.4.1/go.mod h1:CZK8iQQMKfy6mKOifoyUmrj4vTHnMiGVaS7hDaZZxQ0=
 github.com/outscale/osc-sdk-go/v2 v2.34.0 h1:hHH5W9Fmgt6b8nGUmDyu4vVP+zqJ+W0zflzjgsGEGUQ=
 github.com/outscale/osc-sdk-go/v2 v2.34.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=
