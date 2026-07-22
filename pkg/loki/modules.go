@@ -829,6 +829,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		t.PatternIngester, err = pattern.NewKafka(t.Cfg.Pattern,
 			t.Overrides,
 			t.tenantConfigs,
+			t.PatternRingClient,
 			t.Cfg.MetricsNamespace,
 			prometheus.DefaultRegisterer,
 			util_log.Logger,
