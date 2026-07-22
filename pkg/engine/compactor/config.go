@@ -40,6 +40,16 @@ type Config struct {
 	// that has > 1 index in the window.
 	PollingInterval time.Duration `yaml:"polling_interval"`
 
+	// WindowLookback is the number of older metastore windows the coordinator
+	// compacts in addition to the current window. Zero (the default) compacts
+	// only the current window; 1 also compacts the immediately-preceding
+	// window, and so on. Raise it when the index-builder lags behind wall-clock
+	// so a ToC for the current window may not exist yet: the preceding
+	// window(s) still have populated ToCs and would otherwise never be
+	// compacted. Each extra window is an independent per-pass read + plan, so
+	// cost scales linearly with the count.
+	WindowLookback int `yaml:"window_lookback"`
+
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
 	// single IndexMerge task may consume. Memory grows linearly with K.
 	MaxRunsPerTask int `yaml:"max_runs_per_task"`
@@ -151,6 +161,7 @@ const (
 	defaultEndpoint                     = "/api/v2/compaction-frame"
 
 	defaultPollingInterval       = 5 * time.Minute
+	defaultWindowLookback        = 0
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 3
 	defaultToCConsolidateTimeout = 30 * time.Second
@@ -176,6 +187,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
+	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
+		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window. Raise when the index-builder lags wall-clock so the current window's ToC may not exist yet.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,
@@ -236,6 +249,9 @@ func (cfg *Config) Validate() error {
 	if cfg.PollingInterval <= 0 {
 		return errInvalidPollingInterval
 	}
+	if cfg.WindowLookback < 0 {
+		return errInvalidWindowLookback
+	}
 	if cfg.ToCConsolidateTimeout <= 0 {
 		return errInvalidToCConsolidateTimeout
 	}
@@ -262,6 +278,7 @@ var (
 	errInvalidLogMaxRunningCompactionTasks = errors.New("dataobj.compaction.logs.max_running_compaction_tasks must be >= 0")
 	errEmptySchedulerEndpoint              = errors.New("dataobj.compaction.scheduler.endpoint must not be empty when compaction is enabled")
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
+	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 0")
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be > 0 when compaction is enabled")

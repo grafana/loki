@@ -1630,6 +1630,13 @@ dataobj:
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
 
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window. Raise when the index-builder lags wall-clock so the
+    # current window's ToC may not exist yet.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
+
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
