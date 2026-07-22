@@ -100,6 +100,7 @@ limits_config:
   query_timeout: 1m
   volume_enabled: true
   volume_max_series: 1000
+  enable_multi_variant_queries: true
   allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
