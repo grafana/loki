@@ -28,6 +28,7 @@ Query errors can be observed using these Prometheus metrics:
 
 - `loki_request_duration_seconds` - Query latency by route and status code
 - `loki_logql_querystats_bytes_processed_per_seconds` - Bytes processed during queries
+- `loki_logql_querystats_bytes_processed_total` - Total bytes processed by queries, broken down by `tenant`. This is the metric equivalent of the `total_bytes` field in the `caller=metrics.go` query log line and lets you track per-tenant query bytes without parsing logs.
 - `loki_frontend_query_range_duration_seconds_bucket` - Frontend query latency
 
 You can set up alerts on 4xx and 5xx status codes to detect query problems early. This can be helpful when tuning limits configurations.

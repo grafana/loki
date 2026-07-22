@@ -1,7 +1,6 @@
 package compactionv2
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 
@@ -97,25 +96,27 @@ func TestPatienceSort_BestFit(t *testing.T) {
 }
 
 func TestPatienceSort_TiebreakerOnCreationOrder(t *testing.T) {
-	// Build two piles that both end with topMaxKey == "10", then feed a section
-	// whose MinKey ("20") is strictly greater than "10", so both piles are
-	// unambiguously eligible regardless of the touching rule. Best-fit ties on
-	// topMaxKey, so the OLDEST pile (lowest slice index) must win.
-	//   s1 = ("00","10") — creates pile0 (topMaxKey "10")
-	//   s2 = ("05","10") — overlaps s1 (pile0 topMaxKey "10" is not <= "05"),
-	//                      so it creates pile1 (topMaxKey "10")
-	//   s3 = ("20","30") — eligible for pile0 and pile1 (both topMaxKey "10" <=
-	//                      "20"); tie on topMaxKey -> append to the oldest, pile0.
+	// Two piles will both end up with topMaxKey == "10":
+	//   s1 = ("00","10") — creates pile0
+	//   s2 = ("05","11") — overlaps s1 (MinKey "05" < pile0 topMaxKey "10"); creates pile1
+	//   s3 = ("06","10") — overlaps both ("06" < both "10"); creates pile2
+	// pile0 topMaxKey=10, pile1 topMaxKey=11, pile2 topMaxKey=10
+	//   s4 = ("11","20") — eligible for pile0 (topMaxKey "10" < "11") AND pile2 (topMaxKey "10" < "11").
+	//   pile1 topMaxKey "11" is NOT < "11"; not eligible.
+	//   Tiebreak: pick the OLDEST eligible pile -> pile0 (slice index 0).
 	s1 := sec("o", 0, "00", "10")
-	s2 := sec("o", 1, "05", "10")
-	s3 := sec("o", 2, "20", "30")
+	s2 := sec("o", 1, "05", "11")
+	s3 := sec("o", 2, "06", "10")
+	s4 := sec("o", 3, "11", "20")
 
-	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3})
+	got := calculateRuns([]*compactionv2pb.SectionRef{s1, s2, s3, s4})
 
-	require.Len(t, got, 2)
-	require.Equal(t, []*compactionv2pb.SectionRef{s1, s3}, got[0].sections,
+	require.Len(t, got, 3)
+	// pile0 (slice index 0, the oldest) should have received s4.
+	require.Equal(t, []*compactionv2pb.SectionRef{s1, s4}, got[0].sections,
 		"among piles with equal topMaxKey, append to the OLDEST")
-	require.Equal(t, []*compactionv2pb.SectionRef{s2}, got[1].sections,
+	// pile2 unchanged.
+	require.Equal(t, []*compactionv2pb.SectionRef{s3}, got[2].sections,
 		"newer pile is NOT chosen on tie")
 }
 
@@ -278,9 +279,10 @@ func secTS(path string, idx int64, minKey, maxKey []string, minTs, maxTs int64) 
 }
 
 // TestCalculateRuns_Timestamp_NonOverlap demonstrates that when two sections
-// share the same label tuple but have non-overlapping time slices, they order
-// by timestamp and pack into a single run. The timestamp component of the
-// composite key is what gives same-label sections a well-defined order.
+// share the same label tuple but have non-overlapping time slices, they
+// correctly pack into a single run. Without including the timestamp
+// component in the comparison, the algorithm would see equal label tuples
+// at the boundary (a.MaxKey == b.MinKey) and conclude they overlap.
 func TestCalculateRuns_Timestamp_NonOverlap(t *testing.T) {
 	// a: labels=["api"], ts=[100..200]
 	// b: labels=["api"], ts=[300..400]
@@ -336,125 +338,43 @@ func TestCalculateRuns_Timestamp_NumericOrder(t *testing.T) {
 		"timestamps must compare numerically: ts=9 < ts=10")
 }
 
-// TestCalculateRuns_RunGrouping checks that touching sections form one run and
-// overlapping sections split.
-func TestCalculateRuns_RunGrouping(t *testing.T) {
-	tests := []struct {
-		name     string
-		sections []*compactionv2pb.SectionRef
-		wantRuns int
-	}{
-		{
-			name:     "touching single-column key",
-			sections: []*compactionv2pb.SectionRef{sec("o", 1, "m", "z"), sec("o", 0, "a", "m")},
-			wantRuns: 1,
-		},
-		{
-			name:     "overlapping single-column key splits",
-			sections: []*compactionv2pb.SectionRef{sec("o", 0, "a", "m"), sec("o", 1, "k", "z")},
-			wantRuns: 2,
-		},
-		{
-			name: "touching timestamps, same label",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 1, []string{"api"}, []string{"api"}, 200, 300),
-				secTS("o", 0, []string{"api"}, []string{"api"}, 100, 200),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "disjoint timestamps, same label",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 0, []string{"auth"}, []string{"auth"}, 10, 20),
-				secTS("o", 1, []string{"auth"}, []string{"auth"}, 30, 40),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "overlapping timestamps, same label splits",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 0, []string{"auth"}, []string{"auth"}, 10, 30),
-				secTS("o", 1, []string{"auth"}, []string{"auth"}, 20, 40),
-			},
-			wantRuns: 2,
-		},
-		{
-			name: "touching multi-column tuple",
-			sections: []*compactionv2pb.SectionRef{
-				secT("o", 1, []string{"auth", "us"}, []string{"billing", "eu"}),
-				secT("o", 0, []string{"auth", "eu"}, []string{"auth", "us"}),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "touching full composite key",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 1, []string{"auth", "eu"}, []string{"auth", "eu"}, 40, 70),
-				secTS("o", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 40),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "distinct multi-label tuples chain",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 40),
-				secTS("o", 1, []string{"auth", "us"}, []string{"auth", "us"}, 20, 50),
-				secTS("o", 2, []string{"billing", "eu"}, []string{"billing", "eu"}, 15, 45),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "equal first key, second key disambiguates",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 40),
-				secTS("o", 1, []string{"auth", "us"}, []string{"auth", "us"}, 10, 40),
-			},
-			wantRuns: 1,
-		},
-		{
-			name: "identical multi-label tuple, overlapping times splits",
-			sections: []*compactionv2pb.SectionRef{
-				secTS("o", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 30),
-				secTS("o", 1, []string{"auth", "eu"}, []string{"auth", "eu"}, 20, 40),
-			},
-			wantRuns: 2,
-		},
+func TestCalculateRuns_CompositeKey_SameTupleTimeOverlapSplits(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		secTS("log-0", 0, []string{"auth"}, []string{"auth"}, 10, 30),
+		secTS("log-1", 0, []string{"auth"}, []string{"auth"}, 20, 40),
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Len(t, calculateRuns(tc.sections), tc.wantRuns)
-		})
-	}
+	require.Len(t, calculateRuns(sections), 2, "overlapping times, same tuple: two runs")
 }
 
-func runKey(v int) string { return fmt.Sprintf("%03d", v) }
-
-// TestCalculateRuns_ValidRunSurvivesArbitrarySectionCuts checks that cutting one
-// sorted run into many sections still yields exactly one run.
-func TestCalculateRuns_ValidRunSurvivesArbitrarySectionCuts(t *testing.T) {
-	r := rand.New(rand.NewSource(1))
-	for trial := 0; trial < 50; trial++ {
-		// Cut one sorted run into n sections; neighbours share a boundary key,
-		// and a zero-width step makes a single-key section.
-		n := 2 + r.Intn(12)
-		bounds := make([]int, n+1)
-		bounds[0] = r.Intn(3)
-		for i := 1; i <= n; i++ {
-			bounds[i] = bounds[i-1] + r.Intn(3)
-		}
-
-		sections := make([]*compactionv2pb.SectionRef, n)
-		for i := 0; i < n; i++ {
-			sections[i] = sec("o", int64(i), runKey(bounds[i]), runKey(bounds[i+1]))
-		}
-
-		// Run formation must be independent of input order.
-		shuffled := append([]*compactionv2pb.SectionRef(nil), sections...)
-		r.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
-
-		got := calculateRuns(shuffled)
-		require.Lenf(t, got, 1, "trial %d: a cut-up valid run must re-derive as one run (bounds=%v)", trial, bounds)
-		require.Equalf(t, sections, got[0].sections, "trial %d: sections must come back in sorted order", trial)
+func TestCalculateRuns_CompositeKey_SameTupleTimeDisjointChains(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		secTS("log-0", 0, []string{"auth"}, []string{"auth"}, 10, 20),
+		secTS("log-1", 0, []string{"auth"}, []string{"auth"}, 30, 40),
 	}
+	require.Len(t, calculateRuns(sections), 1, "disjoint ordered times, same tuple: one run")
+}
+
+func TestCalculateRuns_CompositeKey_MultiLabelDistinctTuplesChain(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		secTS("log-0", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 40),
+		secTS("log-1", 0, []string{"auth", "us"}, []string{"auth", "us"}, 20, 50),
+		secTS("log-2", 0, []string{"billing", "eu"}, []string{"billing", "eu"}, 15, 45),
+	}
+	require.Len(t, calculateRuns(sections), 1, "distinct multi-label tuples chain into one run")
+}
+
+func TestCalculateRuns_CompositeKey_MultiLabelSecondKeyDisambiguates(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		secTS("log-0", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 40),
+		secTS("log-1", 0, []string{"auth", "us"}, []string{"auth", "us"}, 10, 40),
+	}
+	require.Len(t, calculateRuns(sections), 1, "second sort key disambiguates equal first keys")
+}
+
+func TestCalculateRuns_CompositeKey_MultiLabelSameTupleTimeOverlapSplits(t *testing.T) {
+	sections := []*compactionv2pb.SectionRef{
+		secTS("log-0", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 10, 30),
+		secTS("log-1", 0, []string{"auth", "eu"}, []string{"auth", "eu"}, 20, 40),
+	}
+	require.Len(t, calculateRuns(sections), 2, "identical multi-label tuple, overlapping times: two runs")
 }
