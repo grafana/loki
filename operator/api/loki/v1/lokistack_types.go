@@ -824,15 +824,16 @@ type PerTenantQueryLimitSpec struct {
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
 type IngestionLimitSpec struct {
-	// IngestionRate defines the sample size per second. Units MB.
+	// IngestionRate defines the maximum data rate per second. Units MB/sec.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Ingestion Rate (in MB)"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Ingestion Rate (in MB/sec)"
 	IngestionRate int32 `json:"ingestionRate,omitempty"`
 
-	// IngestionBurstSize defines the local rate-limited sample size per
-	// distributor replica. It should be set to the set at least to the
+	// IngestionBurstSize defines how much data can be sent temporarily exceeding the rate limit. Units MB.
+	// This limit is applied per-distributor, i.e. if you have more distributors then larger bursts are allowed.
+	// It should be set to the set at least to the
 	// maximum logs size expected in a single push request.
 	//
 	// +optional

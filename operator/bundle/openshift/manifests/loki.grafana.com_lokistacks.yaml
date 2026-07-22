@@ -107,14 +107,15 @@ spec:
                         properties:
                           ingestionBurstSize:
                             description: |-
-                              IngestionBurstSize defines the local rate-limited sample size per
-                              distributor replica. It should be set to the set at least to the
+                              IngestionBurstSize defines how much data can be sent temporarily exceeding the rate limit. Units MB.
+                              This limit is applied per-distributor, i.e. if you have more distributors then larger bursts are allowed.
+                              It should be set to the set at least to the
                               maximum logs size expected in a single push request.
                             format: int32
                             type: integer
                           ingestionRate:
-                            description: IngestionRate defines the sample size per
-                              second. Units MB.
+                            description: IngestionRate defines the maximum data rate
+                              per second. Units MB/sec.
                             format: int32
                             type: integer
                           maxGlobalStreamsPerTenant:
@@ -348,14 +349,15 @@ spec:
                           properties:
                             ingestionBurstSize:
                               description: |-
-                                IngestionBurstSize defines the local rate-limited sample size per
-                                distributor replica. It should be set to the set at least to the
+                                IngestionBurstSize defines how much data can be sent temporarily exceeding the rate limit. Units MB.
+                                This limit is applied per-distributor, i.e. if you have more distributors then larger bursts are allowed.
+                                It should be set to the set at least to the
                                 maximum logs size expected in a single push request.
                               format: int32
                               type: integer
                             ingestionRate:
-                              description: IngestionRate defines the sample size per
-                                second. Units MB.
+                              description: IngestionRate defines the maximum data
+                                rate per second. Units MB/sec.
                               format: int32
                               type: integer
                             maxGlobalStreamsPerTenant:
