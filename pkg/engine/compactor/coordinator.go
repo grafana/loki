@@ -1,14 +1,12 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,7 +35,7 @@ type tocReplacer interface {
 // runFunc executes one single-root physical.Plan as a workflow.
 // Injected via the coordinator's runPlan field so unit tests can swap in a
 // recorder without standing up a scheduler + worker pair.
-type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error
+type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error)
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
@@ -71,7 +69,7 @@ func newCoordinator(
 		cfg:    cfg,
 		logger: logger,
 		bucket: bucket,
-		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) error {
+		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
 		metastoreWriter: metastoreWriter,
@@ -223,67 +221,74 @@ func (c *coordinator) compactTenantLogs(
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
-	var pathBuilder indexMergePath
-	var idBuf bytes.Buffer
-	outputs := make([]string, len(tasks))
-	for i, ts := range tasks {
-		outputs[i] = pathBuilder.Build(tenant, window, c.cfg.PlanVersion, i, logTaskSectionIDs(ts.Runs, &idBuf))
-	}
-
+	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.LogMaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
 	}
 	for i, ts := range tasks {
 		g.Go(func() error {
-			plan := buildLogMergePlan(tenant, window, ts, outputs[i])
-			opts := workflow.Options{
-				Tenant: tenant,
-				Actor:  []string{"compaction", "log-merge"},
+			plan := buildLogMergePlan(tenant, window, ts)
+			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
+			rec, err := c.runPlan(gctx, opts, plan)
+			if err != nil {
+				return err
 			}
-			return c.runPlan(gctx, opts, plan)
+			if rec == nil {
+				return nil
+			}
+			artifacts, err := v2.ReadResultRecord(rec)
+			if err != nil {
+				return err
+			}
+			if len(artifacts) == 0 {
+				return nil
+			}
+			if len(artifacts) > 1 {
+				return fmt.Errorf("log-merge job produced %d artifacts, want 1", len(artifacts))
+			}
+			minTS, maxTS := taskBounds(ts)
+			resultEntries[i] = &metastore.TableOfContentsEntry{
+				Path:                 artifacts[0].Path,
+				StartTime:            time.Unix(0, minTS).UTC(),
+				EndTime:              time.Unix(0, maxTS).UTC(),
+				UncompressedLogsSize: taskUncompressedLogsSize(ts),
+			}
+			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
-	oldPaths := []string{converged.Path}
-	newEntries := makeTocEntries(tasks, outputs)
+	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
+	for _, e := range resultEntries {
+		if e != nil {
+			newEntries = append(newEntries, *e)
+		}
+	}
+	if len(newEntries) == 0 {
+		return compactionStats{}, nil
+	}
 
-	// makeTocEntries recomputes sizes from the source object's internal section
-	// stats. A converged row of 0 means unknown, but legacy objects carry
-	// positive internal stats from the old statsCalculation that counted only
-	// len(log.Line) and omitted structured metadata. Summing those undercounts
-	// yields a positive total. Persisting 0 keeps the row unknown, which is the
-	// only way to later distinguish indexes written with incorrect line-only
-	// stats and backfill them from authoritative data without rescanning every
-	// object.
+	// A converged row of 0 uncompressed size means unknown. Legacy objects
+	// carry positive-but-wrong internal stats (line length only, omitting
+	// structured metadata), so persisting 0 keeps the row unknown and lets us
+	// later distinguish and backfill those indexes without rescanning.
 	if converged.UncompressedLogsSize == 0 {
 		for i := range newEntries {
 			newEntries[i].UncompressedLogsSize = 0
 		}
 	}
 
-	// removed = the single converged index this window replaces; added = the
-	// merged indexes written; dispatched = log-merge tasks run this cycle.
+	oldPaths := []string{converged.Path}
 	stats := compactionStats{
 		removed:    len(oldPaths),
-		added:      len(outputs),
+		added:      len(newEntries),
 		dispatched: len(tasks),
 	}
 
-	level.Debug(c.logger).Log("msg", "log-compacted",
-		"tenant", tenant, "window", window,
-		"dry_run", c.cfg.DryRun,
-		"tasks", len(tasks),
-		"removed_index", converged.Path,
-		"added_indexes", strings.Join(outputs, ","),
-	)
-
 	if c.cfg.DryRun {
-		// Tasks ran but the ToC was left untouched, so no indexes were
-		// added/removed; only report the tasks dispatched.
 		return compactionStats{dispatched: len(tasks)}, nil
 	}
 
@@ -321,46 +326,60 @@ func (c *coordinator) compactTenant(
 		return compactionStats{}, nil
 	}
 
-	// Compute deterministic output paths per task. A single indexMergePath
-	// is reused across all tasks in this cycle to reduce allocations.
-	var pathBuilder indexMergePath
-	outputs := make([]string, len(tasks))
-	for i, ts := range tasks {
-		outputs[i] = pathBuilder.Build(tenant, window, c.cfg.PlanVersion, i, taskSectionIDs(ts.Runs))
-	}
-
+	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
 	}
 	for i, ts := range tasks {
 		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, ts, outputs[i])
-			opts := workflow.Options{
-				Tenant: tenant,
-				Actor:  []string{"compaction", "index-merge"},
+			plan := buildIndexMergePlan(tenant, window, ts)
+			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "index-merge"}}
+			rec, err := c.runPlan(gctx, opts, plan)
+			if err != nil {
+				return err
 			}
-			return c.runPlan(gctx, opts, plan)
+			if rec == nil {
+				return nil
+			}
+			artifacts, err := v2.ReadResultRecord(rec)
+			if err != nil {
+				return err
+			}
+			if len(artifacts) == 0 {
+				return nil
+			}
+			if len(artifacts) > 1 {
+				return fmt.Errorf("index-merge job produced %d artifacts, want 1", len(artifacts))
+			}
+			minTS, maxTS := taskBounds(ts)
+			resultEntries[i] = &metastore.TableOfContentsEntry{
+				Path:                 artifacts[0].Path,
+				StartTime:            time.Unix(0, minTS).UTC(),
+				EndTime:              time.Unix(0, maxTS).UTC(),
+				UncompressedLogsSize: taskUncompressedLogsSize(ts),
+			}
+			return nil
 		})
 	}
 	if err := g.Wait(); err != nil {
 		return compactionStats{}, fmt.Errorf("failed to execute compaction tasks: %w", err)
 	}
 
-	// Replace index pointers with new indexes
 	oldPaths := make([]string, len(entries))
 	for i, e := range entries {
 		oldPaths[i] = e.Path
 	}
-	newEntries := makeTocEntries(tasks, outputs)
 
-	level.Debug(c.logger).Log("msg", "compacted indexes",
-		"tenant", tenant, "window", window,
-		"dry_run", c.cfg.DryRun,
-		"tasks", len(tasks),
-		"removed_indexes", strings.Join(oldPaths, ","),
-		"added_indexes", strings.Join(outputs, ","),
-	)
+	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
+	for _, e := range resultEntries {
+		if e != nil {
+			newEntries = append(newEntries, *e)
+		}
+	}
+	if len(newEntries) == 0 {
+		return compactionStats{}, nil
+	}
 
 	if c.cfg.DryRun {
 		return compactionStats{}, nil
@@ -381,51 +400,52 @@ func (c *coordinator) compactTenant(
 	}
 	level.Info(c.logger).Log("msg", "tenant cycle complete",
 		"tenant", tenant, "window", window,
-		"tasks", len(tasks),
 		"removed_indexes", len(oldPaths),
-		"added_indexes", len(outputs),
+		"added_indexes", len(newEntries),
 	)
 	return compactionStats{
 		removed:    len(oldPaths),
-		added:      len(outputs),
+		added:      len(newEntries),
 		dispatched: len(tasks),
 	}, nil
 }
 
-// taskSectionIDs returns canonical "<ObjectPath>#<SectionIndex>" IDs for
-// every section across all Runs in a task. Used as input to
-// indexMergePath.Build. The output is unsorted; Build sorts internally so
-// order here doesn't affect the resulting path.
-func taskSectionIDs(runs []*compactionv2pb.RunRef) []string {
-	var ids []string
-	for _, r := range runs {
-		for _, s := range r.Sections {
-			ids = append(ids, fmt.Sprintf("%s#%d", s.ObjectPath, s.SectionIndex))
+// taskBounds returns the min/max timestamp (unix nanos) across all sections
+// in a task's runs.
+func taskBounds(task *compactionv2pb.TaskSpec) (minTS, maxTS int64) {
+	first := true
+	for _, run := range task.Runs {
+		for _, sec := range run.Sections {
+			if first {
+				minTS, maxTS, first = sec.MinTimestamp, sec.MaxTimestamp, false
+				continue
+			}
+			if sec.MinTimestamp < minTS {
+				minTS = sec.MinTimestamp
+			}
+			if sec.MaxTimestamp > maxTS {
+				maxTS = sec.MaxTimestamp
+			}
 		}
 	}
-	return ids
+	return minTS, maxTS
 }
 
-// logTaskSectionIDs returns unique IDs for every section across [runs]. A log
-// SectionRef's identity is {ObjectPath, SectionIndex, labelTuple}. Components
-// are separated by \x00 (which cannot occur in object paths or label values) to
-// keep the encoding unambiguous. Callers may reuse the same [buf] across calls.
-func logTaskSectionIDs(runs []*compactionv2pb.RunRef, buf *bytes.Buffer) []string {
-	var ids []string
-	for _, r := range runs {
-		for _, s := range r.Sections {
-			buf.Reset()
-			buf.WriteString(s.ObjectPath)
-			buf.WriteByte(0)
-			buf.WriteString(strconv.FormatInt(s.SectionIndex, 10))
-			for _, v := range s.MinKey {
-				buf.WriteByte(0)
-				buf.WriteString(v)
+// taskUncompressedLogsSize sums UncompressedSize across every section in the
+// task. A section size of 0 means "unknown" (e.g. a legacy ToC row written
+// before sizes were recorded); a single unknown input poisons the whole total,
+// so the result is 0 unless every contributing section is known.
+func taskUncompressedLogsSize(task *compactionv2pb.TaskSpec) uint64 {
+	var total uint64
+	for _, run := range task.Runs {
+		for _, sec := range run.Sections {
+			if sec.UncompressedSize == 0 {
+				return 0
 			}
-			ids = append(ids, buf.String())
+			total += uint64(sec.UncompressedSize)
 		}
 	}
-	return ids
+	return total
 }
 
 // fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
@@ -459,62 +479,6 @@ func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.Tab
 		})
 	}
 	_ = g.Wait()
-}
-
-// makeTocEntries pairs each output path with the time bounds derived
-// from its task's source SectionRefs. tasks[i] is the TaskSpec that produced
-// outputs[i].
-//
-// Time bounds: min(MinTimestamp) / max(MaxTimestamp) across all SectionRefs
-// in the task. UncompressedLogsSize is the sum of UncompressedSize across all
-// sections in the task.
-//
-// A section size of 0 means "unknown" (e.g. a legacy ToC row written before
-// sizes were recorded). Summing an unknown into a known total would publish a
-// partial sum that looks exact, so a single unknown input poisons the whole
-// task's total: the result is 0 (unknown) unless every contributing section is
-// known.
-func makeTocEntries(
-	tasks []*compactionv2pb.TaskSpec,
-	outputs []string,
-) []metastore.TableOfContentsEntry {
-	entries := make([]metastore.TableOfContentsEntry, len(outputs))
-	for i, ts := range tasks {
-		minTS, maxTS := int64(0), int64(0)
-		var uncompressed uint64
-		sizeKnown := true
-		first := true
-		for _, run := range ts.Runs {
-			for _, sec := range run.Sections {
-				if first {
-					minTS = sec.MinTimestamp
-					maxTS = sec.MaxTimestamp
-					first = false
-				} else {
-					if sec.MinTimestamp < minTS {
-						minTS = sec.MinTimestamp
-					}
-					if sec.MaxTimestamp > maxTS {
-						maxTS = sec.MaxTimestamp
-					}
-				}
-				if sec.UncompressedSize == 0 {
-					sizeKnown = false
-				}
-				uncompressed += uint64(sec.UncompressedSize)
-			}
-		}
-		if !sizeKnown {
-			uncompressed = 0
-		}
-		entries[i] = metastore.TableOfContentsEntry{
-			Path:                 outputs[i],
-			StartTime:            time.Unix(0, minTS).UTC(),
-			EndTime:              time.Unix(0, maxTS).UTC(),
-			UncompressedLogsSize: uncompressed,
-		}
-	}
-	return entries
 }
 
 // phase is the current step of a tenant's flip-flop worker.
