@@ -54,11 +54,12 @@ type DedicatedInferenceVPCRequest struct {
 
 // DedicatedInferenceModelRequest represents a model deployment in a request.
 type DedicatedInferenceModelRequest struct {
-	ModelID        string                                  `json:"model_id,omitempty"`
-	ModelSlug      string                                  `json:"model_slug"`
-	ModelProvider  string                                  `json:"model_provider"`
-	WorkloadConfig *DedicatedInferenceWorkloadConfig       `json:"workload_config,omitempty"`
-	Accelerators   []*DedicatedInferenceAcceleratorRequest `json:"accelerators"`
+	ModelID         string                                  `json:"model_id,omitempty"`
+	ModelSlug       string                                  `json:"model_slug"`
+	ModelProvider   string                                  `json:"model_provider"`
+	ProviderModelID string                                  `json:"provider_model_id"`
+	WorkloadConfig  *DedicatedInferenceWorkloadConfig       `json:"workload_config,omitempty"`
+	Accelerators    []*DedicatedInferenceAcceleratorRequest `json:"accelerators"`
 }
 
 // DedicatedInferenceWorkloadConfig represents workload-specific configuration.
@@ -104,14 +105,15 @@ type DedicatedInferenceTokenCreateRequest struct {
 
 // DedicatedInferenceListItem represents a Dedicated Inference item in a list response.
 type DedicatedInferenceListItem struct {
-	ID        string                       `json:"id"`
-	Name      string                       `json:"name"`
-	Region    string                       `json:"region"`
-	Status    string                       `json:"status"`
-	VPCUUID   string                       `json:"vpc_uuid"`
-	Endpoints *DedicatedInferenceEndpoints `json:"endpoints,omitempty"`
-	CreatedAt time.Time                    `json:"created_at,omitempty"`
-	UpdatedAt time.Time                    `json:"updated_at,omitempty"`
+	ID              string                       `json:"id"`
+	Name            string                       `json:"name"`
+	Region          string                       `json:"region"`
+	Status          string                       `json:"status"`
+	VPCUUID         string                       `json:"vpc_uuid"`
+	ProviderModelID []string                     `json:"provider_model_id,omitempty"`
+	Endpoints       *DedicatedInferenceEndpoints `json:"endpoints,omitempty"`
+	CreatedAt       time.Time                    `json:"created_at,omitempty"`
+	UpdatedAt       time.Time                    `json:"updated_at,omitempty"`
 }
 
 // DedicatedInferenceAcceleratorInfo represents an accelerator in a list accelerators response.
@@ -167,10 +169,11 @@ type DedicatedInferenceVPCConfig struct {
 
 // DedicatedInferenceModelDeployment represents a model deployment in an API response.
 type DedicatedInferenceModelDeployment struct {
-	ModelID       string                           `json:"model_id"`
-	ModelSlug     string                           `json:"model_slug"`
-	ModelProvider string                           `json:"model_provider"`
-	Accelerators  []*DedicatedInferenceAccelerator `json:"accelerators"`
+	ModelID         string                           `json:"model_id"`
+	ModelSlug       string                           `json:"model_slug"`
+	ModelProvider   string                           `json:"model_provider"`
+	ProviderModelID string                           `json:"provider_model_id,omitempty"`
+	Accelerators    []*DedicatedInferenceAccelerator `json:"accelerators"`
 }
 
 // DedicatedInferenceAccelerator represents an accelerator in an API response.
@@ -182,11 +185,12 @@ type DedicatedInferenceAccelerator struct {
 	Scale           uint64 `json:"scale"`
 }
 
-// DedicatedInferenceToken represents an auth token returned on create.
+// DedicatedInferenceToken represents an auth token returned on create and list.
 type DedicatedInferenceToken struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Value     string    `json:"value,omitempty"`
+	IsManaged bool      `json:"is_managed"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

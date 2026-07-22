@@ -1,4 +1,4 @@
-// Copyright 2022 Princess B33f Heavy Industries / Dave Shanley
+// Copyright 2022-2026 Princess B33f Heavy Industries / Dave Shanley
 // SPDX-License-Identifier: MIT
 
 package base
@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"hash/maphash"
+	"sync"
 
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
@@ -35,6 +36,8 @@ type Info struct {
 	RootNode       *yaml.Node
 	index          *index.SpecIndex
 	context        context.Context
+	nodeStore      sync.Map
+	reference      low.Reference
 	*low.Reference
 	low.NodeMap
 }
@@ -62,14 +65,26 @@ func (i *Info) GetExtensions() *orderedmap.Map[low.KeyReference[string], low.Val
 // Build will extract out the Contact and Info objects from the supplied root node.
 func (i *Info) Build(ctx context.Context, keyNode, root *yaml.Node, idx *index.SpecIndex) error {
 	i.KeyNode = keyNode
+	i.reference = low.Reference{}
+	i.Reference = &i.reference
+	i.nodeStore = sync.Map{}
+	i.Nodes = &i.nodeStore
+	i.index = idx
+	i.context = ctx
+	if root == nil {
+		i.RootNode = nil
+		i.Extensions = nil
+		return nil
+	}
 	root = utils.NodeAlias(root)
 	i.RootNode = root
 	utils.CheckForMergeNodes(root)
-	i.Reference = new(low.Reference)
-	i.Nodes = low.ExtractNodes(ctx, root)
+	if len(root.Content) > 0 {
+		i.NodeMap.ExtractNodes(root, false)
+	} else {
+		i.AddNode(root.Line, root)
+	}
 	i.Extensions = low.ExtractExtensions(root)
-	i.index = idx
-	i.context = ctx
 
 	// extract contact
 	contact, _ := low.ExtractObject[*Contact](ctx, ContactLabel, root, idx)
