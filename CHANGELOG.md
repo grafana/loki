@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.7.4](https://github.com/grafana/loki/compare/v3.7.3...v3.7.4) (2026-07-22)
+
+
+### Bug Fixes
+
+* **ci:** Fix zizmor findings for operator-images in Loki 3.7 ([#22820](https://github.com/grafana/loki/issues/22820)) ([abc1186](https://github.com/grafana/loki/commit/abc11864e661555bfee967067691e27fe8ec43ec))
+* **ci:** Helm CI warning fix ([#22605](https://github.com/grafana/loki/issues/22605)) ([7389428](https://github.com/grafana/loki/commit/7389428ea0952bfa1b53b1ca9dc0ac88d6437b14))
+* **ci:** Re-enable docker plugin publishing ([#22818](https://github.com/grafana/loki/issues/22818)) ([28f44a8](https://github.com/grafana/loki/commit/28f44a829588de96c3af0f48644a6d9d3643efa6))
+* **compactor:** Fix delete request when using Thanos objstore client with filesystem backend [release-3.7.x] ([#22811](https://github.com/grafana/loki/issues/22811)) ([dd6fdb5](https://github.com/grafana/loki/commit/dd6fdb500a47f6a5b9015e06d2aac52eee384503))
+* **deps:** Update module charm.land/bubbletea/v2 to v2.0.7 (release-3.7.x) ([#22768](https://github.com/grafana/loki/issues/22768)) ([e11f935](https://github.com/grafana/loki/commit/e11f935ec029919d680c45309c1aa703cc7b2448))
+* **deps:** Update module charm.land/lipgloss/v2 to v2.0.4 (release-3.7.x) ([#22769](https://github.com/grafana/loki/issues/22769)) ([10213c2](https://github.com/grafana/loki/commit/10213c2a6651561b28409587cc49b872c1f65e59))
+* **deps:** Update module github.com/aws/aws-sdk-go-v2/credentials to v1.19.24 (release-3.7.x) ([#22776](https://github.com/grafana/loki/issues/22776)) ([3daf198](https://github.com/grafana/loki/commit/3daf19818e715fb671c0fb54b2e0a6f54346db67))
+* **deps:** Update module github.com/aws/smithy-go to v1.27.3 (release-3.7.x) ([#22795](https://github.com/grafana/loki/issues/22795)) ([1f6a191](https://github.com/grafana/loki/commit/1f6a19144b5109356dbe73122f9f9f48afe1177e))
+* **deps:** Update module github.com/baidubce/bce-sdk-go to v0.9.270 (release-3.7.x) ([#22783](https://github.com/grafana/loki/issues/22783)) ([103ccd8](https://github.com/grafana/loki/commit/103ccd87924cbf0946947cdc213e04bd66637f78))
+* **deps:** Update module github.com/coder/quartz to v0.3.1 (release-3.7.x) ([#22784](https://github.com/grafana/loki/issues/22784)) ([3509e31](https://github.com/grafana/loki/commit/3509e3166ef9b52c38ce6b7b10d098fe6ecaa771))
+* **deps:** Update module github.com/IBM/ibm-cos-sdk-go to v1.14.1 (release-3.7.x) ([#22785](https://github.com/grafana/loki/issues/22785)) ([d0abe72](https://github.com/grafana/loki/commit/d0abe727a5b77e6d8afa7087c6b93f92e723c363))
+* **deps:** Update module github.com/klauspost/compress to v1.18.6 (release-3.7.x) ([#22797](https://github.com/grafana/loki/issues/22797)) ([327da7c](https://github.com/grafana/loki/commit/327da7c077a234934c727b5405a4cb27f275374d))
+* **deps:** Update module github.com/pierrec/lz4/v4 to v4.1.27 (release-3.7.x) ([#22798](https://github.com/grafana/loki/issues/22798)) ([6b3297f](https://github.com/grafana/loki/commit/6b3297fd78aa991dd220fb8e47fb2b39a6946feb))
+* **deps:** Update module github.com/shirou/gopsutil/v4 to v4.26.5 (release-3.7.x) ([#22800](https://github.com/grafana/loki/issues/22800)) ([cb7f17d](https://github.com/grafana/loki/commit/cb7f17dcbc41c01ce7dc7ad4919a45339961ae91))
+* **security/CRITICAL/clients/cmd/fluentd/docker:** Update dependency fluentd to v1.19.3 [SECURITY] (release-3.7.x) ([#22693](https://github.com/grafana/loki/issues/22693)) ([6d8f1b5](https://github.com/grafana/loki/commit/6d8f1b57bbb5cc6dcb9173ad959f5e068691a8d2))
+* **security/HIGH/:** Bump Go to 1.26.5 to address CVE-2026-39822 and CVE-2026-42505 [SECURITY] ([#23393](https://github.com/grafana/loki/issues/23393)) ([b318f28](https://github.com/grafana/loki/commit/b318f2829f0ae2094ab3a1e90780450e9e4b03be))
+* **security/HIGH/:** Update module github.com/apache/thrift to v0.24.0 [SECURITY] (release-3.7.x) ([#22767](https://github.com/grafana/loki/issues/22767)) ([36eb5f7](https://github.com/grafana/loki/commit/36eb5f7d1849d4a260f135958e0d8ca0a71abe92))
+* **security/UNKNOWN/pkg/push:** Update module golang.org/x/net to v0.55.0 [SECURITY] (release-3.7.x) ([#22200](https://github.com/grafana/loki/issues/22200)) ([dd7a124](https://github.com/grafana/loki/commit/dd7a1243e6e1f87503753000b1d6a6c96c0fd109))
+* **security/UNKNOWN/:** Update module github.com/containerd/containerd/v2 to v2.0.10 [SECURITY] (release-3.7.x) ([#22478](https://github.com/grafana/loki/issues/22478)) ([6fa6165](https://github.com/grafana/loki/commit/6fa616585599ba4d3b66e3e4b9c56065915d5da4))
+* **storage:** Fix index filename issue with legacy S3 client and `chunk_delimiter` ([#23165](https://github.com/grafana/loki/issues/23165)) ([0eca83c](https://github.com/grafana/loki/commit/0eca83ca93a866efbe51a500b3b20748a823758c))
+
 ## [3.7.3](https://github.com/grafana/loki/compare/v3.7.3...v3.7.3) (2026-06-24)
 
 
