@@ -17,6 +17,7 @@ var mergeVariants = []struct {
 }{
 	{"sort", mergeChunkRefsSort},
 	{"heap", mergeChunkRefsHeap},
+	{"losertree", mergeChunkRefsLoserTree},
 }
 
 func TestMergeChunkRefs_Empty(t *testing.T) {

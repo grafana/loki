@@ -397,8 +397,122 @@ Success-criteria check (from the investigation):
 
 ### Phase 3 — loser-tree merge
 
-| K | N/file | overlap | ns/op | B/op | allocs/op | vs. baseline |
-| - | ------ | ------- | ----- | ---- | --------- | ------------ |
-|   |        |         |       |      |           |              |
+Hand-rolled — the vendored `github.com/bboreham/go-loser` and
+`github.com/grafana/dskit/loser` implementations both key on
+`cmp.Ordered` / `constraints.Ordered`, which excludes the struct-valued
+`logproto.ChunkRef`. Rather than shim it behind a fake ordered proxy
+(the four fields are 224 bits total, so no primitive can encode them),
+implemented from scratch following dskit's iterative init and
+comparison-first replay. ~100 lines.
+
+Same machine and `-benchtime=3x`. The `vs. baseline` column is
+`losertree ns/op ÷ sort ns/op` (lower = tree faster).
+
+| K  | N/file    | overlap | ns/op         | B/op            | allocs/op | vs. baseline |
+| -- | --------- | ------- | ------------- | --------------- | --------- | ------------ |
+| 1  | 1,000     | 0%      | 9,569         | 57,944          | 1         | 0.08x        |
+| 1  | 1,000     | 10%     | 11,972        | 57,944          | 1         | 0.13x        |
+| 1  | 1,000     | 50%     | 9,694         | 57,944          | 1         | 0.11x        |
+| 1  | 10,000    | 0%      | 291,181       | 2,589,872       | 10        | 0.26x        |
+| 1  | 10,000    | 10%     | 218,972       | 2,589,914       | 11        | 0.21x        |
+| 1  | 10,000    | 50%     | 237,722       | 2,589,872       | 10        | 0.24x        |
+| 1  | 100,000   | 0%      | 2,132,208     | 32,196,360      | 21        | 0.25x        |
+| 1  | 100,000   | 10%     | 2,113,931     | 32,198,218      | 23        | 0.25x        |
+| 1  | 100,000   | 50%     | 2,147,139     | 32,196,360      | 21        | 0.24x        |
+| 1  | 1,000,000 | 0%      | 16,921,653    | 313,157,389     | 31        | 0.11x        |
+| 1  | 1,000,000 | 10%     | 17,770,361    | 313,157,421     | 31        | 0.12x        |
+| 1  | 1,000,000 | 50%     | 16,945,347    | 313,157,384     | 31        | 0.11x        |
+| 2  | 1,000     | 0%      | 24,222        | 279,128         | 3         | 0.15x        |
+| 2  | 1,000     | 10%     | 33,569        | 279,128         | 3         | 0.22x        |
+| 2  | 1,000     | 50%     | 23,375        | 148,056         | 2         | 0.21x        |
+| 2  | 10,000    | 0%      | 610,681       | 5,867,309       | 14        | 0.32x        |
+| 2  | 10,000    | 10%     | 447,028       | 4,506,800       | 12        | 0.24x        |
+| 2  | 10,000    | 50%     | 350,903       | 3,433,685       | 11        | 0.20x        |
+| 2  | 100,000   | 0%      | 4,108,611     | 64,284,424      | 24        | 0.22x        |
+| 2  | 100,000   | 10%     | 4,562,361     | 64,284,424      | 24        | 0.24x        |
+| 2  | 100,000   | 50%     | 3,191,875     | 40,601,352      | 22        | 0.21x        |
+| 2  | 1,000,000 | 0%      | 36,703,125    | 613,631,752     | 34        | 0.10x        |
+| 2  | 1,000,000 | 10%     | 38,794,806    | 613,631,752     | 34        | 0.12x        |
+| 2  | 1,000,000 | 50%     | 32,653,792    | 490,473,224     | 33        | 0.13x        |
+| 4  | 1,000     | 0%      | 58,250        | 697,048         | 7         | 0.15x        |
+| 4  | 1,000     | 10%     | 52,070        | 697,048         | 7         | 0.18x        |
+| 4  | 1,000     | 50%     | 54,944        | 459,480         | 6         | 0.29x        |
+| 4  | 10,000    | 0%      | 1,236,014     | 12,445,576      | 19        | 0.32x        |
+| 4  | 10,000    | 10%     | 1,074,861     | 9,733,424       | 17        | 0.30x        |
+| 4  | 10,000    | 50%     | 820,014       | 7,579,002       | 17        | 0.35x        |
+| 4  | 100,000   | 0%      | 9,218,222     | 127,149,997     | 29        | 0.20x        |
+| 4  | 100,000   | 10%     | 9,709,653     | 127,149,997     | 29        | 0.22x        |
+| 4  | 100,000   | 50%     | 7,189,514     | 80,758,664      | 27        | 0.22x        |
+| 4  | 1,000,000 | 0%      | 98,237,986    | 1,200,646,024   | 39        | 0.13x        |
+| 4  | 1,000,000 | 10%     | 73,359,847    | 1,200,646,024   | 39        | 0.10x        |
+| 4  | 1,000,000 | 50%     | 66,133,694    | 767,592,328     | 37        | 0.13x        |
+| 8  | 1,000     | 0%      | 251,417       | 1,926,640       | 12        | 0.27x        |
+| 8  | 1,000     | 10%     | 302,875       | 1,926,040       | 11        | 0.37x        |
+| 8  | 1,000     | 50%     | 122,528       | 1,008,536       | 9         | 0.23x        |
+| 8  | 10,000    | 0%      | 2,201,472     | 25,487,469      | 23        | 0.29x        |
+| 8  | 10,000    | 10%     | 1,827,181     | 20,129,864      | 22        | 0.25x        |
+| 8  | 10,000    | 50%     | 1,476,792     | 12,445,768      | 20        | 0.32x        |
+| 8  | 100,000   | 0%      | 19,981,903    | 250,128,493     | 33        | 0.19x        |
+| 8  | 100,000   | 10%     | 19,719,069    | 250,128,456     | 33        | 0.19x        |
+| 8  | 100,000   | 50%     | 14,401,028    | 127,150,152     | 30        | 0.23x        |
+| 16 | 1,000     | 0%      | 452,556       | 4,507,440       | 15        | 0.25x        |
+| 16 | 1,000     | 10%     | 389,430       | 3,434,288       | 14        | 0.27x        |
+| 16 | 1,000     | 50%     | 360,514       | 1,926,960       | 12        | 0.38x        |
+| 16 | 10,000    | 0%      | 4,630,000     | 51,120,520      | 26        | 0.29x        |
+| 16 | 10,000    | 10%     | 3,980,430     | 40,601,992      | 25        | 0.27x        |
+| 16 | 10,000    | 50%     | 4,048,111     | 25,487,752      | 23        | 0.46x        |
+| 16 | 100,000   | 0%      | 39,502,666    | 490,473,864     | 36        | 0.16x        |
+| 16 | 100,000   | 10%     | 41,204,917    | 490,473,864     | 36        | 0.18x        |
+| 16 | 100,000   | 50%     | 39,323,569    | 250,128,776     | 33        | 0.29x        |
+
+**Peak memory (K=16, N=1M, overlap=10%, `BenchmarkMergeChunkRefsLoserTreePeakMem`):**
+
+| metric                        | baseline | heap   | losertree | tree vs. heap |
+| ----------------------------- | -------- | ------ | --------- | ------------- |
+| wall-clock (single merge)     | 3.88 s   | 0.87 s | 0.98 s    | 1.13x         |
+| heap alloc delta (live)       | 2,378 MB | 2,584  | 1,576     | 0.61x         |
+| total alloc delta (churn)     | 7,994 MB | 5,229  | 5,229     | 1.00x         |
+| Sys delta                     | 4,039 MB | 3,155  | 3,151     | 1.00x         |
+| allocs                        | 88,592   | 160    | 152       | 0.95x         |
+
+Head-to-head against the heap:
+
+- Wall-clock differences across the sweep are noise. Roughly half the
+  cells favour the loser tree (K=4/N=1M/o=10% is the biggest gap,
+  ~7%), the other half favour the heap (K=16/N=100k is the biggest
+  gap in the other direction, ~15%). At the 3-iteration `-benchtime`
+  used here, run-to-run variance dominates that signal.
+- Live-heap peak on the pathological cell is meaningfully lower (~1GB
+  less resident at the end of the merge), likely because the tree's
+  fixed-size backing arrays avoid the amortised regrowth that
+  `container/heap` does. Total allocation and Sys delta are
+  essentially identical.
+- Allocation count is a couple lower per merge — irrelevant.
 
 ### Recommendation
+
+**Ship the binary-heap merge (`mergeChunkRefsHeap`) and close the
+`loser-tree or some other heap?` TODO.**
+
+- The heap crushes the baseline everywhere it matters: 4–9x faster CPU
+  at K∈{4..16}, N∈{10k..1M}, ~10x faster at the K=1 fast path, and
+  drops allocation count by ~3 orders of magnitude.
+- Against the loser tree, the two are within noise on CPU. The tree
+  has a modest live-heap advantage on the biggest cell but at the
+  cost of ~100 lines of custom, unfamiliar-in-this-codebase data
+  structure, and a padding-to-power-of-two wart that's easy to get
+  wrong on maintenance. The heap uses stdlib `container/heap` and is
+  boring, which is the more valuable property.
+- Both variants safely defer the `ChunkRefsPool.Put` calls until after
+  the merge completes, satisfying the "cursors into all inputs
+  simultaneously" correctness note from the investigation.
+
+Concrete next step: point the `GetChunkRefs` merge closure at
+`mergeChunkRefsHeap`, keep `mergeChunkRefsSort` and
+`mergeChunkRefsLoserTree` around as unexported reference impls for a
+release or two so any A/B testing or bisect can flip between them
+without a whole file resurrecting, then delete them if nothing has
+pulled them.
+
+`MultiIndex.Series` was intentionally left alone (its dedup is by
+fingerprint only and no caller sorts its output).

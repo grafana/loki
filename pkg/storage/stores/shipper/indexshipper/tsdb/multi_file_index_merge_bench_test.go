@@ -158,6 +158,12 @@ func BenchmarkMergeChunkRefsHeap(b *testing.B) {
 	})
 }
 
+func BenchmarkMergeChunkRefsLoserTree(b *testing.B) {
+	runMergeBench(b, func(xs [][]logproto.ChunkRefWithSizingInfo) []logproto.ChunkRefWithSizingInfo {
+		return mergeChunkRefsLoserTree(nil, xs)
+	})
+}
+
 // BenchmarkMergeChunkRefsSortPeakMem materialises the largest cell once and
 // records peak resident memory delta using runtime.ReadMemStats before and
 // after. This is the memory equivalent of the ns/op sweep above — it is not
@@ -169,6 +175,10 @@ func BenchmarkMergeChunkRefsSortPeakMem(b *testing.B) {
 
 func BenchmarkMergeChunkRefsHeapPeakMem(b *testing.B) {
 	benchPeakMem(b, mergeChunkRefsHeap)
+}
+
+func BenchmarkMergeChunkRefsLoserTreePeakMem(b *testing.B) {
+	benchPeakMem(b, mergeChunkRefsLoserTree)
 }
 
 func benchPeakMem(
