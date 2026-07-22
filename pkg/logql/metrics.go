@@ -10,6 +10,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -70,6 +71,11 @@ var (
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB 30GB, 40GB 50GB 60GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9, 30 * 1e9, 40 * 1e9, 50 * 1e9, 60 * 1e9},
 	}, []string{"status_code", "type", "range", "latency_type", "sharded"})
+	bytesProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_bytes_processed_total",
+		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
+	}, []string{"tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
@@ -308,6 +314,16 @@ func RecordRangeAndInstantQueryMetrics(
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	// Record per-tenant query bytes. For federated multi-tenant queries the aggregated
+	// byte total is divided evenly across the tenants in the request, since the stats are
+	// not broken down per tenant. This keeps the sum across tenants equal to the actual
+	// bytes processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	if tenantIDs, err := tenant.TenantIDs(ctx); err == nil && len(tenantIDs) > 0 {
+		bytesPerTenant := float64(stats.Summary.TotalBytesProcessed) / float64(len(tenantIDs))
+		for _, tenantID := range tenantIDs {
+			bytesProcessedTotal.WithLabelValues(tenantID).Add(bytesPerTenant)
+		}
+	}
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
 	chunkDownloadLatency.WithLabelValues(status, queryType, rt).
