@@ -129,7 +129,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/thanos-io/objstore v0.0.0-20260615134008-fb6fd3a5170a
 	github.com/tjhop/slog-gokit v0.2.0
-	github.com/twmb/franz-go v1.21.3
+	github.com/twmb/franz-go v1.21.5
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
