@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -105,7 +106,7 @@ func NewKafka(
 		consumerGroup = readerCfg.ConsumerGroup
 	}
 	readerCfg.ConsumerGroup = consumerGroup
-	readerClient, err := client.NewReaderClient("loki.dataobj_consumer", readerCfg, logger, registerer)
+	readerClient, err := client.NewReaderClient("loki.pattern_ingester_consumer", readerCfg, logger, registerer, kgo.ConsumerGroup(readerCfg.ConsumerGroup), kgo.InstanceID(cfg.LifecyclerConfig.ID), kgo.Balancers(kgo.CooperativeStickyBalancer(), kgo.RoundRobinBalancer()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client for data topic: %w", err)
 	}
@@ -131,6 +132,9 @@ func NewKafka(
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract partition ID from lifecycler ID %v: %w", cfg.LifecyclerConfig.ID, err)
+	}
 
 	partitionRingKV := cfg.KafkaPartitionRingConfig.KVStore.Mock
 	if partitionRingKV == nil {
@@ -147,9 +151,6 @@ func NewKafka(
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
-	if err != nil {
-		return nil, err
-	}
 	i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
 
 	return i, nil
@@ -268,16 +269,13 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 				level.Info(i.logger).Log("msg", "Nil record passed to pattern ingester, skipping")
 				continue
 			}
-			if rec.Partition != i.ingestPartitionID {
-				continue
-			}
-			// tenant := string(rec.Key)
 			stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 			if err != nil {
 				// This is an unrecoverable error and no amount of retries will fix it.
 				return fmt.Errorf("failed to decode stream: %w", err)
 			}
-			_, err = i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+			ctx2 := user.InjectOrgID(ctx, string(rec.Key))
+			_, err = i.Push(ctx2, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
 			if err != nil {
 				return fmt.Errorf("failed to push stream: %w", err)
 			} else {
@@ -294,13 +292,13 @@ func (i *KafkaIngester) sender(ctx context.Context) error {
 					if !ok {
 						break drain
 					}
-					// tenant := string(rec.Key)
 					stream, err := i.decoder.DecodeWithoutLabels(rec.Value)
 					if err != nil {
-						level.Error(i.logger).Log("msg", "failed to process record during flush drain", "err", err)
+						level.Error(i.logger).Log("msg", "failed to decode stream during flush drain", "err", err)
 						continue
 					}
-					_, err = i.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
+					ctx2 := user.InjectOrgID(ctx, string(rec.Key))
+					_, err = i.Push(ctx2, &logproto.PushRequest{Streams: []logproto.Stream{stream}})
 					if err != nil {
 						return fmt.Errorf("failed to push stream: %w", err)
 					} else {
