@@ -200,11 +200,23 @@ type logSource struct {
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
-// returns the tenant's logs sections plus its localStreamID->stream map. Objects are deduplicated by path
+// returns, per object, only the logs sections the task was assigned (by
+// SectionIndex) plus the tenant's localStreamID->stream map. Objects are
+// deduplicated by path; the per-object set of wanted SectionIndex values is the
+// union across all runs that reference the object.
+//
+// SectionIndex is the section's position within obj.Sections().Filter(logs.CheckSection)
+// recorded at index-build time (pkg/dataobj/index/calculate.go). Because source
+// objects are content-addressed and immutable, that enumeration is stable, so the
+// executor selects the same sections the planner partitioned. Selecting only the
+// assigned sections is what makes v2.Plan's split actually parallelize: without
+// it every task re-merges the whole object, duplicating compute and ToC entries
+// (grafana/loki-private#2686).
 func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge) ([]*logSource, error) {
-	// Deduplicate object paths across all runs
-	seen := make(map[string]struct{})
+	// Deduplicate object paths across all runs, and union the wanted SectionIndex
+	// values per object.
 	var paths []string
+	wantedByPath := make(map[string]map[int64]struct{})
 	for _, run := range node.Runs {
 		if run == nil {
 			continue
@@ -213,16 +225,18 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			if sec == nil {
 				continue
 			}
-			if _, ok := seen[sec.ObjectPath]; ok {
-				continue
+			wanted, ok := wantedByPath[sec.ObjectPath]
+			if !ok {
+				wanted = make(map[int64]struct{})
+				wantedByPath[sec.ObjectPath] = wanted
+				paths = append(paths, sec.ObjectPath)
 			}
-			seen[sec.ObjectPath] = struct{}{}
-			paths = append(paths, sec.ObjectPath)
+			wanted[sec.SectionIndex] = struct{}{}
 		}
 	}
 	srcBucket := c.dataObjectBucket()
 
-	// Gather log and streams sections
+	// Gather the assigned logs sections and the tenant's streams section.
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
 		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
@@ -230,24 +244,35 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
 
+		wanted := wantedByPath[path]
 		var (
 			logsSections   []*dataobj.Section
 			streamSections []*dataobj.Section
+			found          = make(map[int64]struct{}, len(wanted))
 		)
-		for _, sec := range obj.Sections() {
-			if sec.Tenant != node.Tenant {
+		// Enumerate logs sections in the same order the index recorded them, and
+		// keep only the ones this task was assigned. Fail loud on drift: a selected
+		// section owned by another tenant means the object no longer matches the
+		// index it was planned from.
+		for idx, sec := range obj.Sections().Filter(logs.CheckSection) {
+			if _, want := wanted[int64(idx)]; !want {
 				continue
 			}
-			switch {
-			case logs.CheckSection(sec):
-				logsSections = append(logsSections, sec)
-			case streams.CheckSection(sec):
-				streamSections = append(streamSections, sec)
+			if sec.Tenant != node.Tenant {
+				return nil, fmt.Errorf("object %q logs section %d belongs to tenant %q, want %q (index/object drift)", path, idx, sec.Tenant, node.Tenant)
+			}
+			logsSections = append(logsSections, sec)
+			found[int64(idx)] = struct{}{}
+		}
+		for idx := range wanted {
+			if _, ok := found[idx]; !ok {
+				return nil, fmt.Errorf("object %q is missing wanted logs section index %d (index/object drift)", path, idx)
 			}
 		}
-
-		if len(logsSections) == 0 {
-			continue
+		for _, sec := range obj.Sections() {
+			if sec.Tenant == node.Tenant && streams.CheckSection(sec) {
+				streamSections = append(streamSections, sec)
+			}
 		}
 
 		if len(streamSections) == 0 {
