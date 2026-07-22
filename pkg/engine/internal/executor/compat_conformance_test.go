@@ -37,10 +37,6 @@ type compatConformanceRow struct {
 	metadata map[string]string
 	lines    []string // one entry per parser stage (at least one, even with no stages)
 	want     map[string]string
-	// v2Want overrides want for the v2 engine on rows where v1's outcome
-	// depends on information the columnar model does not have (see the row's
-	// comment). Nil means v2 must match want.
-	v2Want map[string]string
 }
 
 type compatConformanceCase struct {
@@ -140,19 +136,14 @@ var compatConformanceCases = []compatConformanceCase{
 	},
 	{
 		// F1: line contains both foo and a literal foo_extracted while label foo
-		// collides. Both parsed keys end up targeting the name foo_extracted; in
-		// v1 the winner is whichever key comes first in the line (first-writer-
-		// wins per final name). Key order within a line is not representable in
-		// the columnar model, so v2 deterministically keeps the value that
-		// already occupies the foo_extracted column (the literal key), matching
-		// v1 only when the literal key comes first — hence the v2Want override
-		// on F1a.
+		// collides. Both parsed keys end up targeting the name foo_extracted;
+		// the literal key wins regardless of key order in the line (JSON does
+		// not define key order, so the result must not depend on it).
 		name:   "F1_literal_extracted_with_collision",
 		stages: []types.VariadicOp{types.VariadicOpParseJSON},
 		rows: []compatConformanceRow{
 			{name: "F1a_foo_first", labels: map[string]string{"foo": "l"}, lines: []string{`{"foo":"p","foo_extracted":"lit"}`},
-				want:   map[string]string{"foo": "l", "foo_extracted": "p"},
-				v2Want: map[string]string{"foo": "l", "foo_extracted": "lit"}},
+				want: map[string]string{"foo": "l", "foo_extracted": "lit"}},
 			{name: "F1b_literal_first", labels: map[string]string{"foo": "l"}, lines: []string{`{"foo_extracted":"lit","foo":"p"}`},
 				want: map[string]string{"foo": "l", "foo_extracted": "lit"}},
 		},
@@ -494,11 +485,7 @@ func TestCompatConformanceV2(t *testing.T) {
 			require.Len(t, got, len(tc.rows))
 			for i, row := range tc.rows {
 				t.Run(row.name, func(t *testing.T) {
-					want := row.want
-					if row.v2Want != nil {
-						want = row.v2Want
-					}
-					require.Equal(t, want, got[i])
+					require.Equal(t, row.want, got[i])
 				})
 			}
 		})
