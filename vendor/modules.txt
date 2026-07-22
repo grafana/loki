@@ -994,7 +994,7 @@ github.com/grafana/loki/pkg/push
 # github.com/grafana/otel-profiling-go v0.6.0
 ## explicit; go 1.25.0
 github.com/grafana/otel-profiling-go
-# github.com/grafana/pyroscope-go/godeltaprof v0.1.11
+# github.com/grafana/pyroscope-go/godeltaprof v0.1.12
 ## explicit; go 1.25.0
 github.com/grafana/pyroscope-go/godeltaprof
 github.com/grafana/pyroscope-go/godeltaprof/http/pprof
