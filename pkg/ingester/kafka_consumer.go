@@ -25,7 +25,6 @@ type consumerMetrics struct {
 	pushLatency         prometheus.Histogram
 	consumeWorkersCount prometheus.Gauge
 	batchSize           prometheus.Histogram
-	workerQueueDepth    prometheus.Gauge
 }
 
 // newConsumerMetrics initializes and returns a new consumerMetrics instance
@@ -54,10 +53,6 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			Help:                        "The size of batches being processed",
 			NativeHistogramBucketFactor: 1.1,
 		}),
-		workerQueueDepth: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "loki_ingester_partition_worker_queue_depth",
-			Help: "Current depth of worker queue",
-		}),
 	}
 }
 
@@ -77,9 +72,7 @@ func NewKafkaConsumerFactory(pusher logproto.PusherServer, reg prometheus.Regist
 			metrics:            metrics,
 			committer:          committer,
 			maxConsumerWorkers: maxConsumerWorkers,
-			workerPool:         make(chan struct{}, maxConsumerWorkers),
-			workChan:           make(chan recordWithIndex, maxConsumerWorkers*2), // Buffer to reduce contention
-			successBuffer:      make([]*int64, 0, maxSuccessBuffer),              // Pre-allocate buffer
+			successBuffer:      make([]*int64, 0, maxSuccessBuffer),
 		}, nil
 	}
 }
@@ -91,12 +84,7 @@ type kafkaConsumer struct {
 	committer          partition.Committer
 	maxConsumerWorkers int
 	metrics            *consumerMetrics
-
-	// Worker pool management
-	workerPool    chan struct{}
-	workChan      chan recordWithIndex
-	successBuffer []*int64
-	poolMutex     sync.Mutex
+	successBuffer      []*int64
 }
 
 type recordWithIndex struct {
@@ -108,14 +96,8 @@ func (kc *kafkaConsumer) Start(ctx context.Context, recordsCh <-chan []partition
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	// Pre-fill worker pool
-	for i := 0; i < kc.maxConsumerWorkers; i++ {
-		kc.workerPool <- struct{}{}
-	}
-
 	go func() {
 		defer wg.Done()
-		defer close(kc.workChan)
 
 		for {
 			select {
@@ -148,6 +130,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		minOffset    = int64(math.MaxInt64)
 		maxOffset    = int64(0)
 		consumeStart = time.Now()
+		limitWorkers = kc.maxConsumerWorkers
 		wg           sync.WaitGroup
 	)
 
@@ -159,8 +142,6 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 	level.Debug(kc.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset, "batch_size", len(records))
 
-	// Reuse or resize success buffer
-	kc.poolMutex.Lock()
 	if cap(kc.successBuffer) < len(records) {
 		kc.successBuffer = make([]*int64, len(records))
 	} else {
@@ -169,37 +150,26 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 			kc.successBuffer[i] = nil
 		}
 	}
-	kc.poolMutex.Unlock()
 
-	kc.metrics.workerQueueDepth.Set(float64(len(kc.workChan)))
+	numWorkers := min(limitWorkers, len(records))
+	workChan := make(chan recordWithIndex, numWorkers)
 
-	// Distribute work to available workers
-	workersLaunched := 0
-	for i := range records {
-		select {
-		case <-ctx.Done():
-			level.Info(kc.logger).Log("msg", "context canceled during work distribution")
-			return
-		case kc.workChan <- recordWithIndex{record: records[i], index: i}:
-			// Try to acquire worker from pool
-			select {
-			case <-kc.workerPool:
-				wg.Add(1)
-				workersLaunched++
-				go kc.worker(ctx, &wg)
-			default:
-				// No available workers, work will be picked up when workers free up
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for recordWithIndex := range workChan {
+				kc.processRecord(ctx, recordWithIndex)
 			}
-		}
+		}()
 	}
 
-	// Wait for all work to complete
+	for i := range records {
+		workChan <- recordWithIndex{record: records[i], index: i}
+	}
+	close(workChan)
+
 	wg.Wait()
-
-	// Return workers to pool
-	for i := 0; i < workersLaunched; i++ {
-		kc.workerPool <- struct{}{}
-	}
 
 	// Find the highest offset before a gap, and commit that.
 	var highestOffset int64
@@ -209,35 +179,12 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		}
 		highestOffset = *offset
 	}
-	if highestOffset > 0 {
+	if highestOffset >= 0 {
 		kc.committer.EnqueueOffset(highestOffset)
 	}
 
 	kc.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 	kc.metrics.currentOffset.Set(float64(maxOffset))
-}
-
-func (kc *kafkaConsumer) worker(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-	defer func() {
-		// Return worker token to pool when done
-		kc.workerPool <- struct{}{}
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case recordWithIndex, ok := <-kc.workChan:
-			if !ok {
-				return
-			}
-			kc.processRecord(ctx, recordWithIndex)
-		default:
-			// No more work, exit
-			return
-		}
-	}
 }
 
 func (kc *kafkaConsumer) processRecord(ctx context.Context, rwi recordWithIndex) {
@@ -309,19 +256,4 @@ func (kc *kafkaConsumer) retryWithBackoff(ctx context.Context, fn func(attempts 
 
 func canRetry(err error) bool {
 	return errors.Is(err, ErrReadOnly)
-}
-
-// Helper functions for min/max (already present in Go 1.21+)
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
