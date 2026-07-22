@@ -2543,5 +2543,5 @@ zombiezen.com/go/sqlite/sqlitex
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20260515134459-1798cf41aca7
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 # github.com/grafana/loki/pkg/push => ./pkg/push
-# github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.5.0
+# github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.6.0
 # github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
