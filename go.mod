@@ -303,7 +303,7 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.53.0 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
-	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v6 v6.4.2 // indirect
 )
 
 require (
