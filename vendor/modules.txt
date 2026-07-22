@@ -1370,8 +1370,8 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25
-## explicit; go 1.21
+# github.com/planetscale/vtprotobuf v0.6.1-0.20260702190614-8ae5a48058df
+## explicit; go 1.26.4
 github.com/planetscale/vtprotobuf/protohelpers
 github.com/planetscale/vtprotobuf/types/known/anypb
 github.com/planetscale/vtprotobuf/types/known/durationpb
