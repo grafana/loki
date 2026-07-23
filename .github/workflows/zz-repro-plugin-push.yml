@@ -14,6 +14,7 @@ jobs:
     runs-on: "ubuntu-x64"
     env:
       DEV_PREFIX: "us-docker.pkg.dev/grafanalabs-dev/docker-loki-dev"
+      REPO_PATH: "grafanalabs-dev/docker-loki-dev/plugin-auth-repro"
     steps:
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
@@ -23,12 +24,6 @@ jobs:
       uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
       with:
         registry: "us-docker.pkg.dev"
-    - name: "show docker + credential state"
-      run: |
-        docker version
-        echo "--- ~/.docker/config.json ---"
-        cat "${HOME}/.docker/config.json" || true
-        command -v docker-credential-gcloud || echo "docker-credential-gcloud NOT on PATH"
     - name: "build and create minimal plugin"
       run: |
         set -euxo pipefail
@@ -48,17 +43,9 @@ jobs:
       run: |
         set -euxo pipefail
         docker plugin push "${PLUGIN_REF}"
-    - name: "report repro outcome"
-      env:
-        REPRO_OUTCOME: "${{ steps.repro.outcome }}"
-      run: |
-        echo "repro step outcome: ${REPRO_OUTCOME}"
-        if [ "${REPRO_OUTCOME}" = "failure" ]; then
-          echo "REPRODUCED: credential-helper-only 'docker plugin push' failed (matches the 3.7.4 release)."
-        else
-          echo "NOT reproduced: credential-helper-only 'docker plugin push' succeeded."
-        fi
-    - name: "FIX: plugin push via static auth in isolated DOCKER_CONFIG (expect success)"
+    - name: "candidate FIX: plugin push via static auth in isolated DOCKER_CONFIG"
+      id: "fix"
+      continue-on-error: true
       run: |
         set -euxo pipefail
         DOCKER_CONFIG="$(mktemp -d)"
@@ -66,3 +53,26 @@ jobs:
         gcloud auth print-access-token \
           | docker login -u oauth2accesstoken --password-stdin us-docker.pkg.dev
         docker plugin push "${PLUGIN_REF}"
+    - name: "DIAGNOSE: authenticated token-endpoint probe (repository vs plugin scope)"
+      run: |
+        set -uo pipefail
+        token="$(gcloud auth print-access-token)"
+        basic="$(printf 'oauth2accesstoken:%s' "${token}" | base64 -w0)"
+        probe() {
+          local scope="$1" desc="$2"
+          local code
+          code="$(curl -s -o /tmp/tok.out -w '%{http_code}' \
+            -H "Authorization: Basic ${basic}" -G \
+            --data-urlencode "service=us-docker.pkg.dev" \
+            --data-urlencode "scope=${scope}" \
+            "https://us-docker.pkg.dev/v2/token")"
+          echo "[HTTP ${code}] ${desc}  (scope=${scope})"
+        }
+        echo "== authenticated (valid GCP token) =="
+        probe "repository:${REPO_PATH}:pull,push"          "plain repository scope"
+        probe "repository(plugin):${REPO_PATH}:pull,push"  "PLUGIN scope"
+        echo "== does a token even come back for the plain scope? =="
+        curl -s -H "Authorization: Basic ${basic}" -G \
+          --data-urlencode "service=us-docker.pkg.dev" \
+          --data-urlencode "scope=repository:${REPO_PATH}:pull,push" \
+          "https://us-docker.pkg.dev/v2/token" | head -c 120; echo
