@@ -44,17 +44,15 @@ func ClearInlineRenderingTracker() {
 	inlineRenderingTracker.Clear()
 }
 
-// bundlingModeCount tracks the number of active bundling operations.
-// Uses reference counting to support concurrent BundleDocument calls safely.
-//
-// NOTE: This is process-wide. Any RenderInline() call made while bundling is active
-// (count > 0) will also preserve local component refs. This is intentional - the bundler
-// uses RenderInline internally, and concurrent bundles must all see consistent behavior.
-// Direct RenderInline() calls outside of bundling are unaffected when no bundles are running.
+// bundlingModeCount is retained for source compatibility with callers that use
+// SetBundlingMode and IsBundlingMode directly. New legacy render contexts
+// snapshot this state, while bundle policy is explicitly per operation.
 var bundlingModeCount atomic.Int32
 
 // SetBundlingMode increments or decrements the bundling mode reference count.
 // Bundling mode is active when count > 0, supporting concurrent bundle operations.
+//
+// Deprecated: configure InlineRenderContext.PreserveLocalComponentRefs instead.
 func SetBundlingMode(enabled bool) {
 	if enabled {
 		bundlingModeCount.Add(1)
@@ -64,6 +62,8 @@ func SetBundlingMode(enabled bool) {
 }
 
 // IsBundlingMode returns whether any bundling operation is active.
+//
+// Deprecated: bundle rendering no longer consults process-global bundling mode.
 func IsBundlingMode() bool {
 	return bundlingModeCount.Load() > 0
 }
@@ -86,14 +86,31 @@ const (
 // Each render call-chain should use its own context to prevent false positive
 // cycle detection when multiple goroutines render the same schemas concurrently.
 type InlineRenderContext struct {
-	tracker       sync.Map
-	Mode          RenderingMode
-	preservedRefs sync.Map // tracks refs that should be preserved in this render
+	tracker sync.Map
+	Mode    RenderingMode
+	// PreserveLocalComponentRefs keeps root-local component references intact
+	// while external references continue through inline rendering.
+	PreserveLocalComponentRefs bool
+	// RootIndex identifies the authored root document for local-reference policy.
+	RootIndex *index.SpecIndex
+	// StrictCircularReferenceIdentity requires circular metadata to match the
+	// prepared canonical target instead of a bare authored reference string.
+	StrictCircularReferenceIdentity bool
+	preservedRefs                   sync.Map // scoped reference key -> struct{}
+	referenceRewrites               sync.Map // scoped reference key -> root component ref
+	mappingRewrites                 sync.Map // discriminator mapping value node -> root component ref
+	referenceNodeSources            sync.Map // authored reference node -> source index
+	referenceNodeTargets            sync.Map // authored reference node -> canonical target
+	preservedReferenceNodes         sync.Map // authored reference node -> struct{}
+	referenceNodeRewrites           sync.Map // authored reference node -> root component ref
 }
 
 // NewInlineRenderContext creates a new isolated rendering context with default bundle mode.
 func NewInlineRenderContext() *InlineRenderContext {
-	return &InlineRenderContext{Mode: RenderingModeBundle}
+	return &InlineRenderContext{
+		Mode:                       RenderingModeBundle,
+		PreserveLocalComponentRefs: IsBundlingMode(),
+	}
 }
 
 // NewInlineRenderContextForValidation creates a context that fully inlines
@@ -101,6 +118,26 @@ func NewInlineRenderContext() *InlineRenderContext {
 // schemas for JSON Schema validation.
 func NewInlineRenderContextForValidation() *InlineRenderContext {
 	return &InlineRenderContext{Mode: RenderingModeValidation}
+}
+
+// ScopedReferenceKey identifies an authored reference in the document where it
+// appears. The source qualification prevents equal local fragments in different
+// external documents from colliding during one render.
+func ScopedReferenceKey(source *index.SpecIndex, ref string) string {
+	if source == nil {
+		return scopedReferenceKey("", ref)
+	}
+	return scopedReferenceKey(source.GetSpecAbsolutePath(), ref)
+}
+
+func scopedReferenceKey(sourcePath, ref string) string {
+	if ref == "" {
+		return ""
+	}
+	if sourcePath == "" {
+		return "\x00" + ref
+	}
+	return sourcePath + "\x00" + ref
 }
 
 // StartRendering marks a key as being rendered. Returns true if already rendering (cycle detected).
@@ -122,19 +159,175 @@ func (ctx *InlineRenderContext) StopRendering(key string) {
 
 // MarkRefAsPreserved marks a reference as one that should be preserved (not inlined) in this render.
 // used by discriminator handling to track which refs need preservation without mutating shared state.
+//
+// Deprecated: use MarkScopedRefAsPreserved to qualify the authored reference by source document.
 func (ctx *InlineRenderContext) MarkRefAsPreserved(ref string) {
-	if ref != "" {
-		ctx.preservedRefs.Store(ref, true)
-	}
+	ctx.MarkScopedRefAsPreserved(nil, ref)
 }
 
 // ShouldPreserveRef returns true if the given reference was marked for preservation.
+//
+// Deprecated: use ShouldPreserveScopedRef to qualify the authored reference by source document.
 func (ctx *InlineRenderContext) ShouldPreserveRef(ref string) bool {
-	if ref == "" {
+	return ctx.ShouldPreserveScopedRef(nil, ref)
+}
+
+// MarkScopedRefAsPreserved marks an authored reference in a specific source
+// document as preserved for this render operation.
+func (ctx *InlineRenderContext) MarkScopedRefAsPreserved(source *index.SpecIndex, ref string) {
+	ctx.markRefAsPreserved(scopedReferencePath(source), ref)
+}
+
+func scopedReferencePath(source *index.SpecIndex) string {
+	if source == nil {
+		return ""
+	}
+	return source.GetSpecAbsolutePath()
+}
+
+func (ctx *InlineRenderContext) markRefAsPreserved(sourcePath, ref string) {
+	if key := scopedReferenceKey(sourcePath, ref); key != "" {
+		ctx.preservedRefs.Store(key, struct{}{})
+	}
+}
+
+// ShouldPreserveScopedRef reports whether the source-qualified authored
+// reference must remain a reference during this render operation.
+func (ctx *InlineRenderContext) ShouldPreserveScopedRef(source *index.SpecIndex, ref string) bool {
+	return ctx.shouldPreserveRef(scopedReferencePath(source), ref)
+}
+
+func (ctx *InlineRenderContext) shouldPreserveRef(sourcePath, ref string) bool {
+	key := scopedReferenceKey(sourcePath, ref)
+	if key == "" {
 		return false
 	}
-	_, ok := ctx.preservedRefs.Load(ref)
+	_, ok := ctx.preservedRefs.Load(key)
 	return ok
+}
+
+// SetReferenceRewrite maps a source-qualified authored reference to a
+// self-contained root component reference for this render operation.
+func (ctx *InlineRenderContext) SetReferenceRewrite(source *index.SpecIndex, ref, replacement string) {
+	ctx.setReferenceRewrite(scopedReferencePath(source), ref, replacement)
+}
+
+func (ctx *InlineRenderContext) setReferenceRewrite(sourcePath, ref, replacement string) {
+	if key := scopedReferenceKey(sourcePath, ref); key != "" && replacement != "" {
+		ctx.referenceRewrites.Store(key, replacement)
+	}
+}
+
+// ReferenceRewrite returns the root component reference allocated for a
+// source-qualified authored reference.
+func (ctx *InlineRenderContext) ReferenceRewrite(source *index.SpecIndex, ref string) (string, bool) {
+	return ctx.referenceRewrite(scopedReferencePath(source), ref)
+}
+
+func (ctx *InlineRenderContext) referenceRewrite(sourcePath, ref string) (string, bool) {
+	key := scopedReferenceKey(sourcePath, ref)
+	if key == "" {
+		return "", false
+	}
+	replacement, ok := ctx.referenceRewrites.Load(key)
+	if !ok {
+		return "", false
+	}
+	return replacement.(string), true
+}
+
+// SetMappingRewrite records a replacement for one raw discriminator mapping
+// value without mutating the indexed YAML node.
+func (ctx *InlineRenderContext) SetMappingRewrite(node *yaml.Node, replacement string) {
+	if node != nil && replacement != "" {
+		ctx.mappingRewrites.Store(node, replacement)
+	}
+}
+
+// MappingRewrite returns a prepared discriminator mapping replacement.
+func (ctx *InlineRenderContext) MappingRewrite(node *yaml.Node) (string, bool) {
+	if node == nil {
+		return "", false
+	}
+	replacement, ok := ctx.mappingRewrites.Load(node)
+	if !ok {
+		return "", false
+	}
+	return replacement.(string), true
+}
+
+// SetReferenceNodeIdentity records the authored source and canonical target for
+// a reference node. Bundle preparation calls this once before rendering.
+func (ctx *InlineRenderContext) SetReferenceNodeIdentity(node *yaml.Node, source *index.SpecIndex, target string) {
+	if node == nil {
+		return
+	}
+	if source != nil {
+		ctx.referenceNodeSources.Store(node, source)
+	}
+	if target != "" {
+		ctx.referenceNodeTargets.Store(node, target)
+	}
+}
+
+// ReferenceNodeSource returns the authored source index prepared for node.
+func (ctx *InlineRenderContext) ReferenceNodeSource(node *yaml.Node) (*index.SpecIndex, bool) {
+	if node == nil {
+		return nil, false
+	}
+	source, ok := ctx.referenceNodeSources.Load(node)
+	if !ok {
+		return nil, false
+	}
+	return source.(*index.SpecIndex), true
+}
+
+// ReferenceNodeTarget returns the canonical resolved target prepared for node.
+func (ctx *InlineRenderContext) ReferenceNodeTarget(node *yaml.Node) (string, bool) {
+	if node == nil {
+		return "", false
+	}
+	target, ok := ctx.referenceNodeTargets.Load(node)
+	if !ok {
+		return "", false
+	}
+	return target.(string), true
+}
+
+// MarkReferenceNodeAsPreserved marks one authored reference occurrence for
+// preservation without relying on an ambiguous bare reference string.
+func (ctx *InlineRenderContext) MarkReferenceNodeAsPreserved(node *yaml.Node) {
+	if node != nil {
+		ctx.preservedReferenceNodes.Store(node, struct{}{})
+	}
+}
+
+// ShouldPreserveReferenceNode reports whether an authored occurrence is preserved.
+func (ctx *InlineRenderContext) ShouldPreserveReferenceNode(node *yaml.Node) bool {
+	if node == nil {
+		return false
+	}
+	_, ok := ctx.preservedReferenceNodes.Load(node)
+	return ok
+}
+
+// SetReferenceNodeRewrite records the replacement for one authored reference occurrence.
+func (ctx *InlineRenderContext) SetReferenceNodeRewrite(node *yaml.Node, replacement string) {
+	if node != nil && replacement != "" {
+		ctx.referenceNodeRewrites.Store(node, replacement)
+	}
+}
+
+// ReferenceNodeRewrite returns the replacement for one authored reference occurrence.
+func (ctx *InlineRenderContext) ReferenceNodeRewrite(node *yaml.Node) (string, bool) {
+	if node == nil {
+		return "", false
+	}
+	replacement, ok := ctx.referenceNodeRewrites.Load(node)
+	if !ok {
+		return "", false
+	}
+	return replacement.(string), true
 }
 
 // SchemaProxy exists as a stub that will create a Schema once (and only once) the Schema() method is called. An
@@ -175,12 +368,12 @@ type SchemaProxy struct {
 	buildError error
 	rendered   *Schema
 	refStr     string
-	lock       *sync.Mutex
+	lock       sync.Mutex
 }
 
 // NewSchemaProxy creates a new high-level SchemaProxy from a low-level one.
 func NewSchemaProxy(schema *low.NodeReference[*base.SchemaProxy]) *SchemaProxy {
-	return &SchemaProxy{schema: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{schema: schema}
 }
 
 // copySchemaWithParentProxy creates a shallow copy of a schema and sets the ParentProxy
@@ -193,13 +386,13 @@ func (sp *SchemaProxy) copySchemaWithParentProxy(schema *Schema) *Schema {
 // CreateSchemaProxy will create a new high-level SchemaProxy from a high-level Schema, this acts the same
 // as if the SchemaProxy is pre-rendered.
 func CreateSchemaProxy(schema *Schema) *SchemaProxy {
-	return &SchemaProxy{rendered: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{rendered: schema}
 }
 
 // CreateSchemaProxyRef will create a new high-level SchemaProxy from a reference string, this is used only when
 // building out new models from scratch that require a reference rather than a schema implementation.
 func CreateSchemaProxyRef(ref string) *SchemaProxy {
-	return &SchemaProxy{refStr: ref, lock: &sync.Mutex{}}
+	return &SchemaProxy{refStr: ref}
 }
 
 // CreateSchemaProxyRefWithSchema creates a SchemaProxy that carries both a $ref and sibling schema
@@ -208,7 +401,7 @@ func CreateSchemaProxyRef(ref string) *SchemaProxy {
 //
 // If schema is nil, the result behaves identically to CreateSchemaProxyRef.
 func CreateSchemaProxyRefWithSchema(ref string, schema *Schema) *SchemaProxy {
-	return &SchemaProxy{refStr: ref, rendered: schema, lock: &sync.Mutex{}}
+	return &SchemaProxy{refStr: ref, rendered: schema}
 }
 
 // GetValueNode returns the value node of the SchemaProxy.
@@ -228,7 +421,7 @@ func (sp *SchemaProxy) GetValueNode() *yaml.Node {
 // instead for proxies created using NewSchemaProxy or CreateSchema* methods.
 // https://github.com/pb33f/libopenapi/issues/403
 func (sp *SchemaProxy) Schema() *Schema {
-	if sp == nil || sp.lock == nil {
+	if sp == nil {
 		return nil
 	}
 
@@ -376,9 +569,6 @@ func (sp *SchemaProxy) BuildSchema() (*Schema, error) {
 		return nil, nil
 	}
 	schema := sp.Schema()
-	if sp.lock == nil {
-		return schema, sp.buildError
-	}
 	sp.lock.Lock()
 	er := sp.buildError
 	sp.lock.Unlock()
@@ -389,9 +579,6 @@ func (sp *SchemaProxy) BuildSchema() (*Schema, error) {
 func (sp *SchemaProxy) GetBuildError() error {
 	if sp == nil {
 		return nil
-	}
-	if sp.lock == nil {
-		return sp.buildError
 	}
 	sp.lock.Lock()
 	err := sp.buildError
@@ -546,8 +733,8 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 			continue
 		}
 		if keyNode.Value == "$ref" {
-			refKey := cloneYAMLNode(keyNode)
-			refValue := cloneYAMLNode(valueNode)
+			refKey := utils.CloneYAMLNode(keyNode)
+			refValue := utils.CloneYAMLNode(valueNode)
 			if refValue == nil {
 				refValue = utils.CreateStringNode(ref)
 			}
@@ -556,8 +743,8 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 			continue
 		}
 		if _, siblingValue := findYAMLPair(siblingNode, keyNode.Value); siblingValue != nil {
-			renderKey := cloneYAMLNode(keyNode)
-			result.Content = append(result.Content, renderKey, cloneYAMLNode(siblingValue))
+			renderKey := utils.CloneYAMLNode(keyNode)
+			result.Content = append(result.Content, renderKey, utils.CloneYAMLNode(siblingValue))
 			consumed[keyNode.Value] = struct{}{}
 		}
 	}
@@ -568,7 +755,7 @@ func (sp *SchemaProxy) renderTransformedRefWithSiblings(s *Schema) (*yaml.Node, 
 		if _, ok := consumed[keyNode.Value]; ok {
 			continue
 		}
-		result.Content = append(result.Content, cloneYAMLNode(keyNode), cloneYAMLNode(valueNode))
+		result.Content = append(result.Content, utils.CloneYAMLNode(keyNode), utils.CloneYAMLNode(valueNode))
 	}
 
 	return result, true, nil
@@ -615,32 +802,6 @@ func findYAMLPair(node *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
 	return nil, nil
 }
 
-func cloneYAMLNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-	clone := &yaml.Node{
-		Kind:        node.Kind,
-		Style:       node.Style,
-		Tag:         node.Tag,
-		Value:       node.Value,
-		Anchor:      node.Anchor,
-		Alias:       node.Alias,
-		Line:        node.Line,
-		Column:      node.Column,
-		HeadComment: node.HeadComment,
-		LineComment: node.LineComment,
-		FootComment: node.FootComment,
-	}
-	if len(node.Content) > 0 {
-		clone.Content = make([]*yaml.Node, len(node.Content))
-		for i, child := range node.Content {
-			clone.Content[i] = cloneYAMLNode(child)
-		}
-	}
-	return clone
-}
-
 // Render will return a YAML representation of the Schema object as a byte slice.
 func (sp *SchemaProxy) Render() ([]byte, error) {
 	return yaml.Marshal(sp)
@@ -670,6 +831,89 @@ func (sp *SchemaProxy) MarshalYAML() (interface{}, error) {
 
 func (sp *SchemaProxy) referenceYAMLNode() (*yaml.Node, error) {
 	return sp.referenceYAMLNodeForSchema(nil)
+}
+
+func (sp *SchemaProxy) sourceIndex() *index.SpecIndex {
+	if sp == nil || sp.schema == nil || sp.schema.Value == nil {
+		return nil
+	}
+	return sp.schema.Value.GetIndex()
+}
+
+func (sp *SchemaProxy) referenceSourceIndex(ctx *InlineRenderContext) *index.SpecIndex {
+	if ctx != nil {
+		if source, ok := ctx.ReferenceNodeSource(sp.GetReferenceNode()); ok {
+			return source
+		}
+	}
+	return sp.sourceIndex()
+}
+
+func (sp *SchemaProxy) referenceSourcePath(ctx *InlineRenderContext) string {
+	if source := sp.referenceSourceIndex(ctx); source != nil {
+		return source.GetSpecAbsolutePath()
+	}
+	return ""
+}
+
+func (sp *SchemaProxy) isRootLocalReference(ctx *InlineRenderContext) bool {
+	if sp == nil || !strings.HasPrefix(sp.GetReference(), "#/") {
+		return false
+	}
+	source := sp.referenceSourceIndex(ctx)
+	if source == nil {
+		return false
+	}
+	if ctx != nil && ctx.RootIndex != nil {
+		return source == ctx.RootIndex
+	}
+	return source.GetRolodex() != nil && source.GetRolodex().GetRootIndex() == source
+}
+
+func (sp *SchemaProxy) referenceTargetIdentity(ctx *InlineRenderContext) string {
+	if ctx != nil {
+		if target, ok := ctx.ReferenceNodeTarget(sp.GetReferenceNode()); ok {
+			return index.CanonicalReferenceIdentity(target)
+		}
+	}
+	ref := sp.GetReference()
+	if strings.HasPrefix(ref, "#") {
+		if source := sp.sourceIndex(); source != nil {
+			return index.CanonicalReferenceIdentity(source.GetSpecAbsolutePath() + ref)
+		}
+	}
+	return ""
+}
+
+// rewrittenReferenceNode clones the authored reference node and applies the
+// source-qualified replacement for this render, if one was prepared. Cloning
+// preserves $ref siblings and source metadata without mutating indexed nodes.
+func (sp *SchemaProxy) rewrittenReferenceNode(ctx *InlineRenderContext) (*yaml.Node, bool, error) {
+	node, err := sp.referenceYAMLNode()
+	if node == nil {
+		return nil, false, err
+	}
+	replacement, ok := ctx.ReferenceNodeRewrite(node)
+	if !ok {
+		replacement, ok = ctx.referenceRewrite(sp.referenceSourcePath(ctx), sp.GetReference())
+	}
+	if !ok {
+		return node, false, err
+	}
+	cloned := utils.CloneYAMLNode(node)
+	refValue := utils.GetRefValueNode(cloned)
+	if refValue == nil {
+		return nil, false, errors.Join(err, errors.New("unable to rewrite schema reference: $ref value node is missing"))
+	}
+	refValue.Value = replacement
+	return cloned, true, err
+}
+
+func (sp *SchemaProxy) circularReferenceResult(ctx *InlineRenderContext, node *yaml.Node, rewritten bool, refErr, circularErr error) (*yaml.Node, error) {
+	if rewritten || sp.isRootLocalReference(ctx) {
+		return node, refErr
+	}
+	return node, errors.Join(refErr, circularErr)
 }
 
 func (sp *SchemaProxy) referenceYAMLNodeForSchema(s *Schema) (*yaml.Node, error) {
@@ -778,21 +1022,30 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	refNode := func() (*yaml.Node, error) {
 		return sp.referenceYAMLNode()
 	}
+	rewrittenRefNode := func() (*yaml.Node, bool, error) {
+		return sp.rewrittenReferenceNode(ctx)
+	}
 
 	// check if this reference should be preserved (set via context by discriminator handling).
 	// this avoids mutating shared SchemaProxy state and prevents race conditions.
 	// need to guard against nil schema.Value which can happen with bad/incomplete proxies.
 	if sp.IsReference() {
 		ref := sp.GetReference()
-		if ref != "" && ctx.ShouldPreserveRef(ref) {
-			return refNode()
+		refNode := sp.GetReferenceNode()
+		preserve := ctx.ShouldPreserveReferenceNode(refNode)
+		if !preserve {
+			preserve = ctx.shouldPreserveRef(sp.referenceSourcePath(ctx), ref) || ctx.ShouldPreserveRef(ref)
+		}
+		if ref != "" && preserve {
+			node, _, err := rewrittenRefNode()
+			return node, err
 		}
 	}
 
 	// In bundling mode, preserve local component refs that point to schemas in the SAME document.
 	// Only inline refs that point to schemas from EXTERNAL files.
 	// Outside of bundling mode (direct MarshalYAMLInline calls), inline everything.
-	if IsBundlingMode() && sp.IsReference() {
+	if ctx.PreserveLocalComponentRefs && sp.IsReference() {
 		ref := sp.GetReference()
 		if strings.HasPrefix(ref, "#/components/") {
 			// Check if this ref points to a schema in the same root document.
@@ -805,7 +1058,7 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 					if rolodex != nil {
 						rootIdx := rolodex.GetRootIndex()
 						// If the schema is in the root index, preserve the ref
-						if rootIdx != nil && schemaIdx == rootIdx {
+						if rootIdx != nil && sp.isRootLocalReference(ctx) {
 							return refNode()
 						}
 					}
@@ -822,8 +1075,8 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 	if ctx.StartRendering(renderKey) {
 		// We're already rendering this schema in THIS call chain - return ref to break the cycle
 		if sp.IsReference() {
-			node, refErr := refNode()
-			return node, errors.Join(refErr,
+			node, rewritten, refErr := rewrittenRefNode()
+			return sp.circularReferenceResult(ctx, node, rewritten, refErr,
 				fmt.Errorf("schema render failure, circular reference: `%s`", sp.GetReference()))
 		}
 		// For inline schemas, return an empty map to avoid infinite recursion
@@ -854,9 +1107,20 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 
 		for _, c := range circ {
 			if sp.IsReference() {
+				if c == nil || c.LoopPoint == nil {
+					continue
+				}
+				if ctx.StrictCircularReferenceIdentity {
+					target := sp.referenceTargetIdentity(ctx)
+					if target == "" || target != index.CanonicalReferenceIdentity(c.LoopPoint.FullDefinition) {
+						continue
+					}
+					node, rewritten, refErr := rewrittenRefNode()
+					return sp.circularReferenceResult(ctx, node, rewritten, refErr, cirError(c.LoopPoint.Definition))
+				}
 				if sp.GetReference() == c.LoopPoint.Definition {
-					node, refErr := refNode()
-					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
+					node, rewritten, refErr := rewrittenRefNode()
+					return sp.circularReferenceResult(ctx, node, rewritten, refErr, cirError(c.LoopPoint.Definition))
 				}
 				basePath := idx.GetSpecAbsolutePath()
 
@@ -865,8 +1129,8 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 				}
 
 				if basePath == c.LoopPoint.FullDefinition {
-					node, refErr := refNode()
-					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
+					node, rewritten, refErr := rewrittenRefNode()
+					return sp.circularReferenceResult(ctx, node, rewritten, refErr, cirError(c.LoopPoint.Definition))
 				}
 				a := utils.ReplaceWindowsDriveWithLinuxPath(strings.Replace(c.LoopPoint.FullDefinition, basePath, "", 1))
 				b := sp.GetReference()
@@ -888,16 +1152,16 @@ func (sp *SchemaProxy) marshalYAMLInlineInternal(ctx *InlineRenderContext) (inte
 				bBase, bFragment := index.SplitRefFragment(b)
 
 				if aFragment != "" && bFragment != "" && aFragment == bFragment {
-					node, refErr := refNode()
-					return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
+					node, rewritten, refErr := rewrittenRefNode()
+					return sp.circularReferenceResult(ctx, node, rewritten, refErr, cirError(c.LoopPoint.Definition))
 				}
 
 				if aFragment == "" && bFragment == "" {
 					aNorm := strings.TrimPrefix(strings.TrimPrefix(aBase, "./"), "/")
 					bNorm := strings.TrimPrefix(strings.TrimPrefix(bBase, "./"), "/")
 					if aNorm != "" && bNorm != "" && aNorm == bNorm {
-						node, refErr := refNode()
-						return node, errors.Join(refErr, cirError(c.LoopPoint.Definition))
+						node, rewritten, refErr := rewrittenRefNode()
+						return sp.circularReferenceResult(ctx, node, rewritten, refErr, cirError(c.LoopPoint.Definition))
 					}
 				}
 			}

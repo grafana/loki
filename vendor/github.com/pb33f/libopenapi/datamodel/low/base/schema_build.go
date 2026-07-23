@@ -380,6 +380,14 @@ func (s *Schema) Build(ctx context.Context, root *yaml.Node, idx *index.SpecInde
 		s.PatternProperties = *props
 	}
 
+	props, err = buildPropertyMap(ctx, s, root, idx, DefsLabel)
+	if err != nil {
+		return err
+	}
+	if props != nil {
+		s.Defs = *props
+	}
+
 	itemsIsBool := false
 	itemsBoolValue := false
 	_, itemsLabel, itemsValue := utils.FindKeyNodeFullTop(ItemsLabel, root.Content)

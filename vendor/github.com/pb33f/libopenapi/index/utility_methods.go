@@ -555,16 +555,7 @@ func findIndex(index *SpecIndex, i *yaml.Node) *SpecIndex {
 	}
 	allIndexes := rolodex.GetIndexes()
 	for _, searchIndex := range allIndexes {
-		nodeMap := searchIndex.GetNodeMap()
-		line, ok := nodeMap[i.Line]
-		if !ok {
-			continue
-		}
-		node, ok := line[i.Column]
-		if !ok {
-			continue
-		}
-		if node == i {
+		if node, ok := searchIndex.GetNode(i.Line, i.Column); ok && node == i {
 			return searchIndex
 		}
 	}

@@ -197,8 +197,9 @@ func (index *SpecIndex) ExtractComponentsFromRefs(ctx context.Context, refs []*R
 }
 
 func (index *SpecIndex) locateRef(ctx context.Context, ref *Reference) *Reference {
-	uri := strings.Split(ref.FullDefinition, "#/")
-	isExternalRef := len(uri) == 2 && len(uri[0]) > 0
+	// match strings.Split len==2 semantics: exactly one "#/" with a non-empty file part.
+	refFile, refFragment, refCut := strings.Cut(ref.FullDefinition, "#/")
+	isExternalRef := refCut && refFile != "" && !strings.Contains(refFragment, "#/")
 	if isExternalRef {
 		index.refLock.Lock()
 	}
@@ -221,11 +222,11 @@ func (index *SpecIndex) locateRef(ctx context.Context, ref *Reference) *Referenc
 	}
 
 	if located.Node != nil {
+		index.awaitNodeMap()
 		index.nodeMapLock.RLock()
-		if located.Node.Line > 1 && len(index.nodeMap[located.Node.Line-1]) > 0 {
-			for _, v := range index.nodeMap[located.Node.Line-1] {
-				located.KeyNode = v
-				break
+		if prevLine := located.Node.Line - 1; prevLine > 0 && prevLine < len(index.nodeLines) {
+			if entries := index.nodeLines[prevLine]; len(entries) > 0 {
+				located.KeyNode = entries[0].node
 			}
 		}
 		index.nodeMapLock.RUnlock()

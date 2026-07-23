@@ -121,3 +121,8 @@ func (o *Operation) MarshalYAMLInline() (interface{}, error) {
 	nb.Resolve = true
 	return nb.Render(), nil
 }
+
+// MarshalYAMLInlineWithContext renders the operation with a shared inline render context.
+func (o *Operation) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
+	return high.RenderInlineWithContext(o, o.low, ctx)
+}

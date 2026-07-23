@@ -16,6 +16,13 @@ type metadataPathAction struct {
 	stop          bool
 }
 
+// skipMetadataCollection reports whether diagnostic metadata collection is disabled.
+// Only collection is skipped: the path actions extractNodeMetadata returns drive
+// seenPath handling for every downstream ref, so that logic always runs.
+func (index *SpecIndex) skipMetadataCollection() bool {
+	return index.config != nil && index.config.SkipMetadataCollection
+}
+
 func (index *SpecIndex) extractNodeMetadata(node, parent *yaml.Node, seenPath []string, keyIndex int) metadataPathAction {
 	keyNode := node.Content[keyIndex]
 	if keyNode == nil || keyNode.Value == "" || keyNode.Value == "$ref" || keyNode.Value == "$id" {
@@ -31,8 +38,7 @@ func (index *SpecIndex) extractNodeMetadata(node, parent *yaml.Node, seenPath []
 	var jsonPathComputed bool
 	computeJSONPath := func() string {
 		if !jsonPathComputed {
-			loc := append(seenPath, segment)
-			definitionPath := "#/" + strings.Join(loc, "/")
+			definitionPath := buildDefinitionPath("", seenPath, segment)
 			_, jsonPath = utils.ConvertComponentIdIntoFriendlyPathSearch(definitionPath)
 			jsonPathComputed = true
 		}
@@ -47,7 +53,7 @@ func (index *SpecIndex) extractNodeMetadata(node, parent *yaml.Node, seenPath []
 		if isMetadataPropertyNamePath(seenPath) {
 			return metadataPathAction{appendSegment: true, stop: true}
 		}
-		if !metadataPathContainsExamples(seenPath) {
+		if !metadataPathContainsExamples(seenPath) && !index.skipMetadataCollection() {
 			refNode := metadataValueNode(node, keyIndex)
 			ref := &DescriptionReference{
 				ParentNode: parent,
@@ -69,25 +75,33 @@ func (index *SpecIndex) extractNodeMetadata(node, parent *yaml.Node, seenPath []
 		if metadataPathContainsExamples(seenPath) {
 			return metadataPathAction{stop: true}
 		}
-		refNode := metadataValueNode(node, keyIndex)
-		index.allSummaries = append(index.allSummaries, &DescriptionReference{
-			ParentNode: parent,
-			Content:    refNode.Value,
-			Path:       computeJSONPath(),
-			Node:       refNode,
-			KeyNode:    keyNode,
-			IsSummary:  true,
-		})
-		index.summaryCount++
+		if !index.skipMetadataCollection() {
+			refNode := metadataValueNode(node, keyIndex)
+			index.allSummaries = append(index.allSummaries, &DescriptionReference{
+				ParentNode: parent,
+				Content:    refNode.Value,
+				Path:       computeJSONPath(),
+				Node:       refNode,
+				KeyNode:    keyNode,
+				IsSummary:  true,
+			})
+			index.summaryCount++
+		}
 	case "security":
-		index.collectSecurityRequirementMetadata(node, keyIndex, computeJSONPath())
+		if !index.skipMetadataCollection() {
+			index.collectSecurityRequirementMetadata(node, keyIndex, computeJSONPath())
+		}
 	case "enum":
 		if len(seenPath) > 0 && seenPath[len(seenPath)-1] == "properties" {
 			return metadataPathAction{appendSegment: true, stop: true}
 		}
-		index.collectEnumMetadata(node, parent, keyIndex, computeJSONPath())
+		if !index.skipMetadataCollection() {
+			index.collectEnumMetadata(node, parent, keyIndex, computeJSONPath())
+		}
 	case "properties":
-		index.collectObjectWithPropertiesMetadata(node, parent, keyNode, computeJSONPath())
+		if !index.skipMetadataCollection() {
+			index.collectObjectWithPropertiesMetadata(node, parent, keyNode, computeJSONPath())
+		}
 	}
 
 	return metadataPathAction{appendSegment: true}

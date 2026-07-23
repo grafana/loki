@@ -4,6 +4,7 @@
 package v3
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -155,6 +156,15 @@ func (r *Responses) MarshalYAML() (interface{}, error) {
 }
 
 func (r *Responses) MarshalYAMLInline() (interface{}, error) {
+	return r.marshalYAMLInlineWithContext(nil)
+}
+
+// MarshalYAMLInlineWithContext renders responses with a shared inline render context.
+func (r *Responses) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
+	return r.marshalYAMLInlineWithContext(ctx)
+}
+
+func (r *Responses) marshalYAMLInlineWithContext(ctx any) (interface{}, error) {
 	// map keys correctly.
 	m := utils.CreateEmptyMapNode()
 	type responseItem struct {
@@ -183,7 +193,11 @@ func (r *Responses) MarshalYAMLInline() (interface{}, error) {
 	// extract extensions
 	nb := high.NewNodeBuilder(r, r.low)
 	nb.Resolve = true
+	nb.RenderContext = ctx
 	extNode := nb.Render()
+	if err := errors.Join(nb.Errors...); err != nil {
+		return nil, err
+	}
 	if extNode != nil && extNode.Content != nil {
 		var label string
 		for u := range extNode.Content {
@@ -203,7 +217,16 @@ func (r *Responses) MarshalYAMLInline() (interface{}, error) {
 	})
 	for _, mp := range mapped {
 		if mp.resp != nil {
-			rendered, _ := mp.resp.MarshalYAMLInline()
+			var rendered interface{}
+			var err error
+			if ctx != nil {
+				rendered, err = mp.resp.MarshalYAMLInlineWithContext(ctx)
+			} else {
+				rendered, err = mp.resp.MarshalYAMLInline()
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to render response '%s' inline: %w", mp.code, err)
+			}
 
 			kn := utils.CreateStringNode(mp.code)
 			kn.Style = mp.style

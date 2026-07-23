@@ -31,10 +31,10 @@ func (pm *PropertyMerger) MergeProperties(localNode, referencedNode *yaml.Node) 
 		return nil, nil
 	}
 	if localNode == nil {
-		return pm.copyNode(referencedNode), nil
+		return utils.CloneYAMLNode(referencedNode), nil
 	}
 	if referencedNode == nil {
-		return pm.copyNode(localNode), nil
+		return utils.CloneYAMLNode(localNode), nil
 	}
 
 	// extract properties from both nodes
@@ -42,7 +42,7 @@ func (pm *PropertyMerger) MergeProperties(localNode, referencedNode *yaml.Node) 
 	referencedProps := pm.extractProperties(referencedNode)
 
 	// create merged node starting with referenced content
-	merged := pm.copyNode(referencedNode)
+	merged := utils.CloneYAMLNode(referencedNode)
 	mergedProps := pm.extractProperties(merged)
 
 	// apply merge strategy for each local property
@@ -101,40 +101,10 @@ func (pm *PropertyMerger) rebuildNodeFromProperties(baseNode *yaml.Node, props m
 	// rebuild content from properties
 	for key, value := range props {
 		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: key}
-		result.Content = append(result.Content, keyNode, pm.copyNode(value))
+		result.Content = append(result.Content, keyNode, utils.CloneYAMLNode(value))
 	}
 
 	return result
-}
-
-// copyNode creates a deep copy of a yaml node
-func (pm *PropertyMerger) copyNode(node *yaml.Node) *yaml.Node {
-	if node == nil {
-		return nil
-	}
-
-	copied := &yaml.Node{
-		Kind:        node.Kind,
-		Style:       node.Style,
-		Tag:         node.Tag,
-		Value:       node.Value,
-		Anchor:      node.Anchor,
-		Alias:       node.Alias,
-		Line:        node.Line,
-		Column:      node.Column,
-		HeadComment: node.HeadComment,
-		LineComment: node.LineComment,
-		FootComment: node.FootComment,
-	}
-
-	if node.Content != nil {
-		copied.Content = make([]*yaml.Node, len(node.Content))
-		for i, child := range node.Content {
-			copied.Content[i] = pm.copyNode(child)
-		}
-	}
-
-	return copied
 }
 
 // ShouldMergeProperties determines if property merging should be applied based on configuration

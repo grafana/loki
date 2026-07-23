@@ -171,47 +171,49 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		absPath = index.config.BasePath
 	}
 	var roloLookup string
-	uri := strings.Split(ref, "#/")
-	if len(uri) == 2 {
-		if uri[0] != "" {
-			if strings.HasPrefix(uri[0], "http") {
+	uriFile, uriFragment, uriCut := strings.Cut(ref, "#/")
+	// match strings.Split(ref, "#/") len==2 semantics: exactly one separator.
+	singleFragment := uriCut && !strings.Contains(uriFragment, "#/")
+	if singleFragment {
+		if uriFile != "" {
+			if strings.HasPrefix(uriFile, "http") {
 				roloLookup = searchRef.FullDefinition
 			} else {
-				if filepath.IsAbs(uri[0]) {
-					roloLookup = uri[0]
+				if filepath.IsAbs(uriFile) {
+					roloLookup = uriFile
 				} else {
 					if filepath.Ext(absPath) != "" {
 						absPath = filepath.Dir(absPath)
 					}
-					roloLookup = index.resolveRelativeFilePath(absPath, uri[0])
+					roloLookup = index.resolveRelativeFilePath(absPath, uriFile)
 				}
 			}
 		} else {
 
-			if filepath.Ext(uri[1]) != "" {
+			if filepath.Ext(uriFragment) != "" {
 				roloLookup = absPath
 			} else {
 				roloLookup = ""
 			}
 
-			ref = fmt.Sprintf("#/%s", uri[1])
-			refAlt = fmt.Sprintf("%s#/%s", absPath, uri[1])
+			ref = fmt.Sprintf("#/%s", uriFragment)
+			refAlt = fmt.Sprintf("%s#/%s", absPath, uriFragment)
 
 		}
 	} else {
-		if filepath.IsAbs(uri[0]) {
-			roloLookup = uri[0]
+		if filepath.IsAbs(uriFile) {
+			roloLookup = uriFile
 		} else {
-			if strings.HasPrefix(uri[0], "http") {
+			if strings.HasPrefix(uriFile, "http") {
 				roloLookup = ref
 			} else {
 				if filepath.Ext(absPath) != "" {
 					absPath = filepath.Dir(absPath)
 				}
-				roloLookup = index.resolveRelativeFilePath(absPath, uri[0])
+				roloLookup = index.resolveRelativeFilePath(absPath, uriFile)
 			}
 		}
-		ref = uri[0]
+		ref = uriFile
 	}
 	if strings.Contains(ref, "%") {
 		// decode the url.
@@ -258,9 +260,7 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 	// component-tree walking inside the remote file.
 	if roloLookup != "" {
 
-		if strings.Contains(roloLookup, "#") {
-			roloLookup = strings.Split(roloLookup, "#")[0]
-		}
+		roloLookup, _, _ = strings.Cut(roloLookup, "#")
 
 		b := filepath.Base(roloLookup)
 		sfn := index.GetSpecFileName()
@@ -270,8 +270,8 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 		if b == sfn && roloLookup == abp {
 			// if the reference is the same as the spec file name, we should look through the index for the component
 			var r *Reference
-			if len(uri) == 2 {
-				r = index.FindComponentInRoot(ctx, fmt.Sprintf("#/%s", uri[1]))
+			if singleFragment {
+				r = index.FindComponentInRoot(ctx, fmt.Sprintf("#/%s", uriFragment))
 			}
 			return r, index, ctx
 		}
@@ -352,12 +352,12 @@ func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx contex
 				node, _ := rFile.GetContentAsYAMLNode()
 				if node != nil {
 					var found *Reference
-					exp := strings.Split(ref, "#/")
+					expFile, expFragment, expCut := strings.Cut(ref, "#/")
 					compId := ref
 
-					if len(exp) == 2 {
-						compId = fmt.Sprintf("#/%s", exp[1])
-						found = FindComponent(ctx, node, compId, exp[0], idx)
+					if expCut && !strings.Contains(expFragment, "#/") {
+						compId = fmt.Sprintf("#/%s", expFragment)
+						found = FindComponent(ctx, node, compId, expFile, idx)
 					}
 					if found == nil {
 						found = idx.FindComponent(ctx, ref)

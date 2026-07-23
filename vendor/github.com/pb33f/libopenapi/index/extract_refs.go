@@ -20,7 +20,7 @@ func isSchemaContainingNode(v string) bool {
 
 func isMapOfSchemaContainingNode(v string) bool {
 	switch v {
-	case "properties", "patternProperties":
+	case "properties", "patternProperties", "$defs":
 		return true
 	}
 	return false
