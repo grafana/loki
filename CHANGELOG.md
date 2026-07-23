@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.6.13](https://github.com/grafana/loki/compare/v3.6.12...v3.6.13) (2026-07-23)
+
+
+### Bug Fixes
+
+* **ci:** Fix zizmor findings for operator-images in Loki 3.6 ([#22821](https://github.com/grafana/loki/issues/22821)) ([050f742](https://github.com/grafana/loki/commit/050f7422d671599830e9e59e89cca281039b6021))
+* **ci:** Helm CI warning fix ([#22606](https://github.com/grafana/loki/issues/22606)) ([4bc2586](https://github.com/grafana/loki/commit/4bc258651f36107086fc7028c4af1105618e67a4))
+* **security/CRITICAL/clients/cmd/fluentd/docker:** Update dependency fluentd to v1.19.3 [SECURITY] (release-3.6.x) ([#22694](https://github.com/grafana/loki/issues/22694)) ([692f2b1](https://github.com/grafana/loki/commit/692f2b1183670b4e6df0436081a00b8dcc2d640a))
+* **security/HIGH/:** Bump Go to 1.26.5 to address CVE-2026-39822 and CVE-2026-42505 [SECURITY] ([#23398](https://github.com/grafana/loki/issues/23398)) ([fc478e1](https://github.com/grafana/loki/commit/fc478e1d3491aea695080498d7ac3c0f065061c3))
+* **security/HIGH/pkg/push:** Update module google.golang.org/grpc to v1.82.1 [SECURITY] ([70f75b7](https://github.com/grafana/loki/commit/70f75b7fbd0c6bab35a84700ac2ee531cfd483ed))
+* **security/HIGH/:** Update golang.org/x/net, golang.org/x/text and google.golang.org/grpc [SECURITY] ([70f75b7](https://github.com/grafana/loki/commit/70f75b7fbd0c6bab35a84700ac2ee531cfd483ed))
+* **security/UNKNOWN/cmd/chunks-inspect:** Update go toolchain directive to v1.25.12 [SECURITY] (release-3.6.x) ([#23131](https://github.com/grafana/loki/issues/23131)) ([b327439](https://github.com/grafana/loki/commit/b3274394654e3f75996843924d54e3a8ea4c120f))
+* **security/UNKNOWN/pkg/push:** Update module golang.org/x/net to v0.56.0 [SECURITY] ([70f75b7](https://github.com/grafana/loki/commit/70f75b7fbd0c6bab35a84700ac2ee531cfd483ed))
+* **security/UNKNOWN/pkg/push:** Update module golang.org/x/text to v0.39.0 [SECURITY] ([70f75b7](https://github.com/grafana/loki/commit/70f75b7fbd0c6bab35a84700ac2ee531cfd483ed))
+* **security/UNKNOWN/:** Update module github.com/containerd/containerd/v2 to v2.0.10 [SECURITY] (release-3.6.x) ([#22479](https://github.com/grafana/loki/issues/22479)) ([697bd83](https://github.com/grafana/loki/commit/697bd835b91ae9a04c6476bb17d86975c624a642))
+* **security:** Backport security updates to release-3.6.x ([#23403](https://github.com/grafana/loki/issues/23403)) ([70f75b7](https://github.com/grafana/loki/commit/70f75b7fbd0c6bab35a84700ac2ee531cfd483ed))
+* Update objstore to include fix for GCS Exists ([#23381](https://github.com/grafana/loki/issues/23381)) ([87383d8](https://github.com/grafana/loki/commit/87383d801fa71a1cc7d3732b6e8a07372aee7558))
+
 ## [3.6.12](https://github.com/grafana/loki/compare/v3.6.12...v3.6.12) (2026-06-24)
 
 
