@@ -132,7 +132,7 @@ func (tv *TLSVersion) String() string {
 			return s
 		}
 	}
-	return fmt.Sprintf("%d", tv)
+	return fmt.Sprintf("%d", *tv)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
