@@ -188,7 +188,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 					"(there will always be 1 overlapping entry but Loki allows multiple entries to have "+
 					"the same timestamp, so when a batch ends in this scenario the next query will include "+
 					"all the overlapping entries again).  Please increase your batch size to at least %v to account "+
-					"for overlapping entryes", q.BatchSize, len(lastEntry), len(lastEntry)+1)
+					"for overlapping entries", q.BatchSize, len(lastEntry), len(lastEntry)+1)
 			}
 
 			// Batching works by taking the timestamp of the last query and using it in the next query,
@@ -238,7 +238,7 @@ func (q *Query) createPartFile() (*PartFile, bool, error) {
 		// The user can delete the files if they want to download parts again.
 		exists, err := partFile.Exists()
 		if err != nil {
-			return nil, false, fmt.Errorf("query failed: %w", err)
+			return nil, false, fmt.Errorf("checking part file existence: %w", err)
 		}
 		if exists {
 			log.Printf("Skip range: %s - %s: already downloaded\n", q.Start, q.End)
@@ -247,7 +247,7 @@ func (q *Query) createPartFile() (*PartFile, bool, error) {
 	}
 
 	if err := partFile.CreateTempFile(); err != nil {
-		return nil, false, fmt.Errorf("query failed: %w", err)
+		return nil, false, fmt.Errorf("creating part file: %w", err)
 	}
 
 	return partFile, false, nil

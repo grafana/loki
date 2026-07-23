@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -102,14 +103,14 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 						return nil
 					}
 					log.Println("error recreating tailing connection:", err)
-					return nil
+					return fmt.Errorf("recreating tailing connection: %w", err)
 				}
 
 				continue
 			}
 
 			log.Println("error reading stream:", err)
-			return nil
+			return fmt.Errorf("reading tail stream: %w", err)
 		}
 
 		labels := loghttp.LabelSet{}
