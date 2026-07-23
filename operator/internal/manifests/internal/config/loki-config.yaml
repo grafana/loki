@@ -465,7 +465,8 @@ ruler:
     config_refresh_period: {{ .RefreshPeriod }}
     clients:
       {{- with .Client }}
-      {{ .Name }}:
+      default:
+        name: {{ .Name }}
         url: {{ .URL }}
         remote_timeout: {{ .RemoteTimeout }}
         proxy_url: {{ .ProxyURL }}

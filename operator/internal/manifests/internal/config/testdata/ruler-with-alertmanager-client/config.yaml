@@ -174,7 +174,8 @@ ruler:
     enabled: true
     config_refresh_period: 1m
     clients:
-      remote-write-me:
+      default:
+        name: remote-write-me
         url: http://remote.write.me
         remote_timeout: 10s
         proxy_url: http://proxy.through.me
