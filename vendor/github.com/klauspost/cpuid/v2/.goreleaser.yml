@@ -29,7 +29,7 @@ archives:
     name_template: "cpuid-{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [ 'zip' ]
     files:
       - LICENSE
 checksum:
