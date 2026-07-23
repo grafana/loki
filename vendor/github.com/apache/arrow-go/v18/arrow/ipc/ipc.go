@@ -72,7 +72,18 @@ type config struct {
 	noAutoSchema       bool
 	emitDictDeltas     bool
 	minSpaceSavings    float64
+	maxMetadataSize    int64
+	maxBodySize        int64
 }
+
+const (
+	defaultMaxMetadataSize int64 = 64 * 1024 * 1024
+	defaultMaxBodySize     int64 = 256 * 1024 * 1024
+)
+
+// Option is a functional option to configure opening or creating Arrow files
+// and streams.
+type Option func(*config)
 
 func newConfig(opts ...Option) *config {
 	cfg := &config{
@@ -80,6 +91,8 @@ func newConfig(opts ...Option) *config {
 		codec:              -1, // uncompressed
 		ensureNativeEndian: true,
 		compressNP:         1,
+		maxMetadataSize:    defaultMaxMetadataSize,
+		maxBodySize:        defaultMaxBodySize,
 	}
 
 	for _, opt := range opts {
@@ -89,9 +102,23 @@ func newConfig(opts ...Option) *config {
 	return cfg
 }
 
-// Option is a functional option to configure opening or creating Arrow files
-// and streams.
-type Option func(*config)
+// WithMetadataSizeLimit sets the largest IPC message metadata size readers
+// will accept. The default is 64 MiB. Values less than or equal to zero disable
+// the limit.
+func WithMetadataSizeLimit(size int64) Option {
+	return func(cfg *config) {
+		cfg.maxMetadataSize = size
+	}
+}
+
+// WithBodySizeLimit sets the largest IPC message body size readers will
+// accept. The default is 256 MiB. Values less than or equal to zero disable
+// the limit.
+func WithBodySizeLimit(size int64) Option {
+	return func(cfg *config) {
+		cfg.maxBodySize = size
+	}
+}
 
 // WithFooterOffset specifies the Arrow footer position in bytes.
 func WithFooterOffset(offset int64) Option {

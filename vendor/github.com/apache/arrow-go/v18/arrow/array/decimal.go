@@ -71,7 +71,7 @@ func (a *baseDecimal[T]) String() string {
 		case a.IsNull(i):
 			o.WriteString(NullValueStr)
 		default:
-			fmt.Fprintf(o, "%v", a.Value(i))
+			fmt.Fprintf(o, "%v", a.ValueStr(i))
 		}
 	}
 	o.WriteString("]")
@@ -387,6 +387,7 @@ func (b *baseDecimalBuilder[T]) Unmarshal(dec *json.Decoder) error {
 
 func (b *baseDecimalBuilder[T]) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
