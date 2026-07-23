@@ -173,26 +173,26 @@ ruler:
   remote_write:
     enabled: true
     config_refresh_period: 1m
-    client:
-      name: remote-write-me
-      url: http://remote.write.me
-      remote_timeout: 10s
-      proxy_url: http://proxy.through.me
-      follow_redirects: true
-      headers:
-        more: foryou
-        less: forme
-      authorization:
-        type: bearer
-        credentials: supersecret
-      queue_config:
-        capacity: 1000
-        max_shards: 100
-        min_shards: 50
-        max_samples_per_send: 1000
-        batch_send_deadline: 10s
-        min_backoff: 30ms
-        max_backoff: 100ms
+    clients:
+      remote-write-me:
+        url: http://remote.write.me
+        remote_timeout: 10s
+        proxy_url: http://proxy.through.me
+        follow_redirects: true
+        headers:
+          more: foryou
+          less: forme
+        authorization:
+          type: bearer
+          credentials: supersecret
+        queue_config:
+          capacity: 1000
+          max_shards: 100
+          min_shards: 50
+          max_samples_per_send: 1000
+          batch_send_deadline: 10s
+          min_backoff: 30ms
+          max_backoff: 100ms
   wal:
     dir: /tmp/wal
     truncate_frequency: 60m
