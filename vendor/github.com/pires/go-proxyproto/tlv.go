@@ -1,5 +1,5 @@
-// Type-Length-Value splitting and parsing for proxy protocol V2
-// See spec https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt sections 2.2 to 2.7 and
+// Type-Length-Value splitting and parsing for proxy protocol V2.
+// See spec https://www.haproxy.org/download/3.4/doc/proxy-protocol.txt sections 2.2 to 2.2.8.
 
 package proxyproto
 
@@ -31,7 +31,7 @@ const (
 	PP2_SUBTYPE_SSL_CLIENT_CERT PP2Type = 0x28
 	PP2_TYPE_NETNS              PP2Type = 0x30
 
-	// Section 2.2.7, reserved types.
+	// Section 2.2.8, reserved types.
 	PP2_TYPE_MIN_CUSTOM     PP2Type = 0xE0
 	PP2_TYPE_MAX_CUSTOM     PP2Type = 0xEF
 	PP2_TYPE_MIN_EXPERIMENT PP2Type = 0xF0
@@ -116,29 +116,32 @@ func (p PP2Type) Registered() bool {
 		PP2_SUBTYPE_SSL_CIPHER,
 		PP2_SUBTYPE_SSL_SIG_ALG,
 		PP2_SUBTYPE_SSL_KEY_ALG,
+		PP2_SUBTYPE_SSL_GROUP,
+		PP2_SUBTYPE_SSL_SIG_SCHEME,
+		PP2_SUBTYPE_SSL_CLIENT_CERT,
 		PP2_TYPE_NETNS:
 		return true
 	}
 	return false
 }
 
-// App is true if the type is reserved for application specific data, see section 2.2.7.
+// App is true if the type is reserved for application specific data, see section 2.2.8.
 func (p PP2Type) App() bool {
 	return p >= PP2_TYPE_MIN_CUSTOM && p <= PP2_TYPE_MAX_CUSTOM
 }
 
 // Experiment is true if the type is reserved for temporary experimental use by application
-// developers, see section 2.2.7.
+// developers, see section 2.2.8.
 func (p PP2Type) Experiment() bool {
 	return p >= PP2_TYPE_MIN_EXPERIMENT && p <= PP2_TYPE_MAX_EXPERIMENT
 }
 
-// Future is true is the type is reserved for future use, see section 2.2.7.
+// Future is true is the type is reserved for future use, see section 2.2.8.
 func (p PP2Type) Future() bool {
 	return p >= PP2_TYPE_MIN_FUTURE
 }
 
-// Spec is true if the type is covered by the spec, see section 2.2 and 2.2.7.
+// Spec is true if the type is covered by the spec, see section 2.2 and 2.2.8.
 func (p PP2Type) Spec() bool {
 	return p.Registered() || p.App() || p.Experiment() || p.Future()
 }
