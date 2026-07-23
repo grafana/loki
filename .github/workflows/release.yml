@@ -211,56 +211,6 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-  publishDockerPlugins:
-    needs:
-    - "createRelease"
-    permissions:
-      id-token: "write"
-    runs-on: "ubuntu-x64"
-    steps:
-    - name: "pull release library code"
-      uses: "actions/checkout@v4"
-      with:
-        path: "lib"
-        persist-credentials: false
-        ref: "${{ env.RELEASE_LIB_REF }}"
-        repository: "grafana/loki-release"
-    - name: "pull code to release"
-      uses: "actions/checkout@v4"
-      with:
-        path: "release"
-        persist-credentials: false
-        repository: "${{ env.RELEASE_REPO }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
-    - name: "set up docker buildx"
-      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
-    - name: "Login to GAR"
-      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
-      with:
-        registry: "us-docker.pkg.dev"
-    - env:
-        SHA: "${{ needs.createRelease.outputs.sha }}"
-      name: "download and prepare plugins"
-      run: |
-        echo "downloading plugins to $(pwd)/plugins"
-        mkdir -p plugins
-        gcloud artifacts generic download \
-          --project="grafanalabs-dev" \
-          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
-          --location="us" \
-          --package=plugins \
-          --version=$(echo ${SHA} | tr -d '"') \
-          --destination=plugins/
-        mkdir -p "release/clients/cmd/docker-driver"
-    - name: "publish docker driver"
-      uses: "./lib/actions/push-images"
-      with:
-        buildDir: "release/clients/cmd/docker-driver"
-        imageDir: "plugins"
-        imagePrefix: "${{ env.PLUGIN_IMAGE_PREFIX }}"
-        isLatest: "${{ needs.createRelease.outputs.isLatest }}"
-        isPlugin: true
   publishImages:
     needs:
     - "createRelease"
@@ -306,7 +256,6 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
-    - "publishDockerPlugins"
     outputs:
       name: "${{ needs.createRelease.outputs.name }}"
     permissions:
