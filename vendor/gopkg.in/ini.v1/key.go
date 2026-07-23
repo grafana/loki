@@ -170,7 +170,7 @@ func (k *Key) transformValue(val string) string {
 		}
 
 		// Substitute by new value and take off leading '%(' and trailing ')s'.
-		val = strings.Replace(val, vr, nk.value, -1)
+		val = strings.ReplaceAll(val, vr, nk.String())
 	}
 	return val
 }
@@ -429,7 +429,7 @@ func (k *Key) InUint64(defaultVal uint64, candidates []uint64) uint64 {
 func (k *Key) InTimeFormat(format string, defaultVal time.Time, candidates []time.Time) time.Time {
 	val := k.MustTimeFormat(format)
 	for _, cand := range candidates {
-		if val == cand {
+		if val.Equal(cand) {
 			return val
 		}
 	}

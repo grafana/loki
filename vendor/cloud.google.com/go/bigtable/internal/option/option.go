@@ -191,16 +191,20 @@ func BigtableLoadBalancingStrategy() LoadBalancingStrategy {
 	return parseLoadBalancingStrategy(strategyStr)
 }
 
-// EnableBigtableConnectionPool uses new conn pool if envVar is set.
+// EnableBigtableConnectionPool returns true if the custom connection pool should be used. It returns false if the emulator is detected or if the pool is explicitly disabled via environment variable.
 func EnableBigtableConnectionPool() bool {
+	// Connection pool is not supported/needed with the emulator.
+	if os.Getenv("BIGTABLE_EMULATOR_HOST") != "" {
+		return false
+	}
 	bigtableConnPoolEnvVal := os.Getenv(BigtableConnectionPoolEnvVar)
 	if bigtableConnPoolEnvVal == "" {
-		return false
+		return true
 	}
 	enableBigtableConnPool, err := strconv.ParseBool(bigtableConnPoolEnvVal)
 	if err != nil {
-		// just fail and use default conn pool
-		return false
+		// just fail and use bigtable conn pool
+		return true
 	}
 	return enableBigtableConnPool
 }

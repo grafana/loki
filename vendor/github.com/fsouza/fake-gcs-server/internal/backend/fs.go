@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"cloud.google.com/go/storage"
 	"github.com/fsouza/fake-gcs-server/internal/checksum"
 	"github.com/pkg/xattr"
 )
@@ -117,7 +118,17 @@ func (s *storageFS) ListBuckets() ([]Bucket, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to get file info for %s: %w", info.Name(), err)
 			}
-			buckets = append(buckets, Bucket{Name: unescaped, TimeCreated: timespecToTime(createTimeFromFileInfo(fileInfo))})
+			attrs, err := getBucketAttributes(filepath.Join(s.rootDir, info.Name()))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get bucket attributes for %s: %w", info.Name(), err)
+			}
+			buckets = append(buckets, Bucket{
+				Name:                  unescaped,
+				VersioningEnabled:     attrs.VersioningEnabled,
+				TimeCreated:           timespecToTime(createTimeFromFileInfo(fileInfo)),
+				DefaultEventBasedHold: attrs.DefaultEventBasedHold,
+				ACL:                   attrs.ACL,
+			})
 		}
 	}
 	return buckets, nil
@@ -131,11 +142,38 @@ func (s *storageFS) UpdateBucket(bucketName string, attrsToUpdate BucketAttrs) e
 	if attrsToUpdate.VersioningEnabled {
 		return errors.New("not implemented: fs storage type does not support versioning yet")
 	}
-	encoded, err := json.Marshal(attrsToUpdate)
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	path := filepath.Join(s.rootDir, url.PathEscape(bucketName))
+	attrs, err := getBucketAttributes(path)
 	if err != nil {
 		return err
 	}
+	// Merge in only the attributes carried by the update: replacing the stored
+	// attributes wholesale would discard the ACL, which is managed separately
+	// by UpdateBucketACL.
+	attrs.DefaultEventBasedHold = attrsToUpdate.DefaultEventBasedHold
+	attrs.VersioningEnabled = attrsToUpdate.VersioningEnabled
+	encoded, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
+	return writeFile(path+bucketMetadataSuffix, encoded, 0o600)
+}
+
+func (s *storageFS) UpdateBucketACL(bucketName string, acl []storage.ACLRule) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	path := filepath.Join(s.rootDir, url.PathEscape(bucketName))
+	attrs, err := getBucketAttributes(path)
+	if err != nil {
+		return err
+	}
+	attrs.ACL = acl
+	encoded, err := json.Marshal(attrs)
+	if err != nil {
+		return err
+	}
 	return writeFile(path+bucketMetadataSuffix, encoded, 0o600)
 }
 
@@ -153,7 +191,7 @@ func (s *storageFS) GetBucket(name string) (Bucket, error) {
 	if err != nil {
 		return Bucket{}, err
 	}
-	return Bucket{Name: name, VersioningEnabled: false, TimeCreated: timespecToTime(createTimeFromFileInfo(dirInfo)), DefaultEventBasedHold: attrs.DefaultEventBasedHold}, err
+	return Bucket{Name: name, VersioningEnabled: false, TimeCreated: timespecToTime(createTimeFromFileInfo(dirInfo)), DefaultEventBasedHold: attrs.DefaultEventBasedHold, ACL: attrs.ACL}, err
 }
 
 func getBucketAttributes(path string) (BucketAttrs, error) {
@@ -440,7 +478,7 @@ func concatObjectReaders(objects []StreamingObject) io.ReadSeekCloser {
 	return concatenatedContent{io.MultiReader(readers...)}
 }
 
-func (s *storageFS) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentEncoding string, contentDisposition string, contentLanguage string, cacheControl string) (StreamingObject, error) {
+func (s *storageFS) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentEncoding string, contentDisposition string, contentLanguage string, cacheControl string, storageClass string) (StreamingObject, error) {
 	var sourceObjects []StreamingObject
 	for _, n := range objectNames {
 		obj, err := s.GetObject(bucketName, n)
@@ -461,6 +499,7 @@ func (s *storageFS) ComposeObject(bucketName string, objectNames []string, desti
 			ContentDisposition: contentDisposition,
 			ContentLanguage:    contentLanguage,
 			CacheControl:       cacheControl,
+			StorageClass:       storageClass,
 			Created:            now,
 			Updated:            now,
 		},

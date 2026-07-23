@@ -5,6 +5,8 @@
 // Package backend provides the backends used by fake-gcs-server.
 package backend
 
+import "cloud.google.com/go/storage"
+
 type Conditions interface {
 	ConditionsMet(activeGeneration int64) bool
 }
@@ -22,6 +24,7 @@ type Storage interface {
 	ListBuckets() ([]Bucket, error)
 	GetBucket(name string) (Bucket, error)
 	UpdateBucket(name string, attrsToUpdate BucketAttrs) error
+	UpdateBucketACL(name string, acl []storage.ACLRule) error
 	DeleteBucket(name string) error
 	CreateObject(obj StreamingObject, conditions Conditions) (StreamingObject, error)
 	ListObjects(bucketName string, prefix string, versions bool) ([]ObjectAttrs, error)
@@ -30,7 +33,7 @@ type Storage interface {
 	DeleteObject(bucketName, objectName string) error
 	PatchObject(bucketName, objectName string, attrsToUpdate ObjectAttrs) (StreamingObject, error)
 	UpdateObject(bucketName, objectName string, attrsToUpdate ObjectAttrs) (StreamingObject, error)
-	ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentEncoding string, contentDisposition string, contentLanguage string, cacheControl string) (StreamingObject, error)
+	ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentEncoding string, contentDisposition string, contentLanguage string, cacheControl string, storageClass string) (StreamingObject, error)
 	DeleteAllFiles() error
 }
 

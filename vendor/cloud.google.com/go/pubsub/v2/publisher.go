@@ -205,7 +205,7 @@ var errPublisherOrderingNotEnabled = errors.New("Publisher.EnableMessageOrdering
 func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	var createSpan trace.Span
 	if t.enableTracing {
-		opts := getPublishSpanAttributes(t.c.projectID, t.ID(), msg)
+		opts := getPublishSpanAttributes(t.c.projectID, t.name, msg)
 		opts = append(opts, trace.WithAttributes(semconv.CodeFunction("Publish")))
 		ctx, createSpan = startSpan(ctx, createSpanName, t.ID(), opts...)
 	}
@@ -273,6 +273,7 @@ func (t *Publisher) Publish(ctx context.Context, msg *Message) *PublishResult {
 	}
 
 	if err := t.scheduler.Add(msg.OrderingKey, bmsg, msgSize); err != nil {
+		t.flowController.release(ctx, msgSize)
 		t.scheduler.Pause(msg.OrderingKey)
 		ipubsub.SetPublishResult(r, "", err)
 		spanRecordError(createSpan, err)
@@ -423,7 +424,7 @@ func (t *Publisher) publishMessageBundle(ctx context.Context, bms []*bundledMess
 
 		projectID, topicID := parseResourceName(t.name)
 		var pSpan trace.Span
-		opts := getCommonOptions(projectID, topicID)
+		opts := getCommonOptions(projectID, t.name)
 		// Add link to publish RPC span of createSpan(s).
 		opts = append(opts, trace.WithLinks(links...))
 		opts = append(

@@ -7,6 +7,7 @@ package fakestorage
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -328,15 +329,20 @@ func (s *Server) createObject(obj StreamingObject, conditions backend.Conditions
 
 		bucket, _ := s.backend.GetBucket(obj.BucketName)
 		if bucket.VersioningEnabled {
-			s.eventManager.Trigger(&oldBackendObj, notification.EventArchive, oldObjEventAttr)
+			s.triggerEvent(&oldBackendObj, notification.EventArchive, oldObjEventAttr)
 		} else {
-			s.eventManager.Trigger(&oldBackendObj, notification.EventDelete, oldObjEventAttr)
+			s.triggerEvent(&oldBackendObj, notification.EventDelete, oldObjEventAttr)
 		}
 	}
 
 	newObj := fromBackendObjects([]backend.StreamingObject{newBackendObj})[0]
-	s.eventManager.Trigger(&newBackendObj, notification.EventFinalize, newObjEventAttr)
+	s.triggerEvent(&newBackendObj, notification.EventFinalize, newObjEventAttr)
 	return newObj, nil
+}
+
+func (s *Server) triggerEvent(obj *backend.StreamingObject, eventType notification.EventType, attrs map[string]string) {
+	s.eventManager.Trigger(obj, eventType, attrs)
+	s.notificationRegistry.Trigger(context.Background(), obj, eventType, attrs)
 }
 
 type ListOptions struct {
@@ -418,7 +424,7 @@ func (s *Server) ListObjectsWithOptionsPaginated(bucketName string, options List
 	}
 	sort.Strings(respPrefixes)
 	nextPageToken := ""
-	if options.MaxResults != 0 && len(respObjects) > options.MaxResults {
+	if options.MaxResults > 0 && len(respObjects) > options.MaxResults {
 		nextPageToken = respObjects[options.MaxResults].Name
 		respObjects = respObjects[:options.MaxResults]
 	}
@@ -663,8 +669,11 @@ func (s *Server) listObjects(r *http.Request) jsonResponse {
 	var err error
 	if maxResultsStr := r.URL.Query().Get("maxResults"); maxResultsStr != "" {
 		maxResults, err = strconv.Atoi(maxResultsStr)
-		if err != nil {
-			return jsonResponse{status: http.StatusBadRequest}
+		if err != nil || maxResults < 0 {
+			return jsonResponse{
+				status:       http.StatusBadRequest,
+				errorMessage: fmt.Sprintf("invalid value for maxResults: %q", maxResultsStr),
+			}
 		}
 	}
 	response, err := s.ListObjectsWithOptionsPaginated(bucketName, ListOptions{
@@ -803,9 +812,9 @@ func (s *Server) deleteObject(r *http.Request) jsonResponse {
 	bucket, _ := s.backend.GetBucket(obj.BucketName)
 	backendObj := toBackendObjects([]StreamingObject{obj})[0]
 	if bucket.VersioningEnabled {
-		s.eventManager.Trigger(&backendObj, notification.EventArchive, nil)
+		s.triggerEvent(&backendObj, notification.EventArchive, nil)
 	} else {
-		s.eventManager.Trigger(&backendObj, notification.EventDelete, nil)
+		s.triggerEvent(&backendObj, notification.EventDelete, nil)
 	}
 	return jsonResponse{}
 }
@@ -910,7 +919,18 @@ func (s *Server) setObjectACL(r *http.Request) jsonResponse {
 	}
 	defer obj.Close()
 
-	return jsonResponse{data: newACLListResponse(obj.ObjectAttrs)}
+	// The ObjectAccessControls: insert API returns the single created ACL
+	// entry, not a list.  Returning a list yields a response with no
+	// top-level "role", which makes strongly-typed clients such as the
+	// Google Cloud Storage Java SDK fail to decode the ACL role.
+	return jsonResponse{data: &objectAccessControl{
+		Bucket: obj.BucketName,
+		Entity: string(entity),
+		Object: obj.Name,
+		Role:   string(role),
+		Etag:   "RVRhZw==",
+		Kind:   "storage#objectAccessControl",
+	}}
 }
 
 func (s *Server) rewriteObject(r *http.Request) jsonResponse {
@@ -1013,6 +1033,7 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 	lastByte := int64(0)
 	satisfiable := true
 	contentLength := int64(0)
+	storedSize := obj.Size // capture the stored (compressed) size before any transcoding
 
 	handledTranscoding := func() bool {
 		// This should also be false if the Cache-Control metadata field == "no-transform",
@@ -1060,6 +1081,7 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
 	w.Header().Set("X-Goog-Generation", strconv.FormatInt(obj.Generation, 10))
 	w.Header().Set("X-Goog-Hash", fmt.Sprintf("crc32c=%s,md5=%s", obj.Crc32c, obj.Md5Hash))
+	w.Header().Set("X-Goog-Stored-Content-Length", strconv.FormatInt(storedSize, 10))
 	w.Header().Set("Last-Modified", obj.Updated.Format(http.TimeFormat))
 	w.Header().Set("ETag", fmt.Sprintf("%q", obj.Etag))
 	for name, value := range obj.Metadata {
@@ -1069,10 +1091,16 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 
 	if ranged && !satisfiable {
 		status = http.StatusRequestedRangeNotSatisfiable
-		content = bytes.NewReader([]byte(fmt.Sprintf(`<?xml version='1.0' encoding='UTF-8'?>`+
+		body := []byte(fmt.Sprintf(`<?xml version='1.0' encoding='UTF-8'?>`+
 			`<Error><Code>InvalidRange</Code>`+
 			`<Message>The requested range cannot be satisfied.</Message>`+
-			`<Details>%s</Details></Error>`, r.Header.Get("Range"))))
+			`<Details>%s</Details></Error>`, r.Header.Get("Range")))
+		content = bytes.NewReader(body)
+		// GCS reports the unsatisfiable range against the total object size. The
+		// Content-Length set above is 0 for an unsatisfiable range, which would
+		// truncate the error body, so override it with the body length.
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", obj.Size))
+		w.Header().Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
 		w.Header().Set(contentTypeHeader, "application/xml; charset=UTF-8")
 	} else {
 		if obj.ContentType != "" {
@@ -1249,6 +1277,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 		ContentDisposition string
 		ContentLanguage    string
 		CacheControl       string
+		StorageClass       string            `json:"storageClass"`
 		Metadata           map[string]string `json:"metadata"`
 		CustomTime         string
 		Acl                []acls
@@ -1274,6 +1303,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	attrsToUpdate.ContentLanguage = payload.ContentLanguage
 	attrsToUpdate.CacheControl = payload.CacheControl
+	attrsToUpdate.StorageClass = payload.StorageClass
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 
@@ -1294,7 +1324,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 	}
 	defer backendObj.Close()
 
-	s.eventManager.Trigger(&backendObj, notification.EventMetadata, nil)
+	s.triggerEvent(&backendObj, notification.EventMetadata, nil)
 	return jsonResponse{data: fromBackendObjects([]backend.StreamingObject{backendObj})[0]}
 }
 
@@ -1318,6 +1348,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 		ContentDisposition string            `json:"contentDisposition"`
 		ContentLanguage    string            `json:"contentLanguage"`
 		CacheControl       string            `json:"cacheControl"`
+		StorageClass       string            `json:"storageClass"`
 		CustomTime         string
 		Acl                []acls
 		Retention          *jsonRetention `json:"retention"`
@@ -1343,6 +1374,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	attrsToUpdate.ContentLanguage = payload.ContentLanguage
 	attrsToUpdate.CacheControl = payload.CacheControl
+	attrsToUpdate.StorageClass = payload.StorageClass
 	if len(payload.Acl) > 0 {
 		attrsToUpdate.ACL = []storage.ACLRule{}
 		for _, aclData := range payload.Acl {
@@ -1359,7 +1391,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 	}
 	defer backendObj.Close()
 
-	s.eventManager.Trigger(&backendObj, notification.EventMetadata, nil)
+	s.triggerEvent(&backendObj, notification.EventMetadata, nil)
 	return jsonResponse{data: fromBackendObjects([]backend.StreamingObject{backendObj})[0]}
 }
 
@@ -1379,6 +1411,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 			ContentDisposition string
 			ContentLanguage    string
 			CacheControl       string
+			StorageClass       string `json:"storageClass"`
 			Metadata           map[string]string
 		}
 	}
@@ -1405,7 +1438,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 		sourceNames = append(sourceNames, n.Name)
 	}
 
-	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType, composeRequest.Destination.ContentEncoding, composeRequest.Destination.ContentDisposition, composeRequest.Destination.ContentLanguage, composeRequest.Destination.CacheControl)
+	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType, composeRequest.Destination.ContentEncoding, composeRequest.Destination.ContentDisposition, composeRequest.Destination.ContentLanguage, composeRequest.Destination.CacheControl, composeRequest.Destination.StorageClass)
 	if err != nil {
 		return jsonResponse{
 			status:       http.StatusInternalServerError,
@@ -1416,7 +1449,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 
 	obj := fromBackendObjects([]backend.StreamingObject{backendObj})[0]
 
-	s.eventManager.Trigger(&backendObj, notification.EventFinalize, nil)
+	s.triggerEvent(&backendObj, notification.EventFinalize, nil)
 
 	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, urlhelper.GetBaseURL(r))}
 }

@@ -113,6 +113,12 @@ type Version struct {
 	ChecksumSHA1      string `xml:",omitempty"`
 	ChecksumSHA256    string `xml:",omitempty"`
 	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+	ChecksumAlgorithm string `xml:",omitempty"`
 	ChecksumType      string `xml:",omitempty"`
 
 	isDeleteMarker bool
@@ -297,6 +303,11 @@ type ObjectPart struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
 }
 
 // Checksum will return the checksum for the given type.
@@ -313,6 +324,16 @@ func (c ObjectPart) Checksum(t ChecksumType) string {
 		return c.ChecksumSHA256
 	case t.Is(ChecksumCRC64NVME):
 		return c.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return c.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return c.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return c.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return c.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return c.ChecksumXXHash128
 	}
 	return ""
 }
@@ -382,6 +403,11 @@ type completeMultipartUploadResult struct {
 	ChecksumSHA1      string
 	ChecksumSHA256    string
 	ChecksumCRC64NVME string
+	ChecksumMD5       string
+	ChecksumSHA512    string
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128"`
 	ChecksumType      string
 }
 
@@ -398,6 +424,11 @@ type CompletePart struct {
 	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
 	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
 	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumMD5       string `xml:",omitempty"`
+	ChecksumSHA512    string `xml:",omitempty"`
+	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
+	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
+	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
 }
 
 // Checksum will return the checksum for the given type.
@@ -414,6 +445,16 @@ func (c CompletePart) Checksum(t ChecksumType) string {
 		return c.ChecksumSHA256
 	case t.Is(ChecksumCRC64NVME):
 		return c.ChecksumCRC64NVME
+	case t.Is(ChecksumMD5):
+		return c.ChecksumMD5
+	case t.Is(ChecksumSHA512):
+		return c.ChecksumSHA512
+	case t.Is(ChecksumXXHash64):
+		return c.ChecksumXXHash64
+	case t.Is(ChecksumXXHash3):
+		return c.ChecksumXXHash3
+	case t.Is(ChecksumXXHash128):
+		return c.ChecksumXXHash128
 	}
 	return ""
 }

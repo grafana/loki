@@ -18,8 +18,10 @@
 package minio
 
 import (
+	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
@@ -30,8 +32,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/klauspost/crc32"
 	"github.com/minio/crc64nvme"
+	"github.com/zeebo/xxh3"
 )
 
 // ChecksumMode contains information about the checksum mode on the object
@@ -49,6 +53,9 @@ const (
 
 	// checksumModeMask is a mask for valid checksum mode types.
 	checksumModeMask = checksumLastMode - 1
+
+	// ChecksumUnknownMode indicates no or unknown checksum mode.
+	ChecksumUnknownMode ChecksumMode = 0
 )
 
 // Is returns if c is all of t.
@@ -64,9 +71,9 @@ func (c ChecksumMode) Key() string {
 func (c ChecksumMode) String() string {
 	switch c & checksumModeMask {
 	case ChecksumFullObjectMode:
-		return "FULL_OBJECT"
+		return amzChecksumModeFullObject
 	case ChecksumCompositeMode:
-		return "COMPOSITE"
+		return amzChecksumModeComposite
 	}
 	return ""
 }
@@ -86,6 +93,16 @@ const (
 	ChecksumCRC32C
 	// ChecksumCRC64NVME indicates CRC64 with 0xad93d23594c93659 polynomial.
 	ChecksumCRC64NVME
+	// ChecksumMD5 indicates an MD5 checksum.
+	ChecksumMD5
+	// ChecksumSHA512 indicates a SHA-512 checksum.
+	ChecksumSHA512
+	// ChecksumXXHash64 indicates an XXHash64 checksum.
+	ChecksumXXHash64
+	// ChecksumXXHash3 indicates an XXH3-64 checksum.
+	ChecksumXXHash3
+	// ChecksumXXHash128 indicates an XXH3-128 checksum.
+	ChecksumXXHash128
 
 	// Keep after all valid checksums
 	checksumLast
@@ -112,7 +129,15 @@ const (
 	amzChecksumSHA1      = "x-amz-checksum-sha1"
 	amzChecksumSHA256    = "x-amz-checksum-sha256"
 	amzChecksumCRC64NVME = "x-amz-checksum-crc64nvme"
+	amzChecksumMD5       = "x-amz-checksum-md5"
+	amzChecksumSHA512    = "x-amz-checksum-sha512"
+	amzChecksumXXHash64  = "x-amz-checksum-xxhash64"
+	amzChecksumXXHash3   = "x-amz-checksum-xxhash3"
+	amzChecksumXXHash128 = "x-amz-checksum-xxhash128"
 	amzChecksumMode      = "x-amz-checksum-type"
+
+	amzChecksumModeComposite  = "COMPOSITE"
+	amzChecksumModeFullObject = "FULL_OBJECT"
 )
 
 // Base returns the base type, without modifiers.
@@ -139,6 +164,16 @@ func (c ChecksumType) Key() string {
 		return amzChecksumSHA256
 	case ChecksumCRC64NVME:
 		return amzChecksumCRC64NVME
+	case ChecksumMD5:
+		return amzChecksumMD5
+	case ChecksumSHA512:
+		return amzChecksumSHA512
+	case ChecksumXXHash64:
+		return amzChecksumXXHash64
+	case ChecksumXXHash3:
+		return amzChecksumXXHash3
+	case ChecksumXXHash128:
+		return amzChecksumXXHash128
 	}
 	return ""
 }
@@ -146,7 +181,8 @@ func (c ChecksumType) Key() string {
 // CanComposite will return if the checksum type can be used for composite multipart upload on AWS.
 func (c ChecksumType) CanComposite() bool {
 	switch c & checksumMask {
-	case ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, ChecksumCRC32C:
+	case ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, ChecksumCRC32C,
+		ChecksumMD5, ChecksumSHA512, ChecksumXXHash64, ChecksumXXHash3, ChecksumXXHash128:
 		return true
 	}
 	return false
@@ -186,6 +222,14 @@ func (c ChecksumType) RawByteLen() int {
 		return sha256.Size
 	case ChecksumCRC64NVME:
 		return crc64nvme.Size
+	case ChecksumXXHash64, ChecksumXXHash3:
+		return 8
+	case ChecksumMD5:
+		return md5.Size
+	case ChecksumSHA512:
+		return sha512.Size
+	case ChecksumXXHash128:
+		return 16
 	}
 	return 0
 }
@@ -206,6 +250,16 @@ func (c ChecksumType) Hasher() hash.Hash {
 		return sha256.New()
 	case ChecksumCRC64NVME:
 		return crc64nvme.New()
+	case ChecksumMD5:
+		return md5.New()
+	case ChecksumSHA512:
+		return sha512.New()
+	case ChecksumXXHash64:
+		return xxhash.New()
+	case ChecksumXXHash3:
+		return xxh3.New()
+	case ChecksumXXHash128:
+		return xxh3.New128()
 	}
 	return nil
 }
@@ -233,7 +287,6 @@ func (c ChecksumType) EncodeToString(b []byte) string {
 }
 
 // String returns the type as a string.
-// CRC32, CRC32C, SHA1, and SHA256 for valid values.
 // Empty string for unset and "<invalid>" if not valid.
 func (c ChecksumType) String() string {
 	switch c & checksumMask {
@@ -249,6 +302,16 @@ func (c ChecksumType) String() string {
 		return ""
 	case ChecksumCRC64NVME:
 		return "CRC64NVME"
+	case ChecksumMD5:
+		return "MD5"
+	case ChecksumSHA512:
+		return "SHA512"
+	case ChecksumXXHash64:
+		return "XXHASH64"
+	case ChecksumXXHash3:
+		return "XXHASH3"
+	case ChecksumXXHash128:
+		return "XXHASH128"
 	}
 	return "<invalid>"
 }
