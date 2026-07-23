@@ -470,11 +470,10 @@ func (n *Node_IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, erro
 // an error if the conversion fails or is unsupported.
 func (n *IndexMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.IndexMerge{
-		NodeID:          nodeID,
-		Tenant:          n.Tenant,
-		ToCWindowStart:  n.TocWindowStartUnixNanos,
-		Runs:            copyRunRefs(n.Runs),
-		OutputIndexPath: n.OutputIndexPath,
+		NodeID:         nodeID,
+		Tenant:         n.Tenant,
+		ToCWindowStart: n.TocWindowStartUnixNanos,
+		Runs:           copyRunRefs(n.Runs),
 	}, nil
 }
 
@@ -513,11 +512,10 @@ func (n *Node_LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error)
 // MarshalPhysical converts a protobuf LogMerge into a physical plan node.
 func (n *LogMerge) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.LogMerge{
-		NodeID:          nodeID,
-		Tenant:          n.Tenant,
-		ToCWindowStart:  n.TocWindowStartUnixNanos,
-		Runs:            copyRunRefs(n.Runs),
-		SortSchema:      n.SortSchema,
-		OutputIndexPath: n.OutputIndexPath,
+		NodeID:         nodeID,
+		Tenant:         n.Tenant,
+		ToCWindowStart: n.TocWindowStartUnixNanos,
+		Runs:           copyRunRefs(n.Runs),
+		SortSchema:     n.SortSchema,
 	}, nil
 }
