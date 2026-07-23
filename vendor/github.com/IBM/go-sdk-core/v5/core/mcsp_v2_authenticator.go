@@ -104,87 +104,87 @@ func NewMCSPV2AuthenticatorBuilder() *MCSPV2AuthenticatorBuilder {
 	auth := &MCSPV2AuthenticatorBuilder{}
 
 	// Set fields whose default value is not the "zero value".
-	auth.MCSPV2Authenticator.IncludeRoles = true
+	auth.IncludeRoles = true
 
 	return auth
 }
 
 // SetApiKey sets the ApiKey field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetApiKey(s string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.ApiKey = s
+	builder.ApiKey = s
 	return builder
 }
 
 // SetURL sets the URL field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetURL(s string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.URL = s
+	builder.URL = s
 	return builder
 }
 
 // SetScopeCollectionType sets the ScopeCollectionType field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetScopeCollectionType(s string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.ScopeCollectionType = s
+	builder.ScopeCollectionType = s
 	return builder
 }
 
 // SetScopeID sets the ScopeID field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetScopeID(s string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.ScopeID = s
+	builder.ScopeID = s
 	return builder
 }
 
 // SetIncludeBuiltinActions sets the IncludeBuiltinActions field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetIncludeBuiltinActions(b bool) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.IncludeBuiltinActions = b
+	builder.IncludeBuiltinActions = b
 	return builder
 }
 
 // SetIncludeCustomActions sets the IncludeCustomActions field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetIncludeCustomActions(b bool) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.IncludeCustomActions = b
+	builder.IncludeCustomActions = b
 	return builder
 }
 
 // SetIncludeRoles sets the IncludeRoles field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetIncludeRoles(b bool) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.IncludeRoles = b
+	builder.IncludeRoles = b
 	return builder
 }
 
 // SetPrefixRoles sets the PrefixRoles field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetPrefixRoles(b bool) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.PrefixRoles = b
+	builder.PrefixRoles = b
 	return builder
 }
 
 // SetCallerExtClaim sets the CallerExtClaim field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetCallerExtClaim(m map[string]string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.CallerExtClaim = m
+	builder.CallerExtClaim = m
 	return builder
 }
 
 // SetDisableSSLVerification sets the DisableSSLVerification field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetDisableSSLVerification(b bool) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.DisableSSLVerification = b
+	builder.DisableSSLVerification = b
 	return builder
 }
 
 // SetHeaders sets the Headers field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetHeaders(headers map[string]string) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.Headers = headers
+	builder.Headers = headers
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) SetClient(client *http.Client) *MCSPV2AuthenticatorBuilder {
-	builder.MCSPV2Authenticator.Client = client
+	builder.Client = client
 	return builder
 }
 
 // Build returns a validated instance of the MCSPV2Authenticator with the config that was set in the builder.
 func (builder *MCSPV2AuthenticatorBuilder) Build() (*MCSPV2Authenticator, error) {
 	// Make sure the config is valid.
-	err := builder.MCSPV2Authenticator.Validate()
+	err := builder.Validate()
 	if err != nil {
 		return nil, RepurposeSDKProblem(err, "validation-failed")
 	}
