@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,11 +13,14 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
@@ -29,31 +33,51 @@ type indexEntry struct {
 	UncompressedLogsSize uint64
 }
 
+type sortKey struct {
+	labels    []string
+	timestamp int64
+}
+
+func compareSortKey(a, b sortKey) int {
+	if n := slices.Compare(a.labels, b.labels); n != 0 {
+		return n
+	}
+	return cmp.Compare(a.timestamp, b.timestamp)
+}
+
+type indexSortKey struct {
+	kind                       postings.PostingKind
+	columnName, labelValue     string
+	minTimestamp, maxTimestamp int64
+}
+
+func compareIndexSortKey(a, b indexSortKey) int {
+	return cmp.Or(
+		cmp.Compare(a.kind, b.kind),
+		strings.Compare(a.columnName, b.columnName),
+		strings.Compare(a.labelValue, b.labelValue),
+		cmp.Compare(a.minTimestamp, b.minTimestamp),
+		cmp.Compare(a.maxTimestamp, b.maxTimestamp),
+	)
+}
+
+func indexKey(row postings.Row) indexSortKey {
+	return indexSortKey{
+		kind:         row.Kind,
+		columnName:   row.ColumnName,
+		labelValue:   row.LabelValue,
+		minTimestamp: row.MinTimestamp,
+		maxTimestamp: row.MaxTimestamp,
+	}
+}
+
 // tenantIndexes maps tenant ID → ordered list of indexes the ToC references
 // for that tenant. Slice order reflects ToC enumeration order and is not
 // part of the contract — callers must not rely on it for correctness.
 type tenantIndexes map[string][]indexEntry
 
-// loadTenantIndexes reads the ToC for the given window-aligned time and
-// returns every (tenant, index entry) pair — each entry carries path, time
-// range, and the sizes recorded in the ToC row (zero for legacy rows written
-// before the size columns existed).
-//
-// This is the per-cycle planning input: the coordinator iterates the result
-// map and skips tenants whose index slice has length ≤ 1 (the convergence
-// gate). If the ToC does not exist for this window the call returns a
-// bucket.IsObjNotFoundErr-class error which the coordinator treats as
-// "nothing to do this cycle" — the next polling tick re-reads.
-//
-// Unlike pkg/dataobj/metastore.forEachIndexPointer, this helper does NOT
-// filter by user.ExtractOrgID — it walks every tenant's indexpointers
-// section and returns them grouped, which is what the coordinator's
-// per-tenant loop needs.
-func loadTenantIndexes(
-	ctx context.Context,
-	bucket objstore.Bucket,
-	window time.Time,
-) (tenantIndexes, error) {
+// loadTenantIndexes returns the window's ToC entries grouped by tenant.
+func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.Time) (tenantIndexes, error) {
 	tocPath := metastore.TableOfContentsPath(window.UTC().Truncate(metastore.MetastoreWindowSize))
 
 	r, err := bucket.Get(ctx, tocPath)
@@ -187,111 +211,237 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 	return out, nil
 }
 
-// sectionRefsFor converts a tenant's indexes into SectionRefs suitable for
-// compactionv2.Plan. Returns one SectionRef per index with timestamp-only
-// bounds (empty MinKey/MaxKey); the planner's composite (MinKey, MinTimestamp)
-// sort key degrades to single-axis timestamp ordering, which is sufficient
-// for index-only compaction.
-func sectionRefsFor(indexes []indexEntry) []*compactionv2pb.SectionRef {
-	out := make([]*compactionv2pb.SectionRef, len(indexes))
-	for i, e := range indexes {
-		out[i] = &compactionv2pb.SectionRef{
-			ObjectPath:       e.Path,
-			SectionIndex:     0,
-			MinTimestamp:     e.Start.UnixNano(),
-			MaxTimestamp:     e.End.UnixNano(),
-			UncompressedSize: int64(e.UncompressedLogsSize),
+const indexSectionReadConcurrency = 16
+
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
+	type sectionRead struct {
+		objectPath   string
+		sectionIndex int64
+		section      *dataobj.Section
+	}
+
+	var reads []sectionRead
+	for _, entry := range entries {
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 0)
+		if err != nil {
+			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
+		}
+		for sectionIndex, section := range obj.Sections() {
+			if postings.CheckSection(section) && section.Tenant == tenant {
+				reads = append(reads, sectionRead{
+					objectPath:   entry.Path,
+					sectionIndex: int64(sectionIndex),
+					section:      section,
+				})
+			}
 		}
 	}
-	return out
+
+	results := make([]*v2.Section[indexSortKey], len(reads))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(indexSectionReadConcurrency)
+	for i, read := range reads {
+		group.Go(func() error {
+			ref, err := indexSectionRef(groupCtx, read.objectPath, read.sectionIndex, read.section)
+			if err != nil {
+				return fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, read.objectPath, read.sectionIndex, err)
+			}
+			results[i] = ref
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	refs := make([]v2.Section[indexSortKey], 0, len(results))
+	for _, ref := range results {
+		if ref != nil {
+			refs = append(refs, *ref)
+		}
+	}
+	return refs, nil
 }
 
-// logSectionRefsFor reads an index object's stats sections and
-// produces compactionv2pb.SectionRef values (one per stats row) plus the
-// tenant's sort schema.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]*compactionv2pb.SectionRef, []string, error) {
+func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {
+	postingsSection, err := postings.Open(ctx, section)
+	if err != nil {
+		return nil, fmt.Errorf("open postings section: %w", err)
+	}
+	columns, err := postingsBoundColumns(postingsSection)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := postings.NewReader(postings.ReaderOptions{Columns: columns})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("open postings reader: %w", err)
+	}
+	rows := postings.NewRowReader(ctx, reader)
+	defer rows.Close()
+
+	// Postings sections use CompareRows order. compareIndexSortKey is its prefix,
+	// so the first and last rows bound the section for run planning.
+	var first, last postings.Row
+	hasRows := rows.Next()
+	if hasRows {
+		first = rows.At()
+		last = first
+	}
+	for rows.Next() {
+		last = rows.At()
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read postings rows: %w", err)
+	}
+	if !hasRows {
+		return nil, nil
+	}
+
+	minKey, maxKey := indexKey(first), indexKey(last)
+	if compareIndexSortKey(minKey, maxKey) > 0 {
+		return nil, errors.New("postings section bounds are out of order")
+	}
+	return &v2.Section[indexSortKey]{
+		Ref: &compactionv2pb.SectionRef{
+			ObjectPath:   objectPath,
+			SectionIndex: sectionIndex,
+		},
+		Min: minKey,
+		Max: maxKey,
+	}, nil
+}
+
+func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error) {
+	required := []postings.ColumnType{
+		postings.ColumnTypeKind,
+		postings.ColumnTypeColumnName,
+		postings.ColumnTypeLabelValue,
+		postings.ColumnTypeMinTimestamp,
+		postings.ColumnTypeMaxTimestamp,
+	}
+	byType := make(map[postings.ColumnType]*postings.Column, len(section.Columns()))
+	for _, column := range section.Columns() {
+		byType[column.Type] = column
+	}
+
+	columns := make([]*postings.Column, 0, len(required))
+	for _, columnType := range required {
+		column, ok := byType[columnType]
+		if !ok {
+			return nil, fmt.Errorf("postings section has no %s column", columnType)
+		}
+		columns = append(columns, column)
+	}
+	return columns, nil
+}
+
+// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
-	var (
-		refs           []*compactionv2pb.SectionRef
-		schema         []string
-		reader         stats.Reader
-		sortSchemaLbls []string
-		schemaDerived  bool
-	)
+	type sectionID struct {
+		path  string
+		index int64
+	}
 
+	var (
+		schema     []string
+		labelNames []string
+		schemaName string
+		reader     stats.Reader
+
+		bySection = make(map[sectionID]*v2.Section[sortKey])
+	)
 	defer reader.Close()
+
 	const batchSize = 1024
 	scratch := make([]stats.Stat, batchSize)
-
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		if section.Tenant != tenant {
 			continue
 		}
 
-		sec, err := stats.Open(ctx, section)
+		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
-		reader.Reset(stats.ReaderOptions{Columns: sec.Columns()})
+		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
 			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
-			rec, readErr := reader.Read(ctx, batchSize)
+			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
 				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
-			numRows := int(rec.NumRows())
+			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
 				break
 			}
 
-			dest := scratch[:numRows]
-			n, err := stats.FromRecordBatch(rec, dest)
+			rows := scratch[:numRows]
+			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
 				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
-			for i := range n {
-				st := dest[i]
-
-				if !schemaDerived {
-					// SortSchema is stored fully-qualified ("label:<name>"),
-					for fqn := range strings.SplitSeq(st.SortSchema, ",") {
-						if fqn == "" {
-							continue
-						}
-						schema = append(schema, fqn)
-						typ, name, ok := strings.Cut(fqn, ":")
-						if ok && typ == "label" && name != "" {
-							sortSchemaLbls = append(sortSchemaLbls, name)
-						}
+			for _, stat := range rows[:n] {
+				if schemaName == "" && len(bySection) == 0 {
+					schemaName = stat.SortSchema
+					schema, labelNames, err = parseSortSchema(stat.SortSchema)
+					if err != nil {
+						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
 					}
-					schemaDerived = true
+				} else if stat.SortSchema != schemaName {
+					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
 				}
 
-				ref := &compactionv2pb.SectionRef{
-					ObjectPath:       st.ObjectPath,
-					SectionIndex:     st.SectionIndex,
-					MinTimestamp:     st.MinTimestamp,
-					MaxTimestamp:     st.MaxTimestamp,
-					UncompressedSize: st.UncompressedSize,
-				}
-				if len(sortSchemaLbls) > 0 {
-					minKey := make([]string, len(sortSchemaLbls))
-					for j, k := range sortSchemaLbls {
-						minKey[j] = st.Labels[k]
+				var labels []string
+				if len(labelNames) > 0 {
+					labels = make([]string, len(labelNames))
+					for i, name := range labelNames {
+						labels[i] = stat.Labels[name]
 					}
-					ref.MinKey = minKey
-					ref.MaxKey = slices.Clone(minKey)
 				}
-				refs = append(refs, ref)
+				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
+				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+
+				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
+				bounded, ok := bySection[id]
+				if !ok {
+					bySection[id] = &v2.Section[sortKey]{
+						Ref: &compactionv2pb.SectionRef{
+							ObjectPath:       stat.ObjectPath,
+							SectionIndex:     stat.SectionIndex,
+							MinKey:           minKey.labels,
+							MaxKey:           maxKey.labels,
+							MinTimestamp:     minKey.timestamp,
+							MaxTimestamp:     maxKey.timestamp,
+							UncompressedSize: stat.UncompressedSize,
+						},
+						Min: minKey,
+						Max: maxKey,
+					}
+					continue
+				}
+
+				if compareSortKey(minKey, bounded.Min) < 0 {
+					bounded.Min = minKey
+					bounded.Ref.MinKey = minKey.labels
+				}
+				if compareSortKey(maxKey, bounded.Max) > 0 {
+					bounded.Max = maxKey
+					bounded.Ref.MaxKey = maxKey.labels
+				}
+				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+				bounded.Ref.UncompressedSize += stat.UncompressedSize
 			}
 
 			if errors.Is(readErr, io.EOF) {
@@ -300,5 +450,30 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
+	refs := make([]v2.Section[sortKey], 0, len(bySection))
+	for _, ref := range bySection {
+		refs = append(refs, *ref)
+	}
+	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {
+		if n := strings.Compare(a.Ref.ObjectPath, b.Ref.ObjectPath); n != 0 {
+			return n
+		}
+		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
+	})
 	return refs, schema, nil
+}
+
+func parseSortSchema(value string) (schema, labelNames []string, _ error) {
+	for entry := range strings.SplitSeq(value, ",") {
+		if entry == "" {
+			continue
+		}
+		typ, name, ok := strings.Cut(entry, ":")
+		if !ok || typ != "label" || name == "" {
+			return nil, nil, fmt.Errorf("invalid log sort key %q", entry)
+		}
+		schema = append(schema, entry)
+		labelNames = append(labelNames, name)
+	}
+	return schema, labelNames, nil
 }

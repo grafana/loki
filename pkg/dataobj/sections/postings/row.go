@@ -8,8 +8,9 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-// CompareRows reports whether row [a] sorts before (<0), after (>0), or equal to
-// (0) row [b].
+// CompareRows defines the physical row order of a postings section and the
+// merge order across sections. It reports whether row [a] sorts before (<0),
+// after (>0), or equal to (0) row [b].
 func CompareRows(a, b Row) int {
 	return cmp.Or(
 		cmp.Compare(a.Kind, b.Kind),

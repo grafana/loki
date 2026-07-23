@@ -23,6 +23,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -145,6 +146,14 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 // fixedClock returns a clock function pinned to t.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
+func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
+	t.Helper()
+	buildIndexWithPostings(ctx, t, bucket, tenant, path, 1<<20, []postings.Row{
+		{Kind: postings.KindLabel, ObjectPath: path + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
+		{Kind: postings.KindLabel, ObjectPath: path + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40},
+	})
+}
+
 // TestRunTenantCycle_RaceLossIsSuccess verifies the (swapped=false, err=nil)
 // path is treated as success: the cycle returns nil and the next cycle
 // re-plans against the post-swap ToC.
@@ -152,6 +161,8 @@ func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/aa/src-0")
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/bb/src-1")
 
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
 		"acme": {
@@ -180,6 +191,8 @@ func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/aa/src-0")
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/bb/src-1")
 
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
 		"acme": {
@@ -290,6 +303,30 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 	require.Zero(t, stats.added)
 	require.Empty(t, runner.snapshot(), "terminal window dispatches no plans")
 	require.Empty(t, replacer.snapshot(), "terminal window performs no swap")
+}
+
+func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	indexPath := "indexes/aa/converged"
+
+	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 30, UncompressedSize: 100},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{}, stats)
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
 }
 
 func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
@@ -465,8 +502,9 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {{path: "[REDACTED]", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
+		"acme": {{path: "indexes/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
 	})
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
@@ -474,6 +512,104 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 
 	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
+}
+
+func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsSwaps(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/a"
+	buildIndexWithPostingsSections(ctx, t, bucket, "acme", path,
+		[]postings.Row{
+			{Kind: postings.KindLabel, ObjectPath: "logs/a", ColumnName: "service", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
+			{Kind: postings.KindLabel, ObjectPath: "logs/b", ColumnName: "service", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40},
+		},
+		[]postings.Row{
+			{Kind: postings.KindLabel, ObjectPath: "logs/c", ColumnName: "service", LabelValue: "b", MinTimestamp: 15, MaxTimestamp: 25},
+			{Kind: postings.KindLabel, ObjectPath: "logs/d", ColumnName: "service", LabelValue: "y", MinTimestamp: 25, MaxTimestamp: 35},
+		},
+	)
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {{path: path, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
+	})
+
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(3*time.Hour)), newFakeLimits("acme"))
+
+	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
+	require.Len(t, replacer.snapshot(), 1)
+	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+	require.Equal(t, time.Hour.Seconds(), testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
+}
+
+func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	for _, path := range []string{"indexes/a", "indexes/b"} {
+		buildIndexWithPostings(ctx, t, bucket, "acme", path, 1<<20, []postings.Row{{
+			Kind: postings.KindLabel, ObjectPath: path + ".log", ColumnName: "service", LabelValue: "api", MinTimestamp: 10, MaxTimestamp: 20,
+		}})
+	}
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
+
+	require.NoError(t, err)
+	require.Equal(t, compactionStats{}, stats)
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
+	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+}
+
+func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	rowsByPath := map[string][]postings.Row{
+		"indexes/a": {
+			{Kind: postings.KindLabel, ObjectPath: "logs/a-0", ColumnName: "service", LabelValue: "api", MinTimestamp: 10, MaxTimestamp: 10},
+			{Kind: postings.KindLabel, ObjectPath: "logs/a-1", ColumnName: "service", LabelValue: "api", MinTimestamp: 30, MaxTimestamp: 30},
+		},
+		"indexes/b": {
+			{Kind: postings.KindLabel, ObjectPath: "logs/b-0", ColumnName: "service", LabelValue: "api", MinTimestamp: 20, MaxTimestamp: 20},
+			{Kind: postings.KindLabel, ObjectPath: "logs/b-1", ColumnName: "service", LabelValue: "api", MinTimestamp: 40, MaxTimestamp: 40},
+		},
+	}
+	for path, rows := range rowsByPath {
+		buildIndexWithPostings(ctx, t, bucket, "acme", path, 1<<20, rows)
+	}
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{
+		{Path: "indexes/a", Start: window, End: window.Add(time.Hour)},
+		{Path: "indexes/b", Start: window, End: window.Add(time.Hour)},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, runner.snapshot(), 1)
+	require.Len(t, replacer.snapshot(), 1)
+	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+}
+
+func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
+
+	require.ErrorContains(t, err, "discover index section bounds")
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
 }
 
 func TestRunIndexMergePhase_MissingToCIsNoWork(t *testing.T) {
@@ -489,10 +625,12 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
+	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/b")
 	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
 		"acme": {
-			{path: "[REDACTED]", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "[REDACTED]", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: "indexes/b", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
 		},
 	})
 	runner := &fakeRunner{}
@@ -508,11 +646,20 @@ func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant 
 	bucket := objstore.NewInMemBucket()
 	entries := make([]testIndex, 0, len(paths))
 	for _, p := range paths {
-		buildIndexWithStats(ctx, t, bucket, tenant, p, []stats.Stat{
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
-				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
-				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      tenant,
+			path:        p,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{
+				{ObjectPath: p + ".log-0", SectionIndex: 0, SortSchema: "label:service_name",
+					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+				{ObjectPath: p + ".log-1", SectionIndex: 0, SortSchema: "label:service_name",
+					Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+			},
+			postings: []postings.Row{
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-0", ColumnName: "service_name", LabelValue: "a", MinTimestamp: 10, MaxTimestamp: 20},
+				{Kind: postings.KindLabel, ObjectPath: p + ".log-1", ColumnName: "service_name", LabelValue: "z", MinTimestamp: 30, MaxTimestamp: 40},
+			},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})
 	}
@@ -559,13 +706,7 @@ func TestRunLogMergePhase_CancelledMidIterationStops(t *testing.T) {
 func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	window := imWindow()
-	bucket := objstore.NewInMemBucket()
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {
-			{path: "indexes/acme/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/acme/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-		},
-	})
+	bucket := seededToC(ctx, t, window, "acme")
 	runner := &fakeRunner{}
 	replacer := &fakeReplacer{swapped: true}
 
@@ -605,17 +746,7 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 	defer cancel()
 
 	window := imWindow()
-	bucket := objstore.NewInMemBucket()
-	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
-		"acme": {
-			{path: "indexes/acme/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/acme/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-		},
-		"bravo": {
-			{path: "indexes/bravo/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/bravo/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-		},
-	})
+	bucket := seededToC(ctx, t, window, "acme", "bravo")
 
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme", "bravo"))
@@ -689,10 +820,14 @@ func seededToC(ctx context.Context, t *testing.T, window time.Time, tenants ...s
 	t.Helper()
 	bucket := objstore.NewInMemBucket()
 	entries := map[string][]testIndex{}
-	for _, tn := range tenants {
-		entries[tn] = []testIndex{
-			{path: "indexes/" + tn + "/0", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
-			{path: "indexes/" + tn + "/1", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+	for _, tenant := range tenants {
+		paths := []string{"indexes/" + tenant + "/0", "indexes/" + tenant + "/1"}
+		for _, path := range paths {
+			buildOverlappingPostingsIndex(ctx, t, bucket, tenant, path)
+		}
+		entries[tenant] = []testIndex{
+			{path: paths[0], start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
+			{path: paths[1], start: window.Add(time.Hour), end: window.Add(2 * time.Hour)},
 		}
 	}
 	writeToCWithIndexes(ctx, t, bucket, entries)
@@ -1041,6 +1176,33 @@ func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
 		"a known converged row keeps the computed section sum (100+100)")
 }
 
+func TestCompactTenantLogs_PublishesGlobalTimeRange(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+	indexPath := "indexes/converged"
+	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 500, MaxTimestamp: 1000, UncompressedSize: 100},
+		{ObjectPath: "logs/a", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, UncompressedSize: 100},
+		{ObjectPath: "logs/b", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 550, MaxTimestamp: 950, UncompressedSize: 100},
+		{ObjectPath: "logs/b", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 200, MaxTimestamp: 800, UncompressedSize: 100},
+	})
+
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	_, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath, UncompressedLogsSize: 400})
+	require.NoError(t, err)
+
+	calls := replacer.snapshot()
+	require.Len(t, calls, 1)
+	require.Equal(t, time.Unix(0, 100).UTC(), calls[0].newEntries[0].StartTime)
+	require.Equal(t, time.Unix(0, 1000).UTC(), calls[0].newEntries[0].EndTime)
+}
+
 func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
@@ -1117,6 +1279,49 @@ func TestTaskUncompressedLogsSize_UnknownSizePropagates(t *testing.T) {
 
 	require.Equal(t, uint64(0), taskUncompressedLogsSize(tasks[0]),
 		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
+}
+
+func TestMakeIndexTocEntries_UsesInputIndexes(t *testing.T) {
+	window := imWindow()
+	tasks := []*compactionv2pb.TaskSpec{{
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{
+				{ObjectPath: "indexes/a", SectionIndex: 1},
+				{ObjectPath: "indexes/a", SectionIndex: 2},
+			}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "indexes/b", SectionIndex: 0}}},
+		},
+	}}
+	inputs := []indexEntry{
+		{Path: "indexes/a", Start: window.Add(time.Hour), End: window.Add(3 * time.Hour), UncompressedLogsSize: 100},
+		{Path: "indexes/b", Start: window.Add(2 * time.Hour), End: window.Add(4 * time.Hour), UncompressedLogsSize: 200},
+	}
+
+	entries, err := makeIndexTocEntries(tasks, []string{"indexes/output"}, inputs)
+	require.NoError(t, err)
+	require.Equal(t, []metastore.TableOfContentsEntry{{
+		Path:                 "indexes/output",
+		StartTime:            window.Add(time.Hour),
+		EndTime:              window.Add(4 * time.Hour),
+		UncompressedLogsSize: 300,
+	}}, entries)
+}
+
+func TestMakeIndexTocEntries_UnknownInputSizePropagates(t *testing.T) {
+	tasks := []*compactionv2pb.TaskSpec{{
+		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "indexes/a"},
+			{ObjectPath: "indexes/b"},
+		}}},
+	}}
+	inputs := []indexEntry{
+		{Path: "indexes/a", UncompressedLogsSize: 100},
+		{Path: "indexes/b", UncompressedLogsSize: 0},
+	}
+
+	entries, err := makeIndexTocEntries(tasks, []string{"indexes/output"}, inputs)
+	require.NoError(t, err)
+	require.Zero(t, entries[0].UncompressedLogsSize)
 }
 
 func TestFillFileSizes_StatsObjectAndSetsSize(t *testing.T) {
