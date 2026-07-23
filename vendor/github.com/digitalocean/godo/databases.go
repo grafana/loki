@@ -32,6 +32,7 @@ const (
 	databaseEvictionPolicyPath                   = databaseBasePath + "/%s/eviction_policy"
 	databaseSQLModePath                          = databaseBasePath + "/%s/sql_mode"
 	databaseFirewallRulesPath                    = databaseBasePath + "/%s/firewall"
+	databaseDOSettingsPath                       = databaseBasePath + "/%s/do_settings"
 	databaseOptionsPath                          = databaseBasePath + "/options"
 	databaseUpgradeMajorVersionPath              = databaseBasePath + "/%s/upgrade"
 	databasePromoteReplicaToPrimaryPath          = databaseReplicaPath + "/promote"
@@ -160,6 +161,8 @@ type DatabasesService interface {
 	SetSQLMode(context.Context, string, ...string) (*Response, error)
 	GetFirewallRules(context.Context, string) ([]DatabaseFirewallRule, *Response, error)
 	UpdateFirewallRules(context.Context, string, *DatabaseUpdateFirewallRulesRequest) (*Response, error)
+	GetDOSettings(context.Context, string) (*DOSettings, *Response, error)
+	UpdateDOSettings(context.Context, string, *DatabaseUpdateDOSettingsRequest) (*Response, error)
 	GetPostgreSQLConfig(context.Context, string) (*PostgreSQLConfig, *Response, error)
 	GetRedisConfig(context.Context, string) (*RedisConfig, *Response, error)
 	GetValkeyConfig(context.Context, string) (*ValkeyConfig, *Response, error)
@@ -167,6 +170,7 @@ type DatabasesService interface {
 	GetMongoDBConfig(context.Context, string) (*MongoDBConfig, *Response, error)
 	GetOpensearchConfig(context.Context, string) (*OpensearchConfig, *Response, error)
 	GetKafkaConfig(context.Context, string) (*KafkaConfig, *Response, error)
+	GetAdvancedPostgresSQLConfig(context.Context, string) (*AdvancedPostgresConfig, *Response, error)
 	UpdatePostgreSQLConfig(context.Context, string, *PostgreSQLConfig) (*Response, error)
 	UpdateRedisConfig(context.Context, string, *RedisConfig) (*Response, error)
 	UpdateValkeyConfig(context.Context, string, *ValkeyConfig) (*Response, error)
@@ -174,6 +178,7 @@ type DatabasesService interface {
 	UpdateMongoDBConfig(context.Context, string, *MongoDBConfig) (*Response, error)
 	UpdateOpensearchConfig(context.Context, string, *OpensearchConfig) (*Response, error)
 	UpdateKafkaConfig(context.Context, string, *KafkaConfig) (*Response, error)
+	UpdateAdvancedPostgresSQLConfig(context.Context, string, *AdvancedPostgresConfigUpdate) (*Response, error)
 	ListOptions(todo context.Context) (*DatabaseOptions, *Response, error)
 	UpgradeMajorVersion(context.Context, string, *UpgradeVersionRequest) (*Response, error)
 	ListTopics(context.Context, string, *ListOptions) ([]DatabaseTopic, *Response, error)
@@ -271,6 +276,16 @@ type ServiceAddress struct {
 // DOSettings contains DigitalOcean-specific settings for a database cluster.
 type DOSettings struct {
 	ServiceCnames []string `json:"service_cnames,omitempty"`
+}
+
+// doSettingsRoot is the API response wrapper for GET /do_settings.
+type doSettingsRoot struct {
+	DOSettings *DOSettings `json:"do_settings"`
+}
+
+// DatabaseUpdateDOSettingsRequest is used to update DigitalOcean-specific settings.
+type DatabaseUpdateDOSettingsRequest struct {
+	DOSettings *DOSettings `json:"do_settings"`
 }
 
 // DatabaseUser represents a user in the database
@@ -726,6 +741,25 @@ type PostgreSQLConfig struct {
 	MaxFailoverReplicationTimeLag   *int64                       `json:"max_failover_replication_time_lag,omitempty"`
 }
 
+// AdvancedPostgresPGParameter is one GUC parameter returned by GET /config for advanced_pg clusters.
+type AdvancedPostgresPGParameter struct {
+	Name            string `json:"name,omitempty"`
+	Value           string `json:"value,omitempty"`
+	Description     string `json:"description,omitempty"`
+	RequiresRestart bool   `json:"requires_restart,omitempty"`
+	DefaultValue    string `json:"default_value,omitempty"`
+}
+
+// AdvancedPostgresConfig holds advanced configurations for advanced_pg database clusters.
+type AdvancedPostgresConfig struct {
+	PGParameters []AdvancedPostgresPGParameter `json:"pg_parameters,omitempty"`
+}
+
+// AdvancedPostgresConfigUpdate is the PATCH payload for advanced_pg database clusters.
+type AdvancedPostgresConfigUpdate struct {
+	PGParameters map[string]string `json:"pg_parameters,omitempty"`
+}
+
 // PostgreSQLBouncerConfig configuration
 type PostgreSQLBouncerConfig struct {
 	ServerResetQueryAlways  *bool     `json:"server_reset_query_always,omitempty"`
@@ -942,6 +976,14 @@ type databaseKafkaConfigRoot struct {
 	Config *KafkaConfig `json:"config"`
 }
 
+type databaseAdvancedPostgresConfigRoot struct {
+	Config *AdvancedPostgresConfig `json:"config"`
+}
+
+type databaseAdvancedPostgresConfigUpdateRoot struct {
+	Config *AdvancedPostgresConfigUpdate `json:"config"`
+}
+
 type databaseBackupsRoot struct {
 	Backups []DatabaseBackup `json:"backups"`
 }
@@ -1018,13 +1060,15 @@ type DatabaseUpdateMetricsCredentialsRequest struct {
 
 // DatabaseOptions represents the available database engines
 type DatabaseOptions struct {
-	MongoDBOptions     DatabaseEngineOptions `json:"mongodb"`
-	MySQLOptions       DatabaseEngineOptions `json:"mysql"`
-	PostgresSQLOptions DatabaseEngineOptions `json:"pg"`
-	RedisOptions       DatabaseEngineOptions `json:"redis"`
-	ValkeyOptions      DatabaseEngineOptions `json:"valkey"`
-	KafkaOptions       DatabaseEngineOptions `json:"kafka"`
-	OpensearchOptions  DatabaseEngineOptions `json:"opensearch"`
+	MongoDBOptions             DatabaseEngineOptions `json:"mongodb"`
+	MySQLOptions               DatabaseEngineOptions `json:"mysql"`
+	PostgresSQLOptions         DatabaseEngineOptions `json:"pg"`
+	RedisOptions               DatabaseEngineOptions `json:"redis"`
+	ValkeyOptions              DatabaseEngineOptions `json:"valkey"`
+	KafkaOptions               DatabaseEngineOptions `json:"kafka"`
+	OpensearchOptions          DatabaseEngineOptions `json:"opensearch"`
+	AdvancedMySQLOptions       DatabaseEngineOptions `json:"advanced_mysql"`
+	AdvancedPostgresSQLOptions DatabaseEngineOptions `json:"advanced_pg"`
 }
 
 // DatabaseEngineOptions represents the configuration options that are available for a given database engine
@@ -1713,6 +1757,31 @@ func (svc *DatabasesServiceOp) UpdateFirewallRules(ctx context.Context, database
 	return svc.client.Do(ctx, req, nil)
 }
 
+// GetDOSettings retrieves the DigitalOcean-specific settings for a given cluster.
+func (svc *DatabasesServiceOp) GetDOSettings(ctx context.Context, databaseID string) (*DOSettings, *Response, error) {
+	path := fmt.Sprintf(databaseDOSettingsPath, databaseID)
+	root := new(doSettingsRoot)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.DOSettings, resp, nil
+}
+
+// UpdateDOSettings updates the DigitalOcean-specific settings for a given cluster.
+func (svc *DatabasesServiceOp) UpdateDOSettings(ctx context.Context, databaseID string, updateReq *DatabaseUpdateDOSettingsRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseDOSettingsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateReq)
+	if err != nil {
+		return nil, err
+	}
+	return svc.client.Do(ctx, req, nil)
+}
+
 // GetPostgreSQLConfig retrieves the config for a PostgreSQL database cluster.
 func (svc *DatabasesServiceOp) GetPostgreSQLConfig(ctx context.Context, databaseID string) (*PostgreSQLConfig, *Response, error) {
 	path := fmt.Sprintf(databaseConfigPath, databaseID)
@@ -1903,6 +1972,38 @@ func (svc *DatabasesServiceOp) GetKafkaConfig(ctx context.Context, databaseID st
 func (svc *DatabasesServiceOp) UpdateKafkaConfig(ctx context.Context, databaseID string, config *KafkaConfig) (*Response, error) {
 	path := fmt.Sprintf(databaseConfigPath, databaseID)
 	root := &databaseKafkaConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// GetAdvancedPostgresSQLConfig retrieves the config for an advanced_pg database cluster.
+func (svc *DatabasesServiceOp) GetAdvancedPostgresSQLConfig(ctx context.Context, databaseID string) (*AdvancedPostgresConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseAdvancedPostgresConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateAdvancedPostgresSQLConfig updates the config for an advanced_pg database cluster.
+func (svc *DatabasesServiceOp) UpdateAdvancedPostgresSQLConfig(ctx context.Context, databaseID string, config *AdvancedPostgresConfigUpdate) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databaseAdvancedPostgresConfigUpdateRoot{
 		Config: config,
 	}
 	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)

@@ -1,5 +1,36 @@
 # Change Log
 
+## [1.199.0] - 2026-07-15
+
+- #1052 - @llDrLove - CON-13386 Add P2pOciRegistry plugin information to Kubernetes api calls (Create, Update, Get)
+
+## [1.198.0] - 2026-07-07
+
+- #1043 - @johannaratliff - Support subnet_uuid in vpcnatgateway
+- #1049 - @ritheek-pitti-do - gradientai: remove deprecated SaveAsPreset field
+- #1041 - @sshirolkar - add support for custom metrics rpcs
+- #1044 - @lprasanth-nadiminti - DBAAS-8142: Add GetDOSettings and UpdateDOSettings
+
+## [1.197.0] - 2026-06-25
+
+- #1038 - @v-amanjain-afk - nfs access point apis
+- #1039 - @venkatranabothu - Add ErrorMessage to GradientAI CustomModel
+- #1037 - @ritheek-pitti-do - Add run progress model and update tests
+- #1032 - @MaxLivesInTheMatrix - Adding in secrets API support
+
+## [1.196.0] - 2026-06-16
+
+- #1035 - @bpatra-drop - Add support for evaluation dataset delete api
+- #1022 - @nbhoot157 - Add ProjectID to VectorDBCreateRequest
+
+## [1.195.0] - 2026-06-09
+
+- #1033 - @chandrudo - Add UpdateModelEvaluationRun to GradientAI service
+- #1030 - @ritheek-pitti-do - Add ListEvaluationDatasets API and example
+- #1028 - @gangasingh01 - added support for ADVANCED PG configuration
+- #1026 - @gangasingh01 - Added support for ADVANCED_MYSQL and ADVANCED_PG engines in listoptions endpoint
+- #1027 - @SSharma-10 - rename beta release
+
 ## [1.194.1] - 2026-06-03
 
 - #1023 - @SSharma-10 - godo beta release

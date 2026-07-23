@@ -54,6 +54,7 @@ type VPCNATGateway struct {
 // IngressVPC defines the ingress configs supported by a VPC NAT Gateway
 type IngressVPC struct {
 	VpcUUID        string `json:"vpc_uuid"`
+	SubnetUUID     string `json:"subnet_uuid,omitempty"`
 	GatewayIP      string `json:"gateway_ip,omitempty"`
 	DefaultGateway bool   `json:"default_gateway,omitempty"`
 }
