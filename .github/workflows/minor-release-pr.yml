@@ -57,7 +57,7 @@ jobs:
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -200,7 +200,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -277,7 +277,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -354,7 +354,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -437,7 +437,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -514,7 +514,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -597,7 +597,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -680,7 +680,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -761,7 +761,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -860,7 +860,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -943,7 +943,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
@@ -1026,7 +1026,7 @@ jobs:
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
     - name: "setup node"
-      uses: "actions/setup-node@v4"
+      uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" # v7
       with:
         node-version: 24
         package-manager-cache: false
