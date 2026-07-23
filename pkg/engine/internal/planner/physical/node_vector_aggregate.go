@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"time"
+
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -19,6 +21,11 @@ type VectorAggregation struct {
 
 	// MaxQuerySeries is the maximum number of unique series allowed (0 means no limit)
 	MaxQuerySeries int
+
+	// Hints for more efficient processing
+	Start time.Time
+	End   time.Time
+	Step  time.Duration
 }
 
 // ID implements the [Node] interface.

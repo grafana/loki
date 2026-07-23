@@ -503,6 +503,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 						Without: false,
 					},
 					types.VectorAggregationTypeSum,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
 				)
 				return builder.Value()
 			},
@@ -645,6 +648,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 						Without: false,
 					},
 					types.VectorAggregationTypeSum,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
 				)
 				return builder.Value()
 			},
@@ -728,6 +734,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 						Without: false,
 					},
 					types.VectorAggregationTypeSum,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
 				)
 				return builder.Value()
 			},
