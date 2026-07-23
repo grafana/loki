@@ -1111,6 +1111,88 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.volume-threshold
   [volume_threshold: <float> | default = 0.99]
 
+  # How records are ingested: "kafka" reads from a Kafka topic; "grpc" receives
+  # Push requests over gRPC via the pattern-ingester tee.
+  # CLI flag: -pattern-ingester.ingest-mode
+  [ingest_mode: <string> | default = "kafka"]
+
+  # the number of concurrent workers forwarding Kafka logs to pattern ingesters
+  # CLI flag: -pattern-ingester.flush-worker-count
+  [flush_worker_count: <int> | default = 100]
+
+  # The max time we will try to flush any remaining logs to be mined when the
+  # service is stopped
+  # CLI flag: -pattern-ingester.stop-flush-timeout
+  [stop_flush_timeout: <duration> | default = 30s]
+
+  # Configures the partition ring used by the pattern ingesters when ingesting
+  # from Kafka.
+  kafka_ring_config:
+    # The key-value store used to share the hash ring across multiple instances.
+    # This option needs be set on ingesters, distributors, queriers, pattern
+    # ingesters, and rulers when running in microservices mode.
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.store
+      [store: <string> | default = "memberlist"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is:
+      # pattern-ingester.kafka-partition-ring-config.partition-ring
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is:
+      # pattern-ingester.kafka-partition-ring-config.partition-ring
+      [etcd: <etcd>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to the secondary store.
+        # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing a value to the secondary store.
+        # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Minimum number of owners to wait before a PENDING partition gets switched
+    # to ACTIVE.
+    # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.min-partition-owners-count
+    [min_partition_owners_count: <int> | default = 1]
+
+    # How long the minimum number of owners are enforced before a PENDING
+    # partition gets switched to ACTIVE.
+    # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.min-partition-owners-duration
+    [min_partition_owners_duration: <duration> | default = 10s]
+
+    # How long to wait before an INACTIVE partition is eligible for deletion.
+    # The partition is deleted only if it has been in INACTIVE state for at
+    # least the configured duration and it has no owners registered. A value of
+    # 0 disables partitions deletion.
+    # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.delete-inactive-partition-after
+    [delete_inactive_partition_after: <duration> | default = 13h]
+
+    # Experimental: The size of the cache used for shuffle sharding. If zero or
+    # negative, an unbounded cache is used. If positive, an LRU cache with the
+    # specified size is used.
+    # CLI flag: -pattern-ingester.kafka-partition-ring-config.partition-ring.shuffle-shard-cache-size
+    [shuffle_shard_cache_size: <int> | default = 0]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1452,7 +1534,8 @@ dataobj:
     partition_ring:
       # The key-value store used to share the hash ring across multiple
       # instances. This option needs be set on ingesters, distributors,
-      # queriers, and rulers when running in microservices mode.
+      # queriers, pattern ingesters, and rulers when running in microservices
+      # mode.
       kvstore:
         # Backend storage to use for the ring. Supported values are: consul,
         # etcd, inmemory, memberlist, multi.
@@ -3219,6 +3302,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
+- `pattern-ingester.kafka-partition-ring-config.partition-ring`
 - `query-scheduler.ring`
 - `ruler.ring`
 - `ui.ring`
@@ -3530,6 +3614,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `ingest-limits-frontend`
 - `ingester.partition-ring`
 - `pattern-ingester`
+- `pattern-ingester.kafka-partition-ring-config.partition-ring`
 - `query-scheduler.ring`
 - `ruler.ring`
 - `ui.ring`
@@ -4276,8 +4361,8 @@ kafka_ingestion:
 
   partition_ring:
     # The key-value store used to share the hash ring across multiple instances.
-    # This option needs be set on ingesters, distributors, queriers, and rulers
-    # when running in microservices mode.
+    # This option needs be set on ingesters, distributors, queriers, pattern
+    # ingesters, and rulers when running in microservices mode.
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
       # inmemory, memberlist, multi.
@@ -7532,6 +7617,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `memberlist`
 - `pattern-ingester.client`
 - `pattern-ingester.etcd`
+- `pattern-ingester.kafka-partition-ring-config.partition-ring.etcd`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`

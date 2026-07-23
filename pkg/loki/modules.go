@@ -313,6 +313,9 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	if t.Cfg.Pattern.IngestMode == pattern.IngestModeKafka {
+		t.Cfg.Pattern.KafkaPartitionRingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	}
 
 	return t.runtimeConfig, err
 }
@@ -796,26 +799,56 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	if !t.Cfg.Pattern.Enabled {
 		return nil, nil
 	}
-	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.PatternIngester, err = pattern.New(
-		t.Cfg.Pattern,
-		t.Overrides,
-		t.PatternRingClient,
-		t.Cfg.MetricsNamespace,
-		prometheus.DefaultRegisterer,
-		util_log.Logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-	logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
+	logger := util_log.Logger
+	switch t.Cfg.Pattern.IngestMode {
+	case pattern.IngestModeGRPC:
+		_ = level.Debug(logger).Log("msg", "initializing in-memory pattern ingester...")
+		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+		t.PatternIngester, err = pattern.New(
+			t.Cfg.Pattern,
+			t.Overrides,
+			t.PatternRingClient,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			util_log.Logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
 
-	t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
 
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		}
+		return t.PatternIngester, nil
+	case pattern.IngestModeKafka:
+		_ = level.Debug(logger).Log("msg", "initializing Kafka pattern ingester...")
+		t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+		t.PatternIngester, err = pattern.NewKafka(t.Cfg.Pattern,
+			t.Overrides,
+			t.tenantConfigs,
+			t.PatternRingClient,
+			t.Cfg.MetricsNamespace,
+			prometheus.DefaultRegisterer,
+			util_log.Logger,
+			t.Cfg.KafkaConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		// should only be used for the Query endpoint, not the Push endpoint
+		logproto.RegisterPatternServer(t.Server.GRPC, t.PatternIngester)
+		t.Server.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		if t.Cfg.InternalServer.Enable {
+			t.InternalServer.HTTP.Path("/pattern/ring").Methods("GET", "POST").Handler(t.PatternIngester)
+		}
+
+		return t.PatternIngester, nil
+	default:
+		return nil, fmt.Errorf("unsupported pattern ingest mode: %s", t.Cfg.Pattern.IngestMode)
 	}
-	return t.PatternIngester, nil
 }
 
 func (t *Loki) initPatternRingClient() (_ services.Service, err error) {
@@ -837,8 +870,13 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
 		return nil, nil
 	}
-	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee...")
 
+	if t.Cfg.Pattern.IngestMode != pattern.IngestModeGRPC {
+		_ = level.Debug(logger).Log("msg", "pattern ingester tee disabled for Kafka ingest mode")
+		return nil, nil
+	}
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
 	svc, err := pattern.NewTeeService(
 		t.Cfg.Pattern,
 		t.Overrides,
@@ -851,9 +889,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	t.Tee = distributor.WrapTee(t.Tee, svc)
-
 	return services.NewBasicService(
 		svc.Start,
 		func(_ context.Context) error {
@@ -1734,6 +1770,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.UI.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.DataObj.Consumer.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Pattern.KafkaPartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

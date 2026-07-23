@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -21,6 +20,7 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
@@ -30,26 +30,37 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const readBatchSize = 1024
+const (
+	readBatchSize = 1024
+	// DefaultStartupTimeout is the default maximum time to wait for the pattern ingester to become ready.
+	DefaultStartupTimeout       = 1 * time.Minute
+	defaultPatternConsumerGroup = "pattern-ingester"
+	// PartitionRingKey is the key under which we store the partitions ring used by the pattern ingesters.
+	PartitionRingKey  = "pattern-ingester-partitions-key"
+	PartitionRingName = "pattern-ingester-partitions"
+)
 
 type Config struct {
-	Enabled               bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig      ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig          clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	ConcurrentFlushes     int                   `yaml:"concurrent_flushes"`
-	FlushCheckPeriod      time.Duration         `yaml:"flush_check_period"`
-	MaxClusters           int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
-	MaxEvictionRatio      float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
-	MetricAggregation     aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
-	PatternPersistence    PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
-	TeeConfig             TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
-	ConnectionTimeout     time.Duration         `yaml:"connection_timeout"`
-	MaxAllowedLineLength  int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
-	RetainFor             time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
-	MaxChunkAge           time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
-	PatternSampleInterval time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
-	VolumeThreshold       float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
-
+	Enabled                  bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig         ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig             clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes        int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod         time.Duration         `yaml:"flush_check_period"`
+	MaxClusters              int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio         float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
+	MetricAggregation        aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	PatternPersistence       PersistenceConfig     `yaml:"pattern_persistence,omitempty" doc:"description=Configures how detected patterns are pushed back to Loki for persistence."`
+	TeeConfig                TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout        time.Duration         `yaml:"connection_timeout"`
+	MaxAllowedLineLength     int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
+	RetainFor                time.Duration         `yaml:"retain_for,omitempty" doc:"description=How long to retain patterns in the pattern ingester after they are pushed."`
+	MaxChunkAge              time.Duration         `yaml:"max_chunk_age,omitempty" doc:"description=The maximum time span for a single pattern chunk."`
+	PatternSampleInterval    time.Duration         `yaml:"pattern_sample_interval,omitempty" doc:"description=The time resolution for pattern samples within chunks."`
+	VolumeThreshold          float64               `yaml:"volume_threshold,omitempty" doc:"description=The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1)."`
+	IngestMode               IngestMode            `yaml:"ingest_mode"`
+	FlushWorkerCount         int                   `yaml:"flush_worker_count"`
+	StopFlushTimeout         time.Duration         `yaml:"stop_flush_timeout"`
+	KafkaPartitionRingConfig partitionring.Config  `yaml:"kafka_ring_config,omitempty" doc:"description=Configures the partition ring used by the pattern ingesters when ingesting from Kafka."`
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 }
@@ -61,6 +72,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.metric-aggregation.")
 	cfg.PatternPersistence.RegisterFlagsWithPrefix(fs, "pattern-ingester.pattern-persistence.")
 	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
+	cfg.KafkaPartitionRingConfig.RegisterFlagsWithPrefix("pattern-ingester.kafka-partition-ring-config.", fs)
 
 	fs.BoolVar(
 		&cfg.Enabled,
@@ -128,7 +140,35 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		0.99,
 		"The threshold for filtering patterns by volume. Only patterns representing the top X% of log volume will be persisted (0-1).",
 	)
+	fs.StringVar(
+		(*string)(&cfg.IngestMode),
+		"pattern-ingester.ingest-mode",
+		string(IngestModeKafka),
+		`How records are ingested: "kafka" reads from a Kafka topic; "grpc" receives Push requests over gRPC via the pattern-ingester tee.`,
+	)
+	fs.IntVar(
+		&cfg.FlushWorkerCount,
+		"pattern-ingester.flush-worker-count",
+		100,
+		"the number of concurrent workers forwarding Kafka logs to pattern ingesters",
+	)
+	fs.DurationVar(
+		&cfg.StopFlushTimeout,
+		"pattern-ingester.stop-flush-timeout",
+		30*time.Second,
+		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
+	)
 }
+
+// IngestMode determines how the consumer receives records.
+type IngestMode string
+
+const (
+	// IngestModeKafka reads records from a Kafka topic (default).
+	IngestModeKafka IngestMode = "kafka"
+	// IngestModeInMemory receives records via an in-process Go channel (no Kafka required).
+	IngestModeGRPC IngestMode = "grpc"
+)
 
 type TeeConfig struct {
 	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
@@ -171,11 +211,14 @@ func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	)
 }
 
+func (cfg *TeeConfig) Validate() error {
+	return nil
+}
+
 func (cfg *Config) Validate() error {
 	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
-		return errors.New("pattern ingester replication factor must be 1")
+		return fmt.Errorf("pattern ingester replication factor must be 1")
 	}
-
 	// Validate retain-for >= chunk-duration
 	if cfg.RetainFor < cfg.MaxChunkAge {
 		return fmt.Errorf("retain-for (%v) must be greater than or equal to chunk-duration (%v)", cfg.RetainFor, cfg.MaxChunkAge)
@@ -190,7 +233,9 @@ func (cfg *Config) Validate() error {
 	if cfg.VolumeThreshold < 0 || cfg.VolumeThreshold > 1 {
 		return fmt.Errorf("volume_threshold (%v) must be between 0 and 1", cfg.VolumeThreshold)
 	}
-
+	if err := cfg.TeeConfig.Validate(); err != nil {
+		return err
+	}
 	return cfg.LifecyclerConfig.Validate()
 }
 
@@ -202,7 +247,17 @@ type Limits interface {
 	PatternRateThreshold(userID string) float64
 }
 
-type Ingester struct {
+// Ingester is implemented by the pattern ingester service variants (gRPC and Kafka ingest modes).
+type Ingester interface {
+	services.Service
+
+	logproto.PatternServer
+	http.Handler
+
+	CheckReady(ctx context.Context) error
+}
+
+type GRPCIngester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
 	ringClient RingClient
@@ -235,7 +290,7 @@ func New(
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
-) (*Ingester, error) {
+) (*GRPCIngester, error) {
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
@@ -245,7 +300,7 @@ func New(
 	drainCfg.MaxChunkAge = cfg.MaxChunkAge
 	drainCfg.SampleInterval = cfg.PatternSampleInterval
 
-	i := &Ingester{
+	i := &GRPCIngester{
 		cfg:         cfg,
 		limits:      limits,
 		ringClient:  ringClient,
@@ -270,7 +325,7 @@ func New(
 	return i, nil
 }
 
-func (i *Ingester) getEffectivePersistenceGranularity(userID string) time.Duration {
+func (i *GRPCIngester) getEffectivePersistenceGranularity(userID string) time.Duration {
 	tenantGranularity := i.limits.PersistenceGranularity(userID)
 	if tenantGranularity > 0 && tenantGranularity <= i.cfg.MaxChunkAge {
 		return tenantGranularity
@@ -279,11 +334,11 @@ func (i *Ingester) getEffectivePersistenceGranularity(userID string) time.Durati
 }
 
 // ServeHTTP implements the pattern ring status page.
-func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (i *GRPCIngester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	i.lifecycler.ServeHTTP(w, r)
 }
 
-func (i *Ingester) starting(ctx context.Context) error {
+func (i *GRPCIngester) starting(ctx context.Context) error {
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
 	err := i.lifecycler.StartAsync(context.Background())
 	if err != nil {
@@ -301,7 +356,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	return nil
 }
 
-func (i *Ingester) running(ctx context.Context) error {
+func (i *GRPCIngester) running(ctx context.Context) error {
 	var serviceError error
 	select {
 	// wait until service is asked to stop
@@ -316,7 +371,7 @@ func (i *Ingester) running(ctx context.Context) error {
 	return serviceError
 }
 
-func (i *Ingester) stopping(_ error) error {
+func (i *GRPCIngester) stopping(_ error) error {
 	err := services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
@@ -330,7 +385,7 @@ func (i *Ingester) stopping(_ error) error {
 	return err
 }
 
-func (i *Ingester) loop() {
+func (i *GRPCIngester) loop() {
 	defer i.loopDone.Done()
 
 	// Delay the first flush operation by up to 0.8x the flush time period.
@@ -375,26 +430,26 @@ func (i *Ingester) loop() {
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
-func (*Ingester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
+func (*GRPCIngester) Watch(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
 	return nil
 }
 
 // ReadinessHandler is used to indicate to k8s when the ingesters are ready for
 // the addition removal of another ingester. Returns 204 when the ingester is
 // ready, 500 otherwise.
-func (i *Ingester) CheckReady(ctx context.Context) error {
+func (i *GRPCIngester) CheckReady(ctx context.Context) error {
 	if s := i.State(); s != services.Running && s != services.Stopping {
 		return fmt.Errorf("ingester not ready: %v", s)
 	}
 	return i.lifecycler.CheckReady(ctx)
 }
 
-func (i *Ingester) TransferOut(_ context.Context) error {
+func (i *GRPCIngester) TransferOut(_ context.Context) error {
 	// todo may be.
 	return ring.ErrTransferDisabled
 }
 
-func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (i *GRPCIngester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -406,7 +461,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
-func (i *Ingester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {
+func (i *GRPCIngester) Query(req *logproto.QueryPatternsRequest, stream logproto.Pattern_QueryServer) error {
 	ctx := stream.Context()
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -440,7 +495,7 @@ func sendPatternSample(ctx context.Context, it iter.Iterator, stream logproto.Pa
 	return nil
 }
 
-func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
+func (i *GRPCIngester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
 		return inst, nil
@@ -516,7 +571,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	return inst, nil
 }
 
-func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
+func (i *GRPCIngester) getInstanceByID(id string) (*instance, bool) {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
 
@@ -524,7 +579,7 @@ func (i *Ingester) getInstanceByID(id string) (*instance, bool) {
 	return inst, ok
 }
 
-func (i *Ingester) getInstances() []*instance {
+func (i *GRPCIngester) getInstances() []*instance {
 	i.instancesMtx.RLock()
 	defer i.instancesMtx.RUnlock()
 
@@ -535,7 +590,7 @@ func (i *Ingester) getInstances() []*instance {
 	return instances
 }
 
-func (i *Ingester) stopWriters() {
+func (i *GRPCIngester) stopWriters() {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
@@ -549,7 +604,7 @@ func (i *Ingester) stopWriters() {
 }
 
 // flushPatterns flushes all patterns from all instances on shutdown.
-func (i *Ingester) flushPatterns() {
+func (i *GRPCIngester) flushPatterns() {
 	level.Info(i.logger).Log("msg", "flushing patterns on shutdown")
 	instances := i.getInstances()
 
@@ -560,7 +615,7 @@ func (i *Ingester) flushPatterns() {
 	}
 }
 
-func (i *Ingester) downsampleMetrics(ts model.Time) {
+func (i *GRPCIngester) downsampleMetrics(ts model.Time) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
