@@ -29,7 +29,7 @@ jobs:
         echo "--- ~/.docker/config.json ---"
         cat "${HOME}/.docker/config.json" || true
         command -v docker-credential-gcloud || echo "docker-credential-gcloud NOT on PATH"
-    - name: "build minimal plugin"
+    - name: "build and create minimal plugin"
       run: |
         set -euxo pipefail
         root="$(mktemp -d)"
@@ -38,16 +38,16 @@ jobs:
         { "description": "repro", "entrypoint": ["/bin/true"],
           "interface": { "types": ["docker.volumedriver/1.0"], "socket": "repro.sock" } }
         JSON
-        echo "PLUGIN_ROOT=${root}" >> "${GITHUB_ENV}"
+        ref="${DEV_PREFIX}/plugin-auth-repro:test"
+        docker plugin rm -f "${ref}" 2>/dev/null || true
+        docker plugin create "${ref}" "${root}"
+        echo "PLUGIN_REF=${ref}" >> "${GITHUB_ENV}"
     - name: "REPRO: plugin push with credential helper only (expect 401)"
       id: "repro"
       continue-on-error: true
       run: |
         set -euxo pipefail
-        ref="${DEV_PREFIX}/plugin-auth-repro:credhelper"
-        docker plugin rm -f "${ref}" 2>/dev/null || true
-        docker plugin create "${ref}" "${PLUGIN_ROOT}"
-        docker plugin push "${ref}"
+        docker plugin push "${PLUGIN_REF}"
     - name: "report repro outcome"
       env:
         REPRO_OUTCOME: "${{ steps.repro.outcome }}"
@@ -61,11 +61,8 @@ jobs:
     - name: "FIX: plugin push via static auth in isolated DOCKER_CONFIG (expect success)"
       run: |
         set -euxo pipefail
-        ref="${DEV_PREFIX}/plugin-auth-repro:fixed"
         DOCKER_CONFIG="$(mktemp -d)"
         export DOCKER_CONFIG
         gcloud auth print-access-token \
           | docker login -u oauth2accesstoken --password-stdin us-docker.pkg.dev
-        docker plugin rm -f "${ref}" 2>/dev/null || true
-        docker plugin create "${ref}" "${PLUGIN_ROOT}"
-        docker plugin push "${ref}"
+        docker plugin push "${PLUGIN_REF}"
