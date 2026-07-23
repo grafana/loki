@@ -2481,7 +2481,7 @@ k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/keymutex
 k8s.io/utils/net
 k8s.io/utils/ptr
-# modernc.org/libc v1.73.4
+# modernc.org/libc v1.74.3
 ## explicit; go 1.25.0
 modernc.org/libc
 modernc.org/libc/errno
