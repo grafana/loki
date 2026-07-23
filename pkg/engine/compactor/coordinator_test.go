@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"reflect"
 	"sort"
@@ -11,12 +12,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -40,20 +44,22 @@ type fakeRunner struct {
 type runCall struct {
 	opts workflow.Options
 	plan *physical.Plan
+	path string
 }
 
-func (f *fakeRunner) run(_ context.Context, opts workflow.Options, plan *physical.Plan) error {
+func (f *fakeRunner) run(_ context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 	f.mu.Lock()
-	f.calls = append(f.calls, runCall{opts, plan})
-	n := len(f.calls)
+	n := len(f.calls) + 1
+	path := fmt.Sprintf("indexes/tenants/test/aa/artifact-%02d", n)
+	f.calls = append(f.calls, runCall{opts: opts, plan: plan, path: path})
 	f.mu.Unlock()
 	if f.err != nil {
-		return f.err
+		return nil, f.err
 	}
 	if f.failOnCall > 0 && n == f.failOnCall {
-		return errors.New("fakeRunner: forced failure on call")
+		return nil, errors.New("fakeRunner: forced failure on call")
 	}
-	return nil
+	return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: path}}), nil
 }
 
 func (f *fakeRunner) snapshot() []runCall {
@@ -232,7 +238,6 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
 	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
-	require.NotEmpty(t, node.OutputIndexPath)
 
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
@@ -567,13 +572,13 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
 	started := make(chan struct{}, 1)
-	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		select {
 		case started <- struct{}{}:
 		default:
 		}
 		<-ctx.Done()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	done := make(chan error, 1)
@@ -618,12 +623,12 @@ func TestRun_StartsOneWorkerPerTenant(t *testing.T) {
 
 	var mu sync.Mutex
 	starts := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		starts[opts.Tenant]++
 		mu.Unlock()
 		<-ctx.Done()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	done := make(chan error, 1)
@@ -655,7 +660,7 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 
 	var mu sync.Mutex
 	live := map[string]int{}
-	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(ctx context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		live[opts.Tenant]++
 		mu.Unlock()
@@ -663,7 +668,7 @@ func reconcileHarness(t *testing.T, bucket objstore.Bucket, clock func() time.Ti
 		mu.Lock()
 		live[opts.Tenant]--
 		mu.Unlock()
-		return ctx.Err()
+		return nil, ctx.Err()
 	}
 	tenantsWithLiveDispatch := func() []string {
 		mu.Lock()
@@ -912,11 +917,11 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 
 		var mu sync.Mutex
 		var phases []string
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 			mu.Lock()
 			phases = append(phases, opts.Actor[1])
 			mu.Unlock()
-			return errors.New("dispatch boom")
+			return nil, errors.New("dispatch boom")
 		}
 
 		done := make(chan struct{})
@@ -953,13 +958,13 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		var phases []string
 		// Collapse the dispatches within a cycle to a single entry so the slice
 		// records the per-cycle phase order.
-		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 			mu.Lock()
 			if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 				phases = append(phases, opts.Actor[1])
 			}
 			mu.Unlock()
-			return nil
+			return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/tenants/acme/aa/x"}}), nil
 		}
 
 		done := make(chan struct{})
@@ -983,14 +988,14 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 // TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown guards the
 // upgrade path: an index already in storage has a legacy ToC row (unknown, 0)
 // but positive internal section stats from the old line-only statsCalculation.
-// makeTocEntries would sum those undercounts into a positive total that looks
+// summing those undercounts would yield a positive total that looks
 // exact, laundering the unknown into a falsely-known value. The replacement
 // rows must stay 0 so we can still identify and backfill these indexes later.
 func TestCompactTenantLogs_UnknownConvergedRowKeepsReplacementsUnknown(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
-	// Internal section stats are positive (100 + 100), so makeTocEntries would
+	// Internal section stats are positive (100 + 100), so the size computation would
 	// otherwise publish 200.
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
@@ -1036,7 +1041,7 @@ func TestCompactTenantLogs_KnownConvergedRowKeepsComputedSize(t *testing.T) {
 		"a known converged row keeps the computed section sum (100+100)")
 }
 
-func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
+func TestTaskBounds_AndUncompressedLogsSize(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
 	// Task 1: sections with distinct timestamps
@@ -1076,20 +1081,15 @@ func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
 		},
 	}
 
-	outputs := []string{"output1", "output2"}
-	entries := makeTocEntries(tasks, outputs)
+	min1, max1 := taskBounds(tasks[0])
+	require.Equal(t, task1Min, min1, "first task StartTime = min across sections")
+	require.Equal(t, task1Max, max1, "first task EndTime = max across sections")
+	require.Equal(t, uint64(450), taskUncompressedLogsSize(tasks[0]), "first task sum: 100+200+150")
 
-	require.Len(t, entries, 2)
-
-	// Task 1: UncompressedLogsSize = 100+200+150
-	require.Equal(t, uint64(450), entries[0].UncompressedLogsSize, "first task sum: 100+200+150")
-	require.Equal(t, time.Unix(0, task1Min).UTC(), entries[0].StartTime, "first task StartTime = min(task1Min, task1Max, task1Min, task1Mid, task1Mid, task1Max)")
-	require.Equal(t, time.Unix(0, task1Max).UTC(), entries[0].EndTime, "first task EndTime = max(task1Max, task1Mid, task1Max)")
-
-	// Task 2: UncompressedLogsSize = 300+50
-	require.Equal(t, uint64(350), entries[1].UncompressedLogsSize, "second task sum: 300+50")
-	require.Equal(t, time.Unix(0, task2Min).UTC(), entries[1].StartTime, "second task StartTime = min(task2Max, task2Min)")
-	require.Equal(t, time.Unix(0, task2Max).UTC(), entries[1].EndTime, "second task EndTime = max(task2Max, task2Min)")
+	min2, max2 := taskBounds(tasks[1])
+	require.Equal(t, task2Min, min2, "second task StartTime = min across sections")
+	require.Equal(t, task2Max, max2, "second task EndTime = max across sections")
+	require.Equal(t, uint64(350), taskUncompressedLogsSize(tasks[1]), "second task sum: 300+50")
 }
 
 // TestMakeTocEntries_UnknownSizePropagates verifies that a size of 0 (which
@@ -1097,7 +1097,7 @@ func TestMakeTocEntries_SumsUncompressedLogsSize(t *testing.T) {
 // poisons the whole task's sum. Publishing a partial sum would look exact even
 // though the true total is larger, so an unknown input must yield an unknown
 // (zero) output.
-func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
+func TestTaskUncompressedLogsSize_UnknownSizePropagates(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	minTS := window.UnixNano()
 	maxTS := window.Add(time.Hour).UnixNano()
@@ -1115,9 +1115,7 @@ func TestMakeTocEntries_UnknownSizePropagates(t *testing.T) {
 		},
 	}
 
-	entries := makeTocEntries(tasks, []string{"output1"})
-	require.Len(t, entries, 1)
-	require.Equal(t, uint64(0), entries[0].UncompressedLogsSize,
+	require.Equal(t, uint64(0), taskUncompressedLogsSize(tasks[0]),
 		"an unknown (0) input section must propagate as unknown, not a misleading partial sum")
 }
 
@@ -1176,11 +1174,11 @@ func TestRunTenantLoop_IndexOnly(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
-		return nil
+		return nil, nil
 	}
 
 	done := make(chan struct{})
@@ -1218,13 +1216,13 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 
 	var mu sync.Mutex
 	var phases []string
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 			phases = append(phases, opts.Actor[1])
 		}
 		mu.Unlock()
-		return nil
+		return nil, nil
 	}
 
 	done := make(chan struct{})
@@ -1266,14 +1264,14 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	var phases []string
 	sawLog := make(chan struct{})
 	var closeOnce sync.Once
-	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) error {
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
 		phases = append(phases, opts.Actor[1])
 		mu.Unlock()
 		if opts.Actor[1] == "log-merge" {
 			closeOnce.Do(func() { close(sawLog) })
 		}
-		return nil
+		return nil, nil
 	}
 
 	done := make(chan struct{})
