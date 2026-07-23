@@ -2,6 +2,7 @@ package orderedmap
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/pb33f/libopenapi/datamodel/high/nodes"
@@ -31,6 +32,65 @@ type hasValueUntyped interface {
 
 type findValueUntyped interface {
 	FindValueUntyped(k string) any
+}
+
+// MarshalYAML implements yaml.Marshaler for libopenapi's ordered map wrapper.
+func (o *Map[K, V]) MarshalYAML() (interface{}, error) {
+	if o == nil {
+		return nil, nil
+	}
+
+	node := yaml.Node{Kind: yaml.MappingNode}
+	for pair := First(o); pair != nil; pair = pair.Next() {
+		keyNode := &yaml.Node{}
+		keyValue, err := encodeMarshalYAMLValue(pair.Key())
+		if err != nil {
+			return nil, err
+		}
+		if err = keyNode.Encode(keyValue); err != nil {
+			return nil, err
+		}
+
+		valueNode := &yaml.Node{}
+		value, err := encodeMarshalYAMLValue(pair.Value())
+		if err != nil {
+			return nil, err
+		}
+		if err = valueNode.Encode(value); err != nil {
+			return nil, err
+		}
+
+		node.Content = append(node.Content, keyNode, valueNode)
+	}
+
+	return &node, nil
+}
+
+func encodeMarshalYAMLValue(value any) (any, error) {
+	for {
+		if value == nil {
+			return nil, nil
+		}
+		if node, ok := value.(*yaml.Node); ok {
+			return utils.CloneYAMLNode(node), nil
+		}
+
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Ptr && rv.IsNil() {
+			return value, nil
+		}
+
+		m, ok := value.(marshaler)
+		if !ok {
+			return value, nil
+		}
+
+		marshaled, err := m.MarshalYAML()
+		if err != nil {
+			return nil, err
+		}
+		value = marshaled
+	}
 }
 
 // ToYamlNode converts the ordered map to a yaml node ready for marshalling.

@@ -5,6 +5,7 @@ package v3
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	"github.com/pb33f/libopenapi/datamodel/high"
@@ -241,10 +242,14 @@ func (c *Callback) marshalYAMLInlineInternal(ctx any) (interface{}, error) {
 	for _, mp := range mapped {
 		if mp.pi != nil {
 			var rendered interface{}
+			var err error
 			if ctx != nil {
-				rendered, _ = mp.pi.MarshalYAMLInlineWithContext(ctx)
+				rendered, err = mp.pi.MarshalYAMLInlineWithContext(ctx)
 			} else {
-				rendered, _ = mp.pi.MarshalYAMLInline()
+				rendered, err = mp.pi.MarshalYAMLInline()
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to render callback path %q inline: %w", mp.path, err)
 			}
 
 			kn := utils.CreateStringNode(mp.path)

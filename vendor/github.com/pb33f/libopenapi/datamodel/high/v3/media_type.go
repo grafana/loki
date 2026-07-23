@@ -4,6 +4,8 @@
 package v3
 
 import (
+	"errors"
+
 	"github.com/pb33f/libopenapi/datamodel"
 	"github.com/pb33f/libopenapi/datamodel/high"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
@@ -88,7 +90,7 @@ func (m *MediaType) MarshalYAMLInlineWithContext(ctx any) (interface{}, error) {
 	nb := high.NewNodeBuilder(m, m.low)
 	nb.Resolve = true
 	nb.RenderContext = ctx
-	return nb.Render(), nil
+	return nb.Render(), errors.Join(nb.Errors...)
 }
 
 // ExtractContent takes in a complex and hard to navigate low-level content map, and converts it in to a much simpler

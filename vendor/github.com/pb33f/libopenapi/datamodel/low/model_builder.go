@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/pb33f/libopenapi/orderedmap"
 	"github.com/pb33f/libopenapi/utils"
@@ -48,6 +49,19 @@ func buildModelFields(modelType reflect.Type) []buildModelField {
 	return actual.([]buildModelField)
 }
 
+// lowerIfNeeded returns the input unchanged when it contains no uppercase ASCII and no
+// multibyte runes (the overwhelmingly common case for OpenAPI keys), avoiding the
+// per-key allocation of strings.ToLower on the BuildModel hot path.
+func lowerIfNeeded(s string) string {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= utf8.RuneSelf || ('A' <= c && c <= 'Z') {
+			return strings.ToLower(s)
+		}
+	}
+	return s
+}
+
 // BuildModel accepts a yaml.Node pointer and a model, which can be any struct. Using reflection, the model is
 // analyzed and the names of all the properties are extracted from the model and subsequently looked up from within
 // the yaml.Node.Content value.
@@ -70,7 +84,7 @@ func BuildModel(node *yaml.Node, model interface{}) error {
 	content := node.Content
 	keyMap := make(map[string]int, len(content)/2)
 	for j := 0; j < len(content)-1; j += 2 {
-		k := strings.ToLower(utils.NodeAlias(content[j]).Value)
+		k := lowerIfNeeded(utils.NodeAlias(content[j]).Value)
 		if _, exists := keyMap[k]; !exists {
 			keyMap[k] = j
 		}

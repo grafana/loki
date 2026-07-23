@@ -151,6 +151,7 @@ func createDocument(info *datamodel.SpecInfo, config *datamodel.DocumentConfigur
 	idxConfig.SpecInfo = info
 	idxConfig.UseSchemaQuickHash = config.UseSchemaQuickHash
 	idxConfig.ExcludeExtensionRefs = config.ExcludeExtensionRefs
+	idxConfig.SkipMetadataCollection = config.SkipMetadataCollection
 	idxConfig.IgnoreArrayCircularReferences = config.IgnoreArrayCircularReferences
 	idxConfig.IgnorePolymorphicCircularReferences = config.IgnorePolymorphicCircularReferences
 	idxConfig.AllowUnknownExtensionContentDetection = config.AllowUnknownExtensionContentDetection
@@ -483,6 +484,11 @@ func extractPaths(ctx context.Context, root *yaml.Node, nodes documentTopLevelNo
 }
 
 func extractWebhooks(ctx context.Context, root *yaml.Node, nodes documentTopLevelNodes, doc *Document, idx *index.SpecIndex) error {
+	// without a genuine top-level key, ExtractMap can match a same-named scalar
+	// (e.g. "webhooks" in an extension value) and create an empty webhooks map.
+	if nodes.webhooks.value == nil {
+		return nil
+	}
 	hooks, hooksL, hooksN, err := low.ExtractMap[*PathItem](ctx, WebhooksLabel, root, idx)
 	if err != nil {
 		return err
