@@ -152,7 +152,7 @@ require (
 	github.com/containerd/ttrpc v1.2.8 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 require (
