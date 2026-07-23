@@ -13,6 +13,9 @@
   <a href="https://pkg.go.dev/github.com/gabriel-vasile/mimetype">
     <img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/gabriel-vasile/mimetype.svg">
   </a>
+  <a href="https://codecov.io/gh/gabriel-vasile/mimetype">
+    <img alt="Code coverage" src="https://codecov.io/gh/gabriel-vasile/mimetype/graph/badge.svg">
+  </a>
   <a href="https://goreportcard.com/report/github.com/gabriel-vasile/mimetype">
     <img alt="Go report card" src="https://goreportcard.com/badge/github.com/gabriel-vasile/mimetype">
   </a>

@@ -10,6 +10,7 @@ const (
 	QueryGeo     = "geo"
 	QueryHAR     = "har"
 	QueryGLTF    = "gltf"
+	QueryCDX     = "cdx"
 	maxRecursion = 4096
 )
 
@@ -39,6 +40,10 @@ var queries = map[string][]query{
 	QueryGLTF: {{
 		SearchPath: [][]byte{[]byte("asset"), []byte("version")},
 		SearchVals: [][]byte{[]byte(`"1.0"`), []byte(`"2.0"`)},
+	}},
+	QueryCDX: {{
+		SearchPath: [][]byte{[]byte("bomFormat")},
+		SearchVals: [][]byte{[]byte(`"CycloneDX"`)},
 	}},
 }
 

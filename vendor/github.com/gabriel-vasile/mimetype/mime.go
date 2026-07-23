@@ -23,6 +23,14 @@ type MIME struct {
 }
 
 // String returns the string representation of the MIME type, e.g., "application/zip".
+// String return values can change between releases, for example, when [IANA]
+// assigns a new media type. Use [MIME.Is] to avoid breaking changes.
+//
+//	mtype := mimetype.Detect(zipFile)
+//	if mtype.String() == "application/zip" { /* Plain string comparison is brittle. */ }
+//	if mtype.Is("application/zip") { /* Will continue to work between releases */ }
+//
+// [IANA]: https://www.iana.org/assignments/media-types/media-types.xhtml
 func (m *MIME) String() string {
 	return m.mime
 }
@@ -45,10 +53,12 @@ func (m *MIME) Parent() *MIME {
 	return m.parent
 }
 
-// Is checks whether this MIME type, or any of its aliases, is equal to the
+// Is checks whether this MIME type, or any of its [aliases], is equal to the
 // expected MIME type. MIME type equality test is done on the "type/subtype"
 // section, ignores any optional MIME parameters, ignores any leading and
 // trailing whitespace, and is case insensitive.
+//
+// [aliases]: https://github.com/gabriel-vasile/mimetype/blob/master/supported_mimes.md
 func (m *MIME) Is(expectedMIME string) bool {
 	// Parsing is needed because some detected MIME types contain parameters
 	// that need to be stripped for the comparison.
@@ -129,7 +139,7 @@ func (m *MIME) flatten() []*MIME {
 // hierarchy returns an easy to read list of ancestors for m.
 // For example, application/json would return json>txt>root.
 func (m *MIME) hierarchy() string {
-	h := ""
+	var h strings.Builder
 	for m := m; m != nil; m = m.Parent() {
 		e := strings.TrimPrefix(m.Extension(), ".")
 		if e == "" {
@@ -142,9 +152,9 @@ func (m *MIME) hierarchy() string {
 				e = "root"
 			}
 		}
-		h += ">" + e
+		h.WriteString(">" + e)
 	}
-	return strings.TrimPrefix(h, ">")
+	return strings.TrimPrefix(h.String(), ">")
 }
 
 // clone creates a new MIME with the provided optional MIME parameters.
