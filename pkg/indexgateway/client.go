@@ -14,6 +14,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
@@ -80,6 +81,14 @@ type ClientConfig struct {
 	// MinShuffleShardSize is the minimum number of index gateway instances included in the
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
+
+	// SaturationBackoffMinPeriod is the minimum delay before retrying on another index
+	// gateway after a request was rejected because the gateway is saturated.
+	SaturationBackoffMinPeriod time.Duration `yaml:"saturation_backoff_min_period" category:"experimental"`
+
+	// SaturationBackoffMaxPeriod is the maximum delay before retrying on another index
+	// gateway after a request was rejected because the gateway is saturated.
+	SaturationBackoffMaxPeriod time.Duration `yaml:"saturation_backoff_max_period" category:"experimental"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -97,6 +106,8 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
+	f.DurationVar(&i.SaturationBackoffMinPeriod, prefix+".saturation-backoff-min-period", 250*time.Millisecond, "Experimental: Minimum delay before retrying on another index gateway after a request was rejected because the gateway is saturated. The delay grows exponentially, with jitter, up to the max period. Requests rejected for other reasons are retried on another gateway without delay.")
+	f.DurationVar(&i.SaturationBackoffMaxPeriod, prefix+".saturation-backoff-max-period", 2*time.Second, "Experimental: Maximum delay before retrying on another index gateway after a request was rejected because the gateway is saturated.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -412,6 +423,16 @@ func (s *GatewayClient) poolDo(
 		addrs[i], addrs[j] = addrs[j], addrs[i]
 	})
 
+	// Saturation rejections back off before retrying on another gateway: the other
+	// gateways are likely under pressure too, and pacing retries avoids a retry storm
+	// while the autoscaler adds replicas. Other errors keep retrying immediately.
+	// MaxRetries is left 0 (unlimited) as attempts are already bounded by the address
+	// list and maxRetries.
+	saturationBackoff := backoff.New(ctx, backoff.Config{
+		MinBackoff: s.cfg.SaturationBackoffMinPeriod,
+		MaxBackoff: s.cfg.SaturationBackoffMaxPeriod,
+	})
+
 	errCount := 0
 	var lastErr error
 	for _, addr := range addrs {
@@ -434,6 +455,13 @@ func (s *GatewayClient) poolDo(
 			if maxRetries >= 0 && errCount > maxRetries {
 				s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
 				return err
+			}
+			if IsSaturatedError(err) {
+				saturationBackoff.Wait()
+				if saturationBackoff.Err() != nil {
+					s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
+					return lastErr
+				}
 			}
 			continue
 		}
