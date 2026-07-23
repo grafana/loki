@@ -44,7 +44,7 @@ func TestIsSaturatedError(t *testing.T) {
 		{
 			name:     "different status code, same message",
 			err:      status.Error(codes.ResourceExhausted, saturatedErrMessage),
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "context canceled",

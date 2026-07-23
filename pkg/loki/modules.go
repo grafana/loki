@@ -1974,7 +1974,8 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 		uint64(t.Cfg.IndexGateway.MemoryUtilizationLimit),
 		t.Cfg.IndexGateway.LogUtilizationSamples,
 		log.With(util_log.Logger, "component", "index-gateway"),
-		prometheus.DefaultRegisterer,
+		// The limiter registers its gauges without any prefix, prepend the component one.
+		prometheus.WrapRegistererWithPrefix(constants.Loki+"_index_gateway_", prometheus.DefaultRegisterer),
 	)
 	unary, stream := indexgateway.NewSaturationCheckInterceptors(prometheus.DefaultRegisterer, utilizationLimiter)
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, unary)

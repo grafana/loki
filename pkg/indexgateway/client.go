@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"cmp"
 	"context"
+	stderrors "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -458,9 +459,11 @@ func (s *GatewayClient) poolDo(
 			}
 			if IsSaturatedError(err) {
 				saturationBackoff.Wait()
-				if saturationBackoff.Err() != nil {
+				if backoffErr := saturationBackoff.Err(); backoffErr != nil {
 					s.retriesHistogram.WithLabelValues("failure").Observe(float64(errCount))
-					return lastErr
+					// Return both errors so callers can still tell the request was
+					// aborted by its context rather than by gateway saturation alone.
+					return stderrors.Join(lastErr, backoffErr)
 				}
 			}
 			continue

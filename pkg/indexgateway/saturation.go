@@ -12,9 +12,10 @@ import (
 // problem, not the client's fault, and the request is safe to retry elsewhere.
 const saturationStatusCode = codes.Unavailable
 
-// saturatedErrMessage identifies saturation rejections. Clients match on the message
-// rather than the status code, since Unavailable is also returned for connection-level
-// failures.
+// saturatedErrMessage identifies saturation rejections. Clients match on both the
+// status code and the message: Unavailable alone is ambiguous since it is also
+// returned for connection-level failures, and the message alone could collide with
+// unrelated errors that happen to contain it.
 const saturatedErrMessage = "index gateway is saturated"
 
 func newSaturatedError(reason string) error {
@@ -25,5 +26,5 @@ func newSaturatedError(reason string) error {
 // saturated index gateway.
 func IsSaturatedError(err error) bool {
 	s, ok := status.FromError(err)
-	return ok && strings.Contains(s.Message(), saturatedErrMessage)
+	return ok && s.Code() == saturationStatusCode && strings.Contains(s.Message(), saturatedErrMessage)
 }
