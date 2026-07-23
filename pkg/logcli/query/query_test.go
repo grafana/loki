@@ -393,7 +393,7 @@ func Test_batch(t *testing.T) {
 				FixedLabelsLen:  0,
 				LocalConfig:     "",
 			}
-			q.DoQuery(tc, out, false)
+			require.NoError(t, q.DoQuery(tc, out, false))
 			split := strings.Split(writer.String(), "\n")
 			// Remove the last entry because there is always a newline after the last line which
 			// leaves an entry element in the list of lines.
