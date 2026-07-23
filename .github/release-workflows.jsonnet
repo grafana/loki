@@ -92,7 +92,7 @@ local weeklyImageJobs = {
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
-      publishDockerPlugins=true,
+      publishDockerPlugins=false,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({
