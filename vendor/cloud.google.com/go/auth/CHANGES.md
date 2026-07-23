@@ -1,5 +1,25 @@
 # Changes
 
+## [0.22.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.21.0...auth/v0.22.0) (2026-07-13)
+
+
+### Features
+
+* **auth:** Populate http.response.status_code in http transport ([#20053](https://github.com/googleapis/google-cloud-go/issues/20053)) ([bff5d7c](https://github.com/googleapis/google-cloud-go/commit/bff5d7c9bc7f8ea8c0059f7d8e2d4294ba92c5bc))
+
+## [0.21.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.20.0...auth/v0.21.0) (2026-07-07)
+
+
+### Features
+
+* **auth:** Implement updated design for regional access boundary ([#13417](https://github.com/googleapis/google-cloud-go/issues/13417)) ([fadb6c7](https://github.com/googleapis/google-cloud-go/commit/fadb6c764dbe869fca736d9f0446b5010f21d2f2))
+
+
+### Bug Fixes
+
+* **auth:** Avoid double impersonation in idtoken and clarify docs ([#14474](https://github.com/googleapis/google-cloud-go/issues/14474)) ([995bfc3](https://github.com/googleapis/google-cloud-go/commit/995bfc36199ba6ae1c88803c71f39a0b19fc8c0f)), closes [#11105](https://github.com/googleapis/google-cloud-go/issues/11105)
+* **auth:** Correct go min version ([#20094](https://github.com/googleapis/google-cloud-go/issues/20094)) ([6bb4358](https://github.com/googleapis/google-cloud-go/commit/6bb4358dca69b803e52eb2af882fa5afc24d54e2))
+
 ## [0.20.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.20.0) (2026-04-06)
 
 ## [0.19.0](https://github.com/googleapis/google-cloud-go/releases/tag/auth%2Fv0.19.0) (2026-03-23)
