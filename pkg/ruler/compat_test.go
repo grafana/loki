@@ -89,7 +89,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: true,
 			Clients: map[string]config.RemoteWriteConfig{
-				"default": config.RemoteWriteConfig{
+				"default": {
 					URL: nil,
 				},
 			},
