@@ -848,7 +848,7 @@ github.com/eapache/go-resiliency/breaker
 # github.com/eapache/queue v1.1.0
 ## explicit
 github.com/eapache/queue
-# github.com/ebitengine/purego v0.10.1
+# github.com/ebitengine/purego v0.10.2
 ## explicit; go 1.18
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
