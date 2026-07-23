@@ -17,14 +17,13 @@
 package array
 
 import (
-	"hash/maphash"
-	"math/bits"
+	"encoding/binary"
 	"sync/atomic"
-	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 )
 
 // Data represents the memory and metadata of an Arrow array.
@@ -121,6 +120,11 @@ func (d *Data) Reset(dtype arrow.DataType, length int, buffers []*memory.Buffer,
 	}
 	d.childData = childData
 
+	if d.dictionary != nil {
+		d.dictionary.Release()
+		d.dictionary = nil
+	}
+
 	d.dtype = dtype
 	d.length = length
 	d.nulls = nulls
@@ -183,13 +187,22 @@ func (d *Data) Dictionary() arrow.ArrayData { return d.dictionary }
 
 // SetDictionary allows replacing the dictionary for this particular Data object
 func (d *Data) SetDictionary(dict arrow.ArrayData) {
-	if d.dictionary != nil {
-		d.dictionary.Release()
-		d.dictionary = nil
+	var newDict *Data
+	if dict != nil {
+		var ok bool
+		newDict, ok = dict.(*Data)
+		if !ok {
+			panic("arrow/array: dictionary data must be *array.Data")
+		}
 	}
-	if dict.(*Data) != nil {
-		dict.Retain()
-		d.dictionary = dict.(*Data)
+
+	if newDict != nil {
+		newDict.Retain()
+	}
+	oldDict := d.dictionary
+	d.dictionary = newDict
+	if oldDict != nil {
+		oldDict.Release()
 	}
 }
 
@@ -228,7 +241,7 @@ func (d *Data) SizeInBytes() uint64 {
 // NewSliceData panics if the slice is outside the valid range of the input Data.
 // NewSliceData panics if j < i.
 func NewSliceData(data arrow.ArrayData, i, j int64) arrow.ArrayData {
-	if j > int64(data.Len()) || i > j || data.Offset()+int(i) > data.Offset()+data.Len() {
+	if i < 0 || j < 0 || j > int64(data.Len()) || i > j || data.Offset()+int(i) > data.Offset()+data.Len() {
 		panic("arrow/array: index out of range")
 	}
 
@@ -266,15 +279,62 @@ func NewSliceData(data arrow.ArrayData, i, j int64) arrow.ArrayData {
 	return o
 }
 
-func Hash(h *maphash.Hash, data arrow.ArrayData) {
+func Hash(h *maphash.MapHash, data arrow.ArrayData) {
 	a := data.(*Data)
 
-	h.Write((*[bits.UintSize / 8]byte)(unsafe.Pointer(&a.length))[:])
-	h.Write((*[bits.UintSize / 8]byte)(unsafe.Pointer(&a.length))[:])
-	if len(a.buffers) > 0 && a.buffers[0] != nil {
-		h.Write(a.buffers[0].Bytes())
+	hashString(h, a.dtype.Fingerprint())
+	hashInt(h, a.length)
+	hashInt(h, a.offset)
+
+	hashInt(h, len(a.buffers))
+	for _, b := range a.buffers {
+		if b == nil {
+			hashByte(h, 0)
+			continue
+		}
+
+		hashByte(h, 1)
+		hashBytes(h, b.Bytes())
 	}
+
+	hashInt(h, len(a.childData))
 	for _, c := range a.childData {
+		if c == nil {
+			hashByte(h, 0)
+			continue
+		}
+
+		hashByte(h, 1)
 		Hash(h, c)
 	}
+
+	if a.dictionary == nil {
+		hashByte(h, 0)
+		return
+	}
+
+	hashByte(h, 1)
+	Hash(h, a.dictionary)
+}
+
+func hashByte(h *maphash.MapHash, v byte) {
+	var b [1]byte
+	b[0] = v
+	h.Write(b[:])
+}
+
+func hashInt(h *maphash.MapHash, v int) {
+	var b [8]byte
+	binary.LittleEndian.PutUint64(b[:], uint64(int64(v)))
+	h.Write(b[:])
+}
+
+func hashBytes(h *maphash.MapHash, b []byte) {
+	hashInt(h, len(b))
+	h.Write(b)
+}
+
+func hashString(h *maphash.MapHash, s string) {
+	hashInt(h, len(s))
+	h.WriteString(s)
 }

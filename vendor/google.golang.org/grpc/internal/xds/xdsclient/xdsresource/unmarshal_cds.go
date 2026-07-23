@@ -215,6 +215,14 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 		}
 	}
 
+	var metadata map[string]any
+	if envconfig.GCPAuthenticationFilterEnabled {
+		var err error
+		if metadata, err = validateAndConstructMetadata(cluster.GetMetadata()); err != nil {
+			return ClusterUpdate{}, err
+		}
+	}
+
 	ret := ClusterUpdate{
 		ClusterName:              cluster.GetName(),
 		SecurityCfg:              sc,
@@ -223,6 +231,7 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 		OutlierDetection:         od,
 		TelemetryLabels:          telemetryLabels,
 		LRSReportEndpointMetrics: lrsReportEndpointMetrics,
+		Metadata:                 metadata,
 	}
 
 	if lrs := cluster.GetLrsServer(); lrs != nil {

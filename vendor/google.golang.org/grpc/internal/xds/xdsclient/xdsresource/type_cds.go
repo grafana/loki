@@ -83,6 +83,9 @@ type ClusterUpdate struct {
 	// LRSReportEndpointMetrics specifies the subset of ORCA metrics that
 	// should be propagated to the LRS server.
 	LRSReportEndpointMetrics *LRSReportEndpointMetricsConfig
+
+	// Metadata contains the metadata from the cluster resource.
+	Metadata map[string]any
 }
 
 // LRSReportEndpointMetricsConfig holds the configuration for propagating ORCA

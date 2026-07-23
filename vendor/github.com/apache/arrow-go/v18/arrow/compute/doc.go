@@ -15,7 +15,7 @@
 // limitations under the License.
 
 // Package compute is a native-go implementation of an Acero-like
-// arrow compute engine. It requires go1.18+
+// arrow compute engine.
 //
 // While consumers of Arrow that are able to use CGO could utilize the
 // C Data API (using the cdata package) and could link against the
@@ -23,12 +23,7 @@
 // is an attempt to provide for those users, and in general create a
 // native-go arrow compute engine.
 //
-// The overwhelming majority of things in this package require go1.18 as
-// it utilizes generics. The files in this package and its sub-packages
-// are all excluded from being built by go versions lower than 1.18 so
-// that the larger Arrow module itself is still compatible with go1.17.
-//
 // Everything in this package should be considered Experimental for now.
 package compute
 
-//go:generate stringer -type=FuncKind -linecomment
+//go:generate go tool stringer -type=FuncKind -linecomment
