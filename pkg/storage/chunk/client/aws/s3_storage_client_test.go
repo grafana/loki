@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -97,22 +98,22 @@ func TestIsRetryableErr(t *testing.T) {
 	}{
 		{
 			name:     "IsStorageThrottledErr - Too Many Requests",
-			err:      &smithy.GenericAPIError{Code: "TooManyRequestsException"},
+			err:      &smithy.GenericAPIError{Code: ErrCodeTooManyRequestsException},
 			expected: true,
 		},
 		{
 			name:     "IsStorageThrottledErr - 503",
-			err:      &smithy.GenericAPIError{Code: "SlowDown"},
+			err:      &smithy.GenericAPIError{Code: ErrCodeSlowDown},
 			expected: true,
 		},
 		{
 			name:     "IsStorageThrottledErr - 5xx",
-			err:      &smithy.GenericAPIError{Code: "NotImplemented"},
+			err:      &smithy.GenericAPIError{Code: ErrCodeNotImplemented},
 			expected: true,
 		},
 		{
 			name:     "IsStorageTimeoutErr - Request Timeout",
-			err:      &smithy.GenericAPIError{Code: "RequestTimeout"},
+			err:      &smithy.GenericAPIError{Code: ErrCodeRequestTimeout},
 			expected: true,
 		},
 		{
@@ -153,6 +154,48 @@ func TestIsRetryableErr(t *testing.T) {
 		{
 			name:     "Not found 404",
 			err:      &smithy.GenericAPIError{Code: "NotFound"},
+			expected: false,
+		},
+		// The thanos-objstore S3 client (use_thanos_objstore) returns
+		// minio.ErrorResponse rather than smithy.APIError.
+		{
+			name:     "minio - SlowDown",
+			err:      minio.ErrorResponse{Code: ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable},
+			expected: true,
+		},
+		{
+			name:     "minio - ServiceUnavailable",
+			err:      minio.ErrorResponse{Code: ErrCodeServiceUnavailable, StatusCode: http.StatusServiceUnavailable},
+			expected: true,
+		},
+		{
+			name:     "minio - InternalError 500",
+			err:      minio.ErrorResponse{Code: ErrCodeInternalError, StatusCode: http.StatusInternalServerError},
+			expected: true,
+		},
+		{
+			name:     "minio - TooManyRequests 429",
+			err:      minio.ErrorResponse{Code: ErrCodeTooManyRequests, StatusCode: http.StatusTooManyRequests},
+			expected: true,
+		},
+		{
+			name:     "minio - wrapped SlowDown",
+			err:      fmt.Errorf("failed to load chunk: %w", minio.ErrorResponse{Code: ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable}),
+			expected: true,
+		},
+		{
+			name:     "minio - unknown code but 5xx status",
+			err:      minio.ErrorResponse{Code: "", StatusCode: http.StatusBadGateway},
+			expected: true,
+		},
+		{
+			name:     "minio - NoSuchKey 404 not retryable",
+			err:      minio.ErrorResponse{Code: minio.NoSuchKey, StatusCode: http.StatusNotFound},
+			expected: false,
+		},
+		{
+			name:     "minio - AccessDenied 403 not retryable",
+			err:      minio.ErrorResponse{Code: minio.AccessDenied, StatusCode: http.StatusForbidden},
 			expected: false,
 		},
 	}
