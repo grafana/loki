@@ -27,6 +27,8 @@ common:
       admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
+  remote_write:
+    client: "Use clients instead."
   storage:
     s3:
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."

@@ -14,10 +14,6 @@
 #
 # Note that even though the configs in schema_config takes a list, here we specify the deprecated fields for each item in the list.
 
-ruler:
-  remote_write:
-    client: "Use clients instead."
-
 index_gateway:
   ring:
     replication_factor: "Use global or per-tenant index_gateway_shard_size configuration from limits_config."

@@ -88,8 +88,10 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 		Config: rulerbase.Config{},
 		RemoteWrite: RemoteWriteConfig{
 			Enabled: true,
-			Client: &config.RemoteWriteConfig{
-				URL: nil,
+			Clients: map[string]config.RemoteWriteConfig{
+				"default": config.RemoteWriteConfig{
+					URL: nil,
+				},
 			},
 		},
 	}
