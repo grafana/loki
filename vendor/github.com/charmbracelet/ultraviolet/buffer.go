@@ -89,8 +89,7 @@ func (l Line) Set(x int, c *Cell) {
 	}
 
 	if cw > 1 {
-		// Mark wide cells with an zero cells.
-		// We set the wide cell down below
+		// Mark wide cells with zero-width placeholder cells.
 		for j := 1; j < cw && x+j < lineWidth; j++ {
 			l[x+j] = Cell{}
 		}

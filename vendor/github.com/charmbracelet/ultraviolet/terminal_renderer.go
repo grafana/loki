@@ -88,6 +88,9 @@ const (
 	tFullscreen
 	tMapNewline
 	tScrollOptim
+	// tGraphemeWidth indicates the terminal measures cell width using Unicode
+	// grapheme clustering (DEC mode 2027 / Unicode core).
+	tGraphemeWidth
 )
 
 // Set sets the given flags.
@@ -136,10 +139,12 @@ type TerminalRenderer struct {
 	oldnum           []int        // old indices from previous hash
 	cur, saved       cursor       // the current and saved cursors
 	flags            tFlag        // terminal writer flags.
+	method           ansi.Method  // the width method used to measure cell width
 	term             string       // the terminal type
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+	lineHadWide      bool         // whether the line currently being transformed contained a wide cell
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -199,6 +204,28 @@ func (s *TerminalRenderer) SetMapNewline(v bool) {
 		s.flags.Set(tMapNewline)
 	} else {
 		s.flags.Reset(tMapNewline)
+	}
+}
+
+// SetWidthMethod sets the width method the renderer uses to measure the
+// display width of strings. This should match the width method configured on
+// the screen so that the renderer doesn't disagree with the cell widths it is
+// asked to draw.
+func (s *TerminalRenderer) SetWidthMethod(method ansi.Method) {
+	s.method = method
+}
+
+// SetGraphemeWidth sets whether the terminal measures cell width using Unicode
+// grapheme clustering (DEC mode 2027 / Unicode core). When enabled, the
+// renderer measures string width using [ansi.GraphemeWidth]; otherwise it
+// falls back to [ansi.WcWidth].
+func (s *TerminalRenderer) SetGraphemeWidth(v bool) {
+	if v {
+		s.flags.Set(tGraphemeWidth)
+		s.method = ansi.GraphemeWidth
+	} else {
+		s.flags.Reset(tGraphemeWidth)
+		s.method = ansi.WcWidth
 	}
 }
 
@@ -331,7 +358,7 @@ func (s *TerminalRenderer) PrependString(newbuf *RenderBuffer, str string) {
 	lines := strings.Split(str, "\n")
 	offset := 0
 	for _, line := range lines {
-		lineWidth := ansi.StringWidth(line)
+		lineWidth := s.method.StringWidth(line)
 		if w > 0 && lineWidth > w {
 			offset += (lineWidth / w)
 		}
@@ -487,7 +514,7 @@ func (s *TerminalRenderer) wrapCursor() {
 }
 
 func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
-	if cell != nil && cell.IsZero() {
+	if cell != nil && cell.Width == 0 {
 		// XXX: Zero width cells are special and should not be written to the
 		// screen no matter what other attributes they have.
 		// Zero width cells are used for wide characters that are split into
@@ -515,13 +542,17 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 	if s.cur.X >= newbuf.Width() {
 		s.atPhantom = true
 	}
+
+	if cellWidth > 1 {
+		s.lineHadWide = true
+	}
 }
 
 // putCellLR draws a cell at the lower right corner of the screen.
 func (s *TerminalRenderer) putCellLR(newbuf *RenderBuffer, cell *Cell) {
 	// Optimize for the lower right corner cell.
 	curX := s.cur.X
-	if cell == nil || !cell.IsZero() {
+	if !cell.isWidePlaceholder() {
 		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
 		s.putAttrCell(newbuf, cell)
 		// Writing to lower-right corner cell should not wrap.
@@ -678,7 +709,7 @@ func (s *TerminalRenderer) putRange(newbuf *RenderBuffer, oldLine, newLine Line,
 		var j, same int
 		for j, same = start, 0; j <= end; j++ {
 			oldCell, newCell := oldLine.At(j), newLine.At(j)
-			if same == 0 && oldCell != nil && oldCell.IsZero() && newCell.IsZero() {
+			if same == 0 && oldCell.isWidePlaceholder() && newCell.isWidePlaceholder() {
 				continue
 			}
 			if cellEqual(oldCell, newCell) {
@@ -784,6 +815,9 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	var firstCell, oLastCell, nLastCell int // first, old last, new last index
 	oldLine := s.curbuf.Line(y)
 	newLine := newbuf.Line(y)
+
+	s.lineHadWide = false
+	defer s.reanchorWideLine(newbuf)
 
 	// Find the first changed cell in the line
 	blank := newLine.At(0)
@@ -926,7 +960,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 			if n != 0 {
 				for n > 0 {
 					wide := newLine.At(n + 1)
-					if wide == nil || !wide.IsZero() {
+					if !wide.isWidePlaceholder() {
 						break
 					}
 					n--
@@ -934,7 +968,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 				}
 			} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
 				next := newLine.At(n + 1)
-				for next != nil && next.IsZero() {
+				for next.isWidePlaceholder() {
 					n++
 					oLastCell++
 					next = newLine.At(n + 1)
@@ -973,6 +1007,22 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	} else {
 		copy(oldLine, newLine)
 	}
+}
+
+// reanchorWideLine re-anchors the cursor with a single absolute horizontal
+// move after a line that contained a wide cell. This is a best-effort fallback
+// that bounds cursor desync to one line on terminals whose width model
+// disagrees with ours. When the terminal negotiated Unicode grapheme width
+// (mode 2027) the models agree, so no re-anchor is needed.
+func (s *TerminalRenderer) reanchorWideLine(newbuf *RenderBuffer) {
+	if !s.lineHadWide || s.flags.Contains(tGraphemeWidth) {
+		return
+	}
+	s.lineHadWide = false
+	if s.atPhantom || s.cur.X < 0 || s.cur.X >= newbuf.Width() {
+		return
+	}
+	_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
 }
 
 // deleteCells deletes the count cells at the current cursor position and moves
