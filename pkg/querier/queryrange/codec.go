@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -776,6 +777,9 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			}
 			params["storeChunks"] = []string{string(b)}
 		}
+		if err := encodeQueryPlan(params, request.Plan); err != nil {
+			return nil, err
+		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
 			Path:     "/loki/api/v1/query_range",
@@ -839,6 +843,9 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 		if len(request.Shards) > 0 {
 			params["shards"] = request.Shards
+		}
+		if err := encodeQueryPlan(params, request.Plan); err != nil {
+			return nil, err
 		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
@@ -2263,13 +2270,54 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 	}
 }
 
+// planParam carries the serialized query plan across the httpgrpc hop between the
+// query-frontend and the querier. Downstream sub-queries produced by the shard mapper can
+// contain internal operators (e.g. __count_min_sketch__) that are not part of the public
+// LogQL grammar, so the querier must restore the AST from the plan rather than re-parsing
+// the query string.
+const planParam = "plan"
+
+func encodeQueryPlan(params url.Values, p *plan.QueryPlan) error {
+	if p == nil || p.AST == nil {
+		return nil
+	}
+	b, err := p.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "marshaling query plan")
+	}
+	params[planParam] = []string{base64.StdEncoding.EncodeToString(b)}
+	return nil
+}
+
+// decodeQueryPlan returns the AST from the serialized plan when present, falling back to
+// parsing the query string otherwise (e.g. requests originating directly from a user).
+func decodeQueryPlan(r *http.Request, query string) (syntax.Expr, error) {
+	encoded := r.Form.Get(planParam)
+	if encoded == "" {
+		return syntax.ParseExpr(query)
+	}
+
+	b, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, errors.Wrap(err, "decoding query plan")
+	}
+	var p plan.QueryPlan
+	if err := p.Unmarshal(b); err != nil {
+		return nil, errors.Wrap(err, "unmarshaling query plan")
+	}
+	if p.AST == nil {
+		return syntax.ParseExpr(query)
+	}
+	return p.AST, nil
+}
+
 func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
 	rangeQuery, err := loghttp.ParseRangeQuery(r)
 	if err != nil {
 		return nil, err
 	}
 
-	parsed, err := syntax.ParseExpr(rangeQuery.Query)
+	parsed, err := decodeQueryPlan(r, rangeQuery.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -2302,7 +2350,7 @@ func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
 		return nil, err
 	}
 
-	parsed, err := syntax.ParseExpr(req.Query)
+	parsed, err := decodeQueryPlan(r, req.Query)
 	if err != nil {
 		return nil, err
 	}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -2917,4 +2918,98 @@ func generateSeries() (res []logproto.SeriesIdentifier) {
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
+}
+
+// TestInternalOpDownstreamHTTPGrpcRoundTrip is the queryrange-codec regression test for
+// https://github.com/grafana/loki/issues/23150.
+//
+// The shard mapper (pkg/logql/shardmapper.go) rewrites shardable aggregations into
+// downstream sub-queries that use internal operators which are NOT part of the public
+// LogQL grammar, so their String() form is not parseable. In a microservices deployment
+// the frontend dispatches each downstream to the querier via httpgrpc:
+// EncodeRequest -> DecodeHTTPGrpcRequest. If the plan is not carried across that hop, the
+// querier falls back to re-parsing the query string and fails with a 400
+// "unexpected IDENTIFIER".
+//
+// approx_topk (#23150) is the reported case, but the same failure applies to every
+// internal operator the shard mapper emits. Carrying the plan fixes them all, which this
+// asserts by round-tripping each without depending on the query string being parseable.
+func TestInternalOpDownstreamHTTPGrpcRoundTrip(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	for _, tc := range []struct {
+		name string
+		expr syntax.SampleExpr
+	}{
+		{
+			// approx_topk sharding -> __count_min_sketch__
+			name: "count_min_sketch",
+			expr: func() syntax.SampleExpr {
+				e := syntax.MustClone(syntax.MustParseExpr(`approx_topk(3, sum by (ip)(rate({foo="bar"}[5m])))`).(*syntax.VectorAggregationExpr))
+				e.Operation = syntax.OpTypeCountMinSketch
+				e.Params = 0
+				return e
+			}(),
+		},
+		{
+			// quantile_over_time sharding -> __quantile_sketch_over_time__
+			name: "quantile_sketch_over_time",
+			expr: func() syntax.SampleExpr {
+				e := syntax.MustParseExpr(`quantile_over_time(0.5,{foo="bar"} | unwrap x [5m]) by (ip)`).(*syntax.RangeAggregationExpr)
+				e.Operation = syntax.OpRangeTypeQuantileSketch
+				return e
+			}(),
+		},
+		{
+			// first_over_time sharding -> __first_over_time_ts__
+			name: "first_over_time_ts",
+			expr: func() syntax.SampleExpr {
+				e := syntax.MustParseExpr(`first_over_time({foo="bar"} | unwrap x [5m]) by (ip)`).(*syntax.RangeAggregationExpr)
+				e.Operation = syntax.OpRangeTypeFirstWithTimestamp
+				return e
+			}(),
+		},
+		{
+			// last_over_time sharding -> __last_over_time_ts__
+			name: "last_over_time_ts",
+			expr: func() syntax.SampleExpr {
+				e := syntax.MustParseExpr(`last_over_time({foo="bar"} | unwrap x [5m]) by (ip)`).(*syntax.RangeAggregationExpr)
+				e.Operation = syntax.OpRangeTypeLastWithTimestamp
+				return e
+			}(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Sanity: the serialized form really is unparseable, so a querier that
+			// re-parses the query string (rather than using the plan) would 400.
+			_, err := syntax.ParseExpr(tc.expr.String())
+			require.Errorf(t, err, "internal operator string unexpectedly parseable: %s", tc.expr.String())
+
+			req := &LokiRequest{
+				Query:     tc.expr.String(),
+				Limit:     100,
+				StartTs:   start,
+				EndTs:     end,
+				Step:      30000,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query_range",
+				Plan:      &plan.QueryPlan{AST: tc.expr},
+			}
+
+			httpReq, err := DefaultCodec.EncodeRequest(ctx, req)
+			require.NoError(t, err)
+
+			grpcReq, err := httpgrpc.FromHTTPRequest(httpReq)
+			require.NoError(t, err)
+
+			got, _, err := DefaultCodec.DecodeHTTPGrpcRequest(ctx, grpcReq)
+			require.NoError(t, err, "querier must decode the downstream sub-query via the plan, without re-parsing the query string")
+
+			lokiReq, ok := got.(*LokiRequest)
+			require.True(t, ok)
+			require.NotNil(t, lokiReq.Plan)
+			require.NotNil(t, lokiReq.Plan.AST)
+			require.Equal(t, tc.expr.String(), lokiReq.Plan.AST.String())
+		})
+	}
 }
