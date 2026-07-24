@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -216,7 +217,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 		},
 		{
 			desc:                     "Non shardable query too big",
-			query:                    `avg_over_time({job="foo"} | json busy="utilization" | unwrap busy [5m])`,
+			query:                    `quantile_over_time(0.99, {app="foo"} | json busy="utilization" | unwrap busy [5m])`,
 			maxQuerierBytesSize:      10,
 			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
@@ -299,6 +300,10 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				return nil, nil
 			})
 
+			var logBuf bytes.Buffer
+			// Sync logger: the sharding engine may log from multiple goroutines.
+			logger := log.NewSyncLogger(log.NewLogfmtLogger(&logBuf))
+
 			mware := newASTMapperware(
 				ShardingConfigs{
 					config.PeriodConfig{
@@ -310,7 +315,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				handler,
 				handler,
 				nil,
-				log.NewNopLogger(),
+				logger,
 				nilShardingMetrics,
 				fakeLimits{
 					maxSeries:               math.MaxInt32,
@@ -329,8 +334,38 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				AST: syntax.MustParseExpr(tc.query),
 			}
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
-			if err != nil {
+
+			// findLine returns the logged line containing marker, or "" if none.
+			// Both the rejection and accepted lines use a context-aware logger, but
+			// other lines in the buffer also carry org_id, so assertions must target
+			// the specific line.
+			findLine := func(marker string) string {
+				for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+					if strings.Contains(line, marker) {
+						return line
+					}
+				}
+				return ""
+			}
+
+			if tc.err == noErr {
+				require.NoError(t, err)
+
+				// The accepted line must carry the tenant (uses the context logger).
+				acceptedLine := findLine("Query is within limits")
+				require.NotEmpty(t, acceptedLine, "no accepted line logged")
+				require.Contains(t, acceptedLine, "org_id=1")
+			} else {
+				require.Error(t, err)
 				require.ErrorContains(t, err, tc.err)
+
+				// A query rejected for exceeding MaxQuerierBytesRead must log the query,
+				// its hash, and the tenant so the rejection can be correlated with the query.
+				rejectionLine := findLine("Query exceeds limits")
+				require.NotEmpty(t, rejectionLine, "no rejection line logged")
+				require.Contains(t, rejectionLine, "org_id=1")
+				require.Contains(t, rejectionLine, fmt.Sprintf("query=%q", tc.query))
+				require.Contains(t, rejectionLine, fmt.Sprintf("query_hash=%d", util.HashedQuery(tc.query)))
 			}
 
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)

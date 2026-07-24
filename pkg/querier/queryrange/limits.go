@@ -401,7 +401,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
 		if bytesRead > uint64(maxBytesRead) {
-			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr, "query", r.GetQuery(), "query_hash", util.HashedQuery(r.GetQuery()))
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
 		}
 	}
