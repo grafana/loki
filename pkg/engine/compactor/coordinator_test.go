@@ -508,10 +508,14 @@ func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant 
 	bucket := objstore.NewInMemBucket()
 	entries := make([]testIndex, 0, len(paths))
 	for _, p := range paths {
+		// Two overlapping log objects (same value, overlapping time) give the
+		// window P=2 runs so it is worth log-compacting. Distinct object paths so
+		// collapsing per-value stat rows to one SectionRef per (object, section)
+		// still leaves two refs here.
 		buildIndexWithStats(ctx, t, bucket, tenant, p, []stats.Stat{
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
+			{ObjectPath: p + ".log-0", SectionIndex: 0, SortSchema: "service_name",
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
-			{ObjectPath: p + ".log", SectionIndex: 0, SortSchema: "service_name",
+			{ObjectPath: p + ".log-1", SectionIndex: 0, SortSchema: "service_name",
 				Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 		})
 		entries = append(entries, testIndex{path: p, start: window.Add(time.Hour), end: window.Add(2 * time.Hour)})

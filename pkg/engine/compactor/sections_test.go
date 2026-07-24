@@ -164,40 +164,55 @@ func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Buck
 	require.NoError(t, bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes))))
 }
 
-func TestLogSectionRefsFor_OneRefPerStatRow(t *testing.T) {
+func TestLogSectionRefsFor_CollapsesRowsPerSection(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/converged"
 
+	// The stats section records one row per (section, distinct sort-key value).
+	// logSectionRefsFor must collapse the per-value rows of one physical section
+	// into a single SectionRef (so the planner assigns each section to exactly one
+	// task); distinct sections stay distinct.
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 3, UncompressedSize: 300},
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 15, MaxTimestamp: 25, RowCount: 2, UncompressedSize: 200},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "cache"}, MinTimestamp: 5, MaxTimestamp: 8, RowCount: 1, UncompressedSize: 50},
 	})
 
 	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
-	require.Len(t, refs, 2)
+	require.Len(t, refs, 2, "one SectionRef per (ObjectPath, SectionIndex), not per stat row")
 
-	byKey := map[string]*compactionv2pb.SectionRef{}
+	bySection := map[int64]*compactionv2pb.SectionRef{}
 	for _, r := range refs {
-		byKey[r.MinKey[0]] = r
+		require.Equal(t, "logs/log-0", r.ObjectPath)
+		bySection[r.SectionIndex] = r
 	}
 
-	auth := byKey["auth"]
-	require.NotNil(t, auth)
-	require.Equal(t, "logs/log-0", auth.ObjectPath)
-	require.Equal(t, []string{"auth"}, auth.MinKey)
-	require.Equal(t, []string{"auth"}, auth.MaxKey)
-	require.Equal(t, int64(300), auth.UncompressedSize)
+	// Section 0: the auth + billing rows collapsed into one ref spanning [min..max]
+	// of both the sort-key values and the timestamps, with sizes summed.
+	s0 := bySection[0]
+	require.NotNil(t, s0)
+	require.Equal(t, []string{"auth"}, s0.MinKey, "MinKey = smallest sort-key value")
+	require.Equal(t, []string{"billing"}, s0.MaxKey, "MaxKey = largest sort-key value")
+	require.Equal(t, int64(10), s0.MinTimestamp)
+	require.Equal(t, int64(25), s0.MaxTimestamp)
+	require.Equal(t, int64(500), s0.UncompressedSize, "sizes summed across the section's rows")
 
-	require.Equal(t, int64(200), byKey["billing"].UncompressedSize)
+	// Section 1: its own single-value ref, untouched.
+	s1 := bySection[1]
+	require.NotNil(t, s1)
+	require.Equal(t, []string{"cache"}, s1.MinKey)
+	require.Equal(t, []string{"cache"}, s1.MaxKey)
+	require.Equal(t, int64(50), s1.UncompressedSize)
 
 	// MaxKey must be a distinct slice from MinKey, not a shared backing array.
-	auth.MinKey[0] = "MUTATED"
-	require.Equal(t, "auth", auth.MaxKey[0], "MaxKey must be a distinct slice from MinKey")
+	s0.MinKey[0] = "MUTATED"
+	require.Equal(t, "billing", s0.MaxKey[0], "MaxKey must be a distinct slice from MinKey")
 }
 
 func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T) {

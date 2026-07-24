@@ -227,6 +227,21 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	const batchSize = 1024
 	scratch := make([]stats.Stat, batchSize)
 
+	// The stats section records one row per (data-object section, distinct
+	// sort-key value): a logs section holding N distinct values yields N rows
+	// that all name the same (ObjectPath, SectionIndex). Emitting one SectionRef
+	// per row makes compactionv2.Plan hand that physical section to multiple
+	// LogMerge tasks, each of which merges the whole section — duplicating its
+	// records once per task. Collapse to one SectionRef per (ObjectPath,
+	// SectionIndex), carrying the section's full sort-key range plus aggregate
+	// timestamp bounds and size.
+	type sectionKey struct {
+		path string
+		idx  int64
+	}
+	bySection := make(map[sectionKey]*compactionv2pb.SectionRef)
+	var order []sectionKey // first-seen order, for deterministic output
+
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		if section.Tenant != tenant {
 			continue
@@ -276,22 +291,44 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 					schemaDerived = true
 				}
 
-				ref := &compactionv2pb.SectionRef{
+				var rowKey []string
+				if len(sortSchemaLbls) > 0 {
+					rowKey = make([]string, len(sortSchemaLbls))
+					for j, k := range sortSchemaLbls {
+						rowKey[j] = st.Labels[k]
+					}
+				}
+
+				key := sectionKey{path: st.ObjectPath, idx: st.SectionIndex}
+				if ref := bySection[key]; ref != nil {
+					// Fold this per-value row into the section's single ref.
+					if st.MinTimestamp < ref.MinTimestamp {
+						ref.MinTimestamp = st.MinTimestamp
+					}
+					if st.MaxTimestamp > ref.MaxTimestamp {
+						ref.MaxTimestamp = st.MaxTimestamp
+					}
+					ref.UncompressedSize += st.UncompressedSize
+					if len(rowKey) > 0 {
+						if slices.Compare(rowKey, ref.MinKey) < 0 {
+							ref.MinKey = rowKey
+						}
+						if slices.Compare(rowKey, ref.MaxKey) > 0 {
+							ref.MaxKey = slices.Clone(rowKey)
+						}
+					}
+					continue
+				}
+				bySection[key] = &compactionv2pb.SectionRef{
 					ObjectPath:       st.ObjectPath,
 					SectionIndex:     st.SectionIndex,
 					MinTimestamp:     st.MinTimestamp,
 					MaxTimestamp:     st.MaxTimestamp,
 					UncompressedSize: st.UncompressedSize,
+					MinKey:           rowKey,
+					MaxKey:           slices.Clone(rowKey),
 				}
-				if len(sortSchemaLbls) > 0 {
-					minKey := make([]string, len(sortSchemaLbls))
-					for j, k := range sortSchemaLbls {
-						minKey[j] = st.Labels[k]
-					}
-					ref.MinKey = minKey
-					ref.MaxKey = slices.Clone(minKey)
-				}
-				refs = append(refs, ref)
+				order = append(order, key)
 			}
 
 			if errors.Is(readErr, io.EOF) {
@@ -300,5 +337,9 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 	}
 
+	refs = make([]*compactionv2pb.SectionRef, 0, len(order))
+	for _, key := range order {
+		refs = append(refs, bySection[key])
+	}
 	return refs, schema, nil
 }
