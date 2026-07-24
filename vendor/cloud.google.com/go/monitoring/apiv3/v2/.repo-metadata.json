@@ -1,0 +1,10 @@
+{
+    "api_shortname": "monitoring",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/monitoring/latest/apiv3/v2",
+    "client_library_type": "generated",
+    "description": "Cloud Monitoring API",
+    "distribution_name": "cloud.google.com/go/monitoring/apiv3/v2",
+    "language": "go",
+    "library_type": "GAPIC_AUTO",
+    "release_level": "preview"
+}
