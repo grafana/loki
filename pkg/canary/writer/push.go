@@ -91,11 +91,17 @@ func NewPush(
 	scheme := "http"
 
 	// setup tls transport
-	if tlsCfg != nil {
-		tlsSettings := config.TLSRoundTripperSettings{
-			CA:   config.NewFileSecret(caFile),
-			Cert: config.NewFileSecret(certFile),
-			Key:  config.NewFileSecret(keyFile),
+	if tlsCfg != nil && (certFile != "" || keyFile != "" || caFile != "") {
+		// Only watch the files that were configured; reading an empty path fails.
+		tlsSettings := config.TLSRoundTripperSettings{}
+		if caFile != "" {
+			tlsSettings.CA = config.NewFileSecret(caFile)
+		}
+		if certFile != "" {
+			tlsSettings.Cert = config.NewFileSecret(certFile)
+		}
+		if keyFile != "" {
+			tlsSettings.Key = config.NewFileSecret(keyFile)
 		}
 		rt, err := config.NewTLSRoundTripper(tlsCfg, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
@@ -104,6 +110,10 @@ func NewPush(
 			return nil, fmt.Errorf("failed to create TLS config for transport: %w", err)
 		}
 		client.Transport = rt
+		scheme = "https"
+	} else if tlsCfg != nil {
+		// TLS without cert/CA files, e.g. system CA pool or -insecure.
+		client.Transport = &http.Transport{TLSClientConfig: tlsCfg}
 		scheme = "https"
 	}
 
