@@ -354,10 +354,8 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 		defer cancel()
 		start := time.Now()
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
-		require.Error(t, err)
-		require.True(t, IsSaturatedError(err))
-		// The context error is preserved so callers can tell the request was aborted
-		// by its deadline rather than by saturation alone.
+		// The deadline ended the request, so that is what gets reported; the
+		// saturation is an internal retry-pacing detail.
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		// Finishing before a single backoff period could elapse proves the deadline
 		// interrupted the wait instead of it running to completion.
