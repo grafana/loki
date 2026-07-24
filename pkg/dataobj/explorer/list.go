@@ -30,6 +30,12 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dir := r.URL.Query().Get("path")
+	if dir != "" {
+		if err := validateObjectKey(dir); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	level.Debug(s.logger).Log("msg", "listing directory", "path", dir)
 
 	files := make([]fileInfo, 0)
