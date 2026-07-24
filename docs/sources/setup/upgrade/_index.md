@@ -273,6 +273,10 @@ The **Helm chart** has gone through some significant changes and has a separate 
 
 ### Loki 3.0.0
 
+{{< admonition type="caution" >}}
+Before upgrading your software from Loki 2.x to 3.0, you should follow the instructions to [Migrate to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/). 
+{{< /admonition >}}
+
 #### Structured Metadata, Open Telemetry, Schemas and Indexes
 
 A flagship feature of Loki 3.0 is native support for the Open Telemetry Protocol (OTLP). This is made possible by a new feature in Loki called [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/), a place for metadata which doesn't belong in labels or log lines. OTel resources and attributes are often a great example of data which doesn't belong in the index nor in the log line.
@@ -574,10 +578,11 @@ The `metrics_namespace` setting is deprecated already. It will be removed in the
 Previously LogCLI used to fetch remote schema from the store configured in `-boltdb.shipper.shared-store` when `-remote-schema` is set to `true`.
 A new CLI flag `-schema-store` is introduced as a replacement to configure the store for retrieving remote schema.
 
-## 2.9.0
+## Further reading
 
-### Loki 2.9.0
+To upgrade from one of the versions of Loki 2.x, refer to [Upgrade Loki 2.x versions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-2.x/).
 
+<<<<<<< HEAD
 #### Index gateway shuffle sharding
 
 The index gateway now supports shuffle sharding of index data when running in
@@ -1882,3 +1887,6 @@ This will result in distributors failing to write and a general ingestion failur
 
 If this happens to you, you will want to rollback your deployment immediately. You need to remove the v1.4.0 ingester from the ring ASAP, this should allow the existing ingesters to re-insert their tokens.  You will also want to remove any v1.4.0 distributors as they will not understand the old ring either and will fail to send traffic.
 <!-- vale Grafana.Spelling = YES -->
+=======
+To upgrade from one of the versions of Loki 1.x, refer to [Upgrade Loki 1.x versions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-1.x/).
+>>>>>>> 195b91ab9d (docs: Split Upgrade topic (#23475))
