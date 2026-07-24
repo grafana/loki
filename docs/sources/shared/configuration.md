@@ -3974,6 +3974,23 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Experimental: CPU utilization, in cores, above which the index gateway starts
+# rejecting requests. The utilization is computed as a moving average over a 60s
+# sliding window, and limiting only starts after a 60s warmup on startup. 0 to
+# disable.
+# CLI flag: -index-gateway.cpu-utilization-limit
+[cpu_utilization_limit: <float> | default = 0]
+
+# Experimental: Go heap size above which the index gateway starts rejecting
+# requests, e.g. 24GiB. 0 to disable.
+# CLI flag: -index-gateway.memory-utilization-limit
+[memory_utilization_limit: <int> | default = 0B]
+
+# Experimental: Log the CPU utilization samples backing the utilization based
+# limiter's moving average when limiting starts or stops.
+# CLI flag: -index-gateway.log-utilization-samples
+[log_utilization_samples: <boolean> | default = false]
 ```
 
 ### ingester
@@ -6902,6 +6919,18 @@ tsdb_shipper:
     # Only applies to simple mode.
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
+
+    # Experimental: Minimum delay before retrying on another index gateway after
+    # a request was rejected because the gateway is saturated. The delay grows
+    # exponentially, with jitter, up to the max period. Requests rejected for
+    # other reasons are retried on another gateway without delay.
+    # CLI flag: -tsdb.shipper.index-gateway-client.saturation-backoff-min-period
+    [saturation_backoff_min_period: <duration> | default = 250ms]
+
+    # Experimental: Maximum delay before retrying on another index gateway after
+    # a request was rejected because the gateway is saturated.
+    # CLI flag: -tsdb.shipper.index-gateway-client.saturation-backoff-max-period
+    [saturation_backoff_max_period: <duration> | default = 2s]
 
   [ingestername: <string> | default = ""]
 
