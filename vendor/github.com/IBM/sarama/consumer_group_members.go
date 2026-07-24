@@ -73,7 +73,7 @@ func (m *ConsumerGroupMemberMetadata) decode(pd packetDecoder) (err error) {
 		}
 		if n > 0 {
 			m.OwnedPartitions = make([]*OwnedPartition, n)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				m.OwnedPartitions[i] = &OwnedPartition{}
 				if err := m.OwnedPartitions[i].decode(pd); err != nil {
 					return err

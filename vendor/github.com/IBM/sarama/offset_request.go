@@ -20,6 +20,8 @@ func (b *offsetRequestBlock) encode(pe packetEncoder, version int16) error {
 		pe.putInt32(b.maxNumOffsets)
 	}
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
@@ -41,6 +43,10 @@ func (b *offsetRequestBlock) decode(pd packetDecoder, version int16) (err error)
 		}
 	}
 
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -54,7 +60,10 @@ type OffsetRequest struct {
 
 func NewOffsetRequest(version KafkaVersion) *OffsetRequest {
 	request := &OffsetRequest{}
-	if version.IsAtLeast(V2_2_0_0) {
+	if version.IsAtLeast(V2_8_0_0) {
+		// Version 6 enables flexible versions.
+		request.Version = 6
+	} else if version.IsAtLeast(V2_2_0_0) {
 		// Version 5 adds a new error code, OFFSET_NOT_AVAILABLE.
 		request.Version = 5
 	} else if version.IsAtLeast(V2_1_0_0) {
@@ -109,7 +118,11 @@ func (r *OffsetRequest) encode(pe packetEncoder) error {
 				return err
 			}
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
+
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
@@ -140,32 +153,45 @@ func (r *OffsetRequest) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
-	if blockCount == 0 {
-		return nil
+	if blockCount < 0 {
+		return errInvalidArrayLength
 	}
-	r.blocks = make(map[string]map[int32]*offsetRequestBlock)
-	for i := 0; i < blockCount; i++ {
-		topic, err := pd.getString()
-		if err != nil {
-			return err
-		}
-		partitionCount, err := pd.getArrayLength()
-		if err != nil {
-			return err
-		}
-		r.blocks[topic] = make(map[int32]*offsetRequestBlock)
-		for j := 0; j < partitionCount; j++ {
-			partition, err := pd.getInt32()
+	if blockCount > 0 {
+		r.blocks = make(map[string]map[int32]*offsetRequestBlock)
+		for range blockCount {
+			topic, err := pd.getString()
 			if err != nil {
 				return err
 			}
-			block := &offsetRequestBlock{}
-			if err := block.decode(pd, version); err != nil {
+			partitionCount, err := pd.getArrayLength()
+			if err != nil {
 				return err
 			}
-			r.blocks[topic][partition] = block
+			if partitionCount < 0 {
+				return errInvalidArrayLength
+			}
+			r.blocks[topic] = make(map[int32]*offsetRequestBlock)
+			for range partitionCount {
+				partition, err := pd.getInt32()
+				if err != nil {
+					return err
+				}
+				block := &offsetRequestBlock{}
+				if err := block.decode(pd, version); err != nil {
+					return err
+				}
+				r.blocks[topic][partition] = block
+			}
+			if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
 		}
 	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -178,15 +204,28 @@ func (r *OffsetRequest) version() int16 {
 }
 
 func (r *OffsetRequest) headerVersion() int16 {
+	if r.Version >= 6 {
+		return 2
+	}
 	return 1
 }
 
 func (r *OffsetRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 5
+	return r.Version >= 0 && r.Version <= 6
+}
+
+func (r *OffsetRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *OffsetRequest) isFlexibleVersion(version int16) bool {
+	return version >= 6
 }
 
 func (r *OffsetRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 6:
+		return V2_8_0_0
 	case 5:
 		return V2_2_0_0
 	case 4:

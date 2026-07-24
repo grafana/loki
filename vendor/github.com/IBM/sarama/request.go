@@ -217,25 +217,134 @@ func allocateBody(key, version int16) protocolBody {
 		return &DescribeUserScramCredentialsRequest{Version: version}
 	case apiKeyAlterUserScramCredentials:
 		return &AlterUserScramCredentialsRequest{Version: version}
+	case apiKeyUpdateFeatures:
+		return &UpdateFeaturesRequest{Version: version}
 	case apiKeyDescribeCluster:
 		return &DescribeClusterRequest{Version: version}
+	case apiKeyDescribeProducers:
+		return &DescribeProducersRequest{Version: version}
 		// 52: VoteRequest
 		// 53: BeginQuorumEpochRequest
 		// 54: EndQuorumEpochRequest
 		// 55: DescribeQuorumRequest
 		// 56: AlterPartitionRequest
-		// 57: UpdateFeaturesRequest
 		// 58: EnvelopeRequest
 		// 59: FetchSnapshotRequest
 		// 60: DescribeClusterRequest
-		// 61: DescribeProducersRequest
 		// 62: BrokerRegistrationRequest
 		// 63: BrokerHeartbeatRequest
 		// 64: UnregisterBrokerRequest
-		// 65: DescribeTransactionsRequest
-		// 66: ListTransactionsRequest
+	case apiKeyDescribeTransactions:
+		return &DescribeTransactionsRequest{Version: version}
+	case apiKeyListTransactions:
+		return &ListTransactionsRequest{Version: version}
 		// 67: AllocateProducerIdsRequest
 		// 68: ConsumerGroupHeartbeatRequest
+	}
+	return nil
+}
+
+// allocateResponseBody returns a fresh response struct for the given api key
+// and version, or nil when the key is unknown. Not used at runtime, but
+// mirrors allocateBody so the unittests and fuzz harness can drive every
+// supported response decoder uniformly.
+//
+//nolint:unused
+//lint:ignore U1000 -- used in _test.go and fuzz tests but stored alongside allocateBody for convenience.
+func allocateResponseBody(key, version int16) protocolBody {
+	switch key {
+	case apiKeyProduce:
+		return &ProduceResponse{Version: version}
+	case apiKeyFetch:
+		return &FetchResponse{Version: version}
+	case apiKeyListOffsets:
+		return &OffsetResponse{Version: version}
+	case apiKeyMetadata:
+		return &MetadataResponse{Version: version}
+	case apiKeyOffsetCommit:
+		return &OffsetCommitResponse{Version: version}
+	case apiKeyOffsetFetch:
+		return &OffsetFetchResponse{Version: version}
+	case apiKeyFindCoordinator:
+		return &FindCoordinatorResponse{Version: version}
+	case apiKeyJoinGroup:
+		return &JoinGroupResponse{Version: version}
+	case apiKeyHeartbeat:
+		return &HeartbeatResponse{Version: version}
+	case apiKeyLeaveGroup:
+		return &LeaveGroupResponse{Version: version}
+	case apiKeySyncGroup:
+		return &SyncGroupResponse{Version: version}
+	case apiKeyDescribeGroups:
+		return &DescribeGroupsResponse{Version: version}
+	case apiKeyListGroups:
+		return &ListGroupsResponse{Version: version}
+	case apiKeySaslHandshake:
+		return &SaslHandshakeResponse{Version: version}
+	case apiKeyApiVersions:
+		return &ApiVersionsResponse{Version: version}
+	case apiKeyCreateTopics:
+		return &CreateTopicsResponse{Version: version}
+	case apiKeyDeleteTopics:
+		return &DeleteTopicsResponse{Version: version}
+	case apiKeyDeleteRecords:
+		return &DeleteRecordsResponse{Version: version}
+	case apiKeyInitProducerId:
+		return &InitProducerIDResponse{Version: version}
+	case apiKeyAddPartitionsToTxn:
+		return &AddPartitionsToTxnResponse{Version: version}
+	case apiKeyAddOffsetsToTxn:
+		return &AddOffsetsToTxnResponse{Version: version}
+	case apiKeyEndTxn:
+		return &EndTxnResponse{Version: version}
+	case apiKeyTxnOffsetCommit:
+		return &TxnOffsetCommitResponse{Version: version}
+	case apiKeyDescribeAcls:
+		return &DescribeAclsResponse{Version: version}
+	case apiKeyCreateAcls:
+		return &CreateAclsResponse{Version: version}
+	case apiKeyDeleteAcls:
+		return &DeleteAclsResponse{Version: version}
+	case apiKeyDescribeConfigs:
+		return &DescribeConfigsResponse{Version: version}
+	case apiKeyAlterConfigs:
+		return &AlterConfigsResponse{Version: version}
+	case apiKeyDescribeLogDirs:
+		return &DescribeLogDirsResponse{Version: version}
+	case apiKeySASLAuth:
+		return &SaslAuthenticateResponse{Version: version}
+	case apiKeyCreatePartitions:
+		return &CreatePartitionsResponse{Version: version}
+	case apiKeyDeleteGroups:
+		return &DeleteGroupsResponse{Version: version}
+	case apiKeyElectLeaders:
+		return &ElectLeadersResponse{Version: version}
+	case apiKeyIncrementalAlterConfigs:
+		return &IncrementalAlterConfigsResponse{Version: version}
+	case apiKeyAlterPartitionReassignments:
+		return &AlterPartitionReassignmentsResponse{Version: version}
+	case apiKeyListPartitionReassignments:
+		return &ListPartitionReassignmentsResponse{Version: version}
+	case apiKeyOffsetDelete:
+		return &DeleteOffsetsResponse{Version: version}
+	case apiKeyDescribeClientQuotas:
+		return &DescribeClientQuotasResponse{Version: version}
+	case apiKeyAlterClientQuotas:
+		return &AlterClientQuotasResponse{Version: version}
+	case apiKeyDescribeUserScramCredentials:
+		return &DescribeUserScramCredentialsResponse{Version: version}
+	case apiKeyAlterUserScramCredentials:
+		return &AlterUserScramCredentialsResponse{Version: version}
+	case apiKeyUpdateFeatures:
+		return &UpdateFeaturesResponse{Version: version}
+	case apiKeyDescribeCluster:
+		return &DescribeClusterResponse{Version: version}
+	case apiKeyDescribeProducers:
+		return &DescribeProducersResponse{Version: version}
+	case apiKeyDescribeTransactions:
+		return &DescribeTransactionsResponse{Version: version}
+	case apiKeyListTransactions:
+		return &ListTransactionsResponse{Version: version}
 	}
 	return nil
 }

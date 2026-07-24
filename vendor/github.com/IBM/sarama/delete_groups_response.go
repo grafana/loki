@@ -41,13 +41,16 @@ func (r *DeleteGroupsResponse) decode(pd packetDecoder, version int16) (err erro
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 	if n == 0 {
 		_, err = pd.getEmptyTaggedFieldArray()
 		return err
 	}
 
 	r.GroupErrorCodes = make(map[string]KError, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		groupID, err := pd.getString()
 		if err != nil {
 			return err

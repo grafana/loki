@@ -101,6 +101,10 @@ type transactionManager struct {
 
 	// Offsets to add to transaction.
 	offsetsInCurrentTxn map[string]topicPartitionOffsets
+
+	// Consumer group metadata per group whose offsets are added to the
+	// transaction, keyed by group ID.
+	groupMetadataInCurrentTxn map[string]*ConsumerGroupMetadata
 }
 
 const (
@@ -268,7 +272,7 @@ func (t *transactionManager) isTransactional() bool {
 }
 
 // add specified offsets to current transaction.
-func (t *transactionManager) addOffsetsToTxn(offsetsToAdd map[string][]*PartitionOffsetMetadata, groupId string) error {
+func (t *transactionManager) addOffsetsToTxn(offsetsToAdd map[string][]*PartitionOffsetMetadata, groupMetadata *ConsumerGroupMetadata) error {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 
@@ -280,9 +284,11 @@ func (t *transactionManager) addOffsetsToTxn(offsetsToAdd map[string][]*Partitio
 		return t.lastError
 	}
 
+	groupId := groupMetadata.GroupID
 	if _, ok := t.offsetsInCurrentTxn[groupId]; !ok {
 		t.offsetsInCurrentTxn[groupId] = topicPartitionOffsets{}
 	}
+	t.groupMetadataInCurrentTxn[groupId] = groupMetadata
 
 	for topic, offsets := range offsetsToAdd {
 		for _, offset := range offsets {
@@ -294,7 +300,8 @@ func (t *transactionManager) addOffsetsToTxn(offsetsToAdd map[string][]*Partitio
 }
 
 // send txnmgnr save offsets to transaction coordinator.
-func (t *transactionManager) publishOffsetsToTxn(offsets topicPartitionOffsets, groupId string) (topicPartitionOffsets, error) {
+func (t *transactionManager) publishOffsetsToTxn(offsets topicPartitionOffsets, groupMetadata *ConsumerGroupMetadata) (topicPartitionOffsets, error) {
+	groupId := groupMetadata.GroupID
 	// First AddOffsetsToTxn
 	attemptsRemaining := t.client.Config().Producer.Transaction.Retry.Max
 	exec := func(run func() (bool, error), err error) error {
@@ -323,7 +330,10 @@ func (t *transactionManager) publishOffsetsToTxn(offsets topicPartitionOffsets, 
 			ProducerID:      t.producerID,
 			GroupID:         groupId,
 		}
-		if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
+		if t.client.Config().Version.IsAtLeast(V2_8_0_0) {
+			// Version 3 enables flexible versions.
+			request.Version = 3
+		} else if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
 			// Version 2 adds the support for new error code PRODUCER_FENCED.
 			request.Version = 2
 		} else if t.client.Config().Version.IsAtLeast(V2_0_0_0) {
@@ -407,7 +417,16 @@ func (t *transactionManager) publishOffsetsToTxn(offsets topicPartitionOffsets, 
 			GroupID:         groupId,
 			Topics:          offsets.mapToRequest(),
 		}
-		if t.client.Config().Version.IsAtLeast(V2_1_0_0) {
+		if t.client.Config().Version.IsAtLeast(V2_5_0_0) {
+			// Version 3 adds the member ID, group instance ID and generation ID,
+			// which let the broker fence stale group members. Callers that don't
+			// supply them get the protocol defaults (generation -1, empty member
+			// ID, null instance ID) which tell the broker to skip that fencing.
+			request.Version = 3
+			request.GenerationID = groupMetadata.GenerationID
+			request.MemberID = groupMetadata.MemberID
+			request.GroupInstanceID = groupMetadata.GroupInstanceID
+		} else if t.client.Config().Version.IsAtLeast(V2_1_0_0) {
 			// Version 2 adds the committed leader epoch.
 			request.Version = 2
 		} else if t.client.Config().Version.IsAtLeast(V2_0_0_0) {
@@ -611,6 +630,7 @@ func (t *transactionManager) completeTransaction() error {
 	t.partitionsInCurrentTxn = topicPartitionSet{}
 	t.pendingPartitionsInCurrentTxn = topicPartitionSet{}
 	t.offsetsInCurrentTxn = map[string]topicPartitionOffsets{}
+	t.groupMetadataInCurrentTxn = map[string]*ConsumerGroupMetadata{}
 
 	return nil
 }
@@ -644,7 +664,10 @@ func (t *transactionManager) endTxn(commit bool) error {
 			ProducerID:        t.producerID,
 			TransactionResult: commit,
 		}
-		if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
+		if t.client.Config().Version.IsAtLeast(V2_8_0_0) {
+			// Version 3 enables flexible versions.
+			request.Version = 3
+		} else if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
 			// Version 2 adds the support for new error code PRODUCER_FENCED.
 			request.Version = 2
 		} else if t.client.Config().Version.IsAtLeast(V2_0_0_0) {
@@ -712,12 +735,13 @@ func (t *transactionManager) finishTransaction(commit bool) error {
 	// If we're aborting the transaction, so there should be no need to add offsets.
 	if commit && len(t.offsetsInCurrentTxn) > 0 {
 		for group, offsets := range t.offsetsInCurrentTxn {
-			newOffsets, err := t.publishOffsetsToTxn(offsets, group)
+			newOffsets, err := t.publishOffsetsToTxn(offsets, t.groupMetadataInCurrentTxn[group])
 			if err != nil {
 				t.offsetsInCurrentTxn[group] = newOffsets
 				return err
 			}
 			delete(t.offsetsInCurrentTxn, group)
+			delete(t.groupMetadataInCurrentTxn, group)
 		}
 	}
 
@@ -757,7 +781,7 @@ func (t *transactionManager) maybeAddPartitionToCurrentTxn(topic string, partiti
 	t.pendingPartitionsInCurrentTxn[tp] = struct{}{}
 }
 
-// Makes a request to kafka to add a list of partitions ot the current transaction.
+// Makes a request to kafka to add a list of partitions to the current transaction.
 func (t *transactionManager) publishTxnPartitions() error {
 	t.partitionInTxnLock.Lock()
 	defer t.partitionInTxnLock.Unlock()
@@ -821,7 +845,10 @@ func (t *transactionManager) publishTxnPartitions() error {
 			ProducerEpoch:   t.producerEpoch,
 			TopicPartitions: t.pendingPartitionsInCurrentTxn.mapToRequest(),
 		}
-		if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
+		if t.client.Config().Version.IsAtLeast(V2_8_0_0) {
+			// Version 3 is first flexible version
+			request.Version = 3
+		} else if t.client.Config().Version.IsAtLeast(V2_7_0_0) {
 			// Version 2 adds the support for new error code PRODUCER_FENCED.
 			request.Version = 2
 		} else if t.client.Config().Version.IsAtLeast(V2_0_0_0) {
@@ -902,6 +929,7 @@ func newTransactionManager(conf *Config, client Client) (*transactionManager, er
 		pendingPartitionsInCurrentTxn: topicPartitionSet{},
 		partitionsInCurrentTxn:        topicPartitionSet{},
 		offsetsInCurrentTxn:           make(map[string]topicPartitionOffsets),
+		groupMetadataInCurrentTxn:     make(map[string]*ConsumerGroupMetadata),
 		status:                        ProducerTxnFlagUninitialized,
 	}
 

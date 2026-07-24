@@ -30,13 +30,20 @@ func (a *AlterConfigsRequest) encode(pe packetEncoder) error {
 	}
 
 	pe.putBool(a.ValidateOnly)
+
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
 func (a *AlterConfigsRequest) decode(pd packetDecoder, version int16) error {
+	a.Version = version
 	resourceCount, err := pd.getArrayLength()
 	if err != nil {
 		return err
+	}
+	if resourceCount < 0 {
+		return errInvalidArrayLength
 	}
 
 	a.Resources = make([]*AlterConfigsResource, resourceCount)
@@ -55,6 +62,10 @@ func (a *AlterConfigsRequest) decode(pd packetDecoder, version int16) error {
 	}
 
 	a.ValidateOnly = validateOnly
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -78,6 +89,8 @@ func (a *AlterConfigsResource) encode(pe packetEncoder) error {
 		}
 	}
 
+	pe.putEmptyTaggedFieldArray()
+
 	return nil
 }
 
@@ -98,10 +111,13 @@ func (a *AlterConfigsResource) decode(pd packetDecoder, version int16) error {
 	if err != nil {
 		return err
 	}
+	if n < 0 {
+		return errInvalidArrayLength
+	}
 
 	if n > 0 {
 		a.ConfigEntries = make(map[string]*string, n)
-		for i := 0; i < n; i++ {
+		for range n {
 			configKey, err := pd.getString()
 			if err != nil {
 				return err
@@ -111,6 +127,11 @@ func (a *AlterConfigsResource) decode(pd packetDecoder, version int16) error {
 			}
 		}
 	}
+
+	if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
+		return err
+	}
+
 	return err
 }
 
@@ -123,20 +144,33 @@ func (a *AlterConfigsRequest) version() int16 {
 }
 
 func (a *AlterConfigsRequest) headerVersion() int16 {
+	if a.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (a *AlterConfigsRequest) isValidVersion() bool {
-	return a.Version >= 0 && a.Version <= 1
+	return a.Version >= 0 && a.Version <= 2
+}
+
+func (a *AlterConfigsRequest) isFlexible() bool {
+	return a.isFlexibleVersion(a.Version)
+}
+
+func (a *AlterConfigsRequest) isFlexibleVersion(version int16) bool {
+	return version >= 2
 }
 
 func (a *AlterConfigsRequest) requiredVersion() KafkaVersion {
 	switch a.Version {
+	case 2:
+		return V2_8_0_0
 	case 1:
 		return V2_0_0_0
 	case 0:
 		return V0_11_0_0
 	default:
-		return V2_0_0_0
+		return V2_8_0_0
 	}
 }

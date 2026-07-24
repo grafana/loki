@@ -30,7 +30,11 @@ func (b *offsetCommitRequestBlock) encode(pe packetEncoder, version int16) error
 		pe.putInt32(b.committedLeaderEpoch)
 	}
 
-	return pe.putString(b.metadata)
+	if err := pe.putString(b.metadata); err != nil {
+		return err
+	}
+	pe.putEmptyTaggedFieldArray()
+	return nil
 }
 
 func (b *offsetCommitRequestBlock) decode(pd packetDecoder, version int16) (err error) {
@@ -48,7 +52,10 @@ func (b *offsetCommitRequestBlock) decode(pd packetDecoder, version int16) (err 
 		}
 	}
 
-	b.metadata, err = pd.getString()
+	if b.metadata, err = pd.getString(); err != nil {
+		return err
+	}
+	_, err = pd.getEmptyTaggedFieldArray()
 	return err
 }
 
@@ -67,6 +74,7 @@ type OffsetCommitRequest struct {
 	// - 4 (kafka 2.0.0 and later)
 	// - 5&6 (kafka 2.1.0 and later)
 	// - 7 (kafka 2.3.0 and later)
+	// - 8 (kafka 2.4.0 and later, first flexible version)
 	Version int16
 	blocks  map[string]map[int32]*offsetCommitRequestBlock
 }
@@ -75,8 +83,51 @@ func (r *OffsetCommitRequest) setVersion(v int16) {
 	r.Version = v
 }
 
+// NewOffsetCommitRequest creates an OffsetCommitRequest initialized for admin use.
+//
+// The version-mapping logic mirrors offsetManager.constructRequest in
+// offset_manager.go; protocol bumps must be applied to both call sites.
+func NewOffsetCommitRequest(conf *Config, group string) *OffsetCommitRequest {
+	request := &OffsetCommitRequest{
+		ConsumerGroup:           group,
+		ConsumerGroupGeneration: GroupGenerationUndefined,
+	}
+
+	if conf.Version.IsAtLeast(V2_4_0_0) {
+		// Version 8 is the first flexible version.
+		request.Version = 8
+	} else if conf.Version.IsAtLeast(V2_3_0_0) {
+		// Version 7 adds GroupInstanceId.
+		request.Version = 7
+	} else if conf.Version.IsAtLeast(V2_1_0_0) {
+		// Version 6 adds committed leader epoch (version 5 removes retention time).
+		request.Version = 6
+	} else if conf.Version.IsAtLeast(V2_0_0_0) {
+		// Version 4 is the same as version 2.
+		request.Version = 4
+	} else if conf.Version.IsAtLeast(V0_11_0_0) {
+		// Version 3 is the same as version 2.
+		request.Version = 3
+	} else if conf.Version.IsAtLeast(V0_9_0_0) {
+		// Version 2 adds retention time and removes the commit timestamp from version 1.
+		request.Version = 2
+	} else {
+		// Version 1 adds commit timestamp and group membership.
+		request.Version = 1
+	}
+
+	if request.Version >= 2 && request.Version < 5 {
+		request.RetentionTime = -1
+		if conf.Consumer.Offsets.Retention > 0 {
+			request.RetentionTime = conf.Consumer.Offsets.Retention.Milliseconds()
+		}
+	}
+
+	return request
+}
+
 func (r *OffsetCommitRequest) encode(pe packetEncoder) error {
-	if r.Version < 0 || r.Version > 7 {
+	if r.Version < 0 || r.Version > 8 {
 		return PacketEncodingError{"invalid or unsupported OffsetCommitRequest version field"}
 	}
 
@@ -127,7 +178,9 @@ func (r *OffsetCommitRequest) encode(pe packetEncoder) error {
 				return err
 			}
 		}
+		pe.putEmptyTaggedFieldArray()
 	}
+	pe.putEmptyTaggedFieldArray()
 	return nil
 }
 
@@ -164,33 +217,43 @@ func (r *OffsetCommitRequest) decode(pd packetDecoder, version int16) (err error
 	if err != nil {
 		return err
 	}
-	if topicCount == 0 {
-		return nil
+	if topicCount < 0 {
+		return errInvalidArrayLength
 	}
-	r.blocks = make(map[string]map[int32]*offsetCommitRequestBlock)
-	for i := 0; i < topicCount; i++ {
-		topic, err := pd.getString()
-		if err != nil {
-			return err
-		}
-		partitionCount, err := pd.getArrayLength()
-		if err != nil {
-			return err
-		}
-		r.blocks[topic] = make(map[int32]*offsetCommitRequestBlock)
-		for j := 0; j < partitionCount; j++ {
-			partition, err := pd.getInt32()
+	if topicCount > 0 {
+		r.blocks = make(map[string]map[int32]*offsetCommitRequestBlock)
+		for range topicCount {
+			topic, err := pd.getString()
 			if err != nil {
 				return err
 			}
-			block := &offsetCommitRequestBlock{}
-			if err := block.decode(pd, r.Version); err != nil {
+			partitionCount, err := pd.getArrayLength()
+			if err != nil {
 				return err
 			}
-			r.blocks[topic][partition] = block
+			if partitionCount < 0 {
+				return errInvalidArrayLength
+			}
+			r.blocks[topic] = make(map[int32]*offsetCommitRequestBlock)
+			for range partitionCount {
+				partition, err := pd.getInt32()
+				if err != nil {
+					return err
+				}
+				block := &offsetCommitRequestBlock{}
+				if err := block.decode(pd, r.Version); err != nil {
+					return err
+				}
+				r.blocks[topic][partition] = block
+			}
+			if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+
+	_, err = pd.getEmptyTaggedFieldArray()
+	return err
 }
 
 func (r *OffsetCommitRequest) key() int16 {
@@ -202,15 +265,28 @@ func (r *OffsetCommitRequest) version() int16 {
 }
 
 func (r *OffsetCommitRequest) headerVersion() int16 {
+	if r.Version >= 8 {
+		return 2
+	}
 	return 1
 }
 
 func (r *OffsetCommitRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 7
+	return r.Version >= 0 && r.Version <= 8
+}
+
+func (r *OffsetCommitRequest) isFlexible() bool {
+	return r.isFlexibleVersion(r.Version)
+}
+
+func (r *OffsetCommitRequest) isFlexibleVersion(version int16) bool {
+	return version >= 8
 }
 
 func (r *OffsetCommitRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 8:
+		return V2_4_0_0
 	case 7:
 		return V2_3_0_0
 	case 5, 6:

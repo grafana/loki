@@ -45,6 +45,16 @@ func encode(e encoder, metricRegistry metrics.Registry) ([]byte, error) {
 	return realEnc.raw, nil
 }
 
+// taggedFieldValue adapts an encode closure for encode(); tagged-field values
+// are always compact-encoded, so it reports itself as flexible
+type taggedFieldValue func(pe packetEncoder) error
+
+func (f taggedFieldValue) encode(pe packetEncoder) error { return f(pe) }
+
+func (f taggedFieldValue) isFlexible() bool { return true }
+
+func (f taggedFieldValue) isFlexibleVersion(int16) bool { return true }
+
 // decoder is the interface that wraps the basic Decode method.
 // Anything implementing Decoder can be extracted from bytes using Kafka's encoding rules.
 type decoder interface {
@@ -131,4 +141,15 @@ func downgradeFlexibleDecoder(pd packetDecoder) packetDecoder {
 		return f.realDecoder
 	}
 	return pd
+}
+
+func downgradeFlexibleEncoder(pe packetEncoder) packetEncoder {
+	switch pe := pe.(type) {
+	case *prepFlexibleEncoder:
+		return pe.prepEncoder
+	case *realFlexibleEncoder:
+		return pe.realEncoder
+	default:
+		return pe
+	}
 }

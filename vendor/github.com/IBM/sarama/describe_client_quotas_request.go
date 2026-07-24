@@ -73,6 +73,9 @@ func (d *DescribeClientQuotasRequest) decode(pd packetDecoder, version int16) er
 	if err != nil {
 		return err
 	}
+	if componentCount < 0 {
+		return errInvalidArrayLength
+	}
 	if componentCount > 0 {
 		d.Components = make([]QuotaFilterComponent, componentCount)
 		for i := range d.Components {
