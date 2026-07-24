@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -1027,6 +1029,49 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
 		})
 	}
+}
+
+func Test_MaxQuerySize_RejectionLogsQuery(t *testing.T) {
+	const query = `{app="foo"} |= "foo"`
+
+	schemas := []config.PeriodConfig{
+		{
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
+			IndexType: types.IndexTypeTSDB,
+		},
+	}
+
+	// Resolve more bytes than the limit allows so the query is rejected.
+	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 1000})
+	_, promHandler := promqlResult(matrix)
+
+	var logBuf bytes.Buffer
+	logger := log.NewLogfmtLogger(&logBuf)
+
+	lokiReq := &LokiRequest{
+		Query:     query,
+		Limit:     1000,
+		StartTs:   testTime.Add(-1 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+		Plan: &plan.QueryPlan{
+			AST: syntax.MustParseExpr(query),
+		},
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	mw := NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, logger, fakeLimits{maxQueryBytesRead: 100}, statsHandler)
+	_, err := mw.Wrap(promHandler).Do(ctx, lokiReq)
+	require.Error(t, err)
+
+	// The rejection must log the query and its hash so it can be correlated with the query.
+	logOut := logBuf.String()
+	require.Contains(t, logOut, "Query exceeds limits")
+	require.Contains(t, logOut, "status=rejected")
+	require.Contains(t, logOut, fmt.Sprintf("query=%q", query))
+	require.Contains(t, logOut, fmt.Sprintf("query_hash=%d", util.HashedQuery(query)))
 }
 
 func Test_MaxQuerySize_WithQueryLimitsContext(t *testing.T) {

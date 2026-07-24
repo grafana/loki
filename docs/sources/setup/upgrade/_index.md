@@ -37,6 +37,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Query byte-limit rejection log lines now include the query
+
+The `Query exceeds limits` warning log lines emitted by the query-frontend when a
+query is rejected for exceeding `max_query_bytes_read` (`MaxQueryBytesRead`) or
+`MaxQuerierBytesRead` now include two additional fields: `query` (the query string)
+and `query_hash`. The `query_hash` matches the one on the `executing query` log line,
+so a rejection can be correlated back to the query that triggered it. This is an
+additive change; existing fields are unchanged, but dashboards or alerts that parse
+these lines may need updating to take advantage of the new fields.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
