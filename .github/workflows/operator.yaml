@@ -20,7 +20,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -40,7 +40,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -64,7 +64,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -84,7 +84,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
@@ -103,7 +103,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
