@@ -429,8 +429,8 @@ For gRPC clients, read checksumming is also performed for partial reads (range r
 by validating the checksum of each individual data chunk returned by the server.
 
 Automatic read checksumming can be disabled using the [WithDisableReaderChecksum] option
-for a normal range reader, or the [WithDisableMRDReadChecksum] option for the multi-range
-downloader.
+for a normal reader (both gRPC and JSON), or the [WithDisableMRDReadChecksum] option
+for the multi-range downloader (gRPC only).
 
 # Parallel Uploads
 

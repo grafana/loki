@@ -54,6 +54,8 @@ type httpStorageClient struct {
 	settings                   *settings
 	config                     *storageConfig
 	dynamicReadReqStallTimeout *bucketDelayManager
+	metrics                    *clientMetrics
+	metricsCleanup             func()
 
 	// configFeatureAttributes tracks client-level features that are enabled for this
 	// client instance.
@@ -62,7 +64,7 @@ type httpStorageClient struct {
 
 // newHTTPStorageClient initializes a new storageClient that uses the HTTP-JSON
 // Storage API.
-func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageClient, error) {
+func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client storageClient, err error) {
 	s := initSettings(opts...)
 	o := s.clientOption
 	config := newStorageConfig(o...)
@@ -122,18 +124,44 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 		return nil, fmt.Errorf("dialing: %w", err)
 	}
 
+	var clientMetrics *clientMetrics
+	var metricsCleanup func()
+	if isOtelMetricsEnabled(&config) {
+		var project string
+		if creds != nil {
+			project, _ = creds.ProjectID(ctx)
+		}
+		clientMetrics, metricsCleanup = initClientMetrics(ctx, project, &config)
+	}
+	if metricsCleanup != nil {
+		defer func() {
+			if err != nil {
+				metricsCleanup()
+			}
+		}()
+	}
+
 	// Clone the http.Client to avoid modifying the original one if it was provided by the user.
 	hcClone := *hc
 	c := &httpStorageClient{
-		creds:    creds,
-		hc:       &hcClone,
-		settings: s,
-		config:   &config,
+		creds:          creds,
+		hc:             &hcClone,
+		settings:       s,
+		config:         &config,
+		metrics:        clientMetrics,
+		metricsCleanup: metricsCleanup,
 	}
 
-	// Wrap transport to inject tracking headers.
+	// Wrap transport to inject tracking headers and metrics.
+	transport := hc.Transport
+	if clientMetrics != nil {
+		transport = &metricsRoundTripper{
+			base:    transport,
+			metrics: clientMetrics,
+		}
+	}
 	hcClone.Transport = &trackingTransport{
-		base:     hc.Transport,
+		base:     transport,
 		features: c.configFeatureAttributes,
 	}
 
@@ -172,6 +200,9 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 
 func (c *httpStorageClient) Close() error {
 	c.hc.CloseIdleConnections()
+	if c.metricsCleanup != nil {
+		c.metricsCleanup()
+	}
 	return nil
 }
 
@@ -273,6 +304,8 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 	}
 
 	fetch := func(pageSize int, pageToken string) (token string, err error) {
+		ctx, record := startMetricsOp(it.ctx, "ListBuckets", true)
+		defer func() { record(err) }()
 		req := c.raw.Buckets.List(it.projectID)
 		req.Projection("full")
 		req.Prefix(it.Prefix)
@@ -282,15 +315,16 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Buckets
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent)
 		if err != nil {
 			return "", err
 		}
+		var b *BucketAttrs
 		for _, item := range resp.Items {
-			b, err := newBucket(item)
+			b, err = newBucket(item)
 			if err != nil {
 				return "", err
 			}
@@ -399,6 +433,8 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		var err error
+		ctx, record := startMetricsOp(it.ctx, "ListObjects", true)
+		defer func() { record(err) }()
 		// Add trace span around List API call within the fetch.
 		ctx, _ = startSpan(ctx, "httpStorageClient.ObjectsListCall")
 		defer func() { endSpan(ctx, err) }()
@@ -436,7 +472,7 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Objects
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent, withOperation("ListObjects"), withObject(it.query.Prefix), withBucket(bucket))
@@ -1084,6 +1120,9 @@ func (hiw *httpInternalWriter) Flush() (int64, error) {
 	return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
 }
 
+// Not supported on HTTP Client as this is for setting CRC on appendable objects.
+func (hiw *httpInternalWriter) setAppendFinalCRC32C(sendAppendFinalCRC32C bool, c uint32) {}
+
 func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error) {
 	if params.append {
 		return nil, errors.New("storage: append not supported on HTTP Client; use gRPC")
@@ -1288,6 +1327,8 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 		retry:     s.retry,
 	}
 	fetch := func(pageSize int, pageToken string) (token string, err error) {
+		ctx, record := startMetricsOp(it.ctx, "ListHMACKeys", true)
+		defer func() { record(err) }()
 		call := c.raw.Projects.HmacKeys.List(project)
 		if pageToken != "" {
 			call = call.PageToken(pageToken)
@@ -1306,7 +1347,7 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 		}
 
 		var resp *raw.HmacKeysMetadata
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = call.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent)
@@ -1314,11 +1355,12 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 			return "", err
 		}
 
+		var hkey *HMACKey
 		for _, metadata := range resp.Items {
 			hk := &raw.HmacKey{
 				Metadata: metadata,
 			}
-			hkey, err := toHMACKeyFromRaw(hk, true)
+			hkey, err = toHMACKeyFromRaw(hk, true)
 			if err != nil {
 				return "", err
 			}
@@ -1588,7 +1630,7 @@ func readerReopen(ctx context.Context, header http.Header, params *newRangeReade
 				params.gen = gen64
 			}
 			return nil
-		}, s.retry, s.idempotent)
+		}, s.retry, s.idempotent, withOperation("ReadObject"), withBucket(params.bucket), withObject(params.object))
 		if err != nil {
 			return nil, err
 		}

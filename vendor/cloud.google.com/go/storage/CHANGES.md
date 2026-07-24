@@ -1,6 +1,25 @@
 # Changes
 
 
+## [1.64.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.63.1...storage/v1.64.0) (2026-07-21)
+
+
+### Features
+
+* **storage:** Accept CRC32C for appendable objects ([#20104](https://github.com/googleapis/google-cloud-go/issues/20104)) ([1b2f5af](https://github.com/googleapis/google-cloud-go/commit/1b2f5afa0fe0f159edbc7184467928ebbd8720e2))
+
+## [1.63.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.63.0...storage/v1.63.1) (2026-07-13)
+
+
+### Features
+
+* **o11y:** Regenerate clients for LRO tracing ([#20107](https://github.com/googleapis/google-cloud-go/issues/20107)) ([779074e](https://github.com/googleapis/google-cloud-go/commit/779074edd267a26520bae459307660953129eb07))
+
+
+### Bug Fixes
+
+* **storage:** Minor documentation fix ([#20139](https://github.com/googleapis/google-cloud-go/issues/20139)) ([37f1745](https://github.com/googleapis/google-cloud-go/commit/37f17453d73ad7abbc424f51b51ff82f8004c5b2))
+
 ## [1.63.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.62.2...storage/v1.63.0) (2026-06-25)
 
 
