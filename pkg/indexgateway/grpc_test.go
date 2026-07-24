@@ -27,9 +27,13 @@ func TestSaturationCheckInterceptors(t *testing.T) {
 		externalMethod = "/logproto.Querier/Query"
 	)
 
-	setup := func(reason string) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor, prometheus.Gatherer) {
+	setup := func(reasons ...string) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor, prometheus.Gatherer) {
 		reg := prometheus.NewPedanticRegistry()
-		unary, stream := NewSaturationCheckInterceptors(reg, &fakeUtilizationChecker{reason: reason})
+		checkers := make([]UtilizationChecker, 0, len(reasons))
+		for _, reason := range reasons {
+			checkers = append(checkers, &fakeUtilizationChecker{reason: reason})
+		}
+		unary, stream := NewSaturationCheckInterceptors(reg, checkers...)
 		return unary, stream, reg
 	}
 
@@ -99,6 +103,54 @@ func TestSaturationCheckInterceptors(t *testing.T) {
 			# TYPE loki_index_gateway_utilization_limited_requests_total counter
 			loki_index_gateway_utilization_limited_requests_total{reason="memory"} 1
 		`)
+	})
+
+	t.Run("the first non-empty reason wins with multiple checkers", func(t *testing.T) {
+		unary, _, reg := setup("cpu", "scheduler")
+
+		_, err := unary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: unaryMethod},
+			func(context.Context, any) (any, error) {
+				t.Fatal("handler should not be invoked")
+				return nil, nil
+			})
+		require.True(t, IsSaturatedError(err))
+
+		requireLimitedRequests(t, reg, `
+			# HELP loki_index_gateway_utilization_limited_requests_total Total number of requests rejected by the index gateway because of resource utilization based limiting.
+			# TYPE loki_index_gateway_utilization_limited_requests_total counter
+			loki_index_gateway_utilization_limited_requests_total{reason="cpu"} 1
+		`)
+	})
+
+	t.Run("later checkers are consulted when earlier ones report no reason", func(t *testing.T) {
+		unary, _, reg := setup("", "scheduler")
+
+		_, err := unary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: unaryMethod},
+			func(context.Context, any) (any, error) {
+				t.Fatal("handler should not be invoked")
+				return nil, nil
+			})
+		require.True(t, IsSaturatedError(err))
+
+		requireLimitedRequests(t, reg, `
+			# HELP loki_index_gateway_utilization_limited_requests_total Total number of requests rejected by the index gateway because of resource utilization based limiting.
+			# TYPE loki_index_gateway_utilization_limited_requests_total counter
+			loki_index_gateway_utilization_limited_requests_total{reason="scheduler"} 1
+		`)
+	})
+
+	t.Run("requests pass through when no checker reports a reason", func(t *testing.T) {
+		unary, _, reg := setup("", "")
+
+		called := false
+		_, err := unary(context.Background(), nil, &grpc.UnaryServerInfo{FullMethod: unaryMethod},
+			func(context.Context, any) (any, error) {
+				called = true
+				return nil, nil
+			})
+		require.NoError(t, err)
+		require.True(t, called)
+		requireLimitedRequests(t, reg, "")
 	})
 
 	t.Run("other services are not affected by limiting", func(t *testing.T) {

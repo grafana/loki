@@ -78,6 +78,11 @@ type Config struct {
 	// LogUtilizationSamples enables logging of the CPU samples backing the utilization
 	// moving average when limiting kicks in or stops.
 	LogUtilizationSamples bool `yaml:"log_utilization_samples" category:"experimental"`
+
+	// SchedulerBacklogLimit is the Go scheduler backlog per core (average number of
+	// runnable goroutines waiting per GOMAXPROCS) above which the index gateway
+	// rejects requests. 0 disables scheduler backlog based limiting.
+	SchedulerBacklogLimit float64 `yaml:"scheduler_backlog_limit" category:"experimental"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -101,11 +106,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.CPUUtilizationLimit, "index-gateway.cpu-utilization-limit", 0, "Experimental: CPU utilization, in cores, above which the index gateway starts rejecting requests. The utilization is computed as a moving average over a 60s sliding window, and limiting only starts after a 60s warmup on startup. 0 to disable.")
 	f.Var(&cfg.MemoryUtilizationLimit, "index-gateway.memory-utilization-limit", "Experimental: Go heap size above which the index gateway starts rejecting requests, e.g. 24GiB. 0 to disable.")
 	f.BoolVar(&cfg.LogUtilizationSamples, "index-gateway.log-utilization-samples", false, "Experimental: Log the CPU utilization samples backing the utilization based limiter's moving average when limiting starts or stops.")
+	f.Float64Var(&cfg.SchedulerBacklogLimit, "index-gateway.scheduler-backlog-limit", 0, "Experimental: Go scheduler backlog per core above which the index gateway starts rejecting requests. The backlog is the average number of runnable goroutines waiting to run per core (GOMAXPROCS), computed from the Go scheduler latency histogram as a moving average over a 60s sliding window, with limiting starting only after a 60s warmup. It approaches 0 on a healthy instance and exceeds 1 when saturated, including saturation caused by memory-mapped file page faults that CPU utilization does not capture. A recommended value is around 1.0. 0 to disable.")
 }
 
 // UtilizationLimiterEnabled returns whether requests should be rejected based on resource utilization.
 func (cfg *Config) UtilizationLimiterEnabled() bool {
 	return cfg.CPUUtilizationLimit > 0 || cfg.MemoryUtilizationLimit > 0
+}
+
+// SchedulerLimiterEnabled returns whether requests should be rejected based on the Go scheduler backlog.
+func (cfg *Config) SchedulerLimiterEnabled() bool {
+	return cfg.SchedulerBacklogLimit > 0
 }
 
 func (cfg *Config) Validate() error {
@@ -119,6 +130,9 @@ func (cfg *Config) Validate() error {
 	// values that would silently never trigger limiting.
 	if uint64(cfg.MemoryUtilizationLimit) > math.MaxInt64 {
 		return errors.New("index gateway memory utilization limit must not be negative")
+	}
+	if cfg.SchedulerBacklogLimit < 0 {
+		return errors.New("index gateway scheduler backlog limit must not be negative")
 	}
 	return nil
 }
