@@ -1313,16 +1313,22 @@ func NewReader(b ByteSlice) (*Reader, error) {
 }
 
 // NewFileReader returns a new index reader against the given index file.
+//
+// The file is read through a residency-aware byte slice that prefers mmap for
+// pages already in the page cache and falls back to positioned file reads
+// (pread) for cold pages. This avoids stalling the Go scheduler on major page
+// faults while keeping the fast, syscall-free path for hot data. See
+// readerat.go for details.
 func NewFileReader(path string) (*Reader, error) {
-	f, err := fileutil.OpenMmapFile(path)
+	bs, err := openFileByteSlice(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(f.Bytes()), f)
+	r, err := newReader(bs, bs)
 	if err != nil {
 		return nil, stderrors.Join(
 			err,
-			f.Close(),
+			bs.Close(),
 		)
 	}
 
