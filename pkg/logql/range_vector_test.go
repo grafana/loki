@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var samples = []logproto.Sample{
@@ -60,6 +62,96 @@ func newfakePeekingSampleIterator(samples []logproto.Sample) iter.PeekingSampleI
 
 func newSample(t time.Time, v float64, metric labels.Labels) promql.Sample {
 	return promql.Sample{Metric: metric, T: t.UnixMilli(), F: v}
+}
+
+// newNSeriesPeekingIterator returns a peeking sample iterator over n distinct
+// series, each with a single sample at ts. Used to exercise the per-window
+// series limit.
+func newNSeriesPeekingIterator(n int, ts time.Time) iter.PeekingSampleIterator {
+	its := make([]iter.SampleIterator, 0, n)
+	for i := range n {
+		lbl, _ := syntax.ParseLabels(fmt.Sprintf(`{app="foo", id="%d"}`, i))
+		its = append(its, iter.NewSeriesIterator(logproto.Series{
+			Labels:     lbl.String(),
+			Samples:    []logproto.Sample{{Timestamp: ts.UnixNano(), Hash: uint64(i), Value: 1.}},
+			StreamHash: labels.StableHash(lbl),
+		}))
+	}
+	return iter.NewPeekingSampleIterator(iter.NewSortSampleIterator(its))
+}
+
+// TestRangeVectorIterator_MaxSeries verifies that both range vector iterators
+// stop loading and latch a series-limit error once a single window exceeds the
+// max output series limit, and that the window is bounded to the limit.
+func TestRangeVectorIterator_MaxSeries(t *testing.T) {
+	const (
+		maxSeries = 3
+		nSeries   = 5
+	)
+	var (
+		ts       = time.Unix(6, 0)
+		selRange = (5 * time.Second).Nanoseconds()
+		step     = (30 * time.Second).Nanoseconds()
+		start    = time.Unix(10, 0).UnixNano()
+		end      = time.Unix(100, 0).UnixNano()
+		expr     = &syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}
+	)
+
+	t.Run("streaming", func(t *testing.T) {
+		it := &streamRangeVectorIterator{
+			iter:     newNSeriesPeekingIterator(nSeries, ts),
+			step:     step,
+			end:      end,
+			selRange: selRange,
+			metrics:  map[string]labels.Labels{},
+			r:        expr,
+			current:  start - step,
+		}
+		it.SetMaxSeries(maxSeries)
+
+		require.True(t, it.Next())
+		require.Error(t, it.Error())
+		require.True(t, errors.Is(it.Error(), logqlmodel.ErrLimit))
+		require.Len(t, it.windowRangeAgg, maxSeries)
+	})
+
+	t.Run("batch", func(t *testing.T) {
+		agg, err := aggregator(expr)
+		require.NoError(t, err)
+		it := &batchRangeVectorIterator{
+			iter:     newNSeriesPeekingIterator(nSeries, ts),
+			step:     step,
+			end:      end,
+			selRange: selRange,
+			metrics:  map[string]labels.Labels{},
+			window:   map[string]*promql.Series{},
+			agg:      agg,
+			current:  start - step,
+		}
+		it.SetMaxSeries(maxSeries)
+
+		require.True(t, it.Next())
+		require.Error(t, it.Error())
+		require.True(t, errors.Is(it.Error(), logqlmodel.ErrLimit))
+		require.Len(t, it.window, maxSeries)
+	})
+
+	t.Run("under limit does not error", func(t *testing.T) {
+		it := &streamRangeVectorIterator{
+			iter:     newNSeriesPeekingIterator(maxSeries, ts),
+			step:     step,
+			end:      end,
+			selRange: selRange,
+			metrics:  map[string]labels.Labels{},
+			r:        expr,
+			current:  start - step,
+		}
+		it.SetMaxSeries(maxSeries)
+
+		require.True(t, it.Next())
+		require.NoError(t, it.Error())
+		require.Len(t, it.windowRangeAgg, maxSeries)
+	})
 }
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
