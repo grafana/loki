@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader is a reader for index pointers in a data object.
@@ -102,7 +101,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := columnar.MakeDataset(r.sec.inner, recognizedInnerColumns(r.sec))
+	dset, err := r.sec.makeDataset()
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
