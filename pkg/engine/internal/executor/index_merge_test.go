@@ -727,6 +727,14 @@ func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 			BufferSize:              2048 * 8,
 			SectionStripeMergeLimit: 2,
 		},
+		logsobjCfg: logsobj.BuilderBaseConfig{
+			TargetPageSize:          2048,
+			MaxPageRows:             10000,
+			TargetObjectSize:        1 << 22, // 4 MiB
+			TargetSectionSize:       1 << 21, // 2 MiB
+			BufferSize:              2048 * 8,
+			SectionStripeMergeLimit: 2,
+		},
 		logger: log.NewNopLogger(),
 	}
 }

@@ -2462,6 +2462,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
 		Logger:       logger,
 		Registerer:   prometheus.DefaultRegisterer,
 	})

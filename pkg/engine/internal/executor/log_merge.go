@@ -395,8 +395,8 @@ func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStrea
 		calc:           calc,
 		logsMetrics:    logs.NewMetrics(),
 		streamsMetrics: streams.NewMetrics(),
-		targetObject:   int(c.indexobjCfg.TargetObjectSize),
-		targetSection:  int(c.indexobjCfg.TargetSectionSize),
+		targetObject:   int(c.logsobjCfg.TargetObjectSize),
+		targetSection:  int(c.logsobjCfg.TargetSectionSize),
 	}
 	w.startObject()
 	return w
@@ -406,7 +406,7 @@ func (w *logObjectWriter) startObject() {
 	w.builder = dataobj.NewBuilder(w.c.scratchStore)
 	w.lb = logs.NewBuilder(w.logsMetrics, w.c.logsBuilderOptions(w.node.SortSchema))
 	w.lb.SetTenant(w.node.Tenant)
-	w.sb = streams.NewBuilder(w.streamsMetrics, int(w.c.indexobjCfg.TargetPageSize), w.c.indexobjCfg.MaxPageRows)
+	w.sb = streams.NewBuilder(w.streamsMetrics, int(w.c.logsobjCfg.TargetPageSize), w.c.logsobjCfg.MaxPageRows)
 	w.sb.SetTenant(w.node.Tenant)
 	w.objSize, w.objStreams, w.objRecords = 0, 0, 0
 	w.curGlobalID, w.curObjLocalID = 0, 0
@@ -519,13 +519,14 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 }
 
 // logsBuilderOptions builds the logs section options for a schema-sorted output,
-// sized from the executor's shared builder config.
+// sized from the compacted-log-object builder config (not the index-object one),
+// so merged log objects use data-object-scale sections.
 func (c *Context) logsBuilderOptions(sortSchema []string) logs.BuilderOptions {
 	return logs.BuilderOptions{
-		PageSizeHint:     int(c.indexobjCfg.TargetPageSize),
-		PageMaxRowCount:  c.indexobjCfg.MaxPageRows,
-		BufferSize:       int(c.indexobjCfg.BufferSize),
-		StripeMergeLimit: c.indexobjCfg.SectionStripeMergeLimit,
+		PageSizeHint:     int(c.logsobjCfg.TargetPageSize),
+		PageMaxRowCount:  c.logsobjCfg.MaxPageRows,
+		BufferSize:       int(c.logsobjCfg.BufferSize),
+		StripeMergeLimit: c.logsobjCfg.SectionStripeMergeLimit,
 		AppendStrategy:   logs.AppendOrdered,
 		SortOrder:        logs.SortSchemaASC,
 		SchemaLabels:     sortSchema,

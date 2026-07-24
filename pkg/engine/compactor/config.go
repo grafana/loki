@@ -85,6 +85,14 @@ type Config struct {
 	// target object/section sizes, etc.) used by the compactor worker when
 	// merging postings + stats sections into a new index object.
 	IndexobjBuilder logsobj.BuilderBaseConfig `yaml:"indexobj_builder" category:"experimental"`
+
+	// LogsobjBuilder controls the construction of the compacted *data* (log)
+	// objects that LogMerge writes. It is deliberately separate from
+	// IndexobjBuilder: index objects are small and finely sectioned, while the
+	// merged log objects must use data-object-scale sections (like the ingester's
+	// ~128MB) — reusing the small index-object section size over-sections the
+	// merged objects and balloons the index rebuilt over them.
+	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
 }
 
 // SchedulerConfig holds the scheduler-side parameters that get passed
@@ -199,6 +207,15 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("2MB")
 	_ = cfg.IndexobjBuilder.BufferSize.Set("16KB")
 	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
+
+	// The compacted log objects are data objects; default them to the ingester's
+	// data-object sizes (not the small index-object sizes above) so LogMerge does
+	// not over-section them and inflate the index built over them.
+	_ = cfg.LogsobjBuilder.TargetPageSize.Set("2MB")
+	_ = cfg.LogsobjBuilder.TargetObjectSize.Set("1GB")
+	_ = cfg.LogsobjBuilder.TargetSectionSize.Set("128MB")
+	_ = cfg.LogsobjBuilder.BufferSize.Set("16MB")
+	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
 }
 
 // RegisterFlagsWithPrefix registers the worker config flags using prefix
@@ -250,6 +267,9 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
+	}
+	if err := cfg.LogsobjBuilder.Validate(); err != nil {
+		return fmt.Errorf("invalid logsobj builder config: %w", err)
 	}
 	return nil
 }

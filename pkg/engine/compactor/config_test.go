@@ -37,6 +37,33 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 	}
 }
 
+// TestConfig_LogsobjBuilderIsIndependentOfIndexobjBuilder guards the split of
+// the compacted log (data) object builder config from the index object builder
+// config: the log objects must default to data-object-scale sections (unlike
+// the deliberately small index-object sections), and tuning one builder must
+// not resize the other. Coupling them caused LogMerge to over-section its data
+// objects and balloon the index rebuilt over them.
+func TestConfig_LogsobjBuilderIsIndependentOfIndexobjBuilder(t *testing.T) {
+	const mib = 1024 * 1024
+
+	t.Run("defaults differ by scale", func(t *testing.T) {
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		require.Equal(t, flagext.Bytes(128*mib), cfg.LogsobjBuilder.TargetSectionSize)
+		require.Equal(t, flagext.Bytes(1024*mib), cfg.LogsobjBuilder.TargetObjectSize)
+		require.Equal(t, flagext.Bytes(2*mib), cfg.IndexobjBuilder.TargetSectionSize)
+	})
+
+	t.Run("tuning the index builder does not resize log objects", func(t *testing.T) {
+		var cfg Config
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		cfg.RegisterFlagsWithPrefix("dataobj.compaction.", fs)
+		require.NoError(t, fs.Parse([]string{"--dataobj.compaction.indexobj-builder.target-section-size=4MB"}))
+		require.Equal(t, flagext.Bytes(4*mib), cfg.IndexobjBuilder.TargetSectionSize)
+		require.Equal(t, flagext.Bytes(128*mib), cfg.LogsobjBuilder.TargetSectionSize)
+	})
+}
+
 func TestConfig_LogMinCompactionSizeValidation(t *testing.T) {
 	// Build a valid enabled config, driving LogMinCompactionSize through the flag
 	// parser so this one test covers both parsing and validation.
