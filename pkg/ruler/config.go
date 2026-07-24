@@ -53,7 +53,6 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client              *promconfig.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
 	Clients             map[string]promconfig.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
 	Enabled             bool                                    `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                           `yaml:"config_refresh_period"`
@@ -63,16 +62,6 @@ type RemoteWriteConfig struct {
 func (c *RemoteWriteConfig) Validate() error {
 	if !c.Enabled {
 		return nil
-	}
-
-	if (c.Client == nil || c.Client.URL == nil) && len(c.Clients) == 0 {
-		return errors.New("remote-write enabled but no clients URL are configured")
-	}
-
-	if c.Client != nil {
-		if err := c.Client.Validate(model.UTF8Validation); err != nil {
-			return fmt.Errorf("invalid remote write client: %w", err)
-		}
 	}
 
 	if len(c.Clients) > 0 {
@@ -85,6 +74,8 @@ func (c *RemoteWriteConfig) Validate() error {
 				return fmt.Errorf("invalid remote write client for tenant %q: %w", id, err)
 			}
 		}
+	} else {
+		return errors.New("remote-write enabled but no clients are configured")
 	}
 
 	return nil
@@ -100,13 +91,6 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 	err = yaml.Unmarshal(out, &n)
 	if err != nil {
 		return nil, err
-	}
-
-	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
-	// so when its value is marshaled it is obfuscated as "<secret>".
-	// Here we copy the original password into the cloned config.
-	if n.Client != nil && n.Client.HTTPClientConfig.BasicAuth != nil {
-		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
 	}
 
 	for id := range n.Clients {
