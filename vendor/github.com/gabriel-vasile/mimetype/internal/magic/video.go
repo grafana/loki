@@ -4,17 +4,23 @@ import (
 	"bytes"
 )
 
-var (
-	// Flv matches a Flash video file.
-	Flv = prefix([]byte("\x46\x4C\x56\x01"))
-	// Asf matches an Advanced Systems Format file.
-	Asf = prefix([]byte{
+// Flv matches a Flash video file.
+func Flv(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte("\x46\x4C\x56\x01"))
+}
+
+// Asf matches an Advanced Systems Format file.
+func Asf(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{
 		0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
 		0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C,
 	})
-	// Rmvb matches a RealMedia Variable Bitrate file.
-	Rmvb = prefix([]byte{0x2E, 0x52, 0x4D, 0x46})
-)
+}
+
+// Rmvb matches a RealMedia Variable Bitrate file.
+func Rmvb(raw []byte, _ uint32) bool {
+	return bytes.HasPrefix(raw, []byte{0x2E, 0x52, 0x4D, 0x46})
+}
 
 // WebM matches a WebM file.
 func WebM(raw []byte, limit uint32) bool {
@@ -43,10 +49,8 @@ func isMatroskaFileTypeMatched(in []byte, flType string) bool {
 // The logic of search is: find first instance of \x42\x82 and then
 // search for given string after n bytes of above instance.
 func isFileTypeNamePresent(in []byte, flType string) bool {
-	ind, maxInd, lenIn := 0, 4096, len(in)
-	if lenIn < maxInd { // restricting length to 4096
-		maxInd = lenIn
-	}
+	ind, lenIn := 0, len(in)
+	maxInd := min(4096, lenIn)
 	ind = bytes.Index(in[:maxInd], []byte("\x42\x82"))
 	if ind > 0 && lenIn > ind+2 {
 		ind += 2
@@ -63,9 +67,9 @@ func isFileTypeNamePresent(in []byte, flType string) bool {
 
 // vintWidth parses the variable-integer width in matroska containers
 func vintWidth(v int) int {
-	mask, max, num := 128, 8, 1
-	for num < max && v&mask == 0 {
-		mask = mask >> 1
+	mask, nTimes, num := 128, 8, 1
+	for num < nTimes && v&mask == 0 {
+		mask >>= 1
 		num++
 	}
 	return num
