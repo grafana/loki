@@ -558,10 +558,30 @@ func TestMappingStrings(t *testing.T) {
 			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*ignoring(foo)downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
 		},
 		{
-			// ignoring () doesn't mutate labels and therefore can be shardable
-			// as long as the operation is shardable
+			// ignoring () doesn't mutate labels, but the binary operation still
+			// spans multiple matcher groups, so it must not be pushed down as a
+			// single sharded leaf (GetShards rejects >1 matcher group). Each leg
+			// is dispatched separately instead.
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
-			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
+		},
+		{
+			// binary operation under an outer sum: each leg is dispatched
+			// separately so no single sharded leaf spans multiple matcher groups.
+			in:  `sum by (cluster) (count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+			out: `sumby(cluster)((downstream<count_over_time({job="foo"}[5m]),shard=0_of_2>++downstream<count_over_time({job="foo"}[5m]),shard=1_of_2>+downstream<count_over_time({job="bar"}[5m]),shard=0_of_2>++downstream<count_over_time({job="bar"}[5m]),shard=1_of_2>))`,
+		},
+		{
+			// same as above but with an outer count.
+			in:  `count(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+			out: `count((downstream<count_over_time({job="foo"}[5m]),shard=0_of_2>++downstream<count_over_time({job="foo"}[5m]),shard=1_of_2>+downstream<count_over_time({job="bar"}[5m]),shard=0_of_2>++downstream<count_over_time({job="bar"}[5m]),shard=1_of_2>))`,
+		},
+		{
+			// identical selectors on both legs still contribute one matcher
+			// group each, so the binop must still be split — it is not special
+			// cased to different selectors.
+			in:  `count by (cluster) (count_over_time({job="foo"}[5m]) + count_over_time({job="foo"}[5m]))`,
+			out: `countby(cluster)((downstream<count_over_time({job="foo"}[5m]),shard=0_of_2>++downstream<count_over_time({job="foo"}[5m]),shard=1_of_2>+downstream<count_over_time({job="foo"}[5m]),shard=0_of_2>++downstream<count_over_time({job="foo"}[5m]),shard=1_of_2>))`,
 		},
 		{
 			// shard the count since there is no label reduction in children
@@ -582,6 +602,65 @@ func TestMappingStrings(t *testing.T) {
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
+		})
+	}
+}
+
+// TestShardedLeavesHaveSingleMatcherGroup asserts the invariant that the shard
+// mapper never collapses an expression spanning multiple stream matcher groups
+// into a single sharded leaf. Such a leaf is passed to the resolver's Shards
+// (GetShards under bounded sharding), which only supports a single matcher group
+// and errors otherwise. A binary operation contributes one matcher group per
+// leg, so its legs must be dispatched separately rather than pushed down whole.
+//
+// This is a structural check on any aggregation that pushes down via the sharded
+// (ConcatSampleExpr) path, so it also guards operations not exercised by
+// TestMappingStrings and any added later.
+func TestShardedLeavesHaveSingleMatcherGroup(t *testing.T) {
+	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+
+	for _, q := range []string{
+		// bare binops and non-pushdown aggregations already split via mapBinOpExpr
+		`count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m])`,
+		`rate({app="x"} |= "err" [5m]) / rate({app="x"}[5m])`,
+		`min(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`max(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`topk(3, count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`bottomk(3, count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		// aggregations that push down via ConcatSampleExpr and previously
+		// collapsed the binop into a single multi-matcher-group leaf
+		`sum(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`sum by (cluster) (count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`sum(count_over_time({job="foo"}[5m]) + count_over_time({job="foo"}[5m]))`,
+		`count(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`avg(count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+		`sum(rate({app="a"}[5m]) + rate({app="b"}[5m]) + rate({app="c"}[5m]))`,
+		`sum(rate({app="a"}[5m])) / sum(rate({app="b"}[5m]))`,
+		// approx_topk resolves shards via GetStats + power-of-two shards (not
+		// GetShards), so its count-min-sketch leaf is not a ConcatSampleExpr and
+		// is exempt; included here to document that it does not regress.
+		`approx_topk(3, count_over_time({job="foo"}[5m]) + count_over_time({job="bar"}[5m]))`,
+	} {
+		t.Run(q, func(t *testing.T) {
+			ast, err := syntax.ParseExpr(q)
+			require.NoError(t, err)
+
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+			require.NoError(t, err)
+
+			mapped.Walk(func(e syntax.Expr) bool {
+				concat, ok := e.(*ConcatSampleExpr)
+				if !ok {
+					return true
+				}
+				groups, err := syntax.MatcherGroups(concat.SampleExpr)
+				require.NoError(t, err)
+				require.LessOrEqualf(t, len(groups), 1,
+					"sharded leaf spans %d matcher groups and would fail shard resolution; its legs must be dispatched separately: %s",
+					len(groups), concat.SampleExpr.String())
+				return true
+			})
 		})
 	}
 }
