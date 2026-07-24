@@ -81,6 +81,23 @@ type Config struct {
 	// Uint32Var.
 	PlanVersion uint `yaml:"plan_version"`
 
+	// --- Experiment knobs (scoped, one-shot runs against seeded windows) ---
+
+	// Tenants, when non-empty, restricts compaction to this comma-separated
+	// allow-list of tenant IDs and force-enables both phases for them (bypassing
+	// the per-tenant Limits gate). Empty means "all discovered tenants, gated by
+	// Limits" (production behaviour).
+	Tenants string `yaml:"tenants"`
+
+	// TargetWindow, when set (RFC3339), pins every pass to the single 12h-aligned
+	// metastore window containing it, instead of the current window plus
+	// WindowLookback. Use it to compact a specific historical/seeded window.
+	TargetWindow string `yaml:"target_window"`
+
+	// RunOnce makes Run exit once every selected tenant converges (a full
+	// IndexMerge+LogMerge round producing no swaps), instead of looping forever.
+	RunOnce bool `yaml:"run_once"`
+
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
 	// endpoint for the embedded engine.Scheduler instance. See
 	// pkg/engine/scheduler.go for the underlying SchedulerParams.
@@ -202,6 +219,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
 	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
 		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
+	f.StringVar(&cfg.Tenants, prefix+"tenants", "",
+		"Experiment: comma-separated tenant allow-list. Restricts compaction to these tenants and force-enables both phases for them. Empty = all discovered tenants (gated by limits).")
+	f.StringVar(&cfg.TargetWindow, prefix+"target-window", "",
+		"Experiment: RFC3339 timestamp pinning compaction to the single 12h-aligned metastore window containing it, instead of the current window + window-lookback.")
+	f.BoolVar(&cfg.RunOnce, prefix+"run-once", false,
+		"Experiment: exit once all selected tenants converge, instead of looping forever.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
@@ -264,11 +287,28 @@ func (cfg *Config) Validate() error {
 	if cfg.LogMinCompactionSize == 0 {
 		return errInvalidLogMinCompactionSize
 	}
+	if _, _, err := cfg.ParseTargetWindow(); err != nil {
+		return err
+	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
 	}
 	return nil
+}
+
+// ParseTargetWindow parses cfg.TargetWindow as an RFC3339 timestamp (UTC).
+// Returns ok=false when unset. The result is not yet truncated to the metastore
+// window; newCoordinator does that with metastore.MetastoreWindowSize.
+func (cfg *Config) ParseTargetWindow() (time.Time, bool, error) {
+	if cfg.TargetWindow == "" {
+		return time.Time{}, false, nil
+	}
+	t, err := time.Parse(time.RFC3339, cfg.TargetWindow)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("dataobj.compaction.target-window %q must be RFC3339: %w", cfg.TargetWindow, err)
+	}
+	return t.UTC(), true, nil
 }
 
 // Sentinel validation errors. Kept at package scope so tests can match

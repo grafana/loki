@@ -1669,6 +1669,23 @@ dataobj:
     # CLI flag: -dataobj.compaction.plan-version
     [plan_version: <int> | default = 1]
 
+    # Experiment: comma-separated tenant allow-list. Restricts compaction to
+    # these tenants and force-enables both phases for them. Empty = all
+    # discovered tenants (gated by limits).
+    # CLI flag: -dataobj.compaction.tenants
+    [tenants: <string> | default = ""]
+
+    # Experiment: RFC3339 timestamp pinning compaction to the single 12h-aligned
+    # metastore window containing it, instead of the current window +
+    # window-lookback.
+    # CLI flag: -dataobj.compaction.target-window
+    [target_window: <string> | default = ""]
+
+    # Experiment: exit once all selected tenants converge, instead of looping
+    # forever.
+    # CLI flag: -dataobj.compaction.run-once
+    [run_once: <boolean> | default = false]
+
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
       # compaction workers. Empty string keeps the scheduler in-process-only.

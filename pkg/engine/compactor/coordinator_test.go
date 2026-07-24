@@ -408,13 +408,15 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "dry-run must not swap the ToC")
 }
 
-func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
+func TestCompactTenantLogs_PersistentFailureNoSwap(t *testing.T) {
 	ctx := context.Background()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
-	runner := &fakeRunner{failOnCall: 1}
+	// Every attempt fails, so per-task retries are exhausted and the phase errors
+	// without swapping the ToC.
+	runner := &fakeRunner{err: errors.New("persistent job failure")}
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -422,7 +424,27 @@ func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
 	_, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.Error(t, err)
-	require.Empty(t, replacer.snapshot(), "partial failure must not swap the ToC")
+	require.Empty(t, replacer.snapshot(), "persistent failure must not swap the ToC")
+}
+
+// TestCompactTenantLogs_TransientFailureRetriesAndSwaps covers the retry
+// backport: a single transient task failure is recovered on retry, so the ToC
+// still swaps.
+func TestCompactTenantLogs_TransientFailureRetriesAndSwaps(t *testing.T) {
+	ctx := context.Background()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	convergedPath := "indexes/aa/converged"
+	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
+
+	runner := &fakeRunner{failOnCall: 1} // fails once, succeeds on retry
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
+
+	entry := indexEntry{Path: convergedPath, Start: window.Add(1 * time.Hour), End: window.Add(2 * time.Hour)}
+	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
+
+	require.NoError(t, err, "a transient task failure must be recovered by retry")
+	require.Positive(t, stats.added, "retry recovers the failed task and the ToC swaps")
 }
 
 func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
