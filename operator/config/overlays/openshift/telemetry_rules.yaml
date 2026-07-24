@@ -58,6 +58,106 @@ spec:
           * on (stack_namespace) group_left(size)
           lokistack_info
         )
+    # CPU utilization ratio per component (usage / request)
+    - record: openshift_logging:lokistack_cpu_utilization:ratio
+      expr: |
+        sum by (stack_namespace, size, component) (
+          label_replace(
+            label_replace(
+              label_replace(
+                rate(container_cpu_usage_seconds_total{container=~"loki-ingester|loki-distributor|loki-querier|loki-query-frontend|loki-compactor|loki-index-gateway|loki-ruler|gateway"}[5m]),
+                "component",
+                "$1",
+                "container",
+                "(?:loki-)?(.*)"
+              ),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+        /
+        sum by (stack_namespace, size, component) (
+          label_replace(
+            label_replace(
+              label_replace(
+                kube_pod_container_resource_requests{resource="cpu", container=~"loki-ingester|loki-distributor|loki-querier|loki-query-frontend|loki-compactor|loki-index-gateway|loki-ruler|gateway"},
+                "component",
+                "$1",
+                "container",
+                "(?:loki-)?(.*)"
+              ),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+    # Memory utilization ratio per component (usage / request)
+    - record: openshift_logging:lokistack_memory_utilization:ratio
+      expr: |
+        sum by (stack_namespace, size, component) (
+          label_replace(
+            label_replace(
+              label_replace(
+                container_memory_working_set_bytes{container=~"loki-ingester|loki-distributor|loki-querier|loki-query-frontend|loki-compactor|loki-index-gateway|loki-ruler|gateway"},
+                "component",
+                "$1",
+                "container",
+                "(?:loki-)?(.*)"
+              ),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
+        /
+        sum by (stack_namespace, size, component) (
+          label_replace(
+            label_replace(
+              label_replace(
+                kube_pod_container_resource_requests{resource="memory", container=~"loki-ingester|loki-distributor|loki-querier|loki-query-frontend|loki-compactor|loki-index-gateway|loki-ruler|gateway"},
+                "component",
+                "$1",
+                "container",
+                "(?:loki-)?(.*)"
+              ),
+              "stack_name",
+              "$1",
+              "pod",
+              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+            ),
+            "stack_namespace",
+            "$1",
+            "namespace",
+            "(.+)"
+          )
+          * on (stack_namespace) group_left(size)
+          lokistack_info
+        )
     # Total bytes received by size (bytes/s)
     - record: openshift_logging:lokistack_ingestion_received_bytes_per_second:sum
       expr: |
