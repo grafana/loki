@@ -341,12 +341,21 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				require.Error(t, err)
 				require.ErrorContains(t, err, tc.err)
 
-				// A query rejected for exceeding MaxQuerierBytesRead must log the query
-				// and its hash so the rejection can be correlated with the query.
-				logOut := logBuf.String()
-				require.Contains(t, logOut, "Query exceeds limits")
-				require.Contains(t, logOut, fmt.Sprintf("query=%q", tc.query))
-				require.Contains(t, logOut, fmt.Sprintf("query_hash=%d", util.HashedQuery(tc.query)))
+				// A query rejected for exceeding MaxQuerierBytesRead must log the query,
+				// its hash, and the tenant so the rejection can be correlated with the
+				// query. Assert against the rejection line itself: other lines in the
+				// buffer also carry org_id.
+				var rejectionLine string
+				for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+					if strings.Contains(line, "Query exceeds limits") {
+						rejectionLine = line
+						break
+					}
+				}
+				require.NotEmpty(t, rejectionLine, "no rejection line logged")
+				require.Contains(t, rejectionLine, "org_id=1")
+				require.Contains(t, rejectionLine, fmt.Sprintf("query=%q", tc.query))
+				require.Contains(t, rejectionLine, fmt.Sprintf("query_hash=%d", util.HashedQuery(tc.query)))
 			}
 
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
