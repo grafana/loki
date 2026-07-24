@@ -658,5 +658,11 @@ func handleGetOptions(response *BosResponse, options []GetOption) error {
 			}
 		}
 	}
+	// special handle for etag
+	if etag, ok := params[http.ETAG]; ok {
+		if v, ok := etag.(*string); ok {
+			*v = strings.Trim(*v, "\"")
+		}
+	}
 	return nil
 }
