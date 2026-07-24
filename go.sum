@@ -949,8 +949,8 @@ go.opentelemetry.io/collector/consumer/consumertest v0.155.0 h1:cTp+PmbbwlyT9mG3
 go.opentelemetry.io/collector/consumer/consumertest v0.155.0/go.mod h1:4xQJmRYiJiXbEQ8nfrD02pM7UUwPU02UMtxdgpMFw/w=
 go.opentelemetry.io/collector/consumer/xconsumer v0.155.0 h1:y9jmwgzlGq/8gQdp6MMiowpvVRNGftfj9dQIO7VIT/A=
 go.opentelemetry.io/collector/consumer/xconsumer v0.155.0/go.mod h1:4pb/JkdA5WeZby+jkK7PE1KVRxgJMFwQOul8BLEZS8M=
-go.opentelemetry.io/collector/featuregate v1.61.0 h1:XtnQ/XPHLmw9zgg4Cjq/f0rgdqn7z1M10wnmGhgNbYk=
-go.opentelemetry.io/collector/featuregate v1.61.0/go.mod h1:4ga1QBMPEejXXmpyJS8lmaRpknJ3Lb9Bvk6e420bUFU=
+go.opentelemetry.io/collector/featuregate v1.63.0 h1:6EWX1C5AtmIh8hFH97DwK6R7R8Jk3fTLxAUfZPXGutY=
+go.opentelemetry.io/collector/featuregate v1.63.0/go.mod h1:4ga1QBMPEejXXmpyJS8lmaRpknJ3Lb9Bvk6e420bUFU=
 go.opentelemetry.io/collector/internal/componentalias v0.155.0 h1:h9l3Jg0qZaWi+oUb1f0pJSNS7TrGDTR1lhNpQJSf8eQ=
 go.opentelemetry.io/collector/internal/componentalias v0.155.0/go.mod h1:oDJ3BoOc30LIzUtjxHovkP5k7JwtjcCWNlXF76+Ue6g=
 go.opentelemetry.io/collector/internal/testutil v0.155.0 h1:ExZ3lqM1e1Y83AAXKr6Xsw20v4LHW6GZ8VeLLQHiOrA=
