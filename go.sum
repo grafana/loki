@@ -238,8 +238,8 @@ github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 h1:aBangftG7EVZoUb69Os
 github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2/go.mod h1:qwXFYgsP6T7XnJtbKlf1HP8AjxZZyzxMmc+Lq5GjlU4=
 github.com/coder/quartz v0.3.1 h1:JMJLj4Xj4NLSrUC1R/g/Hn0y9fkyOvb8tf6P0j+kPn0=
 github.com/coder/quartz v0.3.1/go.mod h1:BgE7DOj/8NfvRgvKw0jPLDQH/2Lya2kxcTaNJ8X0rZk=
-github.com/containerd/containerd/v2 v2.3.2 h1:eLven1YxRMkeiKu7IcMrPKE+gn8sGR1DqHbbshMEvWM=
-github.com/containerd/containerd/v2 v2.3.2/go.mod h1:rHKGm3VW6wNrINb3x8mNT+w7qYXFVElTt/8HTuxVhD4=
+github.com/containerd/containerd/v2 v2.3.3 h1:MUNBVVBTBpPll7KPh5GTvkC3cfG03PQLAHVdsUoue9k=
+github.com/containerd/containerd/v2 v2.3.3/go.mod h1:rHKGm3VW6wNrINb3x8mNT+w7qYXFVElTt/8HTuxVhD4=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
 github.com/containerd/errdefs v1.0.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=
