@@ -75,6 +75,20 @@ As a result, the following have been removed:
 
 ### Breaking change: Removal of various deprecated configuration options
 
+- The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
+  - `limits_config.ruler_remote_write_url`
+  - `limits_config.ruler_remote_write_timeout`
+  - `limits_config.ruler_remote_write_headers`
+  - `limits_config.ruler_remote_write_relabel_configs`
+  - `limits_config.ruler_remote_write_queue_capacity`
+  - `limits_config.ruler_remote_write_queue_min_shards`
+  - `limits_config.ruler_remote_write_queue_max_shards`
+  - `limits_config.ruler_remote_write_queue_max_samples_per_send`
+  - `limits_config.ruler_remote_write_queue_batch_send_deadline`
+  - `limits_config.ruler_remote_write_queue_min_backoff`
+  - `limits_config.ruler_remote_write_queue_max_backoff`
+  - `limits_config.ruler_remote_write_queue_retry_on_ratelimit`
+  - `limits_config.ruler_remote_write_sigv4_config`
 - The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
 - The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
 - The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.

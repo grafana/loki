@@ -43,6 +43,19 @@ var (
 		"limits_config.ruler_enable_wal_replay",
 		"limits_config.per_tenant_override_config",
 		"limits_config.per_tenant_override_period",
+		"limits_config.ruler_remote_write_url",
+		"limits_config.ruler_remote_write_timeout",
+		"limits_config.ruler_remote_write_headers",
+		"limits_config.ruler_remote_write_relabel_configs",
+		"limits_config.ruler_remote_write_queue_capacity",
+		"limits_config.ruler_remote_write_queue_min_shards",
+		"limits_config.ruler_remote_write_queue_max_shards",
+		"limits_config.ruler_remote_write_queue_max_samples_per_send",
+		"limits_config.ruler_remote_write_queue_batch_send_deadline",
+		"limits_config.ruler_remote_write_queue_min_backoff",
+		"limits_config.ruler_remote_write_queue_max_backoff",
+		"limits_config.ruler_remote_write_queue_retry_on_ratelimit",
+		"limits_config.ruler_remote_write_sigv4_config",
 		"storage_config.bigtable",
 		"storage_config.cassandra",
 		"storage_config.boltdb",
@@ -71,19 +84,6 @@ var (
 	expectedConfigDeprecates = []string{
 		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
-		"limits_config.ruler_remote_write_url",
-		"limits_config.ruler_remote_write_timeout",
-		"limits_config.ruler_remote_write_headers",
-		"limits_config.ruler_remote_write_relabel_configs",
-		"limits_config.ruler_remote_write_queue_capacity",
-		"limits_config.ruler_remote_write_queue_min_shards",
-		"limits_config.ruler_remote_write_queue_max_shards",
-		"limits_config.ruler_remote_write_queue_max_samples_per_send",
-		"limits_config.ruler_remote_write_queue_batch_send_deadline",
-		"limits_config.ruler_remote_write_queue_min_backoff",
-		"limits_config.ruler_remote_write_queue_max_backoff",
-		"limits_config.ruler_remote_write_queue_retry_on_ratelimit",
-		"limits_config.ruler_remote_write_sigv4_config",
 	}
 
 	expectedRuntimeConfigDeletes = []string{
@@ -101,9 +101,6 @@ var (
 		"overrides.bar.ruler_enable_wal_replay",
 		"overrides.bar.per_tenant_override_config",
 		"overrides.bar.per_tenant_override_period",
-	}
-
-	expectedRuntimeConfigDeprecates = []string{
 		"overrides.foo.ruler_remote_write_url",
 		"overrides.foo.ruler_remote_write_timeout",
 		"overrides.foo.ruler_remote_write_headers",
@@ -131,6 +128,8 @@ var (
 		"overrides.bar.ruler_remote_write_queue_retry_on_ratelimit",
 		"overrides.bar.ruler_remote_write_sigv4_config",
 	}
+
+	expectedRuntimeConfigDeprecates = []string{}
 )
 
 func TestConfigDeprecatesAndDeletes(t *testing.T) {

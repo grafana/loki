@@ -193,7 +193,6 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 
 	// Set new defaults with non-nil values for non-scalar types
 	newDefaults := Limits{
-		RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 		StreamRetention: []StreamRetention{
 			{
 				Period:   model.Duration(24 * time.Hour),
@@ -216,10 +215,9 @@ ruler_remote_write_headers:
   foo: "bar"
 `,
 			exp: Limits{
-				DiscoverGenericFields:   FieldDetectorConfig{},
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
-				DiscoverServiceName:     []string{},
-				LogLevelFields:          []string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
 
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
@@ -245,10 +243,9 @@ ruler_remote_write_headers:
 ruler_remote_write_headers:
 `,
 			exp: Limits{
-				DiscoverGenericFields:   FieldDetectorConfig{},
-				DiscoverServiceName:     []string{},
-				LogLevelFields:          []string{},
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{m: map[string]string{"a": "b"}},
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
 					{
@@ -283,7 +280,6 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
@@ -304,7 +300,6 @@ reject_old_samples: true
 				LogLevelFields:        []string{},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -332,7 +327,6 @@ query_timeout: 5m
 				QueryTimeout: model.Duration(5 * time.Minute),
 
 				// Rest from new defaults.
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -821,7 +815,6 @@ reject_old_samples: true
 				OTLPConfig:       &push.OTLPConfig{},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
@@ -872,7 +865,6 @@ reject_old_samples: true
 				},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
@@ -904,7 +896,6 @@ reject_old_samples: true
 				},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
@@ -962,7 +953,6 @@ reject_old_samples: true
 				},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
@@ -1018,7 +1008,6 @@ otlp_config:
 				},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
@@ -1072,7 +1061,6 @@ otlp_config:
 				},
 
 				// set all the values which can't be nil
-				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
 				DiscoverServiceName:       []string{},
 				LogLevelFields:            []string{},
 				EnforcedLabels:            []string{},
