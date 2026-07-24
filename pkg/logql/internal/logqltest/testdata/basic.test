@@ -1,0 +1,43 @@
+# Smoke test for the logqltest harness. Two streams, one line every 10s (at 10..60s),
+# with structured metadata carrying detected_level.
+load
+  {app="foo", env="prod"} "level=info msg=ok status=200"    @ 10s [repeat every 10s for 6] [metadata detected_level="info"]
+  {app="bar", env="prod"} "level=error msg=boom status=500" @ 10s [repeat every 10s for 6] [metadata detected_level="error"]
+
+# count_over_time keeps the stream labels — including structured metadata, which Loki
+# promotes into the result label set.
+eval instant at 60s count_over_time({app="foo"}[1m])
+  {app="foo", detected_level="info", env="prod"} 6
+
+# Aggregation with grouping across both streams.
+eval instant at 60s sum by (env) (count_over_time({env="prod"}[1m]))
+  {env="prod"} 12
+
+# Line filter selects only the matching stream.
+eval instant at 60s count_over_time({env="prod"} |= "error" [1m])
+  {app="bar", detected_level="error", env="prod"} 6
+
+# Structured-metadata filter (exercises metadata threading through the pipeline).
+eval instant at 60s sum(count_over_time({env="prod"} | detected_level="error" [1m]))
+  {} 6
+
+# logfmt parse + unwrap of a numeric field, summed across streams: 6*200 + 6*500 = 4200.
+eval instant at 60s sum(sum_over_time({env="prod"} | logfmt | unwrap status [1m]))
+  {} 4200
+
+# Binary comparison with the bool modifier; ignoring the labels that differ between the two
+# sides (app and detected_level) so their label sets match.
+eval instant at 60s count_over_time({app="foo"}[1m]) > bool ignoring(app, detected_level) count_over_time({app="bar"}[1m])
+  {env="prod"} 0
+
+# Scalar arithmetic.
+eval instant at 60s 1 + 2
+  3
+
+# Range query: t=0 has no data (gap), t=30s and t=60s each cover three entries.
+eval range from 0 to 60s step 30s count_over_time({app="foo"}[30s])
+  {app="foo", detected_level="info", env="prod"} _ 3 3
+
+# A query missing its range selector must fail to parse.
+eval instant at 60s count_over_time({app="foo"})
+  expect fail

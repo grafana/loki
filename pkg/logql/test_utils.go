@@ -118,7 +118,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	for _, stream := range in {
 		sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); matches {
+			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)); matches {
 				var s *logproto.Stream
 				var found bool
 				s, found = resByStream[out.String()]
@@ -148,7 +148,7 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
 
-				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)); ok {
 					for _, sample := range samples {
 						lbs := sample.Labels
 						f := sample.Value
