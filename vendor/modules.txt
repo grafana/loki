@@ -1361,8 +1361,8 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
-# github.com/pires/go-proxyproto v0.12.0
-## explicit; go 1.25
+# github.com/pires/go-proxyproto v0.15.0
+## explicit; go 1.25.0
 github.com/pires/go-proxyproto
 # github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 ## explicit; go 1.14
