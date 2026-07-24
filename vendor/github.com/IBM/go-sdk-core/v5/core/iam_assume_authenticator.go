@@ -111,71 +111,71 @@ func NewIamAssumeAuthenticatorBuilder() *IamAssumeAuthenticatorBuilder {
 
 // SetIAMProfileID sets the iamProfileID field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetIAMProfileID(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAssumeAuthenticator.iamProfileID = s
+	builder.iamProfileID = s
 	return builder
 }
 
 // SetIAMProfileCRN sets the iamProfileCRN field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetIAMProfileCRN(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAssumeAuthenticator.iamProfileCRN = s
+	builder.iamProfileCRN = s
 	return builder
 }
 
 // SetIAMProfileName sets the iamProfileName field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetIAMProfileName(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAssumeAuthenticator.iamProfileName = s
+	builder.iamProfileName = s
 	return builder
 }
 
 // SetIAMAccountID sets the iamAccountID field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetIAMAccountID(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAssumeAuthenticator.iamAccountID = s
+	builder.iamAccountID = s
 	return builder
 }
 
 // SetApiKey sets the ApiKey field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetApiKey(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.ApiKey = s
+	builder.ApiKey = s
 	return builder
 }
 
 // SetURL sets the url field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetURL(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.URL = s
+	builder.URL = s
 	builder.IamAssumeAuthenticator.url = s
 	return builder
 }
 
 // SetClientIDSecret sets the ClientId and ClientSecret fields in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetClientIDSecret(clientID, clientSecret string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.ClientId = clientID
-	builder.IamAuthenticator.ClientSecret = clientSecret
+	builder.ClientId = clientID
+	builder.ClientSecret = clientSecret
 	return builder
 }
 
 // SetDisableSSLVerification sets the DisableSSLVerification field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetDisableSSLVerification(b bool) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.DisableSSLVerification = b
-	builder.IamAssumeAuthenticator.disableSSLVerification = b
+	builder.DisableSSLVerification = b
+	builder.disableSSLVerification = b
 	return builder
 }
 
 // SetScope sets the Scope field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetScope(s string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.Scope = s
+	builder.Scope = s
 	return builder
 }
 
 // SetHeaders sets the Headers field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetHeaders(headers map[string]string) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.Headers = headers
-	builder.IamAssumeAuthenticator.headers = headers
+	builder.Headers = headers
+	builder.headers = headers
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *IamAssumeAuthenticatorBuilder) SetClient(client *http.Client) *IamAssumeAuthenticatorBuilder {
-	builder.IamAuthenticator.Client = client
+	builder.Client = client
 	builder.IamAssumeAuthenticator.client = client
 	return builder
 }
@@ -193,7 +193,7 @@ func (builder *IamAssumeAuthenticatorBuilder) Build() (*IamAssumeAuthenticator, 
 	}
 
 	// If we passed validation, then save our IamAuthenticator instance.
-	builder.IamAssumeAuthenticator.iamDelegate = &builder.IamAuthenticator
+	builder.iamDelegate = &builder.IamAuthenticator
 
 	return &builder.IamAssumeAuthenticator, nil
 }
@@ -202,24 +202,24 @@ func (builder *IamAssumeAuthenticatorBuilder) Build() (*IamAssumeAuthenticator, 
 func (authenticator *IamAssumeAuthenticator) NewBuilder() *IamAssumeAuthenticatorBuilder {
 	builder := &IamAssumeAuthenticatorBuilder{}
 
-	builder.IamAssumeAuthenticator.iamProfileCRN = authenticator.iamProfileCRN
-	builder.IamAssumeAuthenticator.iamProfileID = authenticator.iamProfileID
-	builder.IamAssumeAuthenticator.iamProfileName = authenticator.iamProfileName
-	builder.IamAssumeAuthenticator.iamAccountID = authenticator.iamAccountID
+	builder.iamProfileCRN = authenticator.iamProfileCRN
+	builder.iamProfileID = authenticator.iamProfileID
+	builder.iamProfileName = authenticator.iamProfileName
+	builder.iamAccountID = authenticator.iamAccountID
 	builder.IamAssumeAuthenticator.url = authenticator.url
-	builder.IamAssumeAuthenticator.headers = authenticator.headers
-	builder.IamAssumeAuthenticator.disableSSLVerification = authenticator.disableSSLVerification
+	builder.headers = authenticator.headers
+	builder.disableSSLVerification = authenticator.disableSSLVerification
 	builder.IamAssumeAuthenticator.client = authenticator.client
 
-	builder.IamAuthenticator.URL = authenticator.url
-	builder.IamAuthenticator.Client = authenticator.client
-	builder.IamAuthenticator.Headers = authenticator.headers
-	builder.IamAuthenticator.DisableSSLVerification = authenticator.disableSSLVerification
+	builder.URL = authenticator.url
+	builder.Client = authenticator.client
+	builder.Headers = authenticator.headers
+	builder.DisableSSLVerification = authenticator.disableSSLVerification
 	if authenticator.iamDelegate != nil {
-		builder.IamAuthenticator.ApiKey = authenticator.iamDelegate.ApiKey
-		builder.IamAuthenticator.ClientId = authenticator.iamDelegate.ClientId
-		builder.IamAuthenticator.ClientSecret = authenticator.iamDelegate.ClientSecret
-		builder.IamAuthenticator.Scope = authenticator.iamDelegate.Scope
+		builder.ApiKey = authenticator.iamDelegate.ApiKey
+		builder.ClientId = authenticator.iamDelegate.ClientId
+		builder.ClientSecret = authenticator.iamDelegate.ClientSecret
+		builder.Scope = authenticator.iamDelegate.Scope
 	}
 
 	return builder
