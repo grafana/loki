@@ -140,3 +140,48 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 		})
 	}
 }
+
+// TestTenantLimitsHandlerDefaultAllowPublishReturnsAllFields verifies that with
+// the default (empty) tenant_limits_allow_publish setting, the tenant limits
+// endpoint returns runtime override fields such as ingestion_rate_mb.
+// Regression for https://github.com/grafana/loki/issues/22426.
+func TestTenantLimitsHandlerDefaultAllowPublishReturnsAllFields(t *testing.T) {
+	limits := &validation.Limits{
+		IngestionRateMB:        120.0,
+		IngestionBurstSizeMB:   140.0,
+		MaxQuerySeries:         1000,
+		MaxLocalStreamsPerUser: 500,
+		RejectOldSamples:       true,
+	}
+
+	// Zero-value Config matches the RegisterFlags default (empty allowlist).
+	loki := &Loki{
+		TenantLimits: &mockTenantLimits{limits: limits},
+		Cfg:          Config{},
+	}
+	require.Empty(t, loki.Cfg.TenantLimitsAllowPublish)
+
+	req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
+	req.Header.Set("X-Scope-OrgID", "foo")
+
+	w := httptest.NewRecorder()
+	loki.tenantLimitsHandler(false)(w, req)
+
+	resp := w.Result()
+	require.Equal(t, 200, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var response map[string]any
+	require.NoError(t, yaml.Unmarshal(body, &response))
+
+	// Runtime override fields that were previously missing from the default allowlist.
+	assert.Contains(t, response, "ingestion_rate_mb")
+	assert.Equal(t, 120, response["ingestion_rate_mb"])
+	assert.Contains(t, response, "ingestion_burst_size_mb")
+	assert.Equal(t, 140, response["ingestion_burst_size_mb"])
+	assert.Contains(t, response, "max_streams_per_user")
+	assert.Contains(t, response, "reject_old_samples")
+	assert.Contains(t, response, "max_query_series")
+}

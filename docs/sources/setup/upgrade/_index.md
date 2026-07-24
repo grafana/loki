@@ -37,6 +37,12 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Tenant limits endpoint returns all fields by default
+
+The default value of `tenant_limits_allow_publish` (`-limits.tenant-limits-allow-publish`) is now empty, so `/config/tenant/v1/limits` and `/loki/api/v1/drilldown-limits` return the full effective per-tenant limits (including runtime overrides such as `ingestion_rate_mb`).
+
+Previously only a small allowlist of fields was published by default, which made the response look incomplete. To restore the previous restricted set of fields, set `tenant_limits_allow_publish` explicitly.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
