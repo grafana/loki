@@ -127,6 +127,8 @@ type Client struct {
 
 	// Option to use gRRPC appendable upload API was set.
 	grpcAppendableUploads bool
+
+	bucketMetadataCache *bucketMetadataCache
 }
 
 // credsJSON returns the raw JSON of the Client's creds and true, or an empty slice
@@ -224,14 +226,18 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		return nil, fmt.Errorf("storage: %w", err)
 	}
 
-	return &Client{
+	c := &Client{
 		hc:      hc,
 		raw:     rawService,
 		scheme:  u.Scheme,
 		xmlHost: u.Host,
 		creds:   creds,
 		tc:      tc,
-	}, nil
+	}
+	if isACOEnabled() {
+		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
+	}
+	return c, nil
 }
 
 // NewGRPCClient creates a new Storage client using the gRPC transport and API.
@@ -251,10 +257,14 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
+	c := &Client{
 		tc:                    tc,
 		grpcAppendableUploads: tc.config.grpcAppendableUploads,
-	}, nil
+	}
+	if isACOEnabled() {
+		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
+	}
+	return c, nil
 }
 
 // CheckDirectConnectivitySupported checks if gRPC direct connectivity
@@ -321,6 +331,7 @@ func (c *Client) Close() error {
 	c.hc = nil
 	c.raw = nil
 	c.creds = nil
+	c.bucketMetadataCache = nil
 	if c.tc != nil {
 		return c.tc.Close()
 	}
@@ -1038,7 +1049,7 @@ func (o *ObjectHandle) Key(encryptionKey []byte) *ObjectHandle {
 // Attrs returns meta information about the object.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Object.Attrs")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Attrs")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1052,7 +1063,7 @@ func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error
 // ObjectAttrsToUpdate docs for details on treatment of zero values.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Update(ctx context.Context, uattrs ObjectAttrsToUpdate) (oa *ObjectAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Object.Update")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Update")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1130,7 +1141,7 @@ type ObjectAttrsToUpdate struct {
 
 // Delete deletes the single specified object.
 func (o *ObjectHandle) Delete(ctx context.Context) (err error) {
-	ctx, _ = startSpan(ctx, "Object.Delete")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Delete")
 	defer func() { endSpan(ctx, err) }()
 	if err := o.validate(); err != nil {
 		return err
@@ -1252,7 +1263,7 @@ type MoveObjectDestination struct {
 // It is the caller's responsibility to call Close when writing is done. To
 // stop writing without saving the data, cancel the context.
 func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
-	ctx, _ = startSpan(ctx, "Object.Writer")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Writer")
 	return &Writer{
 		ctx:         ctx,
 		o:           o,
@@ -1288,7 +1299,7 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 // objects which were created append semantics and not finalized.
 // This feature is in preview and is not yet available for general use.
 func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
-	ctx, _ = startSpan(ctx, "Object.WriterFromAppendableObject")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.WriterFromAppendableObject")
 	if o.gen < 0 {
 		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
 	}
@@ -1304,6 +1315,9 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 	opts.apply(w)
 	if w.ChunkSize == 0 {
 		w.ChunkSize = googleapi.DefaultUploadChunkSize
+	}
+	if w.ChunkRetryDeadline == 0 {
+		w.ChunkRetryDeadline = defaultWriteChunkRetryDeadline
 	}
 	err := w.openWriter()
 	if err != nil {
@@ -2562,6 +2576,23 @@ func (ws *withPolicy) apply(config *retryConfig) {
 	config.policy = ws.policy
 }
 
+// RetryContext provides comprehensive context about a retry attempt.
+// It is passed to custom retry functions configured via WithErrorFuncWithContext.
+type RetryContext struct {
+	// Attempt is the current attempt number (1-based, so first call is attempt 1).
+	Attempt int
+	// InvocationID is a unique identifier for the current operation invocation.
+	// This will be same for all attempts of the same operation, used to correlate
+	// retries of the same operation together.
+	InvocationID string
+	// Operation describes the operation being performed (e.g., "GetObject", "DeleteObject").
+	Operation string
+	// Bucket is the name of the bucket involved in the operation, empty if not applicable.
+	Bucket string
+	// Object is the name of the object involved in the operation, empty if not applicable.
+	Object string
+}
+
 // WithErrorFunc allows users to pass a custom function to the retryer. Errors
 // will be retried if and only if `shouldRetry(err)` returns true.
 // By default, the following errors are retried (see ShouldRetry for the default
@@ -2589,13 +2620,61 @@ type withErrorFunc struct {
 }
 
 func (wef *withErrorFunc) apply(config *retryConfig) {
+	// Wrap legacy signature to new signature
+	config.shouldRetry = func(err error, retryCtx *RetryContext) bool {
+		return wef.shouldRetry(err)
+	}
+}
+
+// WithErrorFuncWithContext allows users to pass a custom function to the retryer
+// with access to comprehensive retry context. This option is currently experimental
+// and subject to change. Errors will be retried if and only if `shouldRetry(err, retryCtx)`
+// returns true.
+//
+// The RetryContext provides:
+// - Attempt: current attempt number (1-based)
+// - InvocationID: unique identifier for the operation invocation
+// - Operation: the operation being performed (e.g., "GetObject", "UpdateBucket")
+// - Bucket: name of the bucket involved in the operation
+// - Object: name of the object involved in the operation
+//
+// By default, the following errors are retried (see ShouldRetry for the default
+// function):
+//
+// - HTTP responses with codes 408, 429, 502, 503, and 504.
+//
+// - Transient network errors such as connection reset and io.ErrUnexpectedEOF.
+//
+// - Errors which are considered transient using the Temporary() interface.
+//
+// - Wrapped versions of these errors.
+//
+// This option can be used to retry on a different set of errors than the
+// default. Users can use the default ShouldRetry function inside their custom
+// function if they only want to make minor modifications to default behavior.
+// RetryContext can be used to improve observability by logging InvocationID to
+// correlate retries of the same operation together, or to implement more complex
+// retry logic such as conditional retries based on the operation type or attempt.
+// Note: the retryCtx may be nil for some unimplemented methods so always a good
+// practice to defensively check for nil before accessing its fields.
+func WithErrorFuncWithContext(shouldRetry func(err error, retryCtx *RetryContext) bool) RetryOption {
+	return &withErrorFuncWithContext{
+		shouldRetry: shouldRetry,
+	}
+}
+
+type withErrorFuncWithContext struct {
+	shouldRetry func(err error, retryCtx *RetryContext) bool
+}
+
+func (wef *withErrorFuncWithContext) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
 type retryConfig struct {
 	backoff     *gax.Backoff
 	policy      RetryPolicy
-	shouldRetry func(err error) bool
+	shouldRetry func(error, *RetryContext) bool
 	maxAttempts *int
 	// maxRetryDuration, if set, specifies a deadline after which the request
 	// will no longer be retried. A value of 0 allows infinite retries.

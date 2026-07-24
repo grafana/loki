@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"cloud.google.com/go/storage"
 	"github.com/fsouza/fake-gcs-server/internal/backend"
 	"github.com/gorilla/mux"
 )
@@ -154,6 +155,15 @@ func (s *Server) getBucket(r *http.Request) jsonResponse {
 	return jsonResponse{data: newBucketResponse(bucket, s.options.BucketsLocation, s.externalURL)}
 }
 
+func (s *Server) getBucketStorageLayout(r *http.Request) jsonResponse {
+	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
+	_, err := s.backend.GetBucket(bucketName)
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	return jsonResponse{data: newBucketStorageLayoutResponse(bucketName, s.options.BucketsLocation)}
+}
+
 func (s *Server) deleteBucket(r *http.Request) jsonResponse {
 	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
 	err := s.backend.DeleteBucket(bucketName)
@@ -166,6 +176,7 @@ func (s *Server) deleteBucket(r *http.Request) jsonResponse {
 	if err != nil {
 		return jsonResponse{status: http.StatusInternalServerError, errorMessage: err.Error()}
 	}
+	s.notificationRegistry.DeleteBucket(bucketName)
 	return jsonResponse{}
 }
 
@@ -174,4 +185,85 @@ func validateBucketName(bucketName string) error {
 		return errors.New("invalid bucket name")
 	}
 	return nil
+}
+
+func (s *Server) listBucketACL(r *http.Request) jsonResponse {
+	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
+	bucket, err := s.backend.GetBucket(bucketName)
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	return jsonResponse{data: newBucketACLListResponse(bucket)}
+}
+
+func (s *Server) setBucketACL(r *http.Request) jsonResponse {
+	vars := unescapeMuxVars(mux.Vars(r))
+	bucketName := vars["bucketName"]
+	bucket, err := s.backend.GetBucket(bucketName)
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+
+	var data struct {
+		Entity string
+		Role   string
+	}
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		return jsonResponse{status: http.StatusBadRequest, errorMessage: err.Error()}
+	}
+	// The entity may also be supplied as a path variable (PUT .../acl/{entity}).
+	if entity := vars["entity"]; entity != "" {
+		data.Entity = entity
+	}
+
+	rule := storage.ACLRule{
+		Entity: storage.ACLEntity(data.Entity),
+		Role:   storage.ACLRole(data.Role),
+	}
+	acl := make([]storage.ACLRule, 0, len(bucket.ACL)+1)
+	for _, existing := range bucket.ACL {
+		if existing.Entity != rule.Entity {
+			acl = append(acl, existing)
+		}
+	}
+	acl = append(acl, rule)
+	if err := s.backend.UpdateBucketACL(bucketName, acl); err != nil {
+		return errToJsonResponse(err)
+	}
+	return jsonResponse{data: newBucketAccessControl(bucketName, rule)}
+}
+
+func (s *Server) getBucketACL(r *http.Request) jsonResponse {
+	vars := unescapeMuxVars(mux.Vars(r))
+	bucket, err := s.backend.GetBucket(vars["bucketName"])
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	entity := vars["entity"]
+	for _, rule := range bucket.ACL {
+		if string(rule.Entity) == entity {
+			return jsonResponse{data: newBucketAccessControl(bucket.Name, rule)}
+		}
+	}
+	return jsonResponse{status: http.StatusNotFound}
+}
+
+func (s *Server) deleteBucketACL(r *http.Request) jsonResponse {
+	vars := unescapeMuxVars(mux.Vars(r))
+	bucketName := vars["bucketName"]
+	bucket, err := s.backend.GetBucket(bucketName)
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	entity := vars["entity"]
+	var acl []storage.ACLRule
+	for _, rule := range bucket.ACL {
+		if string(rule.Entity) != entity {
+			acl = append(acl, rule)
+		}
+	}
+	if err := s.backend.UpdateBucketACL(bucketName, acl); err != nil {
+		return errToJsonResponse(err)
+	}
+	return jsonResponse{status: http.StatusOK}
 }

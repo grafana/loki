@@ -192,6 +192,11 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 			ChecksumSHA1:      part.ChecksumSHA1,
 			ChecksumSHA256:    part.ChecksumSHA256,
 			ChecksumCRC64NVME: part.ChecksumCRC64NVME,
+			ChecksumMD5:       part.ChecksumMD5,
+			ChecksumSHA512:    part.ChecksumSHA512,
+			ChecksumXXHash64:  part.ChecksumXXHash64,
+			ChecksumXXHash3:   part.ChecksumXXHash3,
+			ChecksumXXHash128: part.ChecksumXXHash128,
 		})
 	}
 
@@ -353,6 +358,11 @@ func (c *Client) uploadPart(ctx context.Context, p uploadPartParams) (ObjectPart
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMD5:       h.Get(ChecksumMD5.Key()),
+		ChecksumSHA512:    h.Get(ChecksumSHA512.Key()),
+		ChecksumXXHash64:  h.Get(ChecksumXXHash64.Key()),
+		ChecksumXXHash3:   h.Get(ChecksumXXHash3.Key()),
+		ChecksumXXHash128: h.Get(ChecksumXXHash128.Key()),
 	}
 	objPart.Size = p.size
 	objPart.PartNumber = p.partNumber
@@ -458,6 +468,11 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 		ChecksumCRC32:     completeMultipartUploadResult.ChecksumCRC32,
 		ChecksumCRC32C:    completeMultipartUploadResult.ChecksumCRC32C,
 		ChecksumCRC64NVME: completeMultipartUploadResult.ChecksumCRC64NVME,
+		ChecksumMD5:       completeMultipartUploadResult.ChecksumMD5,
+		ChecksumSHA512:    completeMultipartUploadResult.ChecksumSHA512,
+		ChecksumXXHash64:  completeMultipartUploadResult.ChecksumXXHash64,
+		ChecksumXXHash3:   completeMultipartUploadResult.ChecksumXXHash3,
+		ChecksumXXHash128: completeMultipartUploadResult.ChecksumXXHash128,
 		ChecksumMode:      completeMultipartUploadResult.ChecksumType,
 	}, nil
 }
