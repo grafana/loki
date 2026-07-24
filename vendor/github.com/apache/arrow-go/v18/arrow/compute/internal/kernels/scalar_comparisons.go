@@ -55,24 +55,28 @@ func comparePrimitiveArrayArray[T arrow.FixedWidthType](op cmpFn[T, T]) binaryKe
 			left      = arrow.GetData[T](leftBytes)
 			right     = arrow.GetData[T](rightBytes)
 			nvals     = len(left)
-			nbatches  = nvals / batchSize
 			tmpOutput [batchSize]uint32
 		)
 
 		tmpOutSlice := tmpOutput[:]
 		if prefix := offset % 8; prefix != 0 {
-			vals := 8 - prefix
+			vals := min(nvals, 8-prefix)
 			op(left[:vals], right[:vals], tmpOutSlice[:vals])
 			left, right = left[vals:], right[vals:]
+			nvals -= vals
 
 			for i, v := range tmpOutSlice[:vals] {
 				bitutil.SetBitTo(out, prefix+i, v != 0)
 			}
+			if nvals == 0 {
+				return
+			}
 			out = out[1:]
 		}
 
+		nbatches := nvals / batchSize
 		for j := 0; j < nbatches; j++ {
-			op(left, right, tmpOutSlice)
+			op(left[:batchSize], right[:batchSize], tmpOutSlice)
 			left, right = left[batchSize:], right[batchSize:]
 			packBits(tmpOutput, out)
 			out = out[batchSize/8:]
@@ -93,22 +97,26 @@ func comparePrimitiveArrayScalar[T arrow.FixedWidthType](op cmpScalarRight[T, T]
 			left      = arrow.GetData[T](leftBytes)
 			rightVal  = *(*T)(unsafe.Pointer(&rightBytes[0]))
 			nvals     = len(left)
-			nbatches  = nvals / batchSize
 			tmpOutput [batchSize]uint32
 		)
 
 		tmpOutSlice := tmpOutput[:]
 		if prefix := offset % 8; prefix != 0 {
-			vals := 8 - prefix
+			vals := min(nvals, 8-prefix)
 			op(left[:vals], rightVal, tmpOutSlice[:vals])
 			left = left[vals:]
+			nvals -= vals
 
 			for i, v := range tmpOutSlice[:vals] {
 				bitutil.SetBitTo(out, prefix+i, v != 0)
 			}
+			if nvals == 0 {
+				return
+			}
 			out = out[1:]
 		}
 
+		nbatches := nvals / batchSize
 		for j := 0; j < nbatches; j++ {
 			op(left[:batchSize], rightVal, tmpOutSlice)
 			left = left[batchSize:]
@@ -132,22 +140,26 @@ func comparePrimitiveScalarArray[T arrow.FixedWidthType](op cmpScalarLeft[T, T])
 			right   = arrow.GetData[T](rightBytes)
 
 			nvals     = len(right)
-			nbatches  = nvals / batchSize
 			tmpOutput [batchSize]uint32
 		)
 
 		tmpOutSlice := tmpOutput[:]
 		if prefix := offset % 8; prefix != 0 {
-			vals := 8 - prefix
+			vals := min(nvals, 8-prefix)
 			op(leftVal, right[:vals], tmpOutSlice[:vals])
 			right = right[vals:]
+			nvals -= vals
 
 			for i, v := range tmpOutSlice[:vals] {
 				bitutil.SetBitTo(out, prefix+i, v != 0)
 			}
+			if nvals == 0 {
+				return
+			}
 			out = out[1:]
 		}
 
+		nbatches := nvals / batchSize
 		for j := 0; j < nbatches; j++ {
 			op(leftVal, right[:batchSize], tmpOutSlice)
 			right = right[batchSize:]

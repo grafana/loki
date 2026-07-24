@@ -26,7 +26,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/compute/exec"
 	"github.com/apache/arrow-go/v18/arrow/compute/internal/kernels"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -375,37 +374,19 @@ func selectMapImpl(fn exec.ArrayKernelExec) exec.ArrayKernelExec {
 		childIndices := out.Children[0].MakeArray()
 		defer childIndices.Release()
 
-		// Maps have a single struct child containing the keys and items
-		// We need to take from both the keys and items arrays
-		takenKeys, err := TakeArrayOpts(ctx.Ctx, values.Keys(), childIndices, kernels.TakeOptions{BoundsCheck: false})
+		// Take the entire struct child as a unit, preserving all field metadata
+		// (including Nullable flags and validity bitmaps).  This matches the C++
+		// reference implementation which calls Take on typed_values.values() whole.
+		structChild := array.MakeFromData(values.Data().(*array.Data).Children()[0])
+		defer structChild.Release()
+
+		takenStruct, err := TakeArrayOpts(ctx.Ctx, structChild, childIndices, kernels.TakeOptions{BoundsCheck: false})
 		if err != nil {
 			return err
 		}
-		defer takenKeys.Release()
+		defer takenStruct.Release()
 
-		takenItems, err := TakeArrayOpts(ctx.Ctx, values.Items(), childIndices, kernels.TakeOptions{BoundsCheck: false})
-		if err != nil {
-			return err
-		}
-		defer takenItems.Release()
-
-		// Build the struct child array with the taken keys and items
-		// Maps have a single struct child with "key" and "value" fields
-		structType := arrow.StructOf(
-			arrow.Field{Name: "key", Type: values.Keys().DataType()},
-			arrow.Field{Name: "value", Type: values.Items().DataType()},
-		)
-
-		// Create struct data with taken keys and items as children
-		structData := array.NewData(
-			structType,
-			int(childIndices.Len()),
-			[]*memory.Buffer{nil},
-			[]arrow.ArrayData{takenKeys.Data(), takenItems.Data()},
-			0, 0)
-		defer structData.Release()
-
-		out.Children[0].TakeOwnership(structData)
+		out.Children[0].TakeOwnership(takenStruct.Data())
 		return nil
 	}
 }
@@ -504,6 +485,40 @@ func structFilter(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResul
 	return nil
 }
 
+// dictionaryFilter is a special case for filtering a dictionary array
+//
+// The shared dictionary is reused as-is and never compacted, so the result may retain values
+// that are no longer referenced by any index.
+func dictionaryFilter(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+	// convert the filter (boolean array) to indices to take from the dictionary array.
+	indices, err := kernels.GetTakeIndices(exec.GetAllocator(ctx.Ctx),
+		&batch.Values[1].Array, ctx.State.(kernels.FilterState).NullSelection)
+	if err != nil {
+		return err
+	}
+	defer indices.Release()
+
+	filter := NewDatum(indices)
+	defer filter.Release()
+
+	valData := batch.Values[0].Array.MakeData()
+	defer valData.Release()
+
+	vals := NewDatum(valData)
+	defer vals.Release()
+
+	// run 'take' on the dictionary array, which will call dictionaryTake.
+	// we know the bounds are good because the indices were just created by GetTakeIndices
+	result, err := Take(ctx.Ctx, kernels.TakeOptions{BoundsCheck: false}, vals, filter)
+	if err != nil {
+		return err
+	}
+	defer result.Release()
+
+	out.TakeOwnership(result.(*ArrayDatum).Value)
+	return nil
+}
+
 func structTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
 	// generate top level validity bitmap
 	if err := kernels.TakeExec(kernels.StructImpl)(ctx, batch, out); err != nil {
@@ -538,6 +553,33 @@ func structTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult)
 	return eg.Wait()
 }
 
+// dictionaryTake is a special case for taking from a dictionary array.
+//
+// The shared dictionary is reused as-is and never compacted, so the result may retain values
+// that are no longer referenced by any index.
+func dictionaryTake(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
+	dictArr := batch.Values[0].Array.MakeArray().(*array.Dictionary)
+	defer dictArr.Release()
+
+	selection := batch.Values[1].Array.MakeArray()
+	defer selection.Release()
+
+	// run 'take' on the indices array of the dictionary array.
+	takenIndices, err := TakeArrayOpts(ctx.Ctx, dictArr.Indices(), selection, kernels.TakeOptions{BoundsCheck: ctx.State.(kernels.TakeState).BoundsCheck})
+	if err != nil {
+		return err
+	}
+	defer takenIndices.Release()
+
+	// create a new dictionary array - the indices are the 'taken' indices,
+	// and the dictionary is a pointer to the original dictionary.
+	result := array.NewDictionaryArray(dictArr.DataType(), takenIndices, dictArr.Dictionary())
+	defer result.Release()
+
+	out.TakeOwnership(result.Data())
+	return nil
+}
+
 // RegisterVectorSelection registers functions that select specific
 // values from arrays such as Take and Filter
 func RegisterVectorSelection(reg FunctionRegistry) {
@@ -552,6 +594,7 @@ func RegisterVectorSelection(reg FunctionRegistry) {
 		{In: exec.NewIDInput(arrow.LARGE_LIST), Exec: selectListImpl(kernels.FilterExec(kernels.ListImpl[int64]))},
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_LIST), Exec: selectListImpl(kernels.FilterExec(kernels.FSLImpl))},
 		{In: exec.NewIDInput(arrow.DENSE_UNION), Exec: denseUnionImpl(kernels.FilterExec(kernels.DenseUnionImpl))},
+		{In: exec.NewIDInput(arrow.DICTIONARY), Exec: dictionaryFilter},
 		{In: exec.NewIDInput(arrow.EXTENSION), Exec: extensionFilterImpl},
 		{In: exec.NewIDInput(arrow.STRUCT), Exec: structFilter},
 	}...)
@@ -562,6 +605,7 @@ func RegisterVectorSelection(reg FunctionRegistry) {
 		{In: exec.NewIDInput(arrow.FIXED_SIZE_LIST), Exec: selectListImpl(kernels.TakeExec(kernels.FSLImpl))},
 		{In: exec.NewIDInput(arrow.MAP), Exec: selectMapImpl(kernels.TakeExec(kernels.MapImpl))},
 		{In: exec.NewIDInput(arrow.DENSE_UNION), Exec: denseUnionImpl(kernels.TakeExec(kernels.DenseUnionImpl))},
+		{In: exec.NewIDInput(arrow.DICTIONARY), Exec: dictionaryTake},
 		{In: exec.NewIDInput(arrow.EXTENSION), Exec: extensionTakeImpl},
 		{In: exec.NewIDInput(arrow.STRUCT), Exec: structTake},
 	}...)

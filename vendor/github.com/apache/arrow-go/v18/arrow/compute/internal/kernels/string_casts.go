@@ -20,6 +20,7 @@ package kernels
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"unicode/utf8"
 
@@ -31,40 +32,58 @@ import (
 	"github.com/apache/arrow-go/v18/internal/bitutils"
 )
 
+// validateUTF8Sequence walks non-null positions in bitmap and validates
+// the byte slice returned by valueAt against utf8.Valid. Shared skeleton
+// for validateUtf8, validateUtf8Fsb, and validateUtf8View so they stay
+// consistent on iteration, error format, and null handling.
+func validateUTF8Sequence(bitmap []byte, off, n int64, valueAt func(pos int64) []byte) error {
+	return bitutils.VisitBitBlocksShort(bitmap, off, n,
+		func(pos int64) error {
+			v := valueAt(pos)
+			if !utf8.Valid(v) {
+				return fmt.Errorf("%w: invalid UTF8 bytes: %x", arrow.ErrInvalid, v)
+			}
+			return nil
+		}, func() error { return nil })
+}
+
+// shouldValidateUTF8 reports whether a cast from input to output must
+// reject invalid UTF-8 sequences in the input. Validation is required
+// only when the output is utf8, the input is not already known to be
+// utf8, and the caller has not opted into accepting invalid bytes via
+// CastOptions.AllowInvalidUtf8. Inputs that don't implement
+// BinaryDataType (e.g., FixedSizeBinary) are treated as non-utf8.
+func shouldValidateUTF8(input arrow.DataType, output arrow.BinaryDataType, allowInvalid bool) bool {
+	if allowInvalid || !output.IsUtf8() {
+		return false
+	}
+	if b, ok := input.(arrow.BinaryDataType); ok {
+		return !b.IsUtf8()
+	}
+	return true
+}
+
 func validateUtf8Fsb(input *exec.ArraySpan) error {
 	var (
 		inputData = input.Buffers[1].Buf
 		width     = int64(input.Type.(*arrow.FixedSizeBinaryType).ByteWidth)
-		bitmap    = input.Buffers[0].Buf
 	)
-
-	return bitutils.VisitBitBlocksShort(bitmap, input.Offset, input.Len,
-		func(pos int64) error {
+	return validateUTF8Sequence(input.Buffers[0].Buf, input.Offset, input.Len,
+		func(pos int64) []byte {
 			pos += input.Offset
-			beg := pos * width
-			end := (pos + 1) * width
-			if !utf8.Valid(inputData[beg:end]) {
-				return fmt.Errorf("%w: invalid UTF8 bytes: %x", arrow.ErrInvalid, inputData[beg:end])
-			}
-			return nil
-		}, func() error { return nil })
+			return inputData[pos*width : (pos+1)*width]
+		})
 }
 
 func validateUtf8[OffsetT int32 | int64](input *exec.ArraySpan) error {
 	var (
 		inputOffsets = exec.GetSpanOffsets[OffsetT](input, 1)
 		inputData    = input.Buffers[2].Buf
-		bitmap       = input.Buffers[0].Buf
 	)
-
-	return bitutils.VisitBitBlocksShort(bitmap, input.Offset, input.Len,
-		func(pos int64) error {
-			v := inputData[inputOffsets[pos]:inputOffsets[pos+1]]
-			if !utf8.Valid(v) {
-				return fmt.Errorf("%w: invalid UTF8 bytes: %x", arrow.ErrInvalid, v)
-			}
-			return nil
-		}, func() error { return nil })
+	return validateUTF8Sequence(input.Buffers[0].Buf, input.Offset, input.Len,
+		func(pos int64) []byte {
+			return inputData[inputOffsets[pos]:inputOffsets[pos+1]]
+		})
 }
 
 func CastFsbToFsb(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
@@ -83,7 +102,7 @@ func CastBinaryToBinary[InOffsetsT, OutOffsetsT int32 | int64](ctx *exec.KernelC
 	opts := ctx.State.(CastState)
 	input := &batch.Values[0].Array
 
-	if !input.Type.(arrow.BinaryDataType).IsUtf8() && out.Type.(arrow.BinaryDataType).IsUtf8() && !opts.AllowInvalidUtf8 {
+	if shouldValidateUTF8(input.Type, out.Type.(arrow.BinaryDataType), opts.AllowInvalidUtf8) {
 		if err := validateUtf8[InOffsetsT](input); err != nil {
 			return err
 		}
@@ -136,7 +155,7 @@ func CastFsbToBinary[OffsetsT int32 | int64](ctx *exec.KernelCtx, batch *exec.Ex
 	opts := ctx.State.(CastState)
 	input := &batch.Values[0].Array
 
-	if out.Type.(arrow.BinaryDataType).IsUtf8() && !opts.AllowInvalidUtf8 {
+	if shouldValidateUTF8(input.Type, out.Type.(arrow.BinaryDataType), opts.AllowInvalidUtf8) {
 		if err := validateUtf8Fsb(input); err != nil {
 			return err
 		}
@@ -178,14 +197,52 @@ func addBinaryToBinaryCast[InOffsetT, OutOffsetT int32 | int64](inType arrow.Typ
 		outType, CastBinaryToBinary[InOffsetT, OutOffsetT], nil)
 }
 
+func addViewToBinaryCast[OutOffsetT int32 | int64](inType arrow.Type, outType exec.OutputType) exec.ScalarKernel {
+	k := exec.NewScalarKernel([]exec.InputType{exec.NewIDInput(inType)},
+		outType, CastBinaryViewToBinary[OutOffsetT], nil)
+	k.NullHandling = exec.NullComputedNoPrealloc
+	k.MemAlloc = exec.MemNoPrealloc
+	return k
+}
+
+func addBinaryToBinaryViewCast(inType arrow.Type, outType exec.OutputType) exec.ScalarKernel {
+	k := exec.NewScalarKernel([]exec.InputType{exec.NewIDInput(inType)},
+		outType, CastBinaryToBinaryView, nil)
+	k.NullHandling = exec.NullComputedNoPrealloc
+	k.MemAlloc = exec.MemNoPrealloc
+	return k
+}
+
+func addViewToViewCast(inType arrow.Type, outType exec.OutputType) exec.ScalarKernel {
+	k := exec.NewScalarKernel([]exec.InputType{exec.NewIDInput(inType)},
+		outType, CastBinaryViewToBinaryView, nil)
+	k.NullHandling = exec.NullComputedNoPrealloc
+	k.MemAlloc = exec.MemNoPrealloc
+	return k
+}
+
 func addToBinaryKernels[OffsetsT int32 | int64](outType exec.OutputType, kernels []exec.ScalarKernel) []exec.ScalarKernel {
 	return append(kernels,
 		addBinaryToBinaryCast[int32, OffsetsT](arrow.STRING, outType),
 		addBinaryToBinaryCast[int32, OffsetsT](arrow.BINARY, outType),
 		addBinaryToBinaryCast[int64, OffsetsT](arrow.LARGE_STRING, outType),
 		addBinaryToBinaryCast[int64, OffsetsT](arrow.LARGE_BINARY, outType),
+		addViewToBinaryCast[OffsetsT](arrow.BINARY_VIEW, outType),
+		addViewToBinaryCast[OffsetsT](arrow.STRING_VIEW, outType),
 		exec.NewScalarKernel([]exec.InputType{exec.NewIDInput(arrow.FIXED_SIZE_BINARY)},
 			outType, CastFsbToBinary[OffsetsT], nil),
+	)
+}
+
+func addToBinaryViewKernels(outType exec.OutputType, kernels []exec.ScalarKernel) []exec.ScalarKernel {
+	return append(kernels,
+		addBinaryToBinaryViewCast(arrow.STRING, outType),
+		addBinaryToBinaryViewCast(arrow.BINARY, outType),
+		addBinaryToBinaryViewCast(arrow.LARGE_STRING, outType),
+		addBinaryToBinaryViewCast(arrow.LARGE_BINARY, outType),
+		addBinaryToBinaryViewCast(arrow.FIXED_SIZE_BINARY, outType),
+		addViewToViewCast(arrow.BINARY_VIEW, outType),
+		addViewToViewCast(arrow.STRING_VIEW, outType),
 	)
 }
 
@@ -213,6 +270,27 @@ func boolToStringCastExec(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.E
 	)
 	defer bldr.Release()
 
+	bldr.Reserve(int(input.Len))
+	// "true" (4 bytes) and "false" (5 bytes) are both inline for view
+	// builders; they consume no overflow data, so skip reservation and the
+	// limit check. For offset-based builders, count exact formatted bytes
+	// (tighter than 5*nonNull and avoids rejecting valid large all-true
+	// casts near the int32 limit).
+	if !isViewBuilder(bldr) {
+		var total int64
+		bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
+			func(pos int64) {
+				if bitutil.BitIsSet(input.Buffers[1].Buf, int(pos)) {
+					total += 4
+				} else {
+					total += 5
+				}
+			}, func() {})
+		if err := reserveFormattedDataExact(bldr, total); err != nil {
+			return err
+		}
+	}
+
 	bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
 		func(pos int64) {
 			bldr.Append(strconv.FormatBool(bitutil.BitIsSet(input.Buffers[1].Buf, int(pos))))
@@ -237,6 +315,11 @@ func timeToStringCastExec[T timeIntrinsic](ctx *exec.KernelCtx, batch *exec.Exec
 	)
 	defer bldr.Release()
 
+	bldr.Reserve(int(input.Len))
+	if err := reserveFormattedData(bldr, input, maxFormattedBytes(input.Type)); err != nil {
+		return err
+	}
+
 	bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
 		func(pos int64) {
 			bldr.Append(inputData[pos].FormattedString(inputType.TimeUnit()))
@@ -256,6 +339,11 @@ func numericToStringCastExec[T arrow.IntType | arrow.UintType | arrow.FloatType]
 		)
 		defer bldr.Release()
 
+		bldr.Reserve(int(input.Len))
+		if err := reserveFormattedData(bldr, input, maxFormattedBytes(input.Type)); err != nil {
+			return err
+		}
+
 		bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
 			func(pos int64) {
 				bldr.Append(formatter(inputData[pos]))
@@ -265,6 +353,109 @@ func numericToStringCastExec[T arrow.IntType | arrow.UintType | arrow.FloatType]
 		out.TakeOwnership(arr.Data())
 		return nil
 	}
+}
+
+// reserveFormattedData pre-reserves bldr's data buffer for at most
+// (non-null count) * perValueBytes formatted bytes. Returns arrow.ErrInvalid
+// when the product exceeds the destination builder's single-buffer limit,
+// avoiding a panic inside BinaryViewBuilder.ReserveData or an int32 offset
+// overflow in StringBuilder. For view builders whose per-value upper bound
+// fits inline (arrow.IsViewInline), all values are stored inside view
+// headers and consume no overflow data, so reservation and the limit
+// check are skipped.
+func reserveFormattedData(bldr array.StringLikeBuilder, input *exec.ArraySpan, perValueBytes int) error {
+	if perValueBytes <= 0 {
+		return nil
+	}
+	if isViewBuilder(bldr) && arrow.IsViewInline(perValueBytes) {
+		return nil
+	}
+	total := int64(input.Len-input.Nulls) * int64(perValueBytes)
+	return reserveFormattedDataExact(bldr, total)
+}
+
+// reserveFormattedDataExact reserves exactly total bytes of out-of-line
+// payload on bldr, returning arrow.ErrInvalid if total exceeds the
+// destination builder's single-buffer limit. Use this when the kernel can
+// compute the exact payload in advance; use reserveFormattedData with a
+// per-value upper bound otherwise.
+func reserveFormattedDataExact(bldr array.StringLikeBuilder, total int64) error {
+	limit := formattedDataLimit(bldr)
+	if total > limit {
+		return fmt.Errorf("%w: formatted cast payload (%d bytes) exceeds single data buffer limit (%d bytes) for destination builder",
+			arrow.ErrInvalid, total, limit)
+	}
+	if total > 0 {
+		bldr.ReserveData(int(total))
+	}
+	return nil
+}
+
+// isViewBuilder reports whether bldr writes into a view-typed array whose
+// out-of-line data lives in a single overflow buffer subject to the
+// view_value_size_limit. Only *array.StringViewBuilder satisfies the
+// StringLikeBuilder interface (BinaryViewBuilder's Append takes []byte,
+// not string), so this is effectively a StringView check, kept under a
+// clearer name so the inline-skip callers read as "view builder" intent.
+func isViewBuilder(bldr array.StringLikeBuilder) bool {
+	_, ok := bldr.(*array.StringViewBuilder)
+	return ok
+}
+
+// formattedDataLimit returns the largest contiguous data payload (in bytes)
+// that the destination builder can hold in a single buffer, clamped so that
+// reserveFormattedData's int(total) conversion cannot overflow:
+//   - *array.StringBuilder      (utf8):        MaxInt32 (int32 offsets)
+//   - *array.StringViewBuilder  (string_view): MaxInt32 (single overflow buffer)
+//   - *array.LargeStringBuilder (large_utf8):  MaxInt64 (int64 offsets),
+//     clamped to int64(math.MaxInt) so int(total) fits on 32-bit builds
+//     where int is 32-bit.
+func formattedDataLimit(bldr array.StringLikeBuilder) int64 {
+	limit := int64(math.MaxInt32)
+	if _, ok := bldr.(*array.LargeStringBuilder); ok {
+		limit = math.MaxInt64
+	}
+	if limit > int64(math.MaxInt) {
+		limit = int64(math.MaxInt)
+	}
+	return limit
+}
+
+// maxFormattedBytes returns an upper bound on the textual representation
+// of a single value of dt used by the numeric/temporal-to-string kernels.
+// The bound is used to pre-reserve the builder's data buffer so StringView
+// outputs stay within a single overflow block (compute's ArraySpan can
+// carry only one view data buffer).
+func maxFormattedBytes(dt arrow.DataType) int {
+	switch dt.ID() {
+	case arrow.INT8, arrow.UINT8:
+		return 4 // "-128" / "255"
+	case arrow.INT16:
+		return 6 // "-32768"
+	case arrow.UINT16:
+		return 5 // "65535"
+	case arrow.INT32:
+		return 11 // "-2147483648"
+	case arrow.UINT32:
+		return 10 // "4294967295"
+	case arrow.INT64, arrow.UINT64:
+		return 20 // "-9223372036854775808"
+	case arrow.FLOAT16:
+		return 16 // empirical max from strconv.FormatFloat(32): "-0.000100016594" is 15
+	case arrow.FLOAT32:
+		return 25 // scientific notation upper bound
+	case arrow.FLOAT64:
+		return 32 // scientific notation upper bound
+	case arrow.DATE32, arrow.DATE64:
+		return 10 // "YYYY-MM-DD"
+	case arrow.TIME32:
+		return 12 // "HH:MM:SS.sss"
+	case arrow.TIME64:
+		return 18 // "HH:MM:SS.nnnnnnnnn"
+	case arrow.TIMESTAMP:
+		return 35 // date + time with ns precision + short tz offset
+	}
+	return 0
 }
 
 func castTimestampToString(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
@@ -302,7 +493,9 @@ func castTimestampToString(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.
 
 	strlen := len(fmtstring)
 	bldr.Reserve(int(input.Len))
-	bldr.ReserveData(int(input.Len-input.Nulls) * strlen)
+	if err := reserveFormattedData(bldr, input, strlen); err != nil {
+		return err
+	}
 
 	bitutils.VisitBitBlocks(input.Buffers[0].Buf, input.Offset, input.Len,
 		func(pos int64) {
@@ -403,6 +596,11 @@ func GetToBinaryKernels(outType arrow.DataType) []exec.ScalarKernel {
 		return addNumericAndTemporalToStringCasts(outputType, out)
 	case arrow.LARGE_STRING:
 		out = addToBinaryKernels[int64](outputType, out)
+		return addNumericAndTemporalToStringCasts(outputType, out)
+	case arrow.BINARY_VIEW:
+		return addToBinaryViewKernels(outputType, out)
+	case arrow.STRING_VIEW:
+		out = addToBinaryViewKernels(outputType, out)
 		return addNumericAndTemporalToStringCasts(outputType, out)
 	}
 	return nil

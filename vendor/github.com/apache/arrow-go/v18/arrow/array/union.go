@@ -289,7 +289,15 @@ func NewSparseUnionFromArraysWithFieldCodes(typeIDs arrow.Array, children []arro
 		return nil, errors.New("arrow/array: type codes must have same length as children")
 	}
 
-	buffers := []*memory.Buffer{nil, typeIDs.Data().Buffers()[1]}
+	typeIDBuffer := typeIDs.Data().Buffers()[1]
+	if typeIDBuffer != nil {
+		typeIDBuffer = memory.SliceBuffer(typeIDBuffer,
+			arrow.Int8Traits.BytesRequired(typeIDs.Data().Offset()),
+			arrow.Int8Traits.BytesRequired(typeIDs.Len()))
+		defer typeIDBuffer.Release()
+	}
+
+	buffers := []*memory.Buffer{nil, typeIDBuffer}
 	ty := arrow.SparseUnionFromArrays(children, fields, codes)
 
 	childData := make([]arrow.ArrayData, len(children))
@@ -300,7 +308,7 @@ func NewSparseUnionFromArraysWithFieldCodes(typeIDs arrow.Array, children []arro
 		}
 	}
 
-	data := NewData(ty, typeIDs.Len(), buffers, childData, 0, typeIDs.Data().Offset())
+	data := NewData(ty, typeIDs.Len(), buffers, childData, 0, 0)
 	defer data.Release()
 	return NewSparseUnionData(data), nil
 }
@@ -549,6 +557,8 @@ func NewDenseUnionFromArraysWithFieldCodes(typeIDs, offsets arrow.Array, childre
 		return nil, errors.New("arrow/array: union typeIDs may not have nulls")
 	case offsets.NullN() != 0:
 		return nil, errors.New("arrow/array: nulls are not allowed in offsets for NewDenseUnionFromArrays*")
+	case typeIDs.Len() != offsets.Len():
+		return nil, errors.New("arrow/array: union typeIDs and offsets must have the same length")
 	case len(fields) > 0 && len(fields) != len(children):
 		return nil, errors.New("arrow/array: fields must be the same length as children")
 	case len(codes) > 0 && len(codes) != len(children):
@@ -556,14 +566,30 @@ func NewDenseUnionFromArraysWithFieldCodes(typeIDs, offsets arrow.Array, childre
 	}
 
 	ty := arrow.DenseUnionFromArrays(children, fields, codes)
-	buffers := []*memory.Buffer{nil, typeIDs.Data().Buffers()[1], offsets.Data().Buffers()[1]}
+	typeIDBuffer := typeIDs.Data().Buffers()[1]
+	if typeIDBuffer != nil {
+		typeIDBuffer = memory.SliceBuffer(typeIDBuffer,
+			arrow.Int8Traits.BytesRequired(typeIDs.Data().Offset()),
+			arrow.Int8Traits.BytesRequired(typeIDs.Len()))
+		defer typeIDBuffer.Release()
+	}
+
+	offsetBuffer := offsets.Data().Buffers()[1]
+	if offsetBuffer != nil {
+		offsetBuffer = memory.SliceBuffer(offsetBuffer,
+			arrow.Int32Traits.BytesRequired(offsets.Data().Offset()),
+			arrow.Int32Traits.BytesRequired(offsets.Len()))
+		defer offsetBuffer.Release()
+	}
+
+	buffers := []*memory.Buffer{nil, typeIDBuffer, offsetBuffer}
 
 	childData := make([]arrow.ArrayData, len(children))
 	for i, c := range children {
 		childData[i] = c.Data()
 	}
 
-	data := NewData(ty, typeIDs.Len(), buffers, childData, 0, typeIDs.Data().Offset())
+	data := NewData(ty, typeIDs.Len(), buffers, childData, 0, 0)
 	defer data.Release()
 	return NewDenseUnionData(data), nil
 }
@@ -998,6 +1024,7 @@ func (b *SparseUnionBuilder) NewSparseUnionArray() (a *SparseUnion) {
 
 func (b *SparseUnionBuilder) UnmarshalJSON(data []byte) (err error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -1257,6 +1284,7 @@ func (b *DenseUnionBuilder) NewDenseUnionArray() (a *DenseUnion) {
 
 func (b *DenseUnionBuilder) UnmarshalJSON(data []byte) (err error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
