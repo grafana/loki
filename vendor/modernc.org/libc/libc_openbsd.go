@@ -1388,20 +1388,30 @@ func Xabort(t *TLS) {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo("")) //TODO
-	// if dmesgs {
-	// 	dmesg("%v:", origin(1))
-	// }
-	// p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(signal.Sigaction{})))
-	// if p == 0 {
-	// 	panic("OOM")
-	// }
-
-	// (*signal.Sigaction)(unsafe.Pointer(p)).F__sigaction_u.F__sa_handler = signal.SIG_DFL
-	// Xsigaction(t, signal.SIGABRT, p, 0)
-	// Xfree(t, p)
-	// unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
-	// panic(todo("unrechable"))
+	if dmesgs {
+		dmesg("%v:", origin(1))
+	}
+	// OpenBSD's Xabort was a stub, so C abort(3) didn't terminate by signal —
+	// callers such as SQLite's crash tests (writecrash.test) require the process to be
+	// killed BY A SIGNAL, so Tcl's exec reports "child killed: ..." rather than a Go
+	// panic's "child process exited abnormally".
+	//
+	// A faithful SIGABRT-based abort() is not reachable from pure-Go libc on openbsd:
+	//   - libc's own Xsigaction is an unimplemented stub, and openbsd's pinsyscalls(2)
+	//     makes the raw sys_sigaction / getthrid / thrkill syscalls return ENOSYS
+	//     through the generic indirect syscall path (only libc.so's pinned call sites
+	//     may issue them; verified: sigaction -> errno 78). So SIGABRT's disposition
+	//     cannot be reset to SIG_DFL, which means the Go runtime always catches a
+	//     delivered SIGABRT, prints a crash trace, and exits status 2 — again reported
+	//     as "exited abnormally", not "child killed".
+	//   - The only signal that cannot be caught, blocked or ignored is SIGKILL. It
+	//     terminates the process immediately and unconditionally by signal (no race, no
+	//     trace, no "SIGABRT" string leaking into the harness output). This is the best
+	//     abnormal-termination available here and is exactly what abort()'s callers in
+	//     the crash tests need. unix.Kill routes through libc.so, so unlike the raw
+	//     syscalls above it is not defeated by pinsyscalls.
+	unix.Kill(unix.Getpid(), unix.SIGKILL)
+	panic(todo("unrechable"))
 }
 
 // int fflush(FILE *stream);
@@ -1776,31 +1786,49 @@ func Xreaddir(t *TLS, dir uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v dir=%v, (%v:)", t, dir, origin(2))
 	}
-	if (*darwinDir)(unsafe.Pointer(dir)).eof {
-		return 0
-	}
+	for {
+		if (*darwinDir)(unsafe.Pointer(dir)).eof {
+			return 0
+		}
 
-	if (*darwinDir)(unsafe.Pointer(dir)).l == (*darwinDir)(unsafe.Pointer(dir)).h {
-		n, err := unix.Getdirentries((*darwinDir)(unsafe.Pointer(dir)).fd, (*darwinDir)(unsafe.Pointer(dir)).buf[:], nil)
-		// trc("must read: %v %v", n, err)
-		if n == 0 {
-			if err != nil && err != io.EOF {
-				if dmesgs {
-					dmesg("%v: %v FAIL", origin(1), err)
+		if (*darwinDir)(unsafe.Pointer(dir)).l == (*darwinDir)(unsafe.Pointer(dir)).h {
+			n, err := unix.Getdirentries((*darwinDir)(unsafe.Pointer(dir)).fd, (*darwinDir)(unsafe.Pointer(dir)).buf[:], nil)
+			// trc("must read: %v %v", n, err)
+			if n == 0 {
+				if err != nil && err != io.EOF {
+					if dmesgs {
+						dmesg("%v: %v FAIL", origin(1), err)
+					}
+					t.setErrno(err)
 				}
-				t.setErrno(err)
+				(*darwinDir)(unsafe.Pointer(dir)).eof = true
+				return 0
 			}
+
+			(*darwinDir)(unsafe.Pointer(dir)).l = 0
+			(*darwinDir)(unsafe.Pointer(dir)).h = n
+			// trc("new l %v, h %v", (*darwinDir)(unsafe.Pointer(dir)).l, (*darwinDir)(unsafe.Pointer(dir)).h)
+		}
+		de := dir + unsafe.Offsetof(darwinDir{}.buf) + uintptr((*darwinDir)(unsafe.Pointer(dir)).l)
+		reclen := int((*unix.Dirent)(unsafe.Pointer(de)).Reclen)
+		if reclen <= 0 || (*darwinDir)(unsafe.Pointer(dir)).l+reclen > (*darwinDir)(unsafe.Pointer(dir)).h {
+			// Malformed record, do not spin on it. Same as the bogus pointer/reclen
+			// checks in OpenBSD's _readdir_unlocked().
 			(*darwinDir)(unsafe.Pointer(dir)).eof = true
 			return 0
 		}
 
-		(*darwinDir)(unsafe.Pointer(dir)).l = 0
-		(*darwinDir)(unsafe.Pointer(dir)).h = n
-		// trc("new l %v, h %v", (*darwinDir)(unsafe.Pointer(dir)).l, (*darwinDir)(unsafe.Pointer(dir)).h)
+		(*darwinDir)(unsafe.Pointer(dir)).l += reclen
+		// getdirentries(2) reports entries of deleted files with d_fileno set to
+		// zero, readdir(3) must not return them. On FFS such a record survives an
+		// unlink whenever it is the first one in a directory block, so a directory
+		// larger than one block will otherwise show ghost entries.
+		if (*unix.Dirent)(unsafe.Pointer(de)).Fileno == 0 {
+			continue
+		}
+
+		return de
 	}
-	de := dir + unsafe.Offsetof(darwinDir{}.buf) + uintptr((*darwinDir)(unsafe.Pointer(dir)).l)
-	(*darwinDir)(unsafe.Pointer(dir)).l += int((*unix.Dirent)(unsafe.Pointer(de)).Reclen)
-	return de
 }
 
 type darwinDir struct {
