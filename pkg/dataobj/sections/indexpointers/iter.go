@@ -39,8 +39,7 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[TenantIndexPointe
 
 func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer] {
 	return result.Iter(func(yield func(IndexPointer) bool) error {
-		columnarSection := section.inner
-		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
+		dset, err := section.makeDataset()
 		if err != nil {
 			return fmt.Errorf("creating columns dataset: %w", err)
 		}
@@ -84,6 +83,17 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 			}
 		}
 	})
+}
+
+// makeDataset builds a dataset from only the recognized columns, so rows stay
+// aligned with Columns() and columns from a newer Loki are skipped, not decoded.
+func (s *Section) makeDataset() (*columnar.Dataset, error) {
+	recognized := s.Columns()
+	inner := make([]*columnar.Column, len(recognized))
+	for i, col := range recognized {
+		inner[i] = col.inner
+	}
+	return columnar.MakeDataset(s.inner, inner)
 }
 
 // decodeRow decodes an indexpointer from a [dataset.Row], using the provided columns to
