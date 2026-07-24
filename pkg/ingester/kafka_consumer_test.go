@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,14 +81,15 @@ func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
 	var (
-		toPush     []partition.Record
-		offset     = int64(0)
-		pusher     = &fakePusher{t: t}
-		numWorkers = 1
+		toPush           []partition.Record
+		offset           = int64(0)
+		pusher           = &fakePusher{t: t}
+		numWorkers       = 1
+		numBuffferNumers = 1000
 	)
 
 	// Set the number of workers to 1 to test the consumer
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers, numBuffferNumers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	records, err := kafka.Encode(0, tenantID, streamBar, 10000)
@@ -132,4 +134,48 @@ func TestConsumer(t *testing.T) {
 			Streams: []logproto.Stream{streamFoo},
 		},
 	}, pusher.pushes)
+}
+
+func TestConsumeReturnsAfterProcessingBatch(t *testing.T) {
+	var (
+		offset = int64(0)
+		pusher = &fakePusher{t: t}
+	)
+
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 1, 16)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	require.NoError(t, err)
+
+	kc := consumer.(*kafkaConsumer)
+
+	var records []partition.Record
+	encoded, err := kafka.Encode(0, tenantID, streamBar, 10000)
+	require.NoError(t, err)
+	for _, record := range encoded {
+		records = append(records, partition.Record{
+			Ctx:      context.Background(),
+			TenantID: tenantID,
+			Content:  record.Value,
+			Offset:   offset,
+		})
+		offset++
+	}
+
+	finished := make(chan struct{})
+	var panicked atomic.Bool
+	go func() {
+		defer close(finished)
+		defer func() {
+			if recover() != nil {
+				panicked.Store(true)
+			}
+		}()
+		kc.consume(context.Background(), records)
+	}()
+
+	select {
+	case <-finished:
+		require.False(t, panicked.Load())
+	case <-time.After(2 * time.Second):
+		t.Fatal("consume did not return after processing a batch")
+	}
 }
