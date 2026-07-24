@@ -1669,7 +1669,7 @@ github.com/opentracing/opentracing-go/log
 # github.com/oschwald/geoip2-golang v1.13.0
 ## explicit; go 1.21
 github.com/oschwald/geoip2-golang
-# github.com/oschwald/maxminddb-golang v1.13.0
+# github.com/oschwald/maxminddb-golang v1.13.1
 ## explicit; go 1.21
 github.com/oschwald/maxminddb-golang
 # github.com/parquet-go/parquet-go v0.25.1

@@ -95,6 +95,13 @@ func (r *Reader) NetworksWithin(network *net.IPNet, options ...NetworksOption) *
 	}
 
 	pointer, bit := r.traverseTree(ip, 0, uint(prefixLength))
+
+	// We could skip this when bit >= prefixLength if we assume that the network
+	// passed in is in canonical form. However, given that this may not be the
+	// case, it is safest to always take the mask. If this is hot code at some
+	// point, we could eliminate the allocation of the net.IPMask by zeroing
+	// out the bits in ip directly.
+	ip = ip.Mask(net.CIDRMask(bit, len(ip)*8))
 	networks.nodes = []netNode{
 		{
 			ip:      ip,
