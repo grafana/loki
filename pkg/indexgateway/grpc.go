@@ -17,15 +17,17 @@ import (
 // the same gRPC server (e.g. in single-binary mode) are unaffected.
 const indexGatewayServicePrefix = "/indexgatewaypb.IndexGateway/"
 
-// utilizationChecker is satisfied by limiter.UtilizationBasedLimiter.
-type utilizationChecker interface {
+// UtilizationChecker is satisfied by the limiters in pkg/util/limiter, e.g.
+// limiter.UtilizationBasedLimiter and limiter.SchedulerBacklogLimiter.
+type UtilizationChecker interface {
 	// LimitingReason returns a non-empty reason when requests should be rejected.
 	LimitingReason() string
 }
 
 // NewSaturationCheckInterceptors returns gRPC interceptors that reject IndexGateway
-// requests with a saturation error while checker reports a limiting reason.
-func NewSaturationCheckInterceptors(r prometheus.Registerer, checker utilizationChecker) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
+// requests with a saturation error while any checker reports a limiting reason. The
+// first non-empty reason wins.
+func NewSaturationCheckInterceptors(r prometheus.Registerer, checkers ...UtilizationChecker) (grpc.UnaryServerInterceptor, grpc.StreamServerInterceptor) {
 	limitedRequests := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Subsystem: "index_gateway",
@@ -37,12 +39,13 @@ func NewSaturationCheckInterceptors(r prometheus.Registerer, checker utilization
 		if !strings.HasPrefix(fullMethod, indexGatewayServicePrefix) {
 			return nil
 		}
-		reason := checker.LimitingReason()
-		if reason == "" {
-			return nil
+		for _, checker := range checkers {
+			if reason := checker.LimitingReason(); reason != "" {
+				limitedRequests.WithLabelValues(reason).Inc()
+				return newSaturatedError(reason)
+			}
 		}
-		limitedRequests.WithLabelValues(reason).Inc()
-		return newSaturatedError(reason)
+		return nil
 	}
 
 	unary := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
