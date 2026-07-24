@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	promconfig "github.com/prometheus/prometheus/config"
 	"go.yaml.in/yaml/v4"
@@ -73,6 +74,8 @@ func (c *RemoteWriteConfig) Validate() error {
 				return fmt.Errorf("invalid remote write client for tenant %q: %w", id, err)
 			}
 		}
+	} else {
+		return errors.New("remote-write enabled but no clients are configured")
 	}
 
 	return nil
