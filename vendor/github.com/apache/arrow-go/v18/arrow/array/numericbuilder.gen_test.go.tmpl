@@ -287,7 +287,7 @@ func Test{{.Name}}BuilderUnmarshalJSON(t *testing.T) {
 
 
 {{ if or (eq .Name "Float64") (eq .Name "Float32") -}}
-	jsonstr := `[0, 1, "+Inf", 2, 3, "NaN", "NaN", 4, 5, "-Inf"]`
+	jsonstr := `[0, 1, "+Inf", 2.5, 3, "NaN", "NaN", 4, 5, "-Inf"]`
 
 	err := bldr.UnmarshalJSON([]byte(jsonstr))
 	assert.NoError(t, err)
@@ -300,8 +300,9 @@ func Test{{.Name}}BuilderUnmarshalJSON(t *testing.T) {
 	assert.False(t, math.IsInf(float64(arr.Value(0)), 0), arr.Value(0))
 	assert.True(t, math.IsInf(float64(arr.Value(2)), 1), arr.Value(2))
 	assert.True(t, math.IsNaN(float64(arr.Value(5))), arr.Value(5))
+	assert.Equal(t, {{ .Type }}(2.5), arr.Value(3))
 {{else}}
-	jsonstr := `[0, 1, null, 2.3, -11]`
+	jsonstr := `[0, 1, null, 2, 100]`
 
 	err := bldr.UnmarshalJSON([]byte(jsonstr))
 	assert.NoError(t, err)
@@ -315,6 +316,7 @@ func Test{{.Name}}BuilderUnmarshalJSON(t *testing.T) {
 	assert.Equal(t, int64(1),  int64(arr.Value(1)))
 	assert.True(t, arr.IsNull(2))
 	assert.Equal(t, int64(2),  int64(arr.Value(3)))
+	assert.Equal(t, int64(100), int64(arr.Value(4)))
 	assert.Equal(t, int64(5),  int64(arr.Len()))
 {{end -}}
 }

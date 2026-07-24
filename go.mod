@@ -52,7 +52,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.19.0
 	github.com/klauspost/pgzip v1.2.6
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/minio/minio-go/v7 v7.2.1
@@ -84,11 +84,11 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.53.0
 	golang.org/x/net v0.56.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0
 	google.golang.org/api v0.286.0
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.82.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 )
@@ -102,7 +102,7 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.22.1
 	github.com/IBM/ibm-cos-sdk-go v1.14.1
 	github.com/aliyun/credentials-go v1.4.12
-	github.com/apache/arrow-go/v18 v18.6.0
+	github.com/apache/arrow-go/v18 v18.7.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
@@ -375,7 +375,7 @@ require (
 	github.com/hashicorp/serf v0.10.4 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
