@@ -325,6 +325,40 @@ The compactor requires a working directory for index compaction, but none is con
 - HTTP status: N/A (startup failure)
 - Configurable per tenant: No
 
+### Error: LBAC requires authentication
+
+**Error message:**
+
+```text
+CONFIG ERROR: auth_enabled must be true when lbac.enabled is true
+```
+
+**Cause:**
+
+Label-based access control (`lbac.enabled: true`) relies on per-tenant authentication to determine which access policies to apply, but `auth_enabled` is set to `false`.
+
+**Resolution:**
+
+- **Enable authentication**:
+
+  ```yaml
+  auth_enabled: true
+  ```
+
+- **Or disable LBAC**:
+
+  ```yaml
+  lbac:
+    enabled: false
+  ```
+
+**Properties:**
+
+- Enforced by: Configuration validation
+- Retryable: No (configuration must be fixed)
+- HTTP status: N/A (startup failure)
+- Configurable per tenant: No
+
 ### Error: Unrecognized index or store type
 
 **Error message:**
