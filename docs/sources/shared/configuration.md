@@ -3991,6 +3991,17 @@ ring:
 # limiter's moving average when limiting starts or stops.
 # CLI flag: -index-gateway.log-utilization-samples
 [log_utilization_samples: <boolean> | default = false]
+
+# Experimental: Go scheduler backlog per core above which the index gateway
+# starts rejecting requests. The backlog is the average number of runnable
+# goroutines waiting to run per core (GOMAXPROCS), computed from the Go
+# scheduler latency histogram as a moving average over a 60s sliding window,
+# with limiting starting only after a 60s warmup. It approaches 0 on a healthy
+# instance and exceeds 1 when saturated, including saturation caused by
+# memory-mapped file page faults that CPU utilization does not capture. A
+# recommended value is around 1.0. 0 to disable.
+# CLI flag: -index-gateway.scheduler-backlog-limit
+[scheduler_backlog_limit: <float> | default = 0]
 ```
 
 ### ingester

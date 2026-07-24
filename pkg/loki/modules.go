@@ -1962,25 +1962,66 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
 
-	if !t.Cfg.IndexGateway.UtilizationLimiterEnabled() {
+	if !t.Cfg.IndexGateway.UtilizationLimiterEnabled() && !t.Cfg.IndexGateway.SchedulerLimiterEnabled() {
 		return nil, nil
 	}
 
-	// The limiter is returned as this module's service so its utilization sampling runs
-	// for the process lifetime. Until it is running (and during its warmup window),
+	// The limiters are returned as this module's service so their sampling runs for
+	// the process lifetime. Until they are running (and during their warmup window),
 	// LimitingReason returns an empty string, so the interceptors fail open.
-	utilizationLimiter := limiter.NewUtilizationBasedLimiter(
-		t.Cfg.IndexGateway.CPUUtilizationLimit,
-		uint64(t.Cfg.IndexGateway.MemoryUtilizationLimit),
-		t.Cfg.IndexGateway.LogUtilizationSamples,
-		log.With(util_log.Logger, "component", "index-gateway"),
-		// The limiter registers its gauges without any prefix, prepend the component one.
-		prometheus.WrapRegistererWithPrefix(constants.Loki+"_index_gateway_", prometheus.DefaultRegisterer),
+	logger := log.With(util_log.Logger, "component", "index-gateway")
+	// The limiters register their gauges without any prefix, prepend the component one.
+	limiterReg := prometheus.WrapRegistererWithPrefix(constants.Loki+"_index_gateway_", prometheus.DefaultRegisterer)
+
+	var (
+		limiterServices []services.Service
+		checkers        []indexgateway.UtilizationChecker
 	)
-	unary, stream := indexgateway.NewSaturationCheckInterceptors(prometheus.DefaultRegisterer, utilizationLimiter)
+	if t.Cfg.IndexGateway.UtilizationLimiterEnabled() {
+		utilizationLimiter := limiter.NewUtilizationBasedLimiter(
+			t.Cfg.IndexGateway.CPUUtilizationLimit,
+			uint64(t.Cfg.IndexGateway.MemoryUtilizationLimit),
+			t.Cfg.IndexGateway.LogUtilizationSamples,
+			logger,
+			limiterReg,
+		)
+		limiterServices = append(limiterServices, utilizationLimiter)
+		checkers = append(checkers, utilizationLimiter)
+	}
+	if t.Cfg.IndexGateway.SchedulerLimiterEnabled() {
+		schedulerLimiter := limiter.NewSchedulerBacklogLimiter(t.Cfg.IndexGateway.SchedulerBacklogLimit, logger, limiterReg)
+		limiterServices = append(limiterServices, schedulerLimiter)
+		checkers = append(checkers, schedulerLimiter)
+	}
+
+	unary, stream := indexgateway.NewSaturationCheckInterceptors(prometheus.DefaultRegisterer, checkers...)
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, unary)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, stream)
-	return utilizationLimiter, nil
+
+	if len(limiterServices) == 1 {
+		return limiterServices[0], nil
+	}
+
+	// Combine the limiters into a single module service. A failed limiter fails the
+	// module instead of silently leaving the gateway unlimited.
+	mgr, err := services.NewManager(limiterServices...)
+	if err != nil {
+		return nil, err
+	}
+	watcher := services.NewFailureWatcher()
+	watcher.WatchManager(mgr)
+	return services.NewBasicService(
+		func(ctx context.Context) error { return services.StartManagerAndAwaitHealthy(ctx, mgr) },
+		func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-watcher.Chan():
+				return fmt.Errorf("index gateway saturation limiter subservice failed: %w", err)
+			}
+		},
+		func(_ error) error { return services.StopManagerAndAwaitStopped(context.Background(), mgr) },
+	), nil
 }
 
 func (t *Loki) initBloomPlanner() (services.Service, error) {
