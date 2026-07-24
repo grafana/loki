@@ -335,23 +335,33 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			}
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 
+			// findLine returns the logged line containing marker, or "" if none.
+			// Both the rejection and accepted lines use a context-aware logger, but
+			// other lines in the buffer also carry org_id, so assertions must target
+			// the specific line.
+			findLine := func(marker string) string {
+				for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+					if strings.Contains(line, marker) {
+						return line
+					}
+				}
+				return ""
+			}
+
 			if tc.err == noErr {
 				require.NoError(t, err)
+
+				// The accepted line must carry the tenant (uses the context logger).
+				acceptedLine := findLine("Query is within limits")
+				require.NotEmpty(t, acceptedLine, "no accepted line logged")
+				require.Contains(t, acceptedLine, "org_id=1")
 			} else {
 				require.Error(t, err)
 				require.ErrorContains(t, err, tc.err)
 
 				// A query rejected for exceeding MaxQuerierBytesRead must log the query,
-				// its hash, and the tenant so the rejection can be correlated with the
-				// query. Assert against the rejection line itself: other lines in the
-				// buffer also carry org_id.
-				var rejectionLine string
-				for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
-					if strings.Contains(line, "Query exceeds limits") {
-						rejectionLine = line
-						break
-					}
-				}
+				// its hash, and the tenant so the rejection can be correlated with the query.
+				rejectionLine := findLine("Query exceeds limits")
 				require.NotEmpty(t, rejectionLine, "no rejection line logged")
 				require.Contains(t, rejectionLine, "org_id=1")
 				require.Contains(t, rejectionLine, fmt.Sprintf("query=%q", tc.query))
