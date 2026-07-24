@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -50,7 +52,29 @@ type coordinator struct {
 	clock   func() time.Time
 	metrics *coordinatorMetrics
 	limits  Limits
+
+	// Experiment knobs, derived from cfg in newCoordinator. tenantFilter (from
+	// cfg.Tenants) restricts + force-enables tenants; targetWindow/hasTargetWindow
+	// (from cfg.TargetWindow) pin the window set; runOnce exits after convergence.
+	tenantFilter    map[string]struct{}
+	targetWindow    time.Time
+	hasTargetWindow bool
+	runOnce         bool
+	// logMergeRetryBackoff is the base backoff before a LogMerge task retry;
+	// newCoordinator sets it to logMergeTaskRetryBackoff. Tests may leave it zero
+	// to retry without sleeping.
+	logMergeRetryBackoff time.Duration
 }
+
+const (
+	// logMergeTaskRetries is the number of additional attempts for a failing
+	// LogMerge task before the phase fails. Retries cover transient worker drops
+	// (e.g. a restarting/OOMed worker) so one flaky task does not fail the phase.
+	logMergeTaskRetries = 10
+	// logMergeTaskRetryBackoff is the base backoff before the first retry,
+	// doubled per subsequent retry and capped in retryDelay.
+	logMergeTaskRetryBackoff = 2 * time.Second
+)
 
 // newCoordinator constructs a coordinator wired to a real
 // *metastore.TableOfContentsWriter and a workflow.Runner. The runPlan field
@@ -65,18 +89,59 @@ func newCoordinator(
 	reg prometheus.Registerer,
 	limits Limits,
 ) *coordinator {
-	return &coordinator{
+	c := &coordinator{
 		cfg:    cfg,
 		logger: logger,
 		bucket: bucket,
 		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
-		metastoreWriter: metastoreWriter,
-		clock:           time.Now,
-		metrics:         newCoordinatorMetrics(reg),
-		limits:          limits,
+		metastoreWriter:      metastoreWriter,
+		clock:                time.Now,
+		metrics:              newCoordinatorMetrics(reg),
+		limits:               limits,
+		tenantFilter:         parseTenants(cfg.Tenants),
+		runOnce:              cfg.RunOnce,
+		logMergeRetryBackoff: logMergeTaskRetryBackoff,
 	}
+	// TargetWindow parseability is checked in Config.Validate, so an error here is
+	// unexpected; log and fall back to the default window set.
+	if w, ok, err := cfg.ParseTargetWindow(); err != nil {
+		level.Warn(logger).Log("msg", "ignoring invalid target_window", "err", err)
+	} else if ok {
+		c.targetWindow = w.Truncate(metastore.MetastoreWindowSize)
+		c.hasTargetWindow = true
+	}
+	return c
+}
+
+// parseTenants splits a comma-separated tenant allow-list into a set. Returns
+// nil ("all tenants") for an empty or whitespace-only input.
+func parseTenants(s string) map[string]struct{} {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	set := make(map[string]struct{})
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			set[t] = struct{}{}
+		}
+	}
+	return set
+}
+
+// phasesFor reports which compaction phases run for tenant. With a non-empty
+// experiment allow-list (cfg.Tenants), listed tenants run both phases and
+// unlisted tenants run none, bypassing the Limits gate; otherwise the per-tenant
+// Limits decide.
+func (c *coordinator) phasesFor(tenant string) (runIndex, runLog bool) {
+	if len(c.tenantFilter) > 0 {
+		if _, ok := c.tenantFilter[tenant]; !ok {
+			return false, false
+		}
+		return true, true
+	}
+	return c.limits.CompactionPhases(tenant)
 }
 
 // Run reconciles the set of per-tenant workers against the compacted windows'
@@ -87,12 +152,25 @@ func (c *coordinator) Run(ctx context.Context) error {
 		"msg", "starting dataobj compaction coordinator",
 		"polling_interval", c.cfg.PollingInterval,
 		"plan_version", c.cfg.PlanVersion,
+		"run_once", c.runOnce,
+		"target_window", c.cfg.TargetWindow,
+		"tenants", c.cfg.Tenants,
 	)
 
 	workers := make(map[string]context.CancelFunc)
 	var wg sync.WaitGroup
 
 	c.reconcile(ctx, workers, &wg)
+
+	// run-once: each selected tenant's worker returns once it converges (see
+	// runTenantLoop), so waiting for all of them is the whole job. Discovery reads
+	// the seeded ToC directly, so one reconcile starts every worker; transient
+	// worker/scheduler unreadiness is absorbed by per-task retries.
+	if c.runOnce {
+		wg.Wait()
+		level.Info(c.logger).Log("msg", "run-once: all selected tenants converged, stopping coordinator")
+		return nil
+	}
 
 	ticker := time.NewTicker(c.cfg.PollingInterval)
 	defer ticker.Stop()
@@ -116,6 +194,9 @@ func (c *coordinator) Run(ctx context.Context) error {
 // older windows. With the default lookback of 0 this is exactly the current
 // window, preserving the original single-window behaviour.
 func (c *coordinator) windows() []time.Time {
+	if c.hasTargetWindow {
+		return []time.Time{c.targetWindow}
+	}
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
 	for i := 0; i <= c.cfg.WindowLookback; i++ {
@@ -136,7 +217,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	for tenant, cancel := range workers {
 		// A worker stays alive whenever any phase runs; runLog is irrelevant to
 		// liveness because it implies runIndex.
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
+		if runIndex, _ := c.phasesFor(tenant); !runIndex {
 			cancel()
 			delete(workers, tenant)
 		}
@@ -150,7 +231,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		if _, running := workers[tenant]; running {
 			continue
 		}
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
+		if runIndex, _ := c.phasesFor(tenant); !runIndex {
 			continue
 		}
 		c.startWorker(ctx, workers, wg, tenant)
@@ -261,6 +342,12 @@ func (c *coordinator) compactTenantLogs(
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
+	total := len(tasks)
+	level.Info(c.logger).Log("msg", "log-compaction: dispatching tasks",
+		"tenant", tenant, "window", window, "tasks", total,
+		"max_running", c.cfg.LogMaxRunningCompactionTasks, "max_retries", logMergeTaskRetries)
+
+	var completed atomic.Int64
 	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.LogMaxRunningCompactionTasks > 0 {
@@ -270,10 +357,11 @@ func (c *coordinator) compactTenantLogs(
 		g.Go(func() error {
 			plan := buildLogMergePlan(tenant, window, ts)
 			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
-			rec, err := c.runPlan(gctx, opts, plan)
+			rec, err := c.runLogMergeTask(gctx, opts, plan, i)
 			if err != nil {
 				return err
 			}
+			c.logLogMergeProgress(tenant, window, int(completed.Add(1)), total)
 			if rec == nil {
 				return nil
 			}
@@ -346,6 +434,90 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, nil
 	}
 	return stats, nil
+}
+
+// runLogMergeTask runs one LogMerge plan, retrying on error up to
+// logMergeTaskRetries additional times with capped backoff. Retries cover
+// transient worker drops (e.g. a restarting/OOMed worker not yet reconnected);
+// re-running is safe because a swap that already happened is a no-op. Returns
+// the task's result record on the first success, or the last error once retries
+// are exhausted or ctx is cancelled.
+func (c *coordinator) runLogMergeTask(ctx context.Context, opts workflow.Options, plan *physical.Plan, task int) (arrow.RecordBatch, error) {
+	maxAttempts := logMergeTaskRetries + 1
+	var (
+		rec arrow.RecordBatch
+		err error
+	)
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
+		if rec, err = c.runPlan(ctx, opts, plan); err == nil {
+			return rec, nil
+		}
+		if attempt < maxAttempts {
+			level.Warn(c.logger).Log("msg", "log-merge task failed, retrying",
+				"task", task, "attempt", attempt, "max_attempts", maxAttempts, "err", err)
+			if werr := sleepCtx(ctx, retryDelay(c.logMergeRetryBackoff, attempt-1)); werr != nil {
+				return nil, werr
+			}
+		}
+	}
+	level.Warn(c.logger).Log("msg", "log-merge task failed, retries exhausted",
+		"task", task, "attempts", maxAttempts, "err", err)
+	return nil, err
+}
+
+// logLogMergeProgress emits a progress line at roughly every ten-percent step
+// and on the final task.
+func (c *coordinator) logLogMergeProgress(tenant string, window time.Time, done, total int) {
+	if done != total && done%progressStep(total) != 0 {
+		return
+	}
+	pct := 0
+	if total > 0 {
+		pct = done * 100 / total
+	}
+	level.Info(c.logger).Log("msg", "log-compaction progress",
+		"tenant", tenant, "window", window, "completed", done, "total", total, "pct", pct)
+}
+
+// progressStep returns the completion interval at which to log progress: about
+// ten updates over a large cycle, every task for small ones.
+func progressStep(total int) int {
+	if step := total / 10; step > 1 {
+		return step
+	}
+	return 1
+}
+
+// retryDelay returns the backoff before the next retry: base doubled per prior
+// retry, capped at 30s. A non-positive base disables backoff (used in tests).
+func retryDelay(base time.Duration, priorRetries int) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	const maxDelay = 30 * time.Second
+	if d := base << priorRetries; d > 0 && d < maxDelay {
+		return d
+	}
+	return maxDelay
+}
+
+// sleepCtx waits for d or until ctx is cancelled, returning ctx.Err() on
+// cancellation and nil otherwise. A non-positive d returns immediately.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // compactTenant performs the per-(tenant, window) IndexMerge. Stats are
@@ -675,11 +847,12 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 // window errored so a single failing window retries the whole phase.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	noProgress := 0
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		runIndex, runLog := c.limits.CompactionPhases(tenant)
+		runIndex, runLog := c.phasesFor(tenant)
 		if !runIndex && !runLog {
 			return
 		}
@@ -693,8 +866,22 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			return
 		}
 
-		if outcome != phaseOutcomeError {
-			p = p.flip()
+		if outcome == phaseOutcomeError {
+			noProgress = 0 // never converge while a phase is failing
+			continue       // re-arm the same phase
+		}
+		if outcome == phaseOutcomeSwapped {
+			noProgress = 0
+		} else {
+			noProgress++
+		}
+		p = p.flip()
+		// run-once: two consecutive non-error phases with no swap span a full
+		// IndexMerge+LogMerge round that changed nothing — the tenant has
+		// converged.
+		if c.runOnce && noProgress >= 2 {
+			level.Info(c.logger).Log("msg", "run-once: tenant converged, stopping worker", "tenant", tenant)
+			return
 		}
 	}
 }
