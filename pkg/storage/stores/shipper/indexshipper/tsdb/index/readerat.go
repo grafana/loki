@@ -207,6 +207,20 @@ func (b *fileByteSlice) maybeCleanupCache() {
 	}
 }
 
+// evict drops the mapping's resident pages and clears the residency cache so
+// subsequent reads re-probe with mincore. It is intended for benchmarks that
+// want to exercise the cold-page path; it is a no-op when mmap is disabled.
+func (b *fileByteSlice) evict() error {
+	if len(b.data) == 0 {
+		return nil
+	}
+	for i := range b.mincoreBits {
+		b.mincoreBits[i].Store(0)
+	}
+	b.mincoreNextCleanup.Store(0)
+	return evictPages(b.data)
+}
+
 // Close releases the mmap region and the underlying file descriptor.
 func (b *fileByteSlice) Close() error {
 	var err error

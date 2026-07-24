@@ -52,3 +52,14 @@ func munmapFile(data []byte) error {
 	}
 	return unix.Munmap(data)
 }
+
+// evictPages asks the kernel to drop the resident pages of the mapping
+// (MADV_DONTNEED). It is used by benchmarks to simulate a cold page cache so
+// the mmap read path is forced to take major page faults. It is a no-op when
+// there is no mapping.
+func evictPages(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	return unix.Madvise(data, unix.MADV_DONTNEED)
+}

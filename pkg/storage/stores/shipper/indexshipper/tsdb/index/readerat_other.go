@@ -18,3 +18,6 @@ func mincore(_ *byte, _ int) bool { return false }
 func mmapFile(_ *os.File, _ int) ([]byte, error) { return nil, nil }
 
 func munmapFile(_ []byte) error { return nil }
+
+// evictPages is a no-op on platforms without mmap support.
+func evictPages(_ []byte) error { return nil }
