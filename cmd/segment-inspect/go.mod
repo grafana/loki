@@ -2,7 +2,7 @@ module github.com/grafana/loki/cmd/segment-inspect
 
 go 1.25.9
 
-toolchain go1.25.12
+toolchain go1.26.5
 
 require (
 	github.com/dustin/go-humanize v1.0.1
