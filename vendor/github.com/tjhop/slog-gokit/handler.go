@@ -4,6 +4,9 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/go-kit/log"
 )
@@ -11,6 +14,13 @@ import (
 var _ slog.Handler = (*GoKitHandler)(nil)
 
 var defaultGoKitLogger = log.NewLogfmtLogger(os.Stderr)
+
+// Pay boxing cost once at package init, save 3 heap escapes per Handle() call.
+var (
+	timeKey   any = slog.TimeKey
+	msgKey    any = slog.MessageKey
+	callerKey any = "caller"
+)
 
 // GoKitHandler implements the slog.Handler interface. It holds an internal
 // go-kit logger that is used to perform the true logging.
@@ -25,29 +35,29 @@ type GoKitHandler struct {
 // logger. Calls to the slog logger are chained to the handler's internal
 // go-kit logger. If provided a level, it will be used to filter log events in
 // the handler's Enabled() method.
+//
+// The handler adds a `caller` key to each record, resolved from the program
+// counter that slog captured at the log call site. Records handled directly
+// (without going through an slog.Logger) have no PC set, and thus omit the
+// caller.
 func NewGoKitHandler(logger log.Logger, level slog.Leveler) slog.Handler {
 	if logger == nil {
 		logger = defaultGoKitLogger
 	}
 
-	// Adjust runtime call depth to compensate for the adapter and point to
-	// the appropriate source line.
-	logger = log.With(logger, "caller", log.Caller(6))
-
 	if level == nil {
 		level = &slog.LevelVar{} // Info level by default.
 	}
 
-	return &GoKitHandler{logger: logger, level: level}
+	return &GoKitHandler{
+		logger: logger,
+		level:  level,
+	}
 }
 
 // Enabled returns true if the internal slog.Leveler is enabled for the
 // provided log level. It implements slog.Handler.
 func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
-	if h.level == nil {
-		h.level = &slog.LevelVar{} // Info level by default.
-	}
-
 	return level >= h.level.Level()
 }
 
@@ -56,12 +66,6 @@ func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
 // are formatted and added to the log call as individual key/value pairs. It
 // implements slog.Handler.
 func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
-	if h.logger == nil {
-		h.logger = defaultGoKitLogger
-	}
-
-	logger := goKitLevelFunc(h.logger, record.Level)
-
 	// Pre-compute slice capacity. h.preformatted is already flattened to []any
 	// key-value pairs at WithAttrs time, so len(h.preformatted) is the exact
 	// item count -- no expansion buffer needed for that portion. Record attrs
@@ -69,16 +73,42 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	// buffer for that portion's estimated capacity only.
 	//
 	// We know we need:
+	// - 2 for level (key + value)
+	// - 2 for caller (key + value)
 	// - 2 for timestamp (key + value)
 	// - 2 for message (key + value)
 	// - len(h.preformatted) exact items (pre-flattened, no expansion)
 	// - 2 * record.NumAttrs() for record attrs, +50% buffer for group expansion
-	capacity := 4 + len(h.preformatted) + (3 * record.NumAttrs())
+	capacity := 8 + len(h.preformatted) + (3 * record.NumAttrs())
 	pairs := make([]any, 0, capacity)
-	if !record.Time.IsZero() {
-		pairs = append(pairs, slog.TimeKey, record.Time)
+
+	// Append the level directly as the first pair. Matches how the log
+	// message is constructed through level.Info()/level.Debug()/etc
+	// wrappers, but without the extra allocation/copy per call.
+	pairs = append(pairs, levelKey, gokitLevelValue(record.Level))
+
+	// Resolve the log call site from the PC that slog captured when the
+	// record was created. Cheaper and more accurate to do it here since
+	// it's already captured, vs relying on setting `log.Caller()` depth
+	// and hoping it unwinds correctly.
+	if record.PC != 0 {
+		fs := runtime.CallersFrames([]uintptr{record.PC})
+		f, _ := fs.Next()
+		if f.File != "" {
+			// Trim to basename:line with the same logic as
+			// go-kit's log.Caller:
+			// https://github.com/go-kit/log/blob/v0.2.1/value.go#L84-L93
+			// 
+			// path.Base() would work, opting for direct compatibility.
+			idx := strings.LastIndexByte(f.File, '/')
+			pairs = append(pairs, callerKey, f.File[idx+1:]+":"+strconv.Itoa(f.Line))
+		}
 	}
-	pairs = append(pairs, slog.MessageKey, record.Message)
+
+	if !record.Time.IsZero() {
+		pairs = append(pairs, timeKey, record.Time)
+	}
+	pairs = append(pairs, msgKey, record.Message)
 
 	// Bulk-append pre-flattened attrs, group prefixes were resolved at
 	// WithAttrs() call.
@@ -89,7 +119,7 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 		return true
 	})
 
-	return logger.Log(pairs...)
+	return h.logger.Log(pairs...)
 }
 
 // WithAttrs formats the provided attributes and caches them in the handler to
