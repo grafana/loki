@@ -27,7 +27,6 @@ import (
 	"strings"
 
 	v3matcherpb "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
-	"google.golang.org/grpc/internal/grpcutil"
 )
 
 // StringMatcher contains match criteria for matching a string, and is an
@@ -70,7 +69,7 @@ func (sm StringMatcher) Match(input string) bool {
 		}
 		return strings.Contains(input, *sm.containsMatch)
 	case sm.regexMatch != nil:
-		return grpcutil.FullMatchWithRegex(sm.regexMatch, input)
+		return sm.regexMatch.MatchString(input)
 	}
 	return false
 }
@@ -116,11 +115,11 @@ func StringMatcherFromProto(matcherProto *v3matcherpb.StringMatcher) (StringMatc
 		matcher.suffixMatch = newStrPtr(&mt.Suffix, matcher.ignoreCase)
 	case *v3matcherpb.StringMatcher_SafeRegex:
 		regex := matcherProto.GetSafeRegex().GetRegex()
-		re, err := regexp.Compile(regex)
+		re, err := CompileSafeRegex(regex)
 		if err != nil {
 			return StringMatcher{}, fmt.Errorf("safe_regex matcher %q is invalid", regex)
 		}
-		matcher.regexMatch = re
+		matcher = NewRegexStringMatcher(re)
 	case *v3matcherpb.StringMatcher_Contains:
 		if matcherProto.GetContains() == "" {
 			return StringMatcher{}, errors.New("empty contains is not allowed in StringMatcher")
@@ -216,4 +215,15 @@ func (sm StringMatcher) Equal(other StringMatcher) bool {
 		return *sm.containsMatch == *other.containsMatch
 	}
 	return true
+}
+
+// CompileSafeRegex attempts to compile the provided pattern as a regular
+// expression. It first compiles the unanchored pattern to catch syntax errors
+// and then compiles and returns the explicitly anchored pattern to guarantee
+// full-string matching.
+func CompileSafeRegex(pattern string) (*regexp.Regexp, error) {
+	if _, err := regexp.Compile(pattern); err != nil {
+		return nil, err
+	}
+	return regexp.Compile(fmt.Sprintf("^(?:%s)$", pattern))
 }
