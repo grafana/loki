@@ -53,7 +53,9 @@ type storageMonitoredResource struct {
 func (smr *storageMonitoredResource) exporter() (metric.Exporter, error) {
 	exporter, err := mexporter.New(
 		mexporter.WithProjectID(smr.project),
-		mexporter.WithMetricDescriptorTypeFormatter(metricFormatter),
+		mexporter.WithMetricDescriptorTypeFormatter(func(m metricdata.Metrics) string {
+			return formatMetricWithPrefix(m, metricPrefix)
+		}),
 		mexporter.WithCreateServiceTimeSeries(),
 		mexporter.WithMonitoredResourceDescription(monitoredResourceName, []string{"project_id", "location", "cloud_platform", "host_id", "instance_id", "api"}),
 	)
@@ -280,8 +282,4 @@ func createHistogramView(name string, boundaries []float64) metric.View {
 		Name:        name,
 		Aggregation: metric.AggregationExplicitBucketHistogram{Boundaries: boundaries},
 	})
-}
-
-func metricFormatter(m metricdata.Metrics) string {
-	return metricPrefix + strings.ReplaceAll(string(m.Name), ".", "/")
 }
