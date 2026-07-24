@@ -1,0 +1,44 @@
+# Starter port of instant metric-query cases from pkg/logql/engine_test.go (TestEngine_InstantQuery).
+# The originals inject pre-extracted samples; here the same expectations are reproduced by loading
+# real log lines and running the full pipeline. The Go tests are kept in place — this is a parallel,
+# duplicate corpus (see logql-declarative-test-dsl-plan.md §6.3).
+
+# A matching log line every 10s at 10..60s.
+load
+  {app="foo"} "bar" @ 10s [repeat every 10s for 6]
+
+# count_over_time with a line filter (orig: `factor(10, identity)`, expect 6).
+eval instant at 60s count_over_time({app="foo"} |= "bar" [1m])
+  {app="foo"} 6
+
+# One log line per second at 46..60s (15 lines).
+load
+  {svc="rates"} "x" @ 46s [repeat every 1s for 15]
+
+# rate over a 30s window: 15 lines / 30s = 0.5 (orig: `rate({app="foo"}[30s])`, offset(46, identity)).
+eval instant at 60s rate({svc="rates"}[30s])
+  {svc="rates"} 0.5
+
+# Aggregation with grouping over two streams.
+load
+  {app="a", cluster="us"} "log" @ 10s [repeat every 10s for 6]
+  {app="b", cluster="us"} "log" @ 10s [repeat every 10s for 6]
+
+eval instant at 60s sum by (cluster) (count_over_time({cluster="us"}[1m]))
+  {cluster="us"} 12
+
+eval instant at 60s sum without (app) (count_over_time({cluster="us"}[1m]))
+  {cluster="us"} 12
+
+# topk keeps the highest-valued series with their labels.
+load
+  {app="big", cluster="eu"}   "log" @ 5s [repeat every 5s for 12]
+  {app="small", cluster="eu"} "log" @ 10s [repeat every 10s for 6]
+
+eval instant at 60s topk(1, count_over_time({cluster="eu"}[1m]))
+  {app="big", cluster="eu"} 12
+
+# absent_over_time over a selector that matches nothing returns 1, labelled from the selector's
+# equality matchers.
+eval instant at 60s absent_over_time({app="does-not-exist"}[1m])
+  {app="does-not-exist"} 1
