@@ -128,6 +128,8 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
+	logger := util_log.WithContext(ctx, ast.logger)
+
 	maxQuerierBytesReadCapture := func(id string) int { return ast.limits.MaxQuerierBytesRead(ctx, id) }
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxQuerierBytesReadCapture); maxBytesRead > 0 {
 		statsBytesStr := humanize.IBytes(bytesPerShard)
@@ -139,12 +141,12 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 		}
 
 		if bytesPerShard > uint64(maxBytesRead) {
-			level.Warn(ast.logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr, "query", query, "query_hash", util.HashedQuery(query))
+			level.Warn(logger).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr, "query", query, "query_hash", util.HashedQuery(query))
 
 			return spec.exceededErr(statsBytesStr, maxBytesReadStr)
 		}
 
-		level.Debug(ast.logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+		level.Debug(logger).Log("msg", "Query is within limits", "status", "accepted", "limit_name", spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return nil
