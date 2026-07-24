@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -224,7 +225,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 		},
 		{
 			desc:                     "Non shardable query too big",
-			query:                    `avg_over_time({job="foo"} | json busy="utilization" | unwrap busy [5m])`,
+			query:                    `quantile_over_time(0.99, {app="foo"} | json busy="utilization" | unwrap busy [5m])`,
 			maxQuerierBytesSize:      10,
 			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
@@ -307,6 +308,10 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				return nil, nil
 			})
 
+			var logBuf bytes.Buffer
+			// Sync logger: the sharding engine may log from multiple goroutines.
+			logger := log.NewSyncLogger(log.NewLogfmtLogger(&logBuf))
+
 			mware := newASTMapperware(
 				ShardingConfigs{
 					config.PeriodConfig{
@@ -317,7 +322,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				handler,
 				handler,
 				nil,
-				log.NewNopLogger(),
+				logger,
 				nilShardingMetrics,
 				fakeLimits{
 					maxSeries:               math.MaxInt32,
@@ -336,8 +341,19 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				AST: syntax.MustParseExpr(tc.query),
 			}
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
-			if err != nil {
+
+			if tc.err == noErr {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
 				require.ErrorContains(t, err, tc.err)
+
+				// A query rejected for exceeding MaxQuerierBytesRead must log the query
+				// and its hash so the rejection can be correlated with the query.
+				logOut := logBuf.String()
+				require.Contains(t, logOut, "Query exceeds limits")
+				require.Contains(t, logOut, fmt.Sprintf("query=%q", tc.query))
+				require.Contains(t, logOut, fmt.Sprintf("query_hash=%d", util.HashedQuery(tc.query)))
 			}
 
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)

@@ -41,6 +41,16 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
 
+### Query byte-limit rejection log lines now include the query
+
+The `Query exceeds limits` warning log lines emitted by the query-frontend when a
+query is rejected for exceeding `max_query_bytes_read` (`MaxQueryBytesRead`) or
+`MaxQuerierBytesRead` now include two additional fields: `query` (the query string)
+and `query_hash`. The `query_hash` matches the one on the `executing query` log line,
+so a rejection can be correlated back to the query that triggered it. This is an
+additive change; existing fields are unchanged, but dashboards or alerts that parse
+these lines may need updating to take advantage of the new fields.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
