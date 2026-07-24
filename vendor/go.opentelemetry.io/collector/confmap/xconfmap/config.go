@@ -27,6 +27,8 @@ func Validate(cfg any) error {
 // a different type from the current Unmarshaler.
 // For instance, this should be used in wrapper types such as configoptional.Optional
 // to ensure the inner type's Unmarshal method is called.
+//
+// Deprecated [v0.157.0]: Use [confmap.WithForceUnmarshaler] instead.
 func WithForceUnmarshaler() confmap.UnmarshalOption {
 	return internal.WithForceUnmarshaler()
 }
