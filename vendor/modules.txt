@@ -1742,7 +1742,7 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pkg/xattr v0.4.10
+# github.com/pkg/xattr v0.4.12
 ## explicit; go 1.14
 github.com/pkg/xattr
 # github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
