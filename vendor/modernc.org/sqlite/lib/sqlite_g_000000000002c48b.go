@@ -624,7 +624,7 @@ func _sqlite3Prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, pr
 	rc = SQLITE_OK
 	**(**uintptr)(__ccgo_up(ppStmt)) = uintptr(0)
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) || zSql == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(148771))
+		return _sqlite3MisuseError(tls, int32(148902))
 	}
 	/* Make sure nBytes is non-negative and correct.  It should be the
 	 ** number of bytes until the end of the input buffer or until the first
@@ -676,45 +676,6 @@ func _sqlite3Prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, pr
 	rc = _sqlite3ApiExit(tls, db, rc)
 	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	return rc
-}
-
-// C documentation
-//
-//	/*
-//	** Given a SELECT statement, generate a Table structure that describes
-//	** the result set of that SELECT.
-//	*/
-func _sqlite3ResultSetOfSelect(tls *libc.TLS, pParse uintptr, pSelect uintptr, aff int8) (r uintptr) {
-	var db, pTab uintptr
-	var savedFlags Tu64
-	_, _, _ = db, pTab, savedFlags
-	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-	savedFlags = (*Tsqlite3)(unsafe.Pointer(db)).Fflags
-	**(**Tu64)(__ccgo_up(db + 48)) &= ^libc.Uint64FromInt32(SQLITE_FullColNames)
-	**(**Tu64)(__ccgo_up(db + 48)) |= uint64(SQLITE_ShortColNames)
-	_sqlite3SelectPrep(tls, pParse, pSelect, uintptr(0))
-	(*Tsqlite3)(unsafe.Pointer(db)).Fflags = savedFlags
-	if (*TParse)(unsafe.Pointer(pParse)).FnErr != 0 {
-		return uintptr(0)
-	}
-	for (*TSelect)(unsafe.Pointer(pSelect)).FpPrior != 0 {
-		pSelect = (*TSelect)(unsafe.Pointer(pSelect)).FpPrior
-	}
-	pTab = _sqlite3DbMallocZero(tls, db, uint64(120))
-	if pTab == uintptr(0) {
-		return uintptr(0)
-	}
-	(*TTable)(unsafe.Pointer(pTab)).FnTabRef = uint32(1)
-	(*TTable)(unsafe.Pointer(pTab)).FzName = uintptr(0)
-	(*TTable)(unsafe.Pointer(pTab)).FnRowLogEst = int16(200)
-	_sqlite3ColumnsFromExprList(tls, pParse, (*TSelect)(unsafe.Pointer(pSelect)).FpEList, pTab+54, pTab+8)
-	_sqlite3SubqueryColumnTypes(tls, pParse, pTab, pSelect, aff)
-	(*TTable)(unsafe.Pointer(pTab)).FiPKey = int16(-int32(1))
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		_sqlite3DeleteTable(tls, db, pTab)
-		return uintptr(0)
-	}
-	return pTab
 }
 
 // C documentation

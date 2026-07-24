@@ -2481,7 +2481,7 @@ k8s.io/utils/internal/third_party/forked/golang/net
 k8s.io/utils/keymutex
 k8s.io/utils/net
 k8s.io/utils/ptr
-# modernc.org/libc v1.73.4
+# modernc.org/libc v1.74.1
 ## explicit; go 1.25.0
 modernc.org/libc
 modernc.org/libc/errno
@@ -2515,7 +2515,7 @@ modernc.org/mathutil
 # modernc.org/memory v1.11.0
 ## explicit; go 1.23.0
 modernc.org/memory
-# modernc.org/sqlite v1.53.0
+# modernc.org/sqlite v1.54.0
 ## explicit; go 1.25.0
 modernc.org/sqlite/lib
 # sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730

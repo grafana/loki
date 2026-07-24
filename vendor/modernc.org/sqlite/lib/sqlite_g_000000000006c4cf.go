@@ -206,7 +206,7 @@ func Xsqlite3_uri_key(tls *libc.TLS, zFilename uintptr, N int32) (r uintptr) {
 //	**
 //	** See also: [sqlite_version()] and [sqlite_source_id()].
 //	*/
-var Xsqlite3_version = [7]int8{'3', '.', '5', '3', '.', '2'}
+var Xsqlite3_version = [7]int8{'3', '.', '5', '3', '.', '3'}
 
 // C documentation
 //

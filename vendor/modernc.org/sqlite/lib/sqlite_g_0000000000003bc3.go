@@ -31,7 +31,7 @@ func Xsqlite3_blob_reopen(tls *libc.TLS, pBlob uintptr, iRow Tsqlite3_int64) (r 
 	_, _, _, _ = db, p, rc, v1
 	p = pBlob
 	if p == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(106369))
+		return _sqlite3MisuseError(tls, int32(106500))
 	}
 	db = (*TIncrblob)(unsafe.Pointer(p)).Fdb
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
@@ -261,7 +261,7 @@ func Xsqlite3_set_errmsg(tls *libc.TLS, db uintptr, errcode int32, zMsg uintptr)
 	_ = rc
 	rc = SQLITE_OK
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) {
-		return _sqlite3MisuseError(tls, int32(189943))
+		return _sqlite3MisuseError(tls, int32(190121))
 	}
 	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	if zMsg != 0 {

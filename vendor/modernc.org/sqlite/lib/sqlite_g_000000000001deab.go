@@ -49,7 +49,7 @@ func _balance_quick(tls *libc.TLS, pParent uintptr, pPage uintptr, pSpace uintpt
 	_, _, _, _, _, _ = pBt, pOut, pStop, v1, v2, v3
 	pBt = (*TMemPage)(unsafe.Pointer(pPage)).FpBt /* Page number of pNew */
 	if libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pPage)).FnCell) == 0 {
-		return _sqlite3CorruptError(tls, int32(81151))
+		return _sqlite3CorruptError(tls, int32(81243))
 	} /* dbfuzz001.test */
 	/* Allocate a new page. This page will become the right-sibling of
 	 ** pPage. Make the parent page writable, so that the new divider cell
@@ -151,14 +151,14 @@ func _clearDatabasePage(tls *libc.TLS, pBt uintptr, pgno TPgno, freePageFlag int
 	var _ /* rc at bp+8 */ int32
 	_, _, _, _ = hdr, i, pCell, v2
 	if pgno > _btreePagecount(tls, pBt) {
-		return _sqlite3CorruptError(tls, int32(83360))
+		return _sqlite3CorruptError(tls, int32(83452))
 	}
 	**(**int32)(__ccgo_up(bp + 8)) = _getAndInitPage(tls, pBt, pgno, bp, 0)
 	if **(**int32)(__ccgo_up(bp + 8)) != 0 {
 		return **(**int32)(__ccgo_up(bp + 8))
 	}
 	if libc.Int32FromUint8((*TBtShared)(unsafe.Pointer(pBt)).FopenFlags)&int32(BTREE_SINGLE) == 0 && _sqlite3PagerPageRefcount(tls, (*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(bp)))).FpDbPage) != int32(1)+libc.BoolInt32(pgno == uint32(1)) {
-		**(**int32)(__ccgo_up(bp + 8)) = _sqlite3CorruptError(tls, int32(83367))
+		**(**int32)(__ccgo_up(bp + 8)) = _sqlite3CorruptError(tls, int32(83459))
 		goto cleardatabasepage_out
 	}
 	hdr = libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(bp)))).FhdrOffset)
@@ -324,21 +324,21 @@ func _sqlite3BtreeDelete(tls *libc.TLS, pCur uintptr, flags Tu8) (r int32) {
 				return **(**int32)(__ccgo_up(bp))
 			}
 		} else {
-			return _sqlite3CorruptError(tls, int32(82999))
+			return _sqlite3CorruptError(tls, int32(83091))
 		}
 	}
 	iCellDepth = int32((*TBtCursor)(unsafe.Pointer(pCur)).FiPage)
 	iCellIdx = libc.Int32FromUint16((*TBtCursor)(unsafe.Pointer(pCur)).Fix)
 	pPage = (*TBtCursor)(unsafe.Pointer(pCur)).FpPage
 	if libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pPage)).FnCell) <= iCellIdx {
-		return _sqlite3CorruptError(tls, int32(83008))
+		return _sqlite3CorruptError(tls, int32(83100))
 	}
 	pCell = (*TMemPage)(unsafe.Pointer(pPage)).FaData + uintptr(libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pPage)).FmaskPage)&(libc.Int32FromUint8(**(**Tu8)(__ccgo_up((*TMemPage)(unsafe.Pointer(pPage)).FaCellIdx + uintptr(int32(2)*iCellIdx))))<<libc.Int32FromInt32(8)|libc.Int32FromUint8(**(**Tu8)(__ccgo_up((*TMemPage)(unsafe.Pointer(pPage)).FaCellIdx + uintptr(int32(2)*iCellIdx) + 1)))))
 	if (*TMemPage)(unsafe.Pointer(pPage)).FnFree < 0 && _btreeComputeFreeSpace(tls, pPage) != 0 {
-		return _sqlite3CorruptError(tls, int32(83012))
+		return _sqlite3CorruptError(tls, int32(83104))
 	}
 	if pCell < (*TMemPage)(unsafe.Pointer(pPage)).FaCellIdx+uintptr((*TMemPage)(unsafe.Pointer(pPage)).FnCell) {
-		return _sqlite3CorruptError(tls, int32(83015))
+		return _sqlite3CorruptError(tls, int32(83107))
 	}
 	/* If the BTREE_SAVEPOSITION bit is on, then the cursor position must
 	 ** be preserved following this delete operation. If the current delete
@@ -432,7 +432,7 @@ func _sqlite3BtreeDelete(tls *libc.TLS, pCur uintptr, flags Tu8) (r int32) {
 		}
 		pCell = (*TMemPage)(unsafe.Pointer(pLeaf)).FaData + uintptr(libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pLeaf)).FmaskPage)&(libc.Int32FromUint8(**(**Tu8)(__ccgo_up((*TMemPage)(unsafe.Pointer(pLeaf)).FaCellIdx + uintptr(int32(2)*(libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pLeaf)).FnCell)-int32(1))))))<<libc.Int32FromInt32(8)|libc.Int32FromUint8(**(**Tu8)(__ccgo_up((*TMemPage)(unsafe.Pointer(pLeaf)).FaCellIdx + uintptr(int32(2)*(libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pLeaf)).FnCell)-int32(1))) + 1)))))
 		if pCell < (*TMemPage)(unsafe.Pointer(pLeaf)).FaData+4 {
-			return _sqlite3CorruptError(tls, int32(83106))
+			return _sqlite3CorruptError(tls, int32(83198))
 		}
 		nCell = libc.Int32FromUint16((*(*func(*libc.TLS, uintptr, uintptr) Tu16)(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pLeaf)).FxCellSize})))(tls, pLeaf, pCell))
 		pTmp = (*TBtShared)(unsafe.Pointer(pBt)).FpTmpSpace
@@ -554,6 +554,11 @@ func _walDecodeFrame(tls *libc.TLS, pWal uintptr, piPage uintptr, pnTruncate uin
 	 */
 	pgno = _sqlite3Get4byte(tls, aFrame)
 	if pgno == uint32(0) {
+		return 0
+	}
+	/* Need a valid page size
+	 */
+	if !((*TWal)(unsafe.Pointer(pWal)).FszPage != 0) {
 		return 0
 	}
 	/* A frame is only valid if a checksum of the WAL header,

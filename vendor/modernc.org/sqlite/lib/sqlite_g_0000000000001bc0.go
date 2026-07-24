@@ -26,7 +26,7 @@ func Xsqlite3_open16(tls *libc.TLS, zFilename uintptr, ppDb uintptr) (r int32) {
 		return rc
 	}
 	if zFilename == uintptr(0) {
-		zFilename = __ccgo_ts + 26199
+		zFilename = __ccgo_ts + 26268
 	}
 	pVal = _sqlite3ValueNew(tls, uintptr(0))
 	_sqlite3ValueSetStr(tls, pVal, -int32(1), zFilename, uint8(SQLITE_UTF16LE), libc.UintptrFromInt32(0))
