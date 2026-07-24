@@ -347,8 +347,8 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 	t.Run("respects context cancellation while backing off", func(t *testing.T) {
 		// Backoff periods well past the context deadline so the wait is always
 		// interrupted by the deadline rather than completing.
-		client.cfg.SaturationBackoffMinPeriod = 100 * time.Millisecond
-		client.cfg.SaturationBackoffMaxPeriod = time.Second
+		client.cfg.SaturationBackoffMinPeriod = time.Second
+		client.cfg.SaturationBackoffMaxPeriod = 2 * time.Second
 		configurePoolWithError(t, client, logger, 10, newSaturatedError("cpu"))
 		ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()
@@ -359,8 +359,9 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 		// The context error is preserved so callers can tell the request was aborted
 		// by its deadline rather than by saturation alone.
 		require.ErrorIs(t, err, context.DeadlineExceeded)
-		// Returns promptly after the context deadline instead of walking the full backoff ladder.
-		require.Less(t, time.Since(start), time.Second)
+		// Finishing before a single backoff period could elapse proves the deadline
+		// interrupted the wait instead of it running to completion.
+		require.Less(t, time.Since(start), client.cfg.SaturationBackoffMinPeriod)
 	})
 }
 
