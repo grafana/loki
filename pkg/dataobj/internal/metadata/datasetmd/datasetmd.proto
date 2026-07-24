@@ -143,6 +143,9 @@ enum CompressionType {
 
   // Zstd compression.
   COMPRESSION_TYPE_ZSTD = 3;
+
+  // S2 compression.
+  COMPRESSION_TYPE_S2 = 4;
 }
 
 // ColumnMetadata holds additional metadata for an individual column.
