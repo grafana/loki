@@ -374,7 +374,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 
 					// this is basically the same as logging push request streams,
 					// so put it behind the same flag
-					if ts.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
+					if ts.tenantCfgs != nil && ts.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
 						level.Debug(ts.logger).
 							Log(
 								"msg", "forwarded push request to pattern ingester",
