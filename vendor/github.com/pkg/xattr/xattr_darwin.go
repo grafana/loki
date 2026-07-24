@@ -6,6 +6,7 @@ package xattr
 import (
 	"os"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -37,7 +38,11 @@ func lgetxattr(path string, name string, data []byte) (int, error) {
 }
 
 func fgetxattr(f *os.File, name string, data []byte) (int, error) {
-	return getxattr(f.Name(), name, data)
+	path, err := getPath(f)
+	if err != nil {
+		return 0, err
+	}
+	return getxattr(path, name, data)
 }
 
 func setxattr(path string, name string, data []byte, flags int) error {
@@ -49,7 +54,11 @@ func lsetxattr(path string, name string, data []byte, flags int) error {
 }
 
 func fsetxattr(f *os.File, name string, data []byte, flags int) error {
-	return setxattr(f.Name(), name, data, flags)
+	path, err := getPath(f)
+	if err != nil {
+		return err
+	}
+	return setxattr(path, name, data, flags)
 }
 
 func removexattr(path string, name string) error {
@@ -61,7 +70,11 @@ func lremovexattr(path string, name string) error {
 }
 
 func fremovexattr(f *os.File, name string) error {
-	return removexattr(f.Name(), name)
+	path, err := getPath(f)
+	if err != nil {
+		return err
+	}
+	return removexattr(path, name)
 }
 
 func listxattr(path string, data []byte) (int, error) {
@@ -73,7 +86,28 @@ func llistxattr(path string, data []byte) (int, error) {
 }
 
 func flistxattr(f *os.File, data []byte) (int, error) {
-	return listxattr(f.Name(), data)
+	path, err := getPath(f)
+	if err != nil {
+		return 0, err
+	}
+	return listxattr(path, data)
+}
+
+// getPath returns the full path to the specified file.
+func getPath(f *os.File) (string, error) {
+	var buf [unix.PathMax]byte
+	_, _, err := unix.Syscall(unix.SYS_FCNTL,
+		uintptr(int(f.Fd())),
+		uintptr(unix.F_GETPATH),
+		uintptr(unsafe.Pointer(&buf[0])))
+	if err != 0 {
+		return "", err
+	}
+	n := 0
+	for n < len(buf) && buf[n] != 0 {
+		n++
+	}
+	return string(buf[:n]), nil
 }
 
 // stringsFromByteSlice converts a sequence of attributes to a []string.
