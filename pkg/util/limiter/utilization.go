@@ -161,6 +161,7 @@ func (l *UtilizationBasedLimiter) compute(nowFn func() time.Time) (currCPUUtil f
 	// Get wall time after CPU time, in case there's a delay before CPU time is returned,
 	// which would cause us to compute too high of a CPU load
 	now := nowFn()
+	currMemoryUtil = currHeapSize
 	l.currHeapSize.Store(currHeapSize)
 
 	// Add the instant CPU utilization to the moving average. The instant CPU

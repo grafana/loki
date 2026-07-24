@@ -318,11 +318,11 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
 		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
 	})
-	client.cfg.SaturationBackoffMinPeriod = 50 * time.Millisecond
-	client.cfg.SaturationBackoffMaxPeriod = 100 * time.Millisecond
 	ctx := user.InjectOrgID(context.Background(), "tenant-123")
 
 	t.Run("waits between attempts on saturated gateways", func(t *testing.T) {
+		client.cfg.SaturationBackoffMinPeriod = 50 * time.Millisecond
+		client.cfg.SaturationBackoffMaxPeriod = 100 * time.Millisecond
 		configurePoolWithError(t, client, logger, 2, newSaturatedError("cpu"))
 		start := time.Now()
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
@@ -332,6 +332,11 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 	})
 
 	t.Run("non-saturation errors keep immediate failover", func(t *testing.T) {
+		// Generous periods so the fast-path upper-bound assertion below is not
+		// sensitive to CI scheduling jitter. The fast path never sleeps, so this
+		// does not slow down the test.
+		client.cfg.SaturationBackoffMinPeriod = 500 * time.Millisecond
+		client.cfg.SaturationBackoffMaxPeriod = time.Second
 		configurePool(t, client, logger, 5)
 		start := time.Now()
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
@@ -340,6 +345,10 @@ func TestGatewayClient_SaturationBackoff(t *testing.T) {
 	})
 
 	t.Run("respects context cancellation while backing off", func(t *testing.T) {
+		// Backoff periods well past the context deadline so the wait is always
+		// interrupted by the deadline rather than completing.
+		client.cfg.SaturationBackoffMinPeriod = 100 * time.Millisecond
+		client.cfg.SaturationBackoffMaxPeriod = time.Second
 		configurePoolWithError(t, client, logger, 10, newSaturatedError("cpu"))
 		ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 		defer cancel()

@@ -3,6 +3,7 @@ package indexgateway
 import (
 	"flag"
 	"fmt"
+	"math"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
@@ -113,6 +114,11 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.CPUUtilizationLimit < 0 {
 		return errors.New("index gateway CPU utilization limit must not be negative")
+	}
+	// flagext.Bytes accepts negative inputs (e.g. -1GiB) and wraps them around to huge
+	// values that would silently never trigger limiting.
+	if uint64(cfg.MemoryUtilizationLimit) > math.MaxInt64 {
+		return errors.New("index gateway memory utilization limit must not be negative")
 	}
 	return nil
 }
