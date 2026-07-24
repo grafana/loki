@@ -286,6 +286,18 @@ func (cfg *cfg) validate() error {
 
 	i64lt := func(l, r int64) (bool, string) { return l < r, "less" }
 	i64gt := func(l, r int64) (bool, string) { return l > r, "larger" }
+
+	// Several Durations are serialized to int32-millisecond wire fields
+	// (JoinGroup SessionTimeoutMs / RebalanceTimeoutMs, ProduceRequest
+	// TimeoutMs, InitProducerId TransactionTimeoutMs). A Duration whose
+	// millisecond value exceeds an int32 silently overflows that field when
+	// cast - e.g. a 30 day session timeout wraps to a negative wire value,
+	// and a ~50 day one wraps to a small positive value the broker quietly
+	// accepts as a completely different timeout. Java cannot hit this because
+	// its equivalent configs are int32-millisecond typed at the source; kgo
+	// takes a Duration, so the bound must be enforced here. The wire field's
+	// capacity is the only principled cap.
+	const maxWireTimeout = time.Duration(math.MaxInt32) * time.Millisecond
 	for _, limit := range []struct {
 		name    string
 		v       int64
@@ -343,6 +355,11 @@ func (cfg *cfg) validate() error {
 		{name: "max buffered bytes", v: cfg.maxBufferedBytes, allowed: 0, badcmp: i64lt},
 		{name: "linger", v: int64(cfg.linger), allowed: int64(time.Minute), badcmp: i64gt, durs: true},
 		{name: "produce timeout", v: int64(cfg.produceTimeout), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
+		{name: "produce timeout", v: int64(cfg.produceTimeout), allowed: int64(maxWireTimeout), badcmp: i64gt, durs: true},
+
+		// The transaction timeout is serialized to an int32-millisecond wire
+		// field and is otherwise unvalidated; bound it so it cannot overflow.
+		{name: "transaction timeout", v: int64(cfg.txnTimeout), allowed: int64(maxWireTimeout), badcmp: i64gt, durs: true},
 		{name: "record timeout", v: int64(cfg.recordTimeout), allowed: int64(time.Second), badcmp: func(l, r int64) (bool, string) {
 			if l == 0 {
 				return false, "" // we print nothing when things are good
@@ -360,10 +377,12 @@ func (cfg *cfg) validate() error {
 		{name: "consumer protocol length", v: int64(len(cfg.protocol)), allowed: 1, badcmp: i64lt},
 
 		{name: "session timeout", v: int64(cfg.sessionTimeout), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
+		{name: "session timeout", v: int64(cfg.sessionTimeout), allowed: int64(maxWireTimeout), badcmp: i64gt, durs: true},
 		{name: "rebalance timeout", v: int64(cfg.rebalanceTimeout), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
+		{name: "rebalance timeout", v: int64(cfg.rebalanceTimeout), allowed: int64(maxWireTimeout), badcmp: i64gt, durs: true},
 		{name: "autocommit interval", v: int64(cfg.autocommitInterval), allowed: int64(100 * time.Millisecond), badcmp: i64lt, durs: true},
 
-		{v: int64(cfg.heartbeatInterval), allowed: int64(cfg.rebalanceTimeout) * int64(time.Millisecond), badcmp: i64gt, durs: true, fmt: "heartbeat interval %v is erroneously larger than the session timeout %v"},
+		{v: int64(cfg.heartbeatInterval), allowed: int64(cfg.sessionTimeout), badcmp: i64gt, durs: true, fmt: "heartbeat interval %v is erroneously larger than the session timeout %v"},
 	} {
 		bad, cmp := limit.badcmp(limit.v, limit.allowed)
 		if bad {
@@ -441,6 +460,40 @@ func (cfg *cfg) validate() error {
 		}
 	} else if len(cfg.excludeTopics) > 0 {
 		return errors.New("invalid use of ConsumeExcludeTopics when not using ConsumeRegex")
+	}
+
+	// A topic literally named "" cannot exist; consuming it would spin on
+	// UNKNOWN_TOPIC metadata forever with no surfaced error. In regex mode the
+	// ConsumeTopics values are patterns ("" is a valid match-all regex), so we
+	// only reject empty names when not consuming via regex.
+	if !cfg.regex {
+		for topic := range cfg.topics {
+			if topic == "" {
+				return errors.New("invalid empty topic name in ConsumeTopics")
+			}
+		}
+	}
+	for topic, partitions := range cfg.partitions {
+		if topic == "" {
+			return errors.New("invalid empty topic name in ConsumePartitions")
+		}
+		for p := range partitions {
+			if p < 0 {
+				return fmt.Errorf("invalid negative partition %d for topic %q in ConsumePartitions", p, topic)
+			}
+		}
+	}
+
+	// These options take a value; if explicitly set to "" it is a mistake (an
+	// empty transactional or instance ID is not valid). Both are *string so an
+	// explicit "" is distinguishable from unset (nil). ConsumerGroup and
+	// ShareGroup are plain strings, indistinguishable from unset, so they are
+	// not checked here.
+	if cfg.txnID != nil && *cfg.txnID == "" {
+		return errors.New("invalid empty TransactionalID")
+	}
+	if cfg.instanceID != nil && *cfg.instanceID == "" {
+		return errors.New("invalid empty InstanceID")
 	}
 
 	if cfg.topics != nil && cfg.partitions != nil {
@@ -686,6 +739,12 @@ func WithLogger(l Logger) Opt {
 // WithContext sets the client to use a custom context.
 //
 // By default, the client uses context.Background.
+//
+// Canceling this context stops the client's background goroutines and fails
+// in-flight requests with ErrClientClosed, but it does not replace Close:
+// records still buffered for producing are reliably failed only by Close, and
+// a group leave is sent only by Close. Always call Close for a clean shutdown;
+// canceling this context first (to interrupt blocking calls) is fine.
 func WithContext(ctx context.Context) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.ctx = ctx }}
 }
@@ -813,7 +872,7 @@ func MinVersions(versions *kversion.Versions) Opt {
 
 // RetryBackoffFn sets the backoff strategy for how long to backoff for a given
 // amount of retries, overriding the default jittery exponential backoff that
-// ranges from 250ms min to 2.5s max.
+// ranges from 250ms min to 5s max.
 //
 // This (roughly) corresponds to Kafka's retry.backoff.ms setting and
 // retry.backoff.max.ms (which is being introduced with KIP-500).
@@ -1296,16 +1355,18 @@ func RecordRetries(n int) ProducerOpt {
 }
 
 // UnknownTopicRetries sets the number of times a record can fail with
-// UNKNOWN_TOPIC_OR_PARTITION, overriding the default 4.
+// UNKNOWN_TOPIC_OR_PARTITION or UNKNOWN_TOPIC_ID, overriding the default 4.
 //
 // This is a separate limit from RecordRetries because unknown topic or
 // partition errors should only happen if the topic does not exist. It is
 // pointless for the client to continue producing to a topic that does not
 // exist, and if we repeatedly see that the topic does not exist across
 // multiple metadata queries (which are going to different brokers), then we
-// may as well stop trying and fail the records.
+// may as well stop trying and fail the records. The count is reset whenever
+// a produce to the partition succeeds; errors other than the two unknown
+// topic errors leave it unchanged.
 //
-// If this is -1, the client never fails records with this error.
+// If this is -1, the client never fails records with these errors.
 func UnknownTopicRetries(n int) ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.maxUnknownFailures = int64(n) }}
 }
@@ -1409,9 +1470,9 @@ func TransactionalID(id string) ProducerOpt {
 // default 40s. It is a good idea to keep this less than a group's session
 // timeout, so that a group member will always be alive for the duration of a
 // transaction even if connectivity dies. This helps prevent a transaction
-// finishing after a rebalance, which is problematic pre-Kafka 2.5. If you
-// are on Kafka 2.5+, then you can use the RequireStableFetchOffsets option
-// when assigning the group, and you can set this to whatever you would like.
+// finishing after a rebalance, which is problematic pre-Kafka 2.5. On Kafka
+// 2.5+, the client always requires stable fetch offsets (KIP-447), so you
+// can set this to whatever you would like.
 //
 // Transaction timeouts begin when the first record is produced within a
 // transaction, not when a transaction begins.
@@ -1877,9 +1938,9 @@ func Balancers(balancers ...GroupBalancer) GroupOpt {
 // If you are using a [GroupTransactSession] for EOS, wish to lower this, and are
 // talking to a Kafka cluster pre 2.5, consider lowering the
 // TransactionTimeout. If you do not, you risk a transaction finishing after a
-// group has rebalanced, which could lead to duplicate processing. If you are
-// talking to a Kafka 2.5+ cluster, you can safely use the
-// RequireStableFetchOffsets group option and prevent any problems.
+// group has rebalanced, which could lead to duplicate processing. On a Kafka
+// 2.5+ cluster there is no problem: the client always requires stable fetch
+// offsets (KIP-447).
 //
 // This option corresponds to Kafka's session.timeout.ms setting and must be
 // within the broker's group.min.session.timeout.ms and
@@ -2002,6 +2063,13 @@ func AdjustFetchOffsetsFn(adjustOffsetsBeforeAssign func(context.Context, map[st
 // This function can be called at any time you are polling or processing
 // records. If you want to ensure this function is called serially with
 // processing, consider the BlockRebalanceOnPoll option.
+//
+// Do not call Close or LeaveGroup synchronously from within this callback
+// (nor from OnPartitionsRevoked or OnPartitionsLost): leaving the group
+// waits for the group management loop to finish, and the loop is waiting
+// for your callback to return - a permanent deadlock. To leave from within
+// a callback, use LeaveGroupContext with a nil context (it triggers the
+// leave without waiting), or call LeaveGroup from a separate goroutine.
 func OnPartitionsAssigned(onAssigned func(context.Context, *Client, map[string][]int32)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.onAssigned = onAssigned }}
 }
@@ -2034,6 +2102,9 @@ func OnPartitionsAssigned(onAssigned func(context.Context, *Client, map[string][
 //
 // This function is called if a "fatal" group error is encountered and you have
 // not set [OnPartitionsLost]. See OnPartitionsLost for more details.
+//
+// Do not call Close or LeaveGroup synchronously from within this callback;
+// see the warning on [OnPartitionsAssigned].
 func OnPartitionsRevoked(onRevoked func(context.Context, *Client, map[string][]int32)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.onRevoked = onRevoked }}
 }
@@ -2053,6 +2124,9 @@ func OnPartitionsRevoked(onRevoked func(context.Context, *Client, map[string][]i
 // This function can be called at any time you are polling or processing
 // records. If you want to ensure this function is called serially with
 // processing, consider the BlockRebalanceOnPoll option.
+//
+// Do not call Close or LeaveGroup synchronously from within this callback;
+// see the warning on [OnPartitionsAssigned].
 func OnPartitionsLost(onLost func(context.Context, *Client, map[string][]int32)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.onLost = onLost }}
 }
