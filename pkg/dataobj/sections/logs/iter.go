@@ -41,7 +41,7 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
 
 func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		dset, err := MakeColumnarDataset(section)
+		dset, err := section.makeDataset()
 		if err != nil {
 			return fmt.Errorf("creating columnar dataset: %w", err)
 		}
@@ -85,11 +85,21 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 // ColumnarDataset is the exported type alias of the internal [columnar.Dataset].
 type ColumnarDataset = columnar.Dataset
 
-// MakeColumnarDataset returns the dataset from a section and a set of columns.
-// It returns an error if not all columns are from the provided section.
+// makeDataset builds a dataset from only the recognized columns, so rows stay
+// aligned with Columns() and columns from a newer Loki are skipped, not decoded.
+func (s *Section) makeDataset() (*columnar.Dataset, error) {
+	recognized := s.Columns()
+	inner := make([]*columnar.Column, len(recognized))
+	for i, col := range recognized {
+		inner[i] = col.inner
+	}
+	return columnar.MakeDataset(s.inner, inner)
+}
+
+// MakeColumnarDataset is the exported entry point for sortmerge, the only caller
+// outside this package; internal callers use makeDataset.
 func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
-	columnarSection := section.inner
-	return columnar.MakeDataset(columnarSection, columnarSection.Columns())
+	return section.makeDataset()
 }
 
 // DecodeRow decodes a record from a [dataset.Row], using the provided columns
