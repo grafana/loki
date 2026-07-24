@@ -15,15 +15,44 @@ package version
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/prometheus/common/version"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+type Option func(*options)
+
+type options struct {
+	extraConstLabels prometheus.Labels
+}
+
+func WithExtraConstLabels(l prometheus.Labels) Option {
+	return func(o *options) {
+		o.extraConstLabels = l
+	}
+}
+
 // NewCollector returns a collector that exports metrics about current version
 // information.
-func NewCollector(program string) prometheus.Collector {
+func NewCollector(program string, opts ...Option) prometheus.Collector {
+	o := options{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	constLabels := prometheus.Labels{
+		"version":   version.Version,
+		"revision":  version.GetRevision(),
+		"branch":    version.Branch,
+		"goversion": version.GoVersion,
+		"goos":      version.GoOS,
+		"goarch":    version.GoArch,
+		"tags":      version.GetTags(),
+	}
+	maps.Copy(constLabels, o.extraConstLabels)
+
 	return prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Namespace: program,
@@ -32,15 +61,7 @@ func NewCollector(program string) prometheus.Collector {
 				"A metric with a constant '1' value labeled by version, revision, branch, goversion from which %s was built, and the goos and goarch for the build.",
 				program,
 			),
-			ConstLabels: prometheus.Labels{
-				"version":   version.Version,
-				"revision":  version.GetRevision(),
-				"branch":    version.Branch,
-				"goversion": version.GoVersion,
-				"goos":      version.GoOS,
-				"goarch":    version.GoArch,
-				"tags":      version.GetTags(),
-			},
+			ConstLabels: constLabels,
 		},
 		func() float64 { return 1 },
 	)
