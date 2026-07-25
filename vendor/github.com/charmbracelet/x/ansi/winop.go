@@ -8,16 +8,22 @@ import (
 const (
 	// ResizeWindowWinOp is a window operation that resizes the terminal
 	// window.
+	//
+	// Deprecated: Use constant number directly with [WindowOp].
 	ResizeWindowWinOp = 4
 
 	// RequestWindowSizeWinOp is a window operation that requests a report of
 	// the size of the terminal window in pixels. The response is in the form:
 	//  CSI 4 ; height ; width t
+	//
+	// Deprecated: Use constant number directly with [WindowOp].
 	RequestWindowSizeWinOp = 14
 
 	// RequestCellSizeWinOp is a window operation that requests a report of
 	// the size of the terminal cell size in pixels. The response is in the form:
 	//  CSI 6 ; height ; width t
+	//
+	// Deprecated: Use constant number directly with [WindowOp].
 	RequestCellSizeWinOp = 16
 )
 
