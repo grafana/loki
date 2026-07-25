@@ -24,7 +24,8 @@ import (
 	"maps"
 	"slices"
 
-	"google.golang.org/grpc/internal/balancer/weight"
+	"google.golang.org/grpc/experimental/balancer/hostname"
+	"google.golang.org/grpc/experimental/balancer/weight"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/hierarchy"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
@@ -181,7 +182,7 @@ func buildClusterImplConfigForDNS(g *nameGenerator, config *xdsresource.ClusterC
 	// LB policies that rely on locality information (like weighted_target)
 	// continue to work.
 	localityStr := xdsinternal.LocalityString(clients.Locality{})
-	retEndpoint = xdsresource.SetHostname(hierarchy.SetInEndpoint(retEndpoint, []string{pName, localityStr}), clusterUpdate.DNSHostName)
+	retEndpoint = hostname.Set(hierarchy.SetInEndpoint(retEndpoint, []string{pName, localityStr}), clusterUpdate.DNSHostName)
 	// Set the locality weight to 1. This is required because the child policy
 	// like weighted_target which relies on locality weights to distribute
 	// traffic. These policies may drop traffic if the weight is 0.

@@ -2201,7 +2201,7 @@
           ]
         },
         "listUsable": {
-          "description": "Retrieves a list of all usable backend services in the specified project.",
+          "description": "Retrieves a list of all usable backend services for Application Load\nBalancers and Proxy Network Load Balancers in the specified project.\nBackend services for external and internal passthrough Network Load\nBalancers are not included in the response.",
           "flatPath": "projects/{project}/global/backendServices/listUsable",
           "httpMethod": "GET",
           "id": "compute.backendServices.listUsable",
@@ -5197,6 +5197,18 @@
               "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
               "required": true,
               "type": "string"
+            },
+            "view": {
+              "enum": [
+                "BASIC",
+                "FULL"
+              ],
+              "enumDescriptions": [
+                "The default view of a ForwardingRule, which includes the basic fields.",
+                "The full view, including the ForwardingRule.`attached_extensions` field."
+              ],
+              "location": "query",
+              "type": "string"
             }
           },
           "path": "projects/{project}/regions/{region}/forwardingRules/{forwardingRule}",
@@ -6171,6 +6183,18 @@
               "location": "path",
               "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
               "required": true,
+              "type": "string"
+            },
+            "view": {
+              "enum": [
+                "BASIC",
+                "FULL"
+              ],
+              "enumDescriptions": [
+                "The default view of a ForwardingRule, which includes the basic fields.",
+                "The full view, including the ForwardingRule.`attached_extensions` field."
+              ],
+              "location": "query",
               "type": "string"
             }
           },
@@ -9451,6 +9475,12 @@
               "required": true,
               "type": "string"
             },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance deletion even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
+            },
             "project": {
               "description": "Project ID for this request.",
               "location": "path",
@@ -9495,6 +9525,12 @@
               "location": "path",
               "required": true,
               "type": "string"
+            },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance deletion even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
             },
             "project": {
               "description": "Project ID for this request.",
@@ -10034,6 +10070,12 @@
               "required": true,
               "type": "string"
             },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance recreation even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
+            },
             "project": {
               "description": "Project ID for this request.",
               "location": "path",
@@ -10326,6 +10368,12 @@
               "location": "path",
               "required": true,
               "type": "string"
+            },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance stopping even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
             },
             "project": {
               "description": "Project ID for this request.",
@@ -25023,7 +25071,7 @@
           ]
         },
         "listUsable": {
-          "description": "Retrieves a list of all usable backend services in the specified project in\nthe given region.",
+          "description": "Retrieves a list of all usable backend services for Application Load\nBalancers and Proxy Network Load Balancers in the specified project in the\ngiven region. Backend services for external and internal passthrough\nNetwork Load Balancers are not included in the response.",
           "flatPath": "projects/{project}/regions/{region}/backendServices/listUsable",
           "httpMethod": "GET",
           "id": "compute.regionBackendServices.listUsable",
@@ -28900,6 +28948,12 @@
               "required": true,
               "type": "string"
             },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance deletion even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
+            },
             "project": {
               "description": "Project ID for this request.",
               "location": "path",
@@ -28944,6 +28998,12 @@
               "location": "path",
               "required": true,
               "type": "string"
+            },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance deletion even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
             },
             "project": {
               "description": "Project ID for this request.",
@@ -29483,6 +29543,12 @@
               "required": true,
               "type": "string"
             },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance recreation even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
+            },
             "project": {
               "description": "Project ID for this request.",
               "location": "path",
@@ -29776,6 +29842,12 @@
               "location": "path",
               "required": true,
               "type": "string"
+            },
+            "noGracefulShutdown": {
+              "default": "false",
+              "description": "When set, graceful shutdown is skipped for instance stopping even if it's\nconfigured for the instances.",
+              "location": "query",
+              "type": "boolean"
             },
             "project": {
               "description": "Project ID for this request.",
@@ -37971,6 +38043,51 @@
     },
     "rollouts": {
       "methods": {
+        "advance": {
+          "description": "Advances a Rollout to the next wave, or completes it if no waves remain.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/advance",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.advance",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "currentWaveNumber": {
+              "description": "Required. Wave number of the current wave.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to advance.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/advance",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
         "cancel": {
           "description": "Cancels a Rollout.",
           "flatPath": "projects/{project}/global/rollouts/{rollout}",
@@ -38143,6 +38260,94 @@
             "https://www.googleapis.com/auth/compute",
             "https://www.googleapis.com/auth/compute.readonly"
           ]
+        },
+        "pause": {
+          "description": "Pauses a Rollout.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/pause",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.pause",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "etag": {
+              "description": "The etag of the Rollout.\nIf this is provided, the request will only succeed if the etag matches\nthe current etag of the Rollout.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to pause.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/pause",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
+        "resume": {
+          "description": "Resumes a Rollout.",
+          "flatPath": "projects/{project}/global/rollouts/{rollout}/resume",
+          "httpMethod": "POST",
+          "id": "compute.rollouts.resume",
+          "parameterOrder": [
+            "project",
+            "rollout"
+          ],
+          "parameters": {
+            "etag": {
+              "description": "The etag of the Rollout.\nIf this is provided, the request will only succeed if the etag matches\nthe current etag of the Rollout.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Required. Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "rollout": {
+              "description": "Required. Name of the Rollout resource to resume.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/global/rollouts/{rollout}/resume",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
         }
       }
     },
@@ -38261,6 +38466,58 @@
             "https://www.googleapis.com/auth/compute"
           ]
         },
+        "deleteNamedSet": {
+          "description": "Deletes Named Set",
+          "flatPath": "projects/{project}/regions/{region}/routers/{router}/deleteNamedSet",
+          "httpMethod": "POST",
+          "id": "compute.routers.deleteNamedSet",
+          "parameterOrder": [
+            "project",
+            "region",
+            "router"
+          ],
+          "parameters": {
+            "namedSet": {
+              "description": "The Named Set name for this request. Name must conform to RFC1035",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "region": {
+              "description": "Name of the region for this request.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "router": {
+              "description": "Name of the Router resource where Named Set is defined.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/regions/{region}/routers/{router}/deleteNamedSet",
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
         "deleteRoutePolicy": {
           "description": "Deletes Route Policy",
           "flatPath": "projects/{project}/regions/{region}/routers/{router}/deleteRoutePolicy",
@@ -38349,6 +38606,53 @@
           "path": "projects/{project}/regions/{region}/routers/{router}",
           "response": {
             "$ref": "Router"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute",
+            "https://www.googleapis.com/auth/compute.readonly"
+          ]
+        },
+        "getNamedSet": {
+          "description": "Returns specified Named Set",
+          "flatPath": "projects/{project}/regions/{region}/routers/{router}/getNamedSet",
+          "httpMethod": "GET",
+          "id": "compute.routers.getNamedSet",
+          "parameterOrder": [
+            "project",
+            "region",
+            "router"
+          ],
+          "parameters": {
+            "namedSet": {
+              "description": "The Named Set name for this request. Name must conform to RFC1035",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "region": {
+              "description": "Name of the region for this request.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+              "required": true,
+              "type": "string"
+            },
+            "router": {
+              "description": "Name of the Router resource to query for the named set. The name should\nconform to RFC1035.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/regions/{region}/routers/{router}/getNamedSet",
+          "response": {
+            "$ref": "RoutersGetNamedSetResponse"
           },
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
@@ -38793,6 +39097,77 @@
             "https://www.googleapis.com/auth/compute.readonly"
           ]
         },
+        "listNamedSets": {
+          "description": "Retrieves a list of router named set subresources available to the\nspecified project.",
+          "flatPath": "projects/{project}/regions/{region}/routers/{router}/listNamedSets",
+          "httpMethod": "GET",
+          "id": "compute.routers.listNamedSets",
+          "parameterOrder": [
+            "project",
+            "region",
+            "router"
+          ],
+          "parameters": {
+            "filter": {
+              "description": "A filter expression that filters resources listed in the response. Most\nCompute resources support two types of filter expressions:\nexpressions that support regular expressions and expressions that follow\nAPI improvement proposal AIP-160.\nThese two types of filter expressions cannot be mixed in one request.\n\nIf you want to use AIP-160, your expression must specify the field name, an\noperator, and the value that you want to use for filtering. The value\nmust be a string, a number, or a boolean. The operator\nmust be either `=`, `!=`, `\u003e`, `\u003c`, `\u003c=`, `\u003e=` or `:`.\n\nFor example, if you are filtering Compute Engine instances, you can\nexclude instances named `example-instance` by specifying\n`name != example-instance`.\n\nThe `:*` comparison can be used to test whether a key has been defined.\nFor example, to find all objects with `owner` label use:\n```\nlabels.owner:*\n```\n\nYou can also filter nested fields. For example, you could specify\n`scheduling.automaticRestart = false` to include instances only\nif they are not scheduled for automatic restarts. You can use filtering\non nested fields to filter based onresource labels.\n\nTo filter on multiple expressions, provide each separate expression within\nparentheses. For example:\n```\n(scheduling.automaticRestart = true)\n(cpuPlatform = \"Intel Skylake\")\n```\nBy default, each expression is an `AND` expression. However, you\ncan include `AND` and `OR` expressions explicitly.\nFor example:\n```\n(cpuPlatform = \"Intel Skylake\") OR\n(cpuPlatform = \"Intel Broadwell\") AND\n(scheduling.automaticRestart = true)\n```\n\nIf you want to use a regular expression, use the `eq` (equal) or `ne`\n(not equal) operator against a single un-parenthesized expression with or\nwithout quotes or against multiple parenthesized expressions. Examples:\n\n`fieldname eq unquoted literal`\n`fieldname eq 'single quoted literal'`\n`fieldname eq \"double quoted literal\"`\n`(fieldname1 eq literal) (fieldname2 ne \"literal\")`\n\nThe literal value is interpreted as a regular expression using GoogleRE2 library syntax.\nThe literal value must match the entire field.\n\nFor example, to filter for instances that do not end with name \"instance\",\nyou would use `name ne .*instance`.\n\nYou cannot combine constraints on multiple fields using regular\nexpressions.",
+              "location": "query",
+              "type": "string"
+            },
+            "maxResults": {
+              "default": "500",
+              "description": "The maximum number of results per page that should be returned.\nIf the number of available results is larger than `maxResults`,\nCompute Engine returns a `nextPageToken` that can be used to get\nthe next page of results in subsequent list requests. Acceptable values are\n`0` to `500`, inclusive. (Default: `500`)",
+              "format": "uint32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "orderBy": {
+              "description": "Sorts list results by a certain order. By default, results\nare returned in alphanumerical order based on the resource name.\n\nYou can also sort results in descending order based on the creation\ntimestamp using `orderBy=\"creationTimestamp desc\"`. This sorts\nresults based on the `creationTimestamp` field in\nreverse chronological order (newest result first). Use this to sort\nresources like operations so that the newest operation is returned first.\n\nCurrently, only sorting by `name` or\n`creationTimestamp desc` is supported.",
+              "location": "query",
+              "type": "string"
+            },
+            "pageToken": {
+              "description": "Specifies a page token to use. Set `pageToken` to the\n`nextPageToken` returned by a previous list request to get\nthe next page of results.",
+              "location": "query",
+              "type": "string"
+            },
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "region": {
+              "description": "Name of the region for this request.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+              "required": true,
+              "type": "string"
+            },
+            "returnPartialSuccess": {
+              "description": "Opt-in for partial success behavior which provides partial results in case\nof failure. The default value is false.\n\nFor example, when partial success behavior is enabled, aggregatedList for a\nsingle zone scope either returns all resources in the zone or no resources,\nwith an error code.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "router": {
+              "description": "Name or id of the resource for this request.\nName should conform to RFC1035.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/regions/{region}/routers/{router}/listNamedSets",
+          "response": {
+            "$ref": "RoutersListNamedSets"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute",
+            "https://www.googleapis.com/auth/compute.readonly"
+          ]
+        },
         "listRoutePolicies": {
           "description": "Retrieves a list of router route policy subresources available to the\nspecified project.",
           "flatPath": "projects/{project}/regions/{region}/routers/{router}/listRoutePolicies",
@@ -38905,6 +39280,56 @@
           "path": "projects/{project}/regions/{region}/routers/{router}",
           "request": {
             "$ref": "Router"
+          },
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
+        "patchNamedSet": {
+          "description": "Patches Named Set",
+          "flatPath": "projects/{project}/regions/{region}/routers/{router}/patchNamedSet",
+          "httpMethod": "POST",
+          "id": "compute.routers.patchNamedSet",
+          "parameterOrder": [
+            "project",
+            "region",
+            "router"
+          ],
+          "parameters": {
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "region": {
+              "description": "Name of the region for this request.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "router": {
+              "description": "Name of the Router resource where Named Set is defined.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/regions/{region}/routers/{router}/patchNamedSet",
+          "request": {
+            "$ref": "NamedSet"
           },
           "response": {
             "$ref": "Operation"
@@ -39051,6 +39476,56 @@
           "path": "projects/{project}/regions/{region}/routers/{router}",
           "request": {
             "$ref": "Router"
+          },
+          "response": {
+            "$ref": "Operation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/compute"
+          ]
+        },
+        "updateNamedSet": {
+          "description": "Updates or creates new Named Set",
+          "flatPath": "projects/{project}/regions/{region}/routers/{router}/updateNamedSet",
+          "httpMethod": "POST",
+          "id": "compute.routers.updateNamedSet",
+          "parameterOrder": [
+            "project",
+            "region",
+            "router"
+          ],
+          "parameters": {
+            "project": {
+              "description": "Project ID for this request.",
+              "location": "path",
+              "pattern": "(?:(?:[-a-z0-9]{1,63}\\.)*(?:[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?):)?(?:[0-9]{1,19}|(?:[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?))",
+              "required": true,
+              "type": "string"
+            },
+            "region": {
+              "description": "Name of the region for this request.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+              "required": true,
+              "type": "string"
+            },
+            "requestId": {
+              "description": "An optional request ID to identify requests. Specify a unique request ID so\nthat if you must retry your request, the server will know to ignore the\nrequest if it has already been completed.\n\nFor example, consider a situation where you make an initial request and\nthe request times out. If you make the request again with the same\nrequest ID, the server can check if original operation with the same\nrequest ID was received, and if so, will ignore the second request. This\nprevents clients from accidentally creating duplicate commitments.\n\nThe request ID must be\na valid UUID with the exception that zero UUID is not supported\n(00000000-0000-0000-0000-000000000000).",
+              "location": "query",
+              "type": "string"
+            },
+            "router": {
+              "description": "Name of the Router resource where Named Set is defined.",
+              "location": "path",
+              "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?|[1-9][0-9]{0,19}",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "projects/{project}/regions/{region}/routers/{router}/updateNamedSet",
+          "request": {
+            "$ref": "NamedSet"
           },
           "response": {
             "$ref": "Operation"
@@ -47746,7 +48221,7 @@
       }
     }
   },
-  "revision": "20260422",
+  "revision": "20260709",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AWSV4Signature": {
@@ -48473,7 +48948,7 @@
           "type": "string"
         },
         "ipCollection": {
-          "description": "Reference to the source of external IPv4 addresses,\nlike a PublicDelegatedPrefix (PDP) for BYOIP.\nThe PDP must support enhanced IPv4 allocations.\n\nUse one of the following formats to specify a PDP when reserving an\nexternal IPv4 address using BYOIP.\n   \n   - \n   Full resource URL, as inhttps://www.googleapis.com/compute/v1/projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n   - \n   Partial URL, as in\n     \n      \n          - projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n          - regions/region/publicDelegatedPrefixes/pdp-name",
+          "description": "Reference to the source of IP addresses.\n\nIt supports the following cases:\n   \n   - \n     Case 1: PublicDelegatedPrefix (PDP) for BYOIP external IPv4\n     addresses. The PDP must support enhanced IPv4 allocations.\n   - \n     Case 2: Internal Range for global internal addresses.\n\n\n\nUse one of the following formats to specify the resource:\n\nFor a Public Delegated Prefix:\n   \n   - \n   Full resource URL:https://www.googleapis.com/compute/v1/projects/projectId/regions/region/publicDelegatedPrefixes/pdp\n   - Partial URL:\n      - projects/projectId/regions/region/publicDelegatedPrefixes/pdp-name\n      - regions/region/publicDelegatedPrefixes/pdp-name\n   \n\n\nFor an Internal Range:\n   \n   - Full URL:https://networkconnectivity.googleapis.com/v1/projects/project/locations/global/internalRanges/internal-range\n   - Partial URL:projects/project/locations/global/internalRanges/internal-range",
           "type": "string"
         },
         "ipVersion": {
@@ -49571,7 +50046,6 @@
           "type": "string"
         },
         "diskType": {
-          "description": "Specifies the disk type to use to create the instance. If not specified,\nthe default is pd-standard, specified using the full URL.\nFor example:\n\nhttps://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/pd-standard\n\n\nFor a full list of acceptable values, seePersistent disk\ntypes. If you specify this field when creating a VM, you can provide\neither the full or partial URL. For example, the following values are\nvalid:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/diskType \n   - projects/project/zones/zone/diskTypes/diskType \n   - zones/zone/diskTypes/diskType\n\n\nIf you specify this field when creating or updating an instance template\nor all-instances configuration, specify the type of the disk, not the\nURL. For example: pd-standard.",
           "type": "string"
         },
         "enableConfidentialCompute": {
@@ -50368,7 +50842,7 @@
             "Do not automatically scale the MIG in or out.\nThe recommended_size field contains the size of MIG that would be set if\nthe actuation mode was enabled.",
             "Automatically scale the MIG in and out according to the policy.",
             "Automatically create VMs according to the policy, but do not scale\nthe MIG in.",
-            "Automatically create VMs according to the policy, but do not scale\nthe MIG in."
+            "Automatically create VMs according to the policy, but do not scale\nthe MIG in.\nIt's recommended to use ONLY_SCALE_OUT instead of ONLY_UP."
           ],
           "type": "string"
         },
@@ -52758,6 +53232,20 @@
           "description": "Denotes whether to enable logging for the load balancer\ntraffic served by this backend service. The default value is false.",
           "type": "boolean"
         },
+        "loggingHttpRequestHeaders": {
+          "description": "The list of request headers that will be logged to Stackdriver.",
+          "items": {
+            "$ref": "BackendServiceLogConfigLoggingHttpHeader"
+          },
+          "type": "array"
+        },
+        "loggingHttpResponseHeaders": {
+          "description": "The list of response headers that will be logged to Stackdriver.",
+          "items": {
+            "$ref": "BackendServiceLogConfigLoggingHttpHeader"
+          },
+          "type": "array"
+        },
         "optionalFields": {
           "description": "This field can only be specified if logging is enabled for this backend\nservice and \"logConfig.optionalMode\" was set to CUSTOM. Contains a list\nof optional fields you want to include in the logs. For example:\nserverInstance, serverGkeDetails.cluster,\nserverGkeDetails.pod.podNamespace",
           "items": {
@@ -52783,6 +53271,17 @@
           "description": "This field can only be specified if logging is enabled for this backend\nservice. The value of the field must be in [0, 1]. This configures the\nsampling rate of requests to the load balancer where 1.0 means all logged\nrequests are reported and 0.0 means no logged requests are reported. The\ndefault value is 1.0.",
           "format": "float",
           "type": "number"
+        }
+      },
+      "type": "object"
+    },
+    "BackendServiceLogConfigLoggingHttpHeader": {
+      "description": "Determines which HTTP headers will be logged to Stackdriver.",
+      "id": "BackendServiceLogConfigLoggingHttpHeader",
+      "properties": {
+        "headerName": {
+          "description": "The name of the header to be logged.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -55156,12 +55655,14 @@
         "confidentialInstanceType": {
           "description": "Defines the type of technology used by the confidential instance.",
           "enum": [
+            "CCA",
             "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED",
             "SEV",
             "SEV_SNP",
             "TDX"
           ],
           "enumDescriptions": [
+            "Arm Confidential Compute Architecture.",
             "No type specified. Do not use this value.",
             "AMD Secure Encrypted Virtualization.",
             "AMD Secure Encrypted Virtualization - Secure Nested Paging.",
@@ -55584,6 +56085,57 @@
         },
         "year": {
           "description": "Year of the date. Must be from 1 to 9999, or 0 to specify a date without\na year.",
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "DateTime": {
+      "description": "Represents civil time (or occasionally physical time).\n\nThis type can represent a civil time in one of a few possible ways:\n\n * When utc_offset is set and time_zone is unset: a civil time on a calendar\n   day with a particular offset from UTC.\n * When time_zone is set and utc_offset is unset: a civil time on a calendar\n   day in a particular time zone.\n * When neither time_zone nor utc_offset is set: a civil time on a calendar\n   day in local time.\n\nThe date is relative to the Proleptic Gregorian Calendar.\n\nIf year, month, or day are 0, the DateTime is considered not to have a\nspecific year, month, or day respectively.\n\nThis type may also be used to represent a physical time if all the date and\ntime fields are set and either case of the `time_offset` oneof is set.\nConsider using `Timestamp` message for physical time instead. If your use\ncase also would like to store the user's timezone, that can be done in\nanother field.\n\nThis type is more flexible than some applications may want. Make sure to\ndocument and validate your application's limitations.",
+      "id": "DateTime",
+      "properties": {
+        "day": {
+          "description": "Optional. Day of month. Must be from 1 to 31 and valid for the year and\nmonth, or 0 if specifying a datetime without a day.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "hours": {
+          "description": "Optional. Hours of day in 24 hour format. Should be from 0 to 23, defaults\nto 0 (midnight). An API may choose to allow the value \"24:00:00\" for\nscenarios like business closing time.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "minutes": {
+          "description": "Optional. Minutes of hour of day. Must be from 0 to 59, defaults to 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "month": {
+          "description": "Optional. Month of year. Must be from 1 to 12, or 0 if specifying a\ndatetime without a month.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "nanos": {
+          "description": "Optional. Fractions of seconds in nanoseconds. Must be from 0 to\n999,999,999, defaults to 0.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "seconds": {
+          "description": "Optional. Seconds of minutes of the time. Must normally be from 0 to 59,\ndefaults to 0. An API may allow the value 60 if it allows leap-seconds.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "timeZone": {
+          "$ref": "TimeZone",
+          "description": "Time zone."
+        },
+        "utcOffset": {
+          "description": "UTC offset. Must be whole seconds, between -18 hours and +18 hours.\nFor example, a UTC offset of -4:00 would be represented as\n{ seconds: -14400 }.",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "year": {
+          "description": "Optional. Year of date. Must be from 1 to 9999, or 0 if specifying a\ndatetime without a year.",
           "format": "int32",
           "type": "integer"
         }
@@ -58524,7 +59076,7 @@
       "id": "FirewallPolicyRule",
       "properties": {
         "action": {
-          "description": "The Action to perform when the client connection triggers the rule.\nValid actions for firewall rules are: \"allow\", \"deny\",\n\"apply_security_profile_group\" and \"goto_next\".\nValid actions for packet mirroring rules are: \"mirror\", \"do_not_mirror\"\nand \"goto_next\".",
+          "description": "The Action to perform when the client connection triggers the rule.\nValid actions for firewall rules are: \"allow\", \"deny\",\n\"apply_security_profile_group\" and \"goto_next\" (\n\"apply_security_profile_group\" can be specified only for global\nnetwork firewall policies or hierarchical firewall policies).\nValid actions for packet mirroring rules are: \"mirror\", \"do_not_mirror\"\nand \"goto_next\".",
           "type": "string"
         },
         "description": {
@@ -58577,8 +59129,15 @@
           "type": "integer"
         },
         "securityProfileGroup": {
-          "description": "A fully-qualified URL of a SecurityProfile resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions.",
+          "description": "A fully-qualified URL of a SecurityProfileGroup resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions. Can be specified only\nfor global network firewall policies or hierarchical firewall policies.",
           "type": "string"
+        },
+        "targetForwardingRules": {
+          "description": "A list of forwarding rules to which this rule applies.\nThis field allows you to control which load balancers get this rule.\nFor example, the following are valid values:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/global/forwardingRules/forwardingRule\n     - https://www.googleapis.com/compute/v1/projects/project/regions/region/forwardingRules/forwardingRule\n     - projects/project/global/\n     forwardingRules/forwardingRule\n     - projects/project/regions/region/forwardingRules/\n     forwardingRule",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "targetResources": {
           "description": "A list of network resource URLs to which this rule applies.  This field\nallows you to control which network's VMs get this rule.  If this field\nis left blank, all VMs within the organization will receive the rule.",
@@ -58600,6 +59159,18 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "targetType": {
+          "description": "Target types of the firewall policy rule.\nDefault value is INSTANCES.",
+          "enum": [
+            "INSTANCES",
+            "INTERNAL_MANAGED_LB"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
         },
         "tlsInspect": {
           "description": "Boolean flag indicating if the traffic should be TLS decrypted.\nCan be set only if action = 'apply_security_profile_group' and cannot\nbe set for other actions.",
@@ -58906,6 +59477,14 @@
         "allowPscGlobalAccess": {
           "description": "This is used in PSC consumer ForwardingRule to control whether the PSC\nendpoint can be accessed from another region.",
           "type": "boolean"
+        },
+        "attachedExtensions": {
+          "description": "Output only. [Output Only]. The extensions that are attached to this ForwardingRule.",
+          "items": {
+            "$ref": "ForwardingRuleAttachedExtension"
+          },
+          "readOnly": true,
+          "type": "array"
         },
         "backendService": {
           "description": "Identifies the backend service to which the forwarding rule sends traffic.\nRequired for internal and external passthrough Network Load Balancers;\nmust be omitted for all other load balancer types.",
@@ -59295,6 +59874,18 @@
             }
           },
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ForwardingRuleAttachedExtension": {
+      "description": "Reference to an extension resource that is attached to this ForwardingRule.",
+      "id": "ForwardingRuleAttachedExtension",
+      "properties": {
+        "reference": {
+          "description": "Output only. The resource name.",
+          "readOnly": true,
+          "type": "string"
         }
       },
       "type": "object"
@@ -61560,6 +62151,7 @@
           "description": "The ID of a supported feature. To add multiple values, use commas to\nseparate values. Set to one or more of the following values:\n   \n   - VIRTIO_SCSI_MULTIQUEUE\n   - WINDOWS\n   - MULTI_IP_SUBNET\n   - UEFI_COMPATIBLE\n   - GVNIC\n   - SEV_CAPABLE\n   - SUSPEND_RESUME_COMPATIBLE\n   - SEV_LIVE_MIGRATABLE_V2\n   - SEV_SNP_CAPABLE\n   - TDX_CAPABLE\n   - IDPF\n   - SNP_SVSM_CAPABLE\n   - CCA_CAPABLE\n\n\nFor more information, see\nEnabling guest operating system features.",
           "enum": [
             "BARE_METAL_LINUX_COMPATIBLE",
+            "CCA_CAPABLE",
             "FEATURE_TYPE_UNSPECIFIED",
             "GVNIC",
             "IDPF",
@@ -61576,6 +62168,7 @@
             "WINDOWS"
           ],
           "enumDescriptions": [
+            "",
             "",
             "",
             "",
@@ -65615,6 +66208,20 @@
           "readOnly": true,
           "type": "string"
         },
+        "localSsdEncryptionMode": {
+          "description": "Specifies which method should be used for encrypting the\nLocal SSDs attached to the VM.",
+          "enum": [
+            "EPHEMERAL_KEY_ENCRYPTION",
+            "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED",
+            "STANDARD_ENCRYPTION"
+          ],
+          "enumDescriptions": [
+            "The given VM will opt-in for using ephemeral key for\nencryption of Local SSDs.\nThe Local SSDs will not be able to recover data in case of VM\ncrash.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted."
+          ],
+          "type": "string"
+        },
         "machineType": {
           "description": "Full or partial URL of the machine type resource to use for this instance,\nin the format:zones/zone/machineTypes/machine-type. This is provided by the client\nwhen the instance is created. For example, the following is a valid partial\nurl to a predefined\nmachine type:\n\nzones/us-central1-f/machineTypes/n1-standard-1\n\n\nTo create acustom\nmachine type, provide a URL to a machine type in the following format,\nwhere CPUS is 1 or an even number up to 32 (2,\n4, 6, ... 24, etc), and MEMORY is the total\nmemory for this instance. Memory must be a multiple of 256 MB and must\nbe supplied in MB (e.g. 5 GB of memory is 5120 MB):\n\nzones/zone/machineTypes/custom-CPUS-MEMORY\n\n\nFor example: zones/us-central1-f/machineTypes/custom-4-5120\nFor a full list of restrictions, read theSpecifications\nfor custom machine types.",
           "type": "string"
@@ -66938,14 +67545,14 @@
       "id": "InstanceGroupManagerInstanceLifecyclePolicy",
       "properties": {
         "defaultActionOnFailure": {
-          "description": "The action that a MIG performs on a failed or an unhealthy VM.\nA VM is marked as unhealthy when the application running on that\nVM fails a health check.\nValid values are \n   \n   - REPAIR (default): MIG automatically repairs a failed or\n   an unhealthy VM by recreating it. For more information, see About\n   repairing VMs in a MIG.\n   - DO_NOTHING: MIG does not repair a failed or an unhealthy\n   VM.",
+          "description": "The action that a MIG performs on a failed VM. If the value of the\nonFailedHealthCheck field is `DEFAULT_ACTION`, then the same action also\napplies to the VMs on which your application fails a health check.\nValid values are \n   \n   - REPAIR (default): MIG automatically repairs a failed VM\n   by recreating it. For more information, see About\n   repairing VMs in a MIG.\n   - DO_NOTHING: MIG does not repair a failed VM.",
           "enum": [
             "DO_NOTHING",
             "REPAIR"
           ],
           "enumDescriptions": [
-            "MIG does not repair a failed or an unhealthy VM.",
-            "(Default) MIG automatically repairs a failed or an unhealthy\nVM by recreating it. For more information, see About\nrepairing VMs in a MIG."
+            "MIG does not repair a failed VM.",
+            "(default): MIG automatically repairs a failed VM by recreating it.\nFor more information, see About\nrepairing VMs in a MIG."
           ],
           "type": "string"
         },
@@ -66972,6 +67579,29 @@
             "(Default) MIG uses the same action configured for\ninstanceLifecyclePolicy.defaultActionOnFailure field.",
             "MIG doesn't repair an unhealthy VM.",
             "MIG automatically repairs an unhealthy VM by recreating it."
+          ],
+          "type": "string"
+        },
+        "onRepair": {
+          "$ref": "InstanceGroupManagerInstanceLifecyclePolicyOnRepair",
+          "description": "Configuration for VM repairs in the MIG."
+        }
+      },
+      "type": "object"
+    },
+    "InstanceGroupManagerInstanceLifecyclePolicyOnRepair": {
+      "description": "Configuration for VM repairs in the MIG.",
+      "id": "InstanceGroupManagerInstanceLifecyclePolicyOnRepair",
+      "properties": {
+        "allowChangingZone": {
+          "description": "Specifies whether the MIG can change a VM's zone during a repair.\nValid values are:\n   \n   - NO (default): MIG cannot change a VM's zone during a\n   repair.\n   - YES: MIG can select a different zone for the VM during\n   a repair.",
+          "enum": [
+            "NO",
+            "YES"
+          ],
+          "enumDescriptions": [
+            "[Default] MIG cannot change a VM's zone during a repair.",
+            "MIG can select a different zone for the VM during a repair."
           ],
           "type": "string"
         }
@@ -67157,6 +67787,13 @@
           "readOnly": true,
           "type": "string"
         },
+        "instances": {
+          "description": "The names of instances to be created by this resize request. The number of\nnames specified determines the number of instances to create. The group's\ntarget size will be increased by this number. This field cannot be used\ntogether with 'resize_by'.",
+          "items": {
+            "$ref": "PerInstanceConfig"
+          },
+          "type": "array"
+        },
         "kind": {
           "default": "compute#instanceGroupManagerResizeRequest",
           "description": "Output only. The resource type, which is alwayscompute#instanceGroupManagerResizeRequest for resize requests.",
@@ -67240,6 +67877,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -67248,18 +67886,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -67300,6 +67943,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -67308,18 +67952,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -67634,6 +68283,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -67642,18 +68292,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -67728,6 +68383,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -67736,18 +68392,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -68041,7 +68702,7 @@
       "id": "InstanceGroupManagersApplyUpdatesRequest",
       "properties": {
         "allInstances": {
-          "description": "Flag to update all instances instead of specified list of “instances”.\nIf the flag is set to true then the instances may not be specified\nin the request.",
+          "description": "Flag to update all instances instead of specified list of \"instances\".\nIf the flag is set to true then the instances may not be specified\nin the request.",
           "type": "boolean"
         },
         "instances": {
@@ -68135,7 +68796,7 @@
       "id": "InstanceGroupManagersListErrorsResponse",
       "properties": {
         "items": {
-          "description": "Output only. [Output Only] The list of errors of the managed instance group.",
+          "description": "Output only. The list of errors of the managed instance group.",
           "items": {
             "$ref": "InstanceManagedByIgmError"
           },
@@ -68143,7 +68804,7 @@
           "type": "array"
         },
         "nextPageToken": {
-          "description": "Output only. [Output Only] This token allows you to get the next page of results for\nlist requests. If the number of results is larger thanmaxResults, use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
+          "description": "Output only. This token allows you to get the next page of results for list requests.\nIf the number of results is larger than maxResults\n, then use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
           "readOnly": true,
           "type": "string"
         }
@@ -69260,16 +69921,16 @@
       "properties": {
         "error": {
           "$ref": "InstanceManagedByIgmErrorManagedInstanceError",
-          "description": "Output only. [Output Only] Contents of the error.",
+          "description": "Output only. Contents of the error.",
           "readOnly": true
         },
         "instanceActionDetails": {
           "$ref": "InstanceManagedByIgmErrorInstanceActionDetails",
-          "description": "Output only. [Output Only] Details of the instance action that triggered this error.\nMay be null, if the error was not caused by an action on an instance.\nThis field is optional.",
+          "description": "Output only. Details of the instance action that triggered this error.\nMay be null, if the error was not caused by an action on an instance.\nThis field is optional.",
           "readOnly": true
         },
         "timestamp": {
-          "description": "Output only. [Output Only] The time that this error occurred.\nThis value is in RFC3339 text format.",
+          "description": "Output only. The time that this error occurred. This value is in RFC3339 text format.",
           "readOnly": true,
           "type": "string"
         }
@@ -69280,7 +69941,7 @@
       "id": "InstanceManagedByIgmErrorInstanceActionDetails",
       "properties": {
         "action": {
-          "description": "Output only. [Output Only] Action that managed instance group was executing on\nthe instance when the error occurred. Possible values:",
+          "description": "Output only. Action that managed instance group was executing on the instance when the\nerror occurred. Possible values:",
           "enum": [
             "ABANDONING",
             "CREATING",
@@ -69315,13 +69976,13 @@
           "type": "string"
         },
         "instance": {
-          "description": "Output only. [Output Only] The URL of the instance.\nThe URL can be set even if the instance has not yet been created.",
+          "description": "Output only. The URL of the instance. The URL can be set even if the instance has not\nyet been created.",
           "readOnly": true,
           "type": "string"
         },
         "version": {
           "$ref": "ManagedInstanceVersion",
-          "description": "Output only. [Output Only] Version this instance was created from, or was being\ncreated from, but the creation failed. Corresponds to one of the versions\nthat were set on the Instance Group Manager resource at the time this\ninstance was being created.",
+          "description": "Output only. Version this instance was created from, or was being\ncreated from, but the creation failed. Corresponds to one of the versions\nthat were set on the Instance Group Manager resource at the time this\ninstance was being created.",
           "readOnly": true
         }
       },
@@ -69331,12 +69992,12 @@
       "id": "InstanceManagedByIgmErrorManagedInstanceError",
       "properties": {
         "code": {
-          "description": "Output only. [Output Only] Error code.",
+          "description": "Output only. Error code.",
           "readOnly": true,
           "type": "string"
         },
         "message": {
-          "description": "Output only. [Output Only] Error message.",
+          "description": "Output only. Error message.",
           "readOnly": true,
           "type": "string"
         }
@@ -69428,6 +70089,20 @@
           },
           "description": "Labels to apply to instances that are created from these properties.",
           "type": "object"
+        },
+        "localSsdEncryptionMode": {
+          "description": "Specifies which method should be used for encrypting the\nLocal SSDs attached to the VM.",
+          "enum": [
+            "EPHEMERAL_KEY_ENCRYPTION",
+            "LOCAL_SSD_ENCRYPTION_MODE_UNSPECIFIED",
+            "STANDARD_ENCRYPTION"
+          ],
+          "enumDescriptions": [
+            "The given VM will opt-in for using ephemeral key for\nencryption of Local SSDs.\nThe Local SSDs will not be able to recover data in case of VM\ncrash.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted.",
+            "The given VM will be encrypted using keys managed by the cloud\ninfrastructure and the keys will be deleted when the VM is\ndeleted."
+          ],
+          "type": "string"
         },
         "machineType": {
           "annotations": {
@@ -71394,6 +72069,11 @@
         },
         "description": {
           "description": "An optional description of this resource. Provide this property when you\ncreate the resource.",
+          "type": "string"
+        },
+        "effectiveLocation": {
+          "description": "Output only. URL of the InterconnectLocation object that represents where\nthis connection is to be provisioned. By default it will be the same as the\nlocation field.",
+          "readOnly": true,
           "type": "string"
         },
         "expectedOutages": {
@@ -76922,6 +77602,16 @@
           "description": "Output only. [Output Only] Instance properties selected for this instance resulting from\nInstanceFlexibilityPolicy.",
           "readOnly": true
         },
+        "scheduling": {
+          "$ref": "ManagedInstanceScheduling",
+          "description": "Output only. Information about the termination timestamp of the instance, if applicable.",
+          "readOnly": true
+        },
+        "shutdownDetails": {
+          "$ref": "ManagedInstanceShutdownDetails",
+          "description": "Output only. Specifies the graceful shutdown details if the instance is in\n`PENDING_STOP` state or there is a programmed stop scheduled.",
+          "readOnly": true
+        },
         "version": {
           "$ref": "ManagedInstanceVersion",
           "description": "Output only. [Output Only] Intended version of this instance.",
@@ -76969,6 +77659,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -76977,18 +77668,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -77020,6 +77716,41 @@
       "properties": {
         "machineType": {
           "description": "Output only. The machine type to be used for this instance.",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ManagedInstanceScheduling": {
+      "id": "ManagedInstanceScheduling",
+      "properties": {
+        "gracefulShutdownTimestamp": {
+          "description": "Output only. The timestamp at which the underlying instance will be\ntriggered for graceful shutdown if it is configured. This is in RFC3339 text format.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        },
+        "terminationTimestamp": {
+          "description": "Output only. The timestamp at which the managed instance will be terminated. This is\nin RFC3339 text\nformat.",
+          "format": "google-datetime",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ManagedInstanceShutdownDetails": {
+      "id": "ManagedInstanceShutdownDetails",
+      "properties": {
+        "maxDuration": {
+          "$ref": "Duration",
+          "description": "Output only. The duration for graceful shutdown. Only applicable when the instance is\nin `PENDING_STOP` state.",
+          "readOnly": true
+        },
+        "requestTimestamp": {
+          "description": "Output only. Past timestamp indicating the beginning of `PENDING_STOP` state of\ninstance in RFC3339\ntext format.",
+          "format": "google-datetime",
           "readOnly": true,
           "type": "string"
         }
@@ -77146,6 +77877,44 @@
           "description": "The port number, which can be a value between 1 and 65535.",
           "format": "int32",
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "NamedSet": {
+      "id": "NamedSet",
+      "properties": {
+        "description": {
+          "description": "An optional description of named set.",
+          "type": "string"
+        },
+        "elements": {
+          "description": "CEL expressions that are comparable to constructs of this set's type\n(see Policy Language).",
+          "items": {
+            "$ref": "Expr"
+          },
+          "type": "array"
+        },
+        "fingerprint": {
+          "description": "A fingerprint for the Named Set being applied to this Router, which is\nessentially a hash of the Named Set used for optimistic locking.\nThe fingerprint is initially generated by Compute Engine and changes\nafter every request to modify or update the Named Set. You must always\nprovide an up-to-date fingerprint hash in order to update or change\nlabels.\n\nTo see the latest fingerprint, make a getNamedSet() request\nto retrieve a Named Set.",
+          "format": "byte",
+          "type": "string"
+        },
+        "name": {
+          "description": "This set's name, which must be a resource ID segment and unique within all\nnamed sets owned by the Router. Name should conform to RFC1035.",
+          "type": "string"
+        },
+        "type": {
+          "description": "This named set's type",
+          "enum": [
+            "NAMED_SET_TYPE_COMMUNITY",
+            "NAMED_SET_TYPE_PREFIX"
+          ],
+          "enumDescriptions": [
+            "The Named Set is a Community Named Set.",
+            "The Named Set is a Prefix Named Set."
+          ],
+          "type": "string"
         }
       },
       "type": "object"
@@ -77407,14 +78176,14 @@
           "type": "string"
         },
         "producerAcceptLists": {
-          "description": "Projects that are allowed to connect to this network attachment.\nThe project can be specified using its id or number.",
+          "description": "Projects or service class ids that are allowed to connect to this network\nattachment. The project can be specified using its id or number. Service\nclass id can be specified as \"serviceclasses/{service_class_id}\".",
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "producerRejectLists": {
-          "description": "Projects that are not allowed to connect to this network attachment.\nThe project can be specified using its id or number.",
+          "description": "Projects or service class ids that are not allowed to connect to this\nnetwork attachment. The project can be specified using its id or number.\nService class id can be specified as \"serviceclasses/{service_class_id}\".",
           "items": {
             "type": "string"
           },
@@ -78407,7 +79176,7 @@
           "type": "string"
         },
         "network": {
-          "description": "The URL of the network to which all network endpoints in the NEG belong.\nUses default project network if unspecified.",
+          "description": "The URL of the network to which all network endpoints in the NEG belong.\nFor networkEndpointType GCE_VM_IP_PORT,GCE_VM_IP_PORTMAP or NON_GCP_PRIVATE_IP_PORT,\nif this field is not specified, a default network will be used.\nThis field cannot be set for NEGs with networkEndpointType set toSERVERLESS or PRIVATE_SERVICE_CONNECT and for\nglobal NEGs.\nFor all other network endpoint types, this field is required.",
           "type": "string"
         },
         "networkEndpointType": {
@@ -79419,6 +80188,13 @@
         },
         "aliasIpRanges": {
           "description": "An array of alias IP ranges for this network interface.\nYou can only specify this field for network interfaces in VPC networks.",
+          "items": {
+            "$ref": "AliasIpRange"
+          },
+          "type": "array"
+        },
+        "aliasIpv6Ranges": {
+          "description": "An array of alias IPv6 ranges for this network interface.\nYou can only specify this field for network interfaces in VPC networks.",
           "items": {
             "$ref": "AliasIpRange"
           },
@@ -83595,6 +84371,7 @@
             "errors": {
               "description": "[Output Only] The array of errors encountered while processing this\noperation.",
               "items": {
+                "description": "Represents a single error encountered during the processing of an\noperation.",
                 "properties": {
                   "code": {
                     "description": "[Output Only] The error type identifier for this error.",
@@ -83603,18 +84380,23 @@
                   "errorDetails": {
                     "description": "[Output Only] An optional list of messages that contain the error\ndetails. There is a set of defined message types to use for providing\ndetails.The syntax depends on the error code. For example,\nQuotaExceededInfo will have details when the error code is\nQUOTA_EXCEEDED.",
                     "items": {
+                      "description": "Container for structured error details providing additional context\nspecific to the encountered error code.",
                       "properties": {
                         "errorInfo": {
-                          "$ref": "ErrorInfo"
+                          "$ref": "ErrorInfo",
+                          "description": "Error information containing structured domain, reason, and metadata."
                         },
                         "help": {
-                          "$ref": "Help"
+                          "$ref": "Help",
+                          "description": "Links and information to help the user resolve the error."
                         },
                         "localizedMessage": {
-                          "$ref": "LocalizedMessage"
+                          "$ref": "LocalizedMessage",
+                          "description": "A localized human-readable error message intended for end users."
                         },
                         "quotaInfo": {
-                          "$ref": "QuotaExceededInfo"
+                          "$ref": "QuotaExceededInfo",
+                          "description": "Details about quota limits and metrics when a quota is exceeded."
                         }
                       },
                       "type": "object"
@@ -83710,9 +84492,9 @@
             "RUNNING"
           ],
           "enumDescriptions": [
-            "",
-            "",
-            ""
+            "The operation has completed processing successfully or with an error.",
+            "The operation is waiting to be processed.",
+            "The operation is actively being processed."
           ],
           "type": "string"
         },
@@ -85242,6 +86024,54 @@
             "The per-instance configuration has been deleted, but the deletion is not\nyet applied."
           ],
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "PeriodicPartialMaintenanceSchedule": {
+      "description": "The periodic partial maintenance schedule includes 52 weeks worth of\nmaintenance windows.\nLINT.IfChange(PeriodicPartialMaintenanceSchedule)",
+      "id": "PeriodicPartialMaintenanceSchedule",
+      "properties": {
+        "subType": {
+          "description": "The maintenance type in which the zone is during the given window.",
+          "enum": [
+            "MAINTENANCE_SUBTYPE_UNSPECIFIED",
+            "MAINTENANCE_TYPE_CUSTOMER_MAINTENANCE",
+            "MAINTENANCE_TYPE_DISRUPTIVE_UPGRADE",
+            "MAINTENANCE_TYPE_STABLE",
+            "MAINTENANCE_TYPE_TRANSITION"
+          ],
+          "enumDescriptions": [
+            "Default value.",
+            "A dedicated window for customers to perform their own maintenance. This\noften runs concurrently with a DISRUPTIVE_UPGRADE.",
+            "For disruptive updates, including host machine kernel or firmware\nupgrades.",
+            "A post-maintenance window for customers to conduct final testing and\nperformance validation before resuming full business operations.",
+            "For preliminary, non-disruptive tasks such as key rotations."
+          ],
+          "type": "string"
+        },
+        "targetResource": {
+          "description": "The target resource that the maintenance window is for.\nFor example, \"projects/my-project/zones/us-central1-a\".",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "MAINTENANCE_TYPE_UNSPECIFIED",
+            "PRIVATE_ZONE_MAINTENANCE"
+          ],
+          "enumDescriptions": [
+            "Default value.",
+            "The zone is in a private maintenance window."
+          ],
+          "type": "string"
+        },
+        "windowEndTime": {
+          "$ref": "DateTime",
+          "description": "The end civil timestamp of the window (not inclusive).\nThis contains a time zone."
+        },
+        "windowStartTime": {
+          "$ref": "DateTime",
+          "description": "The start civil timestamp of the window.\nThis contains a time zone."
         }
       },
       "type": "object"
@@ -88473,7 +89303,7 @@
       "id": "RegionInstanceGroupManagersApplyUpdatesRequest",
       "properties": {
         "allInstances": {
-          "description": "Flag to update all instances instead of specified list of “instances”.\nIf the flag is set to true then the instances may not be specified\nin the request.",
+          "description": "Flag to update all instances instead of specified list of \"instances\".\nIf the flag is set to true then the instances may not be specified\nin the request.",
           "type": "boolean"
         },
         "instances": {
@@ -92284,6 +93114,11 @@
       "description": "Represents the physical host topology of the host on which the VM is\nrunning.",
       "id": "ResourceStatusPhysicalHostTopology",
       "properties": {
+        "additionalAttributes": {
+          "$ref": "ResourceStatusPhysicalHostTopologyAdditionalAttributes",
+          "description": "Output only. [Output Only] Additional location information of the running instance.",
+          "readOnly": true
+        },
         "block": {
           "description": "[Output Only] The ID of the block in which the running instance is\nlocated. Instances within the same block experience low network latency.",
           "type": "string"
@@ -92299,6 +93134,21 @@
         "subblock": {
           "description": "[Output Only] The ID of the sub-block in which the running instance is\nlocated. Instances in the same sub-block experience lower network latency\nthan instances in the same block.",
           "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResourceStatusPhysicalHostTopologyAdditionalAttributes": {
+      "description": "Additional location information of the running instance.",
+      "id": "ResourceStatusPhysicalHostTopologyAdditionalAttributes",
+      "properties": {
+        "acceleratorTopologyIds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Output only. The IDs of the accelerator topologies the instance belongs to. For\nexample\nThe key will be topologies like \"4x4\", \"2x2x2\" and the value will be\nthe location ID of the topologies.",
+          "readOnly": true,
+          "type": "object"
         }
       },
       "type": "object"
@@ -92375,6 +93225,16 @@
         "name": {
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?`\nwhich means the first character must be a lowercase letter, and all\nfollowing characters must be a dash, lowercase letter, or digit, except\nthe last character, which cannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
+          "type": "string"
+        },
+        "pauseTime": {
+          "description": "Output only. The timestamp at which the Rollout was paused.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "resumeTime": {
+          "description": "Output only. The timestamp at which the Rollout was resumed.",
+          "readOnly": true,
           "type": "string"
         },
         "rolloutEntity": {
@@ -93796,6 +94656,10 @@
           },
           "type": "array"
         },
+        "nccGateway": {
+          "description": "URI of the ncc_gateway to which this router associated.",
+          "type": "string"
+        },
         "network": {
           "annotations": {
             "required": [
@@ -94536,6 +95400,12 @@
           },
           "type": "array"
         },
+        "effectiveTcpTimeWaitTimeoutSec": {
+          "description": "Output only. Effective timeout (in seconds) for TCP connections that are in TIME_WAIT\nstate. This value is equal to tcp_time_wait_timeout_sec.\nIf tcp_time_wait_timeout_sec isn't set, the effective timeout is 30s or\n120s. The field is output only.",
+          "format": "int32",
+          "readOnly": true,
+          "type": "integer"
+        },
         "enableDynamicPortAllocation": {
           "description": "Enable Dynamic Port Allocation.\n\n\nIf not specified, it is disabled by default.\n\n\nIf set to true,\n   \n   - Dynamic Port Allocation will be enabled on this NAT\n   config.\n   - enableEndpointIndependentMapping cannot be set to true.\n   - If minPorts is set, minPortsPerVm must be set to a\n   power of two greater than or equal to 32. If minPortsPerVm is not set, a\n   minimum of 32 ports will be allocated to a VM from this NAT\n   config.",
           "type": "boolean"
@@ -94856,6 +95726,10 @@
           },
           "type": "array"
         },
+        "nccGateway": {
+          "description": "URI of the ncc_gateway to which this router associated.",
+          "type": "string"
+        },
         "network": {
           "description": "URI of the network to which this router belongs.",
           "type": "string"
@@ -95117,6 +95991,19 @@
       },
       "type": "object"
     },
+    "RoutersGetNamedSetResponse": {
+      "id": "RoutersGetNamedSetResponse",
+      "properties": {
+        "etag": {
+          "description": "end_interface: MixerGetResponseWithEtagBuilder",
+          "type": "string"
+        },
+        "resource": {
+          "$ref": "NamedSet"
+        }
+      },
+      "type": "object"
+    },
     "RoutersGetRoutePolicyResponse": {
       "id": "RoutersGetRoutePolicyResponse",
       "properties": {
@@ -95150,6 +96037,173 @@
           "description": "[Output Only] A list of bgp routes.",
           "items": {
             "$ref": "BgpRoute"
+          },
+          "type": "array"
+        },
+        "selfLink": {
+          "description": "Output only. [Output Only] Server-defined URL for this resource.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "unreachables": {
+          "description": "Output only. [Output Only] Unreachable resources.",
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "warning": {
+          "description": "[Output Only] Informational warning message.",
+          "properties": {
+            "code": {
+              "description": "[Output Only] A warning code, if applicable. For example, Compute\nEngine returns NO_RESULTS_ON_PAGE if there\nare no results in the response.",
+              "enum": [
+                "CLEANUP_FAILED",
+                "DEPRECATED_RESOURCE_USED",
+                "DEPRECATED_TYPE_USED",
+                "DISK_SIZE_LARGER_THAN_IMAGE_SIZE",
+                "EXPERIMENTAL_TYPE_USED",
+                "EXTERNAL_API_WARNING",
+                "FIELD_VALUE_OVERRIDEN",
+                "INJECTED_KERNELS_DEPRECATED",
+                "INVALID_HEALTH_CHECK_FOR_DYNAMIC_WIEGHTED_LB",
+                "LARGE_DEPLOYMENT_WARNING",
+                "LIST_OVERHEAD_QUOTA_EXCEED",
+                "MISSING_TYPE_DEPENDENCY",
+                "NEXT_HOP_ADDRESS_NOT_ASSIGNED",
+                "NEXT_HOP_CANNOT_IP_FORWARD",
+                "NEXT_HOP_INSTANCE_HAS_NO_IPV6_INTERFACE",
+                "NEXT_HOP_INSTANCE_NOT_FOUND",
+                "NEXT_HOP_INSTANCE_NOT_ON_NETWORK",
+                "NEXT_HOP_NOT_RUNNING",
+                "NOT_CRITICAL_ERROR",
+                "NO_RESULTS_ON_PAGE",
+                "PARTIAL_SUCCESS",
+                "QUOTA_INFO_UNAVAILABLE",
+                "REQUIRED_TOS_AGREEMENT",
+                "RESOURCE_IN_USE_BY_OTHER_RESOURCE_WARNING",
+                "RESOURCE_NOT_DELETED",
+                "SCHEMA_VALIDATION_IGNORED",
+                "SINGLE_INSTANCE_PROPERTY_TEMPLATE",
+                "UNDECLARED_PROPERTIES",
+                "UNREACHABLE"
+              ],
+              "enumDeprecated": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ],
+              "enumDescriptions": [
+                "Warning about failed cleanup of transient changes made by a failed\noperation.",
+                "A link to a deprecated resource was created.",
+                "When deploying and at least one of the resources has a type marked as\ndeprecated",
+                "The user created a boot disk that is larger than image size.",
+                "When deploying and at least one of the resources has a type marked as\nexperimental",
+                "Warning that is present in an external api call",
+                "Warning that value of a field has been overridden.\nDeprecated unused field.",
+                "The operation involved use of an injected kernel, which is deprecated.",
+                "A WEIGHTED_MAGLEV backend service is associated with a health check that is\nnot of type HTTP/HTTPS/HTTP2.",
+                "When deploying a deployment with a exceedingly large number of resources",
+                "Resource can't be retrieved due to list overhead quota exceed\nwhich captures the amount of resources filtered out by\nuser-defined list filter.",
+                "A resource depends on a missing type",
+                "The route's nextHopIp address is not assigned to an instance on the\nnetwork.",
+                "The route's next hop instance cannot ip forward.",
+                "The route's nextHopInstance URL refers to an instance that does not have an\nipv6 interface on the same network as the route.",
+                "The route's nextHopInstance URL refers to an instance that does not exist.",
+                "The route's nextHopInstance URL refers to an instance that is not on the\nsame network as the route.",
+                "The route's next hop instance does not have a status of RUNNING.",
+                "Error which is not critical. We decided to continue the process despite\nthe mentioned error.",
+                "No results are present on a particular list page.",
+                "Success is reported, but some results may be missing due to errors",
+                "Quota information is not available to client requests (e.g:\nregions.list).",
+                "The user attempted to use a resource that requires a TOS they have not\naccepted.",
+                "Warning that a resource is in use.",
+                "One or more of the resources set to auto-delete could not be deleted\nbecause they were in use.",
+                "When a resource schema validation is ignored.",
+                "Instance template used in instance group manager is valid as such, but\nits application does not make a lot of sense, because it allows only\nsingle instance in instance group.",
+                "When undeclared properties in the schema are present",
+                "A given scope cannot be reached."
+              ],
+              "type": "string"
+            },
+            "data": {
+              "description": "[Output Only] Metadata about this warning in key:\nvalue format. For example:\n\n\"data\": [\n  {\n   \"key\": \"scope\",\n   \"value\": \"zones/us-east1-d\"\n  }",
+              "items": {
+                "properties": {
+                  "key": {
+                    "description": "[Output Only] A key that provides more detail on the warning being\nreturned. For example, for warnings where there are no results in a list\nrequest for a particular zone, this key might be scope and\nthe key value might be the zone name. Other examples might be a key\nindicating a deprecated resource and a suggested replacement, or a\nwarning about invalid network settings (for example, if an instance\nattempts to perform IP forwarding but is not enabled for IP forwarding).",
+                    "type": "string"
+                  },
+                  "value": {
+                    "description": "[Output Only] A warning data value corresponding to the key.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "message": {
+              "description": "[Output Only] A human-readable description of the warning code.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "RoutersListNamedSets": {
+      "id": "RoutersListNamedSets",
+      "properties": {
+        "etag": {
+          "type": "string"
+        },
+        "id": {
+          "description": "[Output Only] The unique identifier for the resource. This identifier is\ndefined by the server.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "compute#routersListNamedSets",
+          "description": "Output only. [Output Only] Type of resource. Alwayscompute#routersListNamedSets for lists of named sets.",
+          "readOnly": true,
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "[Output Only] This token allows you to get the next page of results for\nlist requests. If the number of results is larger thanmaxResults, use the nextPageToken as a value for\nthe query parameter pageToken in the next list request.\nSubsequent list requests will have their own nextPageToken to\ncontinue paging through the results.",
+          "type": "string"
+        },
+        "result": {
+          "description": "[Output Only] A list of named sets.",
+          "items": {
+            "$ref": "NamedSet"
           },
           "type": "array"
         },
@@ -96680,6 +97734,35 @@
     "SecurityPolicyDdosProtectionConfig": {
       "id": "SecurityPolicyDdosProtectionConfig",
       "properties": {
+        "ddosAdaptiveProtection": {
+          "enum": [
+            "DDOS_ADAPTIVE_PROTECTION_UNSPECIFIED",
+            "DISABLED",
+            "ENABLED",
+            "PREVIEW",
+            "UNSPECIFIED_ADAPTIVE_PROTECTION"
+          ],
+          "enumDeprecated": [
+            false,
+            false,
+            false,
+            false,
+            true
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
+        "ddosImpactedBaselineThreshold": {
+          "description": "DDoS Protection for Network Load Balancers (and VMs with public IPs)\nbuilds DDoS mitigations that minimize collateral damage. It quantifies\nthis as the fraction of a non-abuse baseline that's inadvertently\nblocked.\n\nRules whose collateral damage exceeds ddosImpactedBaselineThreshold will\nnot be deployed. Using a lower value will prioritize keeping collateral\ndamage low, possibly at the cost of its effectiveness in rate limiting\nsome or all of the attack. It should typically be unset, so Advanced DDoS\n(and Adaptive Protection) uses the best mitigation it can find. Setting\nthe threshold is advised if there are logs for false positive detections\nwith high collateral damage, and will cause Advanced DDoS to attempt to\nfind a less aggressive rule that satisfies the constraint. If a suitable\nrule cannot be found, the system falls back to either no mitigation for\nsmaller attacks or broader network throttles for larger ones.",
+          "format": "float",
+          "type": "number"
+        },
         "ddosProtection": {
           "enum": [
             "ADVANCED",
@@ -97560,6 +98643,11 @@
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first\ncharacter must be a lowercase letter, and all following characters must\nbe a dash, lowercase letter, or digit, except the last character, which\ncannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
           "type": "string"
+        },
+        "natIpsPerEndpoint": {
+          "description": "The number of NAT IP addresses to be allocated per connected endpoint.\nIf not specified, the default value is 1.",
+          "format": "uint32",
+          "type": "integer"
         },
         "natSubnets": {
           "description": "An array of URLs where each entry is the URL of a subnet provided\nby the service producer to use for NAT in this service attachment.",
@@ -98563,7 +99651,7 @@
           "type": "string"
         },
         "storageBytesStatus": {
-          "description": "Output only. [Output Only] An indicator whether storageBytes is in a\nstable state or it is being adjusted as a result of shared storage\nreallocation. This status can either be UPDATING, meaning\nthe size of the snapshot is being updated, or UP_TO_DATE,\nmeaning the size of the snapshot is up-to-date.",
+          "description": "Output only. [Deprecated] Instead, check the storageBytes field. After\nsnapshot creation, the storageBytesStatus field is alwaysUP_TO_DATE.\n[Output Only] An indicator whether storageBytes is in a\nstable state or it is being adjusted as a result of shared storage\nreallocation. This status can either be unset, meaning the snapshot is\nbeing created, or UP_TO_DATE, meaning the size of the snapshot\nis up-to-date.",
           "enum": [
             "UPDATING",
             "UP_TO_DATE"
@@ -100346,7 +101434,6 @@
       "id": "SslPolicyReference",
       "properties": {
         "sslPolicy": {
-          "description": "URL of the SSL policy resource. Set this to empty string to clear any\nexisting SSL policy associated with the target proxy resource.",
           "type": "string"
         }
       },
@@ -102637,6 +103724,23 @@
       "properties": {
         "ipCidrRange": {
           "description": "The range of IP addresses belonging to this subnetwork secondary range.\nProvide this property when you create the subnetwork. Ranges must be\nunique and non-overlapping with all primary and secondary IP ranges\nwithin a network. Both IPv4 and IPv6 ranges are supported. For IPv4,\nthe range can be any range listed in theValid\nranges list.\n\nFor IPv6:\nThe range must have a /64 prefix length.\nThe range must be omitted, for auto-allocation from Google-defined ULA\nIPv6 range.\nFor BYOGUA internal IPv6 secondary range, the range may be specified\nalong with the `ipCollection` field.\nIf an `ipCollection` is specified, the requested ip_cidr_range must lie\nwithin the range of the PDP referenced by the `ipCollection` field for\nallocation.\nIf `ipCollection` field is specified, but ip_cidr_range is not,\nthe range is auto-allocated from the PDP referenced by the `ipCollection`\nfield.",
+          "type": "string"
+        },
+        "ipCollection": {
+          "description": "Reference to a Public Delegated Prefix (PDP) for BYOIP.\nThis field should be specified for configuring BYOGUA internal IPv6\nsecondary range.\nWhen specified along with the ip_cidr_range, the ip_cidr_range must lie\nwithin the PDP referenced by the `ipCollection` field.\nWhen specified without the ip_cidr_range, the range is auto-allocated\nfrom the PDP referenced by the `ipCollection` field.",
+          "type": "string"
+        },
+        "ipVersion": {
+          "enum": [
+            "IPV4",
+            "IPV6",
+            "IP_VERSION_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "Treated as IPV4 for backward-compatibility."
+          ],
           "type": "string"
         },
         "rangeName": {
@@ -105927,6 +107031,22 @@
           "readOnly": true,
           "type": "string"
         },
+        "loadBalancingScheme": {
+          "description": "Specifies the type of load balancing scheme used by this target proxy.",
+          "enum": [
+            "EXTERNAL",
+            "EXTERNAL_MANAGED",
+            "INTERNAL_MANAGED",
+            "LOAD_BALANCING_SCHEME_UNSPECIFIED"
+          ],
+          "enumDescriptions": [
+            "",
+            "",
+            "",
+            ""
+          ],
+          "type": "string"
+        },
         "name": {
           "description": "Name of the resource. Provided by the client when the resource is created.\nThe name must be 1-63 characters long, and comply withRFC1035.\nSpecifically, the name must be 1-63 characters long and match the regular\nexpression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first\ncharacter must be a lowercase letter, and all following characters must\nbe a dash, lowercase letter, or digit, except the last character, which\ncannot be a dash.",
           "pattern": "[a-z](?:[-a-z0-9]{0,61}[a-z0-9])?",
@@ -106927,6 +108047,21 @@
             "type": "string"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TimeZone": {
+      "description": "Represents a time zone from the\n[IANA Time Zone Database](https://www.iana.org/time-zones).",
+      "id": "TimeZone",
+      "properties": {
+        "id": {
+          "description": "IANA Time Zone Database time zone. For example \"America/New_York\".",
+          "type": "string"
+        },
+        "version": {
+          "description": "Optional. IANA Time Zone Database version number. For example \"2019a\".",
+          "type": "string"
         }
       },
       "type": "object"
@@ -111010,6 +112145,10 @@
           "description": "[Output Only] Full URL reference to the region which hosts the zone.",
           "type": "string"
         },
+        "resourceStatus": {
+          "$ref": "ZoneResourceStatus",
+          "readOnly": true
+        },
         "selfLink": {
           "description": "[Output Only] Server-defined URL for the resource.",
           "type": "string"
@@ -111187,6 +112326,20 @@
             }
           },
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ZoneResourceStatus": {
+      "id": "ZoneResourceStatus",
+      "properties": {
+        "upcomingMaintenances": {
+          "description": "Output only. [Output Only] The upcoming maintenance schedule.",
+          "items": {
+            "$ref": "PeriodicPartialMaintenanceSchedule"
+          },
+          "readOnly": true,
+          "type": "array"
         }
       },
       "type": "object"
