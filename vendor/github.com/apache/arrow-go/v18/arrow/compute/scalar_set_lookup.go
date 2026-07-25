@@ -143,7 +143,6 @@ type setLookupState interface {
 
 func execIsIn(ctx *exec.KernelCtx, batch *exec.ExecSpan, out *exec.ExecResult) error {
 	state := ctx.State.(setLookupState)
-	ctx.Kernel.(*exec.ScalarKernel).Data = state
 	in := batch.Values[0]
 
 	if !arrow.TypeEqual(in.Type(), state.ValueType()) {
@@ -208,8 +207,14 @@ func RegisterScalarSetLookup(reg FunctionRegistry) {
 		kn.MemAlloc = exec.MemPrealloc
 		kn.NullHandling = exec.NullComputedPrealloc
 		kn.CleanupFn = func(state exec.KernelState) error {
-			s := state.(*kernels.SetLookupState[[]byte])
-			s.Lookup.(*hashing.BinaryMemoTable).Release()
+			// FixedSizeBinary widths 1/2/4/8 use SetLookupState[uintN] +
+			// the matching numeric memo table, which carries no buffers
+			// to release. Only the BinaryMemoTable path needs cleanup.
+			if s, ok := state.(*kernels.SetLookupState[[]byte]); ok {
+				if memo, ok := s.Lookup.(*hashing.BinaryMemoTable); ok {
+					memo.Release()
+				}
+			}
 			return nil
 		}
 

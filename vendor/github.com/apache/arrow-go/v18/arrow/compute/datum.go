@@ -26,7 +26,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 )
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=DatumKind -linecomment
+//go:generate go tool stringer -type=DatumKind -linecomment
 
 // DatumKind is an enum used for denoting which kind of type a datum is encapsulating
 type DatumKind int

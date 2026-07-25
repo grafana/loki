@@ -20,9 +20,6 @@
 // shredding and assembly algorithm to accommodate complex data structures which
 // can then be used to efficiently store the data.
 //
-// While the go.mod states go1.18, everything here should be compatible
-// with go versions 1.17 and 1.16.
-//
 // This implementation is a native go implementation for reading and writing the
 // parquet file format.
 //
@@ -131,5 +128,5 @@
 //	DECIMAL32, DECIMAL64
 package parquet
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=Version -linecomment
+//go:generate go tool stringer -type=Version -linecomment
 //go:generate thrift -o internal -r --gen go ../parquet.thrift

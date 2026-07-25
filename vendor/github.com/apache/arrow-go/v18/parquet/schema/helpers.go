@@ -17,8 +17,10 @@
 package schema
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/apache/arrow-go/v18/parquet"
-	"golang.org/x/xerrors"
 )
 
 // ListOf is a convenience helper function to create a properly structured
@@ -49,11 +51,11 @@ func ListOf(n Node, rep parquet.Repetition, fieldID int32) (*GroupNode, error) {
 // <element-repetition> can only be optional or required.
 func ListOfWithName(listName string, element Node, rep parquet.Repetition, fieldID int32) (*GroupNode, error) {
 	if rep == parquet.Repetitions.Repeated {
-		return nil, xerrors.Errorf("parquet: listof repetition must not be repeated, got :%s", rep)
+		return nil, fmt.Errorf("parquet: listof repetition must not be repeated, got :%s", rep)
 	}
 
 	if element.RepetitionType() == parquet.Repetitions.Repeated {
-		return nil, xerrors.Errorf("parquet: element repetition must not be repeated, got: %s", element.RepetitionType())
+		return nil, fmt.Errorf("parquet: element repetition must not be repeated, got: %s", element.RepetitionType())
 	}
 
 	switch n := element.(type) {
@@ -90,16 +92,16 @@ func ListOfWithName(listName string, element Node, rep parquet.Repetition, field
 // value node can be nil (omitted) or have a repetition of required or optional *only*.
 func MapOf(name string, key Node, value Node, mapRep parquet.Repetition, fieldID int32) (*GroupNode, error) {
 	if mapRep == parquet.Repetitions.Repeated {
-		return nil, xerrors.Errorf("parquet: map repetition cannot be Repeated, got: %s", mapRep)
+		return nil, fmt.Errorf("parquet: map repetition cannot be Repeated, got: %s", mapRep)
 	}
 
 	if key.RepetitionType() != parquet.Repetitions.Required {
-		return nil, xerrors.Errorf("parquet: map key repetition must be Required, got: %s", key.RepetitionType())
+		return nil, fmt.Errorf("parquet: map key repetition must be Required, got: %s", key.RepetitionType())
 	}
 
 	if value != nil {
 		if value.RepetitionType() == parquet.Repetitions.Repeated {
-			return nil, xerrors.New("parquet: map value cannot have repetition Repeated")
+			return nil, errors.New("parquet: map value cannot have repetition Repeated")
 		}
 		switch value := value.(type) {
 		case *PrimitiveNode:

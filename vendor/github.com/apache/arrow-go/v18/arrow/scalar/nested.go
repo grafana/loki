@@ -25,7 +25,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"golang.org/x/xerrors"
 )
 
 type ListScalar interface {
@@ -227,7 +226,7 @@ func (s *Struct) CastTo(to arrow.DataType) (Scalar, error) {
 		if i > 0 {
 			bld.WriteString(", ")
 		}
-		bld.WriteString(fmt.Sprintf("%s:%s = %s", st.Field(i).Name, st.Field(i).Type, v.String()))
+		fmt.Fprintf(&bld, "%s:%s = %s", st.Field(i).Name, st.Field(i).Type, v.String())
 	}
 	bld.WriteByte('}')
 	buf := memory.NewBufferBytes(bld.Bytes())
@@ -331,7 +330,7 @@ func NewStructScalar(val []Scalar, typ arrow.DataType) *Struct {
 
 func NewStructScalarWithNames(val []Scalar, names []string) (*Struct, error) {
 	if len(val) != len(names) {
-		return nil, xerrors.New("mismatching number of field names and child scalars")
+		return nil, errors.New("mismatching number of field names and child scalars")
 	}
 
 	fields := make([]arrow.Field, len(names))
@@ -436,43 +435,61 @@ func (s *Dictionary) ValidateFull() (err error) {
 		return nil
 	}
 
-	max := s.Value.Dict.Len() - 1
-	switch idx := s.Value.Index.value().(type) {
-	case int8:
-		if idx < 0 || int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case uint8:
-		if int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case int16:
-		if idx < 0 || int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case uint16:
-		if int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case int32:
-		if idx < 0 || int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case uint32:
-		if int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case int64:
-		if idx < 0 || int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
-	case uint64:
-		if int(idx) > max {
-			err = fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
-		}
+	_, err = s.physicalIndex()
+	return
+}
+
+func (s *Dictionary) physicalIndex() (int, error) {
+	dt := s.Type.(*arrow.DictionaryType)
+	length := s.Value.Dict.Len()
+	outOfBounds := func(idx interface{}) error {
+		return fmt.Errorf("%s scalar index value out of bounds: %d", s.DataType(), idx)
 	}
 
-	return
+	switch idx := s.Value.Index.value().(type) {
+	case int8:
+		if idx < 0 || int64(idx) >= int64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case uint8:
+		if uint64(idx) >= uint64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case int16:
+		if idx < 0 || int64(idx) >= int64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case uint16:
+		if uint64(idx) >= uint64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case int32:
+		if idx < 0 || int64(idx) >= int64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case uint32:
+		if uint64(idx) >= uint64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case int64:
+		if idx < 0 || idx >= int64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	case uint64:
+		if idx >= uint64(length) {
+			return 0, outOfBounds(idx)
+		}
+		return int(idx), nil
+	default:
+		return 0, fmt.Errorf("unimplemented dictionary type %s", dt.IndexType)
+	}
 }
 
 func (s *Dictionary) String() string {
@@ -494,30 +511,16 @@ func (s *Dictionary) CastTo(arrow.DataType) (Scalar, error) {
 
 func (s *Dictionary) GetEncodedValue() (Scalar, error) {
 	dt := s.Type.(*arrow.DictionaryType)
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
 	if !s.IsValid() {
 		return MakeNullScalar(dt.ValueType), nil
 	}
 
-	var idxValue int
-	switch dt.IndexType.ID() {
-	case arrow.INT8:
-		idxValue = int(s.Value.Index.value().(int8))
-	case arrow.UINT8:
-		idxValue = int(s.Value.Index.value().(uint8))
-	case arrow.INT16:
-		idxValue = int(s.Value.Index.value().(int16))
-	case arrow.UINT16:
-		idxValue = int(s.Value.Index.value().(uint16))
-	case arrow.INT32:
-		idxValue = int(s.Value.Index.value().(int32))
-	case arrow.UINT32:
-		idxValue = int(s.Value.Index.value().(uint32))
-	case arrow.INT64:
-		idxValue = int(s.Value.Index.value().(int64))
-	case arrow.UINT64:
-		idxValue = int(s.Value.Index.value().(uint64))
-	default:
-		return nil, fmt.Errorf("unimplemented dictionary type %s", dt.IndexType)
+	idxValue, err := s.physicalIndex()
+	if err != nil {
+		return nil, err
 	}
 	return GetScalar(s.Value.Dict, idxValue)
 }

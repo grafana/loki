@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"regexp"
 
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
@@ -271,7 +270,7 @@ func newHeaderMatcher(headerMatcherConfig *v3route_componentspb.HeaderMatcher) (
 	case *v3route_componentspb.HeaderMatcher_ExactMatch:
 		m = internalmatcher.NewHeaderExactMatcher(headerMatcherConfig.Name, headerMatcherConfig.GetExactMatch(), headerMatcherConfig.InvertMatch)
 	case *v3route_componentspb.HeaderMatcher_SafeRegexMatch:
-		regex, err := regexp.Compile(headerMatcherConfig.GetSafeRegexMatch().Regex)
+		regex, err := internalmatcher.CompileSafeRegex(headerMatcherConfig.GetSafeRegexMatch().GetRegex())
 		if err != nil {
 			return nil, err
 		}

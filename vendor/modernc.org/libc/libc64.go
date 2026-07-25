@@ -27,11 +27,11 @@ type (
 	}
 )
 
-type bits []int
+type bitz []int // was bits but that is now an import qaulifier in use by mem.go
 
-func newBits(n int) (r bits)  { return make(bits, (n+63)>>6) }
-func (b bits) has(n int) bool { return b != nil && b[n>>6]&(1<<uint(n&63)) != 0 }
-func (b bits) set(n int)      { b[n>>6] |= 1 << uint(n&63) }
+func newBits(n int) (r bitz)  { return make(bitz, (n+63)>>6) }
+func (b bitz) has(n int) bool { return b != nil && b[n>>6]&(1<<uint(n&63)) != 0 }
+func (b bitz) set(n int)      { b[n>>6] |= 1 << uint(n&63) }
 
 func Xstrchrnul(tls *TLS, s uintptr, c int32) (r uintptr) {
 	if __ccgo_strace {

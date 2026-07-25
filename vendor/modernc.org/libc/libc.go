@@ -155,8 +155,8 @@ func exit(t *TLS, status int32, audit bool) {
 		CoverCReport(buf)
 		buf.Flush()
 	}
-	for _, v := range atExit {
-		v()
+	for i := len(atExit) - 1; i >= 0; i-- {
+		atExit[i]()
 	}
 	if audit {
 		t.Close()
@@ -2441,9 +2441,16 @@ func Xfgets(t *TLS, s uintptr, size int32, stream uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v s=%v size=%v stream=%v, (%v:)", t, s, size, stream, origin(2))
 	}
+	if size < 1 {
+		return 0
+	}
+	if size == 1 {
+		*(*byte)(unsafe.Pointer(s)) = 0
+		return s
+	}
 	var b []byte
 out:
-	for ; size > 0; size-- {
+	for ; size > 1; size-- {
 		switch c := Xfgetc(t, stream); c {
 		case '\n':
 			b = append(b, byte(c))

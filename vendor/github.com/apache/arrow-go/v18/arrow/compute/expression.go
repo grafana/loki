@@ -23,10 +23,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/apache/arrow-go/v18/internal/utils/maphash"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -331,7 +332,7 @@ func (c *Call) Hash() uint64 {
 		return c.cachedHash
 	}
 
-	var h maphash.Hash
+	var h maphash.MapHash
 	h.SetSeed(hashSeed)
 
 	h.WriteString(c.funcName)

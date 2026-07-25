@@ -398,6 +398,10 @@ func (b *RunEndEncodedBuilder) AppendNulls(n int) {
 	}
 }
 
+func (b *RunEndEncodedBuilder) UnsafeAppendBoolToBitmap(v bool) {
+	panic("Calling UnsafeAppendBoolToBitmap on a run-end encoded array is semantically undefined.")
+}
+
 func (b *RunEndEncodedBuilder) NullN() int {
 	return UnknownNullCount
 }
@@ -516,6 +520,7 @@ func (b *RunEndEncodedBuilder) Unmarshal(dec *json.Decoder) error {
 // UnmarshalJSON can't be used in conjunction with AppendValueFromString (as it calls UnmarshalOne)
 func (b *RunEndEncodedBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
