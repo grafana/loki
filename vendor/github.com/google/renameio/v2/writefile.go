@@ -13,13 +13,12 @@
 // limitations under the License.
 
 //go:build !windows
-// +build !windows
 
 package renameio
 
 import "os"
 
-// WriteFile mirrors ioutil.WriteFile, replacing an existing file with the same
+// WriteFile mirrors os.WriteFile, replacing an existing file with the same
 // name atomically.
 func WriteFile(filename string, data []byte, perm os.FileMode, opts ...Option) error {
 	opts = append([]Option{
