@@ -261,8 +261,8 @@ github.com/aymanbagabas/go-udiff v0.2.0 h1:TK0fH4MteXUDspT88n8CKzvK0X9O2xu9yQjWp
 github.com/aymanbagabas/go-udiff v0.2.0/go.mod h1:RE4Ex0qsGkTAJoQdQQCA0uG+nAzJO/pI/QwceO5fgrA=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
 github.com/bahlo/generic-list-go v0.2.0/go.mod h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg=
-github.com/baidubce/bce-sdk-go v0.9.245 h1:Xngza8UtIQ1w470JXJUdQKQASVIYb3grkLWSj3mnBM4=
-github.com/baidubce/bce-sdk-go v0.9.245/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
+github.com/baidubce/bce-sdk-go v0.9.272 h1:xllMai0YXpfjNNa2NpscscxMDwtI0NumwSPa9OTBbhs=
+github.com/baidubce/bce-sdk-go v0.9.272/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
 github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad h1:3swAvbzgfaI6nKuDDU7BiKfZRdF+h2ZwKgMHd8Ha4t8=
 github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad/go.mod h1:9+nBLYNWkvPcq9ep0owWUsPTLgL9ZXTsZWcCSVGGLJ0=
 github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 h1:6df1vn4bBlDDo4tARvBm7l6KA9iVMnE3NWizDeWSrps=

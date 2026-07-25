@@ -23,6 +23,8 @@ import (
 	"net"
 	net_http "net/http"
 	"net/url"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -33,7 +35,6 @@ import (
 const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
-	METADATA_DIRECTIVE_UPDATE  = "update"
 
 	STORAGE_CLASS_STANDARD        = "STANDARD"
 	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
@@ -41,6 +42,7 @@ const (
 	STORAGE_CLASS_ARCHIVE         = "ARCHIVE"
 	STORAGE_CLASS_MAZ_STANDARD    = "MAZ_STANDARD"
 	STORAGE_CLASS_MAZ_STANDARD_IA = "MAZ_STANDARD_IA"
+	STORAGE_CLASS_MAZ_COLD        = "MAZ_COLD"
 
 	FETCH_MODE_SYNC  = "sync"
 	FETCH_MODE_ASYNC = "async"
@@ -63,6 +65,7 @@ const (
 
 	RESTORE_TIER_STANDARD  = "Standard"  //标准取回对象
 	RESTORE_TIER_EXPEDITED = "Expedited" //快速取回对象
+	RESTORE_TIER_LOWCOST   = "LowCost"   //延迟取回对象
 
 	FORBID_OVERWRITE_FALSE = "false"
 	FORBID_OVERWRITE_TRUE  = "true"
@@ -74,6 +77,7 @@ const (
 	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
 	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
 	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+	INVENTORY_SCHEDULE_ONCE    = "Once"
 
 	INVENTORY_FILE_FORMAT_CSV = "CSV"
 
@@ -88,8 +92,13 @@ const (
 	EVENT_FROM_REPLICATION = "Replication"
 	EVENT_FROM_BATCH       = "Batch"
 
-	// BOS Client error message format
-	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
+	API_VERSION_V1 = "v1"
+	API_VERSION_V2 = "v2"
+	HTTPTimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
+	BUCKET_META_TYPE_FLAT         string = "FLAT"
+	BUCKET_META_TYPE_HIERARCHY    string = "HIERARCHY"
+	BUCKET_META_TYPE_HIERARCHY_XH string = "HIERARCHY_XH"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -103,11 +112,13 @@ var VALID_STORAGE_CLASS_TYPE = map[string]int{
 	STORAGE_CLASS_ARCHIVE:         3,
 	STORAGE_CLASS_MAZ_STANDARD:    4,
 	STORAGE_CLASS_MAZ_STANDARD_IA: 5,
+	STORAGE_CLASS_MAZ_COLD:        6,
 }
 
 var VALID_RESTORE_TIER = map[string]int{
 	RESTORE_TIER_STANDARD:  1,
 	RESTORE_TIER_EXPEDITED: 1,
+	RESTORE_TIER_LOWCOST:   1,
 }
 
 var VALID_FORBID_OVERWRITE = map[string]int{
@@ -148,8 +159,7 @@ func getCnameUri(uri string) string {
 
 func validMetadataDirective(val string) bool {
 	if val == METADATA_DIRECTIVE_COPY ||
-		val == METADATA_DIRECTIVE_REPLACE ||
-		val == METADATA_DIRECTIVE_UPDATE {
+		val == METADATA_DIRECTIVE_REPLACE {
 		return true
 	}
 	return false
@@ -352,8 +362,31 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	if req.Bucket() != "" && !isValidBucketName(req.Bucket()) {
+		return bce.NewBceClientError(fmt.Sprintf("invalid bucket name: %s", req.Bucket()))
+	}
+	if req.IsObjectReq() {
+		if err = validateObjectKey(req.Object()); err != nil {
+			return bce.NewBceClientError(err.Error())
+		}
+	}
+
 	req.SetContext(ctx.Ctx)
-	if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
+	var body *bce.TeeReadNopCloser
+	if req.Body() != nil {
+		body, _ = req.Body().(*bce.TeeReadNopCloser)
+	}
+	if body != nil {
+		body.Mark()
+	}
+	// sdk do not need to set request id
+	req.SetWithOutRequestId(true)
+	if ctx.ApiVersion == API_VERSION_V2 {
+		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
+	} else {
+		err = cli.SendRequest(&req.BceRequest, &resp.BceResponse)
+	}
+	if err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
 				serviceErr.StatusCode == net_http.StatusBadGateway ||
@@ -365,11 +398,32 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 		if _, isClientErr := err.(*bce.BceClientError); isClientErr {
 			need_retry = true
 		}
-		// retry backup endpoint
+		// retry with backup endpoint
 		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
+			if req.Body() != nil {
+				if body == nil { // body is not TeeReadNopCloser, do not retry
+					return err
+				}
+				if err1 := body.Reset(); err1 != nil {
+					return err
+				}
+			}
 			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
-			if err = cli.SendRequest(&req.BceRequest, &resp.BceResponse); err != nil {
+			if ctx.ApiVersion == API_VERSION_V2 {
+				err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
+			} else {
+				req.Request.SetBody(body) // reset body, bcecause body has been change in SendRequest
+				err = cli.SendRequest(&req.BceRequest, &resp.BceResponse)
+			}
+			if err != nil {
 				return err
+			}
+		}
+	}
+	if err == nil {
+		for _, handler := range resp.Handler {
+			if hErr := handler(resp); hErr != nil {
+				return hErr
 			}
 		}
 	}
@@ -382,6 +436,7 @@ func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ct
 		need_retry bool
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	req.SetContext(ctx.Ctx)
 	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
@@ -548,4 +603,59 @@ func joinUserIds(ids []string) string {
 		ids[i] = "id=\"" + ids[i] + "\""
 	}
 	return strings.Join(ids, ",")
+}
+
+func getObjectMetaOptions(result *ObjectMeta) []GetOption {
+	return []GetOption{
+		getHeader(http.ETAG, &result.ETag),
+		getHeader(http.CACHE_CONTROL, &result.CacheControl),
+		getHeader(http.CONTENT_DISPOSITION, &result.ContentDisposition),
+		getHeader(http.CONTENT_LENGTH, &result.ContentLength),
+		getHeader(http.CONTENT_RANGE, &result.ContentRange),
+		getHeader(http.CONTENT_TYPE, &result.ContentType),
+		getHeader(http.CONTENT_MD5, &result.ContentMD5),
+		getHeader(http.EXPIRES, &result.Expires),
+		getHeader(http.LAST_MODIFIED, &result.LastModified),
+		getHeader(http.CONTENT_LANGUAGE, &result.ContentLanguage),
+		getHeader(http.CONTENT_ENCODING, &result.ContentEncoding),
+		getHeader(http.BCE_CONTENT_SHA256, &result.ContentSha256),
+		getHeader(http.BCE_CONTENT_CRC32, &result.ContentCrc32),
+		getHeader(http.BCE_STORAGE_CLASS, &result.StorageClass),
+		getHeader(http.BCE_VERSION_ID, &result.VersionId),
+		getHeader(http.BCE_OBJECT_TYPE, &result.ObjectType),
+		getHeader(http.BCE_NEXT_APPEND_OFFSET, &result.NextAppendOffset),
+		getHeader(http.BCE_CONTENT_CRC32C, &result.ContentCrc32c),
+		getHeader(http.BCE_EXPIRATION_DATE, &result.ExpirationDate),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION, &result.Encryption.ServerSideEncryption),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY, &result.Encryption.SSECKey),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_MD5, &result.Encryption.SSECKeyMD5),
+		getHeader(http.BCE_SERVER_SIDE_ENCRYPTION_KEY_ID, &result.Encryption.SSEKmsKeyId),
+		getHeader(http.BCE_OBJECT_RETENTION_DATE, &result.RetentionDate),
+		getHeader(http.BCE_TAGGING_COUNT, &result.objectTagCount),
+		getHeader(http.BCE_CONTENT_CRC64ECMA, &result.ContentCrc64ECMA),
+		getHeader(http.BCE_USER_METADATA_PREFIX, &result.UserMeta),
+		getHeader(http.BCE_RESTORE, &result.BceRestore),
+	}
+}
+
+func validateObjectKey(objectKey string) error {
+	// 1. 拒绝路径穿越特征（关键）
+	if strings.Contains(objectKey, "..") {
+		return fmt.Errorf("invalid object key: %s", objectKey)
+	}
+	// 2. 路径规范化
+	objectCleaned := path.Clean("/" + strings.Trim(objectKey, "/"))
+	// 3. 去除首尾斜杠
+	objectCleaned = strings.Trim(objectCleaned, "/")
+	// 4. 最终校验
+	if len(objectCleaned) == 0 || objectCleaned == "v1" {
+		return fmt.Errorf("invalid object key: %s", objectKey)
+	}
+	return nil
+}
+
+var bucketRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$`)
+
+func isValidBucketName(bucket string) bool {
+	return bucketRe.MatchString(bucket)
 }
