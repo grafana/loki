@@ -27,8 +27,9 @@ type selector struct {
 	name         string
 	index        int64
 	slice        *slice
-	filter       *filterSelector
+	filter       filterSelector
 	jsonPathPlus bool // when true, enables MappingNode fallback for array index selectors
+	spectral     bool // when true, enables Spectral-only context typing for array index selectors
 }
 
 func (s selector) ToString() string {
@@ -60,5 +61,4 @@ func (s selector) ToString() string {
 	default:
 		panic(fmt.Sprintf("unimplemented selector kind: %v", s.kind))
 	}
-	return ""
 }

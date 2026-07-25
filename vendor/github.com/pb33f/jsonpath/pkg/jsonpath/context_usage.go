@@ -63,7 +63,7 @@ func (q *jsonPathAST) hasPropertyNameReferencesPtr() bool {
 
 // hasPropertyNameReferences reports whether the segment references the property name selector
 func (s *segment) hasPropertyNameReferences() bool {
-	if s.kind == segmentKindProperyName {
+	if s.kind == segmentKindProperyName || s.kind == segmentKindRecursivePropertyName {
 		return true
 	}
 	if s.child != nil && s.child.hasPropertyNameReferences() {
@@ -87,7 +87,7 @@ func (s *innerSegment) hasPropertyNameReferences() bool {
 
 // hasPropertyNameReferences reports whether the selector references the property name selector
 func (s *selector) hasPropertyNameReferences() bool {
-	if s.filter != nil && s.filter.hasPropertyNameReferences() {
+	if s.filter.present() && s.filter.hasPropertyNameReferences() {
 		return true
 	}
 	return false
@@ -95,6 +95,9 @@ func (s *selector) hasPropertyNameReferences() bool {
 
 // hasPropertyNameReferences reports whether the filter selector references the property name selector
 func (f *filterSelector) hasPropertyNameReferences() bool {
+	if f.spectralExpression != nil {
+		return f.spectralExpression.usesPropertyNameSelector
+	}
 	if f.expression == nil {
 		return false
 	}
@@ -256,13 +259,25 @@ func (s *innerSegment) collectContextVarUsage(usage *contextVarUsage) {
 
 // collectContextVarUsage records usage from a selector
 func (s *selector) collectContextVarUsage(usage *contextVarUsage) {
-	if s.filter != nil {
+	if s.filter.present() {
 		s.filter.collectContextVarUsage(usage)
 	}
 }
 
 // collectContextVarUsage records usage from a filter selector
 func (f *filterSelector) collectContextVarUsage(usage *contextVarUsage) {
+	if f.spectralExpression != nil {
+		usage.property = usage.property || f.spectralExpression.usage.property
+		// Parent-property typing needs the container of the parent so sequence
+		// indexes remain numeric under lazy context tracking.
+		usage.parent = usage.parent || f.spectralExpression.usage.parent || f.spectralExpression.usage.parentProperty
+		usage.parentProperty = usage.parentProperty || f.spectralExpression.usage.parentProperty
+		usage.path = usage.path || f.spectralExpression.usage.path
+		// Spectral @property is numeric for sequence elements, so lazy mode
+		// needs the index even when @index is not referenced explicitly.
+		usage.index = usage.index || f.spectralExpression.usage.index || f.spectralExpression.usage.property
+		return
+	}
 	if f.expression != nil {
 		f.expression.collectContextVarUsage(usage)
 	}
