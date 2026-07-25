@@ -14,6 +14,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -39,7 +42,7 @@ var (
 	start = model.Now().Add(-30 * 24 * time.Hour)
 )
 
-func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string) *Compactor {
+func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.ObjectClient, periodConfigs []config.PeriodConfig, tempDir string, cfgOpts ...func(*Config)) *Compactor {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
@@ -49,6 +52,10 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 
 	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
 		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)
+	}
+
+	for _, opt := range cfgOpts {
+		opt(&cfg)
 	}
 
 	require.NoError(t, cfg.Validate())
@@ -154,6 +161,84 @@ func TestCompactor_RunCompactionMultipleStores(t *testing.T) {
 
 		verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(periodTwoPath, "index", name))
 	}
+}
+
+// TestCompactor_SweepsOwnMarkersWithoutLeadership verifies that a compactor keeps
+// processing the chunk deletion markers it wrote to its local disk even while it does
+// not own the compaction. Leadership can move to another instance within the
+// retention_delete_delay window, and markers on local disk are not visible to the other
+// instances, so the chunks would otherwise never be deleted from the object store.
+func TestCompactor_SweepsOwnMarkersWithoutLeadership(t *testing.T) {
+	tempDir := t.TempDir()
+	storePath := filepath.Join(tempDir, "store")
+
+	periodConfig := config.PeriodConfig{
+		From:       config.DayTime{Time: model.Time(0)},
+		IndexType:  "dummy",
+		ObjectType: "filesystem",
+		Schema:     "v13",
+		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
+			PeriodicTableConfig: config.PeriodicTableConfig{
+				Prefix: indexTablePrefix,
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			}},
+		RowShards: 16,
+	}
+	schemaConfig := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: storePath})
+	require.NoError(t, err)
+
+	compactor := setupTestCompactor(t, map[config.DayTime]client.ObjectClient{periodConfig.From: objectClient},
+		[]config.PeriodConfig{periodConfig}, tempDir, func(cfg *Config) {
+			// markers become eligible for processing right away.
+			cfg.RetentionDeleteDelay = 0
+		})
+	require.True(t, compactor.cfg.markersOnLocalDisk())
+
+	// store a chunk and mark it for deletion the same way the compaction would.
+	chunkRef := logproto.ChunkRef{
+		UserID:      "user1",
+		Fingerprint: 1,
+		From:        start,
+		Through:     start.Add(time.Hour),
+		Checksum:    1,
+	}
+	chunkID := schemaConfig.ExternalKey(chunkRef)
+	chunkKey := client.FSEncoder(schemaConfig, chunk.Chunk{ChunkRef: chunkRef})
+	require.NoError(t, objectClient.PutObject(context.Background(), chunkKey, strings.NewReader("chunk")))
+
+	markersClient, err := local.NewFSObjectClient(local.FSConfig{Directory: filepath.Join(
+		compactor.cfg.WorkingDirectory, "retention", fmt.Sprintf("%s_%s", periodConfig.ObjectType, periodConfig.From.String()), MarkersFolder,
+	)})
+	require.NoError(t, err)
+
+	markerWriter, err := retention.NewMarkerWriter(markersClient)
+	require.NoError(t, err)
+	require.NoError(t, markerWriter.Put([]byte(chunkID)))
+	require.NoError(t, markerWriter.Close())
+
+	// The ring is not running, so this instance never gets elected to run the compaction.
+	// Even if it did, the compaction only starts after one compaction interval, so the
+	// marker below can only be processed by a sweeper that does not depend on leadership.
+	ctx, cancel := context.WithCancel(context.Background())
+	loopStopped := make(chan struct{})
+	var loopErr error
+	go func() {
+		defer close(loopStopped)
+		loopErr = compactor.loop(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-loopStopped
+		require.NoError(t, loopErr)
+	})
+
+	require.Eventually(t, func() bool {
+		exists, err := objectClient.ObjectExists(context.Background(), chunkKey)
+		return err == nil && !exists
+	}, 30*time.Second, 100*time.Millisecond, "chunk marked for deletion was not swept")
 }
 
 func Test_schemaPeriodForTable(t *testing.T) {
