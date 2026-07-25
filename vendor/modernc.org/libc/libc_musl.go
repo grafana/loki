@@ -482,11 +482,12 @@ func (tls *TLS) Longjmp(jb uintptr, val int32) {
 func Xexit(tls *TLS, code int32) {
 	//TODO atexit finalizers
 	X__stdio_exit(tls)
-	for _, v := range atExit {
-		v()
+	for i := len(atExit) - 1; i >= 0; i-- {
+		atExit[i]()
 	}
 	atExitHandlersMu.Lock()
-	for _, v := range atExitHandlers {
+	for i := len(atExitHandlers) - 1; i >= 0; i-- {
+		v := atExitHandlers[i]
 		(*(*func(*TLS))(unsafe.Pointer(&struct{ uintptr }{v})))(tls)
 	}
 	os.Exit(int(code))
@@ -506,7 +507,7 @@ func Xabort(tls *TLS) {
 
 type lock struct {
 	sync.Mutex
-	waiters int
+	refs int // holders + waiters currently inside ___lock/___unlock for this address
 }
 
 var (
@@ -514,57 +515,41 @@ var (
 	locks   = map[uintptr]*lock{}
 )
 
-/*
-
-	T1		T2
-
-	lock(&foo)			// foo: 0 -> 1
-
-			lock(&foo)	// foo: 1 -> 2
-
-	unlock(&foo)			// foo: 2 -> 1, non zero means waiter(s) active
-
-			unlock(&foo)	// foo: 1 -> 0
-
-*/
+// ___lock/___unlock emulate musl's __lock/__unlock, a mutual-exclusion lock over
+// an opaque C lock word *p, by keying a Go sync.Mutex on the lock word's address.
+// The per-address lock is created lazily and reference-counted (refs) so its map
+// entry can be reclaimed once no goroutine holds or waits on it. The C lock word
+// *p is intentionally left untouched: it is opaque to every caller (nothing reads
+// it outside these two functions), and routing all mutual exclusion through the
+// per-address sync.Mutex is what makes the hand-off race-free.
+//
+// A previous implementation kept an atomic fast path on *p plus a throwaway
+// hand-off object. It lost wakeups when an unlocker reached locksMu before a
+// contending locker had registered in locks: the unlock created and immediately
+// discarded a hand-off, then the locker blocked on a fresh, never-unlocked mutex
+// forever, wedging the process at zero CPU (cznic/libc#51).
 
 func ___lock(tls *TLS, p uintptr) {
-	if atomic.AddInt32((*int32)(unsafe.Pointer(p)), 1) == 1 {
-		return
-	}
-
-	// foo was already acquired by some other C thread.
 	locksMu.Lock()
 	l := locks[p]
 	if l == nil {
 		l = &lock{}
 		locks[p] = l
-		l.Lock()
 	}
-	l.waiters++
+	l.refs++
 	locksMu.Unlock()
-	l.Lock() // Wait for T1 to release foo. (X below)
+	l.Lock() // Block until the current holder of p releases it.
 }
 
 func ___unlock(tls *TLS, p uintptr) {
-	if atomic.AddInt32((*int32)(unsafe.Pointer(p)), -1) == 0 {
-		return
-	}
-
-	// Some other C thread is waiting for foo.
 	locksMu.Lock()
 	l := locks[p]
-	if l == nil {
-		// We are T1 and we got the locksMu locked before T2.
-		l = &lock{waiters: 1}
-		l.Lock()
-	}
-	l.Unlock() // Release foo, T2 may now lock it. (X above)
-	l.waiters--
-	if l.waiters == 0 { // we are T2
+	l.refs--
+	if l.refs == 0 {
 		delete(locks, p)
 	}
 	locksMu.Unlock()
+	l.Unlock() // Hand p to the next waiter, if any.
 }
 
 type lockedFile struct {
@@ -1069,7 +1054,6 @@ func Xsysctlbyname(t *TLS, name, oldp, oldlenp, newp uintptr, newlen Tsize_t) in
 		*(*int32)(unsafe.Pointer(oldp)) = int32(runtime.GOMAXPROCS(-1))
 		return 0
 	default:
-		panic(todo(""))
 		t.setErrno(ENOENT)
 		return -1
 	}
