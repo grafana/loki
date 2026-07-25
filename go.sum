@@ -1221,8 +1221,8 @@ github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 h1:nn5Wsu0esKSJiIVhscUt
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/segmentio/fasthash v1.0.3 h1:EI9+KE1EwvMLBWwjpRDc+fEM+prwxDYbslddQGtrmhM=
 github.com/segmentio/fasthash v1.0.3/go.mod h1:waKX8l2N8yckOgmSsXJi7x1ZfdKZ4x7KRMzBtS3oedY=
-github.com/sercand/kuberesolver/v6 v6.0.0 h1:ScvS2Ga9snVkpOahln/BCLySr3/iBAHJf25u66DweZ0=
-github.com/sercand/kuberesolver/v6 v6.0.0/go.mod h1:Dxkqms3OJadP5zirIBPLi9FV8Qpys3T3w40XPEcVsu0=
+github.com/sercand/kuberesolver/v6 v6.0.1 h1:XZUTA0gy/lgDYp/UhEwv7Js24F1j8NJ833QrWv0Xux4=
+github.com/sercand/kuberesolver/v6 v6.0.1/go.mod h1:C0tsTuRMONSY+Xf7pv7RMW1/JlewY1+wS8SZE+1lf1s=
 github.com/sethvargo/go-retry v0.3.0 h1:EEt31A35QhrcRZtrYFDTBg91cqZVnFL2navjDrah2SE=
 github.com/sethvargo/go-retry v0.3.0/go.mod h1:mNX17F0C/HguQMyMyJxcnU471gOZGxCLyYaFyAZraas=
 github.com/shirou/gopsutil/v4 v4.25.9 h1:JImNpf6gCVhKgZhtaAHJ0serfFGtlfIlSC08eaKdTrU=

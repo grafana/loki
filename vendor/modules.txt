@@ -1946,7 +1946,7 @@ github.com/sean-/seed
 # github.com/segmentio/fasthash v1.0.3
 ## explicit; go 1.11
 github.com/segmentio/fasthash/fnv1a
-# github.com/sercand/kuberesolver/v6 v6.0.0
+# github.com/sercand/kuberesolver/v6 v6.0.1
 ## explicit; go 1.22.0
 github.com/sercand/kuberesolver/v6
 # github.com/sethvargo/go-retry v0.3.0
