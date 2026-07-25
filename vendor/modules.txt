@@ -1500,8 +1500,8 @@ github.com/leodido/go-syslog/v4/nontransparent
 github.com/leodido/go-syslog/v4/octetcounting
 github.com/leodido/go-syslog/v4/rfc3164
 github.com/leodido/go-syslog/v4/rfc5424
-# github.com/leodido/go-urn v1.4.0
-## explicit; go 1.18
+# github.com/leodido/go-urn v1.5.0
+## explicit; go 1.24.0
 github.com/leodido/go-urn
 github.com/leodido/go-urn/scim/schema
 # github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b
