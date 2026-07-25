@@ -158,7 +158,7 @@ func (orig *KeyValueAndUnit) UnmarshalJSON(iter *json.Iterator) {
 		case "unitStrindex", "unit_strindex":
 			orig.UnitStrindex = iter.ReadInt32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }
