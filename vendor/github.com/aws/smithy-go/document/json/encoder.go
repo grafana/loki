@@ -232,6 +232,7 @@ func (e *Encoder) encodeScalar(vp valueProvider, rv reflect.Value) error {
 			return &document.InvalidMarshalError{Message: fmt.Sprintf("invalid number literal: %s", number)}
 		}
 		vp.GetValue().Write([]byte(number))
+		return nil
 	}
 
 	switch rv.Kind() {
