@@ -321,16 +321,17 @@ func (s *DDSketch) ToProto() *sketchpb.DDSketch {
 
 func (s *DDSketch) EncodeProto(w io.Writer) {
 	builder := sketchpb.NewDDSketchBuilder(w)
+	s.encodeProto(builder)
+}
 
+func (s *DDSketch) encodeProto(builder *sketchpb.DDSketchBuilder) {
 	builder.SetMapping(func(indexMappingBuilder *sketchpb.IndexMappingBuilder) {
 		s.IndexMapping.EncodeProto(indexMappingBuilder)
 	})
-
 	builder.SetZeroCount(s.zeroCount)
 	builder.SetNegativeValues(func(storeBuilder *sketchpb.StoreBuilder) {
 		s.negativeValueStore.EncodeProto(storeBuilder)
 	})
-
 	builder.SetPositiveValues(func(storeBuilder *sketchpb.StoreBuilder) {
 		s.positiveValueStore.EncodeProto(storeBuilder)
 	})
@@ -787,4 +788,27 @@ func (s *DDSketchWithExactSummaryStatistics) DecodeAndMergeWith(bb []byte) error
 		return errors.New("missing exact summary statistics")
 	}
 	return nil
+}
+
+// DDSketchCollectionBuilder is a more efficient way to encode many DDSketch objects to protobuf,
+// by saving the sketch builder between encodings.
+type DDSketchCollectionBuilder struct {
+	sketchBuilder *sketchpb.DDSketchBuilder
+}
+
+// NewDDSketchCollectionBuilder creates a new DDSketchCollectionBuilder
+func NewDDSketchCollectionBuilder(w io.Writer) *DDSketchCollectionBuilder {
+	return &DDSketchCollectionBuilder{
+		sketchBuilder: sketchpb.NewDDSketchBuilder(w),
+	}
+}
+
+// Reset changes the io.Writer used
+func (x *DDSketchCollectionBuilder) Reset(w io.Writer) {
+	x.sketchBuilder.Reset(w)
+}
+
+// AddSketch protobuf encodes the provided DDSketch using the stored DDSketchBuilder
+func (x *DDSketchCollectionBuilder) AddSketch(s *DDSketch) {
+	s.encodeProto(x.sketchBuilder)
 }
