@@ -1312,19 +1312,42 @@ func NewReader(b ByteSlice) (*Reader, error) {
 	return newReader(b, io.NopCloser(nil))
 }
 
+// ReaderOption customizes an on-disk index Reader created by NewFileReader.
+type ReaderOption func(*readerConfig)
+
+type readerConfig struct {
+	maxIdleFileHandles int
+}
+
+// WithMaxIdleFileHandles sets how many idle file handles the pool-backed reader
+// keeps open for reuse. Values <= 0 are ignored and the package default
+// (MaxIdleFileHandles) is used instead.
+func WithMaxIdleFileHandles(n int) ReaderOption {
+	return func(c *readerConfig) {
+		if n > 0 {
+			c.maxIdleFileHandles = n
+		}
+	}
+}
+
 // NewFileReader returns a new index reader against the given index file.
 //
 // Instead of memory-mapping the file, sections are read on demand from a small
 // pool of file handles (see poolByteSlice). This keeps the index reader's memory
 // footprint predictable and off the kernel page cache, at the cost of reading
 // bounded sections via pread(2) rather than random access into mapped memory.
-func NewFileReader(path string) (*Reader, error) {
+func NewFileReader(path string, opts ...ReaderOption) (*Reader, error) {
+	cfg := readerConfig{maxIdleFileHandles: MaxIdleFileHandles}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	b := newPoolByteSlice(path, int(fi.Size()), MaxIdleFileHandles)
+	b := newPoolByteSlice(path, int(fi.Size()), cfg.maxIdleFileHandles)
 	r, err := newReader(b, b)
 	if err != nil {
 		return nil, stderrors.Join(

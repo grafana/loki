@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -64,6 +65,11 @@ type Config struct {
 	// In case it isn't explicitly set, it follows the same behavior of the other rings (ex: using the common configuration
 	// section and the ingester configuration by default).
 	Ring ring.RingConfig `yaml:"ring,omitempty" doc:"description=Defines the ring to be used by the index gateway servers and clients in case the servers are configured to run in 'ring' mode. In case this isn't configured, this block supports inheriting configuration from the common ring section."`
+
+	// MaxIdleFileHandles is the number of idle file handles the index reader
+	// keeps open per TSDB index file for reuse instead of reopening it on each
+	// read. Index files are read on demand via pread(2) rather than memory-mapped.
+	MaxIdleFileHandles int `yaml:"max_idle_file_handles"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -83,11 +89,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// multiple Index Gateway instances are expected to be returned as Index Gateway might be busy/locked for specific
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
 	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
+
+	f.IntVar(&cfg.MaxIdleFileHandles, "index-gateway.max-idle-file-handles", tsdbindex.DefaultMaxIdleFileHandles, "Maximum number of idle file handles the index gateway keeps open for each TSDB index file. Index files are read on demand via pread(2) instead of being memory-mapped; a small pool of handles per file avoids reopening the file on every read while keeping the number of open file descriptors bounded.")
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.Ring.NumTokens != NumTokens {
 		return errors.New("Num tokens must not be changed as it will not take effect")
+	}
+	if cfg.MaxIdleFileHandles < 0 {
+		return errors.New("index-gateway.max-idle-file-handles must not be negative")
 	}
 	return nil
 }

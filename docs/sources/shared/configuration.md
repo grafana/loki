@@ -3986,6 +3986,13 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+# Maximum number of idle file handles the index gateway keeps open for each TSDB
+# index file. Index files are read on demand via pread(2) instead of being
+# memory-mapped; a small pool of handles per file avoids reopening the file on
+# every read while keeping the number of open file descriptors bounded.
+# CLI flag: -index-gateway.max-idle-file-handles
+[max_idle_file_handles: <int> | default = 4]
 ```
 
 ### ingester
@@ -6923,6 +6930,8 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
+
+  [maxidlefilehandles: <int>]
 
 # Experimental: Configures the bloom shipper component, which contains the store
 # abstraction to fetch bloom filters from and put them to object storage.

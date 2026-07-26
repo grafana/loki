@@ -28,13 +28,13 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-func OpenShippableTSDB(p string) (shipperindex.Index, error) {
+func OpenShippableTSDB(p string, opts ...index.ReaderOption) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, opts...)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
@@ -94,8 +94,8 @@ type TSDBFile struct {
 	getRawFileReader GetRawFileReaderFunc
 }
 
-func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
+func NewShippableTSDBFile(id Identifier, opts ...index.ReaderOption) (*TSDBFile, error) {
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -126,8 +126,8 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
-	reader, err := index.NewFileReader(location)
+func NewTSDBIndexFromFile(location string, opts ...index.ReaderOption) (*TSDBIndex, GetRawFileReaderFunc, error) {
+	reader, err := index.NewFileReader(location, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
