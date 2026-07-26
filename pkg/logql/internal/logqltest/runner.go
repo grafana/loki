@@ -84,11 +84,16 @@ func RunScript(t *testing.T, name, script string) {
 			i++
 		case "load":
 			i++
+			loaded := 0
 			i = consumeBlock(lines, i, func(content string) {
 				if err := streams.parse(content); err != nil {
 					t.Fatalf("%s: invalid load line %q: %v", name, content, err)
 				}
+				loaded++
 			})
+			if loaded == 0 {
+				t.Fatalf("%s: load block has no data lines", name)
+			}
 			streamsChanged = true
 		case "eval":
 			cmd, err := parseEval(trimmed)
