@@ -47746,7 +47746,7 @@
       }
     }
   },
-  "revision": "20260422",
+  "revision": "20260501",
   "rootUrl": "https://compute.googleapis.com/",
   "schemas": {
     "AWSV4Signature": {
@@ -49571,7 +49571,6 @@
           "type": "string"
         },
         "diskType": {
-          "description": "Specifies the disk type to use to create the instance. If not specified,\nthe default is pd-standard, specified using the full URL.\nFor example:\n\nhttps://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/pd-standard\n\n\nFor a full list of acceptable values, seePersistent disk\ntypes. If you specify this field when creating a VM, you can provide\neither the full or partial URL. For example, the following values are\nvalid:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/zones/zone/diskTypes/diskType \n   - projects/project/zones/zone/diskTypes/diskType \n   - zones/zone/diskTypes/diskType\n\n\nIf you specify this field when creating or updating an instance template\nor all-instances configuration, specify the type of the disk, not the\nURL. For example: pd-standard.",
           "type": "string"
         },
         "enableConfidentialCompute": {
@@ -55156,12 +55155,14 @@
         "confidentialInstanceType": {
           "description": "Defines the type of technology used by the confidential instance.",
           "enum": [
+            "CCA",
             "CONFIDENTIAL_INSTANCE_TYPE_UNSPECIFIED",
             "SEV",
             "SEV_SNP",
             "TDX"
           ],
           "enumDescriptions": [
+            "Arm Confidential Compute Architecture.",
             "No type specified. Do not use this value.",
             "AMD Secure Encrypted Virtualization.",
             "AMD Secure Encrypted Virtualization - Secure Nested Paging.",
@@ -58580,6 +58581,13 @@
           "description": "A fully-qualified URL of a SecurityProfile resource instance.\nExample:\nhttps://networksecurity.googleapis.com/v1/projects/{project}/locations/{location}/securityProfileGroups/my-security-profile-group\nMust be specified if action is one of 'apply_security_profile_group' or\n'mirror'. Cannot be specified for other actions.",
           "type": "string"
         },
+        "targetForwardingRules": {
+          "description": "A list of forwarding rules to which this rule applies.\nThis field allows you to control which load balancers get this rule.\nFor example, the following are valid values:\n   \n   \n     - https://www.googleapis.com/compute/v1/projects/project/global/forwardingRules/forwardingRule\n     - https://www.googleapis.com/compute/v1/projects/project/regions/region/forwardingRules/forwardingRule\n     - projects/project/global/\n     forwardingRules/forwardingRule\n     - projects/project/regions/region/forwardingRules/\n     forwardingRule",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "targetResources": {
           "description": "A list of network resource URLs to which this rule applies.  This field\nallows you to control which network's VMs get this rule.  If this field\nis left blank, all VMs within the organization will receive the rule.",
           "items": {
@@ -58600,6 +58608,18 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "targetType": {
+          "description": "Target types of the firewall policy rule.\nDefault value is INSTANCES.",
+          "enum": [
+            "INSTANCES",
+            "INTERNAL_MANAGED_LB"
+          ],
+          "enumDescriptions": [
+            "",
+            ""
+          ],
+          "type": "string"
         },
         "tlsInspect": {
           "description": "Boolean flag indicating if the traffic should be TLS decrypted.\nCan be set only if action = 'apply_security_profile_group' and cannot\nbe set for other actions.",
@@ -61560,6 +61580,7 @@
           "description": "The ID of a supported feature. To add multiple values, use commas to\nseparate values. Set to one or more of the following values:\n   \n   - VIRTIO_SCSI_MULTIQUEUE\n   - WINDOWS\n   - MULTI_IP_SUBNET\n   - UEFI_COMPATIBLE\n   - GVNIC\n   - SEV_CAPABLE\n   - SUSPEND_RESUME_COMPATIBLE\n   - SEV_LIVE_MIGRATABLE_V2\n   - SEV_SNP_CAPABLE\n   - TDX_CAPABLE\n   - IDPF\n   - SNP_SVSM_CAPABLE\n   - CCA_CAPABLE\n\n\nFor more information, see\nEnabling guest operating system features.",
           "enum": [
             "BARE_METAL_LINUX_COMPATIBLE",
+            "CCA_CAPABLE",
             "FEATURE_TYPE_UNSPECIFIED",
             "GVNIC",
             "IDPF",
@@ -61576,6 +61597,7 @@
             "WINDOWS"
           ],
           "enumDescriptions": [
+            "",
             "",
             "",
             "",
@@ -78407,7 +78429,7 @@
           "type": "string"
         },
         "network": {
-          "description": "The URL of the network to which all network endpoints in the NEG belong.\nUses default project network if unspecified.",
+          "description": "The URL of the network to which all network endpoints in the NEG belong.\nFor networkEndpointType GCE_VM_IP_PORT,GCE_VM_IP_PORTMAP or NON_GCP_PRIVATE_IP_PORT,\nif this field is not specified, a default network will be used.\nThis field cannot be set for NEGs with networkEndpointType set toSERVERLESS or PRIVATE_SERVICE_CONNECT and for\nglobal NEGs.\nFor all other network endpoint types, this field is required.",
           "type": "string"
         },
         "networkEndpointType": {

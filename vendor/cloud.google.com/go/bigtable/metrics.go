@@ -85,6 +85,7 @@ type contextKey string
 
 const (
 	statsContextKey contextKey = "bigtable/clientBlockingLatencyTracker"
+	t4t7ContextKey  contextKey = "bigtable/t4t7Tracker"
 )
 
 // These are effectively constant, but for testing purposes they are mutable
@@ -105,6 +106,13 @@ var (
 		50.0, 65.0, 80.0, 100.0, 130.0, 160.0, 200.0, 250.0, 300.0, 400.0, 500.0, 650.0,
 		800.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0, 100000.0, 200000.0,
 		400000.0, 800000.0, 1600000.0, 3200000.0}
+
+	// clientBlockingBucketBounds bounds optimized for microsecond-scale
+	// latencies (expressed in milliseconds), ranging from 10µs to 10s.
+	clientBlockingBucketBounds = []float64{
+		0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0,
+		2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 500.0, 1000.0, 5000.0, 10000.0,
+	}
 
 	// All the built-in metrics have same attributes except 'tag', 'status' and 'streaming'
 	// These attributes need to be added to only few of the metrics
@@ -387,7 +395,7 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 		metricNameClientBlockingLatencies,
 		metric.WithDescription("The latencies of requests queued on gRPC channels."),
 		metric.WithUnit(metricUnitMS),
-		metric.WithExplicitBucketBoundaries(bucketBounds...),
+		metric.WithExplicitBucketBoundaries(clientBlockingBucketBounds...),
 	)
 	if err != nil {
 		return err
@@ -510,6 +518,9 @@ type attemptTracer struct {
 
 	// Tracker for client blocking latency
 	blockingLatencyTracker *blockingLatencyTracker
+
+	// Tracker for t4t7
+	t4t7Tracker *t4t7Tracker
 }
 
 func (a *attemptTracer) setStartTime(t time.Time) {
@@ -659,7 +670,21 @@ func (mt *builtinMetricsTracer) recordAttemptCompletion(attemptHeaderMD, attempT
 	mt.currOp.currAttempt.setZoneID(zoneID)
 
 	// Set server latency in tracer
+	// FYI this is GFE t4t7(not server latency) latency where
+	// it measures the time between initial metadata send (client) - initial metadata recv(server)
 	serverLatency, serverLatencyErr := extractServerLatency(attemptHeaderMD, attempTrailerMD)
+	// If server latency is missing (0), fallback to the client-measured t4t7 latency
+	// t4t7 for directpath measures the time between the OutHeaders and InHeaders
+	// t4t7 for cloudpath measures the time between gfe receives the initial metadata of req
+	// and gfe sends the initial metadata of response to client
+	if serverLatency == 0 && mt.currOp.currAttempt.t4t7Tracker != nil {
+		fallbackLatency := mt.currOp.currAttempt.t4t7Tracker.getLatencyMs()
+		if fallbackLatency > 0 {
+			serverLatency = fallbackLatency
+			serverLatencyErr = nil
+		}
+	}
+
 	mt.currOp.currAttempt.setServerLatencyErr(serverLatencyErr)
 	mt.currOp.currAttempt.setServerLatency(serverLatency)
 
@@ -772,6 +797,33 @@ func (t *blockingLatencyTracker) getMessageSentNanos() int64 {
 	return t.endNanos.Load()
 }
 
+// t4t7Tracker measures the time between sending the client
+// request headers and receiving the initial metadata (InHeader) from the server.
+type t4t7Tracker struct {
+	outHeaderSentNanos atomic.Int64
+	inHeaderRecvNanos  atomic.Int64
+}
+
+func (t *t4t7Tracker) recordOutHeaderSent(start time.Time) {
+	// Ensure we only record the very first time headers are sent
+	t.outHeaderSentNanos.CompareAndSwap(0, start.UnixNano())
+}
+
+func (t *t4t7Tracker) recordInHeaderRecv(end time.Time) {
+	// Ensure we only record the very first time headers are received
+	t.inHeaderRecvNanos.CompareAndSwap(0, end.UnixNano())
+}
+
+// getLatencyMs returns the calculated latency in milliseconds.
+func (t *t4t7Tracker) getLatencyMs() float64 {
+	start := t.outHeaderSentNanos.Load()
+	end := t.inHeaderRecvNanos.Load()
+	if start == 0 || end == 0 {
+		return 0
+	}
+	return float64(end-start) / float64(time.Millisecond)
+}
+
 // latencyStatsHandler is a gRPC stats.Handler to measure client blocking latency.
 type latencyStatsHandler struct{}
 
@@ -783,13 +835,21 @@ func (h *latencyStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo
 }
 
 func (h *latencyStatsHandler) HandleRPC(ctx context.Context, s stats.RPCStats) {
-	tracker, ok := ctx.Value(statsContextKey).(*blockingLatencyTracker)
-	if !ok {
-		return
+	if tracker, ok := ctx.Value(statsContextKey).(*blockingLatencyTracker); ok {
+		if op, ok := s.(*stats.OutPayload); ok {
+			tracker.recordLatency(op.SentTime)
+		}
 	}
 
-	if op, ok := s.(*stats.OutPayload); ok {
-		tracker.recordLatency(op.SentTime)
+	if t4t7, ok := ctx.Value(t4t7ContextKey).(*t4t7Tracker); ok {
+		switch s.(type) {
+		case *stats.OutHeader:
+			// The client has sent the request headers.
+			t4t7.recordOutHeaderSent(time.Now())
+		case *stats.InHeader:
+			// The client has received the initial metadata from the server.
+			t4t7.recordInHeaderRecv(time.Now())
+		}
 	}
 }
 
