@@ -48,7 +48,7 @@ jobs:
 
       - name: Login to Quay.io
         if: ${{ inputs.registry != 'docker.io' }}
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: quay.io
           logout: true
