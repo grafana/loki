@@ -1,0 +1,10 @@
+{
+    "api_shortname": "iam",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iam/latest",
+    "client_library_type": "manual",
+    "description": "Cloud IAM",
+    "distribution_name": "cloud.google.com/go/iam",
+    "language": "go",
+    "library_type": "CORE",
+    "release_level": "stable"
+}
