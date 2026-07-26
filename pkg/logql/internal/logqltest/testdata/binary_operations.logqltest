@@ -102,9 +102,13 @@ eval range from 60s to 180s step 30s count_over_time({app="bar"}[1m]) ^ count_ov
 
 # Vector / vector comparison. Bare foo vs bar never share labels → empty result.
 eval instant at 60s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
 eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
 eval instant at 60s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
 eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
 
 # `without (app)` strips app so the two sides match on the empty label set.
 eval instant at 60s sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
@@ -118,7 +122,9 @@ eval range from 60s to 180s step 30s sum without(app) (count_over_time({app="foo
 
 # `by (app)` additions: foo+bar never match; foo+foo doubles.
 eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
 eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
 eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))
   {app="foo"} 12
 eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))

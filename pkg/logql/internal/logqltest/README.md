@@ -3,8 +3,8 @@
 The `testdata/*.logqltest` scripts alongside this package are declarative correctness tests for LogQL
 **metric** queries. Each `.logqltest` file loads some log streams and evaluates queries against
 absolute, hand-specified expected results. Scripts are run by `TestLogQLScripts` through the real
-`logql.Engine` over an in-memory pipeline-running querier, so the full parsing/extraction pipeline
-is exercised end to end.
+`logql.Engine` over a filesystem-backed chunk store (TSDB index), so the full storage read path and
+parsing/extraction pipeline are exercised end to end.
 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
@@ -23,7 +23,7 @@ independent scenarios within one file (see `testdata/AGENTS.md`).
 
 ### `load`
 
-Loads log entries into the in-memory store. Each indented line places entries on one stream:
+Loads log entries into the chunk store. Each indented line places entries on one stream:
 
 ```
 load
@@ -79,6 +79,20 @@ Point syntax (from promqltest):
 Label sets are compared as sets (order-independent). Note that Loki promotes **structured
 metadata into the result label set**, so a stream loaded with `[metadata detected_level="info"]`
 produces series labelled `{…, detected_level="info"}`.
+
+Every `eval` must assert exactly one kind of result — series, a scalar, `expect empty`, or
+`expect fail`; otherwise the harness errors (a forgotten expected block would otherwise pass
+vacuously on an empty result).
+
+### Empty results
+
+To assert that a query returns no series — e.g. `absent_over_time` over present data, or a
+comparison whose sides never match — use `expect empty`:
+
+```
+eval instant at 60s count_over_time({app="missing"}[1m])
+  expect empty
+```
 
 ### Failure assertions
 

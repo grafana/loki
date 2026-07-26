@@ -34,7 +34,9 @@ eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar")[1m])
 
 # absent_over_time — empty when the selector matches data.
 eval instant at 300s absent_over_time(({app="foo"} |~".+bar")[5m])
+  expect empty
 eval range from 60s to 180s step 30s absent_over_time(({app="foo"} |~".+bar")[1m])
+  expect empty
 
 # absent_over_time — 1 when the selector+filter matches nothing.
 clear

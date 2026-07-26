@@ -39,19 +39,23 @@ func newStreamsParser() *streamsParser {
 }
 
 func (p *streamsParser) parse(line string) error {
-	// Parse the log stream labels.
+	// Each step below consumes its segment from `rest`; whatever is left at the end must be empty,
+	// so a typo'd or unterminated directive can't be silently ignored (e.g. a broken
+	// `[repeat ...]` would otherwise quietly load a single entry).
+
+	// Consume the stream labels.
 	streamLabels, rest, err := splitStreamLabels(line)
 	if err != nil {
 		return err
 	}
 
-	// Parse the log message.
+	// Consume the log message.
 	message, rest, err := splitQuoted(rest)
 	if err != nil {
 		return err
 	}
 
-	// Parse the timestamp.
+	// Consume the '@ <start>' timestamp (required).
 	m := reAt.FindStringSubmatch(rest)
 	if m == nil {
 		return fmt.Errorf("missing '@ <start>' timestamp")
@@ -60,8 +64,9 @@ func (p *streamsParser) parse(line string) error {
 	if err != nil {
 		return fmt.Errorf("invalid start %q: %w", m[1], err)
 	}
+	rest = strings.Replace(rest, m[0], "", 1)
 
-	// Parse the repeat config (if any).
+	// Consume the optional '[repeat every <step> for <count>]' clause.
 	step := time.Duration(0)
 	count := 1
 	if r := reRepeat.FindStringSubmatch(rest); r != nil {
@@ -71,10 +76,19 @@ func (p *streamsParser) parse(line string) error {
 		if count, err = strconv.Atoi(r[2]); err != nil {
 			return fmt.Errorf("invalid repeat count %q: %w", r[2], err)
 		}
+		rest = strings.Replace(rest, r[0], "", 1)
 	}
 
-	// Parse the metadata (if any).
-	metadata := parseMetadata(rest)
+	// Consume the optional '[metadata key="value" ...]' clause.
+	metadata, rest, err := parseMetadata(rest)
+	if err != nil {
+		return err
+	}
+
+	// Ensure there's nothing left to parse.
+	if leftover := strings.TrimSpace(rest); leftover != "" {
+		return fmt.Errorf("unexpected content after log line: %q", leftover)
+	}
 
 	// Create the log stream.
 	stream, ok := p.streams[streamLabels]
@@ -130,20 +144,31 @@ func splitQuoted(s string) (text, rest string, err error) {
 	return s[start+1 : end], s[end+1:], nil
 }
 
-func parseMetadata(rest string) []logproto.LabelAdapter {
+// parseMetadata extracts the optional `[metadata key="value" ...]` block, returning the parsed
+// metadata and `rest` with that block removed. A block that is present but malformed (e.g. an
+// unquoted value) is an error rather than silently dropped.
+func parseMetadata(rest string) ([]logproto.LabelAdapter, string, error) {
 	m := reMetadata.FindStringSubmatch(rest)
 	if m == nil {
-		return nil
+		return nil, rest, nil
 	}
+	inner := strings.TrimSpace(m[1])
 	var out []logproto.LabelAdapter
-	for _, kv := range reMetadataKeyValue.FindAllStringSubmatch(m[1], -1) {
+	for _, kv := range reMetadataKeyValue.FindAllStringSubmatch(inner, -1) {
 		key := kv[1]
 		if key == "" {
 			key = kv[2]
 		}
 		out = append(out, logproto.LabelAdapter{Name: key, Value: kv[3]})
 	}
-	return out
+	// Every token inside the block must be a key="value" pair; anything left over is malformed.
+	if leftover := strings.TrimSpace(reMetadataKeyValue.ReplaceAllString(inner, "")); leftover != "" {
+		return nil, rest, fmt.Errorf("invalid metadata %q: expected key=\"value\" pairs", inner)
+	}
+	if len(out) == 0 {
+		return nil, rest, fmt.Errorf("empty [metadata ...] block")
+	}
+	return out, strings.Replace(rest, m[0], "", 1), nil
 }
 
 type evalCmd struct {
@@ -200,9 +225,31 @@ type expectations struct {
 	fail     bool
 	failKind string // "", "msg", or "regex"
 	failText string
+	empty    bool // when set, the result must contain no series (`expect empty`)
 	ordered  bool // when set, series are compared positionally (for sort/sort_desc); instant only
 	scalar   *float64
 	series   []expectedSeries
+}
+
+// validate ensures an eval asserts exactly one result kind: series, a scalar, `expect empty`,
+// or `expect fail`. This catches a forgotten expectation block (which would otherwise pass
+// vacuously on an empty result) and contradictory combinations that would be silently ignored.
+func (e expectations) validate() error {
+	kinds := 0
+	for _, set := range []bool{e.fail, e.empty, e.scalar != nil, len(e.series) > 0} {
+		if set {
+			kinds++
+		}
+	}
+	switch {
+	case kinds == 0:
+		return fmt.Errorf("eval has no expectation: provide series, a scalar, `expect empty`, or `expect fail`")
+	case kinds > 1:
+		return fmt.Errorf("conflicting expectations: use exactly one of series, a scalar, `expect empty`, or `expect fail`")
+	case e.ordered && len(e.series) == 0:
+		return fmt.Errorf("`expect ordered` requires series")
+	}
+	return nil
 }
 
 // expectedSeries is one expected output series: its label set (in `{a="b"}` string form) and
@@ -228,13 +275,21 @@ func (p *expectationsParser) parse(line string) error {
 		p.exp.fail = true
 		body := strings.TrimSpace(strings.TrimPrefix(line, "expect fail"))
 		switch {
+		case body == "":
+			// Bare `expect fail`: any error satisfies it.
 		case strings.HasPrefix(body, "msg:"):
 			p.exp.failKind = "msg"
 			p.exp.failText = strings.TrimSpace(strings.TrimPrefix(body, "msg:"))
 		case strings.HasPrefix(body, "regex:"):
 			p.exp.failKind = "regex"
 			p.exp.failText = strings.TrimSpace(strings.TrimPrefix(body, "regex:"))
+		default:
+			// A typo'd qualifier (e.g. `mesg:`) must not silently degrade to "any error".
+			return fmt.Errorf("unsupported `expect fail` qualifier %q (use `msg:` or `regex:`)", body)
 		}
+	case line == "expect empty":
+		// The result must contain no series.
+		p.exp.empty = true
 	case line == "expect ordered":
 		// Compare the following series positionally rather than as a set (for sort/sort_desc).
 		p.exp.ordered = true

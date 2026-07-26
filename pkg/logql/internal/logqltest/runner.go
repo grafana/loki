@@ -2,6 +2,7 @@ package logqltest
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -101,7 +102,11 @@ func RunScript(t *testing.T, name, script string) {
 					t.Fatalf("%s: invalid expectation %q: %v", name, content, err)
 				}
 			})
-			runEval(t, name, getQuerier(), cmd, expected.get())
+			exp := expected.get()
+			if err := exp.validate(); err != nil {
+				t.Fatalf("%s: eval %q: %v", name, cmd.query, err)
+			}
+			runEval(t, name, getQuerier(), cmd, exp)
 		default:
 			t.Fatalf("%s: unexpected command %q", name, fields[0])
 		}
@@ -153,7 +158,7 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 		}
 
 		require.NoError(t, err, "%s: query %q", name, cmd.query)
-		compare(t, name, cmd, exp, res.Data)
+		require.NoError(t, compareResult(name, cmd, exp, res.Data))
 	})
 }
 
@@ -184,64 +189,112 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 	return i
 }
 
-func compare(t *testing.T, name string, cmd evalCmd, exp expectations, data interface{}) {
-	t.Helper()
+// compareResult checks a query result against the expectation, returning a descriptive error on the
+// first mismatch (nil on success). Keeping the comparators pure (error-returning rather than
+// asserting on a *testing.T) lets the tests exercise the failure path directly.
+func compareResult(name string, cmd evalCmd, exp expectations, data interface{}) error {
 	switch v := data.(type) {
 	case promql.Scalar:
-		compareScalar(t, name, exp, v)
+		if exp.empty {
+			return fmt.Errorf("%s: expected an empty result, got scalar %v", name, v.V)
+		}
+		return compareScalar(name, exp, v)
 	case promql.Vector:
-		compareVector(t, name, exp, v)
+		if exp.empty {
+			if len(v) != 0 {
+				return fmt.Errorf("%s: expected an empty result, got %v", name, v)
+			}
+			return nil
+		}
+		return compareVector(name, exp, v)
 	case promql.Matrix:
-		compareMatrix(t, name, cmd, exp, v)
+		if exp.empty {
+			if len(v) != 0 {
+				return fmt.Errorf("%s: expected an empty result, got %d series", name, len(v))
+			}
+			return nil
+		}
+		return compareMatrix(name, cmd, exp, v)
 	default:
-		t.Fatalf("%s: unsupported result type %T (only metric queries are supported)", name, data)
+		return fmt.Errorf("%s: unsupported result type %T (only metric queries are supported)", name, data)
 	}
 }
 
-func compareScalar(t *testing.T, name string, exp expectations, s promql.Scalar) {
-	t.Helper()
-	require.NotNilf(t, exp.scalar, "%s: scalar result but no scalar value expected", name)
-	require.Truef(t, floatsEqual(*exp.scalar, s.V), "%s: scalar mismatch: want %v, got %v", name, *exp.scalar, s.V)
+func compareScalar(name string, exp expectations, s promql.Scalar) error {
+	if exp.scalar == nil {
+		return fmt.Errorf("%s: scalar result but no scalar value expected", name)
+	}
+	if !floatsEqual(*exp.scalar, s.V) {
+		return fmt.Errorf("%s: scalar mismatch: want %v, got %v", name, *exp.scalar, s.V)
+	}
+	return nil
 }
 
-func compareVector(t *testing.T, name string, exp expectations, v promql.Vector) {
-	t.Helper()
-
+func compareVector(name string, exp expectations, v promql.Vector) error {
 	// With `expect ordered` the series must appear in the given order (for sort/sort_desc).
 	if exp.ordered {
-		require.Lenf(t, v, len(exp.series), "%s: series count mismatch: want %d, got %d", name, len(exp.series), len(v))
-		for i, es := range exp.series {
-			require.Lenf(t, es.samples, 1, "%s: instant result expects one value per series: %s", name, es.labels)
-			require.Truef(t, es.samples[0].present, "%s: instant result cannot have a gap: %s", name, es.labels)
-			require.Equalf(t, es.labels, v[i].Metric.String(), "%s: series at position %d: want %s, got %s", name, i, es.labels, v[i].Metric.String())
-			require.Truef(t, floatsEqual(es.samples[0].value, v[i].F), "%s: series %s (position %d) value mismatch: want %v, got %v", name, es.labels, i, es.samples[0].value, v[i].F)
+		if len(v) != len(exp.series) {
+			return fmt.Errorf("%s: series count mismatch: want %d, got %d", name, len(exp.series), len(v))
 		}
-		return
+		for i, es := range exp.series {
+			if len(es.samples) != 1 {
+				return fmt.Errorf("%s: instant result expects one value per series: %s", name, es.labels)
+			}
+			if !es.samples[0].present {
+				return fmt.Errorf("%s: instant result cannot have a gap: %s", name, es.labels)
+			}
+			if es.labels != v[i].Metric.String() {
+				return fmt.Errorf("%s: series at position %d: want %s, got %s", name, i, es.labels, v[i].Metric.String())
+			}
+			if !floatsEqual(es.samples[0].value, v[i].F) {
+				return fmt.Errorf("%s: series %s (position %d) value mismatch: want %v, got %v", name, es.labels, i, es.samples[0].value, v[i].F)
+			}
+		}
+		return nil
 	}
 
 	want := map[string]float64{}
 	for _, es := range exp.series {
-		require.Lenf(t, es.samples, 1, "%s: instant result expects one value per series: %s", name, es.labels)
-		require.Truef(t, es.samples[0].present, "%s: instant result cannot have a gap: %s", name, es.labels)
+		if len(es.samples) != 1 {
+			return fmt.Errorf("%s: instant result expects one value per series: %s", name, es.labels)
+		}
+		if !es.samples[0].present {
+			return fmt.Errorf("%s: instant result cannot have a gap: %s", name, es.labels)
+		}
+		if _, dup := want[es.labels]; dup {
+			return fmt.Errorf("%s: duplicate expected series %s", name, es.labels)
+		}
 		want[es.labels] = es.samples[0].value
 	}
 
 	got := map[string]float64{}
 	for _, s := range v {
-		got[s.Metric.String()] = s.F
+		key := s.Metric.String()
+		if _, dup := got[key]; dup {
+			return fmt.Errorf("%s: engine returned duplicate series %s", name, key)
+		}
+		got[key] = s.F
 	}
 
-	require.Lenf(t, got, len(want), "%s: series count mismatch: want %v, got %v", name, want, got)
+	if len(got) != len(want) {
+		return fmt.Errorf("%s: series count mismatch: want %v, got %v", name, want, got)
+	}
 	for k, wv := range want {
 		gv, ok := got[k]
-		require.Truef(t, ok, "%s: missing expected series %s; got %v", name, k, got)
-		require.Truef(t, floatsEqual(wv, gv), "%s: series %s value mismatch: want %v, got %v", name, k, wv, gv)
+		if !ok {
+			return fmt.Errorf("%s: missing expected series %s; got %v", name, k, got)
+		}
+		if !floatsEqual(wv, gv) {
+			return fmt.Errorf("%s: series %s value mismatch: want %v, got %v", name, k, wv, gv)
+		}
 	}
+	return nil
 }
 
-func compareMatrix(t *testing.T, name string, cmd evalCmd, exp expectations, m promql.Matrix) {
-	t.Helper()
-	require.Falsef(t, exp.ordered, "%s: `expect ordered` is only supported for instant queries", name)
+func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) error {
+	if exp.ordered {
+		return fmt.Errorf("%s: `expect ordered` is only supported for instant queries", name)
+	}
 
 	// Timestamps (ms) of each range step.
 	var stepMillis []int64
@@ -254,34 +307,62 @@ func compareMatrix(t *testing.T, name string, cmd evalCmd, exp expectations, m p
 
 	want := map[string][]sample{}
 	for _, es := range exp.series {
-		require.Lenf(t, es.samples, len(stepMillis), "%s: series %s has %d points, expected %d steps", name, es.labels, len(es.samples), len(stepMillis))
+		if len(es.samples) != len(stepMillis) {
+			return fmt.Errorf("%s: series %s has %d points, expected %d steps", name, es.labels, len(es.samples), len(stepMillis))
+		}
+		if _, dup := want[es.labels]; dup {
+			return fmt.Errorf("%s: duplicate expected series %s", name, es.labels)
+		}
 		want[es.labels] = es.samples
 	}
 
 	got := map[string]map[int64]float64{}
 	for _, s := range m {
+		key := s.Metric.String()
+		if _, dup := got[key]; dup {
+			return fmt.Errorf("%s: engine returned duplicate series %s", name, key)
+		}
 		byTS := map[int64]float64{}
 		for _, p := range s.Floats {
 			byTS[p.T] = p.F
 		}
-		got[s.Metric.String()] = byTS
+		got[key] = byTS
 	}
 
-	require.Lenf(t, got, len(want), "%s: series count mismatch: want %d, got %d (%v)", name, len(want), len(got), keys(got))
+	if len(got) != len(want) {
+		return fmt.Errorf("%s: series count mismatch: want %d, got %d (%v)", name, len(want), len(got), keys(got))
+	}
 	for k, points := range want {
 		gotTS, ok := got[k]
-		require.Truef(t, ok, "%s: missing expected series %s; got series %v", name, k, keys(got))
+		if !ok {
+			return fmt.Errorf("%s: missing expected series %s; got series %v", name, k, keys(got))
+		}
+		present := 0
 		for i, p := range points {
 			ts := stepMillis[i]
-			gv, present := gotTS[ts]
+			gv, has := gotTS[ts]
 			if !p.present {
-				require.Falsef(t, present, "%s: series %s step %d (t=%dms) should be empty, got %v", name, k, i, ts, gv)
+				if has {
+					return fmt.Errorf("%s: series %s step %d (t=%dms) should be empty, got %v", name, k, i, ts, gv)
+				}
 				continue
 			}
-			require.Truef(t, present, "%s: series %s missing point at step %d (t=%dms)", name, k, i, ts)
-			require.Truef(t, floatsEqual(p.value, gv), "%s: series %s step %d value mismatch: want %v, got %v", name, k, i, p.value, gv)
+			present++
+			if !has {
+				return fmt.Errorf("%s: series %s missing point at step %d (t=%dms)", name, k, i, ts)
+			}
+			if !floatsEqual(p.value, gv) {
+				return fmt.Errorf("%s: series %s step %d value mismatch: want %v, got %v", name, k, i, p.value, gv)
+			}
+		}
+		// Catch extra points the loop above can't see: it only inspects the expected step
+		// timestamps, so a point at any other timestamp would slip through. Kept last so a
+		// missing point is reported by the loop (with its exact step) before this coarser count.
+		if len(gotTS) != present {
+			return fmt.Errorf("%s: series %s has %d points, expected %d", name, k, len(gotTS), present)
 		}
 	}
+	return nil
 }
 
 func floatsEqual(a, b float64) bool {

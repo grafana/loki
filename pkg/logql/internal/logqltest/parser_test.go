@@ -60,13 +60,46 @@ func TestSplitQuoted(t *testing.T) {
 }
 
 func TestParseMetadata(t *testing.T) {
-	require.Nil(t, parseMetadata(`@ 0s [repeat every 10s for 3]`))
+	// No metadata block: rest is returned unchanged.
+	md, rest, err := parseMetadata(`@ 0s [repeat every 10s for 3]`)
+	require.NoError(t, err)
+	require.Nil(t, md)
+	require.Equal(t, `@ 0s [repeat every 10s for 3]`, rest)
 
-	got := parseMetadata(`@ 0s [metadata detected_level="error" "svc name"="api"]`)
+	// A metadata block is parsed and stripped from rest.
+	md, rest, err = parseMetadata(`@ 0s [metadata detected_level="error" "svc name"="api"]`)
+	require.NoError(t, err)
 	require.Equal(t, []logproto.LabelAdapter{
 		{Name: "detected_level", Value: "error"},
 		{Name: "svc name", Value: "api"},
-	}, got)
+	}, md)
+	require.NotContains(t, rest, "metadata")
+
+	// Malformed metadata is rejected, not silently dropped.
+	_, _, err = parseMetadata(`@ 0s [metadata trace_id=abc]`) // unquoted value
+	require.Error(t, err)
+	_, _, err = parseMetadata(`@ 0s [metadata k="v" junk]`) // stray token
+	require.Error(t, err)
+}
+
+func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
+	for name, line := range map[string]string{
+		"unterminated repeat":                `{app="foo"} "x" @ 0s [repeat every 10s for 19`,
+		"typo'd repeat keyword":              `{app="foo"} "x" @ 0s [repaet every 10s for 19]`,
+		"non-integer repeat count":           `{app="foo"} "x" @ 0s [repeat every 10s for 5.5]`,
+		"unquoted metadata value":            `{app="foo"} "x" @ 0s [metadata trace_id=abc]`,
+		"stray trailing tokens":              `{app="foo"} "x" @ 0s trailing junk`,
+		"trailing junk after a valid clause": `{app="foo"} "x" @ 0s [repeat every 10s for 3] junk`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Error(t, newStreamsParser().parse(line))
+		})
+	}
+
+	// A well-formed directive still loads the full set of entries.
+	s := newStreamsParser()
+	require.NoError(t, s.parse(`{app="foo"} "x" @ 0s [repeat every 10s for 19]`))
+	require.Len(t, s.get()[0].Entries, 19)
 }
 
 func TestParseEval(t *testing.T) {
@@ -126,11 +159,39 @@ func TestExpectationsParser(t *testing.T) {
 	require.True(t, exp.ordered)
 	require.Len(t, exp.series, 1)
 
+	// expect empty.
+	p = newExpectationsParser()
+	require.NoError(t, p.parse("expect empty"))
+	require.True(t, p.get().empty)
+
+	// Bare `expect fail` is allowed; a typo'd qualifier is rejected rather than silently ignored.
+	require.NoError(t, newExpectationsParser().parse("expect fail"))
+	require.Error(t, newExpectationsParser().parse("expect fail mesg: typo"))
+
 	// Invalid scalar line.
 	require.Error(t, newExpectationsParser().parse("not-a-number"))
 
 	// Unrecognized expect annotation.
 	require.Error(t, newExpectationsParser().parse("expect sorted"))
+}
+
+func TestExpectationsValidate(t *testing.T) {
+	scalar := 1.0
+	series := []expectedSeries{{labels: `{a="b"}`, samples: []sample{{present: true, value: 1}}}}
+
+	// Valid: exactly one result kind (plus ordered alongside series).
+	require.NoError(t, expectations{scalar: &scalar}.validate())
+	require.NoError(t, expectations{series: series}.validate())
+	require.NoError(t, expectations{empty: true}.validate())
+	require.NoError(t, expectations{fail: true}.validate())
+	require.NoError(t, expectations{ordered: true, series: series}.validate())
+
+	// Invalid: no expectation, conflicting kinds, or `expect ordered` without series.
+	require.Error(t, expectations{}.validate())
+	require.Error(t, expectations{fail: true, series: series}.validate())
+	require.Error(t, expectations{scalar: &scalar, series: series}.validate())
+	require.Error(t, expectations{empty: true, series: series}.validate())
+	require.Error(t, expectations{ordered: true}.validate())
 }
 
 func TestParseSeriesLine(t *testing.T) {
@@ -149,20 +210,40 @@ func TestParseSeriesLine(t *testing.T) {
 }
 
 func TestParseSamples(t *testing.T) {
-	for _, tc := range []struct {
+	for name, tc := range map[string]struct {
 		in   []string
 		want []sample
 	}{
-		{[]string{"5"}, []sample{{present: true, value: 5}}},
-		{[]string{"_"}, []sample{{present: false}}},
-		{[]string{"1", "_", "3"}, []sample{{present: true, value: 1}, {present: false}, {present: true, value: 3}}},
-		{[]string{"2+3x2"}, []sample{{present: true, value: 2}, {present: true, value: 5}, {present: true, value: 8}}},
-		{[]string{"4x3"}, []sample{{present: true, value: 4}, {present: true, value: 4}, {present: true, value: 4}, {present: true, value: 4}}},
-		{[]string{"1-1x2"}, []sample{{present: true, value: 1}, {present: true, value: 0}, {present: true, value: -1}}},
+		"single value": {
+			in:   []string{"5"},
+			want: []sample{{present: true, value: 5}},
+		},
+		"gap": {
+			in:   []string{"_"},
+			want: []sample{{present: false}},
+		},
+		"values with a gap": {
+			in:   []string{"1", "_", "3"},
+			want: []sample{{present: true, value: 1}, {present: false}, {present: true, value: 3}},
+		},
+		"incrementing expansion": {
+			in:   []string{"2+3x2"},
+			want: []sample{{present: true, value: 2}, {present: true, value: 5}, {present: true, value: 8}},
+		},
+		"constant expansion": {
+			in:   []string{"4x3"},
+			want: []sample{{present: true, value: 4}, {present: true, value: 4}, {present: true, value: 4}, {present: true, value: 4}},
+		},
+		"decrementing expansion": {
+			in:   []string{"1-1x2"},
+			want: []sample{{present: true, value: 1}, {present: true, value: 0}, {present: true, value: -1}},
+		},
 	} {
-		got, err := parseSamples(tc.in)
-		require.NoError(t, err)
-		require.Equal(t, tc.want, got, tc.in)
+		t.Run(name, func(t *testing.T) {
+			got, err := parseSamples(tc.in)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
 	}
 }
 
@@ -189,16 +270,37 @@ func TestParseFloat(t *testing.T) {
 }
 
 func TestStripComment(t *testing.T) {
-	for _, tc := range []struct {
-		input, expected string
+	for name, tc := range map[string]struct {
+		input    string
+		expected string
 	}{
-		{`no comment here`, `no comment here`},
-		{`value # comment`, `value`},
-		{`  # whole line comment`, ``},
-		{`{app="foo"} "a # b" @ 0s # real`, `{app="foo"} "a # b" @ 0s`},
-		{"count_over_time({app=`x#y`}[1m]) # c", "count_over_time({app=`x#y`}[1m])"},
-		{`trailing spaces   # c`, `trailing spaces`},
+		"no comment": {
+			input:    `no comment here`,
+			expected: `no comment here`,
+		},
+		"trailing comment": {
+			input:    `value # comment`,
+			expected: `value`,
+		},
+		"whole line comment": {
+			input:    `  # whole line comment`,
+			expected: ``,
+		},
+		"hash inside double quotes": {
+			input:    `{app="foo"} "a # b" @ 0s # real`,
+			expected: `{app="foo"} "a # b" @ 0s`,
+		},
+		"hash inside backticks": {
+			input:    "count_over_time({app=`x#y`}[1m]) # c",
+			expected: "count_over_time({app=`x#y`}[1m])",
+		},
+		"trailing spaces before comment": {
+			input:    `trailing spaces   # c`,
+			expected: `trailing spaces`,
+		},
 	} {
-		require.Equal(t, tc.expected, stripComment(tc.input), tc.input)
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, stripComment(tc.input))
+		})
 	}
 }

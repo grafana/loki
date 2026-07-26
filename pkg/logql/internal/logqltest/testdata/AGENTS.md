@@ -9,7 +9,7 @@ each test genuinely earns its place.
 
 Each `.logqltest` file targets one core LogQL feature. Current / expected files:
 
-- `range_aggregations.logqltest` — `count_over_time`, `rate`, `rate_counter`, `bytes_over_time`,
+- `range_aggregations.logqltest` — `count_over_time`, `rate`, `bytes_over_time`,
   `bytes_rate`, `absent_over_time`, and the unwrapped `sum/avg/min/max/first/last/quantile/
   stddev/stdvar_over_time`.
 - `vector_aggregations.logqltest` — `sum/avg/min/max/count/stddev/stdvar/topk/bottomk/sort/sort_desc`
