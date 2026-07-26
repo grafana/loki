@@ -21,11 +21,13 @@ import (
 var epoch = time.Unix(0, 0).UTC()
 
 var (
+	// Anchored to the head so each directive matches only its own leading segment and can never
+	// reach into a later [metadata …] value.
 	reInstant          = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange            = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
-	reAt               = regexp.MustCompile(`@\s*(\S+)`)
-	reRepeat           = regexp.MustCompile(`\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
-	reMetadata         = regexp.MustCompile(`\[metadata\s+(.*?)\]`)
+	reAt               = regexp.MustCompile(`^\s*@\s*(\S+)`)
+	reRepeat           = regexp.MustCompile(`^\s*\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
+	reMetadata         = regexp.MustCompile(`^\s*\[metadata\s+(.*?)\]`)
 	reMetadataKeyValue = regexp.MustCompile(`(?:"([^"]*)"|([^\s"=]+))="([^"]*)"`)
 )
 
@@ -39,8 +41,8 @@ func newStreamsParser() *streamsParser {
 }
 
 func (p *streamsParser) parse(line string) error {
-	// Each step below consumes its segment from `rest`; whatever is left at the end must be empty,
-	// so a typo'd or unterminated directive can't be silently ignored (e.g. a broken
+	// Each step below consumes its segment from the head of `rest`; whatever is left at the end
+	// must be empty, so a typo'd or unterminated directive can't be silently ignored (e.g. a broken
 	// `[repeat ...]` would otherwise quietly load a single entry).
 
 	// Consume the stream labels.
@@ -64,7 +66,7 @@ func (p *streamsParser) parse(line string) error {
 	if err != nil {
 		return fmt.Errorf("invalid start %q: %w", m[1], err)
 	}
-	rest = strings.Replace(rest, m[0], "", 1)
+	rest = rest[len(m[0]):]
 
 	// Consume the optional '[repeat every <step> for <count>]' clause.
 	step := time.Duration(0)
@@ -76,7 +78,7 @@ func (p *streamsParser) parse(line string) error {
 		if count, err = strconv.Atoi(r[2]); err != nil {
 			return fmt.Errorf("invalid repeat count %q: %w", r[2], err)
 		}
-		rest = strings.Replace(rest, r[0], "", 1)
+		rest = rest[len(r[0]):]
 	}
 
 	// Consume the optional '[metadata key="value" ...]' clause.
@@ -168,7 +170,7 @@ func parseMetadata(rest string) ([]logproto.LabelAdapter, string, error) {
 	if len(out) == 0 {
 		return nil, rest, fmt.Errorf("empty [metadata ...] block")
 	}
-	return out, strings.Replace(rest, m[0], "", 1), nil
+	return out, rest[len(m[0]):], nil
 }
 
 type evalCmd struct {
@@ -242,6 +244,8 @@ func (e expectations) validate() error {
 		}
 	}
 	switch {
+	case e.failKind != "" && !e.fail:
+		return fmt.Errorf("failure qualifier set without `expect fail`")
 	case kinds == 0:
 		return fmt.Errorf("eval has no expectation: provide series, a scalar, `expect empty`, or `expect fail`")
 	case kinds > 1:

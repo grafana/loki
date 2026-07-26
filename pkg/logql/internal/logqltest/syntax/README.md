@@ -16,8 +16,9 @@ extension.
 The bundle path is recorded in the IDE configuration rather than in the project, so each developer
 adds it once per machine. There is no project-level file that IntelliJ picks up automatically.
 
-Colors follow the active theme's mapping for the TextMate scopes below; tune them under
-Settings → Editor → Color Scheme → TextMate.
+Colors follow the active theme's mapping for the grammar's TextMate scopes (the `*.logqltest`
+scope names in `logqltest.tmLanguage.json`); tune them under Settings → Editor → Color Scheme →
+TextMate.
 
 ## VS Code
 

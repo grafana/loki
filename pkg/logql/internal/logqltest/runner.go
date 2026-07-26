@@ -206,6 +206,9 @@ func compareResult(name string, cmd evalCmd, exp expectations, data interface{})
 			}
 			return nil
 		}
+		if exp.scalar != nil {
+			return fmt.Errorf("%s: expected a scalar, got a vector", name)
+		}
 		return compareVector(name, exp, v)
 	case promql.Matrix:
 		if exp.empty {
@@ -213,6 +216,9 @@ func compareResult(name string, cmd evalCmd, exp expectations, data interface{})
 				return fmt.Errorf("%s: expected an empty result, got %d series", name, len(v))
 			}
 			return nil
+		}
+		if exp.scalar != nil {
+			return fmt.Errorf("%s: expected a scalar, got a matrix", name)
 		}
 		return compareMatrix(name, cmd, exp, v)
 	default:

@@ -60,25 +60,27 @@ func TestSplitQuoted(t *testing.T) {
 }
 
 func TestParseMetadata(t *testing.T) {
-	// No metadata block: rest is returned unchanged.
-	md, rest, err := parseMetadata(`@ 0s [repeat every 10s for 3]`)
+	// No metadata at the head: rest is returned unchanged.
+	md, rest, err := parseMetadata(`[repeat every 10s for 3]`)
 	require.NoError(t, err)
 	require.Nil(t, md)
-	require.Equal(t, `@ 0s [repeat every 10s for 3]`, rest)
+	require.Equal(t, `[repeat every 10s for 3]`, rest)
 
-	// A metadata block is parsed and stripped from rest.
-	md, rest, err = parseMetadata(`@ 0s [metadata detected_level="error" "svc name"="api"]`)
+	// A metadata block at the head is parsed and consumed from rest.
+	md, rest, err = parseMetadata(`[metadata detected_level="error" "svc name"="api"] rest`)
 	require.NoError(t, err)
 	require.Equal(t, []logproto.LabelAdapter{
 		{Name: "detected_level", Value: "error"},
 		{Name: "svc name", Value: "api"},
 	}, md)
-	require.NotContains(t, rest, "metadata")
+	require.Equal(t, ` rest`, rest)
 
-	// Malformed metadata is rejected, not silently dropped.
-	_, _, err = parseMetadata(`@ 0s [metadata trace_id=abc]`) // unquoted value
+	// Malformed or empty metadata is rejected, not silently dropped.
+	_, _, err = parseMetadata(`[metadata trace_id=abc]`) // unquoted value
 	require.Error(t, err)
-	_, _, err = parseMetadata(`@ 0s [metadata k="v" junk]`) // stray token
+	_, _, err = parseMetadata(`[metadata k="v" junk]`) // stray token
+	require.Error(t, err)
+	_, _, err = parseMetadata(`[metadata ]`) // empty block
 	require.Error(t, err)
 }
 
@@ -90,6 +92,8 @@ func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
 		"unquoted metadata value":            `{app="foo"} "x" @ 0s [metadata trace_id=abc]`,
 		"stray trailing tokens":              `{app="foo"} "x" @ 0s trailing junk`,
 		"trailing junk after a valid clause": `{app="foo"} "x" @ 0s [repeat every 10s for 3] junk`,
+		"invalid repeat step":                `{app="foo"} "x" @ 0s [repeat every 1x for 3]`,
+		"repeat count overflow":              `{app="foo"} "x" @ 0s [repeat every 10s for 99999999999999999999]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.Error(t, newStreamsParser().parse(line))
@@ -164,6 +168,14 @@ func TestExpectationsParser(t *testing.T) {
 	require.NoError(t, p.parse("expect empty"))
 	require.True(t, p.get().empty)
 
+	// expect fail with a regex qualifier.
+	p = newExpectationsParser()
+	require.NoError(t, p.parse("expect fail regex: many-to-one.*explicit"))
+	exp = p.get()
+	require.True(t, exp.fail)
+	require.Equal(t, "regex", exp.failKind)
+	require.Equal(t, "many-to-one.*explicit", exp.failText)
+
 	// Bare `expect fail` is allowed; a typo'd qualifier is rejected rather than silently ignored.
 	require.NoError(t, newExpectationsParser().parse("expect fail"))
 	require.Error(t, newExpectationsParser().parse("expect fail mesg: typo"))
@@ -186,12 +198,15 @@ func TestExpectationsValidate(t *testing.T) {
 	require.NoError(t, expectations{fail: true}.validate())
 	require.NoError(t, expectations{ordered: true, series: series}.validate())
 
-	// Invalid: no expectation, conflicting kinds, or `expect ordered` without series.
+	// Invalid: no expectation, conflicting kinds, `expect ordered` without series, or a failure
+	// qualifier without `fail`.
 	require.Error(t, expectations{}.validate())
 	require.Error(t, expectations{fail: true, series: series}.validate())
 	require.Error(t, expectations{scalar: &scalar, series: series}.validate())
 	require.Error(t, expectations{empty: true, series: series}.validate())
 	require.Error(t, expectations{ordered: true}.validate())
+	require.Error(t, expectations{ordered: true, scalar: &scalar}.validate()) // ordered needs series
+	require.Error(t, expectations{failKind: "msg"}.validate())                // qualifier without fail
 }
 
 func TestParseSeriesLine(t *testing.T) {
