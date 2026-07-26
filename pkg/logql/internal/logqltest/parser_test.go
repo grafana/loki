@@ -82,6 +82,8 @@ func TestParseMetadata(t *testing.T) {
 	require.Error(t, err)
 	_, _, err = parseMetadata(`[metadata ]`) // empty block
 	require.Error(t, err)
+	_, _, err = parseMetadata(`[metadata ""="v"]`) // empty key
+	require.Error(t, err)
 }
 
 func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
@@ -126,6 +128,10 @@ func TestParseEval(t *testing.T) {
 
 	_, err = parseEval(`eval instant garbage`)
 	require.Error(t, err)
+
+	// A non-positive range step would silently collapse the window to a single point.
+	_, err = parseEval(`eval range from 0 to 10m step 0s count_over_time({app="foo"}[1m])`)
+	require.Error(t, err)
 }
 
 func TestExpectationsParser(t *testing.T) {
@@ -134,7 +140,7 @@ func TestExpectationsParser(t *testing.T) {
 	require.NoError(t, p.parse("expect fail msg: boom happened"))
 	exp := p.get()
 	require.True(t, exp.fail)
-	require.Equal(t, "msg", exp.failKind)
+	require.Equal(t, failMsg, exp.failKind)
 	require.Equal(t, "boom happened", exp.failText)
 
 	// Scalar result.
@@ -173,12 +179,16 @@ func TestExpectationsParser(t *testing.T) {
 	require.NoError(t, p.parse("expect fail regex: many-to-one.*explicit"))
 	exp = p.get()
 	require.True(t, exp.fail)
-	require.Equal(t, "regex", exp.failKind)
+	require.Equal(t, failRegex, exp.failKind)
 	require.Equal(t, "many-to-one.*explicit", exp.failText)
 
 	// Bare `expect fail` is allowed; a typo'd qualifier is rejected rather than silently ignored.
 	require.NoError(t, newExpectationsParser().parse("expect fail"))
 	require.Error(t, newExpectationsParser().parse("expect fail mesg: typo"))
+
+	// A qualifier with no text would silently match any error, so it is rejected.
+	require.Error(t, newExpectationsParser().parse("expect fail msg:"))
+	require.Error(t, newExpectationsParser().parse("expect fail regex:"))
 
 	// Invalid scalar line.
 	require.Error(t, newExpectationsParser().parse("not-a-number"))
@@ -206,7 +216,7 @@ func TestExpectationsValidate(t *testing.T) {
 	require.Error(t, expectations{empty: true, series: series}.validate())
 	require.Error(t, expectations{ordered: true}.validate())
 	require.Error(t, expectations{ordered: true, scalar: &scalar}.validate()) // ordered needs series
-	require.Error(t, expectations{failKind: "msg"}.validate())                // qualifier without fail
+	require.Error(t, expectations{failKind: failMsg}.validate())              // qualifier without fail
 }
 
 func TestParseSeriesLine(t *testing.T) {
@@ -269,6 +279,19 @@ func TestParseSamples_SpecialValues(t *testing.T) {
 	require.True(t, math.IsNaN(got[0].value))
 	require.True(t, math.IsInf(got[1].value, 1))
 	require.True(t, math.IsInf(got[2].value, -1))
+}
+
+func TestParseSamples_RejectsMalformed(t *testing.T) {
+	for name, tokens := range map[string][]string{
+		"non-numeric value":        {"abc"},
+		"non-integer repeat count": {"5x2.5"},
+		"negative repeat count":    {"5x-1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseSamples(tokens)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestParseFloat(t *testing.T) {

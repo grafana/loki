@@ -149,9 +149,9 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 		if exp.fail {
 			require.Errorf(t, err, "%s: expected query %q to fail", name, cmd.query)
 			switch exp.failKind {
-			case "msg":
+			case failMsg:
 				require.Contains(t, err.Error(), exp.failText, "%s: failure message", name)
-			case "regex":
+			case failRegex:
 				require.Regexp(t, exp.failText, err.Error(), "%s: failure regex", name)
 			}
 			return
@@ -162,8 +162,9 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 	})
 }
 
-// consumeBlock feeds each indented (non-blank, non-comment) line following a command to fn,
-// stopping at the first blank line, non-indented line, or EOF. It returns the next line index.
+// consumeBlock feeds each indented, non-blank, non-comment line following a command to fn. It
+// skips comment lines (indented or not) and stops at the first blank line, non-indented
+// non-comment line, or EOF, returning the next line index.
 func consumeBlock(lines []string, i int, fn func(content string)) int {
 	for i < len(lines) {
 		raw := lines[i]
@@ -192,7 +193,7 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 // compareResult checks a query result against the expectation, returning a descriptive error on the
 // first mismatch (nil on success). Keeping the comparators pure (error-returning rather than
 // asserting on a *testing.T) lets the tests exercise the failure path directly.
-func compareResult(name string, cmd evalCmd, exp expectations, data interface{}) error {
+func compareResult(name string, cmd evalCmd, exp expectations, data any) error {
 	switch v := data.(type) {
 	case promql.Scalar:
 		if exp.empty {

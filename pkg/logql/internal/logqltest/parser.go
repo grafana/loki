@@ -21,13 +21,18 @@ import (
 var epoch = time.Unix(0, 0).UTC()
 
 var (
-	// Anchored to the head so each directive matches only its own leading segment and can never
-	// reach into a later [metadata …] value.
-	reInstant          = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
-	reRange            = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
-	reAt               = regexp.MustCompile(`^\s*@\s*(\S+)`)
-	reRepeat           = regexp.MustCompile(`^\s*\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
-	reMetadata         = regexp.MustCompile(`^\s*\[metadata\s+(.*?)\]`)
+	// reInstant and reRange match a whole `eval` line, capturing the trailing query to end of line.
+	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
+	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
+
+	// reAt, reRepeat and reMetadata are anchored to the head so each load-line directive matches
+	// only its own leading segment and can never reach into a later [metadata …] value.
+	reAt       = regexp.MustCompile(`^\s*@\s*(\S+)`)
+	reRepeat   = regexp.MustCompile(`^\s*\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
+	reMetadata = regexp.MustCompile(`^\s*\[metadata\s+(.*?)\]`)
+
+	// reMetadataKeyValue scans the key="value" pairs inside an already-extracted metadata block; it
+	// is intentionally not anchored.
 	reMetadataKeyValue = regexp.MustCompile(`(?:"([^"]*)"|([^\s"=]+))="([^"]*)"`)
 )
 
@@ -161,6 +166,9 @@ func parseMetadata(rest string) ([]logproto.LabelAdapter, string, error) {
 		if key == "" {
 			key = kv[2]
 		}
+		if key == "" {
+			return nil, rest, fmt.Errorf("empty metadata key in %q", inner)
+		}
 		out = append(out, logproto.LabelAdapter{Name: key, Value: kv[3]})
 	}
 	// Every token inside the block must be a key="value" pair; anything left over is malformed.
@@ -210,6 +218,9 @@ func parseEval(line string) (evalCmd, error) {
 		if err != nil {
 			return evalCmd{}, fmt.Errorf("invalid range step %q: %w", m[3], err)
 		}
+		if step <= 0 {
+			return evalCmd{}, fmt.Errorf("range step must be positive, got %q", m[3])
+		}
 		return evalCmd{start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
 	default:
 		return evalCmd{}, fmt.Errorf("expected 'instant' or 'range' after eval: %q", line)
@@ -221,11 +232,20 @@ type sample struct {
 	value   float64
 }
 
+// failMatch selects how an `expect fail` assertion checks the error.
+type failMatch uint8
+
+const (
+	failAny   failMatch = iota // any error satisfies the assertion
+	failMsg                    // the error must contain failText as a substring
+	failRegex                  // the error must match failText as a regex
+)
+
 // expectations is the parsed expected result of an `eval` command: either a failure
 // assertion, a scalar value, or a set of series (for vector/matrix results).
 type expectations struct {
 	fail     bool
-	failKind string // "", "msg", or "regex"
+	failKind failMatch
 	failText string
 	empty    bool // when set, the result must contain no series (`expect empty`)
 	ordered  bool // when set, series are compared positionally (for sort/sort_desc); instant only
@@ -244,7 +264,7 @@ func (e expectations) validate() error {
 		}
 	}
 	switch {
-	case e.failKind != "" && !e.fail:
+	case e.failKind != failAny && !e.fail:
 		return fmt.Errorf("failure qualifier set without `expect fail`")
 	case kinds == 0:
 		return fmt.Errorf("eval has no expectation: provide series, a scalar, `expect empty`, or `expect fail`")
@@ -282,11 +302,17 @@ func (p *expectationsParser) parse(line string) error {
 		case body == "":
 			// Bare `expect fail`: any error satisfies it.
 		case strings.HasPrefix(body, "msg:"):
-			p.exp.failKind = "msg"
+			p.exp.failKind = failMsg
 			p.exp.failText = strings.TrimSpace(strings.TrimPrefix(body, "msg:"))
+			if p.exp.failText == "" {
+				return fmt.Errorf("`expect fail msg:` requires a message substring")
+			}
 		case strings.HasPrefix(body, "regex:"):
-			p.exp.failKind = "regex"
+			p.exp.failKind = failRegex
 			p.exp.failText = strings.TrimSpace(strings.TrimPrefix(body, "regex:"))
+			if p.exp.failText == "" {
+				return fmt.Errorf("`expect fail regex:` requires a regex pattern")
+			}
 		default:
 			// A typo'd qualifier (e.g. `mesg:`) must not silently degrade to "any error".
 			return fmt.Errorf("unsupported `expect fail` qualifier %q (use `msg:` or `regex:`)", body)
@@ -354,7 +380,7 @@ func parseSeriesLabels(s string) (labels.Labels, error) {
 	return syntax.ParseLabels(s)
 }
 
-// parseSamples expands a series of tokens (`5`, `_`, `NaN`, `2+3x4`, `2x4`) into samples.
+// parseSamples expands a series of tokens (`5`, `_`, `NaN`, `2+3x4`, `2-1x4`, `2x4`) into samples.
 func parseSamples(tokens []string) ([]sample, error) {
 	var out []sample
 	for _, tok := range tokens {
@@ -379,12 +405,15 @@ func parseSamples(tokens []string) ([]sample, error) {
 	return out, nil
 }
 
-// expandSamples handles the `<base>[+<step>]x<count>` repetition, producing count+1 samples.
+// expandSamples handles the `<base>[±<step>]x<count>` repetition, producing count+1 samples.
 func expandSamples(tok string, xIdx int) ([]sample, error) {
 	head, tail := tok[:xIdx], tok[xIdx+1:]
 	count, err := strconv.Atoi(tail)
 	if err != nil {
 		return nil, fmt.Errorf("invalid repeat count in %q: %w", tok, err)
+	}
+	if count < 0 {
+		return nil, fmt.Errorf("negative repeat count in %q", tok)
 	}
 	base, step := head, "0"
 	if plus := strings.LastIndexByte(head, '+'); plus > 0 {

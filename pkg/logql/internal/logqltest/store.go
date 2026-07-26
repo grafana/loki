@@ -88,7 +88,7 @@ func newTestingChunkStore(t *testing.T) *testingChunkStore {
 	return &testingChunkStore{store: store, chunks: map[string]*chunkenc.MemChunk{}}
 }
 
-// write buffers entries into per-stream memchunks.
+// write appends entries to per-stream memchunks, flushing a chunk when it fills.
 func (s *testingChunkStore) write(t *testing.T, streams []logproto.Stream) {
 	t.Helper()
 
@@ -104,8 +104,9 @@ func (s *testingChunkStore) write(t *testing.T, streams []logproto.Stream) {
 				enc = newMemChunk()
 				s.chunks[stream.Labels] = enc
 			}
-			_, err := enc.Append(&entry)
+			dup, err := enc.Append(&entry)
 			require.NoError(t, err)
+			require.Falsef(t, dup, "duplicate entry dropped by dedup (same timestamp+line+metadata) in stream %s at %s: %q — give entries distinct timestamps or use {{.i}}", stream.Labels, entry.Timestamp, entry.Line)
 		}
 	}
 }

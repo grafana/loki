@@ -178,6 +178,10 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			err:  compareVector("n", expectations{ordered: true, series: []expectedSeries{{labels: `{app="a"}`, samples: []sample{{present: true, value: 5}}}}}, promql.Vector{{Metric: foo, F: 5}, {Metric: labels.FromStrings("app", "b"), F: 5}}),
 			want: "series count mismatch: want 1, got 2",
 		},
+		"matrix ordered unsupported": {
+			err:  compareMatrix("n", rangeCmd, expectations{ordered: true, series: []expectedSeries{{labels: `{app="a"}`, samples: []sample{{present: true, value: 5}}}}}, promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}}}}),
+			want: "`expect ordered` is only supported for instant queries",
+		},
 		"unsupported result type": {
 			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, oneSeries(5), nil),
 			want: "unsupported result type",

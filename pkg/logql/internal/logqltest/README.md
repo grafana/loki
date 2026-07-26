@@ -74,7 +74,8 @@ Point syntax (from promqltest):
 - plain floats: `6`, `1.5`, `-2`
 - `NaN`, `+Inf` / `Inf`, `-Inf`
 - `_` — a gap (no point at that step; matrices only)
-- `<base>[+<step>]x<count>` — expands to `count+1` points: `2+3x2` → `2 5 8`; `4x3` → `4 4 4 4`
+- `<base>[±<step>]x<count>` — expands to `count+1` points: `2+3x2` → `2 5 8`; `1-1x2` → `1 0 -1`;
+  `4x3` → `4 4 4 4`
 
 Label sets are compared as sets (order-independent). Note that Loki promotes **structured
 metadata into the result label set**, so a stream loaded with `[metadata detected_level="info"]`
