@@ -1313,16 +1313,23 @@ func NewReader(b ByteSlice) (*Reader, error) {
 }
 
 // NewFileReader returns a new index reader against the given index file.
+//
+// Instead of memory-mapping the file, sections are read on demand from a small
+// pool of file handles (see poolByteSlice). This keeps the index reader's memory
+// footprint predictable and off the kernel page cache, at the cost of reading
+// bounded sections via pread(2) rather than random access into mapped memory.
 func NewFileReader(path string) (*Reader, error) {
-	f, err := fileutil.OpenMmapFile(path)
+	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(f.Bytes()), f)
+
+	b := newPoolByteSlice(path, int(fi.Size()), MaxIdleFileHandles)
+	r, err := newReader(b, b)
 	if err != nil {
 		return nil, stderrors.Join(
 			err,
-			f.Close(),
+			b.Close(),
 		)
 	}
 
@@ -1474,6 +1481,16 @@ type Symbols struct {
 	version int
 	off     int
 
+	// tableEnd is the absolute file offset of the end of the symbols content
+	// (i.e. immediately before the trailing CRC32). It bounds reads of the last
+	// (possibly partial) group of symbols.
+	tableEnd int
+
+	// rr is set when bs can serve reads into pooled scratch buffers, avoiding
+	// allocations on the symbol-lookup hot path. It is nil for in-memory byte
+	// slices.
+	rr rangeReader
+
 	offsets []int
 	seen    int
 }
@@ -1487,12 +1504,15 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 		version: version,
 		off:     off,
 	}
+	s.rr, _ = bs.(rangeReader)
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, off, castagnoliTable))
 	var (
 		origLen = d.Len()
 		cnt     = d.Be32int()
 		basePos = off + 4
 	)
+	// Symbols content spans [off+4, off+4+origLen); the CRC32 follows.
+	s.tableEnd = off + 4 + origLen
 	s.offsets = make([]int, 0, 1+cnt/symbolFactor)
 	for d.Err() == nil && s.seen < cnt {
 		if s.seen%symbolFactor == 0 {
@@ -1507,22 +1527,51 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 	return s, nil
 }
 
+// decAt returns a decoder over the absolute file range [start, end). When the
+// backing byte slice supports pooled reads, the returned buffer is borrowed from
+// a pool and MUST NOT be used after release is called.
+func (s Symbols) decAt(start, end int) (encoding.Decbuf, func()) {
+	if s.rr != nil {
+		buf, release, err := s.rr.readRange(start, end)
+		if err != nil {
+			return encoding.DecWrap(tsdb_enc.Decbuf{E: err}), func() {}
+		}
+		return encoding.DecWrap(tsdb_enc.Decbuf{B: buf}), release
+	}
+	return encoding.DecWrap(tsdb_enc.Decbuf{B: s.bs.Range(start, end)}), func() {}
+}
+
+// groupEnd returns the absolute file offset that bounds the group of symbols
+// starting at checkpoint k, i.e. the next checkpoint or the end of the table.
+func (s Symbols) groupEnd(k int) int {
+	if k+1 < len(s.offsets) {
+		return s.offsets[k+1]
+	}
+	return s.tableEnd
+}
+
 func (s Symbols) Lookup(o uint32) (string, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
-	})
+	var (
+		d       encoding.Decbuf
+		release func()
+	)
 
 	if s.version >= FormatV2 {
 		if int(o) >= s.seen {
 			return "", errors.Errorf("unknown symbol offset %d", o)
 		}
-		d.Skip(s.offsets[int(o/symbolFactor)])
-		// Walk until we find the one we want.
-		for i := o - (o / symbolFactor * symbolFactor); i > 0; i-- {
+		// Only read the group of symbols that contains o rather than the whole
+		// section, then walk to the requested symbol.
+		k := int(o / symbolFactor)
+		d, release = s.decAt(s.offsets[k], s.groupEnd(k))
+		defer release()
+		for i := o - uint32(k)*symbolFactor; i > 0; i-- {
 			d.UvarintBytes()
 		}
 	} else {
-		d.Skip(int(o))
+		// In v1 the offset is the absolute byte position of the symbol.
+		d, release = s.decAt(int(o), s.tableEnd)
+		defer release()
 	}
 	sym := d.UvarintStr()
 	if d.Err() != nil {
@@ -1538,24 +1587,24 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	i := sort.Search(len(s.offsets), func(i int) bool {
 		// Any decoding errors here will be lost, however
 		// we already read through all of this at startup.
-		d := encoding.DecWrap(tsdb_enc.Decbuf{
-			B: s.bs.Range(0, s.bs.Len()),
-		})
-		d.Skip(s.offsets[i])
+		// Only the first symbol of each group is inspected.
+		d, release := s.decAt(s.offsets[i], s.groupEnd(i))
+		defer release()
 		return yoloString(d.UvarintBytes()) > sym
-	})
-	d := encoding.DecWrap(tsdb_enc.Decbuf{
-		B: s.bs.Range(0, s.bs.Len()),
 	})
 	if i > 0 {
 		i--
 	}
-	d.Skip(s.offsets[i])
+	// The binary search guarantees sym, if present, lies within group i.
+	start := s.offsets[i]
+	end := s.groupEnd(i)
+	d, release := s.decAt(start, end)
+	defer release()
 	res := i * symbolFactor
-	var lastLen int
+	var lastPos int
 	var lastSymbol string
 	for d.Err() == nil && res <= s.seen {
-		lastLen = d.Len()
+		lastPos = start + ((end - start) - d.Len())
 		lastSymbol = yoloString(d.UvarintBytes())
 		if lastSymbol >= sym {
 			break
@@ -1571,7 +1620,7 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	if s.version >= FormatV2 {
 		return uint32(res), nil
 	}
-	return uint32(s.bs.Len() - lastLen), nil
+	return uint32(lastPos), nil
 }
 
 func (s Symbols) Size() int {
@@ -1711,6 +1760,9 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 	values := make([]string, 0, len(e)*symbolFactor)
 
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
+	if err := byteSliceErr(r.b); err != nil {
+		return nil, errors.Wrap(err, "read postings offset table")
+	}
 	d.Skip(e[0].off)
 	lastVal := e[len(e)-1].value
 
@@ -1882,6 +1934,20 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 		// Discard values before the start.
 		valueIndex++
 	}
+
+	// Read the postings offset table content once and reuse it across all
+	// requested values. When the index is backed by a file (rather than mmap),
+	// this avoids re-reading the whole table from disk for every value.
+	// Don't Crc32 the entire postings offset table, this is very slow
+	// so hope any issues were caught at startup.
+	tableContent := tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil)
+	if err := tableContent.Err(); err != nil {
+		return nil, errors.Wrap(err, "read postings offset table")
+	}
+	if err := byteSliceErr(r.b); err != nil {
+		return nil, errors.Wrap(err, "read postings offset table")
+	}
+
 	for valueIndex < len(values) {
 		value := values[valueIndex]
 
@@ -1894,9 +1960,7 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 			// Need to look from previous entry.
 			i--
 		}
-		// Don't Crc32 the entire postings offset table, this is very slow
-		// so hope any issues were caught at startup.
-		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil))
+		d := encoding.DecWrap(tsdb_enc.Decbuf{B: tableContent.B})
 		d.Skip(e[i].off)
 
 		// Iterate on the offset table.

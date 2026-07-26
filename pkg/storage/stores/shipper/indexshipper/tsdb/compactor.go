@@ -119,7 +119,7 @@ func (t *tableCompactor) CompactTable() error {
 
 	// Register cleanup before checking error to prevent FD leaks when
 	// ForEachJob partially succeeds: some goroutines may have already
-	// opened Index objects (holding mmap file descriptors) before another
+	// opened Index objects (holding pooled file descriptors) before another
 	// goroutine's failure cancels the group.
 	defer func() {
 		for i, idx := range multiTenantIndices {
