@@ -47,6 +47,23 @@ eval instant at 60s count_over_time({app=~"foo|bar"}[1m])
 `)
 }
 
+func TestParseLoadBlock(t *testing.T) {
+	// A load block with at least one data line loads it and advances past the block.
+	p := newStreamsParser()
+	next, err := parseLoadBlock(p, []string{"load", `  {app="foo"} "x" @ 0s`}, 1)
+	require.NoError(t, err)
+	require.Equal(t, 2, next)
+	require.Len(t, p.get(), 1)
+
+	// A load block with no data lines is rejected rather than silently loading nothing.
+	_, err = parseLoadBlock(newStreamsParser(), []string{"load", "", `eval instant at 0s vector(1)`}, 1)
+	require.Error(t, err)
+
+	// A malformed data line is surfaced as an error.
+	_, err = parseLoadBlock(newStreamsParser(), []string{"load", `  {app="foo"} "x"`}, 1) // no timestamp
+	require.Error(t, err)
+}
+
 func TestRunScript_ExpectEmpty(t *testing.T) {
 	// A query matching nothing returns an empty result, asserted explicitly with `expect empty`.
 	RunScript(t, "empty", `

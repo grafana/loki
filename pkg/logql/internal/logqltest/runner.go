@@ -83,16 +83,10 @@ func RunScript(t *testing.T, name, script string) {
 			streamsChanged = true
 			i++
 		case "load":
-			i++
-			loaded := 0
-			i = consumeBlock(lines, i, func(content string) {
-				if err := streams.parse(content); err != nil {
-					t.Fatalf("%s: invalid load line %q: %v", name, content, err)
-				}
-				loaded++
-			})
-			if loaded == 0 {
-				t.Fatalf("%s: load block has no data lines", name)
+			var err error
+			i, err = parseLoadBlock(streams, lines, i+1)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
 			}
 			streamsChanged = true
 		case "eval":
@@ -165,6 +159,30 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 		require.NoError(t, err, "%s: query %q", name, cmd.query)
 		require.NoError(t, compareResult(name, cmd, exp, res.Data))
 	})
+}
+
+// parseLoadBlock consumes a load command's indented data lines into p, returning the index of the
+// next line to process. A block with no data lines is an error rather than a silently empty store.
+func parseLoadBlock(p *streamsParser, lines []string, i int) (int, error) {
+	loaded := 0
+	var parseErr error
+	next := consumeBlock(lines, i, func(content string) {
+		if parseErr != nil {
+			return
+		}
+		if err := p.parse(content); err != nil {
+			parseErr = fmt.Errorf("invalid load line %q: %w", content, err)
+			return
+		}
+		loaded++
+	})
+	if parseErr != nil {
+		return next, parseErr
+	}
+	if loaded == 0 {
+		return next, fmt.Errorf("load block has no data lines")
+	}
+	return next, nil
 }
 
 // consumeBlock feeds each indented, non-blank, non-comment line following a command to fn. It
