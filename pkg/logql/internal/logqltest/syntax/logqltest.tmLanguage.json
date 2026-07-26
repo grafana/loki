@@ -103,7 +103,7 @@
     },
 
     "expect-annotation": {
-      "match": "^[ \\t]*(expect)[ \\t]+(fail|ordered)\\b(?:[ \\t]+(msg:|regex:)[ \\t]*(.*))?",
+      "match": "^[ \\t]*(expect)[ \\t]+(fail|empty|ordered)\\b(?:[ \\t]+(msg:|regex:)[ \\t]*(.*))?",
       "captures": {
         "1": { "name": "keyword.control.expect.logqltest" },
         "2": { "name": "keyword.control.expect.logqltest" },

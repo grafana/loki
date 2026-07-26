@@ -96,6 +96,7 @@ func TestStreamsParser_RejectsMalformedDirectives(t *testing.T) {
 		"trailing junk after a valid clause": `{app="foo"} "x" @ 0s [repeat every 10s for 3] junk`,
 		"invalid repeat step":                `{app="foo"} "x" @ 0s [repeat every 1x for 3]`,
 		"repeat count overflow":              `{app="foo"} "x" @ 0s [repeat every 10s for 99999999999999999999]`,
+		"zero repeat count":                  `{app="foo"} "x" @ 0s [repeat every 10s for 0]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.Error(t, newStreamsParser().parse(line))
@@ -131,6 +132,10 @@ func TestParseEval(t *testing.T) {
 
 	// A non-positive range step would silently collapse the window to a single point.
 	_, err = parseEval(`eval range from 0 to 10m step 0s count_over_time({app="foo"}[1m])`)
+	require.Error(t, err)
+
+	// A backwards range (end before start) would produce an empty step window.
+	_, err = parseEval(`eval range from 10s to 0s step 1s count_over_time({app="foo"}[1m])`)
 	require.Error(t, err)
 }
 
@@ -231,6 +236,9 @@ func TestParseSeriesLine(t *testing.T) {
 	require.Equal(t, []sample{{present: true, value: 5}}, samples)
 
 	_, _, err = parseSeriesLine(`missing braces 1 2`)
+	require.Error(t, err)
+
+	_, _, err = parseSeriesLine(`{app="foo"}`) // no sample values
 	require.Error(t, err)
 }
 

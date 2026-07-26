@@ -21,7 +21,8 @@ import (
 var epoch = time.Unix(0, 0).UTC()
 
 var (
-	// reInstant and reRange match a whole `eval` line, capturing the trailing query to end of line.
+	// reInstant and reRange match the remainder of an `eval instant`/`eval range` line (after the
+	// mode keyword), capturing the trailing query to end of line.
 	reInstant = regexp.MustCompile(`^at\s+(\S+)\s+(.+)$`)
 	reRange   = regexp.MustCompile(`^from\s+(\S+)\s+to\s+(\S+)\s+step\s+(\S+)\s+(.+)$`)
 
@@ -82,6 +83,9 @@ func (p *streamsParser) parse(line string) error {
 		}
 		if count, err = strconv.Atoi(r[2]); err != nil {
 			return fmt.Errorf("invalid repeat count %q: %w", r[2], err)
+		}
+		if count < 1 {
+			return fmt.Errorf("repeat count must be at least 1, got %q", r[2])
 		}
 		rest = rest[len(r[0]):]
 	}
@@ -221,6 +225,9 @@ func parseEval(line string) (evalCmd, error) {
 		if step <= 0 {
 			return evalCmd{}, fmt.Errorf("range step must be positive, got %q", m[3])
 		}
+		if end < start {
+			return evalCmd{}, fmt.Errorf("range end %q is before start %q", m[2], m[1])
+		}
 		return evalCmd{start: start, end: end, step: step, query: strings.TrimSpace(m[4])}, nil
 	default:
 		return evalCmd{}, fmt.Errorf("expected 'instant' or 'range' after eval: %q", line)
@@ -242,7 +249,8 @@ const (
 )
 
 // expectations is the parsed expected result of an `eval` command: either a failure
-// assertion, a scalar value, or a set of series (for vector/matrix results).
+// assertion, a scalar value, an empty-result assertion, or a set of series (for
+// vector/matrix results).
 type expectations struct {
 	fail     bool
 	failKind failMatch
@@ -291,8 +299,8 @@ func newExpectationsParser() *expectationsParser {
 	return &expectationsParser{}
 }
 
-// parse consumes one expectation line: an `expect fail [msg:|regex:]` assertion, a
-// `{labels} p0 p1 ...` series line, or a bare scalar value.
+// parse consumes one expectation line: an `expect` annotation (`fail [msg:|regex:]` / `empty` /
+// `ordered`), a `{labels} p0 p1 ...` series line, or a bare scalar value.
 func (p *expectationsParser) parse(line string) error {
 	switch {
 	case strings.HasPrefix(line, "expect fail"):
@@ -369,6 +377,9 @@ func parseSeriesLine(line string) (labels.Labels, []sample, error) {
 	samples, err := parseSamples(strings.Fields(line[end+1:]))
 	if err != nil {
 		return labels.EmptyLabels(), nil, err
+	}
+	if len(samples) == 0 {
+		return labels.EmptyLabels(), nil, fmt.Errorf("series line %q has no sample values", line)
 	}
 	return lbls, samples, nil
 }
