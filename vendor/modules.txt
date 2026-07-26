@@ -1267,7 +1267,7 @@ github.com/ncw/swift/v2
 # github.com/oklog/run v1.2.0
 ## explicit; go 1.20
 github.com/oklog/run
-# github.com/oklog/ulid/v2 v2.1.1
+# github.com/oklog/ulid/v2 v2.1.2
 ## explicit; go 1.15
 github.com/oklog/ulid/v2
 # github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.155.0
