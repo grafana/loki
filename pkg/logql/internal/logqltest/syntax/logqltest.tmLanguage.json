@@ -1,0 +1,255 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "LogQL test script",
+  "scopeName": "source.logqltest",
+  "patterns": [
+    { "include": "#load-block" },
+    { "include": "#clear-command" },
+    { "include": "#eval-instant" },
+    { "include": "#eval-range" },
+    { "include": "#eval-fallback" },
+    { "include": "#expect-annotation" },
+    { "include": "#series-expectation" },
+    { "include": "#scalar-expectation" },
+    { "include": "#comment" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.logqltest"
+    },
+
+    "clear-command": {
+      "match": "^[ \\t]*(clear)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.clear.logqltest" }
+      }
+    },
+
+    "load-block": {
+      "name": "meta.block.load.logqltest",
+      "begin": "^[ \\t]*(load)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.load.logqltest" }
+      },
+      "end": "^(?![ \\t]+\\S)",
+      "patterns": [
+        { "include": "#repeat-clause" },
+        { "include": "#metadata-clause" },
+        { "include": "#at-clause" },
+        { "include": "#label-set" },
+        { "include": "#log-line" },
+        { "include": "#raw-log-line" },
+        { "include": "#comment" }
+      ]
+    },
+
+    "eval-instant": {
+      "name": "meta.command.eval.logqltest",
+      "begin": "^[ \\t]*(eval)[ \\t]+(instant)[ \\t]+(at)[ \\t]+(\\S+)[ \\t]+",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.eval.logqltest" },
+        "2": { "name": "keyword.other.eval-mode.logqltest" },
+        "3": { "name": "keyword.other.eval-argument.logqltest" },
+        "4": { "name": "constant.numeric.duration.logqltest" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#query" }
+      ]
+    },
+
+    "eval-range": {
+      "name": "meta.command.eval.logqltest",
+      "begin": "^[ \\t]*(eval)[ \\t]+(range)[ \\t]+(from)[ \\t]+(\\S+)[ \\t]+(to)[ \\t]+(\\S+)[ \\t]+(step)[ \\t]+(\\S+)[ \\t]+",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.eval.logqltest" },
+        "2": { "name": "keyword.other.eval-mode.logqltest" },
+        "3": { "name": "keyword.other.eval-argument.logqltest" },
+        "4": { "name": "constant.numeric.duration.logqltest" },
+        "5": { "name": "keyword.other.eval-argument.logqltest" },
+        "6": { "name": "constant.numeric.duration.logqltest" },
+        "7": { "name": "keyword.other.eval-argument.logqltest" },
+        "8": { "name": "constant.numeric.duration.logqltest" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#query" }
+      ]
+    },
+
+    "eval-fallback": {
+      "comment": "Colors the keyword on an eval line the stricter rules above did not match, e.g. while it is still being typed.",
+      "match": "^[ \\t]*(eval)\\b[ \\t]*(instant|range)?\\b",
+      "captures": {
+        "1": { "name": "keyword.control.eval.logqltest" },
+        "2": { "name": "keyword.other.eval-mode.logqltest" }
+      }
+    },
+
+    "query": {
+      "comment": "The LogQL query is highlighted as one opaque span. Quoted spans are consumed first so a '#' inside them does not start a comment.",
+      "patterns": [
+        {
+          "match": "\"(?:[^\"\\\\]|\\\\.)*\"|`[^`]*`",
+          "name": "string.unquoted.query.logqltest"
+        },
+        { "include": "#comment" },
+        {
+          "match": "[^#\"`\\n]+",
+          "name": "string.unquoted.query.logqltest"
+        }
+      ]
+    },
+
+    "expect-annotation": {
+      "match": "^[ \\t]*(expect)[ \\t]+(fail|ordered)\\b(?:[ \\t]+(msg:|regex:)[ \\t]*(.*))?",
+      "captures": {
+        "1": { "name": "keyword.control.expect.logqltest" },
+        "2": { "name": "keyword.control.expect.logqltest" },
+        "3": { "name": "keyword.other.expect-matcher.logqltest" },
+        "4": { "name": "string.unquoted.expect.logqltest" }
+      }
+    },
+
+    "series-expectation": {
+      "name": "meta.expectation.series.logqltest",
+      "begin": "^[ \\t]*(?=\\{)",
+      "end": "$",
+      "patterns": [
+        { "include": "#label-set" },
+        { "include": "#comment" },
+        { "include": "#sample" }
+      ]
+    },
+
+    "scalar-expectation": {
+      "name": "meta.expectation.scalar.logqltest",
+      "begin": "^[ \\t]+(?=[-+0-9NI_])",
+      "end": "$",
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#sample" }
+      ]
+    },
+
+    "label-set": {
+      "comment": "A stream selector or an expected series label set, highlighted as a single span.",
+      "match": "\\{[^}]*\\}",
+      "name": "entity.name.tag.label-set.logqltest"
+    },
+
+    "log-line": {
+      "name": "string.quoted.double.logqltest",
+      "begin": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.logqltest" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.logqltest" }
+      },
+      "patterns": [
+        { "include": "#template-variable" },
+        {
+          "match": "\\\\(?:[abfnrtv\\\\'\"]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|[0-7]{3})",
+          "name": "constant.character.escape.logqltest"
+        }
+      ]
+    },
+
+    "raw-log-line": {
+      "name": "string.quoted.other.raw.logqltest",
+      "begin": "`",
+      "end": "`",
+      "patterns": [
+        { "include": "#template-variable" }
+      ]
+    },
+
+    "template-variable": {
+      "match": "\\{\\{[ \\t]*\\.[A-Za-z_][A-Za-z0-9_]*[ \\t]*\\}\\}",
+      "name": "variable.other.template.logqltest"
+    },
+
+    "at-clause": {
+      "match": "(@)[ \\t]*(\\S+)",
+      "captures": {
+        "1": { "name": "keyword.operator.timestamp.logqltest" },
+        "2": { "name": "constant.numeric.duration.logqltest" }
+      }
+    },
+
+    "repeat-clause": {
+      "name": "meta.clause.repeat.logqltest",
+      "begin": "(\\[)[ \\t]*(repeat)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.brackets.begin.logqltest" },
+        "2": { "name": "keyword.other.repeat.logqltest" }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.brackets.end.logqltest" }
+      },
+      "patterns": [
+        {
+          "match": "\\b(every|for)\\b",
+          "name": "keyword.other.repeat.logqltest"
+        },
+        {
+          "match": "[^\\s\\]]+",
+          "name": "constant.numeric.duration.logqltest"
+        }
+      ]
+    },
+
+    "metadata-clause": {
+      "name": "meta.clause.metadata.logqltest",
+      "begin": "(\\[)[ \\t]*(metadata)\\b",
+      "beginCaptures": {
+        "1": { "name": "punctuation.section.brackets.begin.logqltest" },
+        "2": { "name": "keyword.other.metadata.logqltest" }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": { "name": "punctuation.section.brackets.end.logqltest" }
+      },
+      "patterns": [
+        {
+          "match": "(\"[^\"]*\"|[^\\s\"=\\]]+)[ \\t]*(=)",
+          "captures": {
+            "1": { "name": "entity.other.attribute-name.logqltest" },
+            "2": { "name": "keyword.operator.assignment.logqltest" }
+          }
+        },
+        { "include": "#log-line" }
+      ]
+    },
+
+    "sample": {
+      "patterns": [
+        {
+          "match": "(?<![A-Za-z0-9_.])_(?![A-Za-z0-9_.])",
+          "name": "constant.language.gap.logqltest"
+        },
+        {
+          "match": "(?<![A-Za-z0-9_.])(?:NaN|[+-]?Inf)(?![A-Za-z0-9_])",
+          "name": "constant.language.float.logqltest"
+        },
+        {
+          "match": "(?<![A-Za-z0-9_.])([+-]?[0-9]+(?:\\.[0-9]+)?)([+-][0-9]+(?:\\.[0-9]+)?)?(x)([0-9]+)(?![A-Za-z0-9_])",
+          "captures": {
+            "1": { "name": "constant.numeric.logqltest" },
+            "2": { "name": "constant.numeric.logqltest" },
+            "3": { "name": "keyword.operator.expansion.logqltest" },
+            "4": { "name": "constant.numeric.logqltest" }
+          }
+        },
+        {
+          "match": "(?<![A-Za-z0-9_.])[+-]?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![A-Za-z0-9_])",
+          "name": "constant.numeric.logqltest"
+        }
+      ]
+    }
+  }
+}
