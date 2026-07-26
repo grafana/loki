@@ -575,18 +575,18 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 		newAddrs[i] = xdsinternal.SetXDSHandshakeClusterName(addr, clusterName)
 		newAddrs[i] = xds.SetHandshakeInfo(newAddrs[i], &b.xdsHIPtr)
 
-		hostname := xdsresource.Hostname(addr)
+		host := xdsresource.Hostname(addr)
 		// If the hostname contains a port, strip it. Per [RFC 6066, Section
 		// 3](https://www.rfc-editor.org/rfc/rfc6066.html#section-3), the SNI
 		// may only contain a qualified DNS hostname, which excludes port
 		// numbers.
-		h, _, err := net.SplitHostPort(hostname)
+		h, _, err := net.SplitHostPort(host)
 		if err == nil {
-			hostname = h
+			host = h
 		}
 		// Store hostname in the address attributes, so that it can be used in
 		// the client handshake.
-		newAddrs[i] = xds.SetAddressHostname(newAddrs[i], hostname)
+		newAddrs[i] = xds.SetAddressHostname(newAddrs[i], host)
 	}
 	var sc balancer.SubConn
 	scw := &scWrapper{}
