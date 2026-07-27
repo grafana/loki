@@ -1962,7 +1962,7 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
 
-	if !t.Cfg.IndexGateway.UtilizationLimiterEnabled() {
+	if !t.Cfg.IndexGateway.SaturationControl.UtilizationLimiterEnabled() {
 		return nil, nil
 	}
 
@@ -1970,9 +1970,9 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	// for the process lifetime. Until it is running (and during its warmup window),
 	// LimitingReason returns an empty string, so the interceptors fail open.
 	utilizationLimiter := limiter.NewUtilizationBasedLimiter(
-		t.Cfg.IndexGateway.CPUUtilizationLimit,
-		uint64(t.Cfg.IndexGateway.MemoryUtilizationLimit),
-		t.Cfg.IndexGateway.LogUtilizationSamples,
+		t.Cfg.IndexGateway.SaturationControl.CPUUtilizationLimit,
+		uint64(t.Cfg.IndexGateway.SaturationControl.MemoryUtilizationLimit),
+		t.Cfg.IndexGateway.SaturationControl.LogUtilizationSamples,
 		log.With(util_log.Logger, "component", "index-gateway"),
 		// The limiter registers its gauges without any prefix, prepend the component one.
 		prometheus.WrapRegistererWithPrefix(constants.Loki+"_index_gateway_", prometheus.DefaultRegisterer),

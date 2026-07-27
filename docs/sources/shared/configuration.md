@@ -3975,22 +3975,25 @@ ring:
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-# Experimental: CPU utilization, in cores, above which the index gateway starts
-# rejecting requests. The utilization is computed as a moving average over a 60s
-# sliding window, and limiting only starts after a 60s warmup on startup. 0 to
-# disable.
-# CLI flag: -index-gateway.cpu-utilization-limit
-[cpu_utilization_limit: <float> | default = 0]
+# Experimental: Configures the rejection of requests when the index gateway is
+# saturated.
+saturation_control:
+  # Experimental: CPU utilization, in cores, above which the index gateway
+  # starts rejecting requests. The utilization is computed as a moving average
+  # over a 60s sliding window, and limiting only starts after a 60s warmup on
+  # startup. 0 to disable.
+  # CLI flag: -index-gateway.saturation-control.cpu-utilization-limit
+  [cpu_utilization_limit: <float> | default = 0]
 
-# Experimental: Go heap size above which the index gateway starts rejecting
-# requests, e.g. 24GiB. 0 to disable.
-# CLI flag: -index-gateway.memory-utilization-limit
-[memory_utilization_limit: <int> | default = 0B]
+  # Experimental: Go heap size above which the index gateway starts rejecting
+  # requests, e.g. 24GiB. 0 to disable.
+  # CLI flag: -index-gateway.saturation-control.memory-utilization-limit
+  [memory_utilization_limit: <int> | default = 0B]
 
-# Experimental: Log the CPU utilization samples backing the utilization based
-# limiter's moving average when limiting starts or stops.
-# CLI flag: -index-gateway.log-utilization-samples
-[log_utilization_samples: <boolean> | default = false]
+  # Experimental: Log the CPU utilization samples backing the utilization based
+  # limiter's moving average when limiting starts or stops.
+  # CLI flag: -index-gateway.saturation-control.log-utilization-samples
+  [log_utilization_samples: <boolean> | default = false]
 ```
 
 ### ingester
