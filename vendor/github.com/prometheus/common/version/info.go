@@ -79,6 +79,24 @@ func BuildContext() string {
 	return fmt.Sprintf("(go=%s, platform=%s, user=%s, date=%s, tags=%s)", GoVersion, GoOS+"/"+GoArch, BuildUser, BuildDate, GetTags())
 }
 
+// Slog returns a slice of strings for use with structured logging.
+//
+// Example:
+// logger := promslog.New(promslog.Config{})
+// logger.Info("Starting Prometheus Server", version.Slog()...)
+func Slog() []any {
+	return []any{
+		"version", Version,
+		"revision", Revision,
+		"branch", Branch,
+		"builduser", BuildUser,
+		"builddate", BuildDate,
+		"goversion", GoVersion,
+		"goos", GoOS,
+		"goarch", GoArch,
+	}
+}
+
 func GetRevision() string {
 	if Revision != "" {
 		return Revision
