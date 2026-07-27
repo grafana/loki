@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License. See License.txt in the project root for license information.
 
@@ -11,6 +8,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -40,6 +38,9 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 	conOptions := shared.GetClientOptions(options)
 	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
 	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
+		plOpts.PerRetry = append(plOpts.PerRetry, p)
+	}
 
 	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
 	if err != nil {
@@ -54,8 +55,12 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
+	plOpts := runtime.PipelineOptions{}
+	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
+		plOpts.PerRetry = append(plOpts.PerRetry, p)
+	}
 
-	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +75,9 @@ func NewClientWithSharedKeyCredential(blobURL string, cred *SharedKeyCredential,
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
 	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
+		plOpts.PerRetry = append(plOpts.PerRetry, p)
+	}
 
 	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
 	if err != nil {
@@ -185,9 +193,9 @@ func (b *Client) GetProperties(ctx context.Context, options *GetPropertiesOption
 
 // SetHTTPHeaders changes a blob's HTTP headers.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-blob-properties.
-func (b *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
+func (b *Client) SetHTTPHeaders(ctx context.Context, httpHeaders HTTPHeaders, o *SetHTTPHeadersOptions) (SetHTTPHeadersResponse, error) {
 	opts, leaseAccessConditions, modifiedAccessConditions := o.format()
-	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &HTTPHeaders, leaseAccessConditions, modifiedAccessConditions)
+	resp, err := b.generated().SetHTTPHeaders(ctx, opts, &httpHeaders, leaseAccessConditions, modifiedAccessConditions)
 	return resp, err
 }
 
@@ -234,16 +242,16 @@ func (b *Client) AbortCopyFromURL(ctx context.Context, copyID string, options *A
 // https://docs.microsoft.com/en-us/rest/api/storageservices/set-blob-tags
 func (b *Client) SetTags(ctx context.Context, tags map[string]string, options *SetTagsOptions) (SetTagsResponse, error) {
 	serializedTags := shared.SerializeBlobTags(tags)
-	blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions := options.format()
-	resp, err := b.generated().SetTags(ctx, *serializedTags, blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions)
+	blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions := options.format()
+	resp, err := b.generated().SetTags(ctx, *serializedTags, blobSetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions)
 	return resp, err
 }
 
 // GetTags operation enables users to get tags on a blob or specific blob version, or snapshot.
 // https://docs.microsoft.com/en-us/rest/api/storageservices/get-blob-tags
 func (b *Client) GetTags(ctx context.Context, options *GetTagsOptions) (GetTagsResponse, error) {
-	blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions := options.format()
-	resp, err := b.generated().GetTags(ctx, blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions)
+	blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions := options.format()
+	resp, err := b.generated().GetTags(ctx, blobGetTagsOptions, modifiedAccessConditions, leaseAccessConditions, blobModifiedAccessConditions)
 	return resp, err
 
 }
@@ -334,7 +342,8 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 	if o.BlockSize == 0 {
 		o.BlockSize = DefaultDownloadBlockSize
 	}
-
+	dataDownloaded := int64(0)
+	computeReadLength := true
 	count := o.Range.Count
 	if count == CountToEnd { // If size not specified, calculate it
 		// If we don't have the length at all, get it
@@ -343,6 +352,8 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 			return 0, err
 		}
 		count = *gr.ContentLength - o.Range.Offset
+		dataDownloaded = count
+		computeReadLength = false
 	}
 
 	if count <= 0 {
@@ -387,6 +398,9 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 			if err != nil {
 				return err
 			}
+			if computeReadLength {
+				atomic.AddInt64(&dataDownloaded, *dr.ContentLength)
+			}
 			err = body.Close()
 			return err
 		},
@@ -394,7 +408,7 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 	if err != nil {
 		return 0, err
 	}
-	return count, nil
+	return dataDownloaded, nil
 }
 
 // DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
@@ -448,6 +462,7 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 			return 0, err
 		}
 		size = *props.ContentLength - do.Range.Offset
+		do.Range.Count = size
 	} else {
 		size = count
 	}

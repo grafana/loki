@@ -7,7 +7,7 @@ go: true
 clear-output-folder: false
 version: "^3.0.0"
 license-header: MICROSOFT_MIT_NO_VERSION
-input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/a32d0b2423d19835246bb2ef92941503bfd5e734/specification/storage/data-plane/Microsoft.BlobStorage/preview/2021-12-02/blob.json"
+input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/e1470c23ac1cb2a15cd5ef1e2b2dd187a3de13e9/specification/storage/data-plane/Microsoft.BlobStorage/stable/2026-06-06/blob.json"
 credential-scope: "https://storage.azure.com/.default"
 output-folder: ../generated
 file-prefix: "zz_"
@@ -19,24 +19,66 @@ modelerfour:
   seal-single-value-enum-by-default: true
   lenient-model-deduplication: true
 export-clients: true
-use: "@autorest/go@4.0.0-preview.61"
+use: "@autorest/go@4.0.0-preview.65"
 ```
 
-### Updating service version to 2023-11-03
+### Add a Properties field to the BlobPrefix definition
 ```yaml
 directive:
-- from: 
-  - zz_appendblob_client.go
-  - zz_blob_client.go
-  - zz_blockblob_client.go
-  - zz_container_client.go
-  - zz_pageblob_client.go
-  - zz_service_client.go
-  where: $
-  transform: >-
-    return $.
-      replaceAll(`[]string{"2021-12-02"}`, `[]string{ServiceVersion}`).
-      replaceAll(`2021-12-02`, `2023-11-03`);
+- from: swagger-document
+  where: $.definitions
+  transform: >
+    $.BlobPrefix.properties["Properties"] = {
+      "type": "object",
+      "$ref": "#/definitions/BlobPropertiesInternal"
+    };
+```
+
+### Add Owner,Group,Permissions,Acl,ResourceType in ListBlob Response
+``` yaml
+directive:  
+- from: swagger-document    
+  where: $.definitions
+  transform: >
+    $.BlobPropertiesInternal.properties["Owner"] = {
+      "type" : "string",
+    };
+    $.BlobPropertiesInternal.properties["Group"] = {
+      "type" : "string",
+    };
+    $.BlobPropertiesInternal.properties["Permissions"] = {
+      "type" : "string",
+    };
+    $.BlobPropertiesInternal.properties["Acl"] = {
+      "type" : "string",
+    };
+    $.BlobPropertiesInternal.properties["ResourceType"] = {
+      "type" : "string",
+    };
+
+```
+
+### Add permissions in ListBlobsInclude
+``` yaml
+directive:  
+- from: swagger-document    
+  where: $.parameters.ListBlobsInclude    
+  transform: >        
+    $.items.enum.push("permissions");
+```
+
+### Fix CRC Response Header in PutBlob response
+``` yaml
+directive:
+- from: swagger-document
+  where: $["x-ms-paths"]["/{containerName}/{blob}?BlockBlob"].put.responses["201"].headers
+  transform: >
+      $["x-ms-content-crc64"] = {
+        "x-ms-client-name": "ContentCRC64",
+        "type": "string",
+        "format": "byte",
+        "description": "Returned for a block blob so that the client can check the integrity of message content."
+      };
 ```
 
 ### Undo breaking change with BlobName 
@@ -293,7 +335,7 @@ directive:
       replace(/SourceIfMatch\s+\*string/g, `SourceIfMatch *azcore.ETag`).
       replace(/SourceIfNoneMatch\s+\*string/g, `SourceIfNoneMatch *azcore.ETag`);
 
-- from: zz_response_types.go
+- from: zz_responses.go
   where: $
   transform: >-
     return $.
@@ -313,6 +355,8 @@ directive:
       replace(/result\.ETag\s+=\s+&val/g, `result.ETag = (*azcore.ETag)(&val)`).
       replace(/\*modifiedAccessConditions.IfMatch/g, `string(*modifiedAccessConditions.IfMatch)`).
       replace(/\*modifiedAccessConditions.IfNoneMatch/g, `string(*modifiedAccessConditions.IfNoneMatch)`).
+      replace(/\*blobModifiedAccessConditions.IfMatch/g, `string(*blobModifiedAccessConditions.IfMatch)`).
+      replace(/\*blobModifiedAccessConditions.IfNoneMatch/g, `string(*blobModifiedAccessConditions.IfNoneMatch)`).
       replace(/\*sourceModifiedAccessConditions.SourceIfMatch/g, `string(*sourceModifiedAccessConditions.SourceIfMatch)`).
       replace(/\*sourceModifiedAccessConditions.SourceIfNoneMatch/g, `string(*sourceModifiedAccessConditions.SourceIfNoneMatch)`);
 ```
@@ -326,18 +370,9 @@ directive:
   transform: >-
     return $.
       replace(/SignedOid\s+\*string/g, `SignedOID *string`).
-      replace(/SignedTid\s+\*string/g, `SignedTID *string`);
-```
-
-### Fixing Typo with StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed
-
-``` yaml
-directive:
-- from: zz_constants.go
-  where: $
-  transform: >-
-    return $.
-      replace(/IncrementalCopyOfEralierVersionSnapshotNotAllowed/g, "IncrementalCopyOfEarlierVersionSnapshotNotAllowed");
+      replace(/SignedTid\s+\*string/g, `SignedTID *string`).
+      replace(/DelegatedUserTid\s+\*string/g, `DelegatedUserTenantID *string`).
+      replace(/SignedDelegatedUserTid\s+\*string/g, `SignedDelegatedUserTenantID *string`);
 ```
 
 ### Fix up x-ms-content-crc64 header response name
@@ -364,11 +399,13 @@ directive:
 
 ``` yaml
 directive:
-  - from: zz_service_client.go
-    where: $
-    transform: >-
-      return $.
-        replace(/req.Raw\(\).URL.RawQuery \= reqQP.Encode\(\)/, `req.Raw().URL.RawQuery = strings.Replace(reqQP.Encode(), "+", "%20", -1)`)
+- from: 
+  - zz_service_client.go
+  - zz_container_client.go
+  where: $
+  transform: >-
+    return $.
+      replace(/req.Raw\(\).URL.RawQuery \= reqQP.Encode\(\)/g, `req.Raw().URL.RawQuery = strings.Replace(reqQP.Encode(), "+", "%20", -1)`);
 ```
 
 ### Change `where` parameter in blob filtering to be required

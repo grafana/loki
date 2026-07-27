@@ -302,13 +302,10 @@ func (b Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, s
 	if authParams.DomainHint != "" {
 		v.Add("domain_hint", authParams.DomainHint)
 	}
-	// There were left over from an implementation that didn't use any of these.  We may
-	// need to add them later, but as of now aren't needed.
-	/*
-		if p.ResponseMode != "" {
-			urlParams.Add("response_mode", p.ResponseMode)
-		}
-	*/
+	// Use form_post response mode for interactive auth to avoid exposing the auth code in the URL
+	if authParams.AuthorizationType == authority.ATInteractive {
+		v.Add("response_mode", "form_post")
+	}
 	baseURL.RawQuery = v.Encode()
 	return baseURL.String(), nil
 }
