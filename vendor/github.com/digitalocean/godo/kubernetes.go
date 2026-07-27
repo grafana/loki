@@ -95,6 +95,7 @@ type KubernetesClusterCreateRequest struct {
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
 	CorednsAutoscaler                 *KubernetesCorednsAutoscaler                 `json:"coredns_autoscaler,omitempty"`
 	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
+	P2pOciRegistryPlugin              *KubernetesP2pOciRegistry                    `json:"p2p_oci_registry_plugin,omitempty"`
 }
 
 // KubernetesClusterUpdateRequest represents a request to update a Kubernetes cluster.
@@ -113,6 +114,7 @@ type KubernetesClusterUpdateRequest struct {
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
 	CorednsAutoscaler                 *KubernetesCorednsAutoscaler                 `json:"coredns_autoscaler,omitempty"`
 	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
+	P2pOciRegistryPlugin              *KubernetesP2pOciRegistry                    `json:"p2p_oci_registry_plugin,omitempty"`
 
 	// Convert cluster to run highly available control plane
 	HA *bool `json:"ha,omitempty"`
@@ -258,6 +260,7 @@ type KubernetesCluster struct {
 	RdmaSharedDevicePlugin            *KubernetesRdmaSharedDevicePlugin            `json:"rdma_shared_dev_plugin,omitempty"`
 	CorednsAutoscaler                 *KubernetesCorednsAutoscaler                 `json:"coredns_autoscaler,omitempty"`
 	SSO                               *KubernetesClusterSSO                        `json:"sso,omitempty"`
+	P2pOciRegistryPlugin              *KubernetesP2pOciRegistry                    `json:"p2p_oci_registry_plugin,omitempty"`
 
 	Status    *KubernetesClusterStatus `json:"status,omitempty"`
 	CreatedAt time.Time                `json:"created_at,omitempty"`
@@ -337,6 +340,11 @@ type KubernetesRdmaSharedDevicePlugin struct {
 
 // KubernetesCorednsAutoscaler represents information about the CoreDNS Cluster Proportional Autoscaler cluster plugin.
 type KubernetesCorednsAutoscaler struct {
+	Enabled *bool `json:"enabled"`
+}
+
+// KubernetesP2pOciRegistry represents information about the Peer-to-peer OCI registry cluster plugin.
+type KubernetesP2pOciRegistry struct {
 	Enabled *bool `json:"enabled"`
 }
 

@@ -44,6 +44,14 @@ type DropletsServiceOp struct {
 
 var _ DropletsService = &DropletsServiceOp{}
 
+// GPU partition modes supported when creating a GPU Droplet. Omitting the value
+// (or sending an empty string) is treated as PARTITION_MODE_UNSET, i.e. a full
+// GPU with SPX/NPS1 behavior.
+const (
+	GPUPartitionModeSPXNPS1 = "PARTITION_MODE_SPX_NPS1"
+	GPUPartitionModeDPXNPS2 = "PARTITION_MODE_DPX_NPS2"
+)
+
 // Droplet represents a DigitalOcean Droplet
 type Droplet struct {
 	ID               int           `json:"id,float64,omitempty"`
@@ -67,6 +75,10 @@ type Droplet struct {
 	Tags             []string      `json:"tags,omitempty"`
 	VolumeIDs        []string      `json:"volume_ids"`
 	VPCUUID          string        `json:"vpc_uuid,omitempty"`
+	// GPUPartitionMode is echoed back on create when the Droplet was created
+	// with a partitioned GPU. Note: read-back on droplet GET is not delivered in
+	// v1, so this is only reliably populated on the create response.
+	GPUPartitionMode string `json:"gpu_partition_mode,omitempty"`
 }
 
 // PublicIPv4 returns the public IPv4 address for the Droplet.
@@ -238,6 +250,10 @@ type DropletCreateRequest struct {
 	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
 	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
 	PublicNetworking  *bool                       `json:"public_networking,omitempty"`
+	// GPUPartitionMode selects the partition mode for a GPU Droplet. Omit or
+	// leave empty for PARTITION_MODE_UNSET (full GPU). Use one of the
+	// GPUPartitionMode* constants for supported values.
+	GPUPartitionMode string `json:"gpu_partition_mode,omitempty"`
 }
 
 // DropletMultiCreateRequest is a request to create multiple Droplets.
@@ -257,6 +273,10 @@ type DropletMultiCreateRequest struct {
 	WithDropletAgent  *bool                       `json:"with_droplet_agent,omitempty"`
 	BackupPolicy      *DropletBackupPolicyRequest `json:"backup_policy,omitempty"`
 	PublicNetworking  *bool                       `json:"public_networking,omitempty"`
+	// GPUPartitionMode selects the partition mode for the GPU Droplets. Omit or
+	// leave empty for PARTITION_MODE_UNSET (full GPU). Use one of the
+	// GPUPartitionMode* constants for supported values.
+	GPUPartitionMode string `json:"gpu_partition_mode,omitempty"`
 }
 
 // DropletBackupPolicyRequest defines the backup policy when creating a Droplet.
