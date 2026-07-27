@@ -170,11 +170,19 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	syncIndexes := func() {
 		require.Eventually(t, func() bool {
 			started, err := indexGatewayCli.TriggerSyncIndexes()
-			return err == nil && started
+			if err != nil {
+				t.Logf("syncIndexes trigger: %v", err)
+				return false
+			}
+			return started
 		}, 10*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
 		require.Eventually(t, func() bool {
 			inProgress, err := indexGatewayCli.SyncIndexesInProgress()
-			return err == nil && !inProgress
+			if err != nil {
+				t.Logf("syncIndexes progress: %v", err)
+				return false
+			}
+			return !inProgress
 		}, 30*time.Second, 100*time.Millisecond, "the index sync should complete")
 	}
 
@@ -236,6 +244,9 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 			// Negative control: prove the phase reads the expected source. Phase 1 must
 			// reach the ingesters; the store-only phase must not.
 			if storage == "store" {
+				// Assert the stats are populated first, so TotalReached == 0 means
+				// "no ingester queried" rather than "stats absent".
+				require.Positive(t, resp.Data.Statistics.Summary.TotalEntriesReturned, "%s: stats should be populated", storage)
 				require.Zero(t, resp.Data.Statistics.Ingester.TotalReached, "%s: store phase must not query ingesters", storage)
 			} else {
 				require.Positive(t, resp.Data.Statistics.Ingester.TotalReached, "%s: ingester phase must query ingesters", storage)
@@ -301,8 +312,8 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 
 		// case 5: same timestamp + stream + structured metadata -> deduped.
 		//
-		// In this case we have the two identical copies, stored in separate chunks, are collapsed by
-		// the query-time merge iterator into a single "c5"; the separator remains.
+		// The two identical copies, stored in separate chunks, are collapsed by the
+		// query-time merge iterator into a single "c5"; the separator remains.
 		{
 			resp, err := rangeQuery(`{case="c5"}`)
 			require.NoError(t, err, storage)
@@ -312,11 +323,19 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 			require.Len(t, lines, 2, storage)
 			require.Positive(t, resp.Data.Statistics.TotalDuplicates(),
 				"%s case5: query-time dedup must remove the duplicate (nonzero duplicates stat)", storage)
+
+			// The surviving entries must keep their timestamp and structured metadata.
+			// Without categorize-labels, the "a" metadata folds into the stream labels.
+			require.Len(t, resp.Data.Stream, 1, "%s case5: entries share one stream", storage)
+			require.Equal(t, "1", resp.Data.Stream[0].Stream["a"], "%s case5: structured metadata must be preserved", storage)
+			for _, entry := range allEntries(resp) {
+				require.Equal(t, client.FormatTS(tsC5), entry[0], "%s case5: entries must keep timestamp tsC5", storage)
+			}
 		}
 	}
 
-	// Phase 1: served from the ingester, except for logs created by case 5 (the first
-	// log copy is already flushed to the store).
+	// Phase 1: served from the ingester, except case 5's first copy, which is already
+	// flushed to the store.
 	waitForLogSentinel()
 	runAssertions(t, "ingester")
 
