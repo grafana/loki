@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -32,9 +29,7 @@ const (
 	imdsEndpoint             = "http://169.254.169.254/metadata/identity/oauth2/token"
 	miResID                  = "mi_res_id"
 	msiEndpoint              = "MSI_ENDPOINT"
-	msiResID                 = "msi_res_id"
 	msiSecret                = "MSI_SECRET"
-	imdsAPIVersion           = "2018-02-01"
 	azureArcAPIVersion       = "2020-06-01"
 	qpClientID               = "client_id"
 	serviceFabricAPIVersion  = "2019-07-01-preview"
