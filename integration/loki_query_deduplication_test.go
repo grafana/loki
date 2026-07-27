@@ -23,7 +23,8 @@ import (
 // data is served from the ingester (in-memory) or from the chunk store (after a
 // flush + TSDB index build + querier discovery).
 func TestDedupMicroServicesKafka(t *testing.T) {
-	// Fake Kafka broker, with 1 single partition.
+	// Fake Kafka broker with a single partition, so all records are consumed in a
+	// single total order (the sentinel barrier below relies on this).
 	kafkaCluster, _ := testkafka.CreateCluster(t, 1, "loki")
 	kafkaAddr := kafkaCluster.ListenAddrs()[0]
 
@@ -42,7 +43,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 		"-ingester.partition-ring.store=inmemory",
 	}
 
-	// Batch 1: start compactor and index-gateway.
+	// Batch 1: start compactor and index-gateway
 	var (
 		tCompactor = clu.AddComponent(
 			"compactor",
@@ -113,8 +114,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 		tenant = randStringRunes()
 		now    = time.Now()
 
-		// Per-case timestamps (all within the default 3h query-ingesters-within window
-		// and the default 7d range-query window).
+		// Per-case timestamps, all within the default 3h query-ingesters-within window.
 		tsC1a = now.Add(-6 * time.Minute)
 		tsC1b = now.Add(-5 * time.Minute)
 		tsC2  = now.Add(-4 * time.Minute)
@@ -122,16 +122,17 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 		tsC4  = now.Add(-2 * time.Minute)
 		tsC5  = now.Add(-1 * time.Minute)
 		tsSen = now.Add(-30 * time.Second)
+
+		// Explicit query window covering all pushed timestamps.
+		queryStart = now.Add(-24 * time.Hour)
+		queryEnd   = now.Add(time.Minute)
 	)
 
 	const sentinelLine = "__sentinel__"
 
 	cliDistributor := client.New(tenant, "", tDistributor.HTTPURL())
-	cliDistributor.Now = now
 	cliFrontend := client.New(tenant, "", tQueryFrontend.HTTPURL())
-	cliFrontend.Now = now
 	ingesterCli := client.New(tenant, "", tIngester.HTTPURL())
-	ingesterCli.Now = now
 	indexGatewayCli := client.New("", "", tIndexGateway.HTTPURL())
 
 	structuredMetadata := func(a string) map[string]string { return map[string]string{"a": a} }
@@ -143,23 +144,56 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 		return m
 	}
 
-	// Wait until the distributor can produce to an ACTIVE partition before pushing
-	// the real data. The warmup line goes to a stream we never query, so retries are
-	// harmless. Real pushes below then use require.NoError (no retry) to avoid any
-	// chance of accidental duplicates.
+	rangeQuery := func(query string, headers ...client.Header) (*client.Response, error) {
+		return cliFrontend.RunRangeQueryWithStartEnd(ctx, query, queryStart, queryEnd, headers...)
+	}
+
+	// waitForLogLine blocks until line is queryable for query. The polling closure
+	// must not call require, since testify runs it on a separate goroutine.
+	waitForLogLine := func(query, line string) {
+		require.Eventually(t, func() bool {
+			resp, err := rangeQuery(query)
+			if err != nil {
+				t.Logf("waitForLogLine %q: query error: %v", query, err)
+				return false
+			}
+			return slices.Contains(linesFromResponse(resp), line)
+		}, 60*time.Second, 500*time.Millisecond, "line %q must be queryable for %q", line, query)
+	}
+
+	waitForLogSentinel := func() {
+		waitForLogLine(`{case="sentinel"}`, sentinelLine)
+	}
+
+	// syncIndexes drives an explicit index-gateway resync and waits for it to finish,
+	// making freshly-shipped TSDB indexes discoverable.
+	syncIndexes := func() {
+		require.Eventually(t, func() bool {
+			started, err := indexGatewayCli.TriggerSyncIndexes()
+			return err == nil && started
+		}, 10*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
+		require.Eventually(t, func() bool {
+			inProgress, err := indexGatewayCli.SyncIndexesInProgress()
+			return err == nil && !inProgress
+		}, 30*time.Second, 100*time.Millisecond, "the index sync should complete")
+	}
+
+	// Wait until the distributor can produce to an ACTIVE partition before pushing the
+	// real data. The warmup line goes to a stream we never query, so retries are
+	// harmless. Real pushes below use require.NoError (no retry) to avoid duplicates.
 	require.Eventually(t, func() bool {
 		return cliDistributor.PushLogLine("__warmup__", now, nil, streamLabels("case", "warmup")) == nil
 	}, 60*time.Second, 250*time.Millisecond, "distributor should be able to produce to an active partition")
 
-	// case 1: same stream + same structured metadata, different timestamp -> NOT deduped
+	// case 1: same stream and structured metadata, different timestamp -> NOT deduped
 	require.NoError(t, cliDistributor.PushLogLine("c1", tsC1a, structuredMetadata("1"), streamLabels("case", "c1")))
 	require.NoError(t, cliDistributor.PushLogLine("c1", tsC1b, structuredMetadata("1"), streamLabels("case", "c1")))
 
-	// case 2: same timestamp + same structured metadata, different stream -> NOT deduped
+	// case 2: same timestamp and structured metadata, different stream -> NOT deduped
 	require.NoError(t, cliDistributor.PushLogLine("c2", tsC2, structuredMetadata("1"), streamLabels("case", "c2", "inst", "a")))
 	require.NoError(t, cliDistributor.PushLogLine("c2", tsC2, structuredMetadata("1"), streamLabels("case", "c2", "inst", "b")))
 
-	// case 3: same timestamp + same stream, different structured metadata-> NOT deduped
+	// case 3: same timestamp and stream, different structured metadata -> NOT deduped
 	require.NoError(t, cliDistributor.PushLogLine("c3", tsC3, structuredMetadata("1"), streamLabels("case", "c3")))
 	require.NoError(t, cliDistributor.PushLogLine("c3", tsC3, structuredMetadata("2"), streamLabels("case", "c3")))
 
@@ -167,75 +201,79 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	require.NoError(t, cliDistributor.PushLogLine("c4", tsC4, structuredMetadata("1"), streamLabels("case", "c4")))
 	require.NoError(t, cliDistributor.PushLogLine("c4", tsC4, structuredMetadata("2"), streamLabels("case", "c4")))
 
-	// case 5: same timestamp + same stream + same structured metadata -> deduped
+	// case 5: same timestamp + stream + structured metadata -> deduped.
 	//
-	// The ingester drops an incoming entry that equals a stream's last appended
-	// line at push time. To genuinely exercise the query-time merge dedup in this case,
-	// the two identical copies are made non-adjacent by writing a different "separator"
-	// line between them, so both survive to storage and are only collapsed on read.
+	// Loki collapses identical entries at write time both within a head block and
+	// against a stream's last appended line. To make the duplicates survive to read
+	// time, the first copy is flushed into its own chunk (and its index synced so it
+	// stays queryable from the store) before the second copy is written - with a
+	// separator line in between to advance the stream's last appended line. The two
+	// copies then live in separate chunks, merged and deduplicated only on read.
 	require.NoError(t, cliDistributor.PushLogLine("c5", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
+	waitForLogLine(`{case="c5"}`, "c5") // ensure the first copy is consumed before flushing it
+	require.NoError(t, ingesterCli.FlushTenant(`{case="c5"}`))
+	syncIndexes()
 	require.NoError(t, cliDistributor.PushLogLine("c5-sep", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
 	require.NoError(t, cliDistributor.PushLogLine("c5", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
 
 	// Sentinel pushed LAST. On a single partition consumed in offset order, the
-	// sentinel becoming queryable proves every earlier record was already consumed
-	// and appended, so the assertions below run against a complete data set.
+	// sentinel becoming queryable proves every earlier record was already consumed and
+	// appended, so the assertions below run against a complete data set.
 	require.NoError(t, cliDistributor.PushLogLine(sentinelLine, tsSen, nil, streamLabels("case", "sentinel")))
 
-	// waitForSentinel blocks until the sentinel is queryable through cliFrontend.
-	waitForSentinel := func() {
-		require.Eventually(t, func() bool {
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="sentinel"}`)
-			if err != nil {
-				return false
-			}
-			return slices.Contains(linesFromResponse(resp), sentinelLine)
-		}, 60*time.Second, 500*time.Millisecond, "sentinel must be queryable, proving all prior records are available")
-	}
-
-	// runAssertions runs the five dedup assertions.
+	// runAssertions runs the five dedup assertions against cliFrontend.
 	runAssertions := func(t *testing.T, storage string) {
-		// case 1: same stream + same structured metadata, different timestamp -> NOT deduped
+		// case 1: same stream and structured metadata, different timestamp -> NOT deduped
 		{
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="c1"}`)
+			resp, err := rangeQuery(`{case="c1"}`)
 			require.NoError(t, err, storage)
 			entries := allEntries(resp)
 			require.Len(t, entries, 2, "%s case1: different timestamp must not dedup", storage)
 			require.ElementsMatch(t, []string{"c1", "c1"}, linesFromResponse(resp), storage)
 			require.NotEqual(t, entries[0][0], entries[1][0], "%s case1: entries must keep distinct timestamps", storage)
+			require.Zero(t, resp.Data.Statistics.TotalDuplicates(), "%s case1: no entry should be deduplicated at query time", storage)
+
+			// Negative control: prove the phase reads the expected source. Phase 1 must
+			// reach the ingesters; the store-only phase must not.
+			if storage == "store" {
+				require.Zero(t, resp.Data.Statistics.Ingester.TotalReached, "%s: store phase must not query ingesters", storage)
+			} else {
+				require.Positive(t, resp.Data.Statistics.Ingester.TotalReached, "%s: ingester phase must query ingesters", storage)
+			}
 		}
 
-		// case 2: same timestamp + same structured metadata, different stream -> NOT deduped
+		// case 2: same timestamp and structured metadata, different stream -> NOT deduped
 		{
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="c2"}`)
+			resp, err := rangeQuery(`{case="c2"}`)
 			require.NoError(t, err, storage)
 			require.Len(t, resp.Data.Stream, 2, "%s case2: different stream must not dedup", storage)
 			require.ElementsMatch(t, []string{"c2", "c2"}, linesFromResponse(resp), storage)
 			require.ElementsMatch(t, []string{"a", "b"},
 				[]string{resp.Data.Stream[0].Stream["inst"], resp.Data.Stream[1].Stream["inst"]},
 				"%s case2: entries must belong to distinct streams", storage)
+			require.Zero(t, resp.Data.Statistics.TotalDuplicates(), "%s case2: no entry should be deduplicated at query time", storage)
 		}
 
-		// case 3: same timestamp + same stream, different structured metadata-> NOT deduped
+		// case 3: same timestamp and stream, different structured metadata -> NOT deduped
 		//
-		// Without the categorize-labels encoding flag, structured metadata surfaces as a label on
-		// the returned stream, so the two entries appear as two streams differing in "a".
+		// Without the categorize-labels flag, structured metadata surfaces as stream
+		// labels, so the two entries appear as separate streams differing in "a".
 		{
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="c3"}`)
+			resp, err := rangeQuery(`{case="c3"}`)
 			require.NoError(t, err, storage)
 			require.ElementsMatch(t, []string{"c3", "c3"}, linesFromResponse(resp),
 				"%s case3: different structured metadata must NOT dedup", storage)
 			require.Len(t, resp.Data.Stream, 2, "%s case3: structured metadata must keep entries distinct", storage)
 			require.ElementsMatch(t, []string{"1", "2"},
 				[]string{resp.Data.Stream[0].Stream["a"], resp.Data.Stream[1].Stream["a"]}, storage)
+			require.Zero(t, resp.Data.Statistics.TotalDuplicates(), "%s case3: no entry should be deduplicated at query time", storage)
 		}
 
-		// case 4: same as case 3, but queried with the categorize-labels encoding flag.
-		//
-		// The categorize-labels flag keeps structured metadata out of the stream labels and returns
-		// it as a separate category in the third element of each entry, so both entries share a single stream.
+		// case 4: same as case 3, but queried with the categorize-labels encoding flag,
+		// which keeps structured metadata out of the stream labels and returns it as a
+		// separate category in each entry, so both entries share a single stream.
 		{
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="c4"}`,
+			resp, err := rangeQuery(`{case="c4"}`,
 				client.Header{Name: httpreq.LokiEncodingFlagsHeader, Value: string(httpreq.FlagCategorizeLabels)})
 			require.NoError(t, err, storage)
 
@@ -258,50 +296,44 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 			}
 			require.ElementsMatch(t, []string{"1", "2"}, metadataValues,
 				"%s case4: structured metadata must be returned as a separate category", storage)
+			require.Zero(t, resp.Data.Statistics.TotalDuplicates(), "%s case4: no entry should be deduplicated at query time", storage)
 		}
 
-		// case 5: the two identical copies collapse into one; the separator remains.
+		// case 5: same timestamp + stream + structured metadata -> deduped.
+		//
+		// In this case we have the two identical copies, stored in separate chunks, are collapsed by
+		// the query-time merge iterator into a single "c5"; the separator remains.
 		{
-			resp, err := cliFrontend.RunRangeQuery(ctx, `{case="c5"}`)
+			resp, err := rangeQuery(`{case="c5"}`)
 			require.NoError(t, err, storage)
 			lines := linesFromResponse(resp)
 			require.Equal(t, 1, countLines(lines, "c5"), "%s case5: identical entry must be deduped to one copy", storage)
 			require.Equal(t, 1, countLines(lines, "c5-sep"), storage)
 			require.Len(t, lines, 2, storage)
+			require.Positive(t, resp.Data.Statistics.TotalDuplicates(),
+				"%s case5: query-time dedup must remove the duplicate (nonzero duplicates stat)", storage)
 		}
 	}
 
-	// Phase 1: data served from the ingester (nothing flushed yet).
-	waitForSentinel()
+	// Phase 1: served from the ingester, except for logs created by case 5 (the first
+	// log copy is already flushed to the store).
+	waitForLogSentinel()
 	runAssertions(t, "ingester")
 
-	// Phase 2: flush to the chunk store, discover the index, and re-query store-only.
-	//
-	// FlushTenant synchronously flushes the tenant's chunks to object storage and
-	// force-ships the in-memory TSDB index.
+	// Phase 2: flush everything to the chunk store, discover the index, and re-query
+	// store-only so results provably come from the store.
+	tsdbsBeforeFlush := countShippedTSDBs(t, tIngester.ClusterSharedPath())
 	require.NoError(t, ingesterCli.FlushTenant(""))
-	require.Positive(t, countShippedTSDBs(t, tIngester.ClusterSharedPath()),
-		"flush should have shipped a TSDB index to object storage")
+	require.Greater(t, countShippedTSDBs(t, tIngester.ClusterSharedPath()), tsdbsBeforeFlush,
+		"the whole-tenant flush should ship additional TSDB indexes to object storage")
+	syncIndexes()
 
-	// Drive index discovery explicitly rather than relying on the index-gateway's
-	// periodic resync (its cached object listing can hide a freshly shipped index).
-	require.Eventually(t, func() bool {
-		started, err := indexGatewayCli.TriggerSyncIndexes()
-		return err == nil && started
-	}, 10*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
-	require.Eventually(t, func() bool {
-		inProgress, err := indexGatewayCli.SyncIndexesInProgress()
-		return err == nil && !inProgress
-	}, 30*time.Second, 100*time.Millisecond, "the index sync should complete")
-
-	// Restart the querier so it serves only from the store; its results now prove
-	// data came from the chunk store, not the ingester.
 	tQuerier.AddFlags("-querier.query-store-only=true")
 	require.NoError(t, tQuerier.Restart())
 
-	// The flushed chunk contains every entry atomically, so once the sentinel is
-	// visible from the store the whole data set is present.
-	waitForSentinel()
+	// The flushed chunks contain every entry, so once the sentinel is visible from the
+	// store the whole data set is present.
+	waitForLogSentinel()
 	runAssertions(t, "store")
 }
 
