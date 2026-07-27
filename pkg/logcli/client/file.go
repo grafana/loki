@@ -152,8 +152,13 @@ func (f *FileClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelRespo
 }
 
 func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+	// f.labels is sorted, so a binary search returns the index at which name
+	// would be inserted. The label only exists when that index is in range and
+	// the element there is an exact match; sort.SearchStrings never returns a
+	// negative value, so the previous i < 0 check could never detect a missing
+	// label and would return a wrong value or panic with an out-of-range index.
 	i := sort.SearchStrings(f.labels, name)
-	if i < 0 {
+	if i >= len(f.labels) || f.labels[i] != name {
 		return &loghttp.LabelResponse{}, nil
 	}
 
@@ -252,10 +257,6 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 
 func (l *limiter) EnableMultiVariantQueries(_ string) bool {
 	return false // Multi-variant queries disabled by default for file client
-}
-
-func (l *limiter) MaxScanTaskParallelism(_ string) int {
-	return 0 // This setting for the v2 execution engine is unused in LogCLI
 }
 
 func (l *limiter) DebugEngineTasks(_ string) bool {

@@ -83,13 +83,8 @@ func X__c11_atomic_fetch_addInt32(t *TLS, ptr uintptr, val int32, _ int32) (r in
 }
 
 func X__atomic_fetch_addInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*int32)(unsafe.Pointer(ptr))
-	*(*int32)(unsafe.Pointer(ptr)) += val
-	return r
+	p := (*int32)(unsafe.Pointer(ptr))
+	return atomic.AddInt32(p, val) - val
 }
 
 func X__c11_atomic_fetch_addUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
@@ -97,13 +92,8 @@ func X__c11_atomic_fetch_addUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r 
 }
 
 func X__atomic_fetch_addUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*uint32)(unsafe.Pointer(ptr))
-	*(*uint32)(unsafe.Pointer(ptr)) += val
-	return r
+	p := (*uint32)(unsafe.Pointer(ptr))
+	return atomic.AddUint32(p, val) - val
 }
 
 func X__c11_atomic_fetch_addInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
@@ -111,13 +101,8 @@ func X__c11_atomic_fetch_addInt64(t *TLS, ptr uintptr, val int64, _ int32) (r in
 }
 
 func X__atomic_fetch_addInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*int64)(unsafe.Pointer(ptr))
-	*(*int64)(unsafe.Pointer(ptr)) += val
-	return r
+	p := (*int64)(unsafe.Pointer(ptr))
+	return atomic.AddInt64(p, val) - val
 }
 
 func X__c11_atomic_fetch_addUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
@@ -125,13 +110,8 @@ func X__c11_atomic_fetch_addUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r 
 }
 
 func X__atomic_fetch_addUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*uint64)(unsafe.Pointer(ptr))
-	*(*uint64)(unsafe.Pointer(ptr)) += val
-	return r
+	p := (*uint64)(unsafe.Pointer(ptr))
+	return atomic.AddUint64(p, val) - val
 }
 
 // ----
@@ -197,13 +177,13 @@ func X__c11_atomic_fetch_andInt32(t *TLS, ptr uintptr, val int32, _ int32) (r in
 }
 
 func X__atomic_fetch_andInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*int32)(unsafe.Pointer(ptr))
-	*(*int32)(unsafe.Pointer(ptr)) &= val
-	return r
+	p := (*int32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt32(p)
+		if atomic.CompareAndSwapInt32(p, r, r&val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_andUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
@@ -211,13 +191,13 @@ func X__c11_atomic_fetch_andUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r 
 }
 
 func X__atomic_fetch_andUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*uint32)(unsafe.Pointer(ptr))
-	*(*uint32)(unsafe.Pointer(ptr)) &= val
-	return r
+	p := (*uint32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint32(p)
+		if atomic.CompareAndSwapUint32(p, r, r&val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_andInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
@@ -225,13 +205,13 @@ func X__c11_atomic_fetch_andInt64(t *TLS, ptr uintptr, val int64, _ int32) (r in
 }
 
 func X__atomic_fetch_andInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*int64)(unsafe.Pointer(ptr))
-	*(*int64)(unsafe.Pointer(ptr)) &= val
-	return r
+	p := (*int64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt64(p)
+		if atomic.CompareAndSwapInt64(p, r, r&val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_andUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
@@ -239,13 +219,13 @@ func X__c11_atomic_fetch_andUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r 
 }
 
 func X__atomic_fetch_andUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*uint64)(unsafe.Pointer(ptr))
-	*(*uint64)(unsafe.Pointer(ptr)) &= val
-	return r
+	p := (*uint64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint64(p)
+		if atomic.CompareAndSwapUint64(p, r, r&val) {
+			return r
+		}
+	}
 }
 
 // ----
@@ -311,13 +291,13 @@ func X__c11_atomic_fetch_orInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int
 }
 
 func X__atomic_fetch_orInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*int32)(unsafe.Pointer(ptr))
-	*(*int32)(unsafe.Pointer(ptr)) |= val
-	return r
+	p := (*int32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt32(p)
+		if atomic.CompareAndSwapInt32(p, r, r|val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_orUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
@@ -325,13 +305,13 @@ func X__c11_atomic_fetch_orUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r u
 }
 
 func X__atomic_fetch_orUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*uint32)(unsafe.Pointer(ptr))
-	*(*uint32)(unsafe.Pointer(ptr)) |= val
-	return r
+	p := (*uint32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint32(p)
+		if atomic.CompareAndSwapUint32(p, r, r|val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_orInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
@@ -339,13 +319,13 @@ func X__c11_atomic_fetch_orInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int
 }
 
 func X__atomic_fetch_orInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*int64)(unsafe.Pointer(ptr))
-	*(*int64)(unsafe.Pointer(ptr)) |= val
-	return r
+	p := (*int64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt64(p)
+		if atomic.CompareAndSwapInt64(p, r, r|val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_orUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
@@ -353,13 +333,13 @@ func X__c11_atomic_fetch_orUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r u
 }
 
 func X__atomic_fetch_orUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*uint64)(unsafe.Pointer(ptr))
-	*(*uint64)(unsafe.Pointer(ptr)) |= val
-	return r
+	p := (*uint64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint64(p)
+		if atomic.CompareAndSwapUint64(p, r, r|val) {
+			return r
+		}
+	}
 }
 
 // ----
@@ -425,13 +405,8 @@ func X__c11_atomic_fetch_subInt32(t *TLS, ptr uintptr, val int32, _ int32) (r in
 }
 
 func X__atomic_fetch_subInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*int32)(unsafe.Pointer(ptr))
-	*(*int32)(unsafe.Pointer(ptr)) -= val
-	return r
+	p := (*int32)(unsafe.Pointer(ptr))
+	return atomic.AddInt32(p, -val) + val
 }
 
 func X__c11_atomic_fetch_subUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
@@ -439,13 +414,8 @@ func X__c11_atomic_fetch_subUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r 
 }
 
 func X__atomic_fetch_subUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*uint32)(unsafe.Pointer(ptr))
-	*(*uint32)(unsafe.Pointer(ptr)) -= val
-	return r
+	p := (*uint32)(unsafe.Pointer(ptr))
+	return atomic.AddUint32(p, ^(val-1)) + val
 }
 
 func X__c11_atomic_fetch_subInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
@@ -453,13 +423,8 @@ func X__c11_atomic_fetch_subInt64(t *TLS, ptr uintptr, val int64, _ int32) (r in
 }
 
 func X__atomic_fetch_subInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*int64)(unsafe.Pointer(ptr))
-	*(*int64)(unsafe.Pointer(ptr)) -= val
-	return r
+	p := (*int64)(unsafe.Pointer(ptr))
+	return atomic.AddInt64(p, -val) + val
 }
 
 func X__c11_atomic_fetch_subUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
@@ -467,13 +432,8 @@ func X__c11_atomic_fetch_subUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r 
 }
 
 func X__atomic_fetch_subUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*uint64)(unsafe.Pointer(ptr))
-	*(*uint64)(unsafe.Pointer(ptr)) -= val
-	return r
+	p := (*uint64)(unsafe.Pointer(ptr))
+	return atomic.AddUint64(p, ^(val-1)) + val
 }
 
 // ----
@@ -539,13 +499,13 @@ func X__c11_atomic_fetch_xorInt32(t *TLS, ptr uintptr, val int32, _ int32) (r in
 }
 
 func X__atomic_fetch_xorInt32(t *TLS, ptr uintptr, val int32, _ int32) (r int32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*int32)(unsafe.Pointer(ptr))
-	*(*int32)(unsafe.Pointer(ptr)) ^= val
-	return r
+	p := (*int32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt32(p)
+		if atomic.CompareAndSwapInt32(p, r, r^val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_xorUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
@@ -553,13 +513,13 @@ func X__c11_atomic_fetch_xorUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r 
 }
 
 func X__atomic_fetch_xorUint32(t *TLS, ptr uintptr, val uint32, _ int32) (r uint32) {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	r = *(*uint32)(unsafe.Pointer(ptr))
-	*(*uint32)(unsafe.Pointer(ptr)) ^= val
-	return r
+	p := (*uint32)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint32(p)
+		if atomic.CompareAndSwapUint32(p, r, r^val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_xorInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
@@ -567,13 +527,13 @@ func X__c11_atomic_fetch_xorInt64(t *TLS, ptr uintptr, val int64, _ int32) (r in
 }
 
 func X__atomic_fetch_xorInt64(t *TLS, ptr uintptr, val int64, _ int32) (r int64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*int64)(unsafe.Pointer(ptr))
-	*(*int64)(unsafe.Pointer(ptr)) ^= val
-	return r
+	p := (*int64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadInt64(p)
+		if atomic.CompareAndSwapInt64(p, r, r^val) {
+			return r
+		}
+	}
 }
 
 func X__c11_atomic_fetch_xorUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
@@ -581,13 +541,13 @@ func X__c11_atomic_fetch_xorUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r 
 }
 
 func X__atomic_fetch_xorUint64(t *TLS, ptr uintptr, val uint64, _ int32) (r uint64) {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	r = *(*uint64)(unsafe.Pointer(ptr))
-	*(*uint64)(unsafe.Pointer(ptr)) ^= val
-	return r
+	p := (*uint64)(unsafe.Pointer(ptr))
+	for {
+		r = atomic.LoadUint64(p)
+		if atomic.CompareAndSwapUint64(p, r, r^val) {
+			return r
+		}
+	}
 }
 
 // ----
@@ -765,41 +725,51 @@ func X__atomic_compare_exchangeUint16(t *TLS, ptr, expected, desired uintptr, we
 }
 
 func X__atomic_compare_exchangeInt32(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
-	int32Mu.Lock()
-
-	defer int32Mu.Unlock()
-
-	have := *(*int32)(unsafe.Pointer(ptr))
-	if have == *(*int32)(unsafe.Pointer(expected)) {
-		*(*int32)(unsafe.Pointer(ptr)) = *(*int32)(unsafe.Pointer(desired))
+	p := (*int32)(unsafe.Pointer(ptr))
+	exp := (*int32)(unsafe.Pointer(expected))
+	des := *(*int32)(unsafe.Pointer(desired))
+	old := *exp
+	if atomic.CompareAndSwapInt32(p, old, des) {
 		return 1
 	}
-
-	*(*int32)(unsafe.Pointer(expected)) = have
+	*exp = atomic.LoadInt32(p)
 	return 0
 }
 
 func X__atomic_compare_exchangeUint32(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
-	return X__atomic_compare_exchangeInt32(t, ptr, expected, desired, weak, success, failure)
+	p := (*uint32)(unsafe.Pointer(ptr))
+	exp := (*uint32)(unsafe.Pointer(expected))
+	des := *(*uint32)(unsafe.Pointer(desired))
+	old := *exp
+	if atomic.CompareAndSwapUint32(p, old, des) {
+		return 1
+	}
+	*exp = atomic.LoadUint32(p)
+	return 0
 }
 
 func X__atomic_compare_exchangeInt64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
-	int64Mu.Lock()
-
-	defer int64Mu.Unlock()
-
-	have := *(*int64)(unsafe.Pointer(ptr))
-	if have == *(*int64)(unsafe.Pointer(expected)) {
-		*(*int64)(unsafe.Pointer(ptr)) = *(*int64)(unsafe.Pointer(desired))
+	p := (*int64)(unsafe.Pointer(ptr))
+	exp := (*int64)(unsafe.Pointer(expected))
+	des := *(*int64)(unsafe.Pointer(desired))
+	old := *exp
+	if atomic.CompareAndSwapInt64(p, old, des) {
 		return 1
 	}
-
-	*(*int64)(unsafe.Pointer(expected)) = have
+	*exp = atomic.LoadInt64(p)
 	return 0
 }
 
 func X__atomic_compare_exchangeUint64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
-	return X__atomic_compare_exchangeInt64(t, ptr, expected, desired, weak, success, failure)
+	p := (*uint64)(unsafe.Pointer(ptr))
+	exp := (*uint64)(unsafe.Pointer(expected))
+	des := *(*uint64)(unsafe.Pointer(desired))
+	old := *exp
+	if atomic.CompareAndSwapUint64(p, old, des) {
+		return 1
+	}
+	*exp = atomic.LoadUint64(p)
+	return 0
 }
 
 func X__c11_atomic_compare_exchange_strongInt8(t *TLS, ptr, expected uintptr, desired int8, success, failure int32) int32 {

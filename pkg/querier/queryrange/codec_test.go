@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -1961,6 +1962,46 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 
 		require.Nil(t, baz)
 	})
+}
+
+// Test_codec_MergeResponse_DetectedLabelsResponse is a regression test for
+// https://github.com/grafana/loki/issues/16315: a multi-tenant detected_labels query 500s with
+// "too short binary".
+func Test_codec_MergeResponse_DetectedLabelsResponse(t *testing.T) {
+	// Build a response as MultiTenantQuerier.DetectedLabels would: per-tenant
+	// labels merged through detected.MergeLabels.
+	buildTenantMergedResponse := func(label string, cardinality int) *DetectedLabelsResponse {
+		var perTenant []*logproto.DetectedLabel
+		for tenant := 0; tenant < 2; tenant++ {
+			sketch := hyperloglog.New()
+			for i := 0; i < cardinality; i++ {
+				sketch.Insert([]byte(fmt.Sprintf("tenant-%d-value-%d", tenant, i)))
+			}
+			marshalled, err := sketch.MarshalBinary()
+			require.NoError(t, err)
+			perTenant = append(perTenant, &logproto.DetectedLabel{Label: label, Sketch: marshalled})
+		}
+
+		merged, err := detected.MergeLabels(perTenant)
+		require.NoError(t, err)
+
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{DetectedLabels: merged},
+		}
+	}
+
+	// Two split-interval responses, each already merged across tenants.
+	responses := []queryrangebase.Response{
+		buildTenantMergedResponse("foo", 5),
+		buildTenantMergedResponse("foo", 7),
+	}
+
+	got, err := DefaultCodec.MergeResponse(responses...)
+	require.NoError(t, err)
+
+	response := got.(*DetectedLabelsResponse).Response
+	require.Len(t, response.DetectedLabels, 1)
+	require.Equal(t, "foo", response.DetectedLabels[0].Label)
 }
 
 type badResponse struct{}

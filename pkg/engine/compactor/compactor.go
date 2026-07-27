@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -24,7 +25,9 @@ type PlannerParams struct {
 	Config          Config
 	Bucket          objstore.Bucket                  // required
 	MetastoreWriter *metastore.TableOfContentsWriter // required
+	Limits          Limits                           // required
 	Logger          log.Logger
+	Registerer      prometheus.Registerer
 }
 
 // Planner is the dataobj-compaction-planner target service. It hosts an
@@ -57,6 +60,9 @@ func New(params PlannerParams) (*Planner, error) {
 	if params.MetastoreWriter == nil {
 		return nil, errors.New("dataobj compaction planner: metastore writer is required")
 	}
+	if params.Limits == nil {
+		return nil, errors.New("dataobj compaction planner: limits is required")
+	}
 
 	sched, err := newScheduler(
 		params.Config.Scheduler,
@@ -76,6 +82,8 @@ func New(params PlannerParams) (*Planner, error) {
 			params.Bucket,
 			sched.inner,
 			params.MetastoreWriter,
+			params.Registerer,
+			params.Limits,
 		),
 	}
 	p.BasicService = services.NewBasicService(p.starting, p.running, p.stopping)

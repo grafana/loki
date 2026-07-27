@@ -1195,6 +1195,12 @@ type BucketLifecycleRuleCondition struct {
 	// this condition is satisfied when there are at least N versions (including
 	// the live version) newer than this version of the object.
 	NumNewerVersions int64 `json:"numNewerVersions,omitempty"`
+	// SizeAboveBytes: Objects having a size greater than this value in bytes will
+	// be matched.
+	SizeAboveBytes int64 `json:"sizeAboveBytes,omitempty,string"`
+	// SizeBelowBytes: Objects having a size less than this value in bytes will be
+	// matched.
+	SizeBelowBytes int64 `json:"sizeBelowBytes,omitempty,string"`
 	// ForceSendFields is a list of field names (e.g. "Age") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
 	// omitted from API requests. See

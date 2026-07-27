@@ -9,6 +9,33 @@ import (
 	"github.com/redis/go-redis/v9/internal/otel"
 )
 
+// XTrimLimitDisabled is a sentinel value for the LIMIT argument of stream
+// trimming (XAddArgs.Limit and the XTrim*Approx* commands). Passing it emits
+// an explicit "LIMIT 0", which tells Redis to disable the trimming effort cap
+// entirely. This differs from passing 0, which keeps the historical behavior:
+// no LIMIT clause is sent and Redis applies its implicit default
+// (100 * stream-node-max-entries examined entries).
+//
+// LIMIT is only valid together with the "~" (approximate) trimming flag;
+// Redis rejects LIMIT used with exact ("=") trimming.
+const XTrimLimitDisabled = -1
+
+// appendXTrimLimit appends the LIMIT clause used by XADD and XTRIM trimming:
+//   - limit > 0 emits "LIMIT <limit>";
+//   - limit < 0 (see XTrimLimitDisabled) emits "LIMIT 0", disabling the
+//     trimming effort cap;
+//   - limit == 0 omits the clause, so Redis applies its implicit default.
+func appendXTrimLimit(args []interface{}, limit int64) []interface{} {
+	switch {
+	case limit > 0:
+		return append(args, "limit", limit)
+	case limit < 0:
+		return append(args, "limit", int64(0))
+	default:
+		return args
+	}
+}
+
 type StreamCmdable interface {
 	XAdd(ctx context.Context, a *XAddArgs) *StringCmd
 	XAckDel(ctx context.Context, stream string, group string, mode string, ids ...string) *SliceCmd
@@ -29,11 +56,13 @@ type StreamCmdable interface {
 	XGroupDelConsumer(ctx context.Context, stream, group, consumer string) *IntCmd
 	XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSliceCmd
 	XAck(ctx context.Context, stream, group string, ids ...string) *IntCmd
+	XNack(ctx context.Context, a *XNackArgs) *IntCmd
 	XPending(ctx context.Context, stream, group string) *XPendingCmd
 	XPendingExt(ctx context.Context, a *XPendingExtArgs) *XPendingExtCmd
 	XClaim(ctx context.Context, a *XClaimArgs) *XMessageSliceCmd
 	XClaimJustID(ctx context.Context, a *XClaimArgs) *StringSliceCmd
 	XAutoClaim(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimCmd
+	XAutoClaimWithDeleted(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimWithDeletedCmd
 	XAutoClaimJustID(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimJustIDCmd
 	XTrimMaxLen(ctx context.Context, key string, maxLen int64) *IntCmd
 	XTrimMaxLenApprox(ctx context.Context, key string, maxLen, limit int64) *IntCmd
@@ -71,7 +100,14 @@ type XAddArgs struct {
 	MaxLen     int64 // MAXLEN N
 	MinID      string
 	// Approx causes MaxLen and MinID to use "~" matcher (instead of "=").
-	Approx         bool
+	Approx bool
+	// Limit caps the trimming effort:
+	//   - 0 omits the LIMIT clause (Redis applies its implicit default);
+	//   - a positive value emits "LIMIT <n>";
+	//   - a negative value (see XTrimLimitDisabled) emits "LIMIT 0",
+	//     disabling the effort cap entirely.
+	// LIMIT requires Approx to be true; Redis rejects LIMIT together with
+	// exact ("=") trimming.
 	Limit          int64
 	Mode           string
 	ID             string
@@ -116,9 +152,7 @@ func (c cmdable) XAdd(ctx context.Context, a *XAddArgs) *StringCmd {
 			args = append(args, "minid", "=", a.MinID)
 		}
 	}
-	if a.Limit > 0 {
-		args = append(args, "limit", a.Limit)
-	}
+	args = appendXTrimLimit(args, a.Limit)
 
 	if a.ID != "" {
 		args = append(args, a.ID)
@@ -359,6 +393,71 @@ func (c cmdable) XAck(ctx context.Context, stream, group string, ids ...string) 
 	return cmd
 }
 
+// XNACK modes. See [XNackArgs.Mode].
+const (
+	XNackModeSilent = "SILENT"
+	XNackModeFail   = "FAIL"
+	XNackModeFatal  = "FATAL"
+)
+
+// XNackArgs represents the arguments for the XNACK command (Redis >= 8.8).
+//
+// XNACK negatively acknowledges one or more messages in a consumer group's
+// Pending Entries List (PEL), releasing them back to the group so they can be
+// redelivered to another consumer via XREADGROUP.
+type XNackArgs struct {
+	Stream string
+	Group  string
+
+	// Mode controls how the delivery counter is adjusted for each NACKed entry.
+	// Must be one of [XNackModeSilent], [XNackModeFail], or [XNackModeFatal]:
+	//   - SILENT: the consumer is shutting down or experiencing internal errors
+	//     unrelated to the message. The delivery counter is decremented by 1,
+	//     undoing the increment that happened when the message was delivered.
+	//   - FAIL: the consumer could not process the message (e.g. insufficient
+	//     memory), but another consumer might succeed. The delivery counter is
+	//     left unchanged.
+	//   - FATAL: the message is invalid or suspected malicious. The delivery
+	//     counter is set to MAXINT, which will immediately move the message to
+	//     the Dead Letter Queue (DLQ) if one is configured for the group.
+	Mode string
+
+	// IDs is the list of message IDs to NACK. All IDs must already be in the
+	// group's PEL (i.e. previously delivered via XREADGROUP), unless Force is set.
+	IDs []string
+
+	// RetryCount sets the delivery counter to an explicit value, overriding the
+	// counter adjustment that would otherwise be applied by Mode.
+	// Leave nil to let Mode control the counter (the common case).
+	RetryCount *uint64
+
+	// Force allows NACKing message IDs that are not yet in the group's PEL,
+	// creating new unowned NACKed PEL entries for them directly.
+	// This is analogous to the FORCE flag in XCLAIM.
+	// Primarily used internally by Redis during AOF rewrite to reconstruct
+	// NACKed entries, but can also be used to manually inject entries.
+	Force bool
+}
+
+// XNack executes the XNACK command. See [XNackArgs] for the full argument documentation.
+// Requires Redis >= 8.8.
+func (c cmdable) XNack(ctx context.Context, a *XNackArgs) *IntCmd {
+	args := make([]interface{}, 0, 9+len(a.IDs))
+	args = append(args, "xnack", a.Stream, a.Group, a.Mode, "ids", len(a.IDs))
+	for _, id := range a.IDs {
+		args = append(args, id)
+	}
+	if a.RetryCount != nil {
+		args = append(args, "retrycount", *a.RetryCount)
+	}
+	if a.Force {
+		args = append(args, "force")
+	}
+	cmd := NewIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
 func (c cmdable) XPending(ctx context.Context, stream, group string) *XPendingCmd {
 	cmd := NewXPendingCmd(ctx, "xpending", stream, group)
 	_ = c(ctx, cmd)
@@ -402,6 +501,13 @@ type XAutoClaimArgs struct {
 func (c cmdable) XAutoClaim(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimCmd {
 	args := xAutoClaimArgs(ctx, a)
 	cmd := NewXAutoClaimCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) XAutoClaimWithDeleted(ctx context.Context, a *XAutoClaimArgs) *XAutoClaimWithDeletedCmd {
+	args := xAutoClaimArgs(ctx, a)
+	cmd := NewXAutoClaimWithDeletedCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -468,6 +574,10 @@ func xClaimArgs(a *XClaimArgs) []interface{} {
 //	XTRIM key MAXLEN/MINID ~ threshold LIMIT limit.
 //
 // The redis-server version is lower than 6.2, please set limit to 0.
+//
+// limit == 0 omits the LIMIT clause, a positive limit emits "LIMIT <limit>",
+// and a negative limit (see XTrimLimitDisabled) emits "LIMIT 0" to disable
+// the trimming effort cap. LIMIT requires approx; Redis rejects it otherwise.
 func (c cmdable) xTrim(
 	ctx context.Context, key, strategy string,
 	approx bool, threshold interface{}, limit int64,
@@ -480,9 +590,7 @@ func (c cmdable) xTrim(
 		args = append(args, "=")
 	}
 	args = append(args, threshold)
-	if limit > 0 {
-		args = append(args, "limit", limit)
-	}
+	args = appendXTrimLimit(args, limit)
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
@@ -494,6 +602,12 @@ func (c cmdable) XTrimMaxLen(ctx context.Context, key string, maxLen int64) *Int
 	return c.xTrim(ctx, key, "maxlen", false, maxLen, 0)
 }
 
+// XTrimMaxLenApprox trims the stream using the `~` rule.
+// cmd: XTRIM key MAXLEN ~ maxLen [LIMIT limit]
+//
+// limit == 0 omits the LIMIT clause, limit > 0 emits "LIMIT <limit>", and a
+// negative limit (see XTrimLimitDisabled) emits "LIMIT 0" to disable the
+// trimming effort cap.
 func (c cmdable) XTrimMaxLenApprox(ctx context.Context, key string, maxLen, limit int64) *IntCmd {
 	return c.xTrim(ctx, key, "maxlen", true, maxLen, limit)
 }
@@ -502,10 +616,18 @@ func (c cmdable) XTrimMinID(ctx context.Context, key string, minID string) *IntC
 	return c.xTrim(ctx, key, "minid", false, minID, 0)
 }
 
+// XTrimMinIDApprox trims the stream using the `~` rule.
+// cmd: XTRIM key MINID ~ minID [LIMIT limit]
+//
+// limit == 0 omits the LIMIT clause, limit > 0 emits "LIMIT <limit>", and a
+// negative limit (see XTrimLimitDisabled) emits "LIMIT 0" to disable the
+// trimming effort cap.
 func (c cmdable) XTrimMinIDApprox(ctx context.Context, key string, minID string, limit int64) *IntCmd {
 	return c.xTrim(ctx, key, "minid", true, minID, limit)
 }
 
+// xTrimMode is xTrim with a trailing trimming mode argument (e.g. KEEPREF).
+// The limit semantics are the same as xTrim's.
 func (c cmdable) xTrimMode(
 	ctx context.Context, key, strategy string,
 	approx bool, threshold interface{}, limit int64,
@@ -519,9 +641,7 @@ func (c cmdable) xTrimMode(
 		args = append(args, "=")
 	}
 	args = append(args, threshold)
-	if limit > 0 {
-		args = append(args, "limit", limit)
-	}
+	args = appendXTrimLimit(args, limit)
 	args = append(args, mode)
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)

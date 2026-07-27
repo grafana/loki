@@ -105,9 +105,9 @@ func (r *Reader) NetworksWithin(prefix netip.Prefix, options ...NetworksOption) 
 			return
 		}
 
-		n := &networkOptions{}
+		var n networkOptions
 		for _, option := range options {
-			option(n)
+			option(&n)
 		}
 
 		ip := prefix.Addr()
@@ -268,14 +268,11 @@ func isInIPv4Subtree(ip netip.Addr) bool {
 // We store IPv4 addresses at ::/96 for unclear reasons.
 func v4ToV16(ip netip.Addr) netip.Addr {
 	b4 := ip.As4()
-	var b16 [16]byte
-	copy(b16[12:], b4[:])
-	return netip.AddrFrom16(b16)
+	return netip.AddrFrom16([16]byte{12: b4[0], 13: b4[1], 14: b4[2], 15: b4[3]})
 }
 
 // Converts an IPv4 address embedded in IPv6 to IPv4.
 func v6ToV4(ip netip.Addr) netip.Addr {
 	b := ip.As16()
-	v, _ := netip.AddrFromSlice(b[12:])
-	return v
+	return netip.AddrFrom4([4]byte(b[12:]))
 }

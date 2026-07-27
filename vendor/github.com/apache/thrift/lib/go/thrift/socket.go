@@ -55,10 +55,10 @@ func NewTSocket(hostPort string) (*TSocket, error) {
 //
 // Example:
 //
-//     trans := thrift.NewTSocketConf("localhost:9090", &TConfiguration{
-//         ConnectTimeout: time.Second, // Use 0 for no timeout
-//         SocketTimeout:  time.Second, // Use 0 for no timeout
-//     })
+//	trans := thrift.NewTSocketConf("localhost:9090", &TConfiguration{
+//	    ConnectTimeout: time.Second, // Use 0 for no timeout
+//	    SocketTimeout:  time.Second, // Use 0 for no timeout
+//	})
 func NewTSocketConf(hostPort string, conf *TConfiguration) *TSocket {
 	return NewTSocketFromAddrConf(tcpAddr(hostPort), conf)
 }
@@ -197,7 +197,7 @@ func (p *TSocket) Close() error {
 	return p.conn.Close()
 }
 
-//Returns the remote address of the socket.
+// Returns the remote address of the socket.
 func (p *TSocket) Addr() net.Addr {
 	return p.addr
 }

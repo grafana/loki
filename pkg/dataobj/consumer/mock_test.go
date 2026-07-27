@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -122,7 +123,7 @@ func (f *testBuilderFactory) NewBuilder() (*logsobj.Builder, error) {
 		return nil, errors.New("boom")
 	}
 	f.created++
-	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics)
+	return logsobj.NewBuilder(testBuilderCfg, scratch.NewMemory(), f.metrics, log.NewNopLogger(), nil)
 }
 
 // mockMultiBuilder wraps the production [TOCAlignedMultiBuilder] so processor

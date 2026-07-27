@@ -35,6 +35,58 @@ func (e *AccessDenied) ErrorCode() string {
 }
 func (e *AccessDenied) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
+// The request would exceed the maximum number of annotations allowed per object.
+type AnnotationLimitExceeded struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *AnnotationLimitExceeded) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *AnnotationLimitExceeded) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *AnnotationLimitExceeded) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "AnnotationLimitExceeded"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *AnnotationLimitExceeded) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The annotation name exceeds 512 bytes.
+type AnnotationNameTooLong struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *AnnotationNameTooLong) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *AnnotationNameTooLong) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *AnnotationNameTooLong) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "AnnotationNameTooLong"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *AnnotationNameTooLong) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // The requested bucket name is not available. The bucket namespace is shared by
 // all users of the system. Select a different name and try again.
 type BucketAlreadyExists struct {
@@ -156,6 +208,32 @@ func (e *IdempotencyParameterMismatch) ErrorCode() string {
 }
 func (e *IdempotencyParameterMismatch) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
+// The annotation name you provided is invalid.
+type InvalidAnnotationName struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidAnnotationName) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidAnnotationName) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidAnnotationName) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidAnnotationName"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidAnnotationName) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
 // Object is archived and inaccessible until restored.
 //
 // If the object you are retrieving is stored in the S3 Glacier Flexible Retrieval
@@ -194,6 +272,32 @@ func (e *InvalidObjectState) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *InvalidObjectState) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The annotation prefix you provided is invalid.
+type InvalidPrefix struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *InvalidPrefix) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *InvalidPrefix) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *InvalidPrefix) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "InvalidPrefix"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *InvalidPrefix) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // A parameter or header in your request isn't valid. For details, see the
 // description of this API operation.
@@ -249,6 +353,32 @@ func (e *InvalidWriteOffset) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *InvalidWriteOffset) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The specified annotation does not exist on this object.
+type NoSuchAnnotation struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *NoSuchAnnotation) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *NoSuchAnnotation) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *NoSuchAnnotation) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "NoSuchAnnotation"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *NoSuchAnnotation) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The specified bucket does not exist.
 type NoSuchBucket struct {
@@ -435,3 +565,29 @@ func (e *TooManyParts) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *TooManyParts) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The annotation payload is not valid UTF-8 encoded text.
+type UnsupportedMediaType struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	noSmithyDocumentSerde
+}
+
+func (e *UnsupportedMediaType) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *UnsupportedMediaType) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *UnsupportedMediaType) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "UnsupportedMediaType"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *UnsupportedMediaType) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }

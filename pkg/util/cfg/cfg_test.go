@@ -12,13 +12,13 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	yamlSource := dYAMLStrict([]byte(`
+	yamlSource := dYAML([]byte(`
 server:
   port: 2000
   timeout: 60h
 tls:
   key: YAML
-`))
+`), true)
 
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
@@ -45,13 +45,13 @@ tls:
 }
 
 func TestParseWithInvalidYAML(t *testing.T) {
-	yamlSource := dYAMLStrict([]byte(`
+	yamlSource := dYAML([]byte(`
 servers:
   ports: 2000
   timeoutz: 60h
 tls:
   keey: YAML
-`))
+`), true)
 
 	fs := flag.NewFlagSet(t.Name(), flag.PanicOnError)
 	flagSource := dFlags(fs, []string{"-verbose", "-server.port=21"})
@@ -63,7 +63,7 @@ tls:
 		flagSource,
 	)
 	require.Error(t, err)
-	require.Equal(t, err.Error(), "yaml: construct errors:\n  line 2: field servers not found in type cfg.Data\n  line 6: field keey not found in type cfg.TLS")
+	require.Equal(t, err.Error(), "yaml: construct errors: line 2: field servers not found in type cfg.Data; line 6: field keey not found in type cfg.TLS")
 }
 
 func TestDefaultUnmarshal(t *testing.T) {

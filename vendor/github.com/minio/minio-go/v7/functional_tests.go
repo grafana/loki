@@ -1838,6 +1838,110 @@ func testRemoveObjectsWithVersioning() {
 	logSuccess(testName, function, args, startTime)
 }
 
+// Tests {Put,Get,List,Remove}ObjectAnnotation APIs end to end. Servers that do
+// not implement annotations are detected and skipped (logIgnored) rather than
+// failed: a non-implementing server silently treats the ?annotation request as
+// a plain object write, which is caught here via the parent ETag invariant.
+func testObjectAnnotations() {
+	startTime := time.Now()
+	testName := getFuncName()
+	function := "{Put,Get,List,Remove}ObjectAnnotation()"
+	args := map[string]interface{}{}
+
+	c, err := NewClient(ClientConfig{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "MinIO client object creation failed", err)
+		return
+	}
+
+	bucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "minio-go-test-")
+	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
+	args["bucketName"] = bucketName
+	args["objectName"] = objectName
+
+	if err = c.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: "us-east-1"}); err != nil {
+		logError(testName, function, args, startTime, "", "MakeBucket failed", err)
+		return
+	}
+	defer cleanupBucket(bucketName, c)
+
+	const parentContent = "annotation-parent-content"
+	ui, err := c.PutObject(context.Background(), bucketName, objectName, strings.NewReader(parentContent), int64(len(parentContent)), minio.PutObjectOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "PutObject (parent) failed", err)
+		return
+	}
+
+	annName := "model.labels.json"
+	annPayload := []byte(`{"label":"cat","score":0.98}`)
+	args["annotationName"] = annName
+
+	_, err = c.PutObjectAnnotation(context.Background(), bucketName, objectName, annName, bytes.NewReader(annPayload), minio.PutObjectAnnotationOptions{})
+	if err != nil {
+		if isErrNotImplemented(err) {
+			logIgnored(testName, function, args, startTime, "PutObjectAnnotation")
+			return
+		}
+		logError(testName, function, args, startTime, "", "PutObjectAnnotation failed", err)
+		return
+	}
+
+	// On a server without annotation support the request falls through to a
+	// regular PutObject, changing the parent ETag. Treat that as unsupported.
+	st, err := c.StatObject(context.Background(), bucketName, objectName, minio.StatObjectOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "StatObject failed", err)
+		return
+	}
+	if st.ETag != ui.ETag {
+		logIgnored(testName, function, args, startTime, "PutObjectAnnotation")
+		return
+	}
+
+	annReader, err := c.GetObjectAnnotation(context.Background(), bucketName, objectName, annName, minio.GetObjectAnnotationOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "GetObjectAnnotation failed", err)
+		return
+	}
+	got, err := io.ReadAll(annReader)
+	annReader.Close()
+	if err != nil {
+		logError(testName, function, args, startTime, "", "GetObjectAnnotation read failed", err)
+		return
+	}
+	if !bytes.Equal(got, annPayload) {
+		logError(testName, function, args, startTime, "", "GetObjectAnnotation payload mismatch", fmt.Errorf("got %q want %q", got, annPayload))
+		return
+	}
+
+	anns, err := c.ListObjectAnnotations(context.Background(), bucketName, objectName, minio.ListObjectAnnotationsOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ListObjectAnnotations failed", err)
+		return
+	}
+	if len(anns) != 1 || anns[0].Name != annName {
+		logError(testName, function, args, startTime, "", "ListObjectAnnotations unexpected result", fmt.Errorf("got %+v", anns))
+		return
+	}
+
+	if err = c.RemoveObjectAnnotation(context.Background(), bucketName, objectName, annName, minio.RemoveObjectAnnotationOptions{}); err != nil {
+		logError(testName, function, args, startTime, "", "RemoveObjectAnnotation failed", err)
+		return
+	}
+
+	anns, err = c.ListObjectAnnotations(context.Background(), bucketName, objectName, minio.ListObjectAnnotationsOptions{})
+	if err != nil {
+		logError(testName, function, args, startTime, "", "ListObjectAnnotations (after remove) failed", err)
+		return
+	}
+	if len(anns) != 0 {
+		logError(testName, function, args, startTime, "", "annotation not removed", fmt.Errorf("remaining %d", len(anns)))
+		return
+	}
+
+	logSuccess(testName, function, args, startTime)
+}
+
 func testObjectTaggingWithVersioning() {
 	// initialize logging params
 	startTime := time.Now()
@@ -15026,6 +15130,7 @@ func main() {
 		testRemoveObjectWithVersioning()
 		testRemoveObjectsWithVersioning()
 		testObjectTaggingWithVersioning()
+		testObjectAnnotations()
 		testTrailingChecksums()
 		testPutObjectWithAutomaticChecksums()
 		testGetBucketTagging()

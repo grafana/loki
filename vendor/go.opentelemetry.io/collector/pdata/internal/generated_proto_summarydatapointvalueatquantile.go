@@ -148,7 +148,7 @@ func (orig *SummaryDataPointValueAtQuantile) UnmarshalJSON(iter *json.Iterator) 
 		case "value":
 			orig.Value = iter.ReadFloat64()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

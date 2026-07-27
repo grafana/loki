@@ -2,24 +2,49 @@ package indexgateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
+	dskitclient "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/grafana/loki/v3/pkg/util/discovery"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+type mockDNSProvider struct {
+	addrs []string
+}
+
+func newMockDNSProvider(addrs []string) discovery.DNS {
+	return &mockDNSProvider{
+		addrs: addrs,
+	}
+}
+
+func (m *mockDNSProvider) Addresses() []string {
+	return m.addrs
+}
+
+func (m *mockDNSProvider) Stop() {}
 
 type mockIndexGatewayServer struct {
 	logproto.IndexGatewayServer
@@ -28,6 +53,45 @@ type mockIndexGatewayServer struct {
 func (m mockIndexGatewayServer) GetChunkRef(context.Context, *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
 	return &logproto.GetChunkRefResponse{}, nil
 }
+
+type mockGatewayConn struct {
+	logproto.IndexGatewayClient
+	grpc_health_v1.HealthClient
+	returnErrors bool
+}
+
+func (m *mockGatewayConn) GetChunkRef(context.Context, *logproto.GetChunkRefRequest, ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
+	if m.returnErrors {
+		return nil, errors.New("mock error")
+	}
+	return &logproto.GetChunkRefResponse{}, nil
+}
+
+func (m *mockGatewayConn) GetShards(_ context.Context, _ *logproto.ShardsRequest, _ ...grpc.CallOption) (logproto.IndexGateway_GetShardsClient, error) {
+	if m.returnErrors {
+		return nil, errors.New("mock error")
+	}
+	return &mockShardsClient{}, nil
+}
+
+type mockShardsClient struct {
+	grpc.ClientStream
+	done bool
+}
+
+func (m *mockShardsClient) Recv() (*logproto.ShardsResponse, error) {
+	if m.done {
+		return nil, io.EOF
+	}
+	m.done = true
+	return &logproto.ShardsResponse{}, nil
+}
+
+func (m *mockGatewayConn) Check(context.Context, *grpc_health_v1.HealthCheckRequest, ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
+}
+
+func (m *mockGatewayConn) Close() error { return nil }
 
 type mockTenantLimits map[string]*validation.Limits
 
@@ -156,6 +220,101 @@ func TestGatewayClient_RingMode(t *testing.T) {
 	})
 }
 
+func createSimpleGatewayClient(t *testing.T, addrs []string) (log.Logger, *dskitclient.Pool, *GatewayClient) {
+	logger := log.NewNopLogger()
+	r := prometheus.NewRegistry()
+	o, _ := validation.NewOverrides(validation.Limits{}, nil)
+	client, err := NewGatewayClient(
+		ClientConfig{
+			Mode:             "simple",
+			GRPCClientConfig: grpcclient.Config{},
+			Address:          "1.1.1.1",
+		},
+		r, o, logger, constants.Loki)
+	require.NoError(t, err)
+	defer client.Stop()
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), client.pool))
+	client.dnsProvider = newMockDNSProvider(addrs)
+	pool := configurePool(t, client, logger, 0)
+	return logger, pool, client
+}
+
+func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numErrorsToReturn int) *dskitclient.Pool {
+	pool := dskitclient.NewPool(
+		"test",
+		dskitclient.PoolConfig{CheckInterval: time.Hour},
+		func() ([]string, error) { return client.dnsProvider.Addresses(), nil },
+		dskitclient.PoolAddrFunc(func(string) (dskitclient.PoolClient, error) {
+			var returnErrors bool
+			if numErrorsToReturn > 0 {
+				numErrorsToReturn--
+				returnErrors = true
+			} else {
+				returnErrors = false
+			}
+			return &mockGatewayConn{returnErrors: returnErrors}, nil
+		}),
+		nil, logger,
+	)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
+	client.pool = pool
+	return pool
+}
+
+func TestGatewayClient_SimpleMode_RetriesGetShards(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	// Retry up to 2 errors
+	for numErrorsToReturn := 0; numErrorsToReturn <= 2; numErrorsToReturn++ {
+		configurePool(t, client, logger, numErrorsToReturn)
+		_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
+		require.NoError(t, err)
+	}
+
+	// Fail after 3 errors
+	configurePool(t, client, logger, 3)
+	_, err := client.GetShards(ctx, &logproto.ShardsRequest{})
+	require.Error(t, err)
+}
+
+func TestGatewayClient_SimpleMode_OtherMethods(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	// Retry until we run out of index gateways
+	for numErrorsToReturn := 0; numErrorsToReturn <= 9; numErrorsToReturn++ {
+		configurePool(t, client, logger, numErrorsToReturn)
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+
+	// Fail after every gateway has been tried
+	configurePool(t, client, logger, 10)
+	_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+	require.Error(t, err)
+}
+
+func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
+	_, pool, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	client.limits = mockLimits{maxCapacity: 0.5}
+	for i := 0; i < 1000; i++ {
+		ctx := user.InjectOrgID(context.Background(), "tenant-01")
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+	}
+	require.Len(t, pool.RegisteredAddresses(), 5)
+}
+
 func TestDoubleRegistration(t *testing.T) {
 	logger := log.NewNopLogger()
 	r := prometheus.NewRegistry()
@@ -217,16 +376,75 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
 			mockLimits := &mockLimits{maxCapacity: tt.factor}
-			client := &GatewayClient{limits: mockLimits}
+			// MinShuffleShardSize=0 so the floor does not interfere with these cases
+			client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 			result := client.jumpHashShuffleSharding("tenant1", tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
 
+	t.Run("min shard size", func(t *testing.T) {
+		tenGateways := func() []string {
+			addrs := make([]string, 10)
+			for i := range addrs {
+				addrs[i] = fmt.Sprintf("gateway-%d", i)
+			}
+			return addrs
+		}()
+
+		tests := []struct {
+			description  string
+			addrs        []string
+			factor       float64
+			minShardSize int
+			expectedLen  int
+		}{
+			{
+				description:  "floors the computed size",
+				addrs:        tenGateways,
+				factor:       0.1, // ceil(10*0.1)=1, raised to min=3
+				minShardSize: 3,
+				expectedLen:  3,
+			},
+			{
+				description:  "does not reduce a larger computed size",
+				addrs:        tenGateways,
+				factor:       0.5, // ceil(10*0.5)=5, already > min=3
+				minShardSize: 3,
+				expectedLen:  5,
+			},
+			{
+				description:  "0 disables the floor",
+				addrs:        tenGateways,
+				factor:       0.1, // ceil(10*0.1)=1, min=0 leaves it at 1
+				minShardSize: 0,
+				expectedLen:  1,
+			},
+			{
+				description:  "capped at total available gateways",
+				addrs:        []string{"gateway-0", "gateway-1", "gateway-2", "gateway-3"},
+				factor:       0.1, // ceil(4*0.1)=1, min=10 exceeds total so returns all 4
+				minShardSize: 10,
+				expectedLen:  4,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.description, func(t *testing.T) {
+				client := &GatewayClient{
+					limits: &mockLimits{maxCapacity: tt.factor},
+					cfg:    ClientConfig{MinShuffleShardSize: tt.minShardSize},
+				}
+				result := client.jumpHashShuffleSharding("tenant1", tt.addrs)
+				require.Len(t, result, tt.expectedLen)
+			})
+		}
+	})
+
 	t.Run("same tenant gets same subset", func(t *testing.T) {
 		mockLimits := &mockLimits{maxCapacity: 0.5}
-		client := &GatewayClient{limits: mockLimits}
+		client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 		addrs := []string{"gateway-1", "gateway-2", "gateway-3"}
 
@@ -241,7 +459,7 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 
 	t.Run("different tenants get different subsets", func(t *testing.T) {
 		mockLimits := &mockLimits{maxCapacity: 0.3}
-		client := &GatewayClient{limits: mockLimits}
+		client := &GatewayClient{limits: mockLimits, cfg: ClientConfig{MinShuffleShardSize: 0}}
 
 		addrs := make([]string, 9)
 		for i := range len(addrs) {

@@ -3,7 +3,12 @@
     <name>Nu</name>
     <alias>nu</alias>
     <filename>*.nu</filename>
+    <mime_type>application/x-shellscript</mime_type>
     <mime_type>text/plain</mime_type>
+    <mime_type>text/x-shellscript</mime_type>
+    <analyse first="true" >
+      <regex pattern="(?m)^#!.*/bin/(?:env(?: -[a-zA-Z0-9]+)*(?: --[a-zA-Z0-9-=]+)* |)nu" score="1.0" />
+    </analyse>
   </config>
   <rules>
     <state name="root">

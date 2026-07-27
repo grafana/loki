@@ -22,7 +22,12 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/dataobj/sections/logs")
-var RegionPrefix = "logs.Reader."
+
+// RegionOpen is the xcap region name for the [Reader.Open] operation.
+var RegionOpen = "logs.Reader.Open"
+
+// RegionRead is the xcap region name for the [Reader.Read] operation.
+var RegionRead = "logs.Reader.Read"
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -189,7 +194,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, RegionPrefix+"Read")
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, RegionRead)
 	} else {
 		// inject span into context for inner readers to record observations.
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
@@ -223,7 +228,7 @@ func (r *Reader) init(ctx context.Context) error {
 		r.opts.Allocator = memory.DefaultAllocator
 	}
 
-	ctx, span := xcap.StartSpan(ctx, tracer, RegionPrefix+"Open")
+	ctx, span := xcap.StartSpan(ctx, tracer, RegionOpen)
 	defer span.End()
 
 	// Compose dataset using projected columns and any additional columns

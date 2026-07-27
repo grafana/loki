@@ -34,6 +34,7 @@ type DataObjTeeConfig struct {
 	PerPartitionRateBytes int           `yaml:"per_partition_rate_bytes"`
 	DebugMetricsEnabled   bool          `yaml:"debug_metrics_enabled"`
 	RateBatchWindow       time.Duration `yaml:"rate_batch_window"`
+	UseRendezvousHashing  bool          `yaml:"use_rendezvous_hashing"` // temporary feature flag while we verify this is safe
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -43,6 +44,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 	f.BoolVar(&c.DebugMetricsEnabled, "distributor.dataobj-tee.debug-metrics-enabled", false, "Enables optional debug metrics.")
 	f.DurationVar(&c.RateBatchWindow, "distributor.dataobj-tee.rate-batch-window", 0, "Duration to accumulate rate updates before sending to limits frontend. Set to 0 to disable batching.")
+	f.BoolVar(&c.UseRendezvousHashing, "distributor.dataobj-tee.use-rendezvous-hashing", false, "Enables use of rendezvous hashing. When this is false, consistent hashing is used instead.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
@@ -55,8 +57,8 @@ func (c *DataObjTeeConfig) Validate() error {
 	if c.MaxBufferedBytes < 0 {
 		return errors.New("max buffered bytes cannot be negative")
 	}
-	if c.PerPartitionRateBytes < 0 {
-		return errors.New("per partition rate bytes cannot be negative")
+	if c.PerPartitionRateBytes <= 0 {
+		return errors.New("per partition rate bytes must be positive")
 	}
 	return nil
 }
@@ -211,10 +213,10 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytes uint64, pushTracker *PushTracker) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmentedStream, rateBytes, tenantRateBytesLimit uint64, pushTracker *PushTracker) {
 	t.streams.Inc()
 
-	partition, err := t.resolver.Resolve(ctx, tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytes)
+	partition, err := t.resolver.Resolve(tenant, stream.SegmentationKey, stream.HashKey, rateBytes, tenantRateBytesLimit)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to resolve partition", "err", err)
 		t.streamFailures.Inc()

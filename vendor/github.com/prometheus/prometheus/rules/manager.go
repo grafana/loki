@@ -53,6 +53,8 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable) QueryFunc {
 		if err != nil {
 			return nil, err
 		}
+		defer q.Close()
+
 		res := q.Exec(ctx)
 		if res.Err != nil {
 			return nil, res.Err
@@ -309,6 +311,8 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				m.GroupLastDuration.DeleteLabelValues(n)
 				m.GroupRules.DeleteLabelValues(n)
 				m.GroupSamples.DeleteLabelValues((n))
+				m.GroupLastRuleDurationSum.DeleteLabelValues(n)
+				m.GroupLastRestoreDuration.DeleteLabelValues(n)
 			}
 			wg.Done()
 		}(n, oldg)

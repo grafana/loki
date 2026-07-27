@@ -2,6 +2,7 @@ package runewidth
 
 import (
 	"os"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -25,13 +26,19 @@ var (
 )
 
 var (
-	zerowidth table // combining + nonprint merged for faster zero-width lookup
-	widewidth table // ambiguous + doublewidth merged for EA path
+	zerowidth       table // combining + nonprint merged for faster zero-width lookup
+	widewidth       table // ambiguous + doublewidth merged for EA path
+	eastAsianWidth  widthTable
+	eastAsianWidth0 [0x300]byte
 )
 
 func init() {
 	zerowidth = mergeIntervals(combining, nonprint)
 	widewidth = mergeIntervals(ambiguous, doublewidth)
+	eastAsianWidth = makeWidthTable(zerowidth, widewidth)
+	for r := range eastAsianWidth0 {
+		eastAsianWidth0[r] = byte(runeWidthEastAsian(rune(r)))
+	}
 	handleEnv()
 }
 
@@ -90,6 +97,14 @@ type interval struct {
 
 type table []interval
 
+type widthInterval struct {
+	first rune
+	last  rune
+	width byte
+}
+
+type widthTable []widthInterval
+
 func inTable(r rune, t table) bool {
 	if r < t[0].first {
 		return false
@@ -114,6 +129,71 @@ func inTable(r rune, t table) bool {
 	}
 
 	return false
+}
+
+func makeWidthTable(zero, two table) widthTable {
+	wt := make(widthTable, 0, len(zero)+len(two))
+	zi := 0
+	for _, iv := range two {
+		start := iv.first
+		for zi < len(zero) && zero[zi].last < start {
+			zi++
+		}
+		for i := zi; i < len(zero) && zero[i].first <= iv.last; i++ {
+			if start < zero[i].first {
+				wt = append(wt, widthInterval{start, zero[i].first - 1, 2})
+			}
+			if start <= zero[i].last {
+				start = zero[i].last + 1
+			}
+			if start > iv.last {
+				break
+			}
+		}
+		if start <= iv.last {
+			wt = append(wt, widthInterval{start, iv.last, 2})
+		}
+	}
+	for _, iv := range zero {
+		wt = append(wt, widthInterval{iv.first, iv.last, 0})
+	}
+	sort.Slice(wt, func(i, j int) bool {
+		return wt[i].first < wt[j].first
+	})
+	return wt
+}
+
+func inWidthTable(r rune, t widthTable) (int, bool) {
+	if r < t[0].first {
+		return 0, false
+	}
+	if r > t[len(t)-1].last {
+		return 0, false
+	}
+
+	bot := 0
+	top := len(t) - 1
+	for top >= bot {
+		mid := (bot + top) >> 1
+
+		switch {
+		case t[mid].last < r:
+			bot = mid + 1
+		case t[mid].first > r:
+			top = mid - 1
+		default:
+			return int(t[mid].width), true
+		}
+	}
+
+	return 0, false
+}
+
+func runeWidthEastAsian(r rune) int {
+	if w, ok := inWidthTable(r, eastAsianWidth); ok {
+		return w
+	}
+	return 1
 }
 
 var private = table{
@@ -153,13 +233,16 @@ func (c *Condition) RuneWidth(r rune) int {
 	}
 	// optimized version, verified by TestRuneWidthChecksums()
 	if !c.EastAsianWidth {
-		switch {
-		case r < 0x20:
+		if r < 0x20 {
 			return 0
-		case (r >= 0x7F && r <= 0x9F) || r == 0xAD: // nonprint
+		}
+		if (r >= 0x7F && r <= 0x9F) || r == 0xAD { // nonprint
 			return 0
-		case r < 0x300:
+		}
+		if r < 0x300 {
 			return 1
+		}
+		switch {
 		case inTable(r, zerowidth):
 			return 0
 		case inTable(r, doublewidth):
@@ -167,20 +250,18 @@ func (c *Condition) RuneWidth(r rune) int {
 		default:
 			return 1
 		}
-	} else {
-		switch {
-		case inTable(r, zerowidth):
-			return 0
-		case inTable(r, narrow):
-			return 1
-		case inTable(r, widewidth):
-			return 2
-		case !c.StrictEmojiNeutral && inTable(r, emoji):
-			return 2
-		default:
-			return 1
-		}
 	}
+
+	if r < 0x300 {
+		return int(eastAsianWidth0[r])
+	}
+	if w, ok := inWidthTable(r, eastAsianWidth); ok {
+		return w
+	}
+	if !c.StrictEmojiNeutral && inTable(r, emoji) {
+		return 2
+	}
+	return 1
 }
 
 // CreateLUT will create an in-memory lookup table of 557056 bytes for faster operation.
@@ -206,6 +287,13 @@ func (c *Condition) CreateLUT() {
 
 // StringWidth return width as you can see
 func (c *Condition) StringWidth(s string) (width int) {
+	if len(s) == 1 {
+		b := s[0]
+		if b < 0x20 || b == 0x7F {
+			return 0
+		}
+		return 1
+	}
 	if len(s) > 0 && len(s) <= utf8.UTFMax {
 		r, size := utf8.DecodeRuneInString(s)
 		if size == len(s) {
@@ -213,15 +301,19 @@ func (c *Condition) StringWidth(s string) (width int) {
 		}
 	}
 	// ASCII fast path: no grapheme clustering needed for pure ASCII
-	if isAllASCII(s) {
-		for i := 0; i < len(s); i++ {
-			b := s[i]
-			if b >= 0x20 && b != 0x7F {
-				width++
-			}
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b >= 0x80 {
+			goto graphemes
 		}
-		return
+		if b >= 0x20 && b != 0x7F {
+			width++
+		}
 	}
+	return
+
+graphemes:
+	width = 0
 	g := graphemes.FromString(s)
 	for g.Next() {
 		var chWidth int
@@ -234,15 +326,6 @@ func (c *Condition) StringWidth(s string) (width int) {
 		width += chWidth
 	}
 	return
-}
-
-func isAllASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] >= 0x80 {
-			return false
-		}
-	}
-	return true
 }
 
 // Truncate return string truncated with w cells

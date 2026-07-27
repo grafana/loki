@@ -46,14 +46,15 @@ func Test_MiddlewareWithBrokenHeader(t *testing.T) {
 
 func Test_MiddlewareWithHeader(t *testing.T) {
 	limits := QueryLimits{
-		model.Duration(1 * time.Second),
-		model.Duration(1 * time.Second),
-		model.Duration(1 * time.Second),
-		1,
-		model.Duration(1 * time.Second),
-		[]string{"foo", "bar"},
-		10,
-		10,
+		MaxQueryLength:          model.Duration(1 * time.Second),
+		MaxQueryRange:           model.Duration(1 * time.Second),
+		MaxQueryLookback:        model.Duration(1 * time.Second),
+		MaxEntriesLimitPerQuery: 1,
+		QueryTimeout:            model.Duration(1 * time.Second),
+		RequiredLabels:          []string{"foo", "bar"},
+		RequiredNumberLabels:    10,
+		MaxQueryBytesRead:       10,
+		TSDBShardingStrategy:    "power_of_two",
 	}
 
 	nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {

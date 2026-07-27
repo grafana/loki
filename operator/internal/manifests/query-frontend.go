@@ -238,7 +238,6 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 // query-frontend pods.
 func NewQueryFrontendPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	ma := intstr.FromInt(1)
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -253,7 +252,7 @@ func NewQueryFrontendPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBu
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &ma,
+			MaxUnavailable: ptr.To(intstr.FromInt32(1)),
 		},
 	}
 }

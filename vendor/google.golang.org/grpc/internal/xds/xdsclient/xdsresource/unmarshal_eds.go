@@ -74,11 +74,16 @@ func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
 		return "", EndpointsUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
 
+	if cla.GetClusterName() == "" {
+		return "", EndpointsUpdate{}, fmt.Errorf("empty resource name in endpoints resource")
+	}
+
 	u, err := parseEDSRespProto(cla)
 	if err != nil {
 		return cla.GetClusterName(), EndpointsUpdate{}, err
 	}
 	u.Raw = r
+
 	return cla.GetClusterName(), u, nil
 }
 

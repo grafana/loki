@@ -94,8 +94,7 @@ func TestConfigDiffHandler(t *testing.T) {
 				return &c
 			},
 			expectedStatusCode: 500,
-			expectedBody: "yaml: construct errors:\n" +
-				"  line 1: cannot construct !!str `x` into map[string]interface {}\n",
+			expectedBody:       "yaml: construct errors: line 1: cannot construct !!str `x` into map[string]interface {}\n",
 		},
 	} {
 		defaultCfg := newDefaultDiffConfigMock()

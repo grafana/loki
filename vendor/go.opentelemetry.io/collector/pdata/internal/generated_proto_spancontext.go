@@ -176,7 +176,7 @@ func (orig *SpanContext) UnmarshalJSON(iter *json.Iterator) {
 		case "remote":
 			orig.Remote = iter.ReadBool()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

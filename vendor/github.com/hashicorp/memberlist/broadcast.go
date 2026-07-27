@@ -62,7 +62,7 @@ func (m *Memberlist) encodeBroadcastNotify(node string, msgType messageType, msg
 	if err != nil {
 		m.logger.Printf("[ERR] memberlist: Failed to encode message for broadcast: %s", err)
 	} else {
-		m.queueBroadcast(node, buf.Bytes(), notify)
+		m.queueBroadcast(node, buf, notify)
 	}
 }
 

@@ -104,9 +104,17 @@ func (builder) IsTerminal() bool {
 	return false
 }
 
-var _ httpfilter.ClientInterceptorBuilder = builder{}
+func (builder) BuildClientFilter() httpfilter.ClientFilter {
+	return clientFilter{}
+}
 
-func (builder) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
+var _ httpfilter.ClientFilterBuilder = builder{}
+
+type clientFilter struct{}
+
+func (clientFilter) Close() {}
+
+func (clientFilter) BuildClientInterceptor(cfg, override httpfilter.FilterConfig) (iresolver.ClientInterceptor, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("fault: nil config provided")
 	}
@@ -160,6 +168,8 @@ func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, done f
 	}
 	return newStream(ctx, done)
 }
+
+func (i *interceptor) Close() {}
 
 // For overriding in tests
 var randIntn = rand.IntN

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -76,7 +77,7 @@ var TLSVersions = map[string]TLSVersion{
 	"TLS10": (TLSVersion)(tls.VersionTLS10),
 }
 
-func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (tv *TLSVersion) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	err := unmarshal(&s)
 	if err != nil {
@@ -89,7 +90,7 @@ func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return fmt.Errorf("unknown TLS version: %s", s)
 }
 
-func (tv TLSVersion) MarshalYAML() (interface{}, error) {
+func (tv TLSVersion) MarshalYAML() (any, error) {
 	for s, v := range TLSVersions {
 		if tv == v {
 			return s, nil
@@ -178,7 +179,7 @@ type URL struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for URLs.
-func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (u *URL) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -193,7 +194,7 @@ func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface for URLs.
-func (u URL) MarshalYAML() (interface{}, error) {
+func (u URL) MarshalYAML() (any, error) {
 	if u.URL != nil {
 		return u.Redacted(), nil
 	}
@@ -269,16 +270,16 @@ type OAuth2 struct {
 	Audience string `yaml:"audience,omitempty" json:"audience,omitempty"`
 	// Claims is a map of claims to be added to the JWT token. Only used if
 	// GrantType is set to "urn:ietf:params:oauth:grant-type:jwt-bearer".
-	Claims         map[string]interface{} `yaml:"claims,omitempty" json:"claims,omitempty"`
-	Scopes         []string               `yaml:"scopes,omitempty" json:"scopes,omitempty"`
-	TokenURL       string                 `yaml:"token_url,omitempty" json:"token_url,omitempty"`
-	EndpointParams map[string]string      `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
-	TLSConfig      TLSConfig              `yaml:"tls_config,omitempty"`
+	Claims         map[string]any    `yaml:"claims,omitempty" json:"claims,omitempty"`
+	Scopes         []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
+	TokenURL       string            `yaml:"token_url,omitempty" json:"token_url,omitempty"`
+	EndpointParams map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+	TLSConfig      TLSConfig         `yaml:"tls_config,omitempty"`
 	ProxyConfig    `yaml:",inline"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (o *OAuth2) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (o *OAuth2) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain OAuth2
 	if err := unmarshal((*plain)(o)); err != nil {
 		return err
@@ -324,7 +325,7 @@ func LoadHTTPConfigFile(filename string) (*HTTPClientConfig, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cfg.SetDirectory(filepath.Dir(filepath.Dir(filename)))
+	cfg.SetDirectory(filepath.Dir(filename))
 	return cfg, content, nil
 }
 
@@ -463,7 +464,7 @@ func (c *HTTPClientConfig) Validate() error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *HTTPClientConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *HTTPClientConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain HTTPClientConfig
 	*c = DefaultHTTPClientConfig
 	if err := unmarshal((*plain)(c)); err != nil {
@@ -483,7 +484,7 @@ func (c *HTTPClientConfig) UnmarshalJSON(data []byte) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (a *BasicAuth) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (a *BasicAuth) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain BasicAuth
 	return unmarshal((*plain)(a))
 }
@@ -717,10 +718,18 @@ func NewRoundTripperFromConfigWithContext(ctx context.Context, cfg HTTPClientCon
 					return nil, fmt.Errorf("unable to use client secret: %w", err)
 				}
 			}
-			rt = NewOAuth2RoundTripper(oauthCredential, cfg.OAuth2, rt, &opts)
+			rt = NewOAuth2RoundTripper(oauthCredential, cfg.OAuth2, rt, optFuncs...)
 		}
 
 		if cfg.HTTPHeaders != nil {
+			// Strip sensitive headers added by headersRoundTripper on cross-host
+			// redirects before they reach the transport. Only needed when
+			// redirects are actually followed; when FollowRedirects is false
+			// CheckRedirect returns ErrUseLastResponse immediately so there are
+			// no subsequent requests.
+			if cfg.FollowRedirects {
+				rt = &sensitiveHeadersStripRT{next: rt}
+			}
 			rt = NewHeadersRoundTripper(cfg.HTTPHeaders, rt)
 		}
 
@@ -862,7 +871,7 @@ func NewAuthorizationCredentialsRoundTripper(authType string, authCredentials Se
 }
 
 func (rt *authorizationCredentialsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if len(req.Header.Get("Authorization")) != 0 {
+	if len(req.Header.Get("Authorization")) != 0 || isCrossHostRedirect(req) {
 		return rt.rt.RoundTrip(req)
 	}
 
@@ -900,7 +909,7 @@ func NewBasicAuthRoundTripper(username, password SecretReader, rt http.RoundTrip
 }
 
 func (rt *basicAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if len(req.Header.Get("Authorization")) != 0 {
+	if len(req.Header.Get("Authorization")) != 0 || isCrossHostRedirect(req) {
 		return rt.rt.RoundTrip(req)
 	}
 	var username string
@@ -942,16 +951,26 @@ type oauth2RoundTripper struct {
 	client          *http.Client
 }
 
-func NewOAuth2RoundTripper(oauthCredential SecretReader, config *OAuth2, next http.RoundTripper, opts *httpClientOptions) http.RoundTripper {
+// NewOAuth2RoundTripper returns a round tripper that performs OAuth2
+// authentication. The opts variadic parameter accepts any HTTPClientOption
+// (e.g. WithDialContextFunc, WithKeepAlivesDisabled) so that callers outside
+// this package can fully configure the transport without needing access to the
+// unexported *httpClientOptions type.
+func NewOAuth2RoundTripper(oauthCredential SecretReader, config *OAuth2, next http.RoundTripper, optFuncs ...HTTPClientOption) http.RoundTripper {
 	if oauthCredential == nil {
 		oauthCredential = NewInlineSecret("")
+	}
+
+	opts := defaultHTTPClientOptions
+	for _, opt := range optFuncs {
+		opt.applyToHTTPClientOptions(&opts)
 	}
 
 	return &oauth2RoundTripper{
 		config: config,
 		// A correct tokenSource will be added later on.
 		lastRT:          &oauth2.Transport{Base: next},
-		opts:            opts,
+		opts:            &opts,
 		oauthCredential: oauthCredential,
 	}
 }
@@ -977,6 +996,7 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, clientCred
 			IdleConnTimeout:       10 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
+			DialContext:           rt.opts.dialContextFunc,
 		}, nil
 	}
 
@@ -1048,10 +1068,28 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, clientCred
 }
 
 func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if isCrossHostRedirect(req) {
+		// Bypass the OAuth2 transport so no token is attached. Read Base under
+		// the lock to avoid a data race with concurrent reconfigurations.
+		rt.mtx.RLock()
+		base := rt.lastRT.Base
+		rt.mtx.RUnlock()
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		return base.RoundTrip(req)
+	}
+
 	var (
 		secret    string
 		needsInit bool
 	)
+
+	// This should not happen when config goes through the normal Prometheus
+	// validation path, but guard against a nil credential to avoid a panic.
+	if rt.oauthCredential == nil {
+		return nil, errors.New("oauth2 client secret is required")
+	}
 
 	rt.mtx.RLock()
 	secret = rt.lastSecret
@@ -1106,6 +1144,98 @@ func mapToValues(m map[string]string) url.Values {
 	return v
 }
 
+// isCrossHostRedirect reports whether req is a redirect that has left the
+// original request's host at any point in the chain. It detects this by walking
+// the req.Response chain (which Go's HTTP client populates on every redirect
+// hop) to find the original request's hostname, then checking every hop in the
+// chain against it.
+//
+// The decision is sticky, mirroring net/http: once any hop leaves the original
+// host's domain, credentials and sensitive headers stay stripped for the rest
+// of the chain, even if a later hop redirects back to the original host.
+//
+// This works regardless of whether the caller uses NewClientFromConfig or a
+// custom http.Client built from NewRoundTripperFromConfigWithContext directly.
+func isCrossHostRedirect(req *http.Request) bool {
+	if req.Response == nil {
+		return false
+	}
+	originalHost := strings.ToLower(originalRequestHost(req))
+	for r := req; r.Response != nil && r.Response.Request != nil; r = r.Response.Request {
+		if !isDomainOrSubdomain(strings.ToLower(r.URL.Hostname()), originalHost) {
+			return true
+		}
+	}
+	return false
+}
+
+func originalRequestHost(req *http.Request) string {
+	r := req
+	for r.Response != nil && r.Response.Request != nil {
+		r = r.Response.Request
+	}
+	return r.URL.Hostname()
+}
+
+// sensitiveHeadersOnRedirect lists the headers that must not be forwarded when
+// following a redirect to a different host. The first four entries match the
+// list stripped by makeHeadersCopier in net/http/client.go; we additionally
+// strip the Proxy-* headers, which net/http does not, to avoid leaking proxy
+// credentials to an untrusted host.
+var sensitiveHeadersOnRedirect = map[string]struct{}{
+	"Authorization": {},
+	// "Www-Authenticate" is the canonical form produced by
+	// textproto.CanonicalMIMEHeaderKey; it is not a typo of "WWW-Authenticate".
+	"Www-Authenticate":    {},
+	"Cookie":              {},
+	"Cookie2":             {},
+	"Proxy-Authorization": {},
+	"Proxy-Authenticate":  {},
+}
+
+// sensitiveHeadersStripRT strips sensitive headers from requests marked as
+// cross-host redirects before passing them to the underlying transport.
+type sensitiveHeadersStripRT struct {
+	next http.RoundTripper
+}
+
+func (rt *sensitiveHeadersStripRT) RoundTrip(req *http.Request) (*http.Response, error) {
+	if isCrossHostRedirect(req) {
+		req = cloneRequest(req)
+		for h := range sensitiveHeadersOnRedirect {
+			req.Header.Del(h)
+		}
+	}
+	return rt.next.RoundTrip(req)
+}
+
+func (rt *sensitiveHeadersStripRT) CloseIdleConnections() {
+	if ci, ok := rt.next.(closeIdler); ok {
+		ci.CloseIdleConnections()
+	}
+}
+
+// isDomainOrSubdomain reports whether sub is a subdomain (or exact match) of
+// parent. It mirrors isDomainOrSubdomain from net/http/client.go.
+func isDomainOrSubdomain(sub, parent string) bool {
+	if parent == "" {
+		return false
+	}
+	if sub == parent {
+		return true
+	}
+	// A colon means sub is an IPv6 address; a percent sign introduces an IPv6
+	// zone ID. Neither can be a hostname, and both could otherwise pass the
+	// suffix check below (e.g. "::1%.www.example.com" ends with "example.com").
+	if strings.ContainsAny(sub, ":%") {
+		return false
+	}
+	if !strings.HasSuffix(sub, parent) {
+		return false
+	}
+	return sub[len(sub)-len(parent)-1] == '.'
+}
+
 // cloneRequest returns a clone of the provided *http.Request.
 // The clone is a shallow copy of the struct and its Header map.
 func cloneRequest(r *http.Request) *http.Request {
@@ -1113,10 +1243,7 @@ func cloneRequest(r *http.Request) *http.Request {
 	r2 := new(http.Request)
 	*r2 = *r
 	// Deep copy of the Header.
-	r2.Header = make(http.Header)
-	for k, s := range r.Header {
-		r2.Header[k] = s
-	}
+	maps.Copy(r.Header, r2.Header)
 	return r2
 }
 
@@ -1239,7 +1366,7 @@ func (c *TLSConfig) SetDirectory(dir string) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *TLSConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain TLSConfig
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
@@ -1460,7 +1587,7 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	rt := t.rt
 	t.mtx.RUnlock()
 	if equal {
-		// The CA cert hasn't changed, use the existing RoundTripper.
+		// The TLS materials (CA, cert, key) haven't changed, use the existing RoundTripper.
 		return rt.RoundTrip(req)
 	}
 
@@ -1468,10 +1595,7 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// The cert and key files are read separately by the client
 	// using GetClientCertificate.
 	tlsConfig := t.tlsConfig.Clone()
-	if !updateRootCA(tlsConfig, caData) {
-		if t.settings.CA == nil {
-			return nil, errors.New("unable to use specified CA cert: none configured")
-		}
+	if t.settings.CA != nil && !updateRootCA(tlsConfig, caData) {
 		return nil, fmt.Errorf("unable to use specified CA cert %s", t.settings.CA.Description())
 	}
 	rt, err = t.newRT(tlsConfig)

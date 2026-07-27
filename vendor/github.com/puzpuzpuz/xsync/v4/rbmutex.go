@@ -55,7 +55,7 @@ type rslot struct {
 
 // NewRBMutex creates a new RBMutex instance.
 func NewRBMutex() *RBMutex {
-	nslots := nextPowOf2(parallelism())
+	nslots := uint32(nextPowOf2(uint64(parallelism())))
 	mu := RBMutex{
 		rslots: make([]rslot, nslots),
 		rmask:  nslots - 1,

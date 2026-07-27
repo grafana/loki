@@ -198,12 +198,13 @@ func (p *rlsPicker) delegateToChildPoliciesLocked(dcEntry *cacheEntry, info bala
 			res, err := state.Picker.Pick(info)
 			if err != nil {
 				pr := errToPickResult(err)
+				customLabel := estats.CustomLabelFromContext(info.Ctx)
 				return res, func() {
 					if pr == "queue" {
 						// Don't record metrics for queued Picks.
 						return
 					}
-					targetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, cpw.target, pr)
+					targetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, cpw.target, pr, customLabel)
 				}, err
 			}
 
@@ -213,7 +214,8 @@ func (p *rlsPicker) delegateToChildPoliciesLocked(dcEntry *cacheEntry, info bala
 				res.Metadata.Append(rlsDataHeaderName, dcEntry.headerData)
 			}
 			return res, func() {
-				targetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, cpw.target, "complete")
+				customLabel := estats.CustomLabelFromContext(info.Ctx)
+				targetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, cpw.target, "complete", customLabel)
 			}, nil
 		}
 	}
@@ -227,6 +229,8 @@ func (p *rlsPicker) delegateToChildPoliciesLocked(dcEntry *cacheEntry, info bala
 // target if one is configured, or fails the pick with the given error. Returns
 // a function to be invoked to record metrics.
 func (p *rlsPicker) useDefaultPickIfPossible(info balancer.PickInfo, errOnNoDefault error) (balancer.PickResult, func(), error) {
+	customLabel := estats.CustomLabelFromContext(info.Ctx)
+
 	if p.defaultPolicy != nil {
 		state := (*balancer.State)(atomic.LoadPointer(&p.defaultPolicy.state))
 		res, err := state.Picker.Pick(info)
@@ -236,12 +240,12 @@ func (p *rlsPicker) useDefaultPickIfPossible(info balancer.PickInfo, errOnNoDefa
 				// Don't record metrics for queued Picks.
 				return
 			}
-			defaultTargetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, p.defaultPolicy.target, pr)
+			defaultTargetPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, p.defaultPolicy.target, pr, customLabel)
 		}, err
 	}
 
 	return balancer.PickResult{}, func() {
-		failedPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget)
+		failedPicksMetric.Record(p.metricsRecorder, 1, p.grpcTarget, p.rlsServerTarget, customLabel)
 	}, errOnNoDefault
 }
 

@@ -1,4 +1,4 @@
-<style name="rose-pine-dawn">
+<style name="rose-pine-dawn" counterpart="rose-pine">
   <entry type="Error" style="#b4637a"/>
   <entry type="Background" style="bg:#faf4ed"/>
   <entry type="Keyword" style="#286983"/>

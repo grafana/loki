@@ -76,7 +76,7 @@ func getOrCreateCallInfo(ctx context.Context, cc *grpc.ClientConn, method string
 			target: cc.CanonicalTarget(),
 			method: determineMethod(method, opts...),
 		}
-		ctx = setCallInfo(ctx, ci)
+		ctx = context.WithValue(ctx, callInfoKey{}, ci)
 	}
 	return ctx, ci
 }
@@ -134,11 +134,18 @@ func (h *clientMetricsHandler) streamInterceptor(ctx context.Context, desc *grpc
 // perCallMetrics records per call metrics for both unary and stream calls.
 func (h *clientMetricsHandler) perCallMetrics(ctx context.Context, err error, startTime time.Time, ci *callInfo) {
 	callLatency := float64(time.Since(startTime)) / float64(time.Second)
-	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
+	attributes := []otelattribute.KeyValue{
 		otelattribute.String("grpc.method", ci.method),
 		otelattribute.String("grpc.target", ci.target),
 		otelattribute.String("grpc.status", canonicalString(status.Code(err))),
-	))
+	}
+	for _, o := range h.options.MetricsOptions.OptionalLabels {
+		if o == "grpc.client.call.custom" {
+			label := estats.CustomLabelFromContext(ctx)
+			attributes = append(attributes, otelattribute.String(o, label))
+		}
+	}
+	attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
 	h.clientMetrics.callDuration.Record(ctx, callLatency, attrs)
 }
 
@@ -149,17 +156,6 @@ func (h *clientMetricsHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo
 
 // HandleConn exists to satisfy stats.Handler.
 func (h *clientMetricsHandler) HandleConn(context.Context, stats.ConnStats) {}
-
-// getOrCreateRPCAttemptInfo retrieves or creates an rpc attemptInfo object
-// and ensures it is set in the context along with the rpcInfo.
-func getOrCreateRPCAttemptInfo(ctx context.Context) (context.Context, *attemptInfo) {
-	ri := getRPCInfo(ctx)
-	if ri != nil {
-		return ctx, ri.ai
-	}
-	ri = &rpcInfo{ai: &attemptInfo{}}
-	return setRPCInfo(ctx, ri), ri.ai
-}
 
 // TagRPC implements per RPC attempt context management for metrics.
 func (h *clientMetricsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
@@ -180,17 +176,18 @@ func (h *clientMetricsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInf
 		}
 		ctx = istats.SetLabels(ctx, labels)
 	}
-	ctx, ai := getOrCreateRPCAttemptInfo(ctx)
+	ctx, ri := getOrCreateClientRPCInfo(ctx)
+	ai := ri.ai
 	ai.startTime = time.Now()
 	ai.xdsLabels = labels.TelemetryLabels
 	ai.method = removeLeadingSlash(info.FullMethodName)
 
-	return setRPCInfo(ctx, &rpcInfo{ai: ai})
+	return ctx
 }
 
 // HandleRPC handles per RPC stats implementation.
 func (h *clientMetricsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
-	ri := getRPCInfo(ctx)
+	ri := clientRPCInfo(ctx)
 	if ri == nil {
 		logger.Error("ctx passed into client side stats handler metrics event handling has no client attempt data present")
 		return
@@ -207,10 +204,18 @@ func (h *clientMetricsHandler) processRPCEvent(ctx context.Context, s stats.RPCS
 			return
 		}
 
-		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(
+		attributes := []otelattribute.KeyValue{
 			otelattribute.String("grpc.method", ci.method),
 			otelattribute.String("grpc.target", ci.target),
-		))
+		}
+		for _, o := range h.options.MetricsOptions.OptionalLabels {
+			if o == "grpc.client.call.custom" {
+				label := estats.CustomLabelFromContext(ctx)
+				attributes = append(attributes, otelattribute.String(o, label))
+			}
+		}
+
+		attrs := otelmetric.WithAttributeSet(otelattribute.NewSet(attributes...))
 		h.clientMetrics.attemptStarted.Add(ctx, 1, attrs)
 	case *stats.OutPayload:
 		atomic.AddInt64(&ai.sentCompressedBytes, int64(st.CompressedLength))
@@ -264,6 +269,9 @@ func (h *clientMetricsHandler) processRPCEnd(ctx context.Context, ai *attemptInf
 		// CSM Plugin Option layer by adding an optional labels API.
 		if val, ok := ai.xdsLabels[o]; ok {
 			attributes = append(attributes, otelattribute.String(o, val))
+		} else if o == "grpc.client.call.custom" {
+			label := estats.CustomLabelFromContext(ctx)
+			attributes = append(attributes, otelattribute.String(o, label))
 		}
 	}
 

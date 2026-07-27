@@ -448,6 +448,19 @@ func (ds *deleteRequestsStoreSQLite) GetCacheGenerationNumber(ctx context.Contex
 	return genNumber, nil
 }
 
+// UpdateCacheGenerationNumber bumps the cache generation number for the user so any query result caches get invalidated.
+func (ds *deleteRequestsStoreSQLite) UpdateCacheGenerationNumber(ctx context.Context, userID string) error {
+	return ds.sqliteStore.Exec(ctx, true, sqlQuery{
+		query: sqlUpdateCacheGen,
+		execOpts: &sqlitex.ExecOptions{
+			Args: []any{
+				userID,
+				time.Now().UnixNano(),
+			},
+		},
+	})
+}
+
 func (ds *deleteRequestsStoreSQLite) queryDeleteRequests(ctx context.Context, query string, args []any) ([]deletionproto.DeleteRequest, error) {
 	var requests []deletionproto.DeleteRequest
 	if err := ds.sqliteStore.Exec(ctx, false, sqlQuery{

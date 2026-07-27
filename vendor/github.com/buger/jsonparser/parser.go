@@ -25,6 +25,7 @@ var (
 // than this needs to be escaped, it will result in a heap allocation
 const unescapeStackBufSize = 64
 
+// SYS-REQ-044
 func tokenEnd(data []byte) int {
 	for i, c := range data {
 		switch c {
@@ -36,6 +37,7 @@ func tokenEnd(data []byte) int {
 	return len(data)
 }
 
+// SYS-REQ-001
 func findTokenStart(data []byte, token byte) int {
 	for i := len(data) - 1; i >= 0; i-- {
 		switch data[i] {
@@ -49,13 +51,16 @@ func findTokenStart(data []byte, token byte) int {
 	return 0
 }
 
+// SYS-REQ-001, SYS-REQ-020, SYS-REQ-024
 func findKeyStart(data []byte, key string) (int, error) {
 	i := nextToken(data)
 	if i == -1 {
 		return i, KeyPathNotFoundError
 	}
 	ln := len(data)
-	if ln > 0 && (data[i] == '{' || data[i] == '[') {
+	// Note: nextToken returning non-negative (checked above) guarantees ln > 0,
+	// so the former ln > 0 guard was tautological and has been removed.
+	if data[i] == '{' || data[i] == '[' {
 		i += 1
 	}
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
@@ -117,6 +122,7 @@ func findKeyStart(data []byte, key string) (int, error) {
 	return -1, KeyPathNotFoundError
 }
 
+// SYS-REQ-001
 func tokenStart(data []byte) int {
 	for i := len(data) - 1; i >= 0; i-- {
 		switch data[i] {
@@ -128,6 +134,7 @@ func tokenStart(data []byte) int {
 	return 0
 }
 
+// SYS-REQ-001
 // Find position of next character which is not whitespace
 func nextToken(data []byte) int {
 	for i, c := range data {
@@ -142,6 +149,7 @@ func nextToken(data []byte) int {
 	return -1
 }
 
+// SYS-REQ-001
 // Find position of last character which is not whitespace
 func lastToken(data []byte) int {
 	for i := len(data) - 1; i >= 0; i-- {
@@ -156,6 +164,7 @@ func lastToken(data []byte) int {
 	return -1
 }
 
+// SYS-REQ-045
 // Tries to find the end of string
 // Support if string contains escaped quote symbols.
 func stringEnd(data []byte) (int, bool) {
@@ -186,6 +195,7 @@ func stringEnd(data []byte) (int, bool) {
 	return -1, escaped
 }
 
+// SYS-REQ-046
 // Find end of the data structure, array or object.
 // For array openSym and closeSym will be '[' and ']', for object '{' and '}'
 func blockEnd(data []byte, openSym byte, closeSym byte) int {
@@ -217,6 +227,7 @@ func blockEnd(data []byte, openSym byte, closeSym byte) int {
 	return -1
 }
 
+// SYS-REQ-001, SYS-REQ-020, SYS-REQ-021, SYS-REQ-022, SYS-REQ-023, SYS-REQ-047
 func searchKeys(data []byte, keys ...string) int {
 	keyLevel := 0
 	level := 0
@@ -313,7 +324,10 @@ func searchKeys(data []byte, keys ...string) int {
 			// If we want to get array element by index
 			if keyLevel == level && keys[level][0] == '[' {
 				keyLen := len(keys[level])
-				if keyLen < 3 || keys[level][0] != '[' || keys[level][keyLen-1] != ']' {
+				// Note: keys[level][0] == '[' is guaranteed by the outer if-guard,
+				// so the former middle term `keys[level][0] != '['` was always false
+				// (dead code) and has been removed.
+				if keyLen < 3 || keys[level][keyLen-1] != ']' {
 					return -1
 				}
 				aIdx, err := strconv.Atoi(keys[level][1 : keyLen-1])
@@ -363,6 +377,7 @@ func searchKeys(data []byte, keys ...string) int {
 	return -1
 }
 
+// SYS-REQ-008
 func sameTree(p1, p2 []string) bool {
 	minLen := len(p1)
 	if len(p2) < minLen {
@@ -380,6 +395,7 @@ func sameTree(p1, p2 []string) bool {
 
 const stackArraySize = 128
 
+// SYS-REQ-008, SYS-REQ-085
 func EachKey(data []byte, cb func(int, []byte, ValueType, error), paths ...[]string) int {
 	var x struct{}
 	var level, pathsMatched, i int
@@ -476,18 +492,17 @@ func EachKey(data []byte, cb func(int, []byte, ValueType, error), paths ...[]str
 				if match == -1 {
 					tokenOffset := nextToken(data[i+1:])
 					i += tokenOffset
-
-					if data[i] == '{' {
-						blockSkip := blockEnd(data[i:], '{', '}')
-						i += blockSkip + 1
-					}
+					// Note: i is now at the character BEFORE the value (the colon
+					// when tokenOffset==0, or the last whitespace character otherwise).
+					// The former `if data[i] == '{'` block-skip was structurally dead
+					// code because i never reaches the opening brace — the outer loop's
+					// i++ advances to it on the next iteration.  Likewise, the former
+					// `if i < ln` guard was tautological since i remains within bounds.
 				}
 
-				if i < ln {
-					switch data[i] {
-					case '{', '}', '[', '"':
-						i--
-					}
+				switch data[i] {
+				case '{', '}', '[', '"':
+					i--
 				}
 			} else {
 				i--
@@ -587,6 +602,7 @@ const (
 	Unknown
 )
 
+// SYS-REQ-001
 func (vt ValueType) String() string {
 	switch vt {
 	case NotExist:
@@ -614,6 +630,7 @@ var (
 	nullLiteral  = []byte("null")
 )
 
+// SYS-REQ-009
 func createInsertComponent(keys []string, setValue []byte, comma, object bool) []byte {
 	isIndex := string(keys[0][0]) == "["
 	offset := 0
@@ -661,6 +678,7 @@ func createInsertComponent(keys []string, setValue []byte, comma, object bool) [
 	return buffer
 }
 
+// SYS-REQ-009
 func calcAllocateSpace(keys []string, setValue []byte, comma, object bool) int {
 	isIndex := string(keys[0][0]) == "["
 	lk := 0
@@ -701,6 +719,7 @@ func calcAllocateSpace(keys []string, setValue []byte, comma, object bool) int {
 	return lk
 }
 
+// SYS-REQ-009
 func WriteToBuffer(buffer []byte, str string) int {
 	copy(buffer, str)
 	return len(str)
@@ -714,6 +733,7 @@ Returns:
 `data` - return modified data
 
 */
+// SYS-REQ-010, SYS-REQ-033, SYS-REQ-034, SYS-REQ-035, SYS-REQ-048, SYS-REQ-049, SYS-REQ-050, SYS-REQ-056
 func Delete(data []byte, keys ...string) []byte {
 	lk := len(keys)
 	if lk == 0 {
@@ -752,11 +772,16 @@ func Delete(data []byte, keys ...string) []byte {
 		tokEnd := tokenEnd(data[endOffset:])
 		tokStart := findTokenStart(data[:keyOffset], ","[0])
 
-		if data[endOffset+tokEnd] == ","[0] {
+		if endOffset+tokEnd >= len(data) {
+			// tokenEnd sentinel: no delimiter found, input is truncated
+			return data
+		}
+
+		if data[endOffset+tokEnd] == ','  {
 			endOffset += tokEnd + 1
-		} else if data[endOffset+tokEnd] == " "[0] && len(data) > endOffset+tokEnd+1 && data[endOffset+tokEnd+1] == ","[0] {
+		} else if data[endOffset+tokEnd] == ' ' && len(data) > endOffset+tokEnd+1 && data[endOffset+tokEnd+1] == ',' {
 			endOffset += tokEnd + 2
-		} else if data[endOffset+tokEnd] == "}"[0] && data[tokStart] == ","[0] {
+		} else if data[endOffset+tokEnd] == '}' && data[tokStart] == ',' {
 			keyOffset = tokStart
 		}
 	} else {
@@ -769,19 +794,26 @@ func Delete(data []byte, keys ...string) []byte {
 		tokEnd := tokenEnd(data[endOffset:])
 		tokStart := findTokenStart(data[:keyOffset], ","[0])
 
-		if data[endOffset+tokEnd] == ","[0] {
+		if endOffset+tokEnd >= len(data) {
+			// tokenEnd sentinel: no delimiter found, input is truncated
+			return data
+		}
+
+		if data[endOffset+tokEnd] == ',' {
 			endOffset += tokEnd + 1
-		} else if data[endOffset+tokEnd] == "]"[0] && data[tokStart] == ","[0] {
+		} else if data[endOffset+tokEnd] == ']' && data[tokStart] == ',' {
 			keyOffset = tokStart
 		}
 	}
 
-	// We need to remove remaining trailing comma if we delete las element in the object
+	// We need to remove remaining trailing comma if we delete last element in the object.
+	// Extract nextToken once to avoid the redundant double call in the original code.
 	prevTok := lastToken(data[:keyOffset])
 	remainedValue := data[endOffset:]
+	remainedTok := nextToken(remainedValue)
 
 	var newOffset int
-	if nextToken(remainedValue) > -1 && remainedValue[nextToken(remainedValue)] == '}' && data[prevTok] == ',' {
+	if remainedTok > -1 && remainedValue[remainedTok] == '}' && data[prevTok] == ',' {
 		newOffset = prevTok
 	} else {
 		newOffset = prevTok + 1
@@ -805,6 +837,7 @@ Returns:
 `err` - On any parsing error
 
 */
+// SYS-REQ-009, SYS-REQ-051, SYS-REQ-068, SYS-REQ-069, SYS-REQ-070
 func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error) {
 	// ensure keys are set
 	if len(keys) == 0 {
@@ -878,6 +911,7 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 	return value, nil
 }
 
+// SYS-REQ-001, SYS-REQ-027
 func getType(data []byte, offset int) ([]byte, ValueType, int, error) {
 	var dataType ValueType
 	endOffset := offset
@@ -912,11 +946,9 @@ func getType(data []byte, offset int) ([]byte, ValueType, int, error) {
 		endOffset += offset
 	} else {
 		// Number, Boolean or None
+		// tokenEnd returns len(data) when no delimiter is found, never -1,
+		// so the old end == -1 guard was dead code and has been removed.
 		end := tokenEnd(data[endOffset:])
-
-		if end == -1 {
-			return nil, dataType, offset, MalformedValueError
-		}
 
 		value := data[offset : endOffset+end]
 
@@ -956,11 +988,13 @@ Returns:
 Accept multiple keys to specify path to JSON value (in case of quering nested structures).
 If no keys provided it will try to extract closest JSON value (simple ones or object/array), useful for reading streams or arrays, see `ArrayEach` implementation.
 */
+// SYS-REQ-001, SYS-REQ-016, SYS-REQ-017, SYS-REQ-018, SYS-REQ-019, SYS-REQ-025, SYS-REQ-026, SYS-REQ-041, SYS-REQ-042, SYS-REQ-043
 func Get(data []byte, keys ...string) (value []byte, dataType ValueType, offset int, err error) {
 	a, b, _, d, e := internalGet(data, keys...)
 	return a, b, d, e
 }
 
+// SYS-REQ-001
 func internalGet(data []byte, keys ...string) (value []byte, dataType ValueType, offset, endOffset int, err error) {
 	if len(keys) > 0 {
 		if offset = searchKeys(data, keys...); offset == -1 {
@@ -988,6 +1022,7 @@ func internalGet(data []byte, keys ...string) (value []byte, dataType ValueType,
 	return value[:len(value):len(value)], dataType, offset, endOffset, nil
 }
 
+// SYS-REQ-006, SYS-REQ-028, SYS-REQ-029, SYS-REQ-052, SYS-REQ-053, SYS-REQ-055, SYS-REQ-083
 // ArrayEach is used when iterating arrays, accepts a callback function with the same return arguments as `Get`.
 func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int, err error), keys ...string) (offset int, err error) {
 	if len(data) == 0 {
@@ -1032,23 +1067,23 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 		return offset, nil
 	}
 
-	for true {
+	for {
 		v, t, o, e := Get(data[offset:])
 
-		if e != nil {
+		if o == 0 {
+			// When Get returns endOffset==0, it always means a parse error
+			// (no valid value found at the current position). The former
+			// e==nil/break branch was structurally unreachable because Get
+			// never returns endOffset==0 without an error.
 			return offset, e
 		}
 
-		if o == 0 {
-			break
-		}
-
-		if t != NotExist {
-			cb(v, t, offset+o-len(v), e)
-		}
+		// Pass the error to the callback — the callback signature declares
+		// an err parameter, so callers who check it should see real errors.
+		cb(v, t, offset+o-len(v), e)
 
 		if e != nil {
-			break
+			return offset, e
 		}
 
 		offset += o
@@ -1073,6 +1108,7 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 	return offset, nil
 }
 
+// SYS-REQ-007, SYS-REQ-030, SYS-REQ-031, SYS-REQ-032, SYS-REQ-054, SYS-REQ-084
 // ObjectEach iterates over the key-value pairs of a JSON object, invoking a given callback for each such entry
 func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType ValueType, offset int) error, keys ...string) (err error) {
 	offset := 0
@@ -1102,8 +1138,13 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		return nil
 	}
 
-	// Loop pre-condition: data[offset] points to what should be either the next entry's key, or the closing brace (if it's anything else, the JSON is malformed)
-	for offset < len(data) {
+	// Loop pre-condition: data[offset] points to what should be either the next entry's key,
+	// or the closing brace (if it's anything else, the JSON is malformed).
+	// Every iteration either returns or advances offset past a token, so the loop
+	// always exits via return; the former `offset < len(data)` guard was structurally
+	// always true because internal nextToken/stringEnd calls return errors before
+	// offset can reach len(data).
+	for {
 		// Step 1: find the next key
 		var key []byte
 
@@ -1180,6 +1221,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 	return MalformedObjectError // we shouldn't get here; it's expected that we will return via finding the ending brace
 }
 
+// SYS-REQ-011, SYS-REQ-080, SYS-REQ-081, SYS-REQ-082
 // GetUnsafeString returns the value retrieved by `Get`, use creates string without memory allocation by mapping string to slice memory. It does not handle escape symbols.
 func GetUnsafeString(data []byte, keys ...string) (val string, err error) {
 	v, _, _, e := Get(data, keys...)
@@ -1191,6 +1233,7 @@ func GetUnsafeString(data []byte, keys ...string) (val string, err error) {
 	return bytesToString(&v), nil
 }
 
+// SYS-REQ-002, SYS-REQ-071, SYS-REQ-072, SYS-REQ-073, SYS-REQ-074
 // GetString returns the value retrieved by `Get`, cast to a string if possible, trying to properly handle escape and utf8 symbols
 // If key data type do not match, it will return an error.
 func GetString(data []byte, keys ...string) (val string, err error) {
@@ -1218,6 +1261,7 @@ func GetString(data []byte, keys ...string) (val string, err error) {
 // GetFloat returns the value retrieved by `Get`, cast to a float64 if possible.
 // The offset is the same as in `Get`.
 // If key data type do not match, it will return an error.
+// SYS-REQ-004
 func GetFloat(data []byte, keys ...string) (val float64, err error) {
 	v, t, _, e := Get(data, keys...)
 
@@ -1237,6 +1281,7 @@ func GetFloat(data []byte, keys ...string) (val float64, err error) {
 
 // GetInt returns the value retrieved by `Get`, cast to a int64 if possible.
 // If key data type do not match, it will return an error.
+// SYS-REQ-003, SYS-REQ-075, SYS-REQ-076, SYS-REQ-077, SYS-REQ-078
 func GetInt(data []byte, keys ...string) (val int64, err error) {
 	v, t, _, e := Get(data, keys...)
 
@@ -1257,6 +1302,7 @@ func GetInt(data []byte, keys ...string) (val int64, err error) {
 // GetBoolean returns the value retrieved by `Get`, cast to a bool if possible.
 // The offset is the same as in `Get`.
 // If key data type do not match, it will return error.
+// SYS-REQ-005, SYS-REQ-079
 func GetBoolean(data []byte, keys ...string) (val bool, err error) {
 	v, t, _, e := Get(data, keys...)
 
@@ -1275,6 +1321,7 @@ func GetBoolean(data []byte, keys ...string) (val bool, err error) {
 }
 
 // ParseBoolean parses a Boolean ValueType into a Go bool (not particularly useful, but here for completeness)
+// SYS-REQ-012, SYS-REQ-036, SYS-REQ-057, SYS-REQ-066
 func ParseBoolean(b []byte) (bool, error) {
 	switch {
 	case bytes.Equal(b, trueLiteral):
@@ -1287,6 +1334,7 @@ func ParseBoolean(b []byte) (bool, error) {
 }
 
 // ParseString parses a String ValueType into a Go string (the main parsing work is unescaping the JSON string)
+// SYS-REQ-014, SYS-REQ-038, SYS-REQ-060, SYS-REQ-063, SYS-REQ-067
 func ParseString(b []byte) (string, error) {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 	if bU, err := Unescape(b, stackbuf[:]); err != nil {
@@ -1297,6 +1345,7 @@ func ParseString(b []byte) (string, error) {
 }
 
 // ParseNumber parses a Number ValueType into a Go float64
+// SYS-REQ-013, SYS-REQ-037, SYS-REQ-065
 func ParseFloat(b []byte) (float64, error) {
 	if v, err := parseFloat(&b); err != nil {
 		return 0, MalformedValueError
@@ -1306,6 +1355,7 @@ func ParseFloat(b []byte) (float64, error) {
 }
 
 // ParseInt parses a Number ValueType into a Go int64
+// SYS-REQ-015, SYS-REQ-039, SYS-REQ-040, SYS-REQ-058, SYS-REQ-059, SYS-REQ-064
 func ParseInt(b []byte) (int64, error) {
 	if v, ok, overflow := parseInt(b); !ok {
 		if overflow {

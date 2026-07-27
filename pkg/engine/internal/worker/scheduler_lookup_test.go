@@ -19,6 +19,7 @@ func Test_schedulerLookup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var wg sync.WaitGroup
 		defer wg.Wait()
+		mu := sync.Mutex{}
 
 		// Provide 10 addresses to start with.
 		addrs := []string{
@@ -27,7 +28,11 @@ func Test_schedulerLookup(t *testing.T) {
 		}
 
 		fr := &fakeProvider{
-			resolveFunc: func(_ context.Context, _ []string) ([]string, error) { return addrs, nil },
+			resolveFunc: func(_ context.Context, _ []string) ([]string, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				return addrs, nil
+			},
 		}
 
 		// Manually create a schedulerLookup so we can hook in a custom
@@ -57,7 +62,9 @@ func Test_schedulerLookup(t *testing.T) {
 
 		// Remove all the addresses from discovery; after the next interval, all
 		// handlers should be removed.
+		mu.Lock()
 		addrs = addrs[:0]
+		mu.Unlock()
 		time.Sleep(disc.interval + time.Second)
 		require.Equal(t, int64(0), handlers.Load(), "should have no running handlers")
 	})

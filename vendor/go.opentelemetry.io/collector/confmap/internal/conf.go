@@ -12,7 +12,6 @@ import (
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
 
-	encoder "go.opentelemetry.io/collector/confmap/internal/mapstructure"
 	"go.opentelemetry.io/collector/confmap/internal/metadata"
 )
 
@@ -68,8 +67,7 @@ func (l *Conf) Marshal(rawVal any, opts ...MarshalOption) error {
 	for _, opt := range opts {
 		opt.apply(&set)
 	}
-	enc := encoder.New(EncoderConfig(rawVal, set))
-	data, err := enc.Encode(rawVal)
+	data, err := Encode(rawVal, set)
 	if err != nil {
 		return err
 	}
@@ -194,12 +192,6 @@ func (l *Conf) unsanitizedGet(key string) any {
 // It uses the expandedValue.Value field to replace the expandedValue references.
 func sanitize(a any) any {
 	return sanitizeExpanded(a, false)
-}
-
-// sanitizeToStringMap recursively removes expandedValue references from the given data.
-// It uses the expandedValue.Original field to replace the expandedValue references.
-func sanitizeToStr(a any) any {
-	return sanitizeExpanded(a, true)
 }
 
 func sanitizeExpanded(a any, useOriginal bool) any {

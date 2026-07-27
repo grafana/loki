@@ -25,7 +25,7 @@ func TestInjectAndExtractQueryLimits(t *testing.T) {
 
 func TestDeserializingQueryLimits(t *testing.T) {
 	// full limits
-	payload := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB", "maxQuerierBytesRead": "1MB"}`
+	payload := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB", "maxQuerierBytesRead": "1MB", "tsdbShardingStrategy": "power_of_two"}`
 	limits, err := UnmarshalQueryLimits([]byte(payload))
 	require.NoError(t, err)
 	require.Equal(t, model.Duration(2*24*time.Hour), limits.MaxQueryLength)
@@ -33,6 +33,7 @@ func TestDeserializingQueryLimits(t *testing.T) {
 	require.Equal(t, model.Duration(5*time.Second), limits.QueryTimeout)
 	require.Equal(t, 100, limits.MaxEntriesLimitPerQuery)
 	require.Equal(t, 1*1024*1024, limits.MaxQueryBytesRead.Val())
+	require.Equal(t, "power_of_two", limits.TSDBShardingStrategy)
 	// some limits are empty
 	payload = `{"maxQueryLength":"1h"}`
 	limits, err = UnmarshalQueryLimits([]byte(payload))
@@ -41,6 +42,7 @@ func TestDeserializingQueryLimits(t *testing.T) {
 	require.Equal(t, model.Duration(0), limits.MaxQueryLookback)
 	require.Equal(t, 0, limits.MaxEntriesLimitPerQuery)
 	require.Equal(t, 0, limits.MaxQueryBytesRead.Val())
+	require.Empty(t, limits.TSDBShardingStrategy)
 }
 
 func TestSerializingQueryLimits(t *testing.T) {
@@ -51,11 +53,12 @@ func TestSerializingQueryLimits(t *testing.T) {
 		MaxEntriesLimitPerQuery: 100,
 		QueryTimeout:            model.Duration(5 * time.Second),
 		MaxQueryBytesRead:       1 * 1024 * 1024,
+		TSDBShardingStrategy:    "power_of_two",
 	}
 
 	actual, err := MarshalQueryLimits(&limits)
 	require.NoError(t, err)
-	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB"}`
+	expected := `{"maxEntriesLimitPerQuery": 100, "maxQueryLength": "2d", "maxQueryLookback": "2w", "maxQueryTime": "5s", "maxQueryBytesRead": "1MB", "tsdbShardingStrategy": "power_of_two"}`
 	require.JSONEq(t, expected, string(actual))
 
 	// some limits are empty

@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3136383236333536383830353031333435373432\"",
+  "etag": "\"3135343638383433383330343638393536313030\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4605,7 +4605,7 @@
       }
     }
   },
-  "revision": "20260408",
+  "revision": "20260524",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5118,6 +5118,16 @@
                         "description": "Relevant only for versioned objects. If the value is N, this condition is satisfied when there are at least N versions (including the live version) newer than this version of the object.",
                         "format": "int32",
                         "type": "integer"
+                      },
+                      "sizeAboveBytes": {
+                        "description": "Objects having a size greater than this value in bytes will be matched.",
+                        "format": "int64",
+                        "type": "string"
+                      },
+                      "sizeBelowBytes": {
+                        "description": "Objects having a size less than this value in bytes will be matched.",
+                        "format": "int64",
+                        "type": "string"
                       }
                     },
                     "type": "object"

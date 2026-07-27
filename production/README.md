@@ -4,7 +4,6 @@ Currently there are six ways to try out Loki, in order from easier to hardest:
 
 - [Grafana Cloud: Hosted Logs](#grafana-cloud-logs)
 - [Run Loki locally with Docker](#run-locally-using-docker)
-- [Run Loki with Nomad](#run-with-nomad)
 - [Use Helm to deploy on Kubernetes](#using-helm-to-deploy-on-kubernetes)
 - [Build Loki from source](#build-and-run-from-source)
 - [Get inspired by our production setup](#get-inspired-by-our-production-setup)
@@ -41,12 +40,6 @@ To test locally, we recommend using the `docker-compose.yaml` file in this direc
 For instructions on how to query Loki, see [our usage docs](https://grafana.com/docs/loki/latest/logql/).
 
 To deploy a cluster of loki locally, please refer to this [doc](./docker/)
-
-## Run with Nomad
-
-There are example [Nomad jobs](./nomad) that can be used to deploy Loki with
-[Nomad](https://www.nomadproject.io/) - simple and powerful workload
-orchestrator from HashiCorp.
 
 ## Using Helm to deploy on Kubernetes
 

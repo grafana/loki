@@ -21,6 +21,7 @@ type WorkerParams struct {
 	Config WorkerConfig
 
 	Bucket       objstore.Bucket
+	DataBucket   objstore.Bucket     // unprefixed bucket for reading source log objects; nil falls back to Bucket
 	Metastore    metastore.Metastore // may be nil in tests where no task ever arrives
 	ScratchStore scratch.Store
 
@@ -79,9 +80,12 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, fmt.Errorf("dataobj compaction worker: resolve worker advertise address: %w", err)
 	}
 
+	wm := newWorkerMetrics(registerer)
+
 	inner, err := engine.NewWorker(engine.WorkerParams{
 		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
 		Bucket:       params.Bucket,
+		DataBucket:   params.DataBucket,
 		Metastore:    params.Metastore,
 		ScratchStore: params.ScratchStore,
 		Config: engine.WorkerConfig{
@@ -97,7 +101,9 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Endpoint:      params.Config.Endpoint,
 		// LocalScheduler left nil: the compaction worker only ever
 		// connects to remote schedulers via DNS-SRV.
-		IndexobjCfg: params.IndexobjCfg,
+		IndexobjCfg:        params.IndexobjCfg,
+		IndexMergeObserver: wm,
+		LogMergeObserver:   wm,
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

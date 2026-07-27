@@ -33,6 +33,7 @@ type QueryLimits struct {
 	RequiredLabels          []string         `json:"requiredLabels,omitempty"`
 	RequiredNumberLabels    int              `json:"minimumLabelsNumber,omitempty"`
 	MaxQueryBytesRead       flagext.ByteSize `json:"maxQueryBytesRead,omitempty"`
+	TSDBShardingStrategy    string           `json:"tsdbShardingStrategy,omitempty"`
 }
 
 func UnmarshalQueryLimits(data []byte) (*QueryLimits, error) {

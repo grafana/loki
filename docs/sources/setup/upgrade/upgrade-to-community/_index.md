@@ -1,7 +1,7 @@
 ---
 title: Upgrade from the Loki Helm chart to the Community Helm chart
 menuTitle: Upgrade to Community Helm chart
-description: Upgrade from the Loki repository Helm chart (6.x) to the Grafana Community Helm chart (13.x).
+description: Upgrade from the Loki repository Helm chart (6.x) to the Grafana Community Helm chart.
 weight: 900
 keywords:
   - upgrade
@@ -11,9 +11,9 @@ keywords:
 
 # Upgrade from the Loki Helm chart to the Community Helm chart
 
-The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 13.1.2 (appVersion 3.7.1) is the current release from the community repository at the time this topic was published.
+The Loki Helm chart has moved from the [Loki repository](https://github.com/grafana/loki) to the [Grafana Community Helm Charts repository](https://github.com/grafana-community/helm-charts). Chart version 6.55.0 (appVersion 3.6.7) was the last release from the Loki repository. Chart version 18.4.4 (appVersion 3.7.3) is the current release from the community repository at the time this topic was published.
 
-This guide walks you through upgrading from 6.55.0 to 13.x, which spans seven major chart versions (7 through 13), each with breaking changes.
+This guide walks you through upgrading from 6.55.0 to the current community chart version, which spans twelve major chart versions (7 through 18), each with breaking changes.
 
 {{< admonition type="warning" >}}
 Grafana Enterprise Logs (GEL) support was removed from the community chart in version 8.0.0. If you are a GEL user, **do not migrate** to the community chart. The `grafana/loki` chart remains available for GEL users.
@@ -53,18 +53,18 @@ New location for 7.x and later from the community repository:
 ```bash
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
-helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 13.1.2
+helm upgrade <RELEASE_NAME> grafana-community/loki -f values.yaml --version 18.4.4
 ```
 
 Or if you are using OCI for 7.x and later:
 
 ```bash
-helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 13.1.2
+helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki -f values.yaml --version 18.4.4
 ```
 
 ## Update your values file for breaking changes
 
-The following sections describe every breaking change between chart versions 6.55.0 and 13.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
+The following sections describe every breaking change between chart versions 6.55.0 and 18.x, grouped by the major version that introduced each change. Review each section and update your values file accordingly.
 
 {{< admonition type="caution" >}}
 Check the Loki Helm Chart [README](https://github.com/grafana-community/helm-charts/tree/main/charts/loki#upgrading) for the latest changes and upgrade information. The Grafana Community is constantly improving the charts.
@@ -302,6 +302,280 @@ After (13.x):
 
 The `type` field accepts `pvc` (default for most components) or `ephemeral`. Fields that were nested under `ephemeralDataVolume` (`accessModes`, `size`, `storageClass`, `volumeAttributesClassName`, `selector`, `annotations`, `labels`) now sit directly under `persistence`.
 
+### 13.x to 14.0: Image registry always applied
+
+The dot-based registry format has been removed. Previously, if the `repository` value contained a dot (`.`) in its first path segment, the chart assumed the full registry was already included and silently skipped prepending `global.imageRegistry` or a component-level `image.registry`. This caused configured registries to be ignored for references such as `mirror.gcr.io/grafana/loki`.
+
+The new behavior is that a configured registry is always prepended, unconditionally. `global.imageRegistry` is the highest-precedence registry setting and overrides all component-level `image.registry` values.
+
+If you stored a fully-qualified image reference in `repository` and relied on the old format to prevent double-prefixing, split the value into separate `registry` and `repository` fields:
+
+Before (13.x):
+
+```yaml
+loki:
+  image:
+    repository: private.registry.com/grafana/loki
+```
+
+After (14.x):
+
+```yaml
+loki:
+  image:
+    registry: private.registry.com
+    repository: grafana/loki
+```
+
+Users who only set `repository` to a plain path (for example, `grafana/loki`) or who already use `global.imageRegistry` / `image.registry` correctly are unaffected.
+
+### 14.x to 15.0: Cilium network policies removed
+
+Support for Cilium-specific network policies has been removed. The chart now renders Kubernetes `NetworkPolicy` resources only.
+
+Remove the following from your values file:
+
+```yaml
+networkPolicy:
+  flavor: cilium        # remove this key
+  egressWorld:
+    enabled: true       # remove this section
+  egressKubeApiserver:
+    enabled: true       # remove this section
+```
+
+After (15.x):
+
+```yaml
+networkPolicy:
+  enabled: true
+```
+
+If you relied on Cilium-only behavior such as `CiliumNetworkPolicy` resources, manage those rules outside the Loki chart using separate manifests or your GitOps workflow.
+
+### 15.x to 16.0: Loki Canary pod template isolated
+
+The `loki-canary` workload no longer inherits metadata from the shared Loki pod template. Canary-specific metadata that was previously sourced from `loki.*` keys must now be set explicitly under `lokiCanary.*`.
+
+Before (15.x):
+
+```yaml
+loki:
+  annotations:
+    team: observability
+  serviceAnnotations:
+    prometheus.io/scrape: "true"
+  serviceLabels:
+    app: loki
+```
+
+After (16.x):
+
+```yaml
+lokiCanary:
+  annotations:
+    team: observability
+  podAnnotations:
+    team: observability
+  service:
+    annotations:
+      prometheus.io/scrape: "true"
+    labels:
+      app: loki-canary
+  automountServiceAccountToken: false
+```
+
+If you did not set any `loki.annotations`, `loki.serviceAnnotations`, or `loki.serviceLabels` for canary purposes, no action is required.
+
+### 16.x to 17.0: Built-in MinIO subchart deprecated
+
+The built-in MinIO subchart is officially deprecated and **will be removed on 2026-10-31**. Setting `minio.enabled=true` now fails chart rendering unless the workaround `ignoreMinioDeprecation: true` is also set.
+
+#### Temporary workaround (not for new deployments)
+
+If you need to continue using the built-in MinIO subchart temporarily while you plan a migration:
+
+```yaml
+ignoreMinioDeprecation: true  # Remove before 2026-10-31
+minio:
+  enabled: true
+```
+
+#### Migrate to external object storage
+
+Grafana recommends migrating to a dedicated external object storage backend. The following steps preserve data continuity using a dual-store transition period.
+
+**Before (legacy state using built-in MinIO):**
+
+```yaml
+minio:
+  enabled: true
+
+loki:
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+```
+
+**Transition release (temporary dual-store period):**
+
+Keep old MinIO data readable while writing new data to external storage:
+
+```yaml
+ignoreMinioDeprecation: true
+minio:
+  enabled: true
+
+loki:
+  structuredConfig:
+    storage_config:
+      named_stores:
+        aws:
+          minio:
+            endpoint: '{{ include "loki.minio" $ }}'
+            bucketnames: chunks
+            secret_access_key: '{{ $.Values.minio.rootPassword }}'
+            access_key_id: '{{ $.Values.minio.rootUser }}'
+            s3forcepathstyle: true
+            insecure: true
+          s3-loki-chunks:
+            endpoint: 's3.example.com'
+            bucketnames: chunks
+            access_key_id: '<s3-access-key>'
+            secret_access_key: '<s3-secret-key>'
+            s3forcepathstyle: true
+            insecure: true
+    schema_config:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: minio
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+        - from: "<date shortly after migration start>"
+          store: tsdb
+          object_store: s3-loki-chunks
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+```
+
+**Final release (after retention has elapsed):**
+
+Once the retention window for data in MinIO has elapsed, remove the MinIO configuration entirely. The chart still requires `loki.storage.bucketNames` for helper-generated storage sections:
+
+```yaml
+loki:
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+  structuredConfig:
+    storage_config:
+      named_stores:
+        aws:
+          s3-loki-chunks:
+            endpoint: 's3.example.com'
+            bucketnames: chunks
+            access_key_id: '<s3-access-key>'
+            secret_access_key: '<s3-secret-key>'
+            s3forcepathstyle: true
+            insecure: true
+    schema_config:
+      configs:
+        - from: "<date from transition release>"
+          store: tsdb
+          object_store: s3-loki-chunks
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+```
+
+For more information on storage schema configuration, see [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
+
+### 17.x to 18.0: Monitoring block refactored
+
+The `.Values.monitoring` block has been refactored. Do not assume backwards compatibility with any prior monitoring configuration — review this section in full before upgrading.
+
+All dashboards, recording rules, and alert rules are now generated from the upstream [loki-mixin](https://github.com/grafana/loki/tree/main/production/loki-mixin). This keeps the chart aligned with the upstream Loki observability stack and ensures dashboard queries work correctly across all deployment modes.
+
+#### `cluster` label replaced by `app_instance`
+
+The metric label that identifies the Loki Helm release has changed from `cluster` to `app_instance`. The `cluster` label is no longer added by default — it is now reserved for multi-cluster environments and controlled by `monitoring.multiCluster`.
+
+Actions required:
+
+- Update any alerting rules, dashboards, or downstream recording rules that filter on `cluster=~"<release-name>"` to use `app_instance=~"<release-name>"` instead.
+- Update any Grafana dashboard URLs that encode the `cluster` variable.
+- If you run Loki across multiple Kubernetes clusters, enable `monitoring.multiCluster.enabled` and set `monitoring.multiCluster.clusterName` to restore the `cluster` label with a per-cluster value.
+
+#### Alerts separated from recording rules
+
+Alert rules have been split into a new `monitoring.alerts` section, separate from `monitoring.rules` (which now only controls recording rules). The old `monitoring.rules.configs` block — with per-alert `enabled`, `for`, `lookbackPeriod`, `threshold`, and `severity` fields — has been removed.
+
+Before (17.x):
+
+```yaml
+monitoring:
+  rules:
+    enabled: true
+    alerting: true
+    configs:
+      LokiRequestErrors:
+        enabled: true
+        for: 15m
+        severity: critical
+```
+
+After (18.x):
+
+```yaml
+monitoring:
+  rules:
+    enabled: true    # recording rules only
+  alerts:
+    enabled: true
+    overrides:
+      LokiRequestErrors:
+        for: 15m
+        severity: critical
+```
+
+{{< admonition type="note" >}}
+The `lookbackPeriod` and `threshold` fields are not carried forward. They did not generalize across all PromQL alert expressions and are not present in the loki-mixin alerts.
+{{< /admonition >}}
+
+#### Removed and renamed values
+
+Remove or rename the following keys in your values file:
+
+| Old value | Replacement |
+| --- | --- |
+| `clusterLabelOverride` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
+| `monitoring.serviceMonitor.clusterLabel` | `monitoring.appInstanceLabelName` and `monitoring.appInstanceLabelValue` |
+| `monitoring.dashboards.namespace` | `monitoring.namespace` (now applies to all monitoring resources) |
+| `monitoring.rules.namespace` | `monitoring.namespace` |
+| `monitoring.rules.additionalGroups` | `monitoring.additionalPrometheusRules` (dict structure, supports both recording rules and alerts) |
+| `monitoring.dashboards.multiCluster` | `monitoring.multiCluster` (hoisted to the monitoring level) |
+
+#### Recording rule names changed
+
+Recording rule `record:` names now use the `cluster_job:`, `cluster_job_route:`, and `cluster_namespace_job_route:` conventions from the upstream loki-mixin. If you reference recording rule metric names directly in custom alerts or dashboards, update those queries.
+
+#### Dashboard architecture changed
+
+Dashboards are now generated into individual ConfigMap resources (one per dashboard) instead of a single ConfigMap containing all dashboards. If you reference the dashboard ConfigMap by name in any tooling or GitOps manifests, update those references.
+
 ## Review additional deprecations
 
 Several per-component fields have been deprecated in favor of unified blocks. These deprecated per-component service fields apply to indexGateway, compactor, and others.
@@ -336,7 +610,7 @@ After updating your values file, run the upgrade:
 ```bash
 helm upgrade <RELEASE_NAME> grafana-community/loki \
   -f your-updated-values.yaml \
-  --version 13.1.2
+  --version 18.4.4
 ```
 
 Or using OCI:
@@ -344,7 +618,7 @@ Or using OCI:
 ```bash
 helm upgrade <RELEASE_NAME> oci://ghcr.io/grafana-community/helm-charts/loki \
   -f your-updated-values.yaml \
-  --version 13.1.2
+  --version 18.4.4
 ```
 
 ### Verify the upgrade
@@ -410,6 +684,42 @@ After a successful upgrade:
 **Cause:** The nested `persistence.ephemeralDataVolume` structure was flattened in 13.0.0. If you adopted this pattern from an intermediate community chart version, the old keys are no longer recognized.
 
 **Fix:** Replace `persistence.ephemeralDataVolume.enabled: true` with `persistence.enabled: true` and `persistence.type: ephemeral`, and move all nested fields directly under `persistence` as described in [12.x to 13.0](#12x-to-130-ephemeral-volume-persistence-flattened).
+
+### `minio.enabled=true` fails chart rendering
+
+**Cause:** The built-in MinIO subchart was deprecated in 17.0.0. Setting `minio.enabled=true` without `ignoreMinioDeprecation: true` causes chart rendering to fail with the error:
+
+`The Loki chart builtin MinIO dependency is deprecated and will be removed 2026-10-31.`
+
+**Fix:** Either set `ignoreMinioDeprecation: true` as a temporary workaround while you plan a migration, or migrate to an external object storage backend. See [16.x to 17.0](#16x-to-170-built-in-minio-subchart-deprecated) for migration steps.
+
+### Monitoring values rejected or dashboards missing after upgrade to 18.x
+
+**Cause:** The `monitoring` block was refactored in 18.0.0. Old keys such as `clusterLabelOverride`, `monitoring.serviceMonitor.clusterLabel`, `monitoring.dashboards.namespace`, `monitoring.rules.namespace`, `monitoring.rules.additionalGroups`, and `monitoring.dashboards.multiCluster` no longer exist. Alert rules under `monitoring.rules.configs` are also removed.
+
+**Fix:** Remove or rename all obsolete monitoring keys as described in [17.x to 18.0](#17x-to-180-monitoring-block-refactored). In particular:
+
+- Move alert configuration from `monitoring.rules` to `monitoring.alerts`.
+- Replace `clusterLabelOverride` with `monitoring.appInstanceLabelName` / `monitoring.appInstanceLabelValue`.
+- Rename `monitoring.dashboards.multiCluster` to `monitoring.multiCluster`.
+
+### Metrics show `app_instance` instead of `cluster` after upgrade to 18.x
+
+**Cause:** The 18.0.0 refactoring renamed the Loki release identifier label from `cluster` to `app_instance`.
+
+**Fix:** Update any alerting rules, dashboards, or recording rules that filter on `cluster=~"<release-name>"` to use `app_instance=~"<release-name>"`. See [17.x to 18.0](#17x-to-180-monitoring-block-refactored) for details.
+
+### Image pulled from wrong registry after upgrade to 14.x
+
+**Cause:** The dot-based registry format was removed in 14.0.0. If you had a fully-qualified image reference such as `private.registry.com/grafana/loki` in the `repository` field, the configured registry is now prepended unconditionally, resulting in a double-prefixed reference.
+
+**Fix:** Split the fully-qualified reference into separate `registry` and `repository` fields as described in [13.x to 14.0](#13x-to-140-image-registry-always-applied).
+
+### Loki Canary fails to start or has missing annotations after upgrade to 16.x
+
+**Cause:** The `loki-canary` workload no longer inherits metadata from the shared `loki.*` pod template values. Settings such as `loki.annotations` and `loki.serviceAnnotations` are no longer applied to the canary.
+
+**Fix:** Move canary-specific metadata to the `lokiCanary.*` section as described in [15.x to 16.0](#15x-to-160-loki-canary-pod-template-isolated).
 
 ## Further reading
 

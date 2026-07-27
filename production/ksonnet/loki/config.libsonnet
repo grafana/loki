@@ -169,7 +169,7 @@
 
     commonArgs: {
       'config.file': '/etc/loki/config/config.yaml',
-      'limits.per-user-override-config': '/etc/loki/overrides/overrides.yaml',
+      'runtime-config.file': '/etc/loki/overrides/overrides.yaml',
     },
 
     commonEnvs: [],

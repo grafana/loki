@@ -85,7 +85,21 @@ type CopyDestOptions struct {
 	// PartSize specifies the part size for multipart copy operations.
 	// If not specified, defaults to maxPartSize (5 GiB).
 	PartSize uint64
+
+	// AnnotationDirective controls whether the source object's annotations are
+	// copied to the destination. Valid values are CopyAnnotationsDirective
+	// ("COPY", the default when unset) and ExcludeAnnotationsDirective
+	// ("EXCLUDE"). Sent as the x-amz-annotation-directive header.
+	AnnotationDirective string
 }
+
+// Annotation directives for CopyDestOptions.AnnotationDirective.
+const (
+	// CopyAnnotationsDirective copies the source object's annotations to the destination.
+	CopyAnnotationsDirective = "COPY"
+	// ExcludeAnnotationsDirective excludes the source object's annotations from the destination.
+	ExcludeAnnotationsDirective = "EXCLUDE"
+)
 
 // Process custom-metadata to remove a `x-amz-meta-` prefix if
 // present and validate that keys are distinct (after this
@@ -147,6 +161,10 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	}
 	if opts.ChecksumType.IsSet() {
 		header.Set(amzChecksumAlgo, opts.ChecksumType.String())
+	}
+
+	if opts.AnnotationDirective != "" {
+		header.Set("x-amz-annotation-directive", opts.AnnotationDirective)
 	}
 
 	if opts.ReplaceMetadata {

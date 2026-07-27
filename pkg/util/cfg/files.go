@@ -56,32 +56,21 @@ func YAML(f string, expandEnvVars bool, strict bool) Source {
 			}
 			y = []byte(s)
 		}
-		if strict {
-			err = dYAMLStrict(y)(dst)
-		} else {
-			err = dYAML(y)(dst)
-		}
-
+		err = dYAML(y, strict)(dst)
 		return errors.Wrap(err, f)
 	}
 }
 
 // dYAMLStrict returns a YAML source and allows dependency injection
-func dYAMLStrict(y []byte) Source {
+// argument `strict` defines whether unknown fields should be treated as error
+func dYAML(y []byte, strict bool) Source {
 	return func(dst Cloneable) error {
 		dec := yaml.NewDecoder(bytes.NewReader(y))
-		dec.KnownFields(true)
+		dec.KnownFields(strict)
 		if err := dec.Decode(dst); err != nil && err != io.EOF {
 			return err
 		}
 		return nil
-	}
-}
-
-// dYAML is the same as dYAMLStrict but with non strict unmarshaling
-func dYAML(y []byte) Source {
-	return func(dst Cloneable) error {
-		return yaml.Unmarshal(y, dst)
 	}
 }
 

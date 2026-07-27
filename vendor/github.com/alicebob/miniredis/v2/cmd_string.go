@@ -20,12 +20,13 @@ func commandsString(m *Miniredis) {
 	m.srv.Register("BITPOS", m.cmdBitpos, server.ReadOnlyOption())
 	m.srv.Register("DECRBY", m.cmdDecrby)
 	m.srv.Register("DECR", m.cmdDecr)
+	m.srv.Register("DELEX", m.cmdDelex)
 	m.srv.Register("GETBIT", m.cmdGetbit, server.ReadOnlyOption())
-	m.srv.Register("GET", m.cmdGet, server.ReadOnlyOption())
+	m.srv.Register("GETDEL", m.cmdGetdel)
 	m.srv.Register("GETEX", m.cmdGetex)
+	m.srv.Register("GET", m.cmdGet, server.ReadOnlyOption())
 	m.srv.Register("GETRANGE", m.cmdGetrange, server.ReadOnlyOption())
 	m.srv.Register("GETSET", m.cmdGetset)
-	m.srv.Register("GETDEL", m.cmdGetdel)
 	m.srv.Register("INCRBYFLOAT", m.cmdIncrbyfloat)
 	m.srv.Register("INCRBY", m.cmdIncrby)
 	m.srv.Register("INCR", m.cmdIncr)
@@ -1107,6 +1108,82 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 		db.stringSet(opts.key, string(value))
 
 		c.WriteInt(old)
+	})
+}
+
+// DELEX
+func (m *Miniredis) cmdDelex(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, between(1, 4)) {
+		return
+	}
+
+	var opts struct {
+		key        string
+		opEQ       bool
+		matchValue string
+	}
+
+	// Parse arguments
+	if len(args) != 1 && len(args) != 3 {
+		c.WriteError(errWrongNumber("delex"))
+		return
+	}
+
+	if len(args) == 3 {
+		opts.key = args[0]
+		condition := strings.ToUpper(args[1])
+		opts.matchValue = args[2]
+
+		switch condition {
+		case "IFEQ":
+			opts.opEQ = true
+		case "IFNE":
+			opts.opEQ = false // well doh
+		case "IFDEQ", "IFDNE":
+			c.WriteError("ERR unsupported condition for DELEX: " + condition)
+			return
+		default:
+			c.WriteError("Invalid condition. Use IFEQ, IFNE, IFDEQ, or IFDNE")
+			return
+		}
+	}
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		// If no condition is specified, behave like DEL
+		if opts.key == "" {
+			key := args[0]
+			if db.exists(key) {
+				db.del(key, true) // delete expire
+				c.WriteInt(1)
+			} else {
+				c.WriteInt(0)
+			}
+			return
+		}
+
+		if !db.exists(opts.key) {
+			c.WriteInt(0)
+			return
+		}
+
+		if db.t(opts.key) != keyTypeString {
+			c.WriteError("ERR Key should be of string type if conditions are specified")
+			return
+		}
+		currentValue := db.stringKeys[opts.key]
+
+		shouldDelete := (currentValue == opts.matchValue)
+		if !opts.opEQ {
+			shouldDelete = !shouldDelete
+		}
+		if shouldDelete {
+			db.del(opts.key, true) // delete expire
+			c.WriteInt(1)
+		} else {
+			c.WriteInt(0)
+		}
 	})
 }
 

@@ -1,3 +1,4 @@
+// SYS-REQ-015, SYS-REQ-058, SYS-REQ-059, SYS-REQ-064: integer parsing internals
 package jsonparser
 
 const absMinInt64 = 1 << 63

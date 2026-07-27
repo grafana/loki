@@ -13,7 +13,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"go.uber.org/atomic"
 	"golang.org/x/net/http2"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/obslock"
 )
 
 // peerAddressHeader is the header used to advertise the address to connect back
@@ -176,16 +179,23 @@ type http2Conn struct {
 	responseController *http.ResponseController
 	cleanup            func() // Optional cleanup function
 
-	writeMu   sync.Mutex
+	writeMu   obslock.Mutex
 	closeOnce sync.Once
 	closed    chan struct{}
+
+	// scratch is the reusable encode buffer for this connection's sends. It is
+	// only ever touched while holding writeMu, so it needs no further guarding.
+	scratch []byte
+
+	metrics atomic.Pointer[Metrics]
 
 	incomingCh chan incomingFrame
 }
 
 type incomingFrame struct {
-	frame Frame
-	err   error
+	frame      Frame
+	err        error
+	enqueuedAt time.Time
 }
 
 var _ Conn = (*http2Conn)(nil)
@@ -214,24 +224,81 @@ func newHTTP2Conn(
 	return c
 }
 
+func (c *http2Conn) setMetrics(metrics *Metrics) {
+	c.metrics.Store(metrics)
+	if metrics != nil {
+		c.writeMu.Init("conn_write", metrics.lock)
+	}
+}
+
+func (c *http2Conn) transport() transport { return transportHTTP2 }
+
 func (c *http2Conn) readLoop(ctx context.Context) {
 	for {
-		frame, err := c.codec.DecodeFrom(c.reader)
-		incoming := incomingFrame{frame: frame, err: err}
+		metrics := c.metrics.Load()
+		frame, size, err := c.codec.decode(c.reader, metrics)
+		if err == nil && metrics != nil {
+			metrics.observeFrameBytes(directionIncoming, frame, sendModeInternal, size)
+		}
+
+		incoming := incomingFrame{frame: frame, err: err, enqueuedAt: time.Now()}
+		if err := c.enqueueIncoming(ctx, incoming); err != nil {
+			return
+		}
+	}
+}
+
+func (c *http2Conn) enqueueIncoming(ctx context.Context, incoming incomingFrame) error {
+	metrics := c.metrics.Load()
+	if incoming.err != nil || metrics == nil {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-c.closed:
-			return
+			return ErrConnClosed
 		case c.incomingCh <- incoming:
+			return nil
 		}
+	}
+
+	frame := incoming.frame
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closed:
+		return ErrConnClosed
+	case c.incomingCh <- incoming:
+		metrics.observeFrameQueueWait(queueConnDispatch, frame, sendModeInternal, time.Since(incoming.enqueuedAt))
+		return nil
+	default:
+	}
+
+	done := metrics.noteBlockedEnqueue(queueConnDispatch, frame, sendModeInternal)
+	defer done()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.closed:
+		return ErrConnClosed
+	case c.incomingCh <- incoming:
+		metrics.observeFrameQueueWait(queueConnDispatch, frame, sendModeInternal, time.Since(incoming.enqueuedAt))
+		return nil
 	}
 }
 
 // Send sends a frame over the connection.
 func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
+	return c.sendFrame(ctx, frame, sendModeInternal)
+}
+
+func (c *http2Conn) sendFrame(ctx context.Context, frame Frame, sendMode sendMode) error {
+	metrics := c.metrics.Load()
+	timer := metrics.startFrameSend(transportHTTP2, frame, sendMode)
+	defer timer.Done(outcomeNone)
+
+	guard := c.writeMu.Lock("send_frame")
+	defer guard.Unlock()
 
 	select {
 	case <-c.ctx.Done():
@@ -243,21 +310,31 @@ func (c *http2Conn) Send(ctx context.Context, frame Frame) error {
 	default:
 	}
 
-	err := c.codec.EncodeTo(c.writer, frame)
+	timer.Phase(phaseSerialize)
+	c.scratch = c.codec.encode(frame, metrics, c.scratch)
+	data := c.scratch
+
+	timer.Phase(phaseWrite)
+	written, err := c.writer.Write(data)
 	if err != nil && isHTTP2Error(err) {
 		return ErrConnClosed
 	} else if err != nil {
 		return fmt.Errorf("write frame: %w", err)
 	}
+	if written != len(data) {
+		return fmt.Errorf("write frame: incomplete write: wrote %d bytes, expected %d", written, len(data))
+	}
+	metrics.observeFrameBytes(directionOutgoing, frame, sendMode, len(data))
 
-	// Flush after each frame to ensure immediate delivery
+	// Flush after each frame to ensure immediate delivery.
+	timer.Phase(phaseFlush)
 	if c.responseController != nil {
-		err := c.responseController.Flush()
-		if err != nil && isHTTP2Error(err) {
-			return ErrConnClosed
-		} else if err != nil {
-			return fmt.Errorf("flush response: %w", err)
-		}
+		err = c.responseController.Flush()
+	}
+	if err != nil && isHTTP2Error(err) {
+		return ErrConnClosed
+	} else if err != nil {
+		return fmt.Errorf("flush response: %w", err)
 	}
 
 	return nil
@@ -279,12 +356,13 @@ func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 
 // Close closes the connection.
 func (c *http2Conn) Close() error {
-	c.writeMu.Lock()
-	defer c.writeMu.Unlock()
+	guard := c.writeMu.Lock("close")
+	defer guard.Unlock()
 
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
+
 		err = c.reader.Close()
 		if c.cleanup != nil {
 			c.cleanup()

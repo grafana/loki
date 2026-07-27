@@ -2,37 +2,20 @@ package postings
 
 import "sort"
 
-// sortLabelEntries sorts label entries by
-// [objectPath, sectionIndex, columnName, labelValue]. The sort is stable so
-// callers that rely on insertion order for equal keys keep that order.
+// sortLabelEntries sorts label entries into the section's physical write order.
+// It delegates to [CompareRows] so the encoder and any merge over sections stay
+// in lockstep.
 func sortLabelEntries(entries []LabelEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		a, b := entries[i], entries[j]
-		if a.ObjectPath != b.ObjectPath {
-			return a.ObjectPath < b.ObjectPath
-		}
-		if a.SectionIndex != b.SectionIndex {
-			return a.SectionIndex < b.SectionIndex
-		}
-		if a.ColumnName != b.ColumnName {
-			return a.ColumnName < b.ColumnName
-		}
-		return a.LabelValue < b.LabelValue
+	sort.Slice(entries, func(i, j int) bool {
+		return CompareRows(entries[i].Row(), entries[j].Row()) < 0
 	})
 }
 
-// sortBloomEntries sorts bloom entries by
-// [objectPath, sectionIndex, columnName]. The sort is stable so callers that
-// rely on insertion order for equal keys keep that order.
+// sortBloomEntries sorts bloom entries into the section's physical write order.
+// It delegates to [CompareRows] so the encoder and any merge over sections stay
+// in lockstep.
 func sortBloomEntries(entries []BloomEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		a, b := entries[i], entries[j]
-		if a.ObjectPath != b.ObjectPath {
-			return a.ObjectPath < b.ObjectPath
-		}
-		if a.SectionIndex != b.SectionIndex {
-			return a.SectionIndex < b.SectionIndex
-		}
-		return a.ColumnName < b.ColumnName
+	sort.Slice(entries, func(i, j int) bool {
+		return CompareRows(entries[i].Row(), entries[j].Row()) < 0
 	})
 }

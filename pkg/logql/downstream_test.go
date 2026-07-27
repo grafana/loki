@@ -63,6 +63,24 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
+		// outer sum around a non-additive range aggregation with label
+		// reduction: sharded plan must fall through to the range-aggr merger
+		// so per-shard partials are combined by max/min/... — otherwise the
+		// outer sum inflates when the same output labelset lands on multiple
+		// shards.
+		{`sum(max_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a))`, true, nil},
+		{`sum(max_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]))`, true, nil},
+		{`sum by (a) (max_over_time({a=~".+"} | logfmt | unwrap value [1s]))`, true, nil},
+		// outer sum around an additive range aggregation with label reduction:
+		// sharded plan must keep the fast per-shard sum-compression path.
+		{`sum(count_over_time({a=~".+"} | logfmt | drop level [1s]))`, false, nil},
+		{`sum(rate({a=~".+"} | logfmt | drop level [1s]))`, false, nil},
+		// outer sum around a nested non-additive vector aggregation (avg)
+		// with grouping: the inner avg is non-additive under an outer sum,
+		// so per-shard partial averages cannot be combined by an outer sum
+		// when the same output labelset lands on multiple shards. Guard
+		// must route via avg's own sum/count decomposition.
+		{`sum(avg by (a) (rate({a=~".+"}[1s])))`, true, nil},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true, []string{ShardQuantileOverTime}},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s)`, true, []string{ShardQuantileOverTime}},
 		{

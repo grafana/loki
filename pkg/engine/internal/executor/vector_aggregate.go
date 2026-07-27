@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type vectorAggregationOptions struct {
@@ -42,15 +41,13 @@ type vectorAggregationPipeline struct {
 	identCache *semconv.IdentifierCache
 }
 
-var (
-	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
-		types.VectorAggregationTypeSum:   aggregationOperationSum,
-		types.VectorAggregationTypeCount: aggregationOperationCount,
-		types.VectorAggregationTypeAvg:   aggregationOperationAvg,
-		types.VectorAggregationTypeMax:   aggregationOperationMax,
-		types.VectorAggregationTypeMin:   aggregationOperationMin,
-	}
-)
+var vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
+	types.VectorAggregationTypeSum:   aggregationOperationSum,
+	types.VectorAggregationTypeCount: aggregationOperationCount,
+	types.VectorAggregationTypeAvg:   aggregationOperationAvg,
+	types.VectorAggregationTypeMax:   aggregationOperationMax,
+	types.VectorAggregationTypeMin:   aggregationOperationMin,
+}
 
 func newVectorAggregationPipeline(inputs []Pipeline, evaluator *expressionEvaluator, opts vectorAggregationOptions) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
@@ -106,23 +103,13 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.RecordBatch
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch, error) {
-	var (
-		inputReadTime time.Duration
-		startedAt     = time.Now()
-
-		labelValuesCache = newLabelValuesCache()
-		fieldsCache      = newFieldsCache()
-	)
-
 	v.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
 	for !inputsExhausted {
 		inputsExhausted = true
 
 		for _, input := range v.inputs {
-			inputStart := time.Now()
 			record, err := input.Read(ctx)
-			inputReadTime += time.Since(inputStart)
 
 			if err != nil {
 				if errors.Is(err, EOF) {
@@ -160,15 +147,24 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 
 			v.aggregator.AddLabels(groupingFields)
 
+			labelNames := make([]arrow.Field, 0, len(groupingFields))
+			labelValues := make([]string, 0, len(arrays))
 			for row := range int(record.NumRows()) {
 				if valueArr.IsNull(row) {
 					continue
 				}
 
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
+				labelValues = labelValues[:0]
+				labelNames = labelNames[:0]
+				for i, arr := range arrays {
+					if arr.IsNull(row) {
+						continue
+					}
+					labelValues = append(labelValues, arr.Value(row))
+					labelNames = append(labelNames, groupingFields[i])
+				}
 
-				if err := v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labels, labelValues); err != nil {
+				if err := v.aggregator.AddN([]time.Time{tsCol.Value(row).ToTime(arrow.Nanosecond)}, valueArr.Value(row), labelNames, labelValues); err != nil {
 					return nil, err
 				}
 			}
@@ -178,11 +174,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch
 	v.inputsExhausted = true
 
 	rec, err := v.aggregator.BuildRecord()
-
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		computeTime := time.Since(startedAt) - inputReadTime
-		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
-	}
 
 	return rec, err
 }

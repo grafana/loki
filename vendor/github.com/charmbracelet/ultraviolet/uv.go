@@ -339,6 +339,8 @@ func EncodeMouseEncoding(w io.Writer, enc MouseEncoding) error {
 			ansi.ResetModeMouseExtSgrPixel
 	case MouseEncodingSGR:
 		seq = ansi.SetModeMouseExtSgr
+	case MouseEncodingSGRPixel:
+		seq = ansi.SetModeMouseExtSgrPixel
 	}
 
 	_, err := io.WriteString(w, seq) //nolint:errcheck

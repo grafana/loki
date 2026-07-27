@@ -9,6 +9,7 @@ var (
 	statPhysicalPlanDuration = xcap.NewStatisticInt64("plan.physical.duration", xcap.AggregationTypeSum)
 	statPrepareDuration      = xcap.NewStatisticInt64("prepare.duration", xcap.AggregationTypeSum)
 	statExecutionDuration    = xcap.NewStatisticInt64("execution.duration", xcap.AggregationTypeSum)
+	statCloseDuration        = xcap.NewStatisticInt64("close.duration", xcap.AggregationTypeSum)
 
 	// Physical plan subphases
 

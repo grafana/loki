@@ -88,14 +88,15 @@ func (c *Client) CreateSession(ctx context.Context, bucketName string, sessionMo
 		return credentials.Value{}, err
 	}
 
-	defer c.bucketSessionCache.Set(bucketName, cred)
-
-	return credentials.Value{
+	cred = credentials.Value{
 		AccessKeyID:     credSession.Credentials.AccessKey,
 		SecretAccessKey: credSession.Credentials.SecretKey,
 		SessionToken:    credSession.Credentials.SessionToken,
 		Expiration:      credSession.Credentials.Expiration,
-	}, nil
+	}
+
+	c.bucketSessionCache.Set(bucketName, cred)
+	return cred, nil
 }
 
 // createSessionRequest - Wrapper creates a new CreateSession request.

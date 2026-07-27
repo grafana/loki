@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -50,9 +51,24 @@ type Config struct {
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// IndexMergeObserver is used  by compaction to populate output-size
+	// histograms. Optional; nil disables observation.
+	IndexMergeObserver IndexMergeObserver
+
+	// LogMergeObserver is used by compaction to populate log-merge histograms.
+	// Optional; nil disables observation.
+	LogMergeObserver LogMergeObserver
+
 	// Shared, used by both query and compaction executors.
 	Bucket    objstore.Bucket
 	Metastore metastore.Metastore
+
+	// DataBucket reads source log objects during LogMerge compaction. Unlike
+	// Bucket (which the compaction wiring prefixes with the index-storage
+	// prefix for index I/O and ToC), source log objects are stored at the
+	// unprefixed dataobj root, so they must be read through this bucket.
+	// Optional; when nil the executor falls back to Bucket.
+	DataBucket objstore.Bucket
 
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
@@ -67,6 +83,15 @@ type Config struct {
 	TaskCaches TaskCacheRegistry
 }
 
+type IndexMergeObserver interface {
+	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+}
+
+// LogMergeObserver receives per-task compaction summaries from LogMerge.
+type LogMergeObserver interface {
+	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
+}
+
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
@@ -74,6 +99,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		prefetchBytes:      cfg.PrefetchBytes,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
+		dataBucket:         cfg.DataBucket,
 		metastore:          cfg.Metastore,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
@@ -82,6 +108,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		taskCaches:         cfg.TaskCaches,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		indexMergeObserver: cfg.IndexMergeObserver,
+		logMergeObserver:   cfg.LogMergeObserver,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -99,11 +127,12 @@ type Context struct {
 	batchSize     int64
 	prefetchBytes int64
 
-	logger    log.Logger
-	plan      *physical.Plan
-	evaluator *expressionEvaluator
-	bucket    objstore.Bucket
-	metastore metastore.Metastore
+	logger     log.Logger
+	plan       *physical.Plan
+	evaluator  *expressionEvaluator
+	bucket     objstore.Bucket
+	dataBucket objstore.Bucket
+	metastore  metastore.Metastore
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
@@ -114,6 +143,9 @@ type Context struct {
 
 	scratchStore scratch.Store
 	indexobjCfg  logsobj.BuilderBaseConfig
+
+	indexMergeObserver IndexMergeObserver
+	logMergeObserver   LogMergeObserver
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -147,7 +179,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.Filter:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
+		return NewObservedPipeline(operatorRegionName(n), nodeAttributes(n), c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
@@ -167,10 +199,10 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	case *physical.IndexMerge:
 		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeIndexMerge(ctx, n))
 	case *physical.LogMerge:
-		// LogMerge ships with a stub executor that writes a zero-byte object at
-		// OutputPath. The real K-way merge over log sections lands in a later PR,
-		// after we ship IndeXMerge.
-		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMergeStub(n))
+		// LogMerge runs a K-way sort-merge over the LOG sections referenced by the
+		// node's Runs, producing schema-sorted compacted log object(s). See
+		// executeLogMerge / doLogObjectMerge in log_merge.go.
+		return NewObservedPipeline(n.Type().String(), nodeAttributes(n), c.executeLogMerge(n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -269,7 +301,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p, logsSection.Columns())
+		conv, err := physical.BuildLogsPredicate(p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -277,7 +309,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 	span.AddEvent("constructed predicate")
 
-	if logsPredicatesAreUnsatisfiable(predicates) {
+	if physical.LogsPredicatesAreUnsatisfiable(predicates) {
 		span.AddEvent("unsatisfiable logs predicate; skipping dataobj scan")
 		return emptyPipeline()
 	}
@@ -568,6 +600,22 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 	}
 
 	return pipeline
+}
+
+// operatorRegionName returns the xcap region name for a node. For a parse or
+// format projection it appends the function (e.g. "Projection/PARSE_LOGFMT") so
+// per-parser cost is attributable instead of lumped under "Projection".
+func operatorRegionName(n physical.Node) string {
+	name := n.Type().String()
+	if p, ok := n.(*physical.Projection); ok {
+		for _, e := range p.Expressions {
+			if v, ok := e.(*physical.VariadicExpr); ok {
+				name += "/" + v.Op.String()
+				break
+			}
+		}
+	}
+	return name
 }
 
 // nodeAttributes returns OTel span attributes relevant to the given physical

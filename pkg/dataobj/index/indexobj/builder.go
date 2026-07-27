@@ -146,7 +146,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 	}
 	pb, ok := b.postings[tenantID]
 	if !ok {
-		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+		pb = postings.NewBuilder(b.metrics.postings, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows, int(b.cfg.TargetSectionSize))
 		pb.SetTenant(tenantID)
 		b.postings[tenantID] = pb
 	}
@@ -270,9 +270,9 @@ func (b *Builder) BloomBytes(tenantID, objectPath string, sectionIdx int64, colu
 	return tenantPostings.BloomBytes(objectPath, sectionIdx, columnName)
 }
 
-func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
+func (b *Builder) AppendIndexPointer(tenantID string, pointer indexpointers.IndexPointer) error {
 	b.metrics.appendsTotal.Inc()
-	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
+	newEntrySize := len(pointer.Path) + 1 + 1 + 8 + 8 // path, startTs, endTs, fileSize, uncompressedLogsSize
 
 	if b.state != builderStateEmpty && b.currentSizeEstimate+newEntrySize > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
@@ -284,7 +284,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	tenantIndexPointers := b.getIndexPointerBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 
-	tenantIndexPointers.Append(path, startTs, endTs)
+	tenantIndexPointers.Append(pointer.Path, pointer.StartTs, pointer.EndTs, pointer.FileSize, pointer.UncompressedLogsSize)
 
 	postAppendSizeEstimate := tenantIndexPointers.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate
@@ -455,10 +455,33 @@ func (b *Builder) estimatedSize() int {
 }
 
 // TimeRanges returns the time range of the data in the builder, by tenant.
+// For each tenant, the range is the union of its streams and postings ranges;
+// a source with no observations (zero time range) does not contribute.
 func (b *Builder) TimeRanges() []multitenancy.TimeRange {
-	timeRanges := make([]multitenancy.TimeRange, 0, len(b.streams))
-	for tenantID, tenantStreams := range b.streams {
-		minTime, maxTime := tenantStreams.TimeRange()
+	tenantIDs := make(map[string]struct{}, len(b.streams)+len(b.postings))
+	for tenantID := range b.streams {
+		tenantIDs[tenantID] = struct{}{}
+	}
+	for tenantID := range b.postings {
+		tenantIDs[tenantID] = struct{}{}
+	}
+
+	timeRanges := make([]multitenancy.TimeRange, 0, len(tenantIDs))
+	for tenantID := range tenantIDs {
+		var minTime, maxTime time.Time
+
+		if s, ok := b.streams[tenantID]; ok {
+			sMin, sMax := s.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, sMin, sMax)
+		}
+		if p, ok := b.postings[tenantID]; ok {
+			pMin, pMax := p.TimeRange()
+			minTime, maxTime = unionTimeRange(minTime, maxTime, pMin, pMax)
+		}
+
+		if minTime.IsZero() && maxTime.IsZero() {
+			continue
+		}
 		timeRanges = append(timeRanges, multitenancy.TimeRange{
 			Tenant:  tenantID,
 			MinTime: minTime,
@@ -466,6 +489,19 @@ func (b *Builder) TimeRanges() []multitenancy.TimeRange {
 		})
 	}
 	return timeRanges
+}
+
+func unionTimeRange(curMin, curMax, candMin, candMax time.Time) (time.Time, time.Time) {
+	if candMin.IsZero() {
+		return curMin, curMax
+	}
+	if curMin.IsZero() || candMin.Before(curMin) {
+		curMin = candMin
+	}
+	if curMax.IsZero() || candMax.After(curMax) {
+		curMax = candMax
+	}
+	return curMin, curMax
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result

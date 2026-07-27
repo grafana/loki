@@ -95,6 +95,8 @@ type XDSClient struct {
 	// Once all references to a channel are dropped, the channel is closed.
 	channelsMu        sync.Mutex
 	xdsActiveChannels map[ServerConfig]*channelState // Map from server config to in-use xdsChannels.
+
+	metricsCleanup func()
 }
 
 // New returns a new xDS Client configured with the provided config.
@@ -113,6 +115,11 @@ func New(config Config) (*XDSClient, error) {
 	client, err := newClient(&config, name)
 	if err != nil {
 		return nil, err
+	}
+	// Register this client instance as an Async Reporter.
+	if client.metricsReporter != nil {
+		reporter := &xdsClientMetricReporter{c: client}
+		client.metricsCleanup = client.metricsReporter.RegisterAsyncReporter(reporter)
 	}
 	return client, nil
 }
@@ -170,6 +177,9 @@ func newClient(config *Config, target string) (*XDSClient, error) {
 func (c *XDSClient) Close() {
 	if c.done.HasFired() {
 		return
+	}
+	if c.metricsCleanup != nil {
+		c.metricsCleanup()
 	}
 	c.done.Fire()
 
@@ -440,4 +450,67 @@ func resourceWatchStateForTesting(c *XDSClient, rType ResourceType, resourceName
 	}
 	return a.resourceWatchStateForTesting(rType, resourceName)
 
+}
+
+// xdsClientMetricReporter is a wrapper around XDSClient used solely for
+// reporting metrics. We create this separate type to implement the
+// clients.AsyncReporter interface, preventing its Report method from
+// becoming part of the public XDSClient API. This is especially important
+// because the AsyncReporter interface is experimental, and we want to
+// avoid coupling experimental changes to the stable XDSClient API.
+type xdsClientMetricReporter struct {
+	c *XDSClient
+}
+
+// Report implements clients.AsyncReporter.
+// This is the entry point invoked by the metrics system during a scrape.
+func (r *xdsClientMetricReporter) Report(rec clients.AsyncMetricsRecorder) error {
+	r.c.reportConnectedState(rec)
+	r.c.reportResourceStats(rec)
+	return nil
+}
+
+// reportConnectedState handles the "grpc.xds_client.connected" metric.
+func (c *XDSClient) reportConnectedState(rec clients.AsyncMetricsRecorder) {
+	c.channelsMu.Lock()
+	defer c.channelsMu.Unlock()
+
+	for _, cs := range c.xdsActiveChannels {
+		val := int64(0)
+		if cs.channel.ads.isStreamEstablished() {
+			val = 1
+		}
+
+		rec.ReportMetric(&metrics.XDSClientConnected{
+			ServerURI: cs.serverConfig.ServerIdentifier.ServerURI,
+			Value:     val,
+		})
+	}
+}
+
+// reportResourceStats handles the "grpc.xds_client.resources" metric.
+func (c *XDSClient) reportResourceStats(rec clients.AsyncMetricsRecorder) {
+	reportForAuthority := func(a *authority) {
+		stats := a.resourceStats()
+		for resourceType, stateCounts := range stats {
+			for cacheState, count := range stateCounts {
+				if count > 0 {
+					authorityName := a.name
+					if authorityName == "" {
+						authorityName = "#old"
+					}
+					rec.ReportMetric(&metrics.XDSClientResourceStats{
+						Authority:    authorityName,
+						ResourceType: resourceType,
+						CacheState:   cacheState,
+						Count:        int64(count),
+					})
+				}
+			}
+		}
+	}
+	reportForAuthority(c.topLevelAuthority)
+	for _, a := range c.authorities {
+		reportForAuthority(a)
+	}
 }

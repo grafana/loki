@@ -47,7 +47,13 @@ func getDirectoryDepth(path string) string {
 	if path == "" {
 		return ""
 	}
-	return fmt.Sprint(strings.Count(path, "/") + 1)
+
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		return "0"
+	}
+
+	return fmt.Sprint(strings.Count(trimmed, "/") + 1)
 }
 
 // formatSignedRequestHeaders builds both the comma-separated header names for the srh query parameter

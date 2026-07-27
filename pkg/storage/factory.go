@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -303,7 +304,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
-	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
+	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", true, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
@@ -337,6 +338,10 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Alibaba Storage config")
+	}
+
+	if !cfg.UseThanosObjstore {
+		level.Warn(util_log.Logger).Log("msg", "the legacy object store clients are deprecated and their usage is not recommended any more. please migrate to thanos objstore based clients by setting `use_thanos_objstore: true`.")
 	}
 
 	return cfg.NamedStores.Validate()

@@ -691,41 +691,44 @@ func Test_endToEnd_traceIDFlow(t *testing.T) {
 	w := httptest.NewRecorder()
 	endpoint.ServeHTTP(w, req)
 
-	// Give goldfish async processing time to complete
-	time.Sleep(200 * time.Millisecond)
-
 	// Verify that the system processes the request successfully
 	assert.Equal(t, 200, w.Code)
 
-	// Debug: Check if goldfish was triggered at all
-	t.Logf("Number of samples stored: %d", len(storage.samples))
-	t.Logf("Number of results stored: %d", len(storage.results))
+	require.Eventually(t, func() bool {
+		return storage.SampleCount() > 0
+	}, 2*time.Second, 10*time.Millisecond, "goldfish async processing should store a sample")
 
-	// For now, just verify that the system works end-to-end without panicking
-	// The actual trace ID verification will depend on proper goldfish triggering
-	if len(storage.samples) > 0 {
-		sample := storage.samples[0]
-		assert.Equal(t, "test-tenant", sample.TenantID)
-		assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
+	t.Logf("Number of samples stored: %d", storage.SampleCount())
+	t.Logf("Number of results stored: %d", storage.ResultCount())
 
-		// Verify that the TraceID fields exist and don't cause panics
-		assert.IsType(t, "", sample.CellATraceID)
-		assert.IsType(t, "", sample.CellBTraceID)
-	}
+	sample := storage.GetSample(0)
+	assert.Equal(t, "test-tenant", sample.TenantID)
+	assert.Equal(t, "count_over_time({job=\"test\"}[5m])", sample.Query)
+
+	// Verify that the TraceID fields exist and don't cause panics
+	assert.IsType(t, "", sample.CellATraceID)
+	assert.IsType(t, "", sample.CellBTraceID)
 }
 
-// mockGoldfishStorage implements goldfish.Storage for testing
+// mockGoldfishStorage implements goldfish.Storage for testing.
+// Goldfish stores samples asynchronously (go processWithGoldfish), so all
+// access to samples/results must be synchronized.
 type mockGoldfishStorage struct {
+	mu      sync.Mutex
 	samples []goldfish.QuerySample
 	results []goldfish.ComparisonResult
 }
 
 func (m *mockGoldfishStorage) StoreQuerySample(_ context.Context, sample *goldfish.QuerySample, _ *goldfish.ComparisonResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.samples = append(m.samples, *sample)
 	return nil
 }
 
 func (m *mockGoldfishStorage) StoreComparisonResult(_ context.Context, result *goldfish.ComparisonResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.results = append(m.results, *result)
 	return nil
 }
@@ -753,8 +756,28 @@ func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ strin
 }
 
 func (m *mockGoldfishStorage) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.samples = []goldfish.QuerySample{}
 	m.results = []goldfish.ComparisonResult{}
+}
+
+func (m *mockGoldfishStorage) SampleCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.samples)
+}
+
+func (m *mockGoldfishStorage) ResultCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.results)
+}
+
+func (m *mockGoldfishStorage) GetSample(i int) goldfish.QuerySample {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.samples[i]
 }
 
 // TestProxyEndpoint_QuerySplitting tests the query splitting functionality for goldfish comparison
@@ -768,6 +791,30 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 
 	var mu sync.Mutex
 	receivedQueries := []string{}
+
+	resetReceivedQueries := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		receivedQueries = nil
+	}
+	// snapshotReceivedQueries copies under lock so tests can inspect without racing
+	// backend handlers that continue after ServeHTTP returns (fan-out early return).
+	snapshotReceivedQueries := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		out := make([]string, len(receivedQueries))
+		copy(out, receivedQueries)
+		return out
+	}
+	waitReceivedQueries := func(t *testing.T, n int, msgAndArgs ...interface{}) []string {
+		t.Helper()
+		var snap []string
+		require.Eventually(t, func() bool {
+			snap = snapshotReceivedQueries()
+			return len(snap) == n
+		}, 2*time.Second, 10*time.Millisecond, msgAndArgs...)
+		return snap
+	}
 
 	step := "60s"
 
@@ -829,7 +876,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	endpoint := createTestEndpointWithGoldfishAndSplitLag(t, backends, "test", goldfishManager, minAge)
 
 	t.Run("query entirely recent (skips goldfish)", func(t *testing.T) {
-		receivedQueries = []string{}
+		resetReceivedQueries()
 		storage.Reset()
 
 		// Query from threshold+1h to threshold+2h (all recent)
@@ -842,12 +889,14 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		endpoint.ServeHTTP(w, req)
 
 		assert.Equal(t, 200, w.Code)
-		assert.Equal(t, 1, len(receivedQueries), "expect only 1 query, to v1 engine only, got %d", len(receivedQueries))
-		assert.Equal(t, 0, len(storage.samples), "recent query should not be sent to goldfish cell or compared")
+		waitReceivedQueries(t, 1, "expect only 1 query, to v1 engine only")
+		// Goldfish should not run; brief wait to catch a late async store.
+		time.Sleep(100 * time.Millisecond)
+		assert.Equal(t, 0, storage.SampleCount(), "recent query should not be sent to goldfish cell or compared")
 	})
 
 	t.Run("query entirely old (normal goldfish flow)", func(t *testing.T) {
-		receivedQueries = []string{}
+		resetReceivedQueries()
 		storage.Reset()
 
 		// Query from threshold-2h to threshold-1h (all old)
@@ -859,16 +908,15 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		w := httptest.NewRecorder()
 		endpoint.ServeHTTP(w, req)
 
-		// Give goldfish time to process
-		time.Sleep(2 * time.Second)
-
 		assert.Equal(t, 200, w.Code)
-		assert.Equal(t, 2, len(receivedQueries), "expected 1 query each to v1 and v2 for comparison, got %d", len(receivedQueries))
-		assert.Equal(t, 1, len(storage.samples), "Goldfish should process entirely old queries normally")
+		waitReceivedQueries(t, 2, "expected 1 query each to v1 and v2 for comparison")
+		require.Eventually(t, func() bool {
+			return storage.SampleCount() == 1
+		}, 2*time.Second, 10*time.Millisecond, "Goldfish should process entirely old queries normally")
 	})
 
 	t.Run("query spans threshold (split and merge)", func(t *testing.T) {
-		receivedQueries = []string{}
+		resetReceivedQueries()
 		storage.Reset()
 
 		// Query from threshold-1h to threshold+1h (spans threshold)
@@ -880,12 +928,9 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		w := httptest.NewRecorder()
 		endpoint.ServeHTTP(w, req)
 
-		// Give goldfish time to process
-		time.Sleep(500 * time.Millisecond)
-
 		assert.Equal(t, 200, w.Code)
 
-		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries, 1 for the recent portion, and 1 to both v1 and v2 for comparison, got %d", len(receivedQueries))
+		queries := waitReceivedQueries(t, 3, "expected 3 queries, 1 for the recent portion, and 1 to both v1 and v2 for comparison")
 
 		// Classify queries by whether their end time matches the request's end:
 		// the post-v2 (recent) split runs to the request end, while the v2 (old)
@@ -893,7 +938,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		// can drift relative to `threshold` captured at test setup.
 		oldQueries := 0
 		recentQueries := 0
-		for _, q := range receivedQueries {
+		for _, q := range queries {
 			if strings.Contains(q, "end=") {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
@@ -908,7 +953,9 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		assert.Equal(t, 2, oldQueries, "Old portion should be sent to both backends")
 		assert.Equal(t, 1, recentQueries, "Recent portion should only be sent to preferred backend")
 
-		assert.Equal(t, 1, len(storage.samples), "goldfish compares the old portion of the query between the two backends")
+		require.Eventually(t, func() bool {
+			return storage.SampleCount() == 1
+		}, 2*time.Second, 10*time.Millisecond, "goldfish compares the old portion of the query between the two backends")
 
 		// Parse the JSON response and verify concatenation
 		var response loghttp.QueryResponse
@@ -934,7 +981,7 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 	})
 
 	t.Run("v2 compatible metric query with aggregation (split and merge)", func(t *testing.T) {
-		receivedQueries = []string{}
+		resetReceivedQueries()
 		storage.Reset()
 
 		// Query from threshold-1h to threshold+1h (spans threshold)
@@ -948,20 +995,17 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		w := httptest.NewRecorder()
 		endpoint.ServeHTTP(w, req)
 
-		// Give goldfish time to process
-		time.Sleep(500 * time.Millisecond)
-
 		assert.Equal(t, 200, w.Code)
 
 		// For v2 compatible metric queries, we expect:
 		// - 3 queries total: 1 for recent portion (v1 only), 2 for old portion (v1 and v2 for comparison)
-		assert.Equal(t, 3, len(receivedQueries), "expected 3 queries for v2 metric query, 1 for recent portion and 2 for old portion comparison, got %d", len(receivedQueries))
+		queries := waitReceivedQueries(t, 3, "expected 3 queries for v2 metric query, 1 for recent portion and 2 for old portion comparison")
 
 		// Classify queries by whether their end time matches the request's end
 		// (the recent portion) or not (the old portion sent to both backends).
 		oldQueries := 0
 		recentQueries := 0
-		for _, q := range receivedQueries {
+		for _, q := range queries {
 			if strings.Contains(q, "end=") {
 				endStr := extractQueryParam(q, "end")
 				endTime, _ := parseTimestamp(endStr)
@@ -976,7 +1020,9 @@ func TestProxyEndpoint_QuerySplitting(t *testing.T) {
 		assert.Equal(t, 2, oldQueries, "Old portion of v2 metric query should be sent to both backends for comparison")
 		assert.Equal(t, 1, recentQueries, "Recent portion of v2 metric query should only be sent to preferred backend")
 
-		assert.Equal(t, 1, len(storage.samples), "goldfish should compare the old portion of v2 metric query between the two backends")
+		require.Eventually(t, func() bool {
+			return storage.SampleCount() == 1
+		}, 2*time.Second, 10*time.Millisecond, "goldfish should compare the old portion of v2 metric query between the two backends")
 
 		// Parse the JSON response and verify concatenation
 		var response loghttp.QueryResponse

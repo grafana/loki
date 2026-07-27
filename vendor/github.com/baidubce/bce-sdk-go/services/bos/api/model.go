@@ -865,6 +865,16 @@ type ObjectTag struct {
 	Value string `json:"value"`
 }
 
+type TagSet struct {
+	TagInfo map[string]interface{} `json:"tagInfo,omitempty"`
+}
+
+type GetObjectTagResult struct {
+	Code    string   `json:"code,omitempty"`
+	Message string   `json:"message,omitempty"`
+	TagSet  []TagSet `json:"tagSet,omitempty"`
+}
+
 type BosShareLinkArgs struct {
 	Bucket          string `json:"bucket"`
 	Endpoint        string `json:"endpoint"`

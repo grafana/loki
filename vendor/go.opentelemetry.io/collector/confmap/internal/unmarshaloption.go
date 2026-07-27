@@ -19,3 +19,13 @@ type UnmarshalOptionFunc func(*UnmarshalOptions)
 func (fn UnmarshalOptionFunc) apply(set *UnmarshalOptions) {
 	fn(set)
 }
+
+func ApplyUnmarshalOptions(set *UnmarshalOptions, opts []UnmarshalOption) *UnmarshalOptions {
+	if set == nil {
+		set = &UnmarshalOptions{}
+	}
+	for _, opt := range opts {
+		opt.apply(set)
+	}
+	return set
+}

@@ -33,8 +33,8 @@ func init() {
 }
 
 var (
-	// metdataRegistry is a map from proto type to metadataConverter.
-	metdataRegistry = make(map[string]metadataConverter)
+	// metadataRegistry is a map from proto type to metadataConverter.
+	metadataRegistry = make(map[string]metadataConverter)
 )
 
 // metadataConverter converts xds metadata entries in
@@ -48,18 +48,18 @@ type metadataConverter interface {
 // registerMetadataConverter registers the converter to the map keyed on a proto
 // type_url. Must be called at init time. Not thread safe.
 func registerMetadataConverter(protoType string, c metadataConverter) {
-	metdataRegistry[protoType] = c
+	metadataRegistry[protoType] = c
 }
 
 // metadataConverterForType retrieves a converter based on key given.
 func metadataConverterForType(typeURL string) metadataConverter {
-	return metdataRegistry[typeURL]
+	return metadataRegistry[typeURL]
 }
 
 // unregisterMetadataConverterForTesting removes a converter from the registry.
 // For testing only.
 func unregisterMetadataConverterForTesting(typeURL string) {
-	delete(metdataRegistry, typeURL)
+	delete(metadataRegistry, typeURL)
 }
 
 // StructMetadataValue stores the values in a google.protobuf.Struct from

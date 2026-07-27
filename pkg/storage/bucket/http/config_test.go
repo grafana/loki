@@ -1,6 +1,8 @@
 package http
 
 import (
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,11 +69,12 @@ max_connections_per_host: 8
 			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
-			err := yaml.Unmarshal([]byte(testData.config), &cfg)
+			dec := yaml.NewDecoder(strings.NewReader(testData.config))
+			err := dec.Decode(&cfg)
 			if testData.expectedTypeErr {
 				var typeErr *yaml.LoadErrors
 				require.ErrorAs(t, err, &typeErr)
-			} else {
+			} else if err != io.EOF {
 				require.NoError(t, err)
 			}
 			require.Equal(t, testData.expectedConfig, cfg)

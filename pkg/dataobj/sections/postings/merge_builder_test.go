@@ -14,7 +14,7 @@ import (
 // TestMergeBuilder_AppendLabelEntry_RoundTrip verifies that appended label
 // entries round-trip correctly without aggregation.
 func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
-	b := NewMergeBuilder(nil, 0, 0)
+	b := NewMergeBuilder(nil, 0, 0, 1<<20)
 	b.SetTenant("test-tenant")
 
 	ts := int64(1000) // unix nanoseconds
@@ -77,7 +77,7 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 // TestMergeBuilder_AppendBloomEntry_RoundTrip verifies that appended bloom
 // entries round-trip correctly without aggregation.
 func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
-	b := NewMergeBuilder(nil, 0, 0)
+	b := NewMergeBuilder(nil, 0, 0, 1<<20)
 	b.SetTenant("test-tenant")
 
 	ts := int64(500) // unix nanoseconds
@@ -145,7 +145,7 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 // appending two label entries with the same key returns an error on the
 // second append.
 func TestMergeBuilder_AppendLabelEntry_DuplicateKey_Errors(t *testing.T) {
-	b := NewMergeBuilder(nil, 0, 0)
+	b := NewMergeBuilder(nil, 0, 0, 1<<20)
 	b.SetTenant("test-tenant")
 
 	ts := int64(0) // unix nanoseconds
@@ -182,7 +182,7 @@ func TestMergeBuilder_AppendBloomEntry_DuplicateKey_Errors(t *testing.T) {
 	bloomBytes := mustBuildBloomBytes(t, "/obj", 0, "col", "val", timeVal)
 
 	// Now use a fresh builder for the duplicate append test
-	b := NewMergeBuilder(nil, 0, 0)
+	b := NewMergeBuilder(nil, 0, 0, 1<<20)
 	b.SetTenant("test-tenant")
 
 	ts := int64(0) // unix nanoseconds

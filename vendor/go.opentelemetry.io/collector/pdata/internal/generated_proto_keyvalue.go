@@ -155,7 +155,7 @@ func (orig *KeyValue) UnmarshalJSON(iter *json.Iterator) {
 		case "keyStrindex", "key_strindex":
 			orig.KeyStrindex = iter.ReadInt32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

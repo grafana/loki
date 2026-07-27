@@ -186,6 +186,13 @@ type Config struct {
 	// utilization. This is only available starting at protocol version 1.
 	EnableCompression bool
 
+	// CompressionAlgorithm selects which algorithm is used to compress
+	// outgoing messages when EnableCompression is true. Defaults to LZW for
+	// backward compatibility. Receivers always decode every algorithm they
+	// understand independently of this setting; senders only emit one.
+	// Empty string is treated as LZW.
+	CompressionAlgorithm CompressionAlgorithm
+
 	// SecretKey is used to initialize the primary encryption key in a keyring.
 	// The primary encryption key is the only key used to encrypt messages and
 	// the first key used while attempting to decrypt messages. Providing a
@@ -300,6 +307,11 @@ func ParseCIDRs(v []string) ([]net.IPNet, error) {
 	return nets, errs
 }
 
+// defaultUDPBufferSize is the default value used for Config.UDPBufferSize.
+// 1400 bytes leaves comfortable headroom under the standard 1500-byte
+// Ethernet MTU once IP/UDP headers are accounted for.
+const defaultUDPBufferSize = 1400
+
 // DefaultLANConfig returns a sane set of configurations for Memberlist.
 // It uses the hostname as the node name, and otherwise sets very conservative
 // values that are sane for most LAN environments. The default configuration
@@ -333,7 +345,8 @@ func DefaultLANConfig() *Config {
 		GossipVerifyIncoming: true,
 		GossipVerifyOutgoing: true,
 
-		EnableCompression: true, // Enable compression by default
+		EnableCompression:    true, // Enable compression by default
+		CompressionAlgorithm: CompressionAlgorithmLZW,
 
 		SecretKey: nil,
 		Keyring:   nil,
@@ -341,7 +354,7 @@ func DefaultLANConfig() *Config {
 		DNSConfigPath: "/etc/resolv.conf",
 
 		HandoffQueueDepth: 1024,
-		UDPBufferSize:     1400,
+		UDPBufferSize:     defaultUDPBufferSize,
 		CIDRsAllowed:      nil, // same as allow all
 
 		QueueCheckInterval: 30 * time.Second,

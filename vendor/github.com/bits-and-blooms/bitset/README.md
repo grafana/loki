@@ -7,15 +7,7 @@
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/bits-and-blooms/bitset?tab=doc)](https://pkg.go.dev/github.com/bits-and-blooms/bitset?tab=doc)
 
 
-This library is part of the [awesome go collection](https://github.com/avelino/awesome-go). It is used in production by several important systems:
-
-* [beego](https://github.com/beego/beego)
-* [CubeFS](https://github.com/cubefs/cubefs)
-* [Amazon EKS Distro](https://github.com/aws/eks-distro)
-* [sourcegraph](https://github.com/sourcegraph/sourcegraph-public-snapshot)
-* [torrent](https://github.com/anacrolix/torrent)
-
-
+This library is part of the [awesome go collection](https://github.com/avelino/awesome-go). It is used in production by several important systems.
 ## Description
 
 Package bitset implements bitsets, a mapping between non-negative integers and boolean values.
@@ -152,6 +144,59 @@ Should you want to access a BitSet from more than one goroutine, you should prov
 ```bash
 go get github.com/bits-and-blooms/bitset
 ```
+
+## Users
+
+
+
+Databases & Storage
+- [milvus-io/milvus](https://github.com/milvus-io/milvus) — popular open-source vector database
+- [cubefs/cubefs](https://github.com/cubefs/cubefs) — CNCF distributed filesystem (used at JD.com)
+- [sourcenetwork/defradb](https://github.com/sourcenetwork/defradb) — decentralized document database
+- [siglens/siglens](https://github.com/siglens/siglens) — open-source observability/log analytics platform
+- [ByteStorage/FlyDB](https://github.com/ByteStorage/FlyDB) — high-performance KV store
+
+Search & Indexing
+- [blevesearch/bleve](https://github.com/blevesearch/bleve) — full-text search library for Go
+- [blevesearch/vellum](https://github.com/blevesearch/vellum) — FST library used internally by Bleve
+- [blugelabs/bluge](https://github.com/blugelabs/bluge) — modern Go search library (successor to Bleve)
+- [geange/lucene-go](https://github.com/geange/lucene-go) — Lucene port to Go
+
+Blockchain & Cryptography
+- [consensys/gnark](https://github.com/consensys/gnark) — zk-SNARK proving system
+- [consensys/gnark-crypto](https://github.com/consensys/gnark-crypto) — elliptic curve cryptography for ZK proofs
+- [NethermindEth/juno](https://github.com/NethermindEth/juno) — StarkNet full node
+- [onflow/cadence](https://github.com/onflow/cadence) — Flow blockchain smart contract language runtime
+- [cosmos/cosmos-sdk](https://github.com/cosmos/cosmos-sdk) — Cosmos blockchain SDK (slashing module)
+- [babylonlabs-io/babylon](https://github.com/babylonlabs-io/babylon) — Bitcoin staking protocol
+- [bnb-chain/greenfield](https://github.com/bnb-chain/greenfield) — BNB Chain decentralized storage
+
+Infrastructure & Networking
+- [moby/swarmkit](https://github.com/moby/swarmkit) — Docker Swarm orchestration (ID management)
+- [coredhcp/coredhcp](https://github.com/coredhcp/coredhcp) — pluggable DHCP server (bitmap IP allocation)
+- [Scalingo/sand](https://github.com/Scalingo/sand) — private networking for containers (IP allocation)
+- [AliyunContainerService/terway](https://github.com/AliyunContainerService/terway) — Alibaba Cloud K8s CNI
+- [pomerium/pomerium](https://github.com/pomerium/pomerium) — identity-aware access proxy
+
+Distributed Systems & Messaging
+- [apache/pulsar-client-go](https://github.com/apache/pulsar-client-go) — official Apache Pulsar Go client
+- [d7y.io/dragonfly](https://github.com/dragonflyoss/Dragonfly2) — CNCF P2P file distribution system
+- [RoaringBitmap/roaring](https://github.com/RoaringBitmap/roaring) — compressed bitmap library (interops with bitset)
+- [zhenghaoz/gorse](https://github.com/zhenghaoz/gorse) — Go recommendation engine
+
+Machine Learning / Vector Search
+- [fogfish/hnsw](https://github.com/fogfish/hnsw) — HNSW approximate nearest-neighbor graph
+- [semafind/semadb](https://github.com/semafind/semadb) — vector database
+
+Developer Tools & Security
+- [bearer/bearer](https://github.com/bearer/bearer) — security code scanner (AST traversal)
+- [zrepl/zrepl](https://github.com/zrepl/zrepl) — ZFS replication tool
+- [NVIDIA/dcgm-exporter](https://github.com/NVIDIA/dcgm-exporter) — NVIDIA GPU Prometheus exporter
+- [NVIDIA/go-dcgm](https://github.com/NVIDIA/go-dcgm) — NVIDIA datacenter GPU management bindings
+- [gohugoio/hugo](https://github.com/gohugoio/hugo) — the Hugo static site generator
+- [godoctor/godoctor](https://github.com/godoctor/godoctor) — Go refactoring tool (dataflow analysis)
+
+
 
 ## Contributing
 

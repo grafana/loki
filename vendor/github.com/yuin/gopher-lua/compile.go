@@ -236,12 +236,13 @@ func (cd *codeStore) PropagateMV(top int, save *int, reg *int, inc int) {
 }
 
 func (cd *codeStore) AddLoadNil(a, b, line int) {
-	last := cd.Last()
-	if opGetOpCode(last) == OP_LOADNIL && (opGetArgA(last)+opGetArgB(last)) == a {
-		cd.SetB(cd.LastPC(), b)
-	} else {
-		cd.AddABC(OP_LOADNIL, a, b, 0, line)
-	}
+	// this method used to merge multiple consecutive LOADNIL instructions
+	// of consecutive registers into a single LOADNIL instruction, but it
+	// caused issues when the merged instructions were JMP targets, and so
+	// generated invalid code; so the merging functionality has been removed.
+	// It is safe to merge the LOADNIL instructions under certain conditions,
+	// but additional logic / complexity would be needed here.
+	cd.AddABC(OP_LOADNIL, a, b, 0, line)
 }
 
 func (cd *codeStore) SetOpCode(pc int, v int) {

@@ -79,6 +79,50 @@ type ClusterUpdate struct {
 	// "com.google.csm.telemetry_labels" with keys "service_name" or
 	// "service_namespace".
 	TelemetryLabels map[string]string
+
+	// LRSReportEndpointMetrics specifies the subset of ORCA metrics that
+	// should be propagated to the LRS server.
+	LRSReportEndpointMetrics *LRSReportEndpointMetricsConfig
+}
+
+// LRSReportEndpointMetricsConfig holds the configuration for propagating ORCA
+// metrics to the LRS server.
+type LRSReportEndpointMetricsConfig struct {
+	CPUUtilization         bool
+	MemUtilization         bool
+	ApplicationUtilization bool
+	// NamedMetricsAll specifies whether all named metrics should be propagated.
+	// If true, NamedMetrics is ignored.
+	NamedMetricsAll bool
+	// NamedMetrics specifies the set of named metrics to propagate when
+	// NamedMetricsAll is false.
+	NamedMetrics map[string]struct{}
+}
+
+// Equal returns whether the two LRSReportEndpointMetricsConfig configurations
+// are identical.
+func (bmp *LRSReportEndpointMetricsConfig) Equal(other *LRSReportEndpointMetricsConfig) bool {
+	switch {
+	case bmp == nil && other == nil:
+		return true
+	case (bmp != nil) != (other != nil):
+		return false
+	}
+	if bmp.CPUUtilization != other.CPUUtilization ||
+		bmp.MemUtilization != other.MemUtilization ||
+		bmp.ApplicationUtilization != other.ApplicationUtilization ||
+		bmp.NamedMetricsAll != other.NamedMetricsAll {
+		return false
+	}
+	if len(bmp.NamedMetrics) != len(other.NamedMetrics) {
+		return false
+	}
+	for k := range bmp.NamedMetrics {
+		if _, ok := other.NamedMetrics[k]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // SecurityConfig contains the security configuration received as part of the
@@ -120,6 +164,20 @@ type SecurityConfig struct {
 	// after unmarshalling xDS resources ensures that this field is set only
 	// when both RootCertName and RootInstanceName are empty.
 	UseSystemRootCerts bool
+	// SNI is the string to be used as the Server Name when creating TLS
+	// configurations for the handshake. An empty string for SNI value will be
+	// treated as SNI not specified.
+	SNI string
+	// UseAutoHostSNI indicates whether to set the ServerName for the TLS handshake
+	// configuration to the hostname (if available). The host is the DNS
+	// hostname for DNS clusters, or Endpoint.hostname for EDS clusters. The
+	// port will not be included in the SNI value.
+	UseAutoHostSNI bool
+	// AutoSNISANValidation indicates whether to replace any Subject Alternative
+	// Name (SAN) matchers with a validation for a DNS SAN matching the SNI
+	// value sent. This validation uses the SNI being set in the TLS
+	// configuration, regardless of how the SNI is determined.
+	AutoSNISANValidation bool
 }
 
 // Equal returns true if sc is equal to other.
@@ -142,6 +200,12 @@ func (sc *SecurityConfig) Equal(other *SecurityConfig) bool {
 	case sc.RequireClientCert != other.RequireClientCert:
 		return false
 	case sc.UseSystemRootCerts != other.UseSystemRootCerts:
+		return false
+	case sc.SNI != other.SNI:
+		return false
+	case sc.UseAutoHostSNI != other.UseAutoHostSNI:
+		return false
+	case sc.AutoSNISANValidation != other.AutoSNISANValidation:
 		return false
 	default:
 		if len(sc.SubjectAltNameMatchers) != len(other.SubjectAltNameMatchers) {

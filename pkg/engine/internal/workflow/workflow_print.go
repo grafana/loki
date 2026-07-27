@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/dustin/go-humanize"
 
@@ -38,7 +37,6 @@ func Fprint(w io.Writer, wf *Workflow) error {
 			visited[n] = struct{}{}
 
 			fmt.Fprintf(w, "┌ Task %s\n", n.ID())
-			fmt.Fprintf(w, "│ @max_time_range start=%s end=%s\n", n.MaxTimeRange.Start.Format(time.RFC3339Nano), n.MaxTimeRange.End.Format(time.RFC3339Nano))
 			fmt.Fprintln(w, "│")
 
 			var sb strings.Builder

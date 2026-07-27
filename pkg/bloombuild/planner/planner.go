@@ -28,12 +28,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 var (
 	errPlannerIsNotRunning = errors.New("planner is not running")
-	errPlannerIsNotLeader  = errors.New("planner is not leader")
 )
 
 type Planner struct {
@@ -55,10 +53,6 @@ type Planner struct {
 
 	metrics *Metrics
 	logger  log.Logger
-
-	// used only in SSD mode where a single planner of the backend replicas needs to create tasksQueue
-	// therefore is nil when planner is run in microservice mode (default)
-	ringWatcher *common.RingWatcher
 }
 
 func New(
@@ -70,7 +64,6 @@ func New(
 	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
-	rm *ring.RingManager,
 ) (*Planner, error) {
 	utillog.WarnExperimentalUse("Bloom Planner", logger)
 
@@ -109,11 +102,6 @@ func New(
 
 	svcs := []services.Service{p.tasksQueue}
 
-	if rm != nil {
-		p.ringWatcher = common.NewRingWatcher(rm.RingLifecycler.GetInstanceID(), rm.Ring, time.Minute, logger)
-		svcs = append(svcs, p.ringWatcher)
-	}
-
 	p.subservices, err = services.NewManager(svcs...)
 	if err != nil {
 		return nil, fmt.Errorf("error creating subservices manager: %w", err)
@@ -123,15 +111,6 @@ func New(
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
 	return p, nil
-}
-
-func (p *Planner) isLeader() bool {
-	if p.ringWatcher == nil {
-		// when the planner runs as standalone service in microserivce mode, then there is no ringWatcher
-		// therefore we can safely assume that the planner is a singleton
-		return true
-	}
-	return p.ringWatcher.IsLeader()
 }
 
 func (p *Planner) starting(ctx context.Context) (err error) {
@@ -157,7 +136,7 @@ func (p *Planner) stopping(_ error) error {
 func (p *Planner) running(ctx context.Context) error {
 	go p.trackInflightRequests(ctx)
 
-	// run once at beginning, but delay by 1m to allow ring consolidation when running in SSD mode
+	// run once at beginning, but delay by 1m to allow ring consolidation
 	initialPlanningTimer := time.NewTimer(time.Minute)
 	defer initialPlanningTimer.Stop()
 
@@ -219,10 +198,6 @@ type tenantTable struct {
 }
 
 func (p *Planner) runOne(ctx context.Context) error {
-	if !p.isLeader() {
-		return errPlannerIsNotLeader
-	}
-
 	var (
 		wg     sync.WaitGroup
 		start  = time.Now()
@@ -730,10 +705,6 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 
 	builderID := resp.GetBuilderID()
 	logger := log.With(p.logger, "builder", builderID)
-
-	if !p.isLeader() {
-		return errPlannerIsNotLeader
-	}
 
 	level.Debug(logger).Log("msg", "builder connected")
 

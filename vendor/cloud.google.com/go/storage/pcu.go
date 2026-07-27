@@ -47,6 +47,8 @@ const (
 //
 // **Note:** This feature is currently experimental and its API surface may change
 // in future releases. It is not yet recommended for production use.
+//
+// TODO(b/521239530): Add option to delete source parts after compose operation and remove cleanup logic.
 type ParallelUploadConfig struct {
 
 	// PartSize is the size of each part to be uploaded in parallel.

@@ -2,6 +2,8 @@ package bucket
 
 import (
 	"context"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
@@ -72,8 +74,11 @@ func TestNewClient(t *testing.T) {
 			cfg := Config{}
 			flagext.DefaultValues(&cfg)
 
-			err := yaml.Unmarshal([]byte(testData.config), &cfg)
-			require.NoError(t, err)
+			dec := yaml.NewDecoder(strings.NewReader(testData.config))
+			err := dec.Decode(&cfg)
+			if err != io.EOF {
+				require.NoError(t, err)
+			}
 
 			// Instance a new bucket client from the config
 			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger)

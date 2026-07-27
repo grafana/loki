@@ -19,7 +19,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
+	"log"
 	"sync"
 
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
@@ -403,6 +405,10 @@ type rangeRequest struct {
 	readID       int64
 	bytesWritten int64
 	completed    bool
+
+	wantChunkCRC    uint32
+	gotChunkCRC     uint32
+	chunkCRCPresent bool
 }
 
 // Methods implementing internalMultiRangeDownloader
@@ -1057,21 +1063,54 @@ func (m *multiRangeDownloaderManager) processDataRanges(result mrdSessionResult,
 		if !exists || req.completed {
 			continue
 		}
-		written, _, err := result.decoder.writeToAndUpdateCRC(req.output, readID, nil)
+
+		var updateCRC func(b []byte)
+		// If checksum is enabled and data has checksum, validate it.
+		if !m.params.disableMRDReadChecksum &&
+			dataRange.GetChecksummedData() != nil &&
+			dataRange.GetChecksummedData().Crc32C != nil {
+			req.gotChunkCRC = 0
+			req.chunkCRCPresent = true
+			req.wantChunkCRC = *dataRange.GetChecksummedData().Crc32C
+			updateCRC = func(b []byte) {
+				req.gotChunkCRC = crc32.Update(req.gotChunkCRC, crc32cTable, b)
+			}
+		}
+		written, _, err := result.decoder.writeToAndUpdateCRC(req.output, readID, updateCRC)
 		req.bytesWritten += written
 		mrdStream.updateCapacity(m, 0, -written)
 		if err != nil {
 			m.failRange(mrdStream, req, err)
 			continue
 		}
-
+		err = m.checkAndResetChunkCRC(req)
+		if err != nil {
+			m.failRange(mrdStream, req, err)
+			continue
+		}
 		if dataRange.GetRangeEnd() {
 			req.completed = true
 			delete(mrdStream.pendingRanges, req.readID)
 			mrdStream.updateCapacity(m, -1, 0)
+			if req.length >= 0 && req.bytesWritten > req.length {
+				log.Printf("storage: received %d more bytes than requested from GCS for bucket %q, object %q", req.bytesWritten-req.length, m.params.bucket, m.params.object)
+			}
 			m.runCallback(req.origOffset, req.bytesWritten, nil, req.callback)
 		}
 	}
+}
+
+func (m *multiRangeDownloaderManager) checkAndResetChunkCRC(req *rangeRequest) error {
+	if m.params.disableMRDReadChecksum || !req.chunkCRCPresent {
+		return nil
+	}
+	if req.gotChunkCRC != req.wantChunkCRC {
+		return fmt.Errorf("storage: bad CRC on chunk read: got %d, want %d", req.gotChunkCRC, req.wantChunkCRC)
+	}
+	req.gotChunkCRC = 0
+	req.wantChunkCRC = 0
+	req.chunkCRCPresent = false
+	return nil
 }
 
 // ensureSession is now only for reconnecting *after* the initial session is up.
@@ -1139,6 +1178,9 @@ func (m *multiRangeDownloaderManager) failRange(mrdStream *mrdStream, req *range
 			delete(mrdStream.pendingRanges, req.readID)
 			mrdStream.updateCapacity(m, -1, -(req.length - req.bytesWritten))
 		}
+	}
+	if req.length >= 0 && req.bytesWritten > req.length {
+		log.Printf("storage: received %d more bytes than requested from GCS for bucket %q, object %q", req.bytesWritten-req.length, m.params.bucket, m.params.object)
 	}
 	m.runCallback(req.origOffset, req.bytesWritten, err, req.callback)
 }
