@@ -328,30 +328,33 @@ func TestDistributor_LevelDetectionWithSharedStructuredMetadata(t *testing.T) {
 			expectedLevels: nil,
 		},
 		{
-			// The shared set cannot be normalized in place, it is shared with the other entries
-			// referencing it, so the normalized value is appended to the entry's own metadata
-			// where it shadows the raw one at read time.
-			name:           "unnormalized detected_level in the referenced resource set is normalized onto the entry",
+			// A shared set cannot be normalized in place, it is shared with the other entries
+			// referencing it, and nothing is appended to the entry either: a second
+			// detected_level would be a duplicate. The raw value is stored as is. This is the
+			// one accepted difference from the expanded path, which rewrites the pair in place.
+			name:           "unnormalized detected_level in the referenced resource set is left alone",
 			resource:       []push.LabelAdapter{{Name: constants.LevelLabel, Value: "WARNING"}},
-			expectedLevels: []string{constants.LogLevelWarn},
+			expectedLevels: nil,
 		},
 		{
-			name:           "unnormalized detected_level in the referenced scope set is normalized onto the entry",
+			name:           "unnormalized detected_level in the referenced scope set is left alone",
 			scope:          []push.LabelAdapter{{Name: constants.LevelLabel, Value: "WARNING"}},
-			expectedLevels: []string{constants.LogLevelWarn},
+			expectedLevels: nil,
 		},
 		{
-			// Scope wins, so the scope value is the one normalized onto the entry.
-			name:           "the scope set's detected_level is the one normalized",
+			// Whichever set carries it, a shared detected_level only suppresses detection.
+			name:           "a detected_level in both sets adds nothing to the entry",
 			resource:       []push.LabelAdapter{{Name: constants.LevelLabel, Value: "ERR"}},
 			scope:          []push.LabelAdapter{{Name: constants.LevelLabel, Value: "WARNING"}},
-			expectedLevels: []string{constants.LogLevelWarn},
+			expectedLevels: nil,
 		},
 		{
-			name:           "the scope set takes precedence over the resource set",
+			// The expanded equivalent of this entry's metadata holds the resource attributes
+			// before the scope ones and is scanned front to back, so resource wins.
+			name:           "the resource set takes precedence over the scope set",
 			resource:       []push.LabelAdapter{{Name: "severity", Value: "ERROR"}},
 			scope:          []push.LabelAdapter{{Name: "severity", Value: "WARN"}},
-			expectedLevels: []string{constants.LogLevelWarn},
+			expectedLevels: []string{constants.LogLevelError},
 		},
 		{
 			name:           "the entry's own metadata takes precedence over both shared sets",
