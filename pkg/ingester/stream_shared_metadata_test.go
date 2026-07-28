@@ -9,18 +9,25 @@ import (
 	"testing"
 	"time"
 
+	gokit_log "github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
+	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 
 	pushtypes "github.com/grafana/loki/pkg/push"
@@ -361,7 +368,7 @@ func TestInstancePushSharedStructuredMetadataSets(t *testing.T) {
 		limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 		inst, err := newInstance(
-			defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(),
+			defaultConfig(), defaultPeriodConfigs, "test", limiter, runtime.DefaultTenantConfigs(),
 			noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil,
 			retention.NewTenantsRetention(limits),
 		)
@@ -690,10 +697,9 @@ func TestStreamPushSharedStructuredMetadataRateAccounting(t *testing.T) {
 	})
 }
 
-// TestStreamPushSharedStructuredMetadataWALRecord covers the interim behaviour documented in
-// recordAndSendToTailers: a WAL record carries no pool, so entries must be written to it with
-// their shared metadata already expanded and their references cleared. Leaving a reference
-// behind would make it dangle at replay and drop the attributes silently.
+// TestStreamPushSharedStructuredMetadataWALRecord checks what a push puts in a WAL record: the
+// entries exactly as they were pushed, keeping their own structured metadata and their pool
+// references, plus the stream's pool alongside them. Nothing is expanded on the way in.
 func TestStreamPushSharedStructuredMetadataWALRecord(t *testing.T) {
 	sets := smPool(
 		sm("service_name", "checkout", "cluster", "eu-west-2"),
@@ -711,20 +717,19 @@ func TestStreamPushSharedStructuredMetadataWALRecord(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, record.RefEntries, 1)
-	recorded := record.RefEntries[0].Entries
-	require.Len(t, recorded, len(entries))
+	require.Equal(t, entries, record.RefEntries[0].Entries,
+		"the record must hold the entries as pushed, own metadata and references intact")
+	require.Equal(t, sets, record.RefEntries[0].SharedStructuredMetadataSets,
+		"the record must carry the stream's pool")
 
-	want := expandedEntries(entries, sets)
-	for i, e := range recorded {
-		require.Equal(t, want[i].StructuredMetadata, e.StructuredMetadata,
-			"WAL entry %d must carry the effective structured metadata", i)
-		require.Zero(t, e.SharedResourceRef, "WAL entry %d must not keep a resource reference", i)
-		require.Zero(t, e.SharedScopeRef, "WAL entry %d must not keep a scope reference", i)
-	}
+	// A pool is only expressible from V4 on, so that is what this record is written as.
+	require.Equal(t, wal.WALRecordEntriesV4, record.EntriesVersion())
 }
 
-// TestStreamPushSharedStructuredMetadataWALReplay replays a WAL record produced by a deferred
-// push into a fresh stream and checks no attribute is lost.
+// TestStreamPushSharedStructuredMetadataWALReplay replays a WAL record produced by a push with a
+// pool and checks the replay reconstructs the push exactly: the same entries read back, and
+// byte for byte the same chunk. The latter is the property the earlier expand-on-write interim
+// could not provide, because it changed what the replayed entries looked like.
 func TestStreamPushSharedStructuredMetadataWALReplay(t *testing.T) {
 	sets := smPool(
 		sm("service_name", "checkout", "cluster", "eu-west-2"),
@@ -734,6 +739,9 @@ func TestStreamPushSharedStructuredMetadataWALReplay(t *testing.T) {
 	entries := []logproto.Entry{
 		smEntry(1, "one", sm("trace_id", "abc"), 1, 2),
 		smEntry(2, "two", nil, 3, 0),
+		// Same timestamp, line and own metadata as the entry above but a different resource:
+		// only the references tell them apart, so this is what a replay losing them would drop.
+		smEntry(2, "two", nil, 1, 0),
 	}
 
 	source := newSharedMetadataStream(t, nil)
@@ -742,25 +750,202 @@ func TestStreamPushSharedStructuredMetadataWALReplay(t *testing.T) {
 	require.NoError(t, err)
 
 	// Round trip the record through its wire encoding, as a real replay would.
-	encoded := record.EncodeEntries(wal.CurrentEntriesRec, nil)
+	encoded := record.EncodeEntries(record.EntriesVersion(), nil)
 	decoded := &wal.Record{}
 	require.NoError(t, wal.DecodeRecord(encoded, decoded))
 	require.Len(t, decoded.RefEntries, 1)
+	require.Equal(t, sets, decoded.RefEntries[0].SharedStructuredMetadataSets)
 
-	// Replay passes no pool: the shared metadata is already inside the entries.
+	// Replay hands the stream back the decoded pool, which is what recovery.go does.
 	replayed := newSharedMetadataStream(t, nil)
-	_, err = replayed.Push(context.Background(), decoded.RefEntries[0].Entries, nil, nil, 0, true, false, nil, "loki")
+	_, err = replayed.Push(context.Background(), decoded.RefEntries[0].Entries, decoded.RefEntries[0].SharedStructuredMetadataSets, nil, 0, true, false, nil, "loki")
 	require.NoError(t, err)
 
 	read := readStreamEntries(t, replayed)
 	require.Equal(t, readStreamEntries(t, source), read)
-	require.Len(t, read, len(entries))
+	require.Len(t, read, len(entries), "the entries told apart only by their references must all survive")
+
+	// Two of the entries share a timestamp, and the iterator is free to return those in either
+	// order, so compare what was materialized as a set.
+	asStrings := func(entries []logproto.Entry, sm func(logproto.Entry) pushtypes.LabelsAdapter) []string {
+		out := make([]string, 0, len(entries))
+		for _, e := range entries {
+			out = append(out, logproto.FromLabelAdaptersToLabels(sm(e)).String())
+		}
+		sort.Strings(out)
+		return out
+	}
 
 	want := expandedEntries(entries, sets)
-	for i, e := range read {
-		require.Equal(t, readSM(want[i].StructuredMetadata), e.StructuredMetadata,
-			"replayed entry %d lost structured metadata", i)
+	require.Equal(t,
+		asStrings(want, func(e logproto.Entry) pushtypes.LabelsAdapter { return readSM(e.StructuredMetadata) }),
+		asStrings(read, func(e logproto.Entry) pushtypes.LabelsAdapter { return e.StructuredMetadata }),
+		"the replayed entries must materialize the same structured metadata")
+
+	// The replay rebuilt the very same chunk, not merely an equivalent one.
+	require.Equal(t, closedChunkBytes(t, source), closedChunkBytes(t, replayed))
+}
+
+// TestIngesterWALReplaySharedStructuredMetadata is the full cycle through a real ingester: push
+// with a pool, write the WAL, restart, replay the segments. The replayed chunks must be byte for
+// byte the chunks an equivalent expanding push builds live, which is what proves nothing was
+// lost or reshaped on the way through the WAL.
+//
+// This exercises recovery.go handing the decoded pool back to stream.Push. It is also the
+// property the earlier expand-on-write interim could not provide.
+func TestIngesterWALReplaySharedStructuredMetadata(t *testing.T) {
+	const streamLabels = `{foo="bar"}`
+
+	sets := smPool(
+		sm("service_name", "checkout", "cluster", "eu-west-2"),
+		sm("service_name", "payments", "cluster", "us-east-1"),
+		sm("scope_name", "otelhttp"),
+	)
+	entries := []logproto.Entry{
+		smEntry(1, "from A", sm("trace_id", "abc"), 1, 3),
+		smEntry(2, "from B", sm("trace_id", "def"), 2, 3),
+		smEntry(3, "from A again", nil, 1, 0),
+		// Told apart from the entry above only by which resource it references.
+		smEntry(3, "from A again", nil, 2, 0),
 	}
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	newIngester := func(t *testing.T, walDir string) *Ingester {
+		t.Helper()
+
+		cfg := defaultIngesterTestConfigWithWAL(t, walDir)
+		// Keep checkpointing out of the picture: a checkpoint stores encoded chunks, so
+		// recovering from one would bypass the segment replay this test is about.
+		cfg.WAL.CheckpointDuration = time.Hour
+
+		ing, err := New(cfg, client.Config{}, &mockStore{chunks: map[string][]chunk.Chunk{}}, limits,
+			runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki,
+			gokit_log.NewNopLogger(), nil, readRingMock, nil)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+
+		return ing
+	}
+
+	chunksOf := func(t *testing.T, ing *Ingester) [][]byte {
+		t.Helper()
+
+		inst, ok := ing.instances["test"]
+		require.True(t, ok, "instance was not recovered")
+		s, ok := inst.streams.Load(streamLabels)
+		require.True(t, ok, "stream was not recovered")
+
+		return closedChunkBytes(t, s)
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	// The pooled push, through a WAL, then a restart that has to replay it.
+	walDir := t.TempDir()
+	deferred := newIngester(t, walDir)
+	_, err = deferred.Push(ctx, &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels:                       streamLabels,
+			Entries:                      slices.Clone(entries),
+			SharedStructuredMetadataSets: sets,
+		}},
+		Format: "otlp",
+	})
+	require.NoError(t, err)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), deferred))
+
+	replayed := newIngester(t, walDir)
+	defer services.StopAndAwaitTerminated(context.Background(), replayed) //nolint:errcheck
+
+	// The equivalent expanding push, live, as the reference.
+	expanded := newIngester(t, t.TempDir())
+	defer services.StopAndAwaitTerminated(context.Background(), expanded) //nolint:errcheck
+	_, err = expanded.Push(ctx, &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels:  streamLabels,
+			Entries: expandedEntries(entries, sets),
+		}},
+		Format: "otlp",
+	})
+	require.NoError(t, err)
+
+	// Every entry came back, including the pair only their references tell apart.
+	replayedStream, ok := replayed.instances["test"].streams.Load(streamLabels)
+	require.True(t, ok)
+	require.Len(t, readStreamEntries(t, replayedStream), len(entries),
+		"the entries told apart only by their references must all survive the replay")
+
+	require.Equal(t, chunksOf(t, expanded), chunksOf(t, replayed),
+		"replayed chunks must be byte for byte the chunks of an equivalent expanded push")
+}
+
+// TestStreamPushWALRecordEmissionPolicy pins the emission policy: only a push that actually
+// carries a pool moves the record to V4, so segments written for every other tenant stay
+// exactly what they were and stay readable by an ingester that predates V4.
+func TestStreamPushWALRecordEmissionPolicy(t *testing.T) {
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "one", StructuredMetadata: sm("trace_id", "abc")},
+		{Timestamp: time.Unix(2, 0), Line: "two"},
+	}
+
+	t.Run("a pool-less push stays on the current version", func(t *testing.T) {
+		s := newSharedMetadataStream(t, nil)
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := s.Push(context.Background(), entries, nil, record, 0, true, false, nil, "loki")
+		require.NoError(t, err)
+
+		require.Equal(t, wal.CurrentEntriesRec, record.EntriesVersion())
+		require.Empty(t, record.RefEntries[0].SharedStructuredMetadataSets)
+
+		// And the bytes are the ones the previous version wrote for the same record.
+		require.Equal(t,
+			record.EncodeEntries(wal.WALRecordEntriesV3, nil),
+			record.EncodeEntries(record.EntriesVersion(), nil),
+			"a pool-less record must encode to exactly the V3 bytes")
+	})
+
+	t.Run("a pooled push moves the record to V4", func(t *testing.T) {
+		s := newSharedMetadataStream(t, nil)
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := s.Push(context.Background(), []logproto.Entry{smEntry(1, "one", nil, 1, 0)},
+			smPool(sm("service_name", "checkout")), record, 0, true, false, nil, "otlp")
+		require.NoError(t, err)
+
+		require.Equal(t, wal.WALRecordEntriesV4, record.EntriesVersion())
+	})
+
+	t.Run("one pooled stream moves the whole record to V4", func(t *testing.T) {
+		// The version is a property of the record, so a record mixing a pooled and a pool-less
+		// stream is written as V4 throughout, the pool-less stream carrying an empty pool.
+		poolLess := newSharedMetadataStream(t, nil)
+		pooled := newSharedMetadataStream(t, nil)
+		pooled.fp = 1
+
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := poolLess.Push(context.Background(), entries, nil, record, 0, true, false, nil, "loki")
+		require.NoError(t, err)
+		_, err = pooled.Push(context.Background(), []logproto.Entry{smEntry(1, "one", nil, 1, 0)},
+			smPool(sm("service_name", "checkout")), record, 0, true, false, nil, "otlp")
+		require.NoError(t, err)
+
+		require.Len(t, record.RefEntries, 2)
+		require.Equal(t, wal.WALRecordEntriesV4, record.EntriesVersion())
+
+		decoded := &wal.Record{}
+		require.NoError(t, wal.DecodeRecord(record.EncodeEntries(record.EntriesVersion(), nil), decoded))
+		require.Len(t, decoded.RefEntries, 2)
+		require.Empty(t, decoded.RefEntries[0].SharedStructuredMetadataSets)
+		require.Len(t, decoded.RefEntries[1].SharedStructuredMetadataSets, 1)
+	})
 }
 
 // TestStreamPushSharedStructuredMetadataTailers checks tail clients see the effective structured

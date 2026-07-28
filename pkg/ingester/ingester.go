@@ -582,7 +582,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
 			level.Error(i.logger).Log(
 				"msg",
-				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
+				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running), or because the checkpoint was written by a newer Loki whose record format this version cannot read. The unreadable data is skipped and this ingester has started without it; whether that means the data is lost overall depends on it still being available elsewhere, such as on another replica or in the ingest queue.`,
 				"elapsed", time.Since(start).String(),
 			)
 		}
@@ -604,7 +604,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
 				"msg",
-				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
+				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running), or because a segment was written by a newer Loki whose record format this version cannot read. The unreadable data is skipped and this ingester has started without it; whether that means the data is lost overall depends on it still being available elsewhere, such as on another replica or in the ingest queue.",
 				"elapsed", time.Since(start).String(),
 			)
 		}

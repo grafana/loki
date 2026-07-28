@@ -314,32 +314,25 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	hasTailers := len(s.tailers) != 0
 	s.tailerMtx.RUnlock()
 
-	// The WAL and the tailers are the two consumers that need to see the entries the way they
-	// will be read back, i.e. with the shared structured metadata they reference merged in.
-	// Build that view at most once, and only when one of them is going to consume it, so a
-	// push sharing nothing or with nobody tailing keeps the fast path.
-	effective := entries
-	if !shared.empty() && (record != nil || hasTailers) {
-		effective = shared.effectiveEntries(entries)
-	}
-
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
-		// Interim until the WAL record format gains a shared structured metadata pool (V4):
-		// the record can only carry per entry structured metadata, so the shared sets have to
-		// be expanded into every entry before it is written, references cleared. Writing the
-		// entries as they are would leave references to a pool the record does not carry,
-		// dangling at replay, and silently drop the resource and scope attributes of every
-		// entry. This forfeits the WAL disk saving of deferred expansion for cells that run a
-		// WAL; Kafka based cells run without one and keep the full win.
-		record.AddEntries(uint64(s.fp), s.entryCt, effective...)
+		// The entries go into the record exactly as they were pushed, keeping their own
+		// structured metadata and their references, alongside the stream's pool. The record
+		// carries the pool from WALRecordEntriesV4 on, which is the version it is written as
+		// precisely because a pool is present. A replay therefore reconstructs what was pushed,
+		// down to the chunks being byte for byte identical and duplicate detection telling the
+		// same entries apart.
+		record.AddEntries(uint64(s.fp), s.entryCt, shared.sets(), entries...)
 	} else {
 		// If record is nil, this is a WAL recovery.
 		s.metrics.recoveredEntriesTotal.Add(float64(len(entries)))
 	}
 
 	if hasTailers {
-		stream := logproto.Stream{Labels: s.labelsString, Entries: effective}
+		// Tail clients are handed the entries without the pool, so the shared metadata they
+		// reference has to be merged in and the references cleared. Only paid for when someone
+		// is actually tailing and there is something to merge.
+		stream := logproto.Stream{Labels: s.labelsString, Entries: shared.effectiveEntries(entries)}
 
 		closedTailers := []uint32{}
 
@@ -421,6 +414,15 @@ func (s *sharedSets) empty() bool {
 	return s == nil || len(s.pool.SharedStructuredMetadataSets) == 0
 }
 
+// sets returns the pool the entries reference, for the consumers that carry it alongside them
+// rather than merging it in, i.e. the WAL record.
+func (s *sharedSets) sets() []logproto.SharedStructuredMetadataSet {
+	if s == nil {
+		return nil
+	}
+	return s.pool.SharedStructuredMetadataSets
+}
+
 // setsFor resolves the resource and scope sets the entry references.
 func (s *sharedSets) setsFor(e *logproto.Entry) (resource, scope pushtypes.LabelsAdapter) {
 	if s.empty() {
@@ -467,8 +469,10 @@ func (s *sharedSets) hashOf(ref uint32) uint64 {
 // is when there is nothing to merge.
 //
 // The pool references are cleared on the copies. They only mean anything alongside the pool
-// they index, and the consumers of this view are handed the entries without it: a WAL record
-// carries no pool at all, so a surviving reference would dangle when the record is replayed.
+// they index, and this view exists for the consumer that is handed the entries without it: a
+// tailed stream carries no pool, so a surviving reference would be read against whatever pool
+// the receiver happens to have. The WAL takes the entries as they are and carries the pool
+// itself instead, see recordAndSendToTailers.
 //
 // The incoming entries are never modified: they are aliased by the caller, by the chunks they
 // were just appended to and by the WAL, so their structured metadata must not be reordered,
