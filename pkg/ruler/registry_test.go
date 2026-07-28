@@ -57,30 +57,6 @@ var remoteURL, _ = url.Parse("http://remote-write")
 var backCompatCfg = Config{
 	RemoteWrite: RemoteWriteConfig{
 		AddOrgIDHeader: true,
-		Client: &promconfig.RemoteWriteConfig{
-			URL: &commonconfig.URL{URL: remoteURL},
-			QueueConfig: promconfig.QueueConfig{
-				Capacity: defaultCapacity,
-			},
-			HTTPClientConfig: commonconfig.HTTPClientConfig{
-				BasicAuth: &commonconfig.BasicAuth{
-					Password: "bar",
-					Username: "foo",
-				},
-			},
-			Headers: map[string]string{
-				"Base": "value",
-			},
-			WriteRelabelConfigs: []*relabel.Config{
-				{
-					SourceLabels: []model.LabelName{"__name__"},
-					Regex:        relabel.MustNewRegexp("ALERTS.*"),
-					Action:       "drop",
-					Separator:    ";",
-					Replacement:  "$1",
-				},
-			},
-		},
 		Clients: map[string]promconfig.RemoteWriteConfig{
 			"default": {
 				URL: &commonconfig.URL{URL: remoteURL},
@@ -1072,7 +1048,7 @@ func TestRelabelConfigOverridesNilWriteRelabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// set NameValidationScheme on expected configs
-	expectedConfigs := reg.config.RemoteWrite.Client.WriteRelabelConfigs
+	expectedConfigs := reg.config.RemoteWrite.Clients["default"].WriteRelabelConfigs
 	for _, rc := range expectedConfigs {
 		rc.NameValidationScheme = model.UTF8Validation
 	}

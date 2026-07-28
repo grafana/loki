@@ -59,7 +59,7 @@ ruler:
     s3: *s3_cfg
   remote_write:
     enabled: true
-    client: # DEPRECATED
+    client: # DELETED
       url: "http://localhost:3100/api/prom/push"
 
 storage_config:

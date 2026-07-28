@@ -6132,9 +6132,6 @@ wal_cleaner:
 # Remote-write configuration to send rule samples to a Prometheus remote-write
 # endpoint.
 remote_write:
-  # Deprecated: Use 'clients' instead. Configure remote write client.
-  [client: <RemoteWriteConfig>]
-
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write

@@ -6,7 +6,7 @@ description: |
 ---
 
 [//]: # 'This file documents query error messages and troubleshooting'
-[//]: # 
+[//]: #
 [//]: # 'This shared file is included in these locations:'
 [//]: # '/loki/docs/loki/latest/query/troubleshoot-query.md'
 [//]: # '/loki/docs/loki/latest/operations/troubleshooting/troubleshoot-query.md'
@@ -543,6 +543,48 @@ Even after query splitting and sharding, individual query shards exceed the per-
 - Retryable: No (query must be modified)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
+
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+- **Reduce query scope** to return fewer results:
+  - Add more specific label matchers
+  - Reduce the time range
+  - Lower the entries limit
+
+- **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+  ```yaml
+  server:
+    grpc_server_max_send_msg_size: 209715200   # 200MB
+
+  querier:
+    query_frontend_grpc_client:
+      max_recv_msg_size: 209715200             # 200MB
+  ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
 
 ### Error: Interval value exceeds limit
 

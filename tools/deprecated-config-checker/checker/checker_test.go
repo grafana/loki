@@ -24,6 +24,7 @@ var (
 		"frontend_worker.match_max_concurrent",
 		"common.storage.s3.sse_encryption",
 		"ruler.storage.s3.sse_encryption",
+		"ruler.remote_write.client",
 		"storage_config.boltdb_shipper.use_boltdb_shipper_as_backup",
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
@@ -69,7 +70,6 @@ var (
 	}
 
 	expectedConfigDeprecates = []string{
-		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",
