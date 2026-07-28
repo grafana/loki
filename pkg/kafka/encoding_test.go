@@ -285,10 +285,11 @@ func TestEncoderSharedStructuredMetadataLeavesNoRoom(t *testing.T) {
 	require.Contains(t, err.Error(), "shared structured metadata pool")
 }
 
-// TestEncoderLargeEntryAfterTheFirstOne is a regression test: the per-entry size check used to
-// only compare the first entry against the per-record base, so a bigger entry later in the
-// stream could be flushed into a record of its own that was over the limit.
-func TestEncoderLargeEntryAfterTheFirstOne(t *testing.T) {
+// TestEncoderLargeEntryAfterTheFirstOneWithSharedMetadata asserts that in a stream carrying a
+// shared structured metadata pool every entry, not just the first one, is weighed against the
+// per-record base: the pool is repeated in every record, so an entry that only fits without it
+// would end up in an oversized record of its own.
+func TestEncoderLargeEntryAfterTheFirstOneWithSharedMetadata(t *testing.T) {
 	const maxSize = 2048
 
 	stream := generateStream(4, 100)
@@ -310,6 +311,59 @@ func TestEncoderLargeEntryAfterTheFirstOne(t *testing.T) {
 	_, err := Encode(0, "test-tenant", stream, maxSize)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "single entry size")
+}
+
+// TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata pins the pre-existing behavior for
+// streams that carry no shared structured metadata pool: only the first entry is weighed against
+// the per-record base, so a later entry that fits within maxSize on its own but not alongside the
+// base is emitted in a record that is over the limit, without an error.
+//
+// This is a bug, but it predates the pool and is not the deferred expansion's to fix: a stream
+// without a pool must be encoded exactly the way it is today.
+func TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata(t *testing.T) {
+	const maxSize = 2048
+
+	stream := generateStream(4, 100)
+
+	base := logproto.Stream{Labels: stream.Labels, Hash: stream.Hash}
+	baseSize := base.Size()
+	require.Less(t, baseSize, maxSize, "the base must leave room for the small entries")
+
+	// An entry that fits within maxSize on its own but not alongside the per-record base. The
+	// base of a pool-less stream is only its labels, so that window is narrow: the entry is
+	// grown up to the budget rather than guessed at.
+	stream.Entries[2] = entryFillingBudget(stream.Entries[2].Timestamp, maxSize)
+	entrySize := entryRecordSize(stream.Entries[2])
+	require.LessOrEqual(t, entrySize, maxSize)
+	require.Greater(t, baseSize+entrySize, maxSize, "the entry must not fit alongside the base")
+
+	records, err := Encode(0, "test-tenant", stream, maxSize)
+	require.NoError(t, err, "a pool-less stream keeps today's lenient behavior")
+
+	var oversized int
+	for _, record := range records {
+		if len(record.Value) > maxSize {
+			oversized++
+		}
+	}
+	require.Equal(t, 1, oversized, "the accepted wart: the large entry lands in an oversized record")
+}
+
+// TestEncoderNoSharedMetadataBaseLeavesNoRoom pins the other half of the pre-existing behavior:
+// with no pool, a base that leaves no room for an entry is not reported upfront either. The
+// first entry still fails the per-entry check, so encoding does fail here - but with today's
+// message, not the pool-aware one.
+func TestEncoderNoSharedMetadataBaseLeavesNoRoom(t *testing.T) {
+	stream := generateStream(4, 100)
+
+	base := logproto.Stream{Labels: stream.Labels, Hash: stream.Hash}
+	maxSize := base.Size() + 1
+
+	_, err := Encode(0, "test-tenant", stream, maxSize)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "single entry size")
+	require.NotContains(t, err.Error(), "shared structured metadata pool")
+	require.NotContains(t, err.Error(), "leaves no room for a single entry")
 }
 
 // TestEncoderEveryRecordFitsWithLargeSharedMetadata is the positive counterpart: with a pool
@@ -418,6 +472,23 @@ func generateSharedSets(sets, pairs, valueLength int) []logproto.SharedStructure
 		pool = append(pool, logproto.SharedStructuredMetadataSet{Attrs: attrs})
 	}
 	return pool
+}
+
+// entryRecordSize is the number of bytes an entry contributes to a marshalled record, the same
+// way Encode charges for it.
+func entryRecordSize(entry logproto.Entry) int {
+	l := entry.Size()
+	return 1 + l + sovPush(uint64(l))
+}
+
+// entryFillingBudget returns an entry whose contribution to a record is as close to budget as
+// it can be without going over it.
+func entryFillingBudget(ts time.Time, budget int) logproto.Entry {
+	entry := logproto.Entry{Timestamp: ts, Line: generateRandomString(budget)}
+	for entryRecordSize(entry) > budget {
+		entry.Line = entry.Line[:len(entry.Line)-1]
+	}
+	return entry
 }
 
 // setRefs points every entry of the stream at the same resource and scope set.

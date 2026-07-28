@@ -111,30 +111,47 @@ func EncodeWithTopic(topic string, partitionID int32, tenantID string, stream lo
 	baseSize := batch.Size()
 	currentSize := baseSize
 
+	// Only streams that actually carry a pool are held to the two checks below, which weigh
+	// every entry against the full per-record base rather than against maxSize alone.
+	//
+	// The base of a pool-less stream is just its labels and hash, and the pre-existing behavior
+	// there is to weigh only the *first* entry against it, so a bigger entry later in the stream
+	// is silently flushed into an oversized record. That is a real bug, but it predates the
+	// pool and fixing it here would change what every existing producer emits. Streams without a
+	// pool therefore keep exactly the encoding, and the exact error message, they have today;
+	// the fix belongs to follow-up work that can weigh it for all traffic at once.
+	hasSharedPool := len(stream.SharedStructuredMetadataSets) > 0
+
 	// Splitting can never help if the fixed per-record cost alone does not leave room for the
 	// smallest possible entry: every record we would emit would be over the limit. Fail
 	// explicitly rather than silently producing oversized records.
-	if baseSize+minEntrySize > maxSize {
+	if hasSharedPool && baseSize+minEntrySize > maxSize {
 		return nil, fmt.Errorf(
 			"per-record base size (%d bytes, of which %d bytes of shared structured metadata pool) leaves no room for a single entry within the maximum allowed size (%d)",
 			baseSize, sharedStructuredMetadataSetsSize(stream), maxSize,
 		)
 	}
 
-	for _, entry := range stream.Entries {
+	for i, entry := range stream.Entries {
 		l := entry.Size()
 		// Size of the entry in the stream
 		entrySize := 1 + l + sovPush(uint64(l))
 
-		// Check whether a single entry can be encoded at all. Every record repeats the base,
-		// so an entry only fits if it fits alongside it: checking this for every entry and not
-		// just the first one is what keeps a large entry in the middle of the stream from
-		// being flushed into an oversized record of its own.
-		if baseSize+entrySize > maxSize {
-			return nil, fmt.Errorf(
-				"single entry size (%d) plus the per-record base size (%d bytes, of which %d bytes of shared structured metadata pool) exceeds maximum allowed size (%d)",
-				entrySize, baseSize, sharedStructuredMetadataSetsSize(stream), maxSize,
-			)
+		// Check whether a single entry can be encoded at all.
+		switch {
+		case hasSharedPool:
+			// Every record repeats the pool, so an entry only fits if it fits alongside it:
+			// checking this for every entry and not just the first one is what keeps a large
+			// entry in the middle of the stream from being flushed into an oversized record of
+			// its own.
+			if baseSize+entrySize > maxSize {
+				return nil, fmt.Errorf(
+					"single entry size (%d) plus the per-record base size (%d bytes, of which %d bytes of shared structured metadata pool) exceeds maximum allowed size (%d)",
+					entrySize, baseSize, sharedStructuredMetadataSetsSize(stream), maxSize,
+				)
+			}
+		case entrySize > maxSize || (i == 0 && currentSize+entrySize > maxSize):
+			return nil, fmt.Errorf("single entry size (%d) exceeds maximum allowed size (%d)", entrySize, maxSize)
 		}
 
 		if currentSize+entrySize > maxSize {
