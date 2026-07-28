@@ -247,6 +247,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.ResourceAndSourceMetadataLabels[policy] = make(map[time.Duration]push.LabelsAdapter)
 		}
 
+		// We group by retention period to later be able to map bytes ingested to each retention period.
+		// Ex: 10GB ingested has 30d retention and 1GB has 365d retention.
 		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += resourceAttributesAsStructuredMetadataSize
 		totalBytesReceived += resourceAttributesAsStructuredMetadataSize
 
