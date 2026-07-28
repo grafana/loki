@@ -24,6 +24,21 @@ var (
 	}
 )
 
+// minEntrySize is the marshalled size of the smallest possible entry in a stream: one byte of
+// field tag plus one byte of length for an empty entry message.
+const minEntrySize = 2
+
+// sharedStructuredMetadataSetsSize returns the number of bytes the stream's shared structured
+// metadata pool takes in a marshalled record. Only used to build error messages.
+func sharedStructuredMetadataSetsSize(stream logproto.Stream) int {
+	size := 0
+	for i := range stream.SharedStructuredMetadataSets {
+		l := stream.SharedStructuredMetadataSets[i].Size()
+		size += 1 + l + sovPush(uint64(l))
+	}
+	return size
+}
+
 // Encode converts a logproto.Stream into one or more Kafka records.
 // It handles splitting large streams into multiple records if necessary.
 //
@@ -31,6 +46,18 @@ var (
 // 1. If the stream size is smaller than maxSize, it's encoded into a single record.
 // 2. For larger streams, it splits the entries into multiple batches, each under maxSize.
 // 3. The data is wrapped in a Kafka record with the tenant ID as the key.
+//
+// Every record produced for a stream carries the full SharedStructuredMetadataSets pool of
+// that stream, so each record stays self-contained: consumers can resolve the effective
+// structured metadata of an entry without having to correlate records. It also keeps the
+// SharedResourceRef and SharedScopeRef of every entry valid as is, since they index the same
+// pool in every record.
+//
+// A split record therefore carries pool sets that none of its own entries reference. That is
+// an accepted trade: pools hold at most a handful of sets per stream, whereas re-indexing the
+// references of each batch against a pruned pool is easy to get subtly wrong and would have to
+// be repeated for every batch. The cost is that the pool is duplicated once per record when a
+// stream is split, and its marshalled size is charged to every record's budget.
 //
 // The format of each record is:
 // - Key: Tenant ID (used for routing, not for partitioning)
@@ -47,9 +74,12 @@ func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize 
 }
 
 func EncodeWithTopic(topic string, partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
+	// Stream.Size() accounts for the labels, the hash, the entries (references included) and
+	// the stream-level shared structured metadata pool.
 	reqSize := stream.Size()
 
-	// Fast path for small requests
+	// Fast path for small requests: the whole stream, pool included, is marshalled into a
+	// single record.
 	if reqSize <= maxSize {
 		rec, err := marshalWriteRequestToRecord(topic, partitionID, tenantID, stream)
 		if err != nil {
@@ -60,26 +90,51 @@ func EncodeWithTopic(topic string, partitionID int32, tenantID string, stream lo
 
 	var records []*kgo.Record
 	batch := encoderPool.Get().(*logproto.Stream)
-	defer encoderPool.Put(batch)
+	defer func() {
+		// Don't let the encoder pool pin the caller's shared structured metadata pool.
+		batch.SharedStructuredMetadataSets = nil
+		encoderPool.Put(batch)
+	}()
 
 	batch.Labels = stream.Labels
 	batch.Hash = stream.Hash
+	// The whole pool goes into every record, so that the references carried by the entries of
+	// each batch keep resolving against it.
+	batch.SharedStructuredMetadataSets = stream.SharedStructuredMetadataSets
 
 	if batch.Entries == nil {
 		batch.Entries = make([]logproto.Entry, 0, 1024)
 	}
 	batch.Entries = batch.Entries[:0]
-	labelsSize := batch.Size()
-	currentSize := labelsSize
+	// Fixed per-record cost: labels, hash and the shared structured metadata pool, which every
+	// record pays for since it is duplicated across all of them.
+	baseSize := batch.Size()
+	currentSize := baseSize
 
-	for i, entry := range stream.Entries {
+	// Splitting can never help if the fixed per-record cost alone does not leave room for the
+	// smallest possible entry: every record we would emit would be over the limit. Fail
+	// explicitly rather than silently producing oversized records.
+	if baseSize+minEntrySize > maxSize {
+		return nil, fmt.Errorf(
+			"per-record base size (%d bytes, of which %d bytes of shared structured metadata pool) leaves no room for a single entry within the maximum allowed size (%d)",
+			baseSize, sharedStructuredMetadataSetsSize(stream), maxSize,
+		)
+	}
+
+	for _, entry := range stream.Entries {
 		l := entry.Size()
 		// Size of the entry in the stream
 		entrySize := 1 + l + sovPush(uint64(l))
 
-		// Check if a single entry is too big
-		if entrySize > maxSize || (i == 0 && currentSize+entrySize > maxSize) {
-			return nil, fmt.Errorf("single entry size (%d) exceeds maximum allowed size (%d)", entrySize, maxSize)
+		// Check whether a single entry can be encoded at all. Every record repeats the base,
+		// so an entry only fits if it fits alongside it: checking this for every entry and not
+		// just the first one is what keeps a large entry in the middle of the stream from
+		// being flushed into an oversized record of its own.
+		if baseSize+entrySize > maxSize {
+			return nil, fmt.Errorf(
+				"single entry size (%d) plus the per-record base size (%d bytes, of which %d bytes of shared structured metadata pool) exceeds maximum allowed size (%d)",
+				entrySize, baseSize, sharedStructuredMetadataSetsSize(stream), maxSize,
+			)
 		}
 
 		if currentSize+entrySize > maxSize {
@@ -93,7 +148,7 @@ func EncodeWithTopic(topic string, partitionID int32, tenantID string, stream lo
 			}
 			// Reset currentStream
 			batch.Entries = batch.Entries[:0]
-			currentSize = labelsSize
+			currentSize = baseSize
 		}
 		batch.Entries = append(batch.Entries, entry)
 		currentSize += entrySize
@@ -155,7 +210,13 @@ func NewDecoder() (*Decoder, error) {
 //
 // Returns the decoded logproto.Stream, parsed labels, and any error encountered.
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
+	// The stream is reused across calls and Unmarshal appends to repeated fields, so every
+	// repeated field has to be truncated first. Otherwise a record would inherit the entries
+	// and the shared structured metadata pool of the previous one, and the references of its
+	// entries would resolve against a pool holding stale sets. The references themselves live
+	// inside the entries, so truncating those takes care of them.
 	d.stream.Entries = d.stream.Entries[:0]
+	d.stream.SharedStructuredMetadataSets = d.stream.SharedStructuredMetadataSets[:0]
 	if err := d.stream.Unmarshal(data); err != nil {
 		return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to unmarshal stream: %w", err)
 	}
