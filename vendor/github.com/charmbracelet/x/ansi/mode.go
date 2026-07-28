@@ -108,7 +108,7 @@ func DECRST(modes ...Mode) string {
 
 func setMode(reset bool, modes ...Mode) (s string) {
 	if len(modes) == 0 {
-		return //nolint:nakedret
+		return s
 	}
 
 	cmd := "h"
@@ -142,7 +142,7 @@ func setMode(reset bool, modes ...Mode) (s string) {
 	if len(dec) > 0 {
 		s += seq + "?" + strings.Join(dec, ";") + cmd
 	}
-	return //nolint:nakedret
+	return s
 }
 
 // RequestMode (DECRQM) returns a sequence to request a mode from the terminal.
@@ -228,12 +228,12 @@ func (m DECMode) Mode() int {
 //
 // See: https://vt100.net/docs/vt510-rm/KAM.html
 const (
-	KeyboardActionMode = ANSIMode(2)
-	KAM                = KeyboardActionMode
+	ModeKeyboardAction = ANSIMode(2)
+	KAM                = ModeKeyboardAction
 
-	SetKeyboardActionMode     = "\x1b[2h"
-	ResetKeyboardActionMode   = "\x1b[2l"
-	RequestKeyboardActionMode = "\x1b[2$p"
+	SetModeKeyboardAction     = "\x1b[2h"
+	ResetModeKeyboardAction   = "\x1b[2l"
+	RequestModeKeyboardAction = "\x1b[2$p"
 )
 
 // Insert/Replace Mode (IRM) is a mode that determines whether characters are
@@ -245,12 +245,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/IRM.html
 const (
-	InsertReplaceMode = ANSIMode(4)
-	IRM               = InsertReplaceMode
+	ModeInsertReplace = ANSIMode(4)
+	IRM               = ModeInsertReplace
 
-	SetInsertReplaceMode     = "\x1b[4h"
-	ResetInsertReplaceMode   = "\x1b[4l"
-	RequestInsertReplaceMode = "\x1b[4$p"
+	SetModeInsertReplace     = "\x1b[4h"
+	ResetModeInsertReplace   = "\x1b[4l"
+	RequestModeInsertReplace = "\x1b[4$p"
 )
 
 // BiDirectional Support Mode (BDSM) is a mode that determines whether the
@@ -260,12 +260,12 @@ const (
 //
 // See ECMA-48 7.2.1.
 const (
-	BiDirectionalSupportMode = ANSIMode(8)
-	BDSM                     = BiDirectionalSupportMode
+	ModeBiDirectionalSupport = ANSIMode(8)
+	BDSM                     = ModeBiDirectionalSupport
 
-	SetBiDirectionalSupportMode     = "\x1b[8h"
-	ResetBiDirectionalSupportMode   = "\x1b[8l"
-	RequestBiDirectionalSupportMode = "\x1b[8$p"
+	SetModeBiDirectionalSupport     = "\x1b[8h"
+	ResetModeBiDirectionalSupport   = "\x1b[8l"
+	RequestModeBiDirectionalSupport = "\x1b[8$p"
 )
 
 // Send Receive Mode (SRM) or Local Echo Mode is a mode that determines whether
@@ -274,17 +274,17 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/SRM.html
 const (
-	SendReceiveMode = ANSIMode(12)
-	LocalEchoMode   = SendReceiveMode
-	SRM             = SendReceiveMode
+	ModeSendReceive = ANSIMode(12)
+	ModeLocalEcho   = ModeSendReceive
+	SRM             = ModeSendReceive
 
-	SetSendReceiveMode     = "\x1b[12h"
-	ResetSendReceiveMode   = "\x1b[12l"
-	RequestSendReceiveMode = "\x1b[12$p"
+	SetModeSendReceive     = "\x1b[12h"
+	ResetModeSendReceive   = "\x1b[12l"
+	RequestModeSendReceive = "\x1b[12$p"
 
-	SetLocalEchoMode     = "\x1b[12h"
-	ResetLocalEchoMode   = "\x1b[12l"
-	RequestLocalEchoMode = "\x1b[12$p"
+	SetModeLocalEcho     = "\x1b[12h"
+	ResetModeLocalEcho   = "\x1b[12l"
+	RequestModeLocalEcho = "\x1b[12$p"
 )
 
 // Line Feed/New Line Mode (LNM) is a mode that determines whether the terminal
@@ -299,12 +299,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/LNM.html
 const (
-	LineFeedNewLineMode = ANSIMode(20)
-	LNM                 = LineFeedNewLineMode
+	ModeLineFeedNewLine = ANSIMode(20)
+	LNM                 = ModeLineFeedNewLine
 
-	SetLineFeedNewLineMode     = "\x1b[20h"
-	ResetLineFeedNewLineMode   = "\x1b[20l"
-	RequestLineFeedNewLineMode = "\x1b[20$p"
+	SetModeLineFeedNewLine     = "\x1b[20h"
+	ResetModeLineFeedNewLine   = "\x1b[20l"
+	RequestModeLineFeedNewLine = "\x1b[20$p"
 )
 
 // Cursor Keys Mode (DECCKM) is a mode that determines whether the cursor keys
@@ -312,18 +312,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECCKM.html
 const (
-	CursorKeysMode = DECMode(1)
-	DECCKM         = CursorKeysMode
+	ModeCursorKeys = DECMode(1)
+	DECCKM         = ModeCursorKeys
 
-	SetCursorKeysMode     = "\x1b[?1h"
-	ResetCursorKeysMode   = "\x1b[?1l"
-	RequestCursorKeysMode = "\x1b[?1$p"
-)
-
-// Deprecated: use [SetCursorKeysMode] and [ResetCursorKeysMode] instead.
-const (
-	EnableCursorKeys  = "\x1b[?1h" //nolint:revive // grouped constants
-	DisableCursorKeys = "\x1b[?1l"
+	SetModeCursorKeys     = "\x1b[?1h"
+	ResetModeCursorKeys   = "\x1b[?1l"
+	RequestModeCursorKeys = "\x1b[?1$p"
 )
 
 // Origin Mode (DECOM) is a mode that determines whether the cursor moves to the
@@ -331,12 +325,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECOM.html
 const (
-	OriginMode = DECMode(6)
-	DECOM      = OriginMode
+	ModeOrigin = DECMode(6)
+	DECOM      = ModeOrigin
 
-	SetOriginMode     = "\x1b[?6h"
-	ResetOriginMode   = "\x1b[?6l"
-	RequestOriginMode = "\x1b[?6$p"
+	SetModeOrigin     = "\x1b[?6h"
+	ResetModeOrigin   = "\x1b[?6l"
+	RequestModeOrigin = "\x1b[?6$p"
 )
 
 // Auto Wrap Mode (DECAWM) is a mode that determines whether the cursor wraps
@@ -344,12 +338,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECAWM.html
 const (
-	AutoWrapMode = DECMode(7)
-	DECAWM       = AutoWrapMode
+	ModeAutoWrap = DECMode(7)
+	DECAWM       = ModeAutoWrap
 
-	SetAutoWrapMode     = "\x1b[?7h"
-	ResetAutoWrapMode   = "\x1b[?7l"
-	RequestAutoWrapMode = "\x1b[?7$p"
+	SetModeAutoWrap     = "\x1b[?7h"
+	ResetModeAutoWrap   = "\x1b[?7l"
+	RequestModeAutoWrap = "\x1b[?7$p"
 )
 
 // X10 Mouse Mode is a mode that determines whether the mouse reports on button
@@ -364,39 +358,29 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	X10MouseMode = DECMode(9)
+	ModeMouseX10 = DECMode(9)
 
-	SetX10MouseMode     = "\x1b[?9h"
-	ResetX10MouseMode   = "\x1b[?9l"
-	RequestX10MouseMode = "\x1b[?9$p"
+	SetModeMouseX10     = "\x1b[?9h"
+	ResetModeMouseX10   = "\x1b[?9l"
+	RequestModeMouseX10 = "\x1b[?9$p"
 )
 
 // Text Cursor Enable Mode (DECTCEM) is a mode that shows/hides the cursor.
 //
 // See: https://vt100.net/docs/vt510-rm/DECTCEM.html
 const (
-	TextCursorEnableMode = DECMode(25)
-	DECTCEM              = TextCursorEnableMode
+	ModeTextCursorEnable = DECMode(25)
+	DECTCEM              = ModeTextCursorEnable
 
-	SetTextCursorEnableMode     = "\x1b[?25h"
-	ResetTextCursorEnableMode   = "\x1b[?25l"
-	RequestTextCursorEnableMode = "\x1b[?25$p"
+	SetModeTextCursorEnable     = "\x1b[?25h"
+	ResetModeTextCursorEnable   = "\x1b[?25l"
+	RequestModeTextCursorEnable = "\x1b[?25$p"
 )
 
-// These are aliases for [SetTextCursorEnableMode] and [ResetTextCursorEnableMode].
+// These are aliases for [SetModeTextCursorEnable] and [ResetModeTextCursorEnable].
 const (
-	ShowCursor = SetTextCursorEnableMode
-	HideCursor = ResetTextCursorEnableMode
-)
-
-// Text Cursor Enable Mode (DECTCEM) is a mode that shows/hides the cursor.
-//
-// See: https://vt100.net/docs/vt510-rm/DECTCEM.html
-//
-// Deprecated: use [SetTextCursorEnableMode] and [ResetTextCursorEnableMode] instead.
-const (
-	CursorEnableMode        = DECMode(25)
-	RequestCursorVisibility = "\x1b[?25$p"
+	ShowCursor = SetModeTextCursorEnable
+	HideCursor = ResetModeTextCursorEnable
 )
 
 // Numeric Keypad Mode (DECNKM) is a mode that determines whether the keypad
@@ -406,12 +390,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECNKM.html
 const (
-	NumericKeypadMode = DECMode(66)
-	DECNKM            = NumericKeypadMode
+	ModeNumericKeypad = DECMode(66)
+	DECNKM            = ModeNumericKeypad
 
-	SetNumericKeypadMode     = "\x1b[?66h"
-	ResetNumericKeypadMode   = "\x1b[?66l"
-	RequestNumericKeypadMode = "\x1b[?66$p"
+	SetModeNumericKeypad     = "\x1b[?66h"
+	ResetModeNumericKeypad   = "\x1b[?66l"
+	RequestModeNumericKeypad = "\x1b[?66$p"
 )
 
 // Backarrow Key Mode (DECBKM) is a mode that determines whether the backspace
@@ -419,12 +403,12 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECBKM.html
 const (
-	BackarrowKeyMode = DECMode(67)
-	DECBKM           = BackarrowKeyMode
+	ModeBackarrowKey = DECMode(67)
+	DECBKM           = ModeBackarrowKey
 
-	SetBackarrowKeyMode     = "\x1b[?67h"
-	ResetBackarrowKeyMode   = "\x1b[?67l"
-	RequestBackarrowKeyMode = "\x1b[?67$p"
+	SetModeBackarrowKey     = "\x1b[?67h"
+	ResetModeBackarrowKey   = "\x1b[?67l"
+	RequestModeBackarrowKey = "\x1b[?67$p"
 )
 
 // Left Right Margin Mode (DECLRMM) is a mode that determines whether the left
@@ -432,47 +416,33 @@ const (
 //
 // See: https://vt100.net/docs/vt510-rm/DECLRMM.html
 const (
-	LeftRightMarginMode = DECMode(69)
-	DECLRMM             = LeftRightMarginMode
+	ModeLeftRightMargin = DECMode(69)
+	DECLRMM             = ModeLeftRightMargin
 
-	SetLeftRightMarginMode     = "\x1b[?69h"
-	ResetLeftRightMarginMode   = "\x1b[?69l"
-	RequestLeftRightMarginMode = "\x1b[?69$p"
+	SetModeLeftRightMargin     = "\x1b[?69h"
+	ResetModeLeftRightMargin   = "\x1b[?69l"
+	RequestModeLeftRightMargin = "\x1b[?69$p"
 )
 
 // Normal Mouse Mode is a mode that determines whether the mouse reports on
 // button presses and releases. It will also report modifier keys, wheel
 // events, and extra buttons.
 //
-// It uses the same encoding as [X10MouseMode] with a few differences:
+// It uses the same encoding as [ModeMouseX10] with a few differences:
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	NormalMouseMode = DECMode(1000)
+	ModeMouseNormal = DECMode(1000)
 
-	SetNormalMouseMode     = "\x1b[?1000h"
-	ResetNormalMouseMode   = "\x1b[?1000l"
-	RequestNormalMouseMode = "\x1b[?1000$p"
-)
-
-// VT Mouse Tracking is a mode that determines whether the mouse reports on
-// button press and release.
-//
-// See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
-//
-// Deprecated: use [NormalMouseMode] instead.
-const (
-	MouseMode = DECMode(1000)
-
-	EnableMouse  = "\x1b[?1000h"
-	DisableMouse = "\x1b[?1000l"
-	RequestMouse = "\x1b[?1000$p"
+	SetModeMouseNormal     = "\x1b[?1000h"
+	ResetModeMouseNormal   = "\x1b[?1000l"
+	RequestModeMouseNormal = "\x1b[?1000$p"
 )
 
 // Highlight Mouse Tracking is a mode that determines whether the mouse reports
 // on button presses, releases, and highlighted cells.
 //
-// It uses the same encoding as [NormalMouseMode] with a few differences:
+// It uses the same encoding as [ModeMouseNormal] with a few differences:
 //
 // On highlight events, the terminal responds with the following encoding:
 //
@@ -481,11 +451,11 @@ const (
 //
 // Where the parameters are startx, starty, endx, endy, mousex, and mousey.
 const (
-	HighlightMouseMode = DECMode(1001)
+	ModeMouseHighlight = DECMode(1001)
 
-	SetHighlightMouseMode     = "\x1b[?1001h"
-	ResetHighlightMouseMode   = "\x1b[?1001l"
-	RequestHighlightMouseMode = "\x1b[?1001$p"
+	SetModeMouseHighlight     = "\x1b[?1001h"
+	ResetModeMouseHighlight   = "\x1b[?1001l"
+	RequestModeMouseHighlight = "\x1b[?1001$p"
 )
 
 // VT Hilite Mouse Tracking is a mode that determines whether the mouse reports on
@@ -493,65 +463,29 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 //
-// Deprecated: use [HighlightMouseMode] instead.
-const (
-	MouseHiliteMode = DECMode(1001)
 
-	EnableMouseHilite  = "\x1b[?1001h"
-	DisableMouseHilite = "\x1b[?1001l"
-	RequestMouseHilite = "\x1b[?1001$p"
-)
-
-// Button Event Mouse Tracking is essentially the same as [NormalMouseMode],
+// Button Event Mouse Tracking is essentially the same as [ModeMouseNormal],
 // but it also reports button-motion events when a button is pressed.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	ButtonEventMouseMode = DECMode(1002)
+	ModeMouseButtonEvent = DECMode(1002)
 
-	SetButtonEventMouseMode     = "\x1b[?1002h"
-	ResetButtonEventMouseMode   = "\x1b[?1002l"
-	RequestButtonEventMouseMode = "\x1b[?1002$p"
+	SetModeMouseButtonEvent     = "\x1b[?1002h"
+	ResetModeMouseButtonEvent   = "\x1b[?1002l"
+	RequestModeMouseButtonEvent = "\x1b[?1002$p"
 )
 
-// Cell Motion Mouse Tracking is a mode that determines whether the mouse
-// reports on button press, release, and motion events.
-//
-// See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
-//
-// Deprecated: use [ButtonEventMouseMode] instead.
-const (
-	MouseCellMotionMode = DECMode(1002)
-
-	EnableMouseCellMotion  = "\x1b[?1002h"
-	DisableMouseCellMotion = "\x1b[?1002l"
-	RequestMouseCellMotion = "\x1b[?1002$p"
-)
-
-// Any Event Mouse Tracking is the same as [ButtonEventMouseMode], except that
+// Any Event Mouse Tracking is the same as [ModeMouseButtonEvent], except that
 // all motion events are reported even if no mouse buttons are pressed.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	AnyEventMouseMode = DECMode(1003)
+	ModeMouseAnyEvent = DECMode(1003)
 
-	SetAnyEventMouseMode     = "\x1b[?1003h"
-	ResetAnyEventMouseMode   = "\x1b[?1003l"
-	RequestAnyEventMouseMode = "\x1b[?1003$p"
-)
-
-// All Mouse Tracking is a mode that determines whether the mouse reports on
-// button press, release, motion, and highlight events.
-//
-// See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
-//
-// Deprecated: use [AnyEventMouseMode] instead.
-const (
-	MouseAllMotionMode = DECMode(1003)
-
-	EnableMouseAllMotion  = "\x1b[?1003h"
-	DisableMouseAllMotion = "\x1b[?1003l"
-	RequestMouseAllMotion = "\x1b[?1003$p"
+	SetModeMouseAnyEvent     = "\x1b[?1003h"
+	ResetModeMouseAnyEvent   = "\x1b[?1003l"
+	RequestModeMouseAnyEvent = "\x1b[?1003$p"
 )
 
 // Focus Event Mode is a mode that determines whether the terminal reports focus
@@ -564,22 +498,11 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Focus-Tracking
 const (
-	FocusEventMode = DECMode(1004)
+	ModeFocusEvent = DECMode(1004)
 
-	SetFocusEventMode     = "\x1b[?1004h"
-	ResetFocusEventMode   = "\x1b[?1004l"
-	RequestFocusEventMode = "\x1b[?1004$p"
-)
-
-// Deprecated: use [SetFocusEventMode], [ResetFocusEventMode], and
-// [RequestFocusEventMode] instead.
-// Focus reporting mode constants.
-const (
-	ReportFocusMode = DECMode(1004) //nolint:revive // grouped constants
-
-	EnableReportFocus  = "\x1b[?1004h"
-	DisableReportFocus = "\x1b[?1004l"
-	RequestReportFocus = "\x1b[?1004$p"
+	SetModeFocusEvent     = "\x1b[?1004h"
+	ResetModeFocusEvent   = "\x1b[?1004l"
+	RequestModeFocusEvent = "\x1b[?1004$p"
 )
 
 // SGR Extended Mouse Mode is a mode that changes the mouse tracking encoding
@@ -589,24 +512,15 @@ const (
 //
 //	CSI < Cb ; Cx ; Cy M
 //
-// Where Cb is the same as [NormalMouseMode], and Cx and Cy are the x and y.
+// Where Cb is the same as [ModeMouseNormal], and Cx and Cy are the x and y.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	SgrExtMouseMode = DECMode(1006)
+	ModeMouseExtSgr = DECMode(1006)
 
-	SetSgrExtMouseMode     = "\x1b[?1006h"
-	ResetSgrExtMouseMode   = "\x1b[?1006l"
-	RequestSgrExtMouseMode = "\x1b[?1006$p"
-)
-
-// Deprecated: use [SgrExtMouseMode] [SetSgrExtMouseMode],
-// [ResetSgrExtMouseMode], and [RequestSgrExtMouseMode] instead.
-const (
-	MouseSgrExtMode    = DECMode(1006) //nolint:revive // grouped constants
-	EnableMouseSgrExt  = "\x1b[?1006h"
-	DisableMouseSgrExt = "\x1b[?1006l"
-	RequestMouseSgrExt = "\x1b[?1006$p"
+	SetModeMouseExtSgr     = "\x1b[?1006h"
+	ResetModeMouseExtSgr   = "\x1b[?1006l"
+	RequestModeMouseExtSgr = "\x1b[?1006$p"
 )
 
 // UTF-8 Extended Mouse Mode is a mode that changes the mouse tracking encoding
@@ -614,11 +528,11 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	Utf8ExtMouseMode = DECMode(1005)
+	ModeMouseExtUtf8 = DECMode(1005)
 
-	SetUtf8ExtMouseMode     = "\x1b[?1005h"
-	ResetUtf8ExtMouseMode   = "\x1b[?1005l"
-	RequestUtf8ExtMouseMode = "\x1b[?1005$p"
+	SetModeMouseExtUtf8     = "\x1b[?1005h"
+	ResetModeMouseExtUtf8   = "\x1b[?1005l"
+	RequestModeMouseExtUtf8 = "\x1b[?1005$p"
 )
 
 // URXVT Extended Mouse Mode is a mode that changes the mouse tracking encoding
@@ -626,25 +540,25 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	UrxvtExtMouseMode = DECMode(1015)
+	ModeMouseExtUrxvt = DECMode(1015)
 
-	SetUrxvtExtMouseMode     = "\x1b[?1015h"
-	ResetUrxvtExtMouseMode   = "\x1b[?1015l"
-	RequestUrxvtExtMouseMode = "\x1b[?1015$p"
+	SetModeMouseExtUrxvt     = "\x1b[?1015h"
+	ResetModeMouseExtUrxvt   = "\x1b[?1015l"
+	RequestModeMouseExtUrxvt = "\x1b[?1015$p"
 )
 
 // SGR Pixel Extended Mouse Mode is a mode that changes the mouse tracking
 // encoding to use SGR parameters with pixel coordinates.
 //
-// This is similar to [SgrExtMouseMode], but also reports pixel coordinates.
+// This is similar to [ModeMouseExtSgr], but also reports pixel coordinates.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
 const (
-	SgrPixelExtMouseMode = DECMode(1016)
+	ModeMouseExtSgrPixel = DECMode(1016)
 
-	SetSgrPixelExtMouseMode     = "\x1b[?1016h"
-	ResetSgrPixelExtMouseMode   = "\x1b[?1016l"
-	RequestSgrPixelExtMouseMode = "\x1b[?1016$p"
+	SetModeMouseExtSgrPixel     = "\x1b[?1016h"
+	ResetModeMouseExtSgrPixel   = "\x1b[?1016l"
+	RequestModeMouseExtSgrPixel = "\x1b[?1016$p"
 )
 
 // Alternate Screen Mode is a mode that determines whether the alternate screen
@@ -653,11 +567,11 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer
 const (
-	AltScreenMode = DECMode(1047)
+	ModeAltScreen = DECMode(1047)
 
-	SetAltScreenMode     = "\x1b[?1047h"
-	ResetAltScreenMode   = "\x1b[?1047l"
-	RequestAltScreenMode = "\x1b[?1047$p"
+	SetModeAltScreen     = "\x1b[?1047h"
+	ResetModeAltScreen   = "\x1b[?1047l"
+	RequestModeAltScreen = "\x1b[?1047$p"
 )
 
 // Save Cursor Mode is a mode that saves the cursor position.
@@ -665,42 +579,24 @@ const (
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer
 const (
-	SaveCursorMode = DECMode(1048)
+	ModeSaveCursor = DECMode(1048)
 
-	SetSaveCursorMode     = "\x1b[?1048h"
-	ResetSaveCursorMode   = "\x1b[?1048l"
-	RequestSaveCursorMode = "\x1b[?1048$p"
+	SetModeSaveCursor     = "\x1b[?1048h"
+	ResetModeSaveCursor   = "\x1b[?1048l"
+	RequestModeSaveCursor = "\x1b[?1048$p"
 )
 
 // Alternate Screen Save Cursor Mode is a mode that saves the cursor position as in
-// [SaveCursorMode], switches to the alternate screen buffer as in [AltScreenMode],
+// [ModeSaveCursor], switches to the alternate screen buffer as in [ModeAltScreen],
 // and clears the screen on switch.
 //
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer
 const (
-	AltScreenSaveCursorMode = DECMode(1049)
+	ModeAltScreenSaveCursor = DECMode(1049)
 
-	SetAltScreenSaveCursorMode     = "\x1b[?1049h"
-	ResetAltScreenSaveCursorMode   = "\x1b[?1049l"
-	RequestAltScreenSaveCursorMode = "\x1b[?1049$p"
-)
-
-// Alternate Screen Buffer is a mode that determines whether the alternate screen
-// buffer is active.
-//
-// See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-The-Alternate-Screen-Buffer
-//
-// Deprecated: use [AltScreenSaveCursorMode] instead.
-const (
-	AltScreenBufferMode = DECMode(1049)
-
-	SetAltScreenBufferMode     = "\x1b[?1049h"
-	ResetAltScreenBufferMode   = "\x1b[?1049l"
-	RequestAltScreenBufferMode = "\x1b[?1049$p"
-
-	EnableAltScreenBuffer  = "\x1b[?1049h"
-	DisableAltScreenBuffer = "\x1b[?1049l"
-	RequestAltScreenBuffer = "\x1b[?1049$p"
+	SetModeAltScreenSaveCursor     = "\x1b[?1049h"
+	ResetModeAltScreenSaveCursor   = "\x1b[?1049l"
+	RequestModeAltScreenSaveCursor = "\x1b[?1049$p"
 )
 
 // Bracketed Paste Mode is a mode that determines whether pasted text is
@@ -709,19 +605,11 @@ const (
 // See: https://cirw.in/blog/bracketed-paste
 // See: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Bracketed-Paste-Mode
 const (
-	BracketedPasteMode = DECMode(2004)
+	ModeBracketedPaste = DECMode(2004)
 
-	SetBracketedPasteMode     = "\x1b[?2004h"
-	ResetBracketedPasteMode   = "\x1b[?2004l"
-	RequestBracketedPasteMode = "\x1b[?2004$p"
-)
-
-// Deprecated: use [SetBracketedPasteMode], [ResetBracketedPasteMode], and
-// [RequestBracketedPasteMode] instead.
-const (
-	EnableBracketedPaste  = "\x1b[?2004h" //nolint:revive // grouped constants
-	DisableBracketedPaste = "\x1b[?2004l"
-	RequestBracketedPaste = "\x1b[?2004$p"
+	SetModeBracketedPaste     = "\x1b[?2004h"
+	ResetModeBracketedPaste   = "\x1b[?2004l"
+	RequestModeBracketedPaste = "\x1b[?2004$p"
 )
 
 // Synchronized Output Mode is a mode that determines whether output is
@@ -729,23 +617,11 @@ const (
 //
 // See: https://gist.github.com/christianparpart/d8a62cc1ab659194337d73e399004036
 const (
-	SynchronizedOutputMode = DECMode(2026)
+	ModeSynchronizedOutput = DECMode(2026)
 
-	SetSynchronizedOutputMode     = "\x1b[?2026h"
-	ResetSynchronizedOutputMode   = "\x1b[?2026l"
-	RequestSynchronizedOutputMode = "\x1b[?2026$p"
-)
-
-// Synchronized Output Mode. See [SynchronizedOutputMode].
-//
-// Deprecated: use [SynchronizedOutputMode], [SetSynchronizedOutputMode], and
-// [ResetSynchronizedOutputMode], and [RequestSynchronizedOutputMode] instead.
-const (
-	SyncdOutputMode = DECMode(2026)
-
-	EnableSyncdOutput  = "\x1b[?2026h"
-	DisableSyncdOutput = "\x1b[?2026l"
-	RequestSyncdOutput = "\x1b[?2026$p"
+	SetModeSynchronizedOutput     = "\x1b[?2026h"
+	ResetModeSynchronizedOutput   = "\x1b[?2026l"
+	RequestModeSynchronizedOutput = "\x1b[?2026$p"
 )
 
 // Unicode Core Mode is a mode that determines whether the terminal should use
@@ -754,41 +630,16 @@ const (
 //
 // See: https://github.com/contour-terminal/terminal-unicode-core
 const (
-	UnicodeCoreMode = DECMode(2027)
+	ModeUnicodeCore = DECMode(2027)
 
-	SetUnicodeCoreMode     = "\x1b[?2027h"
-	ResetUnicodeCoreMode   = "\x1b[?2027l"
-	RequestUnicodeCoreMode = "\x1b[?2027$p"
+	SetModeUnicodeCore     = "\x1b[?2027h"
+	ResetModeUnicodeCore   = "\x1b[?2027l"
+	RequestModeUnicodeCore = "\x1b[?2027$p"
 )
 
-// Grapheme Clustering Mode is a mode that determines whether the terminal
-// should look for grapheme clusters instead of single runes in the rendered
-// text. This makes the terminal properly render combining characters such as
-// emojis.
 //
-// See: https://github.com/contour-terminal/terminal-unicode-core
-//
-// Deprecated: use [GraphemeClusteringMode], [SetUnicodeCoreMode],
-// [ResetUnicodeCoreMode], and [RequestUnicodeCoreMode] instead.
-const (
-	GraphemeClusteringMode = DECMode(2027)
 
-	SetGraphemeClusteringMode     = "\x1b[?2027h"
-	ResetGraphemeClusteringMode   = "\x1b[?2027l"
-	RequestGraphemeClusteringMode = "\x1b[?2027$p"
-)
-
-// Grapheme Clustering Mode. See [GraphemeClusteringMode].
-//
-// Deprecated: use [SetUnicodeCoreMode], [ResetUnicodeCoreMode], and
-// [RequestUnicodeCoreMode] instead.
-const (
-	EnableGraphemeClustering  = "\x1b[?2027h"
-	DisableGraphemeClustering = "\x1b[?2027l"
-	RequestGraphemeClustering = "\x1b[?2027$p"
-)
-
-// LightDarkMode is a mode that enables reporting the operating system's color
+// ModeLightDark is a mode that enables reporting the operating system's color
 // scheme (light or dark) preference. It reports the color scheme as a [DSR]
 // and [LightDarkReport] escape sequences encoded as follows:
 //
@@ -802,14 +653,14 @@ const (
 //
 // See: https://contour-terminal.org/vt-extensions/color-palette-update-notifications/
 const (
-	LightDarkMode = DECMode(2031)
+	ModeLightDark = DECMode(2031)
 
-	SetLightDarkMode     = "\x1b[?2031h"
-	ResetLightDarkMode   = "\x1b[?2031l"
-	RequestLightDarkMode = "\x1b[?2031$p"
+	SetModeLightDark     = "\x1b[?2031h"
+	ResetModeLightDark   = "\x1b[?2031l"
+	RequestModeLightDark = "\x1b[?2031$p"
 )
 
-// InBandResizeMode is a mode that reports terminal resize events as escape
+// ModeInBandResize is a mode that reports terminal resize events as escape
 // sequences. This is useful for systems that do not support [SIGWINCH] like
 // Windows.
 //
@@ -819,11 +670,11 @@ const (
 //
 // See: https://gist.github.com/rockorager/e695fb2924d36b2bcf1fff4a3704bd83
 const (
-	InBandResizeMode = DECMode(2048)
+	ModeInBandResize = DECMode(2048)
 
-	SetInBandResizeMode     = "\x1b[?2048h"
-	ResetInBandResizeMode   = "\x1b[?2048l"
-	RequestInBandResizeMode = "\x1b[?2048$p"
+	SetModeInBandResize     = "\x1b[?2048h"
+	ResetModeInBandResize   = "\x1b[?2048l"
+	RequestModeInBandResize = "\x1b[?2048$p"
 )
 
 // Win32Input is a mode that determines whether input is processed by the
@@ -831,17 +682,9 @@ const (
 //
 // See: https://github.com/microsoft/terminal/blob/main/doc/specs/%234999%20-%20Improved%20keyboard%20handling%20in%20Conpty.md
 const (
-	Win32InputMode = DECMode(9001)
+	ModeWin32Input = DECMode(9001)
 
-	SetWin32InputMode     = "\x1b[?9001h"
-	ResetWin32InputMode   = "\x1b[?9001l"
-	RequestWin32InputMode = "\x1b[?9001$p"
-)
-
-// Deprecated: use [SetWin32InputMode], [ResetWin32InputMode], and
-// [RequestWin32InputMode] instead.
-const (
-	EnableWin32Input  = "\x1b[?9001h" //nolint:revive // grouped constants
-	DisableWin32Input = "\x1b[?9001l"
-	RequestWin32Input = "\x1b[?9001$p"
+	SetModeWin32Input     = "\x1b[?9001h"
+	ResetModeWin32Input   = "\x1b[?9001l"
+	RequestModeWin32Input = "\x1b[?9001$p"
 )
