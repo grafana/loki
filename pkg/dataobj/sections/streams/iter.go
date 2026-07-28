@@ -81,8 +81,7 @@ func IterSection(ctx context.Context, section *Section, opts ...IterOption) resu
 
 func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		columnarSection := section.inner
-		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
+		dset, err := section.makeDataset()
 		if err != nil {
 			return fmt.Errorf("creating columns dataset: %w", err)
 		}
@@ -127,6 +126,17 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 			}
 		}
 	})
+}
+
+// makeDataset builds a dataset from only the recognized columns, so rows stay
+// aligned with Columns() and columns from a newer Loki are skipped, not decoded.
+func (s *Section) makeDataset() (*columnar.Dataset, error) {
+	recognized := s.Columns()
+	inner := make([]*columnar.Column, len(recognized))
+	for i, col := range recognized {
+		inner[i] = col.inner
+	}
+	return columnar.MakeDataset(s.inner, inner)
 }
 
 // decodeRow decodes a stream from a [dataset.Row], using the provided columns to

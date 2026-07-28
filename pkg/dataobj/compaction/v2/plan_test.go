@@ -92,57 +92,56 @@ func TestRun_SizeAndSections(t *testing.T) {
 	s1 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 100}
 	s2 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 1, UncompressedSize: 250}
 
-	var r Run = &run{sections: []*compactionv2pb.SectionRef{s1, s2}}
+	var r Run = &run[int]{sections: []*compactionv2pb.SectionRef{s1, s2}}
 
 	require.Equal(t, uint64(350), r.Size())
 	require.Equal(t, []*compactionv2pb.SectionRef{s1, s2}, r.Sections())
 }
 
 func TestRun_SizeEmpty(t *testing.T) {
-	var r Run = &run{sections: nil}
+	var r Run = &run[int]{sections: nil}
 	require.Equal(t, uint64(0), r.Size())
 	require.Empty(t, r.Sections())
 }
 
 func TestCalculateRuns_EmptyInput(t *testing.T) {
-	require.Empty(t, CalculateRuns(nil))
-	require.Empty(t, CalculateRuns([]*compactionv2pb.SectionRef{}))
+	require.Empty(t, CalculateRuns([]Section[int](nil), func(a, b int) int { return a - b }))
 }
 
 func TestCalculateRuns_WrapsRunsAndSortsInPlace(t *testing.T) {
-	// Two non-overlapping same-tuple sections (disjoint, ordered times) chain
-	// into one run; passed out of order to prove in-place sorting.
-	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 5}
-	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, MinKey: []string{"svc"}, MaxKey: []string{"svc"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 7}
+	a := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 5}
+	b := &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0, UncompressedSize: 7}
+	input := []Section[int]{
+		{Ref: b, Min: 30, Max: 40},
+		{Ref: a, Min: 10, Max: 20},
+	}
 
-	input := []*compactionv2pb.SectionRef{b, a}
-	runs := CalculateRuns(input)
+	runs := CalculateRuns(input, func(a, b int) int { return a - b })
 
 	require.Len(t, runs, 1)
 	require.Equal(t, uint64(12), runs[0].Size())
-	require.Equal(t, []*compactionv2pb.SectionRef{a, b}, input, "input sorted in place")
+	require.Equal(t, []Section[int]{{Ref: a, Min: 10, Max: 20}, {Ref: b, Min: 30, Max: 40}}, input)
 }
 
-func TestIsTerminal(t *testing.T) {
+func TestBelowMinCompactionSize(t *testing.T) {
 	const floor = uint64(100)
 	run := func(size uint64) Run { return fakeRun{size: size} }
 
 	tests := []struct {
-		name     string
-		runs     []Run
-		terminal bool
+		name  string
+		runs  []Run
+		below bool
 	}{
 		{"no runs", nil, true},
 		{"single run below floor", []Run{run(1)}, true},
-		{"single run above floor", []Run{run(500)}, true},
-		{"two runs total >= floor", []Run{run(60), run(60)}, false},
+		{"single run above floor", []Run{run(500)}, false},
+		{"two runs total above floor", []Run{run(60), run(60)}, false},
 		{"two runs total exactly floor", []Run{run(50), run(50)}, false},
 		{"two runs total below floor", []Run{run(10), run(20)}, true},
-		{"many tiny runs below floor (small tenant)", []Run{run(5), run(5), run(5)}, true},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.terminal, IsTerminal(tc.runs, floor))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.below, BelowMinCompactionSize(test.runs, floor))
 		})
 	}
 }

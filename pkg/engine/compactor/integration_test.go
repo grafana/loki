@@ -43,9 +43,7 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 
-	// Seed: 3 indexes for "acme" with overlapping timestamp ranges (forces >1 pile).
-	// Plus an "untouched" tenant with one index to verify cross-tenant
-	// isolation across the ToC swap.
+	// The acme postings ranges overlap; untouched verifies tenant-scoped ToC replacement.
 	seed := map[string][]testIndex{
 		"acme": {
 			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
@@ -236,11 +234,7 @@ func pathsOf(entries []indexEntry) []string {
 	return out
 }
 
-// seedSourceIndexObject builds and uploads an index object at path, containing
-// one postings section and one stats section per tenant. Each section is tagged
-// with its tenant so classifyRuns can correctly filter by tenant. The single
-// observation/stat is timestamped at ts so it falls inside the entry's seeded
-// time range.
+// seedSourceIndexObject builds and uploads tenant-tagged postings and stats sections.
 func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, tenants ...string) {
 	t.Helper()
 
@@ -248,15 +242,17 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 	for _, tenant := range tenants {
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 		postingsBuilder.SetTenant(tenant)
-		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
-			ObjectPath:       path,
-			SectionIndex:     0,
-			ColumnName:       "service",
-			LabelValue:       "api",
-			StreamID:         1,
-			Timestamp:        ts,
-			UncompressedSize: 100,
-		})
+		for streamID, value := range []string{"a", "z"} {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath:       path,
+				SectionIndex:     0,
+				ColumnName:       "service",
+				LabelValue:       value,
+				StreamID:         int64(streamID),
+				Timestamp:        ts,
+				UncompressedSize: 100,
+			})
+		}
 		require.NoError(t, objBuilder.Append(postingsBuilder))
 
 		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
@@ -264,7 +260,7 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       path,
 			SectionIndex:     0,
-			SortSchema:       "service",
+			SortSchema:       "label:service",
 			Labels:           map[string]string{"service": "api"},
 			MinTimestamp:     ts.UnixNano(),
 			MaxTimestamp:     ts.UnixNano() + 1000,
