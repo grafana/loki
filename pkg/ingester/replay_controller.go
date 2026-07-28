@@ -131,7 +131,13 @@ func (c *replayController) WithBackPressure(fn func() error) error {
 		// too much backpressure, flush. Flush reports how many bytes the flush
 		// we participated in subtracted, so a caller coalesced into an already
 		// in-flight flush still observes that flush's progress.
-		if c.Flush() == 0 {
+		//
+		// Only treat a zero-progress flush as fatal if we are *still* over the
+		// ceiling afterwards. A concurrent worker's flush may have drained memory
+		// below the ceiling between our loop guard and this call, in which case
+		// our own flush legitimately has nothing to do and we should simply exit
+		// the loop rather than report a spurious no-progress error.
+		if c.Flush() == 0 && c.Cur() > ceiling {
 			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
 				humanize.Bytes(uint64(c.currentBytes.Load())),
 				humanize.Bytes(uint64(ceiling)),
