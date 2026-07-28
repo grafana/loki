@@ -23,7 +23,7 @@ The `internal/libyaml` package implements the core YAML processing stages:
 - **yaml.go** - Core types and constants (Event, Token, enums)
 - **reader.go** - Input handling and encoding detection
 - **writer.go** - Output handling
-- **yamlprivate.go** - Internal types and helper functions
+- **util.go** - Internal types and helper functions
 
 ### Test Files
 
@@ -34,10 +34,11 @@ The `internal/libyaml` package implements the core YAML processing stages:
 - **yaml_test.go** - Utility function tests
 - **reader_test.go** - Reader tests
 - **writer_test.go** - Writer tests
-- **yamlprivate_test.go** - Character classification tests
+- **util_test.go** - Character classification tests
 - **loader_test.go** - Data loader scalar resolution tests
 - **yamldatatest_test.go** - YAML test data loading framework
-- **yamldatatest_loader.go** - YAML test data loader with scalar type resolution (exported for reuse)
+- **yamldatatest_loader.go** - YAML test data loader with scalar type
+  resolution (exported for reuse)
 
 ### Test Data Files (in `testdata/`)
 
@@ -48,7 +49,7 @@ The `internal/libyaml` package implements the core YAML processing stages:
 - **yaml.yaml** - Utility function test cases
 - **reader.yaml** - Reader test cases
 - **writer.yaml** - Writer test cases
-- **yamlprivate.yaml** - Character classification test cases
+- **util.yaml** - Character classification test cases
 - **loader.yaml** - Data loader scalar resolution test cases
 
 ## Processing Pipeline
@@ -126,7 +127,8 @@ The testing framework uses a data-driven approach:
 
 1. **Test data** is stored in YAML files in the `testdata/` directory
 2. **Test logic** is implemented in Go files (`*_test.go`)
-3. **One-to-one pairing**: Each `testdata/foo.yaml` has a corresponding `foo_test.go`
+3. **One-to-one pairing**: Each `testdata/foo.yaml` has a corresponding
+   `foo_test.go`
 
 **Benefits**:
 - Easy to add new test cases without writing Go code
@@ -175,7 +177,7 @@ Each YAML file contains test cases for a specific component:
   - Output handlers (string, io.Writer)
   - Error conditions
 
-- **yamlprivate.yaml** - Character classification tests
+- **util.yaml** - Character classification tests
   - Character type predicates (isAlpha, isDigit, isHex, etc.)
   - Character conversion functions (asDigit, asHex, width)
   - Unicode handling
@@ -188,13 +190,15 @@ Each YAML file contains test cases for a specific component:
 
 ### Test Framework Implementation
 
-The test framework is implemented in `yamldatatest_loader.go` and `yamldatatest_test.go`:
+The test framework is implemented in `testdata_test.go`:
 
 **Core functions**:
-- `LoadYAML(data []byte) (interface{}, error)` - Parses YAML using libyaml parser with scalar type resolution (exported)
-- `UnmarshalStruct(target interface{}, data map[string]interface{}) error` - Populates structs (exported)
-- `LoadTestCases(filename string) ([]TestCase, error)` - Loads and parses test YAML files
-- `coerceScalar(value string) interface{}` - Resolves scalar strings to appropriate Go types (int, float64, bool, nil, string)
+- `LoadAny(data []byte) (interface{}, error)` - Parses YAML using production
+  loader with scalar type resolution (exported from loader.go)
+- `UnmarshalStruct(target interface{}, data map[string]interface{}) error` -
+  Populates structs (exported)
+- `LoadTestCases(filename string) ([]TestCase, error)` - Loads and parses
+  test YAML files
 
 **Core types**:
 - `TestCase` struct - Umbrella structure containing fields for all test types
@@ -203,8 +207,10 @@ The test framework is implemented in `yamldatatest_loader.go` and `yamldatatest_
 
 **Post-processing**:
 After loading, the framework processes test data:
-- Converts `Want` (interface{}) to `WantEvents`, `WantTokens`, or `WantSpecs` based on test type
-- Converts `Want` (interface{}) to `WantContains` (handles both scalar and sequence)
+- Converts `Want` (interface{}) to `WantEvents`, `WantTokens`, or `WantSpecs`
+  based on test type
+- Converts `Want` (interface{}) to `WantContains` (handles both scalar and
+  sequence)
 - Converts `Checks` to field validation specifications
 
 ### Test Types
@@ -490,7 +496,8 @@ Test cases use a **type-as-key** format where the test type is the map key:
 - **yaml** - Input YAML string to test
 - **want** - Expected result (format varies by test type)
   - For api-panic: string containing expected panic message substring
-  - For scan-error/parse-error: boolean (defaults to true if omitted; set to false if no error expected)
+  - For scan-error/parse-error: boolean (defaults to true if omitted; set to
+    false if no error expected)
   - For enum-string: string representing expected String() output
   - For other types: varies (may be sequence or scalar)
 - **data** - For emitter tests: list of event specifications to emit
@@ -499,11 +506,20 @@ Test cases use a **type-as-key** format where the test type is the map key:
 - **call** - For API tests: method call [MethodName, arg1, arg2, ...]
 - **init** - For API panic tests: setup method call before main method
 - **byte** - For API tests: boolean flag to convert string args to []byte
-- **test** - For API tests: list of field validation checks in format `operator: [field, value]` where operator is one of: nil, cap, len, eq, gte, len-gt.
-- **test** - For style-accessor tests: array of [Method, STYLE] where Method is the accessor method (e.g., ScalarStyle) and STYLE is the style constant (e.g., DOUBLE_QUOTED_SCALAR_STYLE).
-- **enum** - For enum tests: array of [Type, Value] where Type is the enum type (e.g., ScalarStyle) and Value is the constant (e.g., PLAIN_SCALAR_STYLE)
+- **test** - For API tests: list of field validation checks in format
+  `operator: [field, value]` where operator is one of: nil, cap, len, eq, gte,
+  len-gt.
+- **test** - For style-accessor tests: array of [Method, STYLE] where Method
+  is the accessor method (e.g., ScalarStyle) and STYLE is the style constant
+  (e.g., DOUBLE_QUOTED_SCALAR_STYLE).
+- **enum** - For enum tests: array of [Type, Value] where Type is the enum
+  type (e.g., ScalarStyle) and Value is the constant (e.g.,
+  PLAIN_SCALAR_STYLE)
 
-**Note on scalar type resolution**: Unquoted scalar values in test data are automatically resolved to appropriate Go types (int, float64, bool, nil) by the `LoadYAML` function. Quoted scalars remain as strings.
+**Note on scalar type resolution**: Unquoted scalar values in test data are
+automatically resolved to appropriate Go types (int, float64, bool, nil) by the
+`LoadAny` function.
+Quoted scalars remain as strings.
 
 ### Running Tests
 
