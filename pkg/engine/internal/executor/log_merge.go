@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
@@ -25,10 +27,11 @@ import (
 
 func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		if err := c.doLogObjectMerge(ctx, node); err != nil {
+		arts, err := c.doLogObjectMerge(ctx, node)
+		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return emptyPipeline()
+		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
 	}, nil)
 }
 
@@ -44,89 +47,91 @@ func (c *Context) dataObjectBucket() objstore.Bucket {
 	return c.bucket
 }
 
-func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) error {
+func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
 	if c.bucket == nil {
-		return errors.New("no object store bucket configured")
-	}
-
-	exists, err := c.outputExists(ctx, node.OutputIndexPath)
-	if err != nil {
-		return fmt.Errorf("checking output existence: %w", err)
-	}
-	if exists {
-		level.Info(c.logger).Log("msg", "LogMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
-		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeShortCircuit}, time.Since(start))
-		return nil
+		return nil, errors.New("no object store bucket configured")
 	}
 
 	sources, err := c.collectLogSources(ctx, node)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(sources) == 0 {
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
+		return nil, fmt.Errorf("LogMerge: no source log sections for tenant %q", node.Tenant)
 	}
 
 	table, err := buildGlobalStreamTable(sources, node.SortSchema)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
-		return fmt.Errorf("creating index builder: %w", err)
+		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
 	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
 	if err != nil {
-		return fmt.Errorf("starting k-way log merge: %w", err)
+		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}
 
 	// Consume the globally-sorted stream and build compacted object
 	w := c.newLogObjectWriter(node, table, calc)
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		rec, err := res.Value()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := w.add(ctx, rec); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	stats, err := w.finish(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if stats.OutputObjects == 0 {
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
-		return fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
+		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
 
 	idxObj, idxCloser, _, err := calc.Flush()
 	if err != nil {
-		return fmt.Errorf("flushing index: %w", err)
+		return nil, fmt.Errorf("flushing index: %w", err)
 	}
 
-	_, err = c.uploadObject(ctx, c.bucket, node.OutputIndexPath, idxObj)
+	idxPathReader, err := idxObj.Reader(ctx)
 	if err != nil {
-		return errors.Join(fmt.Errorf("uploading index %q: %w", node.OutputIndexPath, err), idxCloser.Close())
+		return nil, errors.Join(err, idxCloser.Close())
 	}
-	if err := idxCloser.Close(); err != nil {
-		return fmt.Errorf("closing index %q: %w", node.OutputIndexPath, err)
+	idxPath, hashErr := v2.CompactedIndexPath(node.Tenant, idxPathReader)
+	if cerr := idxPathReader.Close(); cerr != nil && hashErr == nil {
+		hashErr = cerr
+	}
+	if hashErr != nil {
+		return nil, errors.Join(hashErr, idxCloser.Close())
 	}
 
+	if _, upErr := c.uploadObject(ctx, c.bucket, idxPath, idxObj); upErr != nil {
+		return nil, errors.Join(fmt.Errorf("uploading index %q: %w", idxPath, upErr), idxCloser.Close())
+	}
+
+	if err := idxCloser.Close(); err != nil {
+		return nil, fmt.Errorf("closing index %q: %w", idxPath, err)
+	}
+
+	stats.Outcome = logMergeOutcomeSuccess
 	stats.SourceObjects = len(sources)
 	for _, s := range sources {
 		stats.InputSections += len(s.logsSections)
 	}
-	stats.Outcome = logMergeOutcomeSuccess
 
 	level.Info(c.logger).Log(
 		"msg", "LogMerge: built compacted log object(s)",
@@ -141,14 +146,14 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"sort_schema", strings.Join(node.SortSchema, ","),
 		"duration", time.Since(start),
 	)
+
 	c.observeLogMerge(node.Tenant, stats.logMergeObservedStats, time.Since(start))
-	return nil
+	return []v2.ResultArtifact{{Path: idxPath}}, nil
 }
 
 const (
-	logMergeOutcomeSuccess      = "success"
-	logMergeOutcomeShortCircuit = "short_circuit"
-	logMergeOutcomeEmpty        = "empty"
+	logMergeOutcomeSuccess = "success"
+	logMergeOutcomeEmpty   = "empty"
 )
 
 // LogMergeObservedStats is the per-task compaction summary reported to
@@ -176,17 +181,6 @@ func (c *Context) observeLogMerge(tenant string, stats logMergeObservedStats, du
 	if c.logMergeObserver != nil {
 		c.logMergeObserver.ObserveLogMerge(tenant, stats, duration)
 	}
-}
-
-// logMergeOutputPath derives the deterministic object-storage key for the i-th
-// compacted log object from the node's OutputIndexPath. Compacted logs are data
-// objects, so they live in the objects/ namespace of the unprefixed data bucket
-// alongside ingested source objects — not under the indexes/ namespace where the
-// index object itself is written. Deriving the key from OutputIndexPath keeps it
-// deterministic and unique per merge task.
-func logMergeOutputPath(outputIndexPath string, i int) string {
-	objectPath := "objects/" + strings.TrimPrefix(outputIndexPath, "indexes/")
-	return fmt.Sprintf("%s.compacted-log.%d", objectPath, i)
 }
 
 type logSource struct {
@@ -465,7 +459,7 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 }
 
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
-// log object, and uploads it to a deterministic key.
+// log object, computes its content-hash path, and uploads it to the data bucket.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if w.lb.UncompressedSize() > 0 {
 		if err := w.builder.Append(w.lb); err != nil {
@@ -481,7 +475,17 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 		return fmt.Errorf("flushing object: %w", err)
 	}
 
-	path := logMergeOutputPath(w.node.OutputIndexPath, w.stats.OutputObjects)
+	pathReader, err := obj.Reader(ctx)
+	if err != nil {
+		return errors.Join(err, closer.Close())
+	}
+	path, hashErr := v2.CompactedLogObjectPath(w.node.Tenant, pathReader)
+	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
+		hashErr = cerr
+	}
+	if hashErr != nil {
+		return errors.Join(hashErr, closer.Close())
+	}
 
 	size, upErr := w.c.uploadObject(ctx, w.c.dataObjectBucket(), path, obj)
 	if upErr != nil {
@@ -492,6 +496,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	if err := w.calc.Calculate(ctx, w.c.logger, obj, path); err != nil {
 		return errors.Join(fmt.Errorf("indexing %q: %w", path, err), closer.Close())
 	}
+
 	if err := closer.Close(); err != nil {
 		return fmt.Errorf("closing compacted object %q: %w", path, err)
 	}
