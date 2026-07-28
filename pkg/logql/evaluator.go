@@ -334,7 +334,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 ) (StepEvaluator, error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && (e.Operation == syntax.OpTypeSum || e.Operation == syntax.OpTypeMax || e.Operation == syntax.OpTypeMin || e.Operation == syntax.OpTypeAvg) {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
