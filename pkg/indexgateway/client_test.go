@@ -58,18 +58,26 @@ type mockGatewayConn struct {
 	logproto.IndexGatewayClient
 	grpc_health_v1.HealthClient
 	returnErrors bool
+	err          error
+}
+
+func (m *mockGatewayConn) callErr() error {
+	if m.err != nil {
+		return m.err
+	}
+	return errors.New("mock error")
 }
 
 func (m *mockGatewayConn) GetChunkRef(context.Context, *logproto.GetChunkRefRequest, ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
 	if m.returnErrors {
-		return nil, errors.New("mock error")
+		return nil, m.callErr()
 	}
 	return &logproto.GetChunkRefResponse{}, nil
 }
 
 func (m *mockGatewayConn) GetShards(_ context.Context, _ *logproto.ShardsRequest, _ ...grpc.CallOption) (logproto.IndexGateway_GetShardsClient, error) {
 	if m.returnErrors {
-		return nil, errors.New("mock error")
+		return nil, m.callErr()
 	}
 	return &mockShardsClient{}, nil
 }
@@ -240,6 +248,10 @@ func createSimpleGatewayClient(t *testing.T, addrs []string) (log.Logger, *dskit
 }
 
 func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numErrorsToReturn int) *dskitclient.Pool {
+	return configurePoolWithError(t, client, logger, numErrorsToReturn, nil)
+}
+
+func configurePoolWithError(t *testing.T, client *GatewayClient, logger log.Logger, numErrorsToReturn int, errToReturn error) *dskitclient.Pool {
 	pool := dskitclient.NewPool(
 		"test",
 		dskitclient.PoolConfig{CheckInterval: time.Hour},
@@ -252,7 +264,7 @@ func configurePool(t *testing.T, client *GatewayClient, logger log.Logger, numEr
 			} else {
 				returnErrors = false
 			}
-			return &mockGatewayConn{returnErrors: returnErrors}, nil
+			return &mockGatewayConn{returnErrors: returnErrors, err: errToReturn}, nil
 		}),
 		nil, logger,
 	)
@@ -299,6 +311,56 @@ func TestGatewayClient_SimpleMode_OtherMethods(t *testing.T) {
 	configurePool(t, client, logger, 10)
 	_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 	require.Error(t, err)
+}
+
+func TestGatewayClient_SaturationBackoff(t *testing.T) {
+	logger, _, client := createSimpleGatewayClient(t, []string{
+		"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4",
+		"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8", "9.9.9.9",
+	})
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+
+	t.Run("waits between attempts on saturated gateways", func(t *testing.T) {
+		client.cfg.SaturationBackoffMinPeriod = 50 * time.Millisecond
+		client.cfg.SaturationBackoffMaxPeriod = 100 * time.Millisecond
+		configurePoolWithError(t, client, logger, 2, newSaturatedError("cpu"))
+		start := time.Now()
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+		// Each of the two saturated attempts waits at least the min backoff period.
+		require.GreaterOrEqual(t, time.Since(start), 2*client.cfg.SaturationBackoffMinPeriod)
+	})
+
+	t.Run("non-saturation errors keep immediate failover", func(t *testing.T) {
+		// Generous periods so the fast-path upper-bound assertion below is not
+		// sensitive to CI scheduling jitter. The fast path never sleeps, so this
+		// does not slow down the test.
+		client.cfg.SaturationBackoffMinPeriod = 500 * time.Millisecond
+		client.cfg.SaturationBackoffMaxPeriod = time.Second
+		configurePool(t, client, logger, 5)
+		start := time.Now()
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+		require.Less(t, time.Since(start), client.cfg.SaturationBackoffMinPeriod)
+	})
+
+	t.Run("respects context cancellation while backing off", func(t *testing.T) {
+		// Backoff periods well past the context deadline so the wait is always
+		// interrupted by the deadline rather than completing.
+		client.cfg.SaturationBackoffMinPeriod = time.Second
+		client.cfg.SaturationBackoffMaxPeriod = 2 * time.Second
+		configurePoolWithError(t, client, logger, 10, newSaturatedError("cpu"))
+		ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		defer cancel()
+		start := time.Now()
+		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		// The deadline ended the request, so that is what gets reported; the
+		// saturation is an internal retry-pacing detail.
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		// Finishing before a single backoff period could elapse proves the deadline
+		// interrupted the wait instead of it running to completion.
+		require.Less(t, time.Since(start), client.cfg.SaturationBackoffMinPeriod)
+	})
 }
 
 func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
