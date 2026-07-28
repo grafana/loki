@@ -37,6 +37,7 @@ type HeadBlock interface {
 	UncompressedSize() int
 	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
 	Append(int64, string, labels.Labels) (bool, error)
+	AppendWithSymbols(int64, string, symbols) (bool, error)
 	Iterator(
 		ctx context.Context,
 		direction logproto.Direction,
@@ -118,6 +119,28 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		// structuredMetadata must be ignored for the previous head block formats
 		structuredMetadata = labels.EmptyLabels()
 	}
+
+	syms, err := hb.symbolizer.Add(structuredMetadata)
+	if err != nil {
+		return false, err
+	}
+
+	return hb.append(ts, line, syms)
+}
+
+// AppendWithSymbols appends an entry whose structured metadata has already been interned in
+// the chunk's symbol table. Head block formats before
+// UnorderedWithStructuredMetadataHeadBlockFmt drop the symbols, just like Append drops
+// structured metadata for them.
+func (hb *unorderedHeadBlock) AppendWithSymbols(ts int64, line string, structuredMetadataSymbols symbols) (bool, error) {
+	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
+		structuredMetadataSymbols = nil
+	}
+
+	return hb.append(ts, line, structuredMetadataSymbols)
+}
+
+func (hb *unorderedHeadBlock) append(ts int64, line string, structuredMetadataSymbols symbols) (bool, error) {
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
 	// and instead will displace any existing entry at the specified timestamp.
@@ -132,29 +155,19 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 	displaced := hb.rt.Add(e)
 	if displaced[0] != nil {
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
-		}
-
 		// While we support multiple entries at the same timestamp, we _do_ de-duplicate
 		// entries at the same time with the same content, iterate through any existing
 		// entries and ignore the line if we already have an entry with the same content
 		for _, et := range displaced[0].(*nsEntries).entries {
-			if et.line == line && et.structuredMetadataSymbols.Equal(symbols) {
+			if et.line == line && et.structuredMetadataSymbols.Equal(structuredMetadataSymbols) {
 				e.entries = displaced[0].(*nsEntries).entries
 				return true, nil
 			}
 		}
 
-		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, symbols})
+		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, structuredMetadataSymbols})
 	} else {
-		symbols, err := hb.symbolizer.Add(structuredMetadata)
-		if err != nil {
-			return false, err
-		}
-
-		e.entries = []nsEntry{{line, symbols}}
+		e.entries = []nsEntry{{line, structuredMetadataSymbols}}
 	}
 
 	// Update hb metdata
@@ -167,7 +180,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	}
 
 	hb.size += len(line)
-	hb.size += structuredMetadata.Len() * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
+	hb.size += len(structuredMetadataSymbols) * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
 	hb.lines++
 
 	return false, nil
