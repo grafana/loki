@@ -1,0 +1,141 @@
+package push
+
+import "fmt"
+
+// EffectiveStructuredMetadata returns the structured metadata that applies to an entry once
+// the shared structured metadata sets of its stream have been merged in: the resource
+// attributes first, then the scope attributes, then the entry's own ones. Resolve resource
+// and scope for an entry with Stream.SharedFor.
+//
+// The order is what encodes precedence. Loki's read path collapses structured metadata pairs
+// that repeat a label name down to the last one, so the effective precedence is
+// own > scope > resource, which is what OpenTelemetry prescribes: the log record wins over
+// its instrumentation scope, which wins over the resource.
+//
+// The entry is never modified. Appending the shared labels to Entry.StructuredMetadata in
+// place is not safe: entries are handed to the WAL, replication and tailer paths that read
+// them concurrently, and append may write into the spare capacity of a slice those paths
+// still reference.
+//
+// The result must be treated as read-only. When there is nothing to merge it aliases the one
+// non-empty part instead of copying, so overwriting an element of it would corrupt the entry
+// or, worse, a set of the stream-wide pool that other entries also reference. The alias is
+// returned with its capacity clamped to its length, so a later append to the result is forced
+// to allocate a copy instead of writing into the spare capacity of the aliased slice.
+func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapter {
+	total := len(resource) + len(scope) + len(own)
+	if total == 0 {
+		return nil
+	}
+
+	// Exactly one part holds everything: alias it rather than copying.
+	switch total {
+	case len(resource):
+		return resource[:len(resource):len(resource)]
+	case len(scope):
+		return scope[:len(scope):len(scope)]
+	case len(own):
+		return own[:len(own):len(own)]
+	}
+
+	merged := make(LabelsAdapter, 0, total)
+	merged = append(merged, resource...)
+	merged = append(merged, scope...)
+	merged = append(merged, own...)
+	return merged
+}
+
+// CombinedShared returns the shared part of an entry's effective structured metadata as a
+// single list: the resource attributes followed by the scope attributes. It exists for the
+// chunk layer, whose MemChunk.AppendWithSharedStructuredMetadata takes one shared list
+// alongside the entry's own metadata rather than a resource and a scope list.
+//
+// The resource attributes come first on purpose. The read path keeps the last pair for a
+// repeated label name, so a name present in both sets resolves to the scope value, matching
+// the own > scope > resource precedence of EffectiveStructuredMetadata. This relies on the
+// chunk, when it merges the shared list into an entry, keeping the given order for two shared
+// pairs carrying the same name; the chunk layer is the side that has to honour that contract.
+//
+// Like EffectiveStructuredMetadata the result must be treated as read-only: with only one
+// non-empty part it aliases that part, capacity clamped so that a later append allocates
+// instead of writing into the pool's spare capacity.
+func CombinedShared(resource, scope LabelsAdapter) LabelsAdapter {
+	if len(scope) == 0 {
+		return resource[:len(resource):len(resource)]
+	}
+	if len(resource) == 0 {
+		return scope[:len(scope):len(scope)]
+	}
+
+	combined := make(LabelsAdapter, 0, len(resource)+len(scope))
+	combined = append(combined, resource...)
+	combined = append(combined, scope...)
+	return combined
+}
+
+// SharedFor resolves the shared structured metadata sets an entry of this stream references.
+// Either or both may be empty when the entry references no set.
+//
+// A reference that points past the end of the stream's pool is treated as "no set". That can
+// only happen if the producer built the stream wrong, and silently dropping the shared
+// metadata of one entry is a better outcome on the ingest path than failing a whole push, so
+// the read helpers never error. Consumers that want to catch such a producer bug should call
+// ValidateSharedRefs once, when they receive the stream, instead of checking per entry.
+//
+// The returned lists alias the stream's pool and must be treated as read-only: every entry
+// referencing the same set gets the same backing array.
+func (s *Stream) SharedFor(e *Entry) (resource, scope LabelsAdapter) {
+	return s.sharedSet(e.SharedResourceRef), s.sharedSet(e.SharedScopeRef)
+}
+
+// sharedSet resolves a 1-based reference into the stream's pool, returning nil for the 0
+// "none" reference and for any out of range reference.
+func (s *Stream) sharedSet(ref uint32) LabelsAdapter {
+	if ref == 0 || uint64(ref) > uint64(len(s.SharedStructuredMetadataSets)) {
+		return nil
+	}
+	return s.SharedStructuredMetadataSets[ref-1].Attrs
+}
+
+// ValidateSharedRefs reports whether every shared structured metadata reference of every
+// entry of the stream resolves against the stream's own pool. References are context
+// dependent, so a stream whose entries were built against a different pool, or whose pool was
+// dropped along the way, is only detectable here.
+//
+// It is meant to be called once per stream by consumers that would rather reject a malformed
+// stream than silently ingest entries missing their shared metadata; SharedFor itself stays
+// non-failing. See SharedFor.
+func (s *Stream) ValidateSharedRefs() error {
+	sets := uint64(len(s.SharedStructuredMetadataSets))
+	for i := range s.Entries {
+		e := &s.Entries[i]
+		if uint64(e.SharedResourceRef) > sets {
+			return fmt.Errorf("entry %d references shared structured metadata set %d as its resource set, but the stream carries %d sets", i, e.SharedResourceRef, sets)
+		}
+		if uint64(e.SharedScopeRef) > sets {
+			return fmt.Errorf("entry %d references shared structured metadata set %d as its scope set, but the stream carries %d sets", i, e.SharedScopeRef, sets)
+		}
+	}
+	return nil
+}
+
+// StripSharedStructuredMetadata drops the shared structured metadata pool of the stream and the
+// references of all of its entries, leaving a stream whose entries carry all their structured
+// metadata themselves.
+//
+// The pool is internal to Loki's OTLP ingest pipeline, where it is populated only for tenants that
+// have the deferred expansion of resource and scope attributes enabled. Ingress paths reachable by
+// external clients call this so that a client cannot opt itself into deferred semantics whatever
+// its tenant is configured for: an entry referencing a pooled set is metered once per stream but
+// read back as if the set had been copied onto every entry, so accepting such a stream from
+// outside would under-charge the tenant by a factor of its entry count.
+//
+// Nothing is reported: an unexpected field on an ingest path is dropped, not rejected, the same way
+// an unknown proto field would be.
+func (s *Stream) StripSharedStructuredMetadata() {
+	s.SharedStructuredMetadataSets = nil
+	for i := range s.Entries {
+		s.Entries[i].SharedResourceRef = 0
+		s.Entries[i].SharedScopeRef = 0
+	}
+}

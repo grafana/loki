@@ -118,6 +118,19 @@ type StreamAdapter struct {
 	Entries []EntryAdapter `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries"`
 	// hash contains the original hash of the stream.
 	Hash uint64 `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	// sharedStructuredMetadataSets is the pool of structured metadata sets that the entries
+	// of this stream share instead of repeating them one by one. Entries reference a set by
+	// its position in this pool through sharedResourceRef and sharedScopeRef, so a set is
+	// stored once per stream no matter how many entries, or how many resource and scope
+	// combinations, point at it.
+	//
+	// The backing array of a set is immutable: one array can be shared by the pools of
+	// several streams, so a consumer that has to change a set must replace it instead of
+	// writing through it.
+	//
+	// This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients
+	// are discarded, and it is never returned in query responses.
+	SharedStructuredMetadataSets []SharedStructuredMetadataSet `protobuf:"bytes,5,rep,name=sharedStructuredMetadataSets,proto3" json:"-"`
 }
 
 func (m *StreamAdapter) Reset()      { *m = StreamAdapter{} }
@@ -173,6 +186,53 @@ func (m *StreamAdapter) GetHash() uint64 {
 	return 0
 }
 
+func (m *StreamAdapter) GetSharedStructuredMetadataSets() []SharedStructuredMetadataSet {
+	if m != nil {
+		return m.SharedStructuredMetadataSets
+	}
+	return nil
+}
+
+// SharedStructuredMetadataSet is one set of the shared structured metadata pool of a
+// stream, typically the attributes of one OTLP resource or of one OTLP scope. It only has
+// meaning together with the stream that carries it, since entries address it by its
+// position in that stream's pool.
+type SharedStructuredMetadataSet struct {
+	Attrs []LabelAdapter `protobuf:"bytes,1,rep,name=attrs,proto3,customtype=LabelAdapter" json:"attrs"`
+}
+
+func (m *SharedStructuredMetadataSet) Reset()      { *m = SharedStructuredMetadataSet{} }
+func (*SharedStructuredMetadataSet) ProtoMessage() {}
+func (*SharedStructuredMetadataSet) Descriptor() ([]byte, []int) {
+	return fileDescriptor_35ec442956852c9e, []int{3}
+}
+func (m *SharedStructuredMetadataSet) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SharedStructuredMetadataSet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SharedStructuredMetadataSet.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SharedStructuredMetadataSet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SharedStructuredMetadataSet.Merge(m, src)
+}
+func (m *SharedStructuredMetadataSet) XXX_Size() int {
+	return m.Size()
+}
+func (m *SharedStructuredMetadataSet) XXX_DiscardUnknown() {
+	xxx_messageInfo_SharedStructuredMetadataSet.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SharedStructuredMetadataSet proto.InternalMessageInfo
+
 type LabelPairAdapter struct {
 	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
@@ -181,7 +241,7 @@ type LabelPairAdapter struct {
 func (m *LabelPairAdapter) Reset()      { *m = LabelPairAdapter{} }
 func (*LabelPairAdapter) ProtoMessage() {}
 func (*LabelPairAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{3}
+	return fileDescriptor_35ec442956852c9e, []int{4}
 }
 func (m *LabelPairAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -232,12 +292,31 @@ type EntryAdapter struct {
 	// It is only used by Loki to return parsed log lines in query responses.
 	// TODO: Remove this field from the write path Proto.
 	Parsed []LabelPairAdapter `protobuf:"bytes,4,rep,name=parsed,proto3" json:"parsed,omitempty"`
+	// sharedResourceRef is the 1-based index, into the sharedStructuredMetadataSets of the
+	// stream carrying this entry, of the OTLP resource attributes of the entry. 0 means the
+	// entry has no shared resource attributes.
+	//
+	// The reference is context dependent: it only resolves against the pool of its own
+	// stream, so an entry moved to another stream must have its references remapped to that
+	// stream's pool.
+	//
+	// The effective structured metadata of an entry is the resource set, then the scope set,
+	// then the entry's own structuredMetadata. The read path keeps the last pair for a
+	// repeated label name, so precedence is own > scope > resource.
+	//
+	// This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients
+	// are discarded, and it is never returned in query responses.
+	SharedResourceRef uint32 `protobuf:"varint,5,opt,name=sharedResourceRef,proto3" json:"-"`
+	// sharedScopeRef is the 1-based index, into the sharedStructuredMetadataSets of the
+	// stream carrying this entry, of the OTLP scope attributes of the entry. 0 means the
+	// entry has no shared scope attributes. See sharedResourceRef.
+	SharedScopeRef uint32 `protobuf:"varint,6,opt,name=sharedScopeRef,proto3" json:"-"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
 func (*EntryAdapter) ProtoMessage() {}
 func (*EntryAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{4}
+	return fileDescriptor_35ec442956852c9e, []int{5}
 }
 func (m *EntryAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -294,10 +373,25 @@ func (m *EntryAdapter) GetParsed() []LabelPairAdapter {
 	return nil
 }
 
+func (m *EntryAdapter) GetSharedResourceRef() uint32 {
+	if m != nil {
+		return m.SharedResourceRef
+	}
+	return 0
+}
+
+func (m *EntryAdapter) GetSharedScopeRef() uint32 {
+	if m != nil {
+		return m.SharedScopeRef
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterType((*PushRequest)(nil), "logproto.PushRequest")
 	proto.RegisterType((*PushResponse)(nil), "logproto.PushResponse")
 	proto.RegisterType((*StreamAdapter)(nil), "logproto.StreamAdapter")
+	proto.RegisterType((*SharedStructuredMetadataSet)(nil), "logproto.SharedStructuredMetadataSet")
 	proto.RegisterType((*LabelPairAdapter)(nil), "logproto.LabelPairAdapter")
 	proto.RegisterType((*EntryAdapter)(nil), "logproto.EntryAdapter")
 }
@@ -305,41 +399,48 @@ func init() {
 func init() { proto.RegisterFile("pkg/push/push.proto", fileDescriptor_35ec442956852c9e) }
 
 var fileDescriptor_35ec442956852c9e = []byte{
-	// 543 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x53, 0x41, 0x6f, 0xd3, 0x3c,
-	0x18, 0x8e, 0xbb, 0xac, 0xdb, 0xdc, 0x7d, 0xfb, 0x26, 0xb3, 0x8d, 0x50, 0x4d, 0x4e, 0x15, 0x71,
-	0xe8, 0x01, 0x12, 0xa9, 0x1c, 0xb8, 0x70, 0x69, 0x24, 0xa4, 0x1d, 0x86, 0x34, 0x19, 0xc4, 0x81,
-	0x9b, 0xbb, 0xba, 0x69, 0xb4, 0x24, 0x0e, 0xb6, 0x83, 0x34, 0x71, 0xe1, 0x27, 0x8c, 0x7f, 0xc1,
-	0x2f, 0xe0, 0x37, 0xec, 0xd8, 0xe3, 0xc4, 0x21, 0xd0, 0xf4, 0x82, 0x7a, 0xda, 0x4f, 0x40, 0x71,
-	0x92, 0xb5, 0x0c, 0x24, 0x2e, 0xf1, 0xe3, 0xd7, 0xef, 0xfb, 0x3c, 0x8f, 0xfd, 0xbe, 0x81, 0x0f,
-	0xd2, 0x8b, 0xc0, 0x4b, 0x33, 0x39, 0xd5, 0x1f, 0x37, 0x15, 0x5c, 0x71, 0xb4, 0x1d, 0xf1, 0x40,
-	0xa3, 0xee, 0x41, 0xc0, 0x03, 0xae, 0xa1, 0x57, 0xa2, 0xea, 0xbc, 0x6b, 0x07, 0x9c, 0x07, 0x11,
-	0xf3, 0xf4, 0x6e, 0x94, 0x4d, 0x3c, 0x15, 0xc6, 0x4c, 0x2a, 0x1a, 0xa7, 0x55, 0x82, 0xf3, 0x11,
-	0x76, 0xce, 0x32, 0x39, 0x25, 0xec, 0x7d, 0xc6, 0xa4, 0x42, 0x27, 0x70, 0x4b, 0x2a, 0xc1, 0x68,
-	0x2c, 0x2d, 0xd0, 0xdb, 0xe8, 0x77, 0x06, 0x0f, 0xdd, 0x46, 0xc1, 0x7d, 0xad, 0x0f, 0x86, 0x63,
-	0x9a, 0x2a, 0x26, 0xfc, 0xc3, 0x6f, 0xb9, 0xdd, 0xae, 0x42, 0xcb, 0xdc, 0x6e, 0xaa, 0x48, 0x03,
-	0x90, 0x03, 0xdb, 0x13, 0x2e, 0x62, 0xaa, 0xac, 0x56, 0x0f, 0xf4, 0x77, 0x7c, 0xb8, 0xcc, 0xed,
-	0x3a, 0x42, 0xea, 0xd5, 0xd9, 0x83, 0xbb, 0x95, 0xb8, 0x4c, 0x79, 0x22, 0x99, 0xf3, 0x19, 0xc0,
-	0xff, 0x7e, 0x53, 0x29, 0x59, 0x22, 0x3a, 0x62, 0x51, 0x69, 0xe7, 0x8e, 0xa5, 0x8a, 0x90, 0x7a,
-	0x45, 0x43, 0xb8, 0xc5, 0x12, 0x25, 0x42, 0x26, 0xad, 0x96, 0xf6, 0x7c, 0xb4, 0xf2, 0xfc, 0x32,
-	0x51, 0xe2, 0xb2, 0xb1, 0xfc, 0xff, 0x75, 0x6e, 0x1b, 0xa5, 0xd9, 0x3a, 0x9d, 0x34, 0x00, 0x3d,
-	0x82, 0xe6, 0x94, 0xca, 0xa9, 0xb5, 0xd1, 0x03, 0x7d, 0xd3, 0xdf, 0x5c, 0xe6, 0x36, 0x78, 0x4a,
-	0x74, 0xc8, 0x79, 0x01, 0xf7, 0x4f, 0x4b, 0x9d, 0x33, 0x1a, 0x8a, 0xc6, 0x15, 0x82, 0x66, 0x42,
-	0x63, 0x56, 0x79, 0x22, 0x1a, 0xa3, 0x03, 0xb8, 0xf9, 0x81, 0x46, 0x19, 0xab, 0xae, 0x4b, 0xaa,
-	0x8d, 0xf3, 0xb5, 0x05, 0x77, 0xd7, 0x3d, 0xa0, 0x13, 0xb8, 0x73, 0xd7, 0x02, 0x5d, 0xdf, 0x19,
-	0x74, 0xdd, 0xaa, 0x49, 0x6e, 0xd3, 0x24, 0xf7, 0x4d, 0x93, 0xe1, 0xef, 0xd5, 0x96, 0x5b, 0x4a,
-	0x5e, 0x7d, 0xb7, 0x01, 0x59, 0x15, 0xa3, 0x63, 0x68, 0x46, 0x61, 0x52, 0xeb, 0xf9, 0xdb, 0xcb,
-	0xdc, 0xd6, 0x7b, 0xa2, 0xbf, 0x28, 0x85, 0x48, 0x2a, 0x91, 0x9d, 0xab, 0x4c, 0xb0, 0xf1, 0x2b,
-	0xa6, 0xe8, 0x98, 0x2a, 0x6a, 0x6d, 0xe8, 0xf7, 0xe9, 0xae, 0xde, 0xe7, 0xfe, 0xd5, 0xfc, 0xc7,
-	0xb5, 0xe0, 0xf1, 0x9f, 0xd5, 0x4f, 0x78, 0x1c, 0x2a, 0x16, 0xa7, 0xea, 0x92, 0xfc, 0x85, 0x1b,
-	0x9d, 0xc2, 0x76, 0x4a, 0x85, 0x64, 0x63, 0xcb, 0xfc, 0xa7, 0x8a, 0x55, 0xab, 0xec, 0x57, 0x15,
-	0x6b, 0xcc, 0x35, 0xc7, 0x60, 0x08, 0xdb, 0xe5, 0x68, 0x30, 0x81, 0x9e, 0x43, 0xb3, 0x44, 0xe8,
-	0x70, 0xc5, 0xb7, 0x36, 0xb1, 0xdd, 0xa3, 0xfb, 0xe1, 0x7a, 0x96, 0x0c, 0xff, 0xed, 0x6c, 0x8e,
-	0x8d, 0x9b, 0x39, 0x36, 0x6e, 0xe7, 0x18, 0x7c, 0x2a, 0x30, 0xf8, 0x52, 0x60, 0x70, 0x5d, 0x60,
-	0x30, 0x2b, 0x30, 0xf8, 0x51, 0x60, 0xf0, 0xb3, 0xc0, 0xc6, 0x6d, 0x81, 0xc1, 0xd5, 0x02, 0x1b,
-	0xb3, 0x05, 0x36, 0x6e, 0x16, 0xd8, 0x78, 0xd7, 0x0b, 0x42, 0x35, 0xcd, 0x46, 0xee, 0x39, 0x8f,
-	0xbd, 0x40, 0xd0, 0x09, 0x4d, 0xa8, 0x17, 0xf1, 0x8b, 0xd0, 0x6b, 0x7e, 0xbf, 0x51, 0x5b, 0xab,
-	0x3d, 0xfb, 0x15, 0x00, 0x00, 0xff, 0xff, 0x6e, 0xff, 0xeb, 0x8b, 0x91, 0x03, 0x00, 0x00,
+	// 652 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x54, 0x4f, 0x4f, 0xd4, 0x40,
+	0x14, 0xef, 0xec, 0x76, 0x17, 0x18, 0xfe, 0x88, 0x23, 0x60, 0x5d, 0xb1, 0xdd, 0x34, 0x9a, 0xec,
+	0x41, 0xb6, 0x09, 0x1c, 0xbc, 0x78, 0xa1, 0x89, 0x09, 0x31, 0x18, 0xc9, 0x60, 0x3c, 0x78, 0x9b,
+	0xdd, 0x9d, 0xed, 0x36, 0xb4, 0x9d, 0x3a, 0x33, 0x35, 0x21, 0x5e, 0xfc, 0x08, 0x9c, 0xfd, 0x02,
+	0xfa, 0x51, 0x38, 0x72, 0x24, 0x1c, 0xaa, 0x94, 0x8b, 0xd9, 0x13, 0x1f, 0xc1, 0x74, 0xda, 0xb2,
+	0x2b, 0x08, 0x5c, 0x3a, 0x6f, 0xde, 0x7b, 0xbf, 0xf7, 0xfb, 0xe5, 0xbd, 0xd7, 0x81, 0x8f, 0xe2,
+	0x03, 0xcf, 0x89, 0x13, 0x31, 0x52, 0x9f, 0x6e, 0xcc, 0x99, 0x64, 0x68, 0x36, 0x60, 0x9e, 0xb2,
+	0x5a, 0x2b, 0x1e, 0xf3, 0x98, 0x32, 0x9d, 0xdc, 0x2a, 0xe2, 0x2d, 0xcb, 0x63, 0xcc, 0x0b, 0xa8,
+	0xa3, 0x6e, 0xbd, 0x64, 0xe8, 0x48, 0x3f, 0xa4, 0x42, 0x92, 0x30, 0x2e, 0x12, 0xec, 0xaf, 0x70,
+	0x7e, 0x2f, 0x11, 0x23, 0x4c, 0x3f, 0x27, 0x54, 0x48, 0xb4, 0x03, 0x67, 0x84, 0xe4, 0x94, 0x84,
+	0xc2, 0x00, 0xed, 0x7a, 0x67, 0x7e, 0xf3, 0x71, 0xb7, 0x62, 0xe8, 0xee, 0xab, 0xc0, 0xf6, 0x80,
+	0xc4, 0x92, 0x72, 0x77, 0xf5, 0x2c, 0xb5, 0x9a, 0x85, 0x6b, 0x9c, 0x5a, 0x15, 0x0a, 0x57, 0x06,
+	0xb2, 0x61, 0x73, 0xc8, 0x78, 0x48, 0xa4, 0x51, 0x6b, 0x83, 0xce, 0x9c, 0x0b, 0xc7, 0xa9, 0x55,
+	0x7a, 0x70, 0x79, 0xda, 0x4b, 0x70, 0xa1, 0x20, 0x17, 0x31, 0x8b, 0x04, 0xb5, 0x7f, 0xd4, 0xe0,
+	0xe2, 0x3f, 0x2c, 0x79, 0x95, 0x80, 0xf4, 0x68, 0x90, 0xcb, 0xb9, 0xaa, 0x52, 0x78, 0x70, 0x79,
+	0xa2, 0x6d, 0x38, 0x43, 0x23, 0xc9, 0x7d, 0x2a, 0x8c, 0x9a, 0xd2, 0xbc, 0x36, 0xd1, 0xfc, 0x26,
+	0x92, 0xfc, 0xb0, 0x92, 0xfc, 0xe0, 0x38, 0xb5, 0xb4, 0x5c, 0x6c, 0x99, 0x8e, 0x2b, 0x03, 0x3d,
+	0x81, 0xfa, 0x88, 0x88, 0x91, 0x51, 0x6f, 0x83, 0x8e, 0xee, 0x36, 0xc6, 0xa9, 0x05, 0x36, 0xb0,
+	0x72, 0x21, 0x09, 0xd7, 0xc5, 0x88, 0x70, 0x3a, 0xd8, 0x97, 0x3c, 0xe9, 0xcb, 0x84, 0xd3, 0xc1,
+	0x3b, 0x2a, 0xc9, 0x80, 0x48, 0xb2, 0x4f, 0xa5, 0x30, 0x1a, 0x8a, 0xf2, 0xc5, 0x54, 0x9b, 0x6e,
+	0xcf, 0x76, 0xe7, 0x4a, 0x05, 0x60, 0x03, 0xdf, 0x59, 0xf5, 0xad, 0x3e, 0xab, 0x2f, 0x37, 0xb0,
+	0x71, 0x5b, 0x8e, 0x1d, 0xc1, 0xa7, 0x77, 0xf0, 0xa0, 0xf7, 0xb0, 0x41, 0xa4, 0xe4, 0xd5, 0x10,
+	0x5b, 0x13, 0x75, 0xbb, 0x79, 0xcf, 0xf6, 0x88, 0xcf, 0xab, 0xa6, 0x3c, 0xcb, 0x25, 0x9d, 0xa5,
+	0xd6, 0x82, 0x8a, 0x94, 0xde, 0x71, 0x6a, 0x15, 0x05, 0x70, 0x71, 0xd8, 0xaf, 0xe1, 0xf2, 0x75,
+	0x24, 0x42, 0x50, 0x8f, 0x48, 0x48, 0x8b, 0xc9, 0x60, 0x65, 0xa3, 0x15, 0xd8, 0xf8, 0x42, 0x82,
+	0x84, 0x16, 0x43, 0xc7, 0xc5, 0xc5, 0xfe, 0x5e, 0x87, 0x0b, 0xd3, 0x93, 0x40, 0x3b, 0x70, 0xee,
+	0x6a, 0x11, 0x15, 0x3e, 0xd7, 0x58, 0xac, 0x6a, 0xb7, 0x5a, 0xd5, 0xee, 0x87, 0x2a, 0xc3, 0x5d,
+	0x2a, 0xdb, 0x56, 0x93, 0xe2, 0xe8, 0x97, 0x05, 0xf0, 0x04, 0x8c, 0xd6, 0xa1, 0x1e, 0xf8, 0x51,
+	0xc9, 0xe7, 0xce, 0x8e, 0x53, 0x4b, 0xdd, 0xb1, 0xfa, 0xa2, 0x18, 0x22, 0x71, 0xa3, 0x41, 0x46,
+	0xfd, 0xde, 0xa6, 0x3c, 0x2f, 0x09, 0xd7, 0x6f, 0xa2, 0x5f, 0xb2, 0xd0, 0x97, 0x34, 0x8c, 0xe5,
+	0x21, 0xfe, 0x4f, 0x6d, 0xb4, 0x0b, 0x9b, 0x31, 0xe1, 0x82, 0x0e, 0x0c, 0xfd, 0x5e, 0x16, 0xa3,
+	0x64, 0x59, 0x2e, 0x10, 0x53, 0x95, 0xcb, 0x1a, 0x68, 0x0b, 0x3e, 0x2c, 0x56, 0x00, 0x53, 0xc1,
+	0x12, 0xde, 0xa7, 0x98, 0x0e, 0x8d, 0x46, 0x1b, 0x74, 0x16, 0xab, 0x25, 0xbd, 0x19, 0x47, 0x1b,
+	0x70, 0xa9, 0xdc, 0x9b, 0x3e, 0x8b, 0x15, 0xa2, 0x39, 0x8d, 0xb8, 0x16, 0xdc, 0xdc, 0x86, 0xcd,
+	0xfc, 0x27, 0xa4, 0x1c, 0xbd, 0x82, 0x7a, 0x6e, 0xa1, 0xd5, 0x89, 0xe6, 0xa9, 0xb7, 0xa1, 0xb5,
+	0x76, 0xdd, 0x5d, 0xfe, 0xb5, 0x9a, 0xfb, 0xf1, 0xe4, 0xdc, 0xd4, 0x4e, 0xcf, 0x4d, 0xed, 0xf2,
+	0xdc, 0x04, 0xdf, 0x32, 0x13, 0xfc, 0xcc, 0x4c, 0x70, 0x9c, 0x99, 0xe0, 0x24, 0x33, 0xc1, 0xef,
+	0xcc, 0x04, 0x7f, 0x32, 0x53, 0xbb, 0xcc, 0x4c, 0x70, 0x74, 0x61, 0x6a, 0x27, 0x17, 0xa6, 0x76,
+	0x7a, 0x61, 0x6a, 0x9f, 0xda, 0x9e, 0x2f, 0x47, 0x49, 0xaf, 0xdb, 0x67, 0xa1, 0xe3, 0x71, 0x32,
+	0x24, 0x11, 0x71, 0x02, 0x76, 0xe0, 0x3b, 0xd5, 0x43, 0xd7, 0x6b, 0x2a, 0xb6, 0xad, 0xbf, 0x01,
+	0x00, 0x00, 0xff, 0xff, 0x13, 0x1d, 0x36, 0x01, 0xfb, 0x04, 0x00, 0x00,
 }
 
 func (this *PushRequest) Equal(that interface{}) bool {
@@ -428,6 +529,43 @@ func (this *StreamAdapter) Equal(that interface{}) bool {
 	if this.Hash != that1.Hash {
 		return false
 	}
+	if len(this.SharedStructuredMetadataSets) != len(that1.SharedStructuredMetadataSets) {
+		return false
+	}
+	for i := range this.SharedStructuredMetadataSets {
+		if !this.SharedStructuredMetadataSets[i].Equal(&that1.SharedStructuredMetadataSets[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *SharedStructuredMetadataSet) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SharedStructuredMetadataSet)
+	if !ok {
+		that2, ok := that.(SharedStructuredMetadataSet)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Attrs) != len(that1.Attrs) {
+		return false
+	}
+	for i := range this.Attrs {
+		if !this.Attrs[i].Equal(that1.Attrs[i]) {
+			return false
+		}
+	}
 	return true
 }
 func (this *LabelPairAdapter) Equal(that interface{}) bool {
@@ -498,6 +636,12 @@ func (this *EntryAdapter) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if this.SharedResourceRef != that1.SharedResourceRef {
+		return false
+	}
+	if this.SharedScopeRef != that1.SharedScopeRef {
+		return false
+	}
 	return true
 }
 func (this *PushRequest) GoString() string {
@@ -524,7 +668,7 @@ func (this *StreamAdapter) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&push.StreamAdapter{")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	if this.Entries != nil {
@@ -535,6 +679,23 @@ func (this *StreamAdapter) GoString() string {
 		s = append(s, "Entries: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "Hash: "+fmt.Sprintf("%#v", this.Hash)+",\n")
+	if this.SharedStructuredMetadataSets != nil {
+		vs := make([]*SharedStructuredMetadataSet, len(this.SharedStructuredMetadataSets))
+		for i := range vs {
+			vs[i] = &this.SharedStructuredMetadataSets[i]
+		}
+		s = append(s, "SharedStructuredMetadataSets: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SharedStructuredMetadataSet) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&push.SharedStructuredMetadataSet{")
+	s = append(s, "Attrs: "+fmt.Sprintf("%#v", this.Attrs)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -553,7 +714,7 @@ func (this *EntryAdapter) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 8)
+	s := make([]string, 0, 10)
 	s = append(s, "&push.EntryAdapter{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "Line: "+fmt.Sprintf("%#v", this.Line)+",\n")
@@ -571,6 +732,8 @@ func (this *EntryAdapter) GoString() string {
 		}
 		s = append(s, "Parsed: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
+	s = append(s, "SharedResourceRef: "+fmt.Sprintf("%#v", this.SharedResourceRef)+",\n")
+	s = append(s, "SharedScopeRef: "+fmt.Sprintf("%#v", this.SharedScopeRef)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -750,6 +913,20 @@ func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.SharedStructuredMetadataSets) > 0 {
+		for iNdEx := len(m.SharedStructuredMetadataSets) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.SharedStructuredMetadataSets[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, uint64(m.Hash))
 		i--
@@ -775,6 +952,43 @@ func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintPush(dAtA, i, uint64(len(m.Labels)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SharedStructuredMetadataSet) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SharedStructuredMetadataSet) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SharedStructuredMetadataSet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Attrs) > 0 {
+		for iNdEx := len(m.Attrs) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Attrs[iNdEx].Size()
+				i -= size
+				if _, err := m.Attrs[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -836,6 +1050,16 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.SharedScopeRef != 0 {
+		i = encodeVarintPush(dAtA, i, uint64(m.SharedScopeRef))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.SharedResourceRef != 0 {
+		i = encodeVarintPush(dAtA, i, uint64(m.SharedResourceRef))
+		i--
+		dAtA[i] = 0x28
+	}
 	if len(m.Parsed) > 0 {
 		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -940,6 +1164,27 @@ func (m *StreamAdapter) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(uint64(m.Hash))
 	}
+	if len(m.SharedStructuredMetadataSets) > 0 {
+		for _, e := range m.SharedStructuredMetadataSets {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *SharedStructuredMetadataSet) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Attrs) > 0 {
+		for _, e := range m.Attrs {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -984,6 +1229,12 @@ func (m *EntryAdapter) Size() (n int) {
 			n += 1 + l + sovPush(uint64(l))
 		}
 	}
+	if m.SharedResourceRef != 0 {
+		n += 1 + sovPush(uint64(m.SharedResourceRef))
+	}
+	if m.SharedScopeRef != 0 {
+		n += 1 + sovPush(uint64(m.SharedScopeRef))
+	}
 	return n
 }
 
@@ -1022,10 +1273,26 @@ func (this *StreamAdapter) String() string {
 		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "EntryAdapter", "EntryAdapter", 1), `&`, ``, 1) + ","
 	}
 	repeatedStringForEntries += "}"
+	repeatedStringForSharedStructuredMetadataSets := "[]SharedStructuredMetadataSet{"
+	for _, f := range this.SharedStructuredMetadataSets {
+		repeatedStringForSharedStructuredMetadataSets += strings.Replace(strings.Replace(f.String(), "SharedStructuredMetadataSet", "SharedStructuredMetadataSet", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForSharedStructuredMetadataSets += "}"
 	s := strings.Join([]string{`&StreamAdapter{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Entries:` + repeatedStringForEntries + `,`,
 		`Hash:` + fmt.Sprintf("%v", this.Hash) + `,`,
+		`SharedStructuredMetadataSets:` + repeatedStringForSharedStructuredMetadataSets + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SharedStructuredMetadataSet) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SharedStructuredMetadataSet{`,
+		`Attrs:` + fmt.Sprintf("%v", this.Attrs) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1060,6 +1327,8 @@ func (this *EntryAdapter) String() string {
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
 		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
 		`Parsed:` + repeatedStringForParsed + `,`,
+		`SharedResourceRef:` + fmt.Sprintf("%v", this.SharedResourceRef) + `,`,
+		`SharedScopeRef:` + fmt.Sprintf("%v", this.SharedScopeRef) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1358,6 +1627,127 @@ func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedStructuredMetadataSets", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SharedStructuredMetadataSets = append(m.SharedStructuredMetadataSets, SharedStructuredMetadataSet{})
+			if err := m.SharedStructuredMetadataSets[len(m.SharedStructuredMetadataSets)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPush(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SharedStructuredMetadataSet) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPush
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SharedStructuredMetadataSet: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SharedStructuredMetadataSet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attrs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Attrs = append(m.Attrs, LabelAdapter{})
+			if err := m.Attrs[len(m.Attrs)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])
@@ -1661,6 +2051,44 @@ func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedResourceRef", wireType)
+			}
+			m.SharedResourceRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SharedResourceRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedScopeRef", wireType)
+			}
+			m.SharedScopeRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SharedScopeRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])

@@ -30,6 +30,39 @@ message StreamAdapter {
   ];
   // hash contains the original hash of the stream.
   uint64 hash = 3 [(gogoproto.jsontag) = "-"];
+  // Field 4 held a single flat list of structured metadata shared by every entry of the
+  // stream. It was replaced by the sharedStructuredMetadataSets pool below before it was
+  // ever released, so nothing on the wire uses it and readers simply skip it.
+  reserved 4;
+  reserved "sharedStructuredMetadata";
+  // sharedStructuredMetadataSets is the pool of structured metadata sets that the entries
+  // of this stream share instead of repeating them one by one. Entries reference a set by
+  // its position in this pool through sharedResourceRef and sharedScopeRef, so a set is
+  // stored once per stream no matter how many entries, or how many resource and scope
+  // combinations, point at it.
+  //
+  // The backing array of a set is immutable: one array can be shared by the pools of
+  // several streams, so a consumer that has to change a set must replace it instead of
+  // writing through it.
+  //
+  // This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients
+  // are discarded, and it is never returned in query responses.
+  repeated SharedStructuredMetadataSet sharedStructuredMetadataSets = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "-"
+  ];
+}
+
+// SharedStructuredMetadataSet is one set of the shared structured metadata pool of a
+// stream, typically the attributes of one OTLP resource or of one OTLP scope. It only has
+// meaning together with the stream that carries it, since entries address it by its
+// position in that stream's pool.
+message SharedStructuredMetadataSet {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
 }
 
 message LabelPairAdapter {
@@ -55,4 +88,23 @@ message EntryAdapter {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "parsed,omitempty"
   ];
+  // sharedResourceRef is the 1-based index, into the sharedStructuredMetadataSets of the
+  // stream carrying this entry, of the OTLP resource attributes of the entry. 0 means the
+  // entry has no shared resource attributes.
+  //
+  // The reference is context dependent: it only resolves against the pool of its own
+  // stream, so an entry moved to another stream must have its references remapped to that
+  // stream's pool.
+  //
+  // The effective structured metadata of an entry is the resource set, then the scope set,
+  // then the entry's own structuredMetadata. The read path keeps the last pair for a
+  // repeated label name, so precedence is own > scope > resource.
+  //
+  // This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients
+  // are discarded, and it is never returned in query responses.
+  uint32 sharedResourceRef = 5 [(gogoproto.jsontag) = "-"];
+  // sharedScopeRef is the 1-based index, into the sharedStructuredMetadataSets of the
+  // stream carrying this entry, of the OTLP scope attributes of the entry. 0 means the
+  // entry has no shared scope attributes. See sharedResourceRef.
+  uint32 sharedScopeRef = 6 [(gogoproto.jsontag) = "-"];
 }

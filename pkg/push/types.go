@@ -17,6 +17,26 @@ type Stream struct {
 	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
 	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	// Field 4 is reserved: it held a single flat list of structured metadata shared by
+	// every entry of the stream, which the pool below replaced before it ever shipped.
+	// Both codecs skip it, see Stream.Unmarshal.
+	//
+	// SharedStructuredMetadataSets is the pool of structured metadata sets shared by the
+	// entries of this stream. Entries reference a set by its position in the pool through
+	// Entry.SharedResourceRef and Entry.SharedScopeRef, so a set is carried once per
+	// stream no matter how many entries, or how many resource and scope combinations,
+	// point at it. Resolve an entry's sets with Stream.SharedFor.
+	//
+	// The backing array of a set is immutable. One array can be shared by the pools of
+	// several streams: the OTLP handler pools a resource's attributes into every stream its
+	// entries were split across, and sharding, time windowing and Kafka record splitting all
+	// hand the same pool to several streams. A consumer that has to change a set must
+	// therefore replace it, `sets[i].Attrs = fresh`, and never write through the array it
+	// found there. Only this slice of sets is stream-local.
+	//
+	// The pool is internal to Loki's OTLP ingest pipeline: it is stripped from external
+	// pushes and hidden from JSON, like Hash.
+	SharedStructuredMetadataSets []SharedStructuredMetadataSet `protobuf:"bytes,5,rep,name=sharedStructuredMetadataSets,proto3" json:"-"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -25,6 +45,20 @@ type Entry struct {
 	Line               string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
 	StructuredMetadata LabelsAdapter `protobuf:"bytes,3,opt,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
 	Parsed             LabelsAdapter `protobuf:"bytes,4,opt,name=parsed,proto3" json:"parsed,omitempty"`
+	// SharedResourceRef and SharedScopeRef are 1-based indexes into the
+	// SharedStructuredMetadataSets of the stream carrying this entry, of respectively the
+	// OTLP resource attributes and the OTLP scope attributes of the entry. 0 means none.
+	//
+	// The references are context dependent: they only resolve against the pool of their
+	// own stream, so an entry moved to another stream must have them remapped to that
+	// stream's pool. Use Stream.SharedFor rather than indexing a pool by hand.
+	//
+	// They are internal to Loki's OTLP ingest pipeline and are hidden from JSON, like
+	// Stream.Hash: query responses never carry them, values sent by external clients are
+	// discarded, and they exist to defer expanding shared structured metadata into every
+	// entry.
+	SharedResourceRef uint32 `protobuf:"varint,5,opt,name=sharedResourceRef,proto3" json:"-"`
+	SharedScopeRef    uint32 `protobuf:"varint,6,opt,name=sharedScopeRef,proto3" json:"-"`
 }
 
 // MarshalJSON implements json.Marshaler.
@@ -148,6 +182,20 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.SharedStructuredMetadataSets) > 0 {
+		for iNdEx := len(m.SharedStructuredMetadataSets) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.SharedStructuredMetadataSets[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, m.Hash)
 		i--
@@ -197,6 +245,16 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.SharedScopeRef != 0 {
+		i = encodeVarintPush(dAtA, i, uint64(m.SharedScopeRef))
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.SharedResourceRef != 0 {
+		i = encodeVarintPush(dAtA, i, uint64(m.SharedResourceRef))
+		i--
+		dAtA[i] = 0x28
+	}
 	if len(m.Parsed) > 0 {
 		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -357,6 +415,43 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedStructuredMetadataSets", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SharedStructuredMetadataSets = append(m.SharedStructuredMetadataSets, SharedStructuredMetadataSet{})
+			if err := m.SharedStructuredMetadataSets[len(m.SharedStructuredMetadataSets)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		// Field 4 is reserved: it carried the retired flat shared structured metadata list.
+		// It falls through to the default branch, which skips it, so a payload written by a
+		// scratch build that still emitted it decodes without error and drops the field.
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])
@@ -544,6 +639,44 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedResourceRef", wireType)
+			}
+			m.SharedResourceRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 32 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SharedResourceRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SharedScopeRef", wireType)
+			}
+			m.SharedScopeRef = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 32 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SharedScopeRef |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])
@@ -711,6 +844,12 @@ func (m *Stream) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(m.Hash)
 	}
+	if len(m.SharedStructuredMetadataSets) > 0 {
+		for _, e := range m.SharedStructuredMetadataSets {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -737,6 +876,12 @@ func (m *Entry) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
+	}
+	if m.SharedResourceRef != 0 {
+		n += 1 + sovPush(uint64(m.SharedResourceRef))
+	}
+	if m.SharedScopeRef != 0 {
+		n += 1 + sovPush(uint64(m.SharedScopeRef))
 	}
 	return n
 }
@@ -791,6 +936,14 @@ func (m *Stream) Equal(that interface{}) bool {
 	if m.Hash != that1.Hash {
 		return false
 	}
+	if len(m.SharedStructuredMetadataSets) != len(that1.SharedStructuredMetadataSets) {
+		return false
+	}
+	for i := range m.SharedStructuredMetadataSets {
+		if !m.SharedStructuredMetadataSets[i].Equal(&that1.SharedStructuredMetadataSets[i]) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -834,6 +987,12 @@ func (m *Entry) Equal(that interface{}) bool {
 		if !m.Parsed[i].Equal(that1.Parsed[i]) {
 			return false
 		}
+	}
+	if m.SharedResourceRef != that1.SharedResourceRef {
+		return false
+	}
+	if m.SharedScopeRef != that1.SharedScopeRef {
+		return false
 	}
 	return true
 }
