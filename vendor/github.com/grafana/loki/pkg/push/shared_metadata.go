@@ -3,14 +3,22 @@ package push
 import "fmt"
 
 // EffectiveStructuredMetadata returns the structured metadata that applies to an entry once
-// the shared structured metadata sets of its stream have been merged in: the resource
-// attributes first, then the scope attributes, then the entry's own ones. Resolve resource
+// the shared structured metadata sets of its stream have been merged in: the entry's own
+// attributes first, then the resource attributes, then the scope attributes. Resolve resource
 // and scope for an entry with Stream.SharedFor.
 //
-// The order is what encodes precedence. Loki's read path collapses structured metadata pairs
-// that repeat a label name down to the last one, so the effective precedence is
-// own > scope > resource, which is what OpenTelemetry prescribes: the log record wins over
-// its instrumentation scope, which wins over the resource.
+// That is exactly the order the OTLP push path appends in when it expands resource and scope
+// attributes onto every entry itself, so materializing the pool here produces the very same
+// list of pairs, in the very same order, as an entry whose stream was ingested with expansion
+// enabled. Byte identical, duplicate names included.
+//
+// Duplicate names therefore keep resolving the way they do today, warts and all: the read path
+// collapses repeated names down to the last pair, and since the shared attributes come after
+// the entry's own ones a name carried by both resolves to the shared value - as long as the
+// sort the pairs go through on the way is stable, which it is up to 12 pairs and is not beyond
+// that. Preserving that is deliberate. Giving the entry's own attributes precedence, which is
+// what OpenTelemetry prescribes and what a deterministic order would let us do, is a behavior
+// change on its own and is deferred to follow-up work rather than smuggled in here.
 //
 // The entry is never modified. Appending the shared labels to Entry.StructuredMetadata in
 // place is not safe: entries are handed to the WAL, replication and tailer paths that read
@@ -30,18 +38,18 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 
 	// Exactly one part holds everything: alias it rather than copying.
 	switch total {
+	case len(own):
+		return own[:len(own):len(own)]
 	case len(resource):
 		return resource[:len(resource):len(resource)]
 	case len(scope):
 		return scope[:len(scope):len(scope)]
-	case len(own):
-		return own[:len(own):len(own)]
 	}
 
 	merged := make(LabelsAdapter, 0, total)
+	merged = append(merged, own...)
 	merged = append(merged, resource...)
 	merged = append(merged, scope...)
-	merged = append(merged, own...)
 	return merged
 }
 
@@ -50,11 +58,12 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 // chunk layer, whose MemChunk.AppendWithSharedStructuredMetadata takes one shared list
 // alongside the entry's own metadata rather than a resource and a scope list.
 //
-// The resource attributes come first on purpose. The read path keeps the last pair for a
-// repeated label name, so a name present in both sets resolves to the scope value, matching
-// the own > scope > resource precedence of EffectiveStructuredMetadata. This relies on the
-// chunk, when it merges the shared list into an entry, keeping the given order for two shared
-// pairs carrying the same name; the chunk layer is the side that has to honour that contract.
+// The resource attributes come first on purpose: that is the order the shared attributes
+// appear in within EffectiveStructuredMetadata, and the order the OTLP push path expands them
+// in. The read path keeps the last pair for a repeated label name, so a name present in both
+// sets resolves to the scope value. This relies on the chunk, when it merges the shared list
+// into an entry, keeping the given order for two shared pairs carrying the same name; the
+// chunk layer is the side that has to honour that contract.
 //
 // Like EffectiveStructuredMetadata the result must be treated as read-only: with only one
 // non-empty part it aliases that part, capacity clamped so that a later append allocates
