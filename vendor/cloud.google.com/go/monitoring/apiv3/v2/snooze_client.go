@@ -1,4 +1,4 @@
-// Copyright 2025 Google LLC
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 
 	monitoringpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	gax "github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/callctx"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
@@ -54,6 +55,7 @@ func defaultSnoozeGRPCClientOptions() []option.ClientOption {
 		internaloption.WithDefaultAudience("https://monitoring.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
 		internaloption.EnableJwtWithScope(),
+		internaloption.AllowHardBoundTokens("MTLS_S2A"),
 		internaloption.EnableNewAuthLibrary(),
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(
 			grpc.MaxCallRecvMsgSize(math.MaxInt32))),
@@ -194,6 +196,16 @@ type snoozeGRPCClient struct {
 // or more alert policies should not fire alerts for the specified duration.
 func NewSnoozeClient(ctx context.Context, opts ...option.ClientOption) (*SnoozeClient, error) {
 	clientOpts := defaultSnoozeGRPCClientOptions()
+	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		clientOpts = append(clientOpts, internaloption.WithTelemetryAttributes(map[string]string{
+			"gcp.client.service":  "monitoring",
+			"gcp.client.version":  getVersionClient(),
+			"gcp.client.repo":     "googleapis/google-cloud-go",
+			"gcp.client.artifact": "cloud.google.com/go/monitoring/apiv3/v2",
+			"gcp.client.language": "go",
+			"url.domain":          "monitoring.googleapis.com",
+		}))
+	}
 	if newSnoozeClientHook != nil {
 		hookOpts, err := newSnoozeClientHook(ctx, clientHookParams{})
 		if err != nil {
@@ -215,6 +227,23 @@ func NewSnoozeClient(ctx context.Context, opts ...option.ClientOption) (*SnoozeC
 		logger:       internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
+	if gax.IsFeatureEnabled("METRICS") {
+		metrics := gax.NewClientMetrics(
+			gax.WithTelemetryLogger(c.logger),
+			gax.WithTelemetryAttributes(map[string]string{
+				gax.ClientService:  "monitoring",
+				gax.ClientVersion:  getVersionClient(),
+				gax.ClientArtifact: "cloud.google.com/go/monitoring/apiv3/v2",
+				gax.RPCSystem:      "grpc",
+				gax.URLDomain:      "monitoring.googleapis.com",
+			}),
+		)
+
+		client.CallOptions.CreateSnooze = append(client.CallOptions.CreateSnooze, gax.WithClientMetrics(metrics))
+		client.CallOptions.ListSnoozes = append(client.CallOptions.ListSnoozes, gax.WithClientMetrics(metrics))
+		client.CallOptions.GetSnooze = append(client.CallOptions.GetSnooze, gax.WithClientMetrics(metrics))
+		client.CallOptions.UpdateSnooze = append(client.CallOptions.UpdateSnooze, gax.WithClientMetrics(metrics))
+	}
 
 	client.internalClient = c
 
@@ -251,6 +280,12 @@ func (c *snoozeGRPCClient) CreateSnooze(ctx context.Context, req *monitoringpb.C
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
+	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetParent()))
+	}
+	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.SnoozeService/CreateSnooze")
+	}
 	opts = append((*c.CallOptions).CreateSnooze[0:len((*c.CallOptions).CreateSnooze):len((*c.CallOptions).CreateSnooze)], opts...)
 	var resp *monitoringpb.Snooze
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -269,9 +304,15 @@ func (c *snoozeGRPCClient) ListSnoozes(ctx context.Context, req *monitoringpb.Li
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
+	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetParent()))
+	}
+	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.SnoozeService/ListSnoozes")
+	}
 	opts = append((*c.CallOptions).ListSnoozes[0:len((*c.CallOptions).ListSnoozes):len((*c.CallOptions).ListSnoozes)], opts...)
 	it := &SnoozeIterator{}
-	req = proto.Clone(req).(*monitoringpb.ListSnoozesRequest)
+	req = proto.CloneOf(req)
 	it.InternalFetch = func(pageSize int, pageToken string) ([]*monitoringpb.Snooze, string, error) {
 		resp := &monitoringpb.ListSnoozesResponse{}
 		if pageToken != "" {
@@ -315,6 +356,12 @@ func (c *snoozeGRPCClient) GetSnooze(ctx context.Context, req *monitoringpb.GetS
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
+	if gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "resource_name", fmt.Sprintf("//monitoring.googleapis.com/%v", req.GetName()))
+	}
+	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.SnoozeService/GetSnooze")
+	}
 	opts = append((*c.CallOptions).GetSnooze[0:len((*c.CallOptions).GetSnooze):len((*c.CallOptions).GetSnooze)], opts...)
 	var resp *monitoringpb.Snooze
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -333,6 +380,9 @@ func (c *snoozeGRPCClient) UpdateSnooze(ctx context.Context, req *monitoringpb.U
 
 	hds = append(c.xGoogHeaders, hds...)
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
+	if gax.IsFeatureEnabled("METRICS") || gax.IsFeatureEnabled("TRACING") || gax.IsFeatureEnabled("LOGGING") {
+		ctx = callctx.WithTelemetryContext(ctx, "rpc_method", "google.monitoring.v3.SnoozeService/UpdateSnooze")
+	}
 	opts = append((*c.CallOptions).UpdateSnooze[0:len((*c.CallOptions).UpdateSnooze):len((*c.CallOptions).UpdateSnooze)], opts...)
 	var resp *monitoringpb.Snooze
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {

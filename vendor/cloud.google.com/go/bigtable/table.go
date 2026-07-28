@@ -17,6 +17,7 @@ package bigtable
 import (
 	"context"
 
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -68,10 +69,10 @@ func (ti *tableImpl) ApplyReadModifyWrite(ctx context.Context, row string, m *Re
 	return ti.Table.ApplyReadModifyWrite(ctx, row, m)
 }
 
-func (ti *tableImpl) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *builtinMetricsTracer {
+func (ti *tableImpl) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *metrics.Tracer {
 	return ti.Table.newBuiltinMetricsTracer(ctx, isStreaming)
 }
 
-func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *builtinMetricsTracer {
+func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *metrics.Tracer {
 	return t.c.newBuiltinMetricsTracer(ctx, t.table, isStreaming)
 }

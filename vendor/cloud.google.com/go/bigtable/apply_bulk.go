@@ -21,6 +21,7 @@ import (
 	"io"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/grpc/codes"
@@ -96,9 +97,10 @@ func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutatio
 func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...ApplyOption) (err error) {
 	attrMap := make(map[string]interface{})
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = gaxInvokeWithRecorder(ctx, mt, "MutateRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err = gaxInvokeWithRecorder(ctx, "MutateRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		attrMap["rowCount"] = len(group)
 		trace.TracePrintf(ctx, attrMap, "Row count in ApplyBulk")
 		err := t.doApplyBulk(ctx, group, headerMD, trailerMD, opts...)
@@ -116,8 +118,8 @@ func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...Apply
 		return nil
 	}, t.c.retryOption)
 
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
@@ -163,7 +165,7 @@ func (t *Table) doApplyBulk(ctx context.Context, entryErrs []*entryErr, headerMD
 
 	stream, err := t.c.client.MutateRows(ctx, req)
 	if err != nil {
-		_, topLevelErr = convertToGrpcStatusErr(err)
+		_, topLevelErr = metrics.ConvertToGrpcStatusErr(err)
 		return err
 	}
 
@@ -178,7 +180,7 @@ func (t *Table) doApplyBulk(ctx context.Context, entryErrs []*entryErr, headerMD
 		}
 		if err != nil {
 			*trailerMD = stream.Trailer()
-			_, topLevelErr = convertToGrpcStatusErr(err)
+			_, topLevelErr = metrics.ConvertToGrpcStatusErr(err)
 			return err
 		}
 

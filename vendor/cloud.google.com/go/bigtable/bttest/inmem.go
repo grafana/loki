@@ -1501,6 +1501,22 @@ func (s *server) ExecuteQuery(*btpb.ExecuteQueryRequest, btpb.Bigtable_ExecuteQu
 	return status.Errorf(codes.Unimplemented, "the emulator does not currently support ExecuteQuery")
 }
 
+func (s *server) GetClientConfiguration(ctx context.Context, req *btpb.GetClientConfigurationRequest) (*btpb.ClientConfiguration, error) {
+	return nil, status.Errorf(codes.Unimplemented, "the emulator does not currently support GetClientConfiguration")
+}
+
+func (s *server) OpenTable(stream btpb.Bigtable_OpenTableServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenTable")
+}
+
+func (s *server) OpenAuthorizedView(stream btpb.Bigtable_OpenAuthorizedViewServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenAuthorizedView")
+}
+
+func (s *server) OpenMaterializedView(stream btpb.Bigtable_OpenMaterializedViewServer) error {
+	return status.Errorf(codes.Unimplemented, "the emulator does not currently support OpenMaterializedView")
+}
+
 // needGC is invoked whenever the server needs gcloop running.
 func (s *server) needGC() {
 	s.mu.Lock()

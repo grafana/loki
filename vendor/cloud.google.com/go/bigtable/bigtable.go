@@ -28,6 +28,7 @@ import (
 	"time"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
+	metrics "cloud.google.com/go/bigtable/internal/metrics"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
@@ -64,6 +65,11 @@ var (
 		"Received Rst stream",
 		"RST_STREAM closed stream",
 		"Received RST_STREAM",
+
+		// https://github.com/googleapis/google-cloud-go/issues/10207#issuecomment-2604859656
+		// https://github.com/googleapis/google-cloud-go/issues/10909
+		// https://github.com/googleapis/google-cloud-go/pull/11276
+		"unexpected EOF",
 	}
 	defaultBackoff = gax.Backoff{
 		Initial:    100 * time.Millisecond,
@@ -158,24 +164,6 @@ func init() {
 	}
 }
 
-// Convert error to grpc status error
-func convertToGrpcStatusErr(err error) (codes.Code, error) {
-	if err == nil {
-		return codes.OK, nil
-	}
-
-	if errStatus, ok := status.FromError(err); ok {
-		return errStatus.Code(), status.Error(errStatus.Code(), errStatus.Message())
-	}
-
-	ctxStatus := status.FromContextError(err)
-	if ctxStatus.Code() != codes.Unknown {
-		return ctxStatus.Code(), status.Error(ctxStatus.Code(), ctxStatus.Message())
-	}
-
-	return codes.Unknown, err
-}
-
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
 // metadata merged with the provided mds.
 func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Context {
@@ -197,6 +185,11 @@ func createFeatureFlagsMD(clientSideMetricsEnabled, disableRetryInfo, enableDire
 		RetryInfo:                !disableRetryInfo,
 		TrafficDirectorEnabled:   enableDirectAccess,
 		DirectAccessRequested:    enableDirectAccess,
+		// PeerInfo tells the server it may send the bigtable-peer-info
+		// sideband metadata that populates attempt_latencies2's
+		// transport_type/region/zone/subzone labels. Extracted from
+		// header/trailer MD by the tracer's extractPeerInfo.
+		PeerInfo: true,
 	}
 
 	val := ""
@@ -223,15 +216,17 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = t.readRows(ctx, arg, f, mt, opts...)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	err = t.readRows(ctx, arg, f, opts...)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
-func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *builtinMetricsTracer, opts ...ReadOption) (err error) {
+func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) (err error) {
+	mt := metrics.FromContext(ctx)
 	var prevRowKey string
 	attrMap := make(map[string]interface{})
 
@@ -249,7 +244,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 	}
 
 	firstResponseRecorded := false
-	err = gaxInvokeWithRecorder(ctx, mt, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err = gaxInvokeWithRecorder(ctx, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		if rowLimitSet && numRowsRead >= intialRowLimit {
 			return nil
 		}
@@ -303,7 +298,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 			err := stream.RecvMsg(res)
 			if !firstResponseRecorded && (err == nil || err == io.EOF) {
 				firstResponseRecorded = true
-				mt.currOp.setFirstRespTime(time.Now())
+				mt.SetFirstRespTime(time.Now())
 			}
 			if err == io.EOF {
 				*trailerMD = stream.Trailer()
@@ -345,7 +340,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 				appBlockingLatencyStart := time.Now()
 				continueReading := f(row)
 				numRowsRead++
-				mt.incrementAppBlockingLatency(convertToMs(time.Since(appBlockingLatencyStart)))
+				mt.IncrementAppBlockingLatency(metrics.ConvertToMs(time.Since(appBlockingLatencyStart)))
 
 				if !continueReading {
 					// Cancel and drain stream.
@@ -904,15 +899,16 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
 	defer func() { trace.EndSpan(ctx, err) }()
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer mt.recordOperationCompletion()
+	defer mt.RecordOperationCompletion()
+	ctx = metrics.NewContext(ctx, mt)
 
-	err = t.apply(ctx, mt, row, m, opts...)
-	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.setCurrOpStatus(statusCode)
+	err = t.apply(ctx, row, m, opts...)
+	statusCode, statusErr := metrics.ConvertToGrpcStatusErr(err)
+	mt.SetCurrOpStatus(statusCode)
 	return statusErr
 }
 
-func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string, m *Mutation, opts ...ApplyOption) (err error) {
+func (t *Table) apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) (err error) {
 	after := func(res proto.Message) {
 		for _, o := range opts {
 			o.after(res)
@@ -935,7 +931,7 @@ func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string,
 			callOptions = append(callOptions, t.c.retryOption)
 		}
 		var res *btpb.MutateRowResponse
-		err := gaxInvokeWithRecorder(ctx, mt, "MutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		err := gaxInvokeWithRecorder(ctx, "MutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 			var err error
 			res, err = t.c.client.MutateRow(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
 			return err
@@ -971,7 +967,7 @@ func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string,
 		req.FalseMutations = m.mfalse.ops
 	}
 	var cmRes *btpb.CheckAndMutateRowResponse
-	err = gaxInvokeWithRecorder(ctx, mt, "CheckAndMutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	err = gaxInvokeWithRecorder(ctx, "CheckAndMutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		var err error
 		cmRes, err = t.c.client.CheckAndMutateRow(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
 		return err
@@ -1134,17 +1130,17 @@ func (ts Timestamp) TruncateToMilliseconds() Timestamp {
 //   - does not return errors seen while recording the metrics
 //
 // - then, calls gax.Invoke with 'callWrapper' as an argument
-func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method string,
+func gaxInvokeWithRecorder(ctx context.Context, method string,
 	f func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error, opts ...gax.CallOption) error {
+	mt := metrics.FromContext(ctx)
 	attemptHeaderMD := metadata.New(nil)
 	attempTrailerMD := metadata.New(nil)
-	mt.setMethod(method)
+	mt.SetMethod(method)
 
 	callWrapper := func(ctx context.Context, callSettings gax.CallSettings) error {
-		op := &mt.currOp
-		// Inject cookie and attempt information
+		// Inject cookie and attempt information from prior attempts.
 		md := metadata.New(nil)
-		for k, v := range op.cookies {
+		for k, v := range mt.Cookies() {
 			md.Append(k, v)
 		}
 
@@ -1152,26 +1148,15 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 		finalMD := metadata.Join(existingMD, md)
 		newCtx := metadata.NewOutgoingContext(ctx, finalMD)
 
-		mt.recordAttemptStart()
-
-		// f makes calls to CBT service
+		// Per-attempt metric setup (RecordAttemptStart, blockingLatencyTracker)
+		// is owned by StatsHandler.TagRPC. f's headerMD / trailerMD are still
+		// needed for routing-cookie extraction below.
 		err := f(newCtx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 
-		// Record attempt specific metrics
-		mt.recordAttemptCompletion(attemptHeaderMD, attempTrailerMD, err)
-
-		extractCookies(attemptHeaderMD, op)
-		extractCookies(attempTrailerMD, op)
+		mt.ExtractCookiesFromMD(attemptHeaderMD, cookiePrefix)
+		mt.ExtractCookiesFromMD(attempTrailerMD, cookiePrefix)
 		return err
 	}
 
 	return gax.Invoke(ctx, callWrapper, opts...)
-}
-
-func extractCookies(md metadata.MD, op *opTracer) {
-	for k, v := range md {
-		if strings.HasPrefix(k, cookiePrefix) {
-			op.cookies[k] = v[len(v)-1]
-		}
-	}
 }
