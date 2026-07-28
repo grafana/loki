@@ -846,14 +846,16 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 }
 
 // SpaceForWithSharedStructuredMetadata is the SpaceFor counterpart of
-// AppendWithSharedStructuredMetadata. The strings of the shared structured metadata are
-// charged once per chunk through the growth of the symbol table, so the entry is only charged
-// the per line cost of the shared pairs, which the head block accounts for at the symbolized
-// rate.
+// AppendWithSharedStructuredMetadata. The shared pairs are charged at exactly the rate
+// SpaceFor would charge them had they been expanded into the entry, so a chunk fed unexpanded
+// entries cuts at the same points as one fed the equivalent pre-expanded entries and the two
+// paths produce an identical chunk stream.
 //
-// The shared pairs are only charged when the chunk is actually going to store them, i.e.
-// under the same condition AppendWithSharedStructuredMetadata uses to decide whether to drop
-// them, so that sizing and storage never disagree.
+// The head block actually stores the shared pairs symbolized (their strings enter the chunk
+// once, via the symbol table), so this deliberately overcharges them the same way SpaceFor
+// overcharges expanded structured metadata; see the ToDo there. Charging the symbolized rate
+// instead would pack more entries per chunk but move chunk boundaries between the deferred
+// and expanded paths - revisit together with SpaceFor's accounting, not separately.
 func (c *MemChunk) SpaceForWithSharedStructuredMetadata(e *logproto.Entry, shared push.LabelsAdapter) bool {
 	if c.targetSize > 0 {
 		// This is looking to see if the uncompressed lines will fit which is not
@@ -862,10 +864,10 @@ func (c *MemChunk) SpaceForWithSharedStructuredMetadata(e *logproto.Entry, share
 		structuredMetadataSize := 0
 		if c.format >= ChunkFormatV4 {
 			newHBSize += metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
-			if c.head.Format() >= UnorderedWithStructuredMetadataHeadBlockFmt {
-				// Head block formats below this one drop structured metadata altogether, so
-				// the shared pairs cost nothing there.
-				newHBSize += len(shared) * 2 * 4 // 4 bytes per label and value pair, as stored by the head block
+			// Order does not change byte length, so the shared pairs are summed directly
+			// instead of going through the sorting conversion metaLabelsLen needs.
+			for i := range shared {
+				newHBSize += len(shared[i].Name) + len(shared[i].Value)
 			}
 			// structured metadata is compressed while serializing the chunk so we don't know what their size would be after compression.
 			// As adoption increases, their overall size can be non-trivial so we can't ignore them while calculating chunk size.

@@ -624,13 +624,13 @@ func TestSpaceForWithSharedStructuredMetadata(t *testing.T) {
 	shared := push.LabelsAdapter{{Name: "cluster", Value: "c1"}, {Name: "service_name", Value: "svc"}}
 	entry := logprotoEntryWithStructuredMetadata(1, "line", own)
 
-	t.Run("charges the shared pairs at the symbolized rate", func(t *testing.T) {
-		// The entry needs len(line) + len(own strings) + 2 pairs * 8 bytes = 4 + 10 + 16 = 30
-		// bytes of head block room.
-		c := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 30)
+	t.Run("charges the shared pairs at the expanded-equivalent rate", func(t *testing.T) {
+		// The entry needs len(line) + len(own strings) + len(shared strings) = 4 + 10 + 24 = 38
+		// bytes of head block room, exactly what SpaceFor would need for the expanded entry.
+		c := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 38)
 		require.False(t, c.SpaceForWithSharedStructuredMetadata(entry, shared))
 
-		c = newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 31)
+		c = newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 39)
 		require.True(t, c.SpaceForWithSharedStructuredMetadata(entry, shared))
 	})
 
@@ -658,9 +658,7 @@ func TestSpaceForWithSharedStructuredMetadata(t *testing.T) {
 
 	// A v4 chunk can end up with a head block on a format that drops structured metadata:
 	// MemchunkFromCheckpoint takes the head format from the ingester's config, not from the
-	// chunk (see pkg/ingester/checkpoint.go). AppendWithSharedStructuredMetadata then drops
-	// the shared set, so charging for it would cut the chunk earlier than the bytes it
-	// actually stores warrant.
+	// chunk (see pkg/ingester/checkpoint.go).
 	v4WithOldHead := func(t *testing.T, targetSize int) *MemChunk {
 		t.Helper()
 		c := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, targetSize)
@@ -669,70 +667,54 @@ func TestSpaceForWithSharedStructuredMetadata(t *testing.T) {
 		return c
 	}
 
-	t.Run("does not charge the shared pairs when the head block drops structured metadata", func(t *testing.T) {
-		// len(line) + len(own strings) = 4 + 10 = 14 bytes of head block room, the two shared
-		// pairs must add nothing on top.
-		require.False(t, v4WithOldHead(t, 14).SpaceForWithSharedStructuredMetadata(entry, shared))
-		require.True(t, v4WithOldHead(t, 15).SpaceForWithSharedStructuredMetadata(entry, shared))
-
-		// The same entry does not fit a chunk whose head block does store structured
-		// metadata, which is where the shared pairs are charged.
-		c := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 15)
-		require.False(t, c.SpaceForWithSharedStructuredMetadata(entry, shared))
+	t.Run("charges the shared pairs regardless of head block format", func(t *testing.T) {
+		// A head block below UnorderedWithStructuredMetadataHeadBlockFmt drops structured
+		// metadata, own and shared alike, but SpaceFor still charges the entry's own pairs
+		// there; the shared pairs mirror that, keeping the deferred and expanded paths on
+		// identical cut points even in this corner.
+		require.False(t, v4WithOldHead(t, 38).SpaceForWithSharedStructuredMetadata(entry, shared))
+		require.True(t, v4WithOldHead(t, 39).SpaceForWithSharedStructuredMetadata(entry, shared))
 	})
 
-	// Sizing and storage must agree: what SpaceFor charges for the shared pairs must be what
-	// the head block ends up growing by for them.
-	t.Run("the charge matches what the head block ends up storing", func(t *testing.T) {
-		for _, tc := range []struct {
-			name  string
-			chunk func(t *testing.T) *MemChunk
-			// Whether the head block stores structured metadata at all.
-			storesSM bool
-		}{
-			{
-				name: "head block storing structured metadata",
-				chunk: func(*testing.T) *MemChunk {
-					return newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
-				},
-				storesSM: true,
-			},
-			{
-				name:     "head block dropping structured metadata",
-				chunk:    func(t *testing.T) *MemChunk { return v4WithOldHead(t, testTargetSize) },
-				storesSM: false,
-			},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				c := tc.chunk(t)
+	// The property the charge exists for: a chunk fed unexpanded entries must cut at exactly
+	// the same points as one fed the equivalent pre-expanded entries.
+	t.Run("verdicts match SpaceFor on the equivalent expanded entry", func(t *testing.T) {
+		expandedEntry := logprotoEntryWithStructuredMetadata(1, "line", effectiveSM(shared, own))
 
-				// What SpaceForWithSharedStructuredMetadata charges for the shared pairs, i.e.
-				// the difference between sizing the entry with and without them.
-				charged := 0
-				if c.head.Format() >= UnorderedWithStructuredMetadataHeadBlockFmt {
-					charged = len(shared) * 2 * 4
+		for _, headFmt := range []HeadBlockFmt{UnorderedWithStructuredMetadataHeadBlockFmt, UnorderedHeadBlockFmt} {
+			for targetSize := 1; targetSize <= 100; targetSize++ {
+				expanded := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, targetSize)
+				deferred := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, targetSize)
+				if headFmt == UnorderedHeadBlockFmt {
+					require.NoError(t, expanded.ConvertHead(headFmt))
+					require.NoError(t, deferred.ConvertHead(headFmt))
 				}
 
-				before := c.head.UncompressedSize()
-				_, err := c.AppendWithSharedStructuredMetadata(logprotoEntryWithStructuredMetadata(1, "line", own), sharedHashOf(shared), shared)
-				require.NoError(t, err)
-				grownBy := c.head.UncompressedSize() - before
+				require.Equal(t,
+					expanded.SpaceFor(expandedEntry),
+					deferred.SpaceForWithSharedStructuredMetadata(entry, shared),
+					"target size %d, head format %v", targetSize, headFmt)
+			}
+		}
 
-				expected := len("line")
-				if tc.storesSM {
-					// The head block charges every stored pair, own and shared alike, at the
-					// symbolized rate.
-					expected += (len(own) + len(shared)) * 2 * 4
-				}
-				require.Equal(t, expected, grownBy)
+		// The verdicts must also agree after the chunks have accumulated identical content
+		// through their respective paths.
+		expanded := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 200)
+		deferred := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, 200)
+		for i := int64(1); ; i++ {
+			e := logprotoEntryWithStructuredMetadata(i, "line", slices.Clone(own))
+			se := logprotoEntryWithStructuredMetadata(i, "line", effectiveSM(shared, slices.Clone(own)))
 
-				// The shared part of the charge is exactly the shared part of the growth.
-				storedShared := grownBy - len("line")
-				if tc.storesSM {
-					storedShared -= len(own) * 2 * 4
-				}
-				require.Equal(t, charged, storedShared)
-			})
+			fits := expanded.SpaceFor(se)
+			require.Equal(t, fits, deferred.SpaceForWithSharedStructuredMetadata(e, shared), "entry %d", i)
+			if !fits {
+				break
+			}
+
+			_, err := expanded.Append(se)
+			require.NoError(t, err)
+			_, err = deferred.AppendWithSharedStructuredMetadata(e, sharedHashOf(shared), shared)
+			require.NoError(t, err)
 		}
 	})
 }
