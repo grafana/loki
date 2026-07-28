@@ -382,6 +382,13 @@ func (acc *AccumulatedStreams) addStream(s *logproto.Stream) {
 }
 
 // dst must already exist in acc
+//
+// Entries are moved between logproto.Stream values here. That is safe for query path streams,
+// which never carry a shared structured metadata pool: SharedResourceRef and SharedScopeRef are
+// write path only, stripped from external pushes and expanded away before anything is read back.
+// Should a pool ever reach this code, an entry must not be moved into a stream with a different
+// pool while its references are nonzero - a reference only means something next to the pool of its
+// own stream. See push.Stream.SharedStructuredMetadataSets.
 func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
 	// these are already guaranteed to be sorted
 	// Reasoning: we shard subrequests so each stream exists on only one

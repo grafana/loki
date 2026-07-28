@@ -141,6 +141,11 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		go func() {
 			defer wg.Done()
 			for recordWithIndex := range workChan {
+				// DecodeWithoutLabels unmarshals into a fresh stream, unlike Decode which
+				// reuses a buffer across calls. Its entries and shared structured metadata
+				// are therefore owned by this worker and stay valid for as long as the
+				// push below needs them, which also makes it safe for the workers to share
+				// one decoder.
 				stream, err := kc.decoder.DecodeWithoutLabels(recordWithIndex.record.Content)
 				if err != nil {
 					level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)

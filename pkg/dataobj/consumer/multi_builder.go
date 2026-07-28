@@ -46,6 +46,16 @@ func (m *TOCAlignedMultiBuilder) Append(tenant string, stream logproto.Stream, r
 		if _, ok := streamsByTimeWindows[w]; !ok {
 			streamsByTimeWindows[w] = logproto.Stream{
 				Labels: stream.Labels,
+				// Each windowed stream holds a subset of the entries of the same stream, so it
+				// keeps the shared structured metadata pool the source stream carries for all of
+				// them. The pool is propagated whole and unmodified: the entries reference their
+				// sets by 1-based index into it, so filtering or compacting it per window would
+				// invalidate the references the entries already carry.
+				//
+				// Aliasing the slice is safe: pool backing arrays are immutable by contract, a
+				// consumer that has to change a set replaces it rather than writing through it
+				// (see push.Stream.SharedStructuredMetadataSets).
+				SharedStructuredMetadataSets: stream.SharedStructuredMetadataSets,
 			}
 		}
 		windowedStream := streamsByTimeWindows[w]

@@ -21,6 +21,12 @@ type streamIterator struct {
 }
 
 // NewStreamIterator iterates over entries in a stream.
+//
+// The entries it yields are detached from their stream: At returns a logproto.Entry, so a caller
+// that puts one into a different stream loses the pool its SharedResourceRef and SharedScopeRef
+// refer to. Query path streams never carry a pool, so those references are always zero here; a
+// caller iterating a write path stream must resolve the shared sets through
+// push.Stream.SharedFor before detaching the entry.
 func NewStreamIterator(stream logproto.Stream) EntryIterator {
 	return &streamIterator{
 		i:      -1,

@@ -200,7 +200,10 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
+		// WAL records carry entries with their structured metadata already expanded and their
+		// pool references cleared, so there is no pool to pass here. See
+		// stream.recordAndSendToTailers.
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))

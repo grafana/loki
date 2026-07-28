@@ -1629,6 +1629,13 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 }
 
 // mergeOrderedNonOverlappingStreams merges a set of ordered, nonoverlapping responses by concatenating matching streams then running them through a heap to pull out limit values
+//
+// Entries are moved between logproto.Stream values here. That is safe for query path streams,
+// which never carry a shared structured metadata pool: SharedResourceRef and SharedScopeRef are
+// write path only, stripped from external pushes and expanded away before anything is read back.
+// Should a pool ever reach this code, an entry must not be moved into a stream with a different
+// pool while its references are nonzero - a reference only means something next to the pool of its
+// own stream. See push.Stream.SharedStructuredMetadataSets.
 func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
 	var total int
 
@@ -1704,6 +1711,9 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 			}
 			resultDict[next.Labels] = s
 		}
+		// The rebuilt stream carries no shared structured metadata pool, so entries moved into it
+		// must not carry nonzero SharedResourceRef/SharedScopeRef. Safe on the query path, where
+		// those are always zero; see the note on mergeOrderedNonOverlappingStreams.
 		// TODO: make allocation friendly
 		s.Entries = append(s.Entries, next.Entries...)
 	}

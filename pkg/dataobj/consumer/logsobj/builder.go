@@ -352,9 +352,25 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		}
 	}
 
-	for _, entry := range stream.Entries {
+	for i := range stream.Entries {
+		entry := &stream.Entries[i]
+
+		// A stream may carry structured metadata once for all of its entries in a pool of shared
+		// sets that its entries reference: the OTLP push path puts resource and scope attributes
+		// there instead of copying them onto every entry. The columnar builders below are not
+		// attribute aware yet, so the effective view of the entry's metadata is materialized here
+		// and every row gets the sets it references.
+		//
+		// INTERIM: drop this expansion once the attribute-aware columnar builder lands and the
+		// shared sets can be encoded once per stream instead of once per row.
+		//
+		// EffectiveStructuredMetadata never mutates the entry and returns a read-only view of the
+		// stream's pool; convertMetadata only copies out of it, so aliasing a set here is safe.
+		resource, scope := stream.SharedFor(entry)
+		structuredMetadata := push.EffectiveStructuredMetadata(resource, scope, entry.StructuredMetadata)
+
 		sz := int64(len(entry.Line))
-		for _, md := range entry.StructuredMetadata {
+		for _, md := range structuredMetadata {
 			sz += int64(len(md.Value))
 		}
 
@@ -363,7 +379,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		lb.Append(logs.Record{
 			StreamID:  streamID,
 			Timestamp: entry.Timestamp,
-			Metadata:  convertMetadata(entry.StructuredMetadata),
+			Metadata:  convertMetadata(structuredMetadata),
 			Line:      []byte(entry.Line),
 			SortKey:   sortKey,
 		})
