@@ -139,7 +139,7 @@ func TestOTLPBackfillLabelsOnCombinedStreams(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 	ctx := InjectBackfillShardContext(context.Background(), testBackfillShard)
 
-	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, false, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
 	require.NoError(t, err)
 
 	nonEmpty := 0

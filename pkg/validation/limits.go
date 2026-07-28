@@ -249,6 +249,15 @@ type Limits struct {
 	OTLPConfig                        *push.OTLPConfig      `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
+	// ROLLOUT HAZARD. Enabling this changes the wire format the distributor produces: resource and
+	// scope attribute sets are pooled once per stream in sharedStructuredMetadataSets and each
+	// entry points at the two sets that apply to it through sharedResourceRef and sharedScopeRef,
+	// instead of the attributes being copied into every entry. Components that predate those
+	// fields ignore them and silently drop the attributes - the data is accepted and stored, just
+	// without any resource or scope attribute. See the doc string below for the rollout and
+	// rollback ordering this imposes.
+	OTLPDeferStructuredMetadataExpansion bool `yaml:"otlp_defer_structured_metadata_expansion" json:"otlp_defer_structured_metadata_expansion" category:"experimental" doc:"description=Carry OTLP resource and scope attributes once per stream instead of copying them into the structured metadata of every log entry. Each distinct attribute set is stored once in the stream's sharedStructuredMetadataSets pool and every entry references the resource set and the scope set that apply to it. Stream grouping is unchanged: entries are still grouped by their labels alone. ROLLOUT HAZARD: only enable this after every ingester, kafka consumer, pattern ingester and data object consumer in the cell already runs a version that understands sharedStructuredMetadataSets and the per-entry sharedResourceRef and sharedScopeRef fields. Older components silently drop those attributes - the logs are ingested, but their resource and scope attributes are lost and cannot be recovered. Disabling it again is not enough to downgrade those components: records already written to kafka carry the fields, so wait out the kafka retention period after turning it off before rolling any consumer back to a version that does not understand them."`
+
 	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
 	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
 	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
@@ -525,6 +534,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+	f.BoolVar(&l.OTLPDeferStructuredMetadataExpansion, "limits.otlp-defer-structured-metadata-expansion", false, "Carry OTLP resource and scope attributes once per stream instead of copying them into the structured metadata of every log entry. Each distinct attribute set is stored once in the stream's sharedStructuredMetadataSets pool and every entry references the resource set and the scope set that apply to it. Stream grouping is unchanged: entries are still grouped by their labels alone. Experimental.")
 	f.BoolVar(&l.VolumeEnabled, "limits.volume-enabled", true, "Enable log volume endpoint.")
 
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
@@ -1278,6 +1288,12 @@ func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
 	}
 
 	return *otlpConfig
+}
+
+// OTLPDeferStructuredMetadataExpansion reports whether OTLP resource and scope attributes should
+// be carried once per stream instead of being copied into every entry's structured metadata.
+func (o *Overrides) OTLPDeferStructuredMetadataExpansion(userID string) bool {
+	return o.getOverridesForUser(userID).OTLPDeferStructuredMetadataExpansion
 }
 
 func (o *Overrides) BlockIngestionUntil(userID string) time.Time {

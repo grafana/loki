@@ -5012,6 +5012,23 @@ otlp_config:
   # necessary
   [severity_text_as_label: <boolean> | default = false]
 
+# Carry OTLP resource and scope attributes once per stream instead of copying
+# them into the structured metadata of every log entry. Each distinct attribute
+# set is stored once in the stream's sharedStructuredMetadataSets pool and every
+# entry references the resource set and the scope set that apply to it. Stream
+# grouping is unchanged: entries are still grouped by their labels alone.
+# ROLLOUT HAZARD: only enable this after every ingester, kafka consumer, pattern
+# ingester and data object consumer in the cell already runs a version that
+# understands sharedStructuredMetadataSets and the per-entry sharedResourceRef
+# and sharedScopeRef fields. Older components silently drop those attributes -
+# the logs are ingested, but their resource and scope attributes are lost and
+# cannot be recovered. Disabling it again is not enough to downgrade those
+# components: records already written to kafka carry the fields, so wait out the
+# kafka retention period after turning it off before rolling any consumer back
+# to a version that does not understand them.
+# CLI flag: -limits.otlp-defer-structured-metadata-expansion
+[otlp_defer_structured_metadata_expansion: <boolean> | default = false]
+
 # Block ingestion for policy until the configured date. The policy '*' is the
 # global policy, which is applied to all streams not matching a policy and can
 # be overridden by other policies. The time should be in RFC3339 format. The

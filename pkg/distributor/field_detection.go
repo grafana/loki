@@ -93,7 +93,15 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 	return l.validationContext.allowStructuredMetadata && len(l.validationContext.discoverGenericFields) > 0
 }
 
-func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+// extractLogLevel derives the detected_level of an entry. scopeMetadata and resourceMetadata are
+// the two shared structured metadata sets the entry references in the pool of its stream (its
+// OTLP scope and resource attributes, when their expansion is deferred); they are considered
+// alongside the entry's own structured metadata, but are never mutated since other entries of the
+// stream reference the same sets.
+//
+// They are searched in own, scope, resource order, which is the precedence the read path gives
+// them: own > scope > resource. See push.EffectiveStructuredMetadata.
+func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, scopeMetadata, resourceMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
 	// Check if detected_level is already present in entry.StructuredMetadata and normalize it
 	for i, sm := range entry.StructuredMetadata {
 		if sm.Name == constants.LevelLabel {
@@ -107,14 +115,32 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 		}
 	}
 
+	// The level may also already be carried by one of the shared sets the entry references, so
+	// both are checked: appending a second detected_level would give the entry two of them once
+	// the shared metadata is merged back in.
+	//
+	// It cannot be normalized where it sits, since the set is shared with every other entry
+	// referencing it (and its backing array with other streams). So when the shared value is not
+	// already normalized, the normalized one is appended to the entry's OWN metadata instead. Own
+	// wins over both shared sets at read time, so queries see the normalized value; the raw shared
+	// one stays stored underneath, shadowed.
+	if sharedLevel, ok := sharedDetectedLevel(scopeMetadata, resourceMetadata); ok {
+		normalized := normalizeLogLevel(sharedLevel)
+		if normalized == sharedLevel {
+			// Already normalized, nothing to add.
+			return logproto.LabelAdapter{}, false
+		}
+		return logproto.LabelAdapter{Name: constants.LevelLabel, Value: normalized}, true
+	}
+
 	levelFromLabel, hasLevelLabel := labelsContainAny(labels, l.allowedLevelLabels)
 	var logLevel string
 	if hasLevelLabel {
 		logLevel = normalizeLogLevel(levelFromLabel)
-	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels); ok {
+	} else if levelFromMetadata, ok := labelsContainAnyOf3(structuredMetadata, scopeMetadata, resourceMetadata, l.allowedLevelLabels); ok {
 		logLevel = normalizeLogLevel(levelFromMetadata)
 	} else {
-		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata)
+		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata, scopeMetadata, resourceMetadata)
 	}
 
 	if logLevel == "" {
@@ -126,12 +152,20 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 	}, true
 }
 
-func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+// extractGenericField derives a generic detected field of an entry. See extractLogLevel for
+// scopeMetadata and resourceMetadata.
+func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, scopeMetadata, resourceMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+	// The field may already be carried by one of the shared sets the entry references, in which
+	// case appending it to the entry would duplicate it once the shared metadata is merged back
+	// in.
+	if scopeMetadata.Has(name) || resourceMetadata.Has(name) {
+		return logproto.LabelAdapter{}, false
+	}
 
 	var value string
 	if v, ok := labelsContainAny(labels, hints); ok {
 		value = v
-	} else if v, ok := labelsContainAny(structuredMetadata, hints); ok {
+	} else if v, ok := labelsContainAnyOf3(structuredMetadata, scopeMetadata, resourceMetadata, hints); ok {
 		value = v
 	} else {
 		value = l.detectGenericFieldFromLogEntry(entry, hints)
@@ -143,6 +177,19 @@ func (l *FieldDetector) extractGenericField(name string, hints []string, labels 
 	return logproto.LabelAdapter{Name: name, Value: value}, true
 }
 
+// sharedDetectedLevel returns the detected_level carried by the shared structured metadata sets an
+// entry references, if any. The scope set takes precedence over the resource set, matching the
+// order the read path resolves them in.
+func sharedDetectedLevel(scopeMetadata, resourceMetadata labels.Labels) (string, bool) {
+	if scopeMetadata.Has(constants.LevelLabel) {
+		return scopeMetadata.Get(constants.LevelLabel), true
+	}
+	if resourceMetadata.Has(constants.LevelLabel) {
+		return resourceMetadata.Get(constants.LevelLabel), true
+	}
+	return "", false
+}
+
 func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
 	for _, name := range names {
 		if labels.Has(name) {
@@ -150,6 +197,25 @@ func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// labelsContainAnyOf3 looks up names in first, then in second, then in third, without merging
+// them. It is the allocation-free equivalent of running labelsContainAny over the effective
+// structured metadata of an entry (its own plus the two shared sets it references), which is why
+// each list is searched exhaustively before the next: precedence is own > scope > resource,
+// matching push.EffectiveStructuredMetadata.
+//
+// Note that this makes the list, not the hint, the primary key: a later hint found in own
+// metadata beats an earlier hint found in a shared set. That is a deliberate, pre-existing skew,
+// the same one labelsContainAny already has between an earlier and a later hint within one list.
+func labelsContainAnyOf3(first, second, third labels.Labels, names []string) (string, bool) {
+	if v, ok := labelsContainAny(first, names); ok {
+		return v, true
+	}
+	if v, ok := labelsContainAny(second, names); ok {
+		return v, true
+	}
+	return labelsContainAny(third, names)
 }
 
 // normalizeLogLevel normalizes log level strings to lowercase standard values
@@ -176,10 +242,19 @@ func normalizeLogLevel(level string) string {
 	}
 }
 
-func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+// detectLogLevelFromLogEntry detects the level of an entry from its OTLP severity number or, as a
+// fallback, from its log line. See extractLogLevel for scopeMetadata and resourceMetadata.
+func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels, scopeMetadata, resourceMetadata labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
-	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+	otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber)
+	if otlpSeverityNumberTxt == "" {
+		otlpSeverityNumberTxt = scopeMetadata.Get(push.OTLPSeverityNumber)
+	}
+	if otlpSeverityNumberTxt == "" {
+		otlpSeverityNumberTxt = resourceMetadata.Get(push.OTLPSeverityNumber)
+	}
+	if otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
 			return constants.LogLevelInfo

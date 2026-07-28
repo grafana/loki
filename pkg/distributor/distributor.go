@@ -646,11 +646,24 @@ func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string,
 	}
 }
 
+// Push implements logproto.PusherServer. This is the gRPC push endpoint the distributor exposes to
+// clients (see RegisterPusherServer in pkg/loki/modules.go), so unlike PushWithResolver it treats
+// its request as external input.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// The shared structured metadata pool and the entry references into it are internal to Loki's
+	// OTLP ingest pipeline, which populates them only for tenants that enabled deferred expansion
+	// and reaches the distributor through PushWithResolver rather than here. Drop whatever an
+	// external client sent, silently, so it cannot opt itself into deferred semantics and the
+	// under-charging that comes with it. See push.Stream.StripSharedStructuredMetadata.
+	for i := range req.Streams {
+		req.Streams[i].StripSharedStructuredMetadata()
+	}
+
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
@@ -798,8 +811,28 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			streamEntriesSize := 0
 
 			labelNamer := otlptranslator.LabelNamer{}
+
+			// Sanitize the shared structured metadata pool of the stream before it is measured or
+			// forwarded. This runs once per set rather than once per entry, which is what makes
+			// deferring the expansion of OTLP resource/scope attributes cheaper than expanding
+			// them: the same values would otherwise be sanitized again for every entry
+			// referencing the set.
+			if err := d.sanitizeSharedStructuredMetadata(&stream, labelNamer, tenantID, format); err != nil {
+				return err
+			}
+
+			// Per set accounting of the stream's shared structured metadata pool, built once here
+			// (after sanitizing it, so the accounting matches what is stored) and resolved per
+			// entry through its references.
+			sharedMetadataIndex := sharedStructuredMetadataIndexOf(stream)
+			// labels.Labels view of each pool set, built once per stream so that level/field
+			// detection can see resource and scope attributes without materializing a merged list
+			// for every entry.
+			sharedMetadataLabels := sharedStructuredMetadataLabelsOf(stream)
+
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
+				sharedMetadata := sharedMetadataIndex.forEntry(&entry)
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, sharedMetadata, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -833,9 +866,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				structuredMetadata = normalizedBuilder.Labels()
 				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
 
+				scopeMetadataLabels := sharedMetadataLabels.at(entry.SharedScopeRef)
+				resourceMetadataLabels := sharedMetadataLabels.at(entry.SharedResourceRef)
+
 				if shouldDiscoverLevels {
 					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
-						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, scopeMetadataLabels, resourceMetadataLabels, entry)
 						if ok {
 							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
 						}
@@ -844,7 +880,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				if shouldDiscoverGenericFields {
 					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
 						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
-							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, scopeMetadataLabels, resourceMetadataLabels, entry)
 							if ok {
 								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
 							}
@@ -877,6 +913,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				// Empty stream after validating all the entries
 				continue
 			}
+
+			// Each set of the stream's shared structured metadata pool is stored once for the
+			// whole stream, so the pool is metered once here (unexpanded accounting) rather than
+			// once per entry referencing a set.
+			streamEntriesSize += util.SharedSetsSize(stream.SharedStructuredMetadataSets)
 
 			// Attribute this stream's bytes/lines to its rate-limit bucket.
 			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
@@ -1295,6 +1336,13 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 				Labels:  shardLbls.String(),
 				Hash:    labels.StableHash(shardLbls),
 				Entries: stream.Entries[startIdx:endIdx],
+				// Every shard holds a subset of the entries of the same stream, so they all keep
+				// the whole pool: that is what keeps the references carried by those entries
+				// resolving to the same sets. Aliasing the same slice is safe, pool backing
+				// arrays are immutable by contract: a consumer that has to change a set replaces
+				// it rather than writing through it (see push.Stream.SharedStructuredMetadataSets
+				// and sanitizeSharedStructuredMetadata).
+				SharedStructuredMetadataSets: stream.SharedStructuredMetadataSets,
 			},
 			linesTotalLen: linesTotalLen,
 		})
@@ -1315,9 +1363,10 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 
 	return append(result, streamWithTimeShard{
 		Stream: logproto.Stream{
-			Labels:  stream.Labels,
-			Hash:    stream.Hash,
-			Entries: stream.Entries[startIdx:entriesLen],
+			Labels:                       stream.Labels,
+			Hash:                         stream.Hash,
+			Entries:                      stream.Entries[startIdx:entriesLen],
+			SharedStructuredMetadataSets: stream.SharedStructuredMetadataSets,
 		},
 		linesTotalLen: logsWithoutTimeShardLen,
 	}), true
@@ -1374,7 +1423,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
+		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard, stream.SharedStructuredMetadataSets)
 
 		derivedStreams = append(derivedStreams, KeyedStream{
 			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
@@ -1413,7 +1462,13 @@ func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	return builder.Labels()
 }
 
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
+// createShard builds an empty shard of a stream. sharedStructuredMetadataSets is the shared
+// structured metadata pool of the source stream; every shard gets the whole pool, since each of
+// them holds a subset of the source stream's entries and those entries reference the pool by
+// position. Aliasing the slice is safe because pool backing arrays are immutable by contract: a
+// consumer that has to change a set replaces it rather than writing through it (see
+// push.Stream.SharedStructuredMetadataSets).
+func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int, sharedStructuredMetadataSets []logproto.SharedStructuredMetadataSet) logproto.Stream {
 	shardLabel := strconv.Itoa(shardNumber)
 
 	builder := labels.NewBuilder(lbls)
@@ -1423,10 +1478,103 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	lbls = builder.Labels()
 
 	return logproto.Stream{
-		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		Hash:    labels.StableHash(lbls),
-		Entries: make([]logproto.Entry, 0, numOfEntries),
+		Labels:                       strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
+		Hash:                         labels.StableHash(lbls),
+		Entries:                      make([]logproto.Entry, 0, numOfEntries),
+		SharedStructuredMetadataSets: sharedStructuredMetadataSets,
 	}
+}
+
+// sanitizeSharedStructuredMetadata normalizes the names and scrubs invalid UTF-8 out of the
+// values of every set of a stream's shared structured metadata pool.
+//
+// This is the same sanitization the per-entry structured metadata goes through, but it only needs
+// to run once per pooled set instead of once per entry, since every entry referencing a set sees
+// the same values. The OTLP push path normalizes the names of resource and scope attributes when
+// it pools them, but not their values, so without this the values would reach storage unscrubbed.
+// The names are normalized here too, for defense in depth against producers other than the OTLP
+// path.
+//
+// Sanitizing is copy-on-write: a set that needs no change is left exactly as it was, and a set
+// that does is replaced by a freshly allocated slice rather than rewritten in place.
+//
+// Mutating the attrs array would not be safe. Pool backing arrays are shared between streams: the
+// OTLP handler pools one resource's attributes into every stream its entries were split across
+// (see the promoted label path in otlpToLokiPushRequest), all aliasing one array. Normalization
+// can also collapse two names onto one, so an in-place rewrite would leave the aliasing stream a
+// set whose length still counts a now-zeroed tail, and sanitizing that stream would then reject
+// the whole push on an empty label name. Only the per stream slice of sets is stream-local, which
+// is why replacing the element is safe while writing through it is not.
+//
+// Sets keep their position in the pool, so the references carried by the entries stay valid.
+func (d *Distributor) sanitizeSharedStructuredMetadata(stream *logproto.Stream, labelNamer otlptranslator.LabelNamer, tenantID, format string) error {
+	for i := range stream.SharedStructuredMetadataSets {
+		attrs := stream.SharedStructuredMetadataSets[i].Attrs
+		if len(attrs) == 0 {
+			continue
+		}
+
+		normalizedBuilder := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(attrs))
+
+		sanitized := false
+		for _, lbl := range attrs {
+			normalized, err := labelNamer.Build(lbl.Name)
+			if err != nil {
+				return err
+			}
+			if normalized != lbl.Name {
+				// Swap the name with the normalized one.
+				normalizedBuilder.Del(lbl.Name)
+				normalizedBuilder.Set(normalized, lbl.Value)
+
+				sanitized = true
+				d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+			}
+			if strings.ContainsRune(lbl.Value, utf8.RuneError) {
+				normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
+				sanitized = true
+				d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+			}
+		}
+
+		if !sanitized {
+			// Nothing changed, so keep the original set rather than rebuilding (and re-sorting) it.
+			continue
+		}
+
+		// A fresh slice, never CopyToLabelAdapters(attrs, ...): that clears and reuses the array
+		// the aliasing streams still read.
+		stream.SharedStructuredMetadataSets[i].Attrs = logproto.CopyToLabelAdapters(nil, normalizedBuilder.Labels())
+	}
+
+	return nil
+}
+
+// sharedStructuredMetadataLabels holds a labels.Labels view of each set of a stream's shared
+// structured metadata pool, indexed by the position of the set in the pool. It is built once per
+// stream so that level and field detection can look attributes up per entry without merging
+// anything.
+type sharedStructuredMetadataLabels []labels.Labels
+
+func sharedStructuredMetadataLabelsOf(stream logproto.Stream) sharedStructuredMetadataLabels {
+	if len(stream.SharedStructuredMetadataSets) == 0 {
+		return nil
+	}
+
+	views := make(sharedStructuredMetadataLabels, len(stream.SharedStructuredMetadataSets))
+	for i := range stream.SharedStructuredMetadataSets {
+		views[i] = logproto.FromLabelAdaptersToLabels(stream.SharedStructuredMetadataSets[i].Attrs)
+	}
+	return views
+}
+
+// at resolves a 1-based reference, returning empty labels for the 0 "no set" reference and for one
+// pointing past the end of the pool, matching push.Stream.SharedFor.
+func (views sharedStructuredMetadataLabels) at(ref uint32) labels.Labels {
+	if ref == 0 || uint64(ref) > uint64(len(views)) {
+		return labels.EmptyLabels()
+	}
+	return views[ref-1]
 }
 
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
@@ -1706,6 +1854,9 @@ func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
 		entriesSize += uint64(len(entry.Line))
 		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
 	}
+	// Each set of the stream's shared structured metadata pool is stored once, so it is counted
+	// once here instead of once per entry referencing it (unexpanded accounting).
+	structuredMetadataSize += uint64(util.SharedSetsSize(stream.SharedStructuredMetadataSets))
 	return entriesSize, structuredMetadataSize
 }
 

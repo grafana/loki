@@ -44,13 +44,17 @@ func TestValidator_ValidateEntry(t *testing.T) {
 		userID    string
 		overrides validation.TenantLimits
 		entry     logproto.Entry
-		expected  error
+		// shared is the structured metadata carried once by the entry's stream, as produced by the
+		// OTLP push path when structured metadata expansion is deferred.
+		shared   push.LabelsAdapter
+		expected error
 	}{
 		{
 			"test valid",
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime, Line: "test"},
+			nil,
 			nil,
 		},
 		{
@@ -63,6 +67,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
+			nil,
 			fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg,
 				testStreamLabelsString,
 				testTime.Add(-time.Hour*5).Format(timeFormat),
@@ -74,6 +79,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
+			nil,
 			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabelsString, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
@@ -85,6 +91,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
+			nil,
 			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabelsString, 11),
 		},
 		{
@@ -96,6 +103,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			nil,
 			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabelsString),
 		},
 		{
@@ -108,6 +116,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			nil,
 			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabelsString, 6, 4),
 		},
 		{
@@ -120,7 +129,78 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
+			nil,
 			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabelsString, 2, 1),
+		},
+		{
+			// Small own structured metadata, but the stream's shared structured metadata pushes the
+			// effective size over the limit.
+			"shared structured metadata too big",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:   true,
+					MaxStructuredMetadataSize: 10,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "a", Value: "b"}}},
+			push.LabelsAdapter{{Name: "service.name", Value: "some-service"}},
+			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabelsString, 2+len("service.name")+len("some-service"), 10),
+		},
+		{
+			"shared structured metadata within the size limit",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:   true,
+					MaxStructuredMetadataSize: 64,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "a", Value: "b"}}},
+			push.LabelsAdapter{{Name: "service.name", Value: "some-service"}},
+			nil,
+		},
+		{
+			// Own count is within the limit, the shared attributes push it over.
+			"shared structured metadata too many",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:           true,
+					MaxStructuredMetadataEntriesCount: 2,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			push.LabelsAdapter{{Name: "res1", Value: "v1"}, {Name: "res2", Value: "v2"}},
+			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabelsString, 3, 2),
+		},
+		{
+			// Native push: no shared structured metadata, limits are unaffected by the new plumbing.
+			"native push with structured metadata below the limits",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:           true,
+					MaxStructuredMetadataSize:         64,
+					MaxStructuredMetadataEntriesCount: 2,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			nil,
+			nil,
+		},
+		{
+			// Structured metadata is disallowed and the entry only carries shared metadata.
+			"shared structured metadata not allowed",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata: false,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
+			push.LabelsAdapter{{Name: "service.name", Value: "some-service"}},
+			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabelsString),
 		},
 	}
 	for _, tt := range tests {
@@ -133,7 +213,16 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			assert.NoError(t, err)
 			retentionHours := util.RetentionHours(v.RetentionPeriod(tt.userID))
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retentionHours, "", "loki")
+			// The shared attributes of the case are pooled as the entry's resource set, which is
+			// how the OTLP push path lays them out, and resolved through the entry's reference.
+			stream := logproto.Stream{Entries: []logproto.Entry{tt.entry}}
+			if len(tt.shared) > 0 {
+				stream.SharedStructuredMetadataSets = []logproto.SharedStructuredMetadataSet{{Attrs: tt.shared}}
+				stream.Entries[0].SharedResourceRef = 1
+			}
+			shared := sharedStructuredMetadataIndexOf(stream).forEntry(&stream.Entries[0])
+
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, stream.Entries[0], shared, retentionHours, "", "loki")
 			assert.Equal(t, tt.expected, err)
 		})
 	}

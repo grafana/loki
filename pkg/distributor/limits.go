@@ -39,6 +39,7 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
+	OTLPDeferStructuredMetadataExpansion(userID string) bool
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int

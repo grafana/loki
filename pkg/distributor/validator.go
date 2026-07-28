@@ -90,13 +90,74 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 	}
 }
 
+// sharedStructuredMetadata is the size and count contribution of the shared structured metadata
+// an entry references, which the OTLP push path populates instead of copying resource and scope
+// attributes into every entry. It is passed to ValidateEntry so that per-entry structured metadata
+// limits keep seeing the effective (own + shared) structured metadata of an entry.
+type sharedStructuredMetadata struct {
+	size  int
+	count int
+}
+
+// sharedStructuredMetadataIndex holds that contribution for each set of a stream's shared
+// structured metadata pool, indexed by the position of the set in the pool.
+//
+// It is built once per stream so that resolving the two sets an entry references costs two index
+// lookups, rather than re-measuring a set for every one of the entries pointing at it.
+type sharedStructuredMetadataIndex []sharedStructuredMetadata
+
+func sharedStructuredMetadataIndexOf(stream logproto.Stream) sharedStructuredMetadataIndex {
+	if len(stream.SharedStructuredMetadataSets) == 0 {
+		return nil
+	}
+
+	index := make(sharedStructuredMetadataIndex, len(stream.SharedStructuredMetadataSets))
+	for i := range stream.SharedStructuredMetadataSets {
+		attrs := stream.SharedStructuredMetadataSets[i].Attrs
+		index[i] = sharedStructuredMetadata{
+			size:  util.StructuredMetadataSize(attrs),
+			count: len(attrs),
+		}
+	}
+	return index
+}
+
+// forEntry returns the combined contribution of the resource set and the scope set the entry
+// references. A reference that resolves to nothing, including one pointing past the end of the
+// pool, contributes nothing, matching push.Stream.SharedFor.
+func (index sharedStructuredMetadataIndex) forEntry(entry *logproto.Entry) sharedStructuredMetadata {
+	resource := index.at(entry.SharedResourceRef)
+	scope := index.at(entry.SharedScopeRef)
+	return sharedStructuredMetadata{
+		size:  resource.size + scope.size,
+		count: resource.count + scope.count,
+	}
+}
+
+func (index sharedStructuredMetadataIndex) at(ref uint32) sharedStructuredMetadata {
+	if ref == 0 || uint64(ref) > uint64(len(index)) {
+		return sharedStructuredMetadata{}
+	}
+	return index[ref-1]
+}
+
 // ValidateEntry returns an error if the entry is invalid and report metrics for invalid entries accordingly.
-func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, labels labels.Labels, entry logproto.Entry, retentionHours string, policy, format string) error {
+// shared is the contribution of the shared structured metadata sets this entry references in the
+// pool of its stream; it is zero for entries that carry all their structured metadata themselves.
+func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, labels labels.Labels, entry logproto.Entry, shared sharedStructuredMetadata, retentionHours string, policy, format string) error {
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))
-	structuredMetadataCount := len(entry.StructuredMetadata)
-	structuredMetadataSizeBytes := util.StructuredMetadataSize(entry.StructuredMetadata)
-	entrySize := float64(len(entry.Line) + structuredMetadataSizeBytes)
+	// Structured metadata limits are enforced on the effective structured metadata of the entry:
+	// its own plus the sets it references. Otherwise deferring the expansion of OTLP
+	// resource/scope attributes into the stream's pool would silently disable these limits.
+	structuredMetadataCount := len(entry.StructuredMetadata) + shared.count
+	structuredMetadataSizeBytes := util.StructuredMetadataSize(entry.StructuredMetadata) + shared.size
+	// Discarded bytes are deliberately accounted UNEXPANDED: only the entry's line and its own
+	// structured metadata. A shared set is stored once per stream and cannot be attributed to an
+	// individual entry, so counting it here would inflate discarded bytes by a factor of the
+	// number of entries referencing it. This matches the unexpanded accounting used elsewhere on
+	// the write path (see calculateStreamSizes, which counts each pool set once per stream).
+	entrySize := float64(util.EntryTotalSize(&entry))
 
 	if vCtx.rejectOldSample && ts < vCtx.rejectOldSampleMaxAge {
 		// Makes time string on the error message formatted consistently.

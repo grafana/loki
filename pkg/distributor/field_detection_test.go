@@ -619,7 +619,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata), labels.EmptyLabels(), labels.EmptyLabels())
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "log line: %s", tc.entry.Line)
 		})
 	}
@@ -784,7 +784,7 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata), labels.EmptyLabels(), labels.EmptyLabels())
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
 		})
 	}
@@ -836,7 +836,7 @@ func Test_detectLogLevelFromOTLPSeverityNumber(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				entry := entryWithSeverityNumber(fmt.Sprintf("%d", tc.severityNumber))
-				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata), labels.EmptyLabels(), labels.EmptyLabels())
 				require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "severity number: %d", tc.severityNumber)
 			})
 		}
@@ -855,7 +855,7 @@ func Test_detectLogLevelFromOTLPSeverityNumber(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				entry := entryWithSeverityNumber(tc.value)
-				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+				detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata), labels.EmptyLabels(), labels.EmptyLabels())
 				require.Equal(t, tc.expectedLogLevel, detectedLogLevel, "severity number value: %s", tc.value)
 			})
 		}
@@ -1088,7 +1088,7 @@ func Test_DetectGenericFields(t *testing.T) {
 			extracted := push.LabelsAdapter{}
 			metadata := logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata)
 			for name, hints := range detector.validationContext.discoverGenericFields {
-				field, ok := detector.extractGenericField(name, hints, tc.labels, metadata, tc.entry)
+				field, ok := detector.extractGenericField(name, hints, tc.labels, metadata, labels.EmptyLabels(), labels.EmptyLabels(), tc.entry)
 				if ok {
 					extracted = append(extracted, field)
 				}

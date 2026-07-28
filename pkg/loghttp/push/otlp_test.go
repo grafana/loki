@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -663,6 +664,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				tc.otlpConfig,
 				nil,
 				discoverServiceName,
+				false,
 				tracker,
 				stats,
 				log.NewNopLogger(),
@@ -947,6 +949,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		customOTLPConfig,
 		nil,
 		[]string{}, // No service name discovery needed
+		false,
 		tracker,
 		stats,
 		log.NewNopLogger(),
@@ -1050,6 +1053,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		nil,        // tenantConfigs
 		[]string{}, // discoverServiceName
+		false,
 		tracker,
 		stats,
 		log.NewNopLogger(),
@@ -1236,6 +1240,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		customOTLPConfig,
 		nil,
 		[]string{}, // No service name discovery needed
+		false,
 		tracker,
 		stats,
 		log.NewNopLogger(),
@@ -1776,6 +1781,430 @@ func TestContentEncodingAndLength(t *testing.T) {
 						}
 					}
 				}
+			}
+		})
+	}
+}
+
+type otlpTestAttr struct{ name, value string }
+
+// otlpDeferredExpansionHelpers returns builders for OTLP payloads used by the deferred structured
+// metadata expansion tests. Attributes are added in slice order so the resulting structured
+// metadata order is deterministic.
+func otlpAddResource(ld plog.Logs, attrs ...otlpTestAttr) plog.ResourceLogs {
+	rl := ld.ResourceLogs().AppendEmpty()
+	for _, a := range attrs {
+		rl.Resource().Attributes().PutStr(a.name, a.value)
+	}
+	return rl
+}
+
+func otlpAddScope(rl plog.ResourceLogs, scopeName string, attrs ...otlpTestAttr) plog.ScopeLogs {
+	sl := rl.ScopeLogs().AppendEmpty()
+	if scopeName != "" {
+		sl.Scope().SetName(scopeName)
+	}
+	for _, a := range attrs {
+		sl.Scope().Attributes().PutStr(a.name, a.value)
+	}
+	return sl
+}
+
+func otlpAddRecord(sl plog.ScopeLogs, ts time.Time, body string, attrs ...otlpTestAttr) {
+	lr := sl.LogRecords().AppendEmpty()
+	lr.Body().SetStr(body)
+	lr.SetTimestamp(pcommon.Timestamp(ts.UnixNano()))
+	for _, a := range attrs {
+		lr.Attributes().PutStr(a.name, a.value)
+	}
+}
+
+func runOTLPToLokiPushRequest(t *testing.T, ld plog.Logs, otlpConfig OTLPConfig, deferExpansion bool) (*logproto.PushRequest, *Stats, *MockCustomTracker) {
+	t.Helper()
+
+	stats := NewPushStats()
+	tracker := NewMockTracker()
+	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+
+	pushReq, err := otlpToLokiPushRequest(
+		context.Background(),
+		ld,
+		"fake",
+		otlpConfig,
+		nil,
+		[]string{},
+		deferExpansion,
+		tracker,
+		stats,
+		log.NewNopLogger(),
+		streamResolver,
+		constants.OTLP,
+	)
+	require.NoError(t, err)
+
+	return pushReq, stats, tracker
+}
+
+// flatOTLPEntry is an entry with the structured metadata it effectively carries, i.e. its own plus
+// the shared one of its stream. It is used to compare the output of the two expansion modes.
+type flatOTLPEntry struct {
+	labels string
+	line   string
+	sm     string
+}
+
+// sortedEffectiveStructuredMetadata renders the effective structured metadata of an entry in a
+// canonical, order-insensitive form.
+//
+// The two expansion modes lay the same set of labels out in a different order: the expanded mode
+// appends the resource and scope attributes after the entry's own ones, while
+// push.EffectiveStructuredMetadata puts the shared ones first so that the entry's own, log record
+// level, attributes come last and therefore win a name collision on the read path. Only the set of
+// labels is compared here; the layout is what the deferred expansion is free to change.
+func sortedEffectiveStructuredMetadata(stream *logproto.Stream, entry *logproto.Entry) string {
+	resource, scope := stream.SharedFor(entry)
+	effective := push.EffectiveStructuredMetadata(resource, scope, entry.StructuredMetadata)
+
+	pairs := make([]string, 0, len(effective))
+	for _, l := range effective {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", l.Name, l.Value))
+	}
+	sort.Strings(pairs)
+	return strings.Join(pairs, ",")
+}
+
+func flattenOTLPPushRequest(pr *logproto.PushRequest) []flatOTLPEntry {
+	out := make([]flatOTLPEntry, 0, len(pr.Streams))
+	for i := range pr.Streams {
+		stream := &pr.Streams[i]
+		for j := range stream.Entries {
+			out = append(out, flatOTLPEntry{
+				labels: stream.Labels,
+				line:   stream.Entries[j].Line,
+				sm:     sortedEffectiveStructuredMetadata(stream, &stream.Entries[j]),
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].labels != out[j].labels {
+			return out[i].labels < out[j].labels
+		}
+		if out[i].line != out[j].line {
+			return out[i].line < out[j].line
+		}
+		return out[i].sm < out[j].sm
+	})
+	return out
+}
+
+func nonEmptyOTLPStreams(pr *logproto.PushRequest) []logproto.Stream {
+	out := make([]logproto.Stream, 0, len(pr.Streams))
+	for _, stream := range pr.Streams {
+		if len(stream.Entries) > 0 {
+			out = append(out, stream)
+		}
+	}
+	return out
+}
+
+func TestOTLPDeferStructuredMetadataExpansion(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+	otlpConfig := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+
+	// Two resources that resolve to the same stream labels ({service_name="svc"}) but carry
+	// different resource attributes, plus a second scope under the first resource.
+	generateLogs := func() plog.Logs {
+		ld := plog.NewLogs()
+
+		resourceA := otlpAddResource(ld,
+			otlpTestAttr{"service.name", "svc"},
+			otlpTestAttr{"host.name", "host-a"},
+		)
+		scopeA1 := otlpAddScope(resourceA, "scope-1", otlpTestAttr{"scope.attr", "one"})
+		otlpAddRecord(scopeA1, now, "a1", otlpTestAttr{"entry.attr", "e1"})
+		scopeA2 := otlpAddScope(resourceA, "scope-2", otlpTestAttr{"scope.attr", "two"})
+		otlpAddRecord(scopeA2, now, "a2")
+
+		resourceB := otlpAddResource(ld,
+			otlpTestAttr{"service.name", "svc"},
+			otlpTestAttr{"host.name", "host-b"},
+		)
+		scopeB1 := otlpAddScope(resourceB, "")
+		otlpAddRecord(scopeB1, now, "b1")
+
+		return ld
+	}
+
+	t.Run("without deferred expansion all entries merge into a single stream", func(t *testing.T) {
+		pushReq, _, _ := runOTLPToLokiPushRequest(t, generateLogs(), otlpConfig, false)
+
+		streams := nonEmptyOTLPStreams(pushReq)
+		require.Len(t, streams, 1)
+		require.Equal(t, `{service_name="svc"}`, streams[0].Labels)
+		require.Len(t, streams[0].Entries, 3)
+		require.Empty(t, streams[0].SharedStructuredMetadataSets)
+
+		// Every entry carries the resource and scope attributes of its origin.
+		for _, entry := range streams[0].Entries {
+			require.Contains(t, fmt.Sprint(entry.StructuredMetadata), "host_name")
+			require.Zero(t, entry.SharedResourceRef)
+			require.Zero(t, entry.SharedScopeRef)
+		}
+	})
+
+	t.Run("with deferred expansion one stream pools the resource and scope sets", func(t *testing.T) {
+		pushReq, _, _ := runOTLPToLokiPushRequest(t, generateLogs(), otlpConfig, true)
+
+		streams := nonEmptyOTLPStreams(pushReq)
+		// Grouping is by labels alone: the three resource/scope combinations share one stream and
+		// are told apart by the pool.
+		require.Len(t, streams, 1)
+		stream := streams[0]
+		require.Equal(t, `{service_name="svc"}`, stream.Labels)
+		require.Len(t, stream.Entries, 3)
+		require.NoError(t, stream.ValidateSharedRefs())
+
+		// Resource and scope sets are pooled separately, in the order they are first seen: the two
+		// scopes of resource A share the single pooled copy of A's attributes.
+		require.Equal(t, []logproto.SharedStructuredMetadataSet{
+			{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-a"}}},
+			{Attrs: []push.LabelAdapter{
+				{Name: "scope_attr", Value: "one"},
+				{Name: "scope_name", Value: "scope-1"},
+			}},
+			{Attrs: []push.LabelAdapter{
+				{Name: "scope_attr", Value: "two"},
+				{Name: "scope_name", Value: "scope-2"},
+			}},
+			{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-b"}}},
+		}, stream.SharedStructuredMetadataSets)
+
+		byLine := map[string]*logproto.Entry{}
+		for i := range stream.Entries {
+			byLine[stream.Entries[i].Line] = &stream.Entries[i]
+		}
+		require.Len(t, byLine, 3)
+
+		require.Equal(t, uint32(1), byLine["a1"].SharedResourceRef)
+		require.Equal(t, uint32(2), byLine["a1"].SharedScopeRef)
+		require.Equal(t, uint32(1), byLine["a2"].SharedResourceRef, "the two scopes of resource A reference the same resource set")
+		require.Equal(t, uint32(3), byLine["a2"].SharedScopeRef)
+		require.Equal(t, uint32(4), byLine["b1"].SharedResourceRef)
+		require.Zero(t, byLine["b1"].SharedScopeRef, "a scope with no attributes is not pooled")
+
+		// The references resolve to what the entry effectively carries.
+		resource, scope := stream.SharedFor(byLine["a1"])
+		require.Equal(t, push.LabelsAdapter{{Name: "host_name", Value: "host-a"}}, resource)
+		require.Equal(t, push.LabelsAdapter{
+			{Name: "scope_attr", Value: "one"},
+			{Name: "scope_name", Value: "scope-1"},
+		}, scope)
+
+		// Entries only carry their own attributes.
+		require.Equal(t, push.LabelsAdapter{{Name: "entry_attr", Value: "e1"}}, byLine["a1"].StructuredMetadata)
+		require.Empty(t, byLine["a2"].StructuredMetadata)
+		require.Empty(t, byLine["b1"].StructuredMetadata)
+	})
+
+	t.Run("two resources with identical attributes and labels dedupe to one pool set", func(t *testing.T) {
+		generate := func() plog.Logs {
+			ld := plog.NewLogs()
+			for _, line := range []string{"first", "second"} {
+				rl := otlpAddResource(ld,
+					otlpTestAttr{"service.name", "svc"},
+					otlpTestAttr{"host.name", "host-a"},
+				)
+				otlpAddRecord(otlpAddScope(rl, ""), now, line)
+			}
+			return ld
+		}
+
+		pushReq, _, _ := runOTLPToLokiPushRequest(t, generate(), otlpConfig, true)
+
+		streams := nonEmptyOTLPStreams(pushReq)
+		require.Len(t, streams, 1)
+		require.Len(t, streams[0].Entries, 2)
+		require.NoError(t, streams[0].ValidateSharedRefs())
+
+		// Byte-identical attribute sets are pooled once and both entries point at that one set.
+		require.Equal(t, []logproto.SharedStructuredMetadataSet{
+			{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-a"}}},
+		}, streams[0].SharedStructuredMetadataSets)
+		for _, entry := range streams[0].Entries {
+			require.Equal(t, uint32(1), entry.SharedResourceRef)
+			require.Zero(t, entry.SharedScopeRef)
+		}
+	})
+
+	t.Run("entries promoted to their own labels build their own pool", func(t *testing.T) {
+		cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+		cfg.LogAttributes = []AttributesConfig{
+			{Action: IndexLabel, Attributes: []string{"promoted"}},
+		}
+
+		generate := func() plog.Logs {
+			ld := plog.NewLogs()
+			for _, host := range []string{"host-a", "host-b"} {
+				rl := otlpAddResource(ld,
+					otlpTestAttr{"service.name", "svc"},
+					otlpTestAttr{"host.name", host},
+				)
+				otlpAddRecord(otlpAddScope(rl, ""), now, "line-"+host, otlpTestAttr{"promoted", "yes"})
+			}
+			return ld
+		}
+
+		pushReq, _, _ := runOTLPToLokiPushRequest(t, generate(), cfg, true)
+
+		streams := nonEmptyOTLPStreams(pushReq)
+		// Same promoted label set for both resources: one wire stream, whose own pool holds the
+		// two resource sets its entries reference.
+		require.Len(t, streams, 1)
+		stream := streams[0]
+		require.Equal(t, `{promoted="yes", service_name="svc"}`, stream.Labels)
+		require.NoError(t, stream.ValidateSharedRefs())
+		require.Equal(t, []logproto.SharedStructuredMetadataSet{
+			{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-a"}}},
+			{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-b"}}},
+		}, stream.SharedStructuredMetadataSets)
+
+		shared := map[string]string{}
+		for i := range stream.Entries {
+			resource, scope := stream.SharedFor(&stream.Entries[i])
+			require.Empty(t, scope)
+			require.Len(t, resource, 1)
+			require.Equal(t, "host_name", resource[0].Name)
+			shared[stream.Entries[i].Line] = resource[0].Value
+		}
+		require.Equal(t, map[string]string{"line-host-a": "host-a", "line-host-b": "host-b"}, shared)
+	})
+
+	t.Run("entries, stats and usage tracking are identical with and without deferred expansion", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			cfg      OTLPConfig
+			generate func() plog.Logs
+		}{
+			{
+				name:     "multiple resources and scopes",
+				cfg:      otlpConfig,
+				generate: generateLogs,
+			},
+			{
+				name: "resource attributes as structured metadata only",
+				cfg:  OTLPConfig{},
+				generate: func() plog.Logs {
+					ld := plog.NewLogs()
+					rl := otlpAddResource(ld, otlpTestAttr{"service.name", "svc"}, otlpTestAttr{"host.name", "host-a"})
+					otlpAddRecord(otlpAddScope(rl, "scope-1"), now, "only-line", otlpTestAttr{"entry.attr", "e1"})
+					return ld
+				},
+			},
+			{
+				name: "promoted log attributes",
+				cfg: func() OTLPConfig {
+					cfg := DefaultOTLPConfig(defaultGlobalOTLPConfig)
+					cfg.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{"promoted"}}}
+					return cfg
+				}(),
+				generate: func() plog.Logs {
+					ld := plog.NewLogs()
+					rl := otlpAddResource(ld, otlpTestAttr{"service.name", "svc"}, otlpTestAttr{"host.name", "host-a"})
+					sl := otlpAddScope(rl, "scope-1", otlpTestAttr{"scope.attr", "one"})
+					otlpAddRecord(sl, now, "promoted-line", otlpTestAttr{"promoted", "yes"})
+					otlpAddRecord(sl, now, "plain-line")
+					return ld
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				expandedReq, expandedStats, expandedTracker := runOTLPToLokiPushRequest(t, tc.generate(), tc.cfg, false)
+				deferredReq, deferredStats, deferredTracker := runOTLPToLokiPushRequest(t, tc.generate(), tc.cfg, true)
+
+				// Same entries with the same effective structured metadata, only laid out differently.
+				require.Equal(t, flattenOTLPPushRequest(expandedReq), flattenOTLPPushRequest(deferredReq))
+
+				// Received bytes, structured metadata bytes, expanded bytes, line counts and stream
+				// label sizes must not change: all of them are unexpanded-accounting invariant.
+				require.Equal(t, expandedStats, deferredStats)
+
+				// The GEL usage tracker reports unexpanded bytes and must be unaffected too.
+				require.Equal(t, expandedTracker.receivedBytes, deferredTracker.receivedBytes)
+				require.Equal(t, expandedTracker.Total(), deferredTracker.Total())
+
+				// Sanity check that the expanded-equivalent size is still reported and accounts for
+				// the resource/scope attributes of every entry.
+				var deferredWireSize int64
+				for _, stream := range deferredReq.Streams {
+					require.NoError(t, stream.ValidateSharedRefs())
+					for i := range stream.Entries {
+						deferredWireSize += int64(util.EntryTotalSize(&stream.Entries[i]))
+					}
+					deferredWireSize += int64(util.SharedSetsSize(stream.SharedStructuredMetadataSets))
+				}
+				require.Greater(t, deferredStats.TotalExpandedEntriesSize, int64(0))
+				require.GreaterOrEqual(t, deferredStats.TotalExpandedEntriesSize, deferredWireSize)
+			})
+		}
+	})
+}
+
+// TestParseOTLPRequestDeferStructuredMetadataExpansion covers the per-tenant limit plumbing:
+// ParseOTLPRequest must honour Limits.OTLPDeferStructuredMetadataExpansion.
+func TestParseOTLPRequestDeferStructuredMetadataExpansion(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	generateBody := func(t *testing.T) []byte {
+		t.Helper()
+		ld := plog.NewLogs()
+		rl := otlpAddResource(ld, otlpTestAttr{"service.name", "svc"}, otlpTestAttr{"host.name", "host-a"})
+		otlpAddRecord(otlpAddScope(rl, ""), now, "a line")
+		body, err := createJSON(ld)
+		require.NoError(t, err)
+		return body
+	}
+
+	for _, tc := range []struct {
+		name           string
+		deferExpansion bool
+		expectedPool   []logproto.SharedStructuredMetadataSet
+		expectedRef    uint32
+		expectedOwn    push.LabelsAdapter
+	}{
+		{
+			name:           "limit disabled",
+			deferExpansion: false,
+			expectedPool:   nil,
+			expectedOwn:    push.LabelsAdapter{{Name: "host_name", Value: "host-a"}},
+		},
+		{
+			name:           "limit enabled",
+			deferExpansion: true,
+			expectedPool: []logproto.SharedStructuredMetadataSet{
+				{Attrs: []push.LabelAdapter{{Name: "host_name", Value: "host-a"}}},
+			},
+			expectedRef: 1,
+			expectedOwn: nil,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &fakeLimits{deferStructuredMetadataExpansion: tc.deferExpansion}
+
+			req := httptest.NewRequest("POST", "/otlp/v1/logs", bytes.NewReader(generateBody(t)))
+			req.Header.Set("Content-Type", applicationJSON)
+
+			pushReq, _, err := ParseOTLPRequest("fake", req, limits, nil, 100<<20, 100<<20, NewMockTracker(), newMockStreamResolver("fake", limits), log.NewNopLogger())
+			require.NoError(t, err)
+
+			streams := nonEmptyOTLPStreams(pushReq)
+			require.Len(t, streams, 1)
+			require.Equal(t, tc.expectedPool, streams[0].SharedStructuredMetadataSets)
+			require.Equal(t, tc.expectedRef, streams[0].Entries[0].SharedResourceRef)
+			require.Zero(t, streams[0].Entries[0].SharedScopeRef)
+			if len(tc.expectedOwn) == 0 {
+				require.Empty(t, streams[0].Entries[0].StructuredMetadata)
+			} else {
+				require.Equal(t, tc.expectedOwn, streams[0].Entries[0].StructuredMetadata)
 			}
 		})
 	}

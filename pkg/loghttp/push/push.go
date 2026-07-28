@@ -105,6 +105,10 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
+	// OTLPDeferStructuredMetadataExpansion reports whether OTLP resource and scope attributes
+	// should be pooled once per stream (push.Stream.SharedStructuredMetadataSets) and referenced
+	// by its entries, instead of being copied into the structured metadata of every entry.
+	OTLPDeferStructuredMetadataExpansion(userID string) bool
 }
 
 type EmptyLimits struct{}
@@ -115,6 +119,10 @@ func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 
 func (EmptyLimits) DiscoverServiceName(string) []string {
 	return nil
+}
+
+func (EmptyLimits) OTLPDeferStructuredMetadataExpansion(string) bool {
+	return false
 }
 
 func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
@@ -448,6 +456,16 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	for i := range req.Streams {
 		s := req.Streams[i]
 
+		// The shared structured metadata pool and the per entry references into it are internal
+		// to Loki's OTLP ingest pipeline: only otlpToLokiPushRequest, gated by the tenant's
+		// OTLPDeferStructuredMetadataExpansion limit, is allowed to populate them. A native push
+		// client could otherwise opt itself into deferred semantics whatever the tenant is
+		// configured for, and be metered for a pool counted once per stream while the read path
+		// expands it onto every entry. Dropped silently, as an unknown field would be.
+		// s is written back to req.Streams[i] at the end of the loop, and its Entries alias the
+		// same array, so stripping the copy strips the request.
+		s.StripSharedStructuredMetadata()
+
 		if len(s.Labels) > maxStreamLabelsSize {
 			return nil, nil, fmt.Errorf("%w: stream labels size %s exceeds limit of %s", ErrRequestBodyTooLarge, humanize.Bytes(uint64(len(s.Labels))), humanize.Bytes(maxStreamLabelsSize))
 		}
@@ -550,17 +568,32 @@ func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.Pus
 			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
+		// The shared structured metadata pool of the stream, which the OTLP push path populates
+		// instead of copying resource and scope attributes onto every entry. Each of its sets is
+		// stored once per stream, so the pool is metered once here (unexpanded accounting) rather
+		// than once per entry referencing a set. TotalExpandedEntriesSize below still counts the
+		// sets an entry references per entry, since it reports what the request would weigh with
+		// the attributes expanded onto every entry.
+		sharedSetsSize := int64(util.SharedSetsSize(s.SharedStructuredMetadataSets))
+		// Per set size, indexed by the set's position in the pool, so that the expanded accounting
+		// resolves an entry's references with two lookups instead of re-measuring the sets.
+		sharedSetSizes := sharedSetSizesOf(s.SharedStructuredMetadataSets)
+
 		// These two variables are used to track the most recent entry timestamp and the size of the stream.
 		// They are only used when logPushRequestStreams is true.
 		mostRecentEntryTimestamp := time.Time{}
-		streamSizeBytes := int64(0)
-		for _, e := range s.Entries {
+		streamSizeBytes := sharedSetsSize
+		pushStats.StructuredMetadataBytes[policy][retentionPeriod] += sharedSetsSize
+		for i := range s.Entries {
+			e := &s.Entries[i]
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			entryTotal := int64(util.EntryTotalSize(&e))
+			entryTotal := int64(util.EntryTotalSize(e))
 			streamSizeBytes += entryTotal
-			pushStats.TotalExpandedEntriesSize += entryTotal
+			pushStats.TotalExpandedEntriesSize += entryTotal +
+				sharedSetSizes.at(e.SharedResourceRef) +
+				sharedSetSizes.at(e.SharedScopeRef)
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
@@ -580,6 +613,31 @@ func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.Pus
 	}
 
 	return nil
+}
+
+// sharedStructuredMetadataSetSizes is the structured metadata size of each set of a stream's
+// shared structured metadata pool, indexed by the position of the set in the pool.
+type sharedStructuredMetadataSetSizes []int64
+
+func sharedSetSizesOf(sets []logproto.SharedStructuredMetadataSet) sharedStructuredMetadataSetSizes {
+	if len(sets) == 0 {
+		return nil
+	}
+
+	sizes := make(sharedStructuredMetadataSetSizes, len(sets))
+	for i := range sets {
+		sizes[i] = int64(util.StructuredMetadataSize(sets[i].Attrs))
+	}
+	return sizes
+}
+
+// at resolves a 1-based reference, returning 0 for the "no set" reference and for one pointing
+// past the end of the pool, matching push.Stream.SharedFor.
+func (sizes sharedStructuredMetadataSetSizes) at(ref uint32) int64 {
+	if ref == 0 || uint64(ref) > uint64(len(sizes)) {
+		return 0
+	}
+	return sizes[ref-1]
 }
 
 func RetentionPeriodToString(retentionPeriod time.Duration) string {

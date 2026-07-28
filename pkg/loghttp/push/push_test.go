@@ -857,9 +857,14 @@ func TestParseRequestWithZeroMaxDecompressedSize(t *testing.T) {
 }
 
 type fakeLimits struct {
-	enabled         bool
-	labels          []string
-	indexAttributes []string
+	enabled                          bool
+	labels                           []string
+	indexAttributes                  []string
+	deferStructuredMetadataExpansion bool
+}
+
+func (f *fakeLimits) OTLPDeferStructuredMetadataExpansion(_ string) bool {
+	return f.deferStructuredMetadataExpansion
 }
 
 func (f *fakeLimits) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
