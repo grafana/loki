@@ -234,7 +234,14 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := util.EntriesTotalSize(stream.Entries)
+	// Every failure below discards the whole stream, so the size reported is the whole stream's,
+	// in the tenant-facing unexpanded unit: the entries plus the stream's shared structured
+	// metadata pool counted once. The entries of a stream using deferred OTLP expansion do not
+	// carry the resource and scope attributes they reference, so leaving the pool out would report
+	// a flag-on stream as smaller than the same payload pushed flag-off. On the push path this is
+	// the stream as pushed - labels are validated before sharding - so once here is once per
+	// logical stream. See discardedStreamSize.
+	entriesSize := discardedStreamSize(stream)
 
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {
 		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)

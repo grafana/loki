@@ -776,7 +776,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				// Whole stream discarded: the pool is counted once for it, like everywhere else a
+				// tenant is metered. These streams are pre-shard, straight off the request, so
+				// that is once per logical stream. See discardedStreamSize.
+				discardedBytes := discardedStreamSize(stream)
 				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
 				continue
 			}
@@ -786,7 +789,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
-					discardedBytes := util.EntriesTotalSize(stream.Entries)
+					// Whole stream discarded, pool counted once for it. See discardedStreamSize.
+					discardedBytes := discardedStreamSize(stream)
 					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
 					continue
 				}
@@ -794,7 +798,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				// Whole stream discarded, pool counted once for it. See discardedStreamSize.
+				discardedBytes := discardedStreamSize(stream)
 				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
 
 				// If the status code is 200, return no error.
@@ -1292,9 +1297,37 @@ func (d *Distributor) enforceIngestionRateLimits(
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
+// discardedStreamSize is the size a whole stream is reported as discarded for, in the
+// tenant-facing UNEXPANDED unit: every entry's line and its own structured metadata, plus each
+// set of the stream's shared structured metadata pool exactly once for the whole stream, no
+// matter how many entries reference it.
+//
+// The pool has to be in this number. Under otlp_defer_structured_metadata_expansion the entries
+// of a stream do not carry the OTLP resource and scope attributes they reference, so
+// EntriesTotalSize alone would report a flag-on stream as smaller than the very same payload
+// pushed flag-off - and smaller than what the stream was charged for on the way in. Counting the
+// pool once is exactly what the ingestion rate limit buckets do (streamEntriesSize in
+// PushWithResolver, whose sum is the b.bytes the 429 message reports), what the ingester does
+// when it refuses a stream (instance.onStreamCreationError) and what the ingest-limits path does
+// (calculateStreamSizes).
+//
+// It measures what the stream at hand carries, and nothing else. A stream that has already been
+// sharded carries the whole pool in every shard (see createShard), so summing the shards of one
+// logical stream charges the pool once per shard. That is deliberate: a shard is a stream in its
+// own right by then, and it is charged for the bytes it carries, which is what keeps a discard
+// consistent with what would have been admitted.
+func discardedStreamSize(stream logproto.Stream) int {
+	return util.EntriesTotalSize(stream.Entries) + util.SharedSetsSize(stream.SharedStructuredMetadataSets)
+}
+
 // trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
 // streams whose resolved policy satisfies it are tracked (used to attribute discards to a
 // single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
+//
+// The streams reaching here are pre-shard for the rate-limited path (the request's own streams,
+// so the pool is counted once per logical stream, matching the buckets the 429 was computed
+// from) and post-shard for the stream-limit path (each rejected shard carries the whole pool).
+// See discardedStreamSize.
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	streams []logproto.Stream,
@@ -1314,7 +1347,7 @@ func (d *Distributor) trackDiscardedData(
 		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
-		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+		discardedStreamBytes := discardedStreamSize(stream)
 		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
 		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
 		if d.usageTracker != nil {
