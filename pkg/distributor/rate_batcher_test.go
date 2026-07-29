@@ -20,6 +20,10 @@ type mockUpdateRatesClient struct {
 	calls      int
 	requests   []*proto.UpdateRatesRequest
 	customRate uint64 // If non-zero, return this rate instead of 1000.
+	// echoTotalSizeAsRate returns each stream's reported size as its rate, standing in for the
+	// frontend's rate buckets, which accumulate exactly that size (see usageStore.updateWithBuckets).
+	// It lets a test assert the unit of the rate that comes back to the distributor.
+	echoTotalSizeAsRate bool
 }
 
 func (m *mockUpdateRatesClient) UpdateRatesRaw(_ context.Context, req *proto.UpdateRatesRequest) ([]*proto.UpdateRatesResult, error) {
@@ -36,9 +40,13 @@ func (m *mockUpdateRatesClient) UpdateRatesRaw(_ context.Context, req *proto.Upd
 
 	results := make([]*proto.UpdateRatesResult, len(req.Streams))
 	for i, stream := range req.Streams {
+		streamRate := rate
+		if m.echoTotalSizeAsRate {
+			streamRate = stream.TotalSize
+		}
 		results[i] = &proto.UpdateRatesResult{
 			StreamHash: stream.StreamHash,
-			Rate:       rate,
+			Rate:       streamRate,
 		}
 	}
 	return results, nil

@@ -135,7 +135,27 @@ func (b *rateBatcher) Add(tenant string, streams []segmentedStream) map[uint64]u
 
 	for _, stream := range streams {
 		hash := stream.SegmentationKeyHash
-		totalSize := uint64(stream.Stream.Size())
+		// This size is EXPANDED-EQUIVALENT, and deliberately not the unexpanded size a tenant is
+		// metered for. It feeds the per segmentation key rate the limits-frontend accumulates
+		// (usageStore.updateWithBuckets), which comes back as the rateBytes DataObjTee hands to the
+		// partition resolver to pick how wide a shuffle shard the key gets
+		// (numPartitionsForRateRendezvousHashing). That is internal load distribution, not
+		// tenant-facing metering, and the work a partition's consumer does is still the expanded
+		// one, so the rate has to be in the expanded unit or a tenant with
+		// otlp_defer_structured_metadata_expansion on gets a narrower fan-out than the same payload
+		// pushed flag-off - concentrating precisely the streams with large resource and scope
+		// attribute sets onto fewer partitions. This is the same reasoning as the stream sharding
+		// split in Distributor.PushWithResolver.
+		//
+		// The base is the proto-encoded size of the stream, which is what this path has always
+		// used, and which shrinks with the flag on because the pool is encoded once instead of
+		// once per entry. The delta is measured in payload bytes, so a few bytes of protobuf
+		// framing per pool set are left in the base; the term that matters, the per entry charge
+		// for the sets an entry references, is there.
+		//
+		// TODO(otlp-deferred-expansion): drop the delta once the chunkenc attribute-aware append
+		// follow-up lands, see sharedStructuredMetadataExpansionDelta.
+		totalSize := uint64(stream.Stream.Size()) + sharedStructuredMetadataExpansionDelta(stream.Stream)
 
 		// If we already have this stream in the pending batch, accumulate the size.
 		if existing, ok := tenantPending[hash]; ok {

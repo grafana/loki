@@ -204,6 +204,12 @@ func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []Key
 
 	for _, s := range segmentationKeyStreams {
 		go func(stream segmentedStream) {
+			// rateBytes is in the EXPANDED-EQUIVALENT unit, not the unexpanded one a tenant is
+			// metered in: it comes from the sizes reported by rateBatcher.Add /
+			// newUpdateRatesRequest, which charge every entry for the shared structured metadata
+			// sets it references. It is used to size a shuffle shard below, i.e. for load
+			// distribution, and the consumer side work is still the expanded one - see
+			// sharedStructuredMetadataExpansionDelta, and the TODO there for when this flips back.
 			rateBytes := fastRates[stream.SegmentationKeyHash]
 			if t.cfg.DebugMetricsEnabled {
 				t.estimateRateBytes.WithLabelValues(tenant, string(stream.SegmentationKey)).Set(float64(rateBytes))

@@ -213,6 +213,12 @@ func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams
 	return resp.Results, nil
 }
 
+// newExceedsLimitsRequest builds the admission request. Its TotalSize is the tenant-facing
+// UNEXPANDED size - calculateStreamSizes counts the shared structured metadata pool once per stream
+// - and stays that way: the limits-frontend feeds it to
+// loki_ingest_limits_tenant_ingested_bytes_total (see limitsChecker.ExceedsLimits) and nothing else,
+// and the admission decision it is attached to counts streams, not bytes (usageStore.UpdateCond).
+// Contrast newUpdateRatesRequest below, whose size is expanded-equivalent on purpose.
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
@@ -259,6 +265,20 @@ func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRate
 	return resp.Results, nil
 }
 
+// newUpdateRatesRequest builds the UpdateRates request DataObjTee sends when rate batching is
+// disabled. It is the unbatched twin of rateBatcher.Add and reports sizes in the same unit.
+//
+// TotalSize here is EXPANDED-EQUIVALENT, unlike the TotalSize of newExceedsLimitsRequest above.
+// The two RPCs are different questions asked of the same service and their sizes are consumed by
+// different code: this one only ever lands in the per stream rate buckets
+// (usageStore.updateWithBuckets), whose average comes back as the rateBytes DataObjTee gives the
+// partition resolver to size a segmentation key's shuffle shard - internal load distribution, where
+// the consumer-side work is still the expanded one. The ExceedsLimits size stays unexpanded because
+// it is tenant-facing: it is what loki_ingest_limits_tenant_ingested_bytes_total measures, and
+// admission itself is stream-count based (see usageStore.UpdateCond) so it is unaffected either way.
+//
+// TODO(otlp-deferred-expansion): drop the delta once the chunkenc attribute-aware append follow-up
+// lands, see sharedStructuredMetadataExpansionDelta.
 func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.UpdateRatesRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
@@ -269,7 +289,7 @@ func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.Upd
 		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      stream.SegmentationKeyHash,
-			TotalSize:       entriesSize + structuredMetadataSize,
+			TotalSize:       entriesSize + structuredMetadataSize + sharedStructuredMetadataExpansionDelta(stream.Stream),
 			IngestionPolicy: stream.Policy,
 		})
 	}

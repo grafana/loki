@@ -1981,6 +1981,47 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 	return int(math.Ceil(shards))
 }
 
+// sharedStructuredMetadataExpansionDelta returns the bytes that turn a size counting a stream's
+// shared structured metadata pool ONCE for the whole stream into the EXPANDED-EQUIVALENT size:
+// every entry charged for the sets it references, exactly as if those attributes had been copied
+// into it, which is the number the same payload would have produced with
+// otlp_defer_structured_metadata_expansion off.
+//
+// The per entry charges are resolved through the per-set size index, so this costs two additions
+// per entry rather than materializing the sets; it mirrors how streamShardingSize is accumulated in
+// PushWithResolver.
+//
+// Only internal load-distribution decisions may add this. Anything tenant-facing - the ingestion
+// rate limit buckets, the discard metrics, the ingest-limits ExceedsLimits path - stays on the
+// unexpanded unit so that turning the flag on cannot change what a tenant is metered for.
+//
+// TODO(otlp-deferred-expansion): this whole helper goes away once the chunkenc attribute-aware
+// append follow-up lands ("feat(chunkenc): append entries with shared structured metadata without
+// materializing expansion", reverted on this branch). Consumers then really do work at the
+// unexpanded rate and the two units collapse back into one.
+func sharedStructuredMetadataExpansionDelta(stream logproto.Stream) uint64 {
+	if len(stream.SharedStructuredMetadataSets) == 0 {
+		// No pool: the two units are the same number by construction, so a stream pushed with the
+		// flag off is untouched by any caller of this.
+		return 0
+	}
+
+	index := sharedStructuredMetadataIndexOf(stream)
+	referenced := 0
+	for i := range stream.Entries {
+		referenced += index.forEntry(&stream.Entries[i]).size
+	}
+
+	// The base size charged the pool once for the whole stream; the per entry charges replace it.
+	delta := referenced - util.SharedSetsSize(stream.SharedStructuredMetadataSets)
+	if delta < 0 {
+		// Reachable when the pool holds a set no surviving entry references. The base size is then
+		// already at or above the expanded-equivalent one and there is nothing to add.
+		return 0
+	}
+	return uint64(delta)
+}
+
 func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
 	var entriesSize, structuredMetadataSize uint64
 	for _, entry := range stream.Entries {

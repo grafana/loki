@@ -84,6 +84,13 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 		}
 	}
 
+	// This is the one consumer of ExceedsLimitsRequest's TotalSize, and it is tenant-facing, so the
+	// distributor deliberately reports that size UNEXPANDED: a stream using deferred OTLP structured
+	// metadata expansion is counted for its entries plus its shared pool once, not once per entry
+	// referencing the pool (see newExceedsLimitsRequest and calculateStreamSizes in the
+	// distributor). The size on the UpdateRates RPC is a different unit - expanded-equivalent -
+	// because it only feeds the rate buckets used to distribute load across partitions. The
+	// admission decision above is unaffected by either: it counts streams, not bytes.
 	var ingestedBytes uint64
 	for _, stream := range accepted {
 		ingestedBytes += stream.TotalSize

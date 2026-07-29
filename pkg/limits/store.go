@@ -404,6 +404,12 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 // Duplicate of update but also updates the rate buckets. This allows us to
 // isolate the changes needed to support UpdateRates RPC without affecting
 // the ExceedsLimits RPCs.
+//
+// It is only reached from the UpdateRates RPC, so the metadata.TotalSize accumulated into the rate
+// buckets here is the expanded-equivalent size the distributor reports on that RPC (see
+// newUpdateRatesRequest and rateBatcher.Add), not the unexpanded, tenant-facing size that arrives on
+// ExceedsLimits. The rate computed from these buckets is used to distribute load across partitions,
+// which is why it is measured in the expanded unit.
 func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition, policyBucket)
 	streamHash := metadata.StreamHash
