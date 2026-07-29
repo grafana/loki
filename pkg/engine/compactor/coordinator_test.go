@@ -23,6 +23,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -70,12 +71,15 @@ func (f *fakeRunner) snapshot() []runCall {
 }
 
 // fakeReplacer records each ReplaceIndexPointers invocation and returns
-// configurable (swapped, err) tuples.
+// configurable (swapped, err) tuples. When onReplace is set it runs (under
+// the lock) for every call, letting tests mutate the backing ToC so a swap
+// becomes visible to subsequent reads.
 type fakeReplacer struct {
-	mu      sync.Mutex
-	calls   []replaceCall
-	swapped bool
-	err     error
+	mu        sync.Mutex
+	calls     []replaceCall
+	swapped   bool
+	err       error
+	onReplace func(replaceCall)
 }
 
 type replaceCall struct {
@@ -92,8 +96,12 @@ func (f *fakeReplacer) ReplaceIndexPointers(
 	oldPaths []string,
 	newEntries []metastore.TableOfContentsEntry,
 ) (bool, error) {
+	call := replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsEntry(nil), newEntries...)}
 	f.mu.Lock()
-	f.calls = append(f.calls, replaceCall{window, tenant, append([]string(nil), oldPaths...), append([]metastore.TableOfContentsEntry(nil), newEntries...)})
+	f.calls = append(f.calls, call)
+	if f.onReplace != nil {
+		f.onReplace(call)
+	}
 	f.mu.Unlock()
 	return f.swapped, f.err
 }
@@ -487,6 +495,15 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 	for i := range first {
 		require.Equal(t, first[i].Path, second[i].Path, "output index paths must be deterministic across cycles")
 	}
+}
+
+func TestLogFailureBackoff(t *testing.T) {
+	require.Equal(t, time.Duration(0), logFailureBackoff(0))
+	require.Equal(t, logFailureBackoffBase, logFailureBackoff(1))
+	require.Equal(t, 2*logFailureBackoffBase, logFailureBackoff(2))
+	require.Equal(t, 4*logFailureBackoffBase, logFailureBackoff(3))
+	require.Equal(t, logFailureBackoffMax, logFailureBackoff(5))
+	require.Equal(t, logFailureBackoffMax, logFailureBackoff(1000), "backoff must cap, not overflow")
 }
 
 func TestPhaseFlip(t *testing.T) {
@@ -1079,15 +1096,31 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		require.Empty(t, replacer.snapshot(), "a failing phase never swaps the ToC")
 	})
 
-	t.Run("a successful phase flips index-merge <-> log-merge", func(t *testing.T) {
+	t.Run("log-merge runs once the index side converges", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 		replacer := &fakeReplacer{swapped: true}
+		// Make the first index-merge swap visible: rewrite the ToC down to a
+		// single index so the next IndexMerge pass reports converged and the
+		// LogMerge phase becomes eligible. The hook runs on the tenant-loop
+		// goroutine, possibly after the test cancels ctx, so it must use a
+		// background context and must not fail the test (no require).
+		replacer.onReplace = func(replaceCall) {
+			bg := context.Background()
+			_ = bucket.Delete(bg, metastore.TableOfContentsPath(window))
+			w := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+			_ = w.WriteEntry(bg, "indexes/a", []multitenancy.TimeRange{{
+				Tenant:  "acme",
+				MinTime: window.Add(time.Hour),
+				MaxTime: window.Add(2 * time.Hour),
+			}})
+		}
 		limits := newFakeLimits("acme")
 		limits.setLog("acme", true) // both phases enabled so the flip is exercised
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+		c.cfg.PollingInterval = time.Millisecond // fast idle-revolution pacing for the test
 
 		var mu sync.Mutex
 		var phases []string
@@ -1108,15 +1141,90 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		require.Eventually(t, func() bool {
 			mu.Lock()
 			defer mu.Unlock()
-			return len(phases) >= 3
+			return len(phases) >= 2
 		}, 2*time.Second, 5*time.Millisecond)
 		cancel()
 		<-done
 
 		mu.Lock()
 		defer mu.Unlock()
-		require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
-			"successful phases flip between index-merge and log-merge")
+		require.Equal(t, []string{"index-merge", "log-merge"}, phases[:2],
+			"log-merge must only dispatch after the window's index side has converged")
+	})
+
+	t.Run("log-merge never dispatches while the index side is unconverged", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Static two-index ToC with a fake swap: every IndexMerge pass reports
+		// compacted but the ToC never shrinks, so the window never converges.
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
+		replacer := &fakeReplacer{swapped: true}
+		limits := newFakeLimits("acme")
+		limits.setLog("acme", true)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+		c.cfg.PollingInterval = time.Millisecond
+
+		var mu sync.Mutex
+		var phases []string
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
+			mu.Lock()
+			phases = append(phases, opts.Actor[1])
+			mu.Unlock()
+			return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/tenants/acme/aa/x"}}), nil
+		}
+
+		done := make(chan struct{})
+		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(c.metrics.logPhaseSkipsTotal.WithLabelValues("index_unconverged", "acme")) >= 3
+		}, 2*time.Second, 5*time.Millisecond, "log turns must be skipped while unconverged")
+		cancel()
+		<-done
+
+		mu.Lock()
+		defer mu.Unlock()
+		require.NotEmpty(t, phases)
+		for _, p := range phases {
+			require.Equal(t, "index-merge", p, "no log-merge may dispatch while the index side is unconverged")
+		}
+	})
+
+	t.Run("a failing log-merge hands the turn back and backs off", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Single-index ToC: the index side is converged from the start, so the
+		// log phase is eligible immediately.
+		bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a"})
+		replacer := &fakeReplacer{swapped: true}
+		limits := newFakeLimits("acme")
+		limits.setLog("acme", true)
+		// The clock is fixed, so the backoff armed by the first failure never
+		// expires: exactly one log-merge attempt can ever be dispatched.
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+		c.cfg.PollingInterval = time.Millisecond
+
+		c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
+			require.Equal(t, "log-merge", opts.Actor[1], "a converged index phase must not dispatch")
+			return nil, errors.New("log dispatch boom")
+		}
+
+		done := make(chan struct{})
+		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(c.metrics.logPhaseSkipsTotal.WithLabelValues("backoff", "acme")) >= 3 &&
+				testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("converged")) >= 2
+		}, 2*time.Second, 5*time.Millisecond,
+			"after a log failure the loop must keep cycling the index phase and skip log turns via backoff")
+		cancel()
+		<-done
+
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("failed")),
+			"a failing log phase must not re-arm: exactly one failed cycle")
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.tenantLogCyclesTotal.WithLabelValues("failed", "acme")))
 	})
 }
 
@@ -1376,6 +1484,7 @@ func TestRunTenantLoop_IndexOnly(t *testing.T) {
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	c.cfg.PollingInterval = time.Millisecond // fast idle-revolution pacing for the test
 
 	var mu sync.Mutex
 	var phases []string
@@ -1406,8 +1515,8 @@ func TestRunTenantLoop_IndexOnly(t *testing.T) {
 }
 
 // TestRunTenantLoop_LogEnabledRunsBothPhases verifies that enabling log
-// compaction (which implies index) restores the flip-flop: dispatches
-// alternate index-merge <-> log-merge.
+// compaction (which implies index) runs both phases: index-merge dispatches
+// first, and log-merge dispatches once the window's index side converges.
 func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 	window := imWindow()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1415,9 +1524,23 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
 	replacer := &fakeReplacer{swapped: true}
+	// Converge the ToC on the first swap so the log phase becomes eligible.
+	// Runs on the tenant-loop goroutine, possibly after ctx is cancelled, so
+	// it uses a background context and must not fail the test.
+	replacer.onReplace = func(replaceCall) {
+		bg := context.Background()
+		_ = bucket.Delete(bg, metastore.TableOfContentsPath(window))
+		w := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+		_ = w.WriteEntry(bg, "a", []multitenancy.TimeRange{{
+			Tenant:  "acme",
+			MinTime: window.Add(time.Hour),
+			MaxTime: window.Add(2 * time.Hour),
+		}})
+	}
 	limits := newFakeLimits("acme")
 	limits.setLog("acme", true)
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+	c.cfg.PollingInterval = time.Millisecond
 
 	var mu sync.Mutex
 	var phases []string
@@ -1436,18 +1559,15 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 	require.Eventually(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
-		return len(phases) >= 3
+		return len(phases) >= 2
 	}, 2*time.Second, 5*time.Millisecond)
 	cancel()
 	<-done
 
 	mu.Lock()
 	defer mu.Unlock()
-	// runPlan returns nil (success) on every call, so the loop flips every
-	// cycle and the phase order is deterministic; the exact prefix is safe to
-	// assert. The loop starts on IndexMerge.
-	require.Equal(t, []string{"index-merge", "log-merge", "index-merge"}, phases[:3],
-		"log-enabled tenant flips between index-merge and log-merge")
+	require.Equal(t, []string{"index-merge", "log-merge"}, phases[:2],
+		"log-enabled tenant dispatches index-merge first, then log-merge once converged")
 }
 
 // TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off
@@ -1459,11 +1579,14 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	// Single-index ToC: converged from the start, so log-merge dispatches
+	// immediately (index-merge has nothing to do and dispatches nothing).
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a"})
 	replacer := &fakeReplacer{swapped: true}
 	limits := newFakeLimits("acme")
 	limits.setLog("acme", true)
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+	c.cfg.PollingInterval = time.Millisecond
 
 	var mu sync.Mutex
 	var phases []string
@@ -1490,27 +1613,29 @@ func TestRunTenantLoop_DisablingLogMidRunStopsLogMerge(t *testing.T) {
 	}
 	limits.setLog("acme", false)
 
-	// Record how many phases exist at the cutoff, then let the loop run more.
+	// The mid-run disable is not instantaneous: the in-flight log-merge cycle
+	// may still complete. Wait for several full index revolutions after the
+	// disable (converged index cycles keep incrementing), note the dispatch
+	// count, then confirm it stays flat over several more revolutions.
+	converged := func() float64 {
+		return testutil.ToFloat64(c.metrics.cyclesTotal.WithLabelValues("converged"))
+	}
+	base := converged()
+	require.Eventually(t, func() bool { return converged() >= base+3 },
+		2*time.Second, time.Millisecond, "index revolutions must continue after disabling log")
+
 	mu.Lock()
-	cutoff := len(phases)
+	settled := len(phases)
 	mu.Unlock()
 
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(phases) >= cutoff+4 // several more cycles after disabling
-	}, 2*time.Second, 5*time.Millisecond)
+	base = converged()
+	require.Eventually(t, func() bool { return converged() >= base+3 },
+		2*time.Second, time.Millisecond)
 	cancel()
 	<-done
 
 	mu.Lock()
 	defer mu.Unlock()
-	// The mid-run disable is not instantaneous: an in-flight log-merge cycle
-	// may still complete. Assert that dispatches eventually settle to
-	// index-merge only — i.e. the tail after the cutoff contains no log-merge.
-	tail := phases[cutoff:]
-	require.NotEmpty(t, tail)
-	for _, p := range tail[len(tail)-4:] {
-		require.Equal(t, "index-merge", p, "no log-merge after log compaction is disabled")
-	}
+	require.Equal(t, settled, len(phases),
+		"no further dispatches (log-merge or otherwise) after log compaction is disabled on a converged window")
 }
