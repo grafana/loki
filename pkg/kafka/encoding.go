@@ -228,9 +228,11 @@ func NewDecoder() (*Decoder, error) {
 // Returns the decoded logproto.Stream, parsed labels, and any error encountered.
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 	// The stream is reused across calls and Unmarshal appends to repeated fields, so every
-	// repeated field has to be truncated first. Otherwise a record would inherit the entries
-	// and the shared structured metadata pool of the previous one, and the references of its
-	// entries would resolve against a pool holding stale sets. The references themselves live
+	// repeated field is truncated first: otherwise a record would inherit the entries and the
+	// shared structured metadata pool of the previous one, and the references of its entries
+	// would resolve against a pool holding stale sets. This upholds the buffer reuse contract
+	// rather than fixing an observed bug - both production consumers go through
+	// DecodeWithoutLabels, which unmarshals into a fresh stream. The references themselves live
 	// inside the entries, so truncating those takes care of them.
 	d.stream.Entries = d.stream.Entries[:0]
 	d.stream.SharedStructuredMetadataSets = d.stream.SharedStructuredMetadataSets[:0]

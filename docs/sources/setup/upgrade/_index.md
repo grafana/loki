@@ -48,14 +48,13 @@ storage. This reduces write-path byte amplification for OTLP tenants.
 The limit defaults to `false`, and stream grouping is unchanged: entries are still
 grouped by their labels alone.
 
-Before enabling it for a tenant, upgrade every ingester, Kafka consumer, pattern
-ingester, and data object consumer to a version that understands the new
-`sharedStructuredMetadataSets` pool and the per-entry `sharedResourceRef` and
-`sharedScopeRef` fields. Older components ignore those fields and silently drop the
-attributes: the logs are still ingested, but their resource and scope attributes are
-lost. Disabling the limit again is not enough to roll those components back, because
-records already written to Kafka carry the fields; wait out the Kafka retention
-period first.
+Before enabling it for a tenant, upgrade every ingester, Kafka consumer, and data
+object consumer to a version that understands the new `sharedStructuredMetadataSets`
+pool and the per-entry `sharedResourceRef` and `sharedScopeRef` fields. Older
+components ignore those fields and silently drop the attributes: the logs are still
+ingested, but their resource and scope attributes are lost. Disabling the limit
+again is not enough to roll those components back, because records already written
+to Kafka carry the fields; wait out the Kafka retention period first.
 
 ### TSDB schema v14
 

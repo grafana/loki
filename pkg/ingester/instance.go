@@ -347,14 +347,12 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(len(pushReqStream.Entries)))
 	bytes := util.EntriesTotalSize(pushReqStream.Entries)
-	if len(pushReqStream.Entries) > 0 {
-		// The entries of a stream using deferred structured metadata expansion do not carry the
-		// shared structured metadata they reference, which the stream stores once in its pool.
-		// Charge the whole pool once here too, every set of it whether or not an entry
-		// references it, matching the unexpanded accounting the distributor does and the once
-		// per batch charge in stream.validateEntries.
-		bytes += util.SharedSetsSize(pushReqStream.SharedStructuredMetadataSets)
-	}
+	// The entries of a stream using deferred structured metadata expansion do not carry the
+	// shared structured metadata they reference, which the stream stores once in its pool.
+	// Charge the whole pool once here too, every set of it whether or not an entry references
+	// it, matching the unexpanded accounting the distributor does and the once per batch charge
+	// in stream.validateEntries.
+	bytes += util.SharedSetsSize(pushReqStream.SharedStructuredMetadataSets)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy, format).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes), format)

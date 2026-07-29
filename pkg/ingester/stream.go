@@ -439,6 +439,9 @@ func (b *pushBatch) entryTotalSize(i int) int {
 // hash of the effective list, so it is a property of what the entry means and not of how its
 // metadata happened to be carried on the wire: an entry pushed with a pool and the same entry
 // replayed from a WAL record, its metadata already materialized, hash the same.
+//
+// The hash is computed on the spot rather than cached: the callers only ask for it for the
+// handful of entries a push actually compares, not for every entry of the batch.
 func (b *pushBatch) effectiveHash(i int) uint64 {
 	return util.StructuredMetadataHash(b.stored[i].StructuredMetadata)
 }
@@ -473,6 +476,10 @@ func (s *stream) storeEntries(ctx context.Context, batch pushBatch, usageTracker
 	var invalid []entryWithError
 	entries := batch.stored
 	storedEntries := make([]logproto.Entry, 0, len(entries))
+	// s.lastLine is not read again until the next push, so only the last stored entry's values
+	// matter: assigning them once after the loop keeps the hash to one per push instead of one
+	// per entry.
+	lastStored := -1
 	for i := 0; i < len(entries); i++ {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
@@ -495,15 +502,18 @@ func (s *stream) storeEntries(ctx context.Context, batch pushBatch, usageTracker
 		}
 
 		s.entryCt++
-		s.lastLine.ts = entries[i].Timestamp
-		s.lastLine.content = entries[i].Line
-		s.lastLine.effectiveHash = batch.effectiveHash(i)
+		lastStored = i
 		if s.highestTs.Before(entries[i].Timestamp) {
 			s.highestTs = entries[i].Timestamp
 		}
 
 		bytesAdded += len(entries[i].Line)
 		storedEntries = append(storedEntries, entries[i])
+	}
+	if lastStored >= 0 {
+		s.lastLine.ts = entries[lastStored].Timestamp
+		s.lastLine.content = entries[lastStored].Line
+		s.lastLine.effectiveHash = batch.effectiveHash(lastStored)
 	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker, format)
 	return bytesAdded, storedEntries, invalid
@@ -536,6 +546,11 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		highestTs                            = s.highestTs
 		entries                              = batch.stored
 		toStore                              = batch.filter()
+		// The hash of lastLine's structured metadata is only needed when a candidate entry
+		// already matches lastLine's timestamp and line, which is the rare duplicate case, so it
+		// is computed on demand. While lastLineHashIdx is not -1 it names the entry of this batch
+		// lastLine was taken from and lastLine.effectiveHash is stale.
+		lastLineHashIdx = -1
 	)
 
 	// The shared structured metadata is stored once for the whole stream rather than once per
@@ -577,11 +592,16 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		// an entry that is not in fact a duplicate for not having to keep the last line's
 		// structured metadata around, which for a pooled push would pin the sets of the whole
 		// pool it aliases for as long as the stream lives.
-		effectiveHash := batch.effectiveHash(i)
-		if entries[i].Timestamp.Equal(lastLine.ts) &&
-			entries[i].Line == lastLine.content &&
-			effectiveHash == lastLine.effectiveHash {
-			continue
+		// The timestamp and the line are compared first, and the structured metadata only if
+		// they match: it is the expensive term and it decides nothing on its own.
+		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
+			if lastLineHashIdx >= 0 {
+				lastLine.effectiveHash = batch.effectiveHash(lastLineHashIdx)
+				lastLineHashIdx = -1
+			}
+			if batch.effectiveHash(i) == lastLine.effectiveHash {
+				continue
+			}
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
@@ -642,7 +662,7 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
-		lastLine.effectiveHash = effectiveHash
+		lastLineHashIdx = i
 		if highestTs.Before(entries[i].Timestamp) {
 			highestTs = entries[i].Timestamp
 		}

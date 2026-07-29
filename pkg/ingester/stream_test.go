@@ -656,32 +656,60 @@ func Benchmark_PushStream(b *testing.B) {
 		"container", "ingester",
 	)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
-	chunkfmt, headfmt := defaultChunkFormat(b)
-	retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
-	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
-	require.NoError(b, err)
-	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
-	require.NoError(b, err)
+	for _, tc := range []struct {
+		name    string
+		entries []logproto.Entry
+	}{
+		{"no structured metadata", entries(100, time.Now())},
+		// Entries carrying structured metadata cost more to push than bare ones, the
+		// duplicate detection having to tell their metadata apart as well, so they are
+		// benchmarked separately.
+		{"with structured metadata", entriesWithStructuredMetadata(100, time.Now())},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			require.NoError(b, err)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+			chunkfmt, headfmt := defaultChunkFormat(b)
+			retentionHours := util.RetentionHours(limiter.limits.RetentionPeriod("fake"))
+			s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, noPolicy)
+			expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
+			require.NoError(b, err)
+			t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
+			require.NoError(b, err)
 
-	go t.loop()
-	defer t.close()
+			go t.loop()
+			defer t.close()
 
-	s.tailers[1] = t
-	ctx := context.Background()
-	e := entries(100, time.Now())
-	b.ResetTimer()
-	b.ReportAllocs()
+			s.tailers[1] = t
+			ctx := context.Background()
+			b.ResetTimer()
+			b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
-		rec := recordPool.GetRecord()
-		_, err := s.Push(ctx, e, nil, rec, 0, true, false, nil, "loki")
-		require.NoError(b, err)
-		recordPool.PutRecord(rec)
+			for n := 0; n < b.N; n++ {
+				rec := recordPool.GetRecord()
+				_, err := s.Push(ctx, tc.entries, nil, rec, 0, true, false, nil, "loki")
+				require.NoError(b, err)
+				recordPool.PutRecord(rec)
+			}
+		})
 	}
+}
+
+// entriesWithStructuredMetadata is entries, with a handful of structured metadata pairs on every
+// entry, as an OTLP push expanded by the producer has.
+func entriesWithStructuredMetadata(n int, t time.Time) []logproto.Entry {
+	result := entries(n, t)
+	for i := range result {
+		result[i].StructuredMetadata = []logproto.LabelAdapter{
+			{Name: "service_name", Value: "loki-dev/ingester"},
+			{Name: "service_namespace", Value: "loki-dev"},
+			{Name: "k8s_pod_name", Value: fmt.Sprintf("ingester-%d", i)},
+			{Name: "scope_name", Value: "go.opentelemetry.io/otel/sdk/log"},
+			{Name: "trace_id", Value: fmt.Sprintf("%032x", i)},
+		}
+	}
+	return result
 }
 
 func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {

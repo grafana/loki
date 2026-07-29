@@ -423,8 +423,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				// With deferred expansion the resource and scope attributes stay in the stream's
 				// pool and the entry keeps only its own attributes, pointing at the two pooled
 				// sets. The references are built together with the pool they index, so they are
-				// valid by construction; Stream.ValidateSharedRefs is asserted in the tests rather
-				// than paid for on this hot path.
+				// valid by construction and nothing revalidates them: no production path calls
+				// Stream.ValidateSharedRefs, it exists so that tests and debugging can assert a
+				// stream's references resolve against its own pool.
 				if deferStructuredMetadataExpansion {
 					entry.SharedResourceRef = entryStream.ref(resourceAttributesAsStructuredMetadata, resourceAttrsHash)
 					entry.SharedScopeRef = entryStream.ref(scopeAttributesAsStructuredMetadata, scopeAttrsHash)
