@@ -239,8 +239,8 @@ func (s *streamIterator) Next() bool {
 	// remove the first stream
 	s.instances[0].streams = s.instances[0].streams[1:]
 
-	stream.chunkMtx.RLock()
-	defer stream.chunkMtx.RUnlock()
+	stream.chunkMtx.Lock()
+	defer stream.chunkMtx.Unlock()
 
 	if len(stream.chunks) < 1 {
 		// it's possible the stream has been flushed to storage
