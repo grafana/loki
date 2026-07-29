@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"sync"
 
 	"github.com/dennwc/varint"
 	"github.com/pkg/errors"
@@ -21,6 +22,22 @@ var (
 	ErrInvalidSize     = errors.New("invalid size")
 	ErrInvalidChecksum = errors.New("invalid checksum")
 )
+
+// crc32ChunkSize is the chunk size used when streaming a Decbuf's contents
+// through a CRC32 hash. Sized to match Mimir's original choice.
+const crc32ChunkSize = 1024 * 1024
+
+// crc32BufferPool holds reusable scratch buffers for CheckCrc32. Every checked
+// Decbuf open used to allocate a fresh crc32ChunkSize buffer, which showed up
+// as the dominant source of runtime.memclrNoHeapPointers in preprod profiles
+// (~30% of query CPU). Pooling the buffer removes those allocations from the
+// hot path.
+var crc32BufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, crc32ChunkSize)
+		return &b
+	},
+}
 
 // Decbuf provides safe methods to extract data from a big-endian binary data.
 // It is the Prometheus encoding.Decbuf type, but for a generic BufReader rather than []byte.
@@ -47,11 +64,13 @@ func (d *Decbuf) CheckCrc32(castagnoliTable *crc32.Table) {
 
 	hash := crc32.New(castagnoliTable)
 	bytesToRead := d.r.Len() - 4
-	maxChunkSize := 1024 * 1024
-	rawBuf := make([]byte, maxChunkSize)
+
+	bufPtr := crc32BufferPool.Get().(*[]byte)
+	defer crc32BufferPool.Put(bufPtr)
+	rawBuf := *bufPtr
 
 	for bytesToRead > 0 {
-		chunkSize := min(bytesToRead, maxChunkSize)
+		chunkSize := min(bytesToRead, crc32ChunkSize)
 		chunkBuf := rawBuf[0:chunkSize]
 
 		err := d.r.ReadInto(chunkBuf)

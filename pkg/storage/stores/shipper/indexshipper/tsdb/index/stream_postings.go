@@ -10,12 +10,60 @@ package index
 import (
 	"context"
 	"fmt"
+	"math/bits"
 	"sort"
+	"sync"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
+
+// postingsListBufferPool holds reusable []byte buffers for streaming postings
+// lists. Every StreamReader.Postings call used to allocate a fresh
+// 4*N-sized []byte for the postings list, which was the second-largest source
+// of query-time GC pressure after the CRC scratch buffer. Pooling covers the
+// common case where a query drains the iterator to completion; abandoned
+// iterators fall back to normal GC.
+//
+// A single pool holds power-of-two-sized buffers. On Get, if the pooled
+// buffer is too small, we allocate a fresh one sized to the next power of
+// two; on Put, we retain the buffer unless it exceeds
+// maxPooledPostingsListBufferSize to keep pool memory bounded.
+var postingsListBufferPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0)
+		return &b
+	},
+}
+
+// maxPooledPostingsListBufferSize caps the buffer size we retain in the pool.
+// Buffers larger than this are discarded on Put so that a single very-large
+// postings list doesn't cause the pool to hold onto that much memory forever.
+const maxPooledPostingsListBufferSize = 16 << 20 // 16 MiB
+
+func getPostingsListBuffer(n int) *[]byte {
+	p := postingsListBufferPool.Get().(*[]byte)
+	if cap(*p) < n {
+		size := 1
+		if n > 1 {
+			size = 1 << bits.Len(uint(n-1))
+		}
+		*p = make([]byte, n, size)
+		return p
+	}
+	*p = (*p)[:n]
+	return p
+}
+
+func putPostingsListBuffer(p *[]byte) {
+	if p == nil || cap(*p) > maxPooledPostingsListBufferSize {
+		return
+	}
+	*p = (*p)[:0]
+	postingsListBufferPool.Put(p)
+}
 
 // streamPostingOffset is a copy of postingOffset with a slightly different
 // semantic: off is the position within a mimir-style streamenc.Decbuf whose
@@ -151,12 +199,53 @@ func (r *StreamReader) readPostingsList(ctx context.Context, postingsOff uint64)
 	// The refs are stored as N contiguous big-endian uint32s. BigEndianPostings
 	// reads them lazily via binary.BigEndian.Uint32, so we can hand it the raw
 	// bytes as-is — no need to decode each ref individually.
-	list := make([]byte, 4*n)
-	d.ReadInto(list)
+	bufPtr := getPostingsListBuffer(4 * n)
+	d.ReadInto(*bufPtr)
 	if err := d.Err(); err != nil {
+		putPostingsListBuffer(bufPtr)
 		return nil, err
 	}
-	return NewBigEndianPostings(list), nil
+	return newPooledBigEndianPostings(*bufPtr, bufPtr), nil
+}
+
+// pooledBigEndianPostings wraps BigEndianPostings so the backing []byte buffer
+// is returned to postingsListBufferPool once iteration drains (Next or Seek
+// returns false). Callers that abandon the iterator mid-scan lose the pool
+// benefit for that buffer but are otherwise unaffected — GC still reclaims
+// it.
+type pooledBigEndianPostings struct {
+	BigEndianPostings
+	bufPtr *[]byte
+}
+
+func newPooledBigEndianPostings(list []byte, bufPtr *[]byte) *pooledBigEndianPostings {
+	return &pooledBigEndianPostings{
+		BigEndianPostings: BigEndianPostings{list: list},
+		bufPtr:            bufPtr,
+	}
+}
+
+func (p *pooledBigEndianPostings) Next() bool {
+	ok := p.BigEndianPostings.Next()
+	if !ok {
+		p.release()
+	}
+	return ok
+}
+
+func (p *pooledBigEndianPostings) Seek(x storage.SeriesRef) bool {
+	ok := p.BigEndianPostings.Seek(x)
+	if !ok {
+		p.release()
+	}
+	return ok
+}
+
+func (p *pooledBigEndianPostings) release() {
+	if p.bufPtr != nil {
+		putPostingsListBuffer(p.bufPtr)
+		p.bufPtr = nil
+	}
 }
 
 // Postings returns the postings iterator for a name and a set of values.
