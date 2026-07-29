@@ -287,12 +287,34 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 
 }
 
+// batchSeriesReader is the optional interface an IndexReader can implement to
+// process an entire Postings iterator with amortised setup cost. StreamReader
+// satisfies it — a single raw Decbuf is opened once and reused across every
+// ref, avoiding N × (FilePool.Get + FileReader alloc + initial seek). Mmap
+// and buffered readers do not implement it because their per-ref Series call
+// is already zero-syscall (r.b.Range).
+type batchSeriesReader interface {
+	ForPostingsSeries(
+		p index.Postings,
+		fpFilter index.FingerprintFilter,
+		from, through int64,
+		chks *[]index.ChunkMeta,
+		fn func(hash uint64, chks []index.ChunkMeta) (stop bool),
+	) error
+}
+
 // Same as ForSeries, but the callback fn does not take a Labels parameter.
 func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		if br, ok := i.reader.(batchSeriesReader); ok {
+			return br.ForPostingsSeries(p, fpFilter, int64(from), int64(through), &chks, func(hash uint64, chks []index.ChunkMeta) (stop bool) {
+				return fn(model.Fingerprint(hash), chks)
+			})
+		}
+
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), nil, &chks)
 			if err != nil {

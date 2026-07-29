@@ -12,6 +12,7 @@ import (
 	"hash/crc32"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
@@ -30,6 +31,15 @@ func (r *StreamReader) readUvarintSection(ctx context.Context, off int) ([]byte,
 	}
 	defer func() { _ = d.Close() }()
 
+	return r.decodeUvarintSection(&d, off)
+}
+
+// decodeUvarintSection performs the uvarint-length + content + CRC read on
+// an already-open Decbuf. Callers that need to read many sections in a row
+// (e.g. one series record per postings ref) open one Decbuf and reuse it
+// across calls — every ref past the first avoids the FilePool.Get,
+// FileReader allocation, and initial seek that a fresh NewRawDecbuf pays.
+func (r *StreamReader) decodeUvarintSection(d *streamenc.Decbuf, off int) ([]byte, error) {
 	d.ResetAt(off)
 	if err := d.Err(); err != nil {
 		return nil, err
@@ -52,6 +62,56 @@ func (r *StreamReader) readUvarintSection(ctx context.Context, off int) ([]byte,
 		return nil, errors.Wrap(streamenc.ErrInvalidChecksum, "series record")
 	}
 	return content, nil
+}
+
+// ForPostingsSeries iterates p, decoding each series record and invoking fn
+// with the fingerprint and chunk metas. A single raw Decbuf is opened at the
+// start and reused across every ref — Series callers pay one FilePool.Get,
+// one FileReader allocation, and one initial seek amortised across the whole
+// batch, instead of once per ref.
+//
+// fpFilter, if non-nil, drops fingerprints outside the shard boundary before
+// invoking fn (matches the semantics that TSDBIndex.forSeriesNoLabels applies
+// to the per-ref path).
+//
+// chks is a reusable scratch buffer, overwritten on every call. Callers must
+// copy anything they need to retain before fn returns.
+func (r *StreamReader) ForPostingsSeries(
+	p Postings,
+	fpFilter FingerprintFilter,
+	from, through int64,
+	chks *[]ChunkMeta,
+	fn func(hash uint64, chks []ChunkMeta) (stop bool),
+) error {
+	d := r.factory.NewRawDecbuf(context.Background())
+	if err := d.Err(); err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+
+	dec := r.decoder()
+	for p.Next() {
+		id := p.At()
+		offset := id
+		if r.version >= FormatV2 {
+			offset = id * 16
+		}
+		content, err := r.decodeUvarintSection(&d, int(offset))
+		if err != nil {
+			return err
+		}
+		hash, err := dec.Series(r.version, content, id, from, through, nil, chks)
+		if err != nil {
+			return errors.Wrap(err, "read series")
+		}
+		if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
+			continue
+		}
+		if stop := fn(hash, *chks); stop {
+			return p.Err()
+		}
+	}
+	return p.Err()
 }
 
 // Series populates lbls and chks for the given series ref, matching
