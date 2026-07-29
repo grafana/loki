@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -23,35 +25,56 @@ import (
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
 func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) error {
-	stopChan := make(chan os.Signal, 1)
-	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(stopChan)
-
-	return q.tailQuery(delayFor, c, out, stopChan)
-}
-
-func (q *Query) tailQuery(delayFor time.Duration, c client.Client, out output.LogOutput, stopChan <-chan os.Signal) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
 	if err != nil {
 		return err
 	}
 
-	done := make(chan struct{})
-	defer close(done)
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stopChan)
 
+	return q.tailQuery(delayFor, c, out, conn, stopChan)
+}
+
+func (q *Query) tailQuery(
+	delayFor time.Duration,
+	c client.Client,
+	out output.LogOutput,
+	initialConn *websocket.Conn,
+	stopChan <-chan os.Signal,
+) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var conn atomic.Pointer[websocket.Conn]
+	conn.Store(initialConn)
+
+	done := make(chan struct{})
+	var signalWG sync.WaitGroup
+	signalWG.Add(1)
 	go func() {
+		defer signalWG.Done()
+
 		select {
 		case <-stopChan:
 			cancel()
-			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+			currentConn := conn.Load()
+			if err := currentConn.WriteControl(
+				websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+				time.Now().Add(time.Second),
+			); err != nil {
 				log.Println("error closing websocket:", err)
 			}
-			_ = conn.Close()
+			_ = currentConn.Close()
 		case <-done:
 		}
+	}()
+	defer func() {
+		close(done)
+		signalWG.Wait()
+		_ = conn.Load().Close()
 	}()
 
 	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
@@ -72,7 +95,8 @@ func (q *Query) tailQuery(delayFor time.Duration, c client.Client, out output.Lo
 		}
 
 		tailResponse := new(loghttp.TailResponse)
-		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
+		currentConn := conn.Load()
+		err := unmarshal.ReadTailResponseJSON(tailResponse, currentConn)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -86,9 +110,10 @@ func (q *Query) tailQuery(delayFor time.Duration, c client.Client, out output.Lo
 				log.Printf("remote websocket connection closed unexpectedly (%+v). Connecting again.", err)
 
 				// Close previous connection. If it fails to close the connection it should be fine as it is already broken.
-				if err = conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+				if err = currentConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 					log.Printf("error closing websocket: %+v", err)
 				}
+				_ = currentConn.Close()
 
 				// Try to re-establish the connection up to 5 times.
 				bo := backoff.New(ctx, backoff.Config{
@@ -98,8 +123,14 @@ func (q *Query) tailQuery(delayFor time.Duration, c client.Client, out output.Lo
 				})
 
 				for bo.Ongoing() {
-					conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
+					var nextConn *websocket.Conn
+					nextConn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
+						if ctx.Err() != nil {
+							_ = nextConn.Close()
+							return nil
+						}
+						conn.Store(nextConn)
 						break
 					}
 
