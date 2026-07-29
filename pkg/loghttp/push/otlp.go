@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/loghttp/push/otlplabels"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
@@ -151,9 +152,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 	logServiceNameDiscovery := false
 	logPushRequestStreams := false
+	logOTLPAttributeExpansion := false
 	if tenantConfigs != nil {
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+		logOTLPAttributeExpansion = tenantConfigs.LogOTLPAttributeExpansion(userID)
+	}
+
+	var attrAccumulator *otlpattrs.Accumulator
+	if logOTLPAttributeExpansion {
+		attrAccumulator = otlpattrs.NewAccumulator()
+		stats.OTLPAttributes = attrAccumulator
 	}
 
 	// If this is a backfill push (X-Loki-Backfill-Shard header), every stream gets the internal
@@ -167,6 +176,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		res := rls.At(i).Resource()
 		resAttrs := res.Attributes()
 
+		resourceRecords := 0
 		resResult, err := otlplabels.ResourceAttrsToStreamLabels(resAttrs, otlpConfig, discoverServiceName)
 		if err != nil {
 			return nil, err
@@ -257,6 +267,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		for j := 0; j < sls.Len(); j++ {
 			logs := sls.At(j).LogRecords()
 
+			scopeRecords := 0
+
 			// it would be rare to have multiple scopes so if the entries slice is empty, pre-allocate it for the number of log entries
 			if cap(pushRequestsByStream[labelsStr].Entries) == 0 {
 				stream := pushRequestsByStream[labelsStr]
@@ -341,6 +353,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				stream := pushRequestsByStream[entryLabelsStr]
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[entryLabelsStr] = stream
+				scopeRecords++
 
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)
 				entryPolicy := streamResolver.PolicyFor(ctx, entryLbs)
@@ -375,9 +388,19 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				}
 			}
 
+			if attrAccumulator != nil {
+				attrAccumulator.IncRecords(scopeRecords)
+				attrAccumulator.Observe(otlpattrs.KindScope, scopeAttributesAsStructuredMetadata, scopeRecords)
+			}
+			resourceRecords += scopeRecords
+
 			if tracker != nil {
 				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(totalBytesReceived), format)
 			}
+		}
+
+		if attrAccumulator != nil {
+			attrAccumulator.Observe(otlpattrs.KindResource, resourceAttributesAsStructuredMetadata, resourceRecords)
 		}
 	}
 

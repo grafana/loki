@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -188,6 +189,10 @@ type Stats struct {
 	// This is the actual size of data that is being ingested and stored in Loki.
 	// For non-OTLP requests, TotalExpandedEntriesSize should be the same as the total size of LogLinesBytes and StructuredMetadataBytes.
 	TotalExpandedEntriesSize int64
+
+	// OTLPAttributes breaks TotalExpandedEntriesSize down per resource and scope attribute.
+	// Is only populated for OTLP requests when logOTLPAttributeExpansion is true.
+	OTLPAttributes *otlpattrs.Accumulator
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {

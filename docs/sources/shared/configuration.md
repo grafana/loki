@@ -3440,6 +3440,18 @@ write_failures_logging:
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
 
+# Customize the logging of OTLP attribute expansion.
+otlp_attribute_logging:
+  # Number of attribute expansion reports to emit per second, per tenant. Each
+  # report is one summary line plus one line per attribute.
+  # CLI flag: -distributor.otlp-attribute-logging.rate
+  [rate: <float> | default = 1]
+
+  # Maximum number of attributes to log on their own line for a reported
+  # request. The remaining attributes are summarised on a single overflow line.
+  # CLI flag: -distributor.otlp-attribute-logging.max-attributes
+  [max_attributes: <int> | default = 20]
+
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
@@ -5460,6 +5472,12 @@ These are values which allow you to control aspects of Loki's operation, most co
 # Log stream info for duplicate lines received
 # CLI flag: -operation-config.log-duplicate-stream-info
 [log_duplicate_stream_info: <boolean> | default = false]
+
+# Log which OTLP resource and scope attributes are expanded into structured
+# metadata, for a rate limited subset of push requests. Only attribute names and
+# sizes are logged, never values (recommend to enable via runtime config only).
+# CLI flag: -operation-config.log-otlp-attribute-expansion
+[log_otlp_attribute_expansion: <boolean> | default = false]
 
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
