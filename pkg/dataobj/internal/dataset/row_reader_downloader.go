@@ -46,13 +46,16 @@ import (
 //     This excludes any page that is outside of the dataset ranges passed to
 //     [newReaderDownloader] and [rowReaderDownloader.Reset].
 //
-// The rowReaderDownloader targets a configurable batch size, which is the target
-// size of pages to cache in memory at once.
+// The rowReaderDownloader targets a configurable batch size
+// ([RowReaderOptions.TargetCacheSize]), which is the target size of pages to
+// cache in memory at once. When no target is configured, every batch
+// downloads all candidate pages eagerly.
 //
 // Batches of pages to download are built in four steps:
 //
-//  1. Adding every uncached P1 page to the batch, even if this would exceed the
-//     target size.
+//  1. Adding every uncached P1 page to the batch, even if this would exceed
+//     the target size. (During a prefetch there is no pending read, so P1
+//     pages are bounded by the target size like lookahead pages.)
 //
 //  2. Continually add one P2 page across each column. Iteration stops if the
 //     target size would be exceeded by a P2 page.
@@ -96,6 +99,12 @@ type rowReaderDownloader struct {
 
 	readRange rangeset.Range // Current range being read.
 	rangeMask rangeset.Set   // Inverse of dsetRanges: ranges to _exclude_ from download.
+
+	// targetCacheSize is the target maximum bytes of compressed page data to
+	// keep cached at once. Pages overlapping the current read range are
+	// always downloaded regardless of the target; only lookahead pages (and
+	// the initial prefetch batch) are bounded by it. 0 disables the limit.
+	targetCacheSize int
 }
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
@@ -132,7 +141,9 @@ func newRowReaderDownloader(dset Dataset) *rowReaderDownloader {
 	return &rd
 }
 
-// Prefetch will download an initial batch of pages.
+// Prefetch will download an initial batch of pages. When a target cache size
+// is configured, the initial batch is bounded by it; otherwise every page in
+// the dataset ranges is downloaded.
 func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
 	oldReadRange := dl.readRange
 	defer func() { dl.readRange = oldReadRange }()
@@ -290,6 +301,13 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 	// Always add the requestor page to the batch if it's uncached.
 	if requestor != nil && len(requestor.data) == 0 {
 		pageBatch = append(pageBatch, requestor)
+		batchSize += requestor.inner.PageDesc().CompressedSize
+	}
+
+	// exceedsTarget reports whether adding page would push the batch past the
+	// configured target cache size. Always false when no target is set.
+	exceedsTarget := func(page *readerPage) bool {
+		return dl.targetCacheSize > 0 && batchSize+page.inner.PageDesc().CompressedSize > dl.targetCacheSize
 	}
 
 	// If we're not calling buildDownloadBatch due to a page read, we'll assume
@@ -299,8 +317,11 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 		isPrimary = requestor.column.primary
 	}
 
-	// Add uncached P1 pages to the batch. We add all P1 pages, even if it would
-	// exceed the target size.
+	// Add uncached P1 pages to the batch. When serving a page read (requestor
+	// != nil), all P1 pages are added even if the target size is exceeded:
+	// they overlap the current read range and will be needed immediately. For
+	// a prefetch (requestor == nil) there is no pending read, so the initial
+	// batch is bounded by the target size like any other lookahead.
 	for result := range dl.iterP1Pages(ctx, isPrimary) {
 		page, err := result.Value()
 		if err != nil {
@@ -311,7 +332,11 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 			continue // Already added.
 		}
 
+		if requestor == nil && exceedsTarget(page) {
+			return pageBatch, nil
+		}
 		pageBatch = append(pageBatch, page)
+		batchSize += page.inner.PageDesc().CompressedSize
 	}
 
 	// Now we add P2 and P3 pages. We ignore pages that would have us exceed the
@@ -335,7 +360,12 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 			continue // Already added.
 		}
 
+		if exceedsTarget(page) {
+			targetReached = true
+			break
+		}
 		pageBatch = append(pageBatch, page)
+		batchSize += page.inner.PageDesc().CompressedSize
 	}
 	if targetReached {
 		return pageBatch, nil
@@ -351,7 +381,11 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 			continue // Already added.
 		}
 
+		if exceedsTarget(page) {
+			break
+		}
 		pageBatch = append(pageBatch, page)
+		batchSize += page.inner.PageDesc().CompressedSize
 	}
 
 	return pageBatch, nil

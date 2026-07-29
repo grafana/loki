@@ -40,6 +40,35 @@ func Test_RowReader_Open_Prefetch(t *testing.T) {
 	}
 }
 
+// Test_RowReader_Open_Prefetch_TargetCacheSize verifies that a configured
+// target cache size bounds the initial prefetch batch instead of eagerly
+// downloading every page, while reads still return the complete dataset by
+// downloading pages on demand.
+func Test_RowReader_Open_Prefetch_TargetCacheSize(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: true, TargetCacheSize: 1})
+	defer r.Close()
+
+	require.NoError(t, r.Open(t.Context()))
+
+	var cached, total int
+	for _, col := range r.dl.allColumns {
+		rc := col.(*readerColumn)
+		for _, page := range rc.pages {
+			total++
+			if page.data != nil {
+				cached++
+			}
+		}
+	}
+	require.NotEqual(t, 0, total, "expected at least one page")
+	require.Less(t, cached, total, "a tiny target cache size must prevent prefetching every page")
+
+	actualRows, err := readDataset(r, 3)
+	require.NoError(t, err)
+	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
+}
+
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
