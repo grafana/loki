@@ -219,52 +219,6 @@ func Test_Encoding_Entries(t *testing.T) {
 			},
 			version: WALRecordEntriesV3,
 		},
-		{
-			desc: "v4",
-			rec: &Record{
-				entryIndexMap: make(map[uint64]int),
-				UserID:        "123",
-				RefEntries: []RefEntries{
-					{
-						Ref:     456,
-						Counter: 1,
-						SharedStructuredMetadataSets: []logproto.SharedStructuredMetadataSet{
-							{Attrs: logproto.FromLabelsToLabelAdapters(labels.FromStrings("service_name", "checkout", "cluster", "eu-west-2"))},
-							{Attrs: logproto.FromLabelsToLabelAdapters(labels.FromStrings("scope_name", "otelhttp"))},
-						},
-						Entries: []logproto.Entry{
-							{
-								Timestamp:          time.Unix(1000, 0),
-								Line:               "first",
-								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123")),
-								SharedResourceRef:  1,
-								SharedScopeRef:     2,
-							},
-							{
-								// No own structured metadata, and only a resource set.
-								Timestamp:         time.Unix(2000, 0),
-								Line:              "second",
-								SharedResourceRef: 1,
-							},
-						},
-					},
-					{
-						// A stream in the same record that shares nothing: it carries an empty
-						// pool and its entries reference nothing.
-						Ref:     789,
-						Counter: 2,
-						Entries: []logproto.Entry{
-							{
-								Timestamp:          time.Unix(3000, 0),
-								Line:               "third",
-								StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789")),
-							},
-						},
-					},
-				},
-			},
-			version: WALRecordEntriesV4,
-		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			decoded := recordPool.GetRecord()
@@ -278,17 +232,6 @@ func Test_Encoding_Entries(t *testing.T) {
 				for i := range expectedRecords.RefEntries {
 					for j := range expectedRecords.RefEntries[i].Entries {
 						expectedRecords.RefEntries[i].Entries[j].StructuredMetadata = nil
-					}
-				}
-			}
-			// Likewise the shared structured metadata pool and the references into it only
-			// exist from v4 on.
-			if tc.version < WALRecordEntriesV4 {
-				for i := range expectedRecords.RefEntries {
-					expectedRecords.RefEntries[i].SharedStructuredMetadataSets = nil
-					for j := range expectedRecords.RefEntries[i].Entries {
-						expectedRecords.RefEntries[i].Entries[j].SharedResourceRef = 0
-						expectedRecords.RefEntries[i].Entries[j].SharedScopeRef = 0
 					}
 				}
 			}

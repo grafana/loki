@@ -139,7 +139,7 @@ func (w *walWrapper) Log(record *wal.Record) error {
 			*buf = (*buf)[:0]
 		}
 		if len(record.RefEntries) > 0 {
-			*buf = record.EncodeEntries(record.EntriesVersion(), *buf)
+			*buf = record.EncodeEntries(wal.CurrentEntriesRec, *buf)
 			if err := w.wal.Log(*buf); err != nil {
 				return err
 			}

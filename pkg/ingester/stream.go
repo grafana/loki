@@ -321,12 +321,12 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
-		// No pool is written alongside the entries: the shared structured metadata of the push
-		// is already in them, so the record is the very same record a push that shared nothing
-		// produces, in the format every Loki version can read. A replay hands these entries
-		// back untouched and rebuilds the chunk byte for byte, duplicate detection telling the
-		// same entries apart, because they are the entries that were stored.
-		record.AddEntries(uint64(s.fp), s.entryCt, nil, entries...)
+		// The record holds no shared structured metadata of its own: what the push shared is in
+		// these entries already, so this is the very same record a push that shared nothing
+		// produces, in the one format every Loki version reads and writes. A replay hands these
+		// entries back untouched and rebuilds the chunk byte for byte, duplicate detection
+		// telling the same entries apart, because they are the entries that were stored.
+		record.AddEntries(uint64(s.fp), s.entryCt, entries...)
 	} else {
 		// If record is nil, this is a WAL recovery.
 		s.metrics.recoveredEntriesTotal.Add(float64(len(entries)))
