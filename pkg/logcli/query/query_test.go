@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -420,6 +421,41 @@ func TestQueryDoQueryPropagatesClientError(t *testing.T) {
 	err := q.DoQuery(&testQueryClient{queryErr: expectedErr}, nil, false)
 	require.ErrorIs(t, err, expectedErr)
 	require.ErrorContains(t, err, "query failed")
+}
+
+type testParallelQueryClient struct {
+	logcli_client.Client
+	err error
+}
+
+func (c *testParallelQueryClient) QueryRange(
+	_ string,
+	_ int,
+	_, _ time.Time,
+	_ logproto.Direction,
+	_, _ time.Duration,
+	_ bool,
+) (*loghttp.QueryResponse, error) {
+	return nil, c.err
+}
+
+func TestDoQueryParallelReturnsJobErrorBeforeMergeError(t *testing.T) {
+	expectedErr := errors.New("parallel query failed")
+	start := time.Now()
+	q := &Query{
+		Start:              start,
+		End:                start.Add(time.Hour),
+		BatchSize:          100,
+		ParallelDuration:   time.Hour,
+		ParallelMaxWorkers: 1,
+		PartPathPrefix:     filepath.Join(t.TempDir(), "part"),
+		MergeParts:         true,
+	}
+
+	out := output.NewRaw(io.Discard, nil)
+	err := q.DoQueryParallel(&testParallelQueryClient{err: expectedErr}, out, false)
+	require.ErrorIs(t, err, expectedErr)
+	require.NotErrorIs(t, err, os.ErrNotExist)
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {

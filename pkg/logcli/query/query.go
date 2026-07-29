@@ -319,6 +319,10 @@ func (q *Query) mergeJobs(jobs []*parallelJob) error {
 		// wait for the next job to finish
 		<-job.done
 
+		if job.err != nil {
+			return job.err
+		}
+
 		f, err := os.Open(job.q.outputFilename())
 		if err != nil {
 			return fmt.Errorf("open file error: %w", err)
@@ -386,16 +390,16 @@ func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistic
 
 	wg := q.startWorkers(jobs, c, out, statistics)
 
-	if err := q.mergeJobs(jobs); err != nil {
-		return fmt.Errorf("merging part files error: %w", err)
-	}
-
+	mergeErr := q.mergeJobs(jobs)
 	wg.Wait()
 
 	for _, job := range jobs {
 		if job.err != nil {
 			return job.err
 		}
+	}
+	if mergeErr != nil {
+		return fmt.Errorf("merging part files error: %w", mergeErr)
 	}
 	return nil
 }

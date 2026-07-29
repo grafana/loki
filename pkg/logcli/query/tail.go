@@ -23,6 +23,14 @@ import (
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
 func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) error {
+	stopChan := make(chan os.Signal, 1)
+	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(stopChan)
+
+	return q.tailQuery(delayFor, c, out, stopChan)
+}
+
+func (q *Query) tailQuery(delayFor time.Duration, c client.Client, out output.LogOutput, stopChan <-chan os.Signal) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -31,15 +39,19 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 		return err
 	}
 
+	done := make(chan struct{})
+	defer close(done)
+
 	go func() {
-		stopChan := make(chan os.Signal, 1)
-		signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
-		<-stopChan
-		cancel()
-		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-			log.Println("error closing websocket:", err)
+		select {
+		case <-stopChan:
+			cancel()
+			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+				log.Println("error closing websocket:", err)
+			}
+			_ = conn.Close()
+		case <-done:
 		}
-		_ = conn.Close()
 	}()
 
 	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
@@ -62,14 +74,15 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 		tailResponse := new(loghttp.TailResponse)
 		err := unmarshal.ReadTailResponseJSON(tailResponse, conn)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+
 			// Check if the websocket connection closed unexpectedly. If so, retry.
 			// The connection might close unexpectedly if the querier handling the tail request
 			// in Loki stops running. The following error would be printed:
 			// "websocket: close 1006 (abnormal closure): unexpected EOF"
 			if websocket.IsCloseError(err, websocket.CloseAbnormalClosure) {
-				if ctx.Err() != nil {
-					return nil
-				}
 				log.Printf("remote websocket connection closed unexpectedly (%+v). Connecting again.", err)
 
 				// Close previous connection. If it fails to close the connection it should be fine as it is already broken.
