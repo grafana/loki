@@ -201,12 +201,11 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
 		//
-		// The pool is whatever the record carried: a WALRecordEntriesV4 record replays the push
-		// as it happened, entries referencing their shared sets, while an older record carries no
-		// pool because its entries already hold all of their structured metadata. Passing the
-		// decoded pool is correct in both cases, and it is what makes an older record replay
-		// unchanged: it must never be re-expanded.
-		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, entries.SharedStructuredMetadataSets, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
+		// No pool is passed: a record holds entries that carry all of their structured metadata
+		// themselves, whatever the push that produced it looked like, so there is nothing to
+		// resolve and nothing to expand. Handing the entries back as they were recorded is what
+		// makes a replay rebuild the very same chunk. See stream.recordAndSendToTailers.
+		bytesAdded, err := s.(*stream).Push(context.Background(), entries.Entries, nil, nil, entries.Counter, true, false, r.ing.customStreamsTracker, "loki")
 		r.ing.replayController.Add(int64(bytesAdded))
 		if err != nil && err == ErrEntriesExist {
 			r.ing.metrics.duplicateEntriesTotal.Add(float64(len(entries.Entries)))

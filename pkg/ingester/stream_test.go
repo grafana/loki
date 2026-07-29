@@ -353,7 +353,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	tracker := &mockUsageTracker{}
 
-	_, failed := s.validateEntries(context.Background(), entries, nil, 0, false, true, tracker, "loki")
+	_, failed := s.validateEntries(context.Background(), newPushBatch(entries, nil), 0, false, true, tracker, "loki")
 	require.NotEmpty(t, failed)
 	require.False(t, hasRateLimitErr(failed))
 	require.Equal(t, 13.0, tracker.discardedBytes)
