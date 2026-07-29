@@ -6,9 +6,10 @@ Rationale: mmap page faults block goroutines invisibly to the Go runtime — a
 slow disk / cold page can stall the whole gateway. Standard file I/O lets the
 scheduler observe and manage the block.
 
-> **Do not commit this file.** It is a shared scratchpad between Dan and Claude.
-> Dan is responsible for pushing branches and opening PRs. Claude only works
-> locally: creates branches, writes code, and structures commits.
+> Shared scratchpad between Dan and Claude — commit updates as the work
+> evolves. Dan is responsible for pushing branches and opening PRs; Claude
+> creates branches, writes code, and structures commits (including updates
+> to this file).
 
 ---
 
@@ -20,8 +21,7 @@ index-header (PR grafana/mimir#3639) and iterated a lot since; we borrow
 their `Decbuf` encoding layer and port Loki's `Reader` on top of it.
 
 **Working branch**: `dahoppe/nommap-index-gateway` (off `main`). All work
-lives here. Do not push — Dan pushes and opens PRs. Do not commit
-`PLAN-nommap-indexgateway.md`.
+lives here. Do not push — Dan pushes and opens PRs.
 
 **Repository roles**:
 | Concept | Loki path |
@@ -56,14 +56,16 @@ scheme are recorded in Claude's local memory file `preprod_observability.md`
 so `git log <sha>` maps a running pod to a set of shipped proposals.
 
 **Where we are** (see "Current status" section at end for detail):
-- Phase 1 (buffered): shipped, in preprod.
-- Phase 2 Bucket A (streaming, 8 commits): shipped, in preprod. Correctness
-  verified via cross-check tests. First preprod round showed ~2.3-2.7x
-  latency regression from per-byte reads.
-- P2.C0 (`Decbuf.ReadInto` batch, from Bucket C): shipped, awaiting preprod
-  re-measurement.
-- Buckets B/C/D/E: not yet started. Individual proposals are gated on Dan's
-  approval — do not start Bucket B/C/D/E without explicit go-ahead.
+- Phase 1 (buffered): shipped. Not the production path — buffered holds every
+  cached file's bytes on the Go heap and OOMed pods in <preprod-ns> (see
+  2026-07-29 entry).
+- Phase 2 Bucket A (streaming, 8 commits): shipped, verified via cross-check
+  tests. First preprod round showed ~2.3-2.7× latency regression from
+  per-byte reads. Progressively closed by C0, C1, C2, C3, C4 (see below).
+- Bucket C perf tuning: **five commits landed on 2026-07-29** that took
+  GetChunkRef to mmap parity and dropped GetSeries from ~8× to ~2.3× the
+  mmap baseline. Detailed measurements in the 2026-07-29 entry.
+- Buckets B/D/E remain individually gated. Only start on explicit go-ahead.
 
 **Skills**:
 - Interacting with the running cluster / dashboards uses `gcx` — see
@@ -582,3 +584,118 @@ Rough ordering, each should compile and pass tests standalone:
   tail dominates the numbers. Always filter by the appropriate container
   label to separate primary vs shadow views (exact label values recorded
   in the memory file).
+
+- **2026-07-29**: heavy perf iteration day. Started from a buffered-mode
+  OOM report (<preprod-ns>), diagnosed via CPU + goroutine profiling, and
+  landed **five commits** on the branch that closed most of the remaining
+  streaming-vs-mmap gap. Each was built into a custom GEL image and
+  measured in preprod against `<preprod-ns>/index-gateway`.
+
+  Commits (all on `dahoppe/nommap-index-gateway`, off `main`):
+
+  | # | Commit | Change |
+  |---|---|---|
+  | C1 | `1b9dbb75b6` perf(tsdb): pool CRC32 and postings-list scratch buffers | `Decbuf.CheckCrc32` was allocating a fresh 1 MiB scratch per call; `readPostingsList` was allocating a fresh postings-list `[]byte` per call. Both moved to `sync.Pool`, postings-list buffer released when the iterator drains via a `pooledBigEndianPostings` wrapper. |
+  | C2 | `f17424eb09` feat(indexshipper): configurable file-handle pool for streaming reader | Added `StreamingIndexMaxIdleFileHandles` config + `-*.shipper.streaming-index-max-idle-file-handles` flag. Plumbed via `SetStreamingMaxIdleFileHandles` into `NewStreamFileReaderWithOptions`. Default 0 (no pooling); preprod set to 32. |
+  | C3 | `ce00b0eeb0` perf(tsdb): cache file size in FilePoolDecbufFactory | `NewRawDecbuf` was calling `os.File.Stat` on every open — 7.6 % of total CPU. Cached size on the factory (immutable file, safe to memoise). |
+  | C4a | `2bf0b0201d` perf(tsdb): batch series reads through a single Decbuf | Added `StreamReader.ForPostingsSeries` + `batchSeriesReader` interface. `TSDBIndex.forSeriesNoLabels` delegates to it — one raw Decbuf held open across the whole postings iteration instead of open/close per ref. |
+  | C4b | `557525bf5a` perf(tsdb): batch series+labels reads and pool symbols Decbuf | `streamSymbols.LookupInto(d, o)` — reusable-Decbuf variant of Lookup. `StreamReader.ForPostingsSeriesWithLabels` — labels-yielding batch method that opens both series-section and symbols-section Decbufs once, then builds a batch-local Decoder whose lookupSymbol closure targets LookupInto. Wired into `forSeriesAndLabels` (chunk-filter GetChunkRef path). |
+
+  Cumulative profile impact (top-3 slowest exemplars, cum % of profile,
+  before → after each stage):
+
+  | Function | Baseline | +C1 | +C2 | +C3 | +C4a |
+  |---|---:|---:|---:|---:|---:|
+  | `runtime.memclrNoHeapPointers` (flat) | 26.6 % | 1.35 % | 1.31 % | — | — |
+  | `Decbuf.CheckCrc32` | 58.5 % | 2.5 % | — | — | — |
+  | `readPostingsList` | 61.8 % | 15.8 % | 3.5 % | — | — |
+  | `filepool.Get` | — | 29.2 % | 1.75 % | — | — |
+  | `os.File.Stat` | — | 7.6 % | 7.6 % | 0.06 % | — |
+  | `readUvarintSection` | 21.4 % | 21.4 % | 16.6 % | 16.6 % | **3.1 %** |
+  | Total sampled CPU (top-3 exemplar) | 169 s | 34 s | — | 17 s | 17 s |
+
+  Client-observed p99 latency vs the mmap baseline (July 5, 06:00 UTC —
+  same tenant/cluster, well before any nommap work):
+
+  | Operation | mmap baseline | pre-batch streaming | **post-C4a streaming** | vs mmap |
+  |---|---:|---:|---:|---:|
+  | GetChunkRef | 91 ms | 116 ms | 113 ms | **≈ parity (1.24×)** |
+  | GetSeries | 39 ms | 310 ms | 90 ms | 2.3× (down from 8×) |
+  | GetShards | 47 ms | 589 ms | 417 ms | 8.9× (down from 12×) |
+  | GetStats | 83 ms | 162 ms | 162 ms | 1.9× |
+
+  The remaining GetShards gap is *not* Loki-side work — server-side p99 is
+  66 ms (see below); the client-vs-server delta is retries, cancels, and
+  wire time. C4b (labels-yielding batch) targets the residual GetSeries
+  gap; not yet deployed to preprod as of end-of-day.
+
+  **Two production incidents examined:**
+
+  - *<preprod-ns> buffered-mode OOM* (initial trigger for the day):
+    `index_reader_mode: buffered` caused the IG to `os.ReadFile` every
+    locally-cached TSDB into the Go heap, per index file per tenant.
+    Startup died mid-`loadLocalTables` after 91 tables. Confirmed
+    interpretation of the plan doc's Phase 1 tradeoff ("no page eviction —
+    all bytes on heap"). Buffered is not viable for large cached working
+    sets; treat as small-scale-only.
+
+  - *<preprod-ns> `--analyze-labels` incident (~13:33–14:17 UTC)*: user
+    ran `logcli series '{}' --analyze-labels --since=72h` on tenant <tenant-id>.
+    That tenant produces **4.7 GB compressed TSDB blobs per compaction
+    slice**. Each attempted download took ~31 s network + ~60 s gzip
+    decompress = 91 s, but `download_timeout` default is 1 min → every
+    attempt timed out and `syncWithRetry` restarted from byte 0. After
+    ~40 min of retries one attempt got through, but by then two pods had
+    OOMKilled from the streaming reader's on-heap open-time state
+    (postings offset map, symbols, fingerprint offsets, nameSymbols) for
+    the freshly loaded 4.7 GB tenant tables. Recommendations captured in
+    the follow-up sections.
+
+  **GetShards deep-tail investigation** (client p99 417 ms, server p99
+  66 ms, but p99.9 spikes to 55–70 s intermittently):
+  - CPU profile: `boundedShards` is 0.19 % of CPU — not CPU-bound.
+  - Goroutine profile from spike windows: **zero goroutines in any
+    query-serving stack** (boundedShards / forSeriesNoLabels /
+    GetChunkRefs / indexSet / awaitReady). Only bloomshipper +
+    tableManager background workers.
+  - **Block, mutex, and off-CPU profiles are all disabled on the IG**
+    (returning zero samples). Those are exactly the tools that would
+    identify what a stuck goroutine is waiting on. Without them we can't
+    root-cause the p99.9 spikes definitively.
+  - Circumstantial signal: goroutine count doubles (5.4k → 11k) during
+    p99.9 spikes; extra goroutines are gRPC infrastructure (framer,
+    keepalive, loopyWriter). Consistent with a burst of new gRPC
+    connections stressing serialization/dispatch, not with the Loki
+    handler itself being stuck.
+  - Action items: (1) enable block + mutex profile collection on the IG,
+    (2) add explicit tracing spans inside `boundedShards` around
+    `GetChunkRefsWithSizingInfo`, `accumulateChunksToShards`, and
+    `server.Send`. Both would immediately disambiguate what's happening.
+
+  **Config knob defaults deployed to preprod on 2026-07-29:**
+  - `index_reader_mode: streaming`
+  - `streaming_index_max_idle_file_handles: 32`
+
+  **Follow-up work identified but not yet started (in rough priority
+  order):**
+  1. Enable block/mutex/offcpu profiling on IG so we can diagnose the
+     GetShards p99.9 tail properly.
+  2. Add tracing child-spans inside `boundedShards` (currently a single
+     opaque span with no children — a 54 s trace looks like a black box).
+  3. Raise `-shipper.download-timeout` from 1 min. For tenants with
+     multi-GB compacted blobs the current default guarantees repeated
+     failed attempts.
+  4. Resumable downloads in the shipper — every retry currently restarts
+     from byte 0.
+  5. Bound the streaming reader's on-heap open-time state, or at minimum
+     log its size at Open so operators can size pods for their largest
+     tenants.
+  6. Extend `readUvarintSection` content-buffer pooling (same pattern as
+     postings-list buffer pool).
+  7. Bump `readerBufferSize` in `streamenc/file_reader.go` from 4 KiB to
+     something larger (e.g. 16 KiB) so most series records fit one refill.
+
+  **Sanity check against mmap baseline**: the streaming reader is now
+  production-viable for the dominant workload (GetChunkRef at parity).
+  Remaining gap is concentrated in GetSeries/GetShards on very large
+  tenants — expected to close further with C4b once it deploys.
