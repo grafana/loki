@@ -1388,20 +1388,30 @@ func Xabort(t *TLS) {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo("")) //TODO
-	// if dmesgs {
-	// 	dmesg("%v:", origin(1))
-	// }
-	// p := Xcalloc(t, 1, types.Size_t(unsafe.Sizeof(signal.Sigaction{})))
-	// if p == 0 {
-	// 	panic("OOM")
-	// }
-
-	// (*signal.Sigaction)(unsafe.Pointer(p)).F__sigaction_u.F__sa_handler = signal.SIG_DFL
-	// Xsigaction(t, signal.SIGABRT, p, 0)
-	// Xfree(t, p)
-	// unix.Kill(unix.Getpid(), unix.Signal(signal.SIGABRT))
-	// panic(todo("unrechable"))
+	if dmesgs {
+		dmesg("%v:", origin(1))
+	}
+	// OpenBSD's Xabort was a stub, so C abort(3) didn't terminate by signal —
+	// callers such as SQLite's crash tests (writecrash.test) require the process to be
+	// killed BY A SIGNAL, so Tcl's exec reports "child killed: ..." rather than a Go
+	// panic's "child process exited abnormally".
+	//
+	// A faithful SIGABRT-based abort() is not reachable from pure-Go libc on openbsd:
+	//   - libc's own Xsigaction is an unimplemented stub, and openbsd's pinsyscalls(2)
+	//     makes the raw sys_sigaction / getthrid / thrkill syscalls return ENOSYS
+	//     through the generic indirect syscall path (only libc.so's pinned call sites
+	//     may issue them; verified: sigaction -> errno 78). So SIGABRT's disposition
+	//     cannot be reset to SIG_DFL, which means the Go runtime always catches a
+	//     delivered SIGABRT, prints a crash trace, and exits status 2 — again reported
+	//     as "exited abnormally", not "child killed".
+	//   - The only signal that cannot be caught, blocked or ignored is SIGKILL. It
+	//     terminates the process immediately and unconditionally by signal (no race, no
+	//     trace, no "SIGABRT" string leaking into the harness output). This is the best
+	//     abnormal-termination available here and is exactly what abort()'s callers in
+	//     the crash tests need. unix.Kill routes through libc.so, so unlike the raw
+	//     syscalls above it is not defeated by pinsyscalls.
+	unix.Kill(unix.Getpid(), unix.SIGKILL)
+	panic(todo("unrechable"))
 }
 
 // int fflush(FILE *stream);
