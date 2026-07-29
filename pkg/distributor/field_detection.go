@@ -157,6 +157,16 @@ func (l *FieldDetector) extractGenericField(name string, hints []string, labels 
 	// The field may already be carried by one of the shared sets the entry references, in which
 	// case appending it to the entry would duplicate it once the shared metadata is merged back
 	// in.
+	//
+	// Accepted residual: the expanded path has no equivalent guard. There the shared attributes are
+	// already part of the entry's own structured metadata by the time detection runs, so a detected
+	// value is appended as a second pair of that name and wins the read path's last-wins
+	// resolution. Here the resource or scope value wins instead. Matching the expanded path exactly
+	// would mean appending detected fields after the shared parts, which is only possible once the
+	// parts have been merged - that is, per entry at materialization time, which is the cost
+	// deferring the expansion exists to avoid. The divergent case (a field name carried by a
+	// resource attribute, with none of its hints present) is pinned by
+	// TestDistributor_DeferredExpansionGenericFieldResidual.
 	if resourceMetadata.Has(name) || scopeMetadata.Has(name) {
 		return logproto.LabelAdapter{}, false
 	}

@@ -1485,28 +1485,71 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	}
 }
 
-// sanitizeSharedStructuredMetadata normalizes the names and scrubs invalid UTF-8 out of the
-// values of every set of a stream's shared structured metadata pool.
+// sanitizeSharedStructuredMetadata normalizes the names, scrubs invalid UTF-8 out of the values
+// and drops the empty valued pairs of every set of a stream's shared structured metadata pool.
 //
-// This is the same sanitization the per-entry structured metadata goes through, but it only needs
-// to run once per pooled set instead of once per entry, since every entry referencing a set sees
-// the same values. The OTLP push path normalizes the names of resource and scope attributes when
-// it pools them, but not their values, so without this the values would reach storage unscrubbed.
-// The names are normalized here too, for defense in depth against producers other than the OTLP
-// path.
+// This is the same sanitization the per-entry structured metadata goes through a few lines below,
+// but it only needs to run once per pooled set instead of once per entry, since every entry
+// referencing a set sees the same values. The OTLP push path normalizes the names of resource and
+// scope attributes when it pools them, but not their values, so without this the values would
+// reach storage unscrubbed. The names are normalized here too, for defense in depth against
+// producers other than the OTLP path.
+//
+// The per-entry path expresses all three of those through one labels.Builder round-trip:
+// labels.NewBuilder registers every empty valued name of its base in the builder's delete list, so
+// Labels() drops those pairs. This mirrors that per set, which is why an empty valued pair only
+// has to force the rebuild below rather than be filtered by hand.
 //
 // Sanitizing is copy-on-write: a set that needs no change is left exactly as it was, and a set
-// that does is replaced by a freshly allocated slice rather than rewritten in place.
+// that does is replaced by a freshly allocated slice rather than rewritten in place. A rebuilt set
+// can be shorter than the original, and can even come out empty; a reference to an emptied set
+// resolves to no attributes at all, the same as the "none" reference (see Stream.SharedFor).
 //
 // Mutating the attrs array would not be safe. Pool backing arrays are shared between streams: the
 // OTLP handler pools one resource's attributes into every stream its entries were split across
 // (see the promoted label path in otlpToLokiPushRequest), all aliasing one array. Normalization
-// can also collapse two names onto one, so an in-place rewrite would leave the aliasing stream a
-// set whose length still counts a now-zeroed tail, and sanitizing that stream would then reject
-// the whole push on an empty label name. Only the per stream slice of sets is stream-local, which
-// is why replacing the element is safe while writing through it is not.
+// can also collapse two names onto one, and dropping an empty valued pair shrinks the set outright,
+// so an in-place rewrite would leave the aliasing stream a set whose length still counts a
+// now-zeroed tail, and sanitizing that stream would then reject the whole push on an empty label
+// name. Only the per stream slice of sets is stream-local, which is why replacing the element is
+// safe while writing through it is not.
 //
 // Sets keep their position in the pool, so the references carried by the entries stay valid.
+//
+// # Residual differences from the expanded path
+//
+// Each set is sanitized on its own and the parts are concatenated at materialization (own,
+// resource, scope; see push.EffectiveStructuredMetadata), where the expanded path hands the whole
+// merged list to a single per-entry builder. Three consequences are accepted rather than fixed:
+// removing them would mean reproducing that per-entry builder round-trip at materialization time,
+// which is the per-entry cost deferring the expansion exists to avoid. All three have a case in
+// TestDistributor_DeferredExpansionParity asserting the outcome each mode actually produces.
+//
+//  1. Order. logproto.FromLabelAdaptersToLabels sorts, so the expanded path stores every entry's
+//     structured metadata sorted by name, while the deferred path stores the entry's own sorted
+//     attributes followed by the resource set and then the scope set, each sorted only if it was
+//     rebuilt here. The pairs are the same and their relative order within a name is the same, so
+//     the read path's last-wins resolution of a duplicated name is unaffected; only the physical
+//     order on disk differs.
+//
+//  2. Pair count, when a pooled name has to be normalized. The per-entry builder deletes every
+//     pair carrying a name it rewrites, across all three parts at once, so an entry that carries
+//     host_name itself alongside a host.name shared attribute would keep only the normalized
+//     shared pair, where normalizing the set alone leaves the entry both. This one is theoretical
+//     as things stand: the only producer of pools is the OTLP handler, and it normalizes attribute
+//     names before pooling them with the same normalizer used here, so there is nothing left to
+//     rewrite by the time a set gets here. It would take a producer whose names this normalizer
+//     still rewrites - which is what the name normalization above is defense in depth against - to
+//     make it observable. TestDistributor_DeferredExpansionParity pins the OTLP outcome, where the
+//     two modes agree.
+//
+//  3. Pair count, when a shared value is empty. The delete list of the per-entry builder is keyed
+//     by name and applies to the merged list, so own foo=bar next to a resource foo="" loses both
+//     pairs on the expanded path. Here only the resource pair goes and foo=bar is stored.
+//
+// The metric semantics shift with the accounting: tenantPushSanitizedStructuredMetadata counts one
+// sanitization per offending pooled set per push, where for expanded traffic it counts one per
+// offending pair per entry. Dropping an empty valued pair is not counted by either path.
 func (d *Distributor) sanitizeSharedStructuredMetadata(stream *logproto.Stream, labelNamer otlptranslator.LabelNamer, tenantID, format string) error {
 	for i := range stream.SharedStructuredMetadataSets {
 		attrs := stream.SharedStructuredMetadataSets[i].Attrs
@@ -1516,7 +1559,7 @@ func (d *Distributor) sanitizeSharedStructuredMetadata(stream *logproto.Stream, 
 
 		normalizedBuilder := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(attrs))
 
-		sanitized := false
+		rebuild := false
 		for _, lbl := range attrs {
 			normalized, err := labelNamer.Build(lbl.Name)
 			if err != nil {
@@ -1527,17 +1570,23 @@ func (d *Distributor) sanitizeSharedStructuredMetadata(stream *logproto.Stream, 
 				normalizedBuilder.Del(lbl.Name)
 				normalizedBuilder.Set(normalized, lbl.Value)
 
-				sanitized = true
+				rebuild = true
 				d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
 			}
 			if strings.ContainsRune(lbl.Value, utf8.RuneError) {
 				normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
-				sanitized = true
+				rebuild = true
 				d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+			}
+			if lbl.Value == "" {
+				// Already in the builder's delete list, courtesy of NewBuilder, so the rebuild
+				// alone drops it. Not counted as a sanitization: the per-entry path drops empty
+				// valued pairs just as silently.
+				rebuild = true
 			}
 		}
 
-		if !sanitized {
+		if !rebuild {
 			// Nothing changed, so keep the original set rather than rebuilding (and re-sorting) it.
 			continue
 		}

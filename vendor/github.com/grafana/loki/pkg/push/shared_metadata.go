@@ -7,18 +7,28 @@ import "fmt"
 // attributes first, then the resource attributes, then the scope attributes. Resolve resource
 // and scope for an entry with Stream.SharedFor.
 //
-// That is exactly the order the OTLP push path appends in when it expands resource and scope
-// attributes onto every entry itself, so materializing the pool here produces the very same
-// list of pairs, in the very same order, as an entry whose stream was ingested with expansion
-// enabled. Byte identical, duplicate names included.
+// That is the order the OTLP push path appends in when it expands resource and scope
+// attributes onto every entry itself, so the pairs, duplicate names included, are the ones an
+// entry whose stream was ingested with expansion enabled carries.
 //
-// Duplicate names therefore keep resolving the way they do today, warts and all: the read path
-// collapses repeated names down to the last pair, and since the shared attributes come after
-// the entry's own ones a name carried by both resolves to the shared value - as long as the
-// sort the pairs go through on the way is stable, which it is up to 12 pairs and is not beyond
-// that. Preserving that is deliberate. Giving the entry's own attributes precedence, which is
-// what OpenTelemetry prescribes and what a deterministic order would let us do, is a behavior
-// change on its own and is deferred to follow-up work rather than smuggled in here.
+// Their order is not. The distributor round-trips every entry's structured metadata through
+// logproto.FromLabelAdaptersToLabels, which sorts, so with expansion enabled the resource and
+// scope pairs are sorted in among the entry's own ones, where here the three parts are simply
+// concatenated. What survives is what the pairs mean: the read path collapses repeated names
+// down to the last pair, and because the shared attributes still come after the entry's own
+// ones, a name carried by both still resolves to the shared value. Duplicate names therefore
+// keep resolving the way they do today, warts and all.
+//
+// The pairs themselves can differ too, in the corners where the expanded path's per-entry
+// labels.Builder round-trip does something across the merged list that sanitizing each part on
+// its own cannot: an empty valued shared attribute takes the entry's own pair of that name with
+// it, and a shared name that still needs normalizing would take it as well. Both residuals, and
+// the reasoning for accepting them, are documented next to
+// Distributor.sanitizeSharedStructuredMetadata in pkg/distributor/distributor.go, and pinned by
+// TestDistributor_DeferredExpansionParity.
+//
+// Giving the entry's own attributes precedence, which is what OpenTelemetry prescribes, is a
+// behavior change on its own and is deferred to follow-up work rather than smuggled in here.
 //
 // The entry is never modified. Appending the shared labels to Entry.StructuredMetadata in
 // place is not safe: entries are handed to the WAL, replication and tailer paths that read
@@ -59,8 +69,9 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 // A reference that points past the end of the stream's pool is treated as "no set". That can
 // only happen if the producer built the stream wrong, and silently dropping the shared
 // metadata of one entry is a better outcome on the ingest path than failing a whole push, so
-// the read helpers never error. Consumers that want to catch such a producer bug should call
-// ValidateSharedRefs once, when they receive the stream, instead of checking per entry.
+// the read helpers never error. No production path checks for such a producer bug at all;
+// ValidateSharedRefs exists so that tests and debugging can assert a stream's references
+// resolve against its own pool.
 //
 // The returned lists alias the stream's pool and must be treated as read-only: every entry
 // referencing the same set gets the same backing array.
@@ -82,8 +93,8 @@ func (s *Stream) sharedSet(ref uint32) LabelsAdapter {
 // dependent, so a stream whose entries were built against a different pool, or whose pool was
 // dropped along the way, is only detectable here.
 //
-// It is meant to be called once per stream by consumers that would rather reject a malformed
-// stream than silently ingest entries missing their shared metadata; SharedFor itself stays
+// It sits on no ingest path today: it is a test and debugging helper, called once per stream to
+// assert that a stream nobody has malformed really is well formed. SharedFor itself stays
 // non-failing. See SharedFor.
 func (s *Stream) ValidateSharedRefs() error {
 	sets := uint64(len(s.SharedStructuredMetadataSets))
