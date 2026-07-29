@@ -5475,7 +5475,7 @@ These are values which allow you to control aspects of Loki's operation, most co
 
 # Log which OTLP resource and scope attributes are expanded into structured
 # metadata, for a rate limited subset of push requests. Only attribute names and
-# sizes are logged, never values (recommend to enable via runtime config only).
+# sizes are logged, never values.
 # CLI flag: -operation-config.log-otlp-attribute-expansion
 [log_otlp_attribute_expansion: <boolean> | default = false]
 
