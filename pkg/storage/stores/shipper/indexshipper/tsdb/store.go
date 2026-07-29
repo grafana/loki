@@ -60,6 +60,7 @@ func NewStore(
 	// shortcut — see SetIndexReaderMode in single_file_index.go and P2.E1
 	// in the nommap plan for the follow-up refactor.
 	SetIndexReaderMode(string(indexShipperCfg.IndexReaderMode))
+	SetStreamingMaxIdleFileHandles(indexShipperCfg.StreamingIndexMaxIdleFileHandles)
 
 	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
 		return nil, nil, err

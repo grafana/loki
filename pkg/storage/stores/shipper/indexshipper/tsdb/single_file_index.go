@@ -36,6 +36,11 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // treated as "mmap".
 var indexReaderMode atomic.Value // holds string
 
+// streamingMaxIdleFileHandles is the per-file file-handle pool cap used by
+// the streaming reader. Stored process-wide alongside indexReaderMode; see
+// StreamReaderOptions.MaxIdleFileHandles for semantics.
+var streamingMaxIdleFileHandles atomic.Uint64
+
 // SetIndexReaderMode configures the strategy subsequent calls to
 // NewTSDBIndexFromFile use to open TSDB index files.
 func SetIndexReaderMode(mode string) {
@@ -53,6 +58,18 @@ func GetIndexReaderMode() string {
 		return "mmap"
 	}
 	return v
+}
+
+// SetStreamingMaxIdleFileHandles configures the file-handle pool cap for
+// streaming-mode readers created by subsequent NewTSDBIndexFromFile calls.
+// A value of 0 disables pooling.
+func SetStreamingMaxIdleFileHandles(n uint) {
+	streamingMaxIdleFileHandles.Store(uint64(n))
+}
+
+// GetStreamingMaxIdleFileHandles reports the current cap.
+func GetStreamingMaxIdleFileHandles() uint {
+	return uint(streamingMaxIdleFileHandles.Load())
 }
 
 // SetDisableIndexMmap is a deprecated alias for SetIndexReaderMode. Retained
@@ -189,7 +206,9 @@ func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, er
 	)
 	switch GetIndexReaderMode() {
 	case "streaming":
-		reader, err = index.NewStreamFileReader(location)
+		reader, err = index.NewStreamFileReaderWithOptions(location, index.StreamReaderOptions{
+			MaxIdleFileHandles: GetStreamingMaxIdleFileHandles(),
+		})
 	case "buffered":
 		reader, err = index.NewBufferedFileReader(location)
 	default: // "mmap" or unset

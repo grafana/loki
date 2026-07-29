@@ -103,6 +103,13 @@ type Config struct {
 	// If set alongside IndexReaderMode, IndexReaderMode wins. Remove once
 	// downstream configs have migrated.
 	DisableIndexMmap bool `yaml:"disable_index_mmap"`
+	// StreamingIndexMaxIdleFileHandles caps the number of *os.File handles
+	// each streaming-mode index reader keeps pooled. Only meaningful when
+	// IndexReaderMode="streaming". Zero (the default) means no pooling —
+	// every read pays for a fresh os.Open + close, which dominates CPU on
+	// query-heavy gateways. A small positive value (e.g. 8–32) amortises
+	// the syscall cost across concurrent readers of the same file.
+	StreamingIndexMaxIdleFileHandles uint `yaml:"streaming_index_max_idle_file_handles"`
 
 	// Temporary experimental feature
 	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
@@ -130,6 +137,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
 	f.BoolVar(&cfg.DisableIndexMmap, prefix+"shipper.disable-index-mmap", false, "Deprecated alias for -"+prefix+"shipper.index-reader-mode=buffered. Prefer setting index-reader-mode directly.")
 	f.Var((*indexReaderModeValue)(&cfg.IndexReaderMode), prefix+"shipper.index-reader-mode", "Experimental: how the index-gateway opens on-disk TSDB index files. One of: mmap (default), buffered (os.ReadFile), streaming (file-backed on-demand reads). The non-mmap modes avoid invisible goroutine stalls from page faults; buffered uses more heap, streaming uses more syscalls.")
+	f.UintVar(&cfg.StreamingIndexMaxIdleFileHandles, prefix+"shipper.streaming-index-max-idle-file-handles", 0, "Experimental: only meaningful with -"+prefix+"shipper.index-reader-mode=streaming. Maximum number of file handles each streaming index reader keeps pooled per index file. 0 disables pooling (every read opens + closes a fresh handle). A small positive value amortises the open syscall across concurrent readers.")
 }
 
 // indexReaderModeValue wraps IndexReaderMode so it can be used with flag.Var.
