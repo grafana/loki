@@ -23,6 +23,61 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
+type contextTailClient interface {
+	LiveTailQueryConnContext(
+		ctx context.Context,
+		queryStr string,
+		delayFor time.Duration,
+		limit int,
+		start time.Time,
+		quiet bool,
+	) (*websocket.Conn, error)
+}
+
+type tailConnectionResult struct {
+	conn *websocket.Conn
+	err  error
+}
+
+func liveTailQueryConn(
+	ctx context.Context,
+	c client.Client,
+	queryString string,
+	delayFor time.Duration,
+	limit int,
+	start time.Time,
+	quiet bool,
+) (*websocket.Conn, error) {
+	if contextClient, ok := c.(contextTailClient); ok {
+		return contextClient.LiveTailQueryConnContext(ctx, queryString, delayFor, limit, start, quiet)
+	}
+
+	resultChan := make(chan tailConnectionResult)
+	go func() {
+		conn, err := c.LiveTailQueryConn(queryString, delayFor, limit, start, quiet)
+		select {
+		case resultChan <- tailConnectionResult{conn: conn, err: err}:
+		case <-ctx.Done():
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-resultChan:
+		if ctx.Err() != nil {
+			if result.conn != nil {
+				_ = result.conn.Close()
+			}
+			return nil, ctx.Err()
+		}
+		return result.conn, result.err
+	}
+}
+
 // TailQuery connects to the Loki websocket endpoint and tails logs
 func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) error {
 	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
@@ -124,7 +179,7 @@ func (q *Query) tailQuery(
 
 				for bo.Ongoing() {
 					var nextConn *websocket.Conn
-					nextConn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
+					nextConn, err = liveTailQueryConn(ctx, c, q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
 						if ctx.Err() != nil {
 							_ = nextConn.Close()

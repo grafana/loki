@@ -1,11 +1,15 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_buildURL(t *testing.T) {
@@ -30,6 +34,37 @@ func Test_buildURL(t *testing.T) {
 				t.Errorf("buildURL() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLiveTailQueryConnContextCancellation(t *testing.T) {
+	requestStarted := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	c := &DefaultClient{Address: server.URL}
+	ctx, cancel := context.WithCancel(context.Background())
+	errChan := make(chan error, 1)
+	go func() {
+		_, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
+		errChan <- err
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tail connection request did not start")
+	}
+	cancel()
+
+	select {
+	case err := <-errChan:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("tail connection did not return after cancellation")
 	}
 }
 

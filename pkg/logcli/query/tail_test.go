@@ -1,11 +1,13 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,7 +21,9 @@ import (
 
 type testTailClient struct {
 	client.Client
-	conn *websocket.Conn
+	conn             *websocket.Conn
+	reconnectStarted chan struct{}
+	reconnectOnce    sync.Once
 }
 
 func (c *testTailClient) LiveTailQueryConn(
@@ -30,6 +34,25 @@ func (c *testTailClient) LiveTailQueryConn(
 	_ bool,
 ) (*websocket.Conn, error) {
 	return c.conn, nil
+}
+
+func (c *testTailClient) LiveTailQueryConnContext(
+	ctx context.Context,
+	_ string,
+	_ time.Duration,
+	_ int,
+	_ time.Time,
+	_ bool,
+) (*websocket.Conn, error) {
+	if c.reconnectStarted == nil {
+		return c.conn, nil
+	}
+
+	c.reconnectOnce.Do(func() {
+		close(c.reconnectStarted)
+	})
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestTailQueryReturnsNilWhenCanceled(t *testing.T) {
@@ -69,6 +92,56 @@ func TestTailQueryReturnsNilWhenCanceled(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("TailQuery did not return after cancellation")
+	}
+}
+
+func TestTailQueryReturnsWhenCanceledDuringReconnect(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = conn.UnderlyingConn().Close()
+	}))
+	t.Cleanup(server.Close)
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
+
+	reconnectStarted := make(chan struct{})
+	stopChan := make(chan os.Signal, 1)
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- (&Query{}).tailQuery(
+			0,
+			&testTailClient{
+				conn:             conn,
+				reconnectStarted: reconnectStarted,
+			},
+			nil,
+			conn,
+			stopChan,
+		)
+	}()
+
+	select {
+	case <-reconnectStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("TailQuery did not start reconnecting")
+	}
+
+	stopChan <- os.Interrupt
+
+	select {
+	case err := <-errChan:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("TailQuery did not return after cancellation during reconnect")
 	}
 }
 
