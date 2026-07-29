@@ -110,8 +110,12 @@ func parityPush(t *testing.T, limits *validation.Limits, body []byte) []push.Lab
 	_, err = d.PushWithResolver(ctx, pushReq, resolver, constants.OTLP)
 	require.NoError(t, err)
 
+	// The replica pushes run on their own goroutines and PushWithResolver returns on a quorum, so
+	// what an ingester recorded is only safe to read under its lock.
 	for i := range ingesters {
 		var out []push.LabelsAdapter
+
+		ingesters[i].mu.Lock()
 		for _, pushed := range ingesters[i].pushed {
 			for j := range pushed.Streams {
 				stream := pushed.Streams[j]
@@ -121,6 +125,8 @@ func parityPush(t *testing.T, limits *validation.Limits, body []byte) []push.Lab
 				}
 			}
 		}
+		ingesters[i].mu.Unlock()
+
 		if len(out) > 0 {
 			return out
 		}

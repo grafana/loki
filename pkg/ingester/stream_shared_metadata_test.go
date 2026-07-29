@@ -572,9 +572,18 @@ func TestStreamPushSharedStructuredMetadataDuplicates(t *testing.T) {
 	})
 }
 
-// TestStreamPushSharedStructuredMetadataRateAccounting pins the once per batch charge: the pool
-// is stored once per stream, so it is charged once per push, every set of it whether or not an
-// entry references it, keeping the ingester consistent with how the distributor meters.
+// TestStreamPushSharedStructuredMetadataRateAccounting pins the two units a push is measured in,
+// and the fact that they deliberately differ.
+//
+// The per-stream rate LIMITER is tenant-facing and unexpanded: the pool is stored once per stream,
+// so it is charged once per push, every set of it whether or not an entry references it, keeping
+// the ingester consistent with how the distributor meters. That is the subtests below.
+//
+// The stream rate CALCULATOR is not tenant-facing - it feeds the rate store the distributor reads
+// to size stream sharding - and is expanded-equivalent: every entry is charged for the sets it
+// references, so a pooled push records exactly what the same payload would have recorded with
+// otlp_defer_structured_metadata_expansion off. That is the table below, which asserts both the
+// arithmetic and the flag-on/flag-off equality directly.
 func TestStreamPushSharedStructuredMetadataRateAccounting(t *testing.T) {
 	resource := sm("service_name", "checkout", "cluster", "eu-west-2")
 	scope := sm("scope_name", "otelhttp")
@@ -653,10 +662,19 @@ func TestStreamPushSharedStructuredMetadataRateAccounting(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// The whole pool once, plus each entry unexpanded. Notably independent of which
-			// sets the entries actually reference.
-			want := entriesSize(tc.entries) + int64(util.SharedSetsSize(tc.sets))
-			require.Equal(t, want, recordedRate(t, tc.entries, tc.sets))
+			// Each entry charged for the sets it references, and the pool never charged on its
+			// own: a set no entry references costs nothing. Notably this depends on which sets
+			// the entries reference, which is the whole difference from the unexpanded unit.
+			expanded := expandedEntries(tc.entries, tc.sets)
+			want := entriesSize(expanded)
+			require.Equal(t, want, recordedRate(t, slices.Clone(tc.entries), tc.sets),
+				"the rate calculator must record the expanded-equivalent size")
+
+			// And the point of that unit: the very same payload with the expansion already done
+			// by the producer, carrying no pool at all, records the same rate. Sharding is sized
+			// off this number, so a stream must shard the same way either way.
+			require.Equal(t, want, recordedRate(t, slices.Clone(expanded), nil),
+				"a pooled push and the equivalent expanded push must record the same rate")
 		})
 	}
 

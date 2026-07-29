@@ -427,11 +427,23 @@ func (b *pushBatch) len() int {
 }
 
 // entryTotalSize is the size the i-th entry is accounted for: its line and its own structured
-// metadata, the shared sets being charged once for the whole batch instead.
+// metadata, the shared sets being charged once for the whole batch instead. This is the
+// unexpanded, tenant-facing unit, used by the per-stream rate limiter and by the discard metrics.
 func (b *pushBatch) entryTotalSize(i int) int {
 	if b.pushed != nil {
 		return util.EntryTotalSize(&b.pushed[i])
 	}
+	return util.EntryTotalSize(&b.stored[i])
+}
+
+// storedEntryTotalSize is the size of the i-th entry as it is actually stored, that is with the
+// shared structured metadata it references materialized into it. It is the expanded-equivalent
+// unit: the same number the very same payload would have produced with
+// otlp_defer_structured_metadata_expansion off.
+//
+// For a batch that shares nothing, stored is the pushed batch itself, so this and entryTotalSize
+// are the same number by construction.
+func (b *pushBatch) storedEntryTotalSize(i int) int {
 	return util.EntryTotalSize(&b.stored[i])
 }
 
@@ -539,7 +551,7 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
-		validBytes, totalBytes               int
+		validBytes                           int
 		failedEntriesWithError               []entryWithError
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
@@ -561,14 +573,33 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	//
 	// The rule, applied in exactly one place below: the shared bytes are folded into the
 	// first entry that is *accepted*, at the same point that entry's own bytes accrue to
-	// validBytes, so the rate limiter and the stream rate calculator advance by them exactly
-	// once. An entry that is dropped never carries them, they stay pending for the next one.
-	// If nothing is accepted they are attributed once to the discard bucket of the first
-	// non-duplicate entry, so that a batch is never charged twice nor silently uncharged. A
-	// batch whose entries are all duplicates is charged nothing.
+	// validBytes, so the rate limiter advances by them exactly once. An entry that is dropped
+	// never carries them, they stay pending for the next one. If nothing is accepted they are
+	// attributed once to the discard bucket of the first non-duplicate entry, so that a batch is
+	// never charged twice nor silently uncharged. A batch whose entries are all duplicates is
+	// charged nothing.
 	unchargedShared := sharedSize
 	// Discard bucket the pending shared bytes fall back to when no entry is accepted.
 	firstDiscard := discardNone
+
+	// streamRateBytes is what gets recorded to the stream rate calculator, and is the one number
+	// in this function that is EXPANDED-EQUIVALENT rather than unexpanded: every entry is charged
+	// for the shared sets it references, i.e. for the entry as it is actually stored, so the
+	// number equals what the same payload would have produced with
+	// otlp_defer_structured_metadata_expansion off.
+	//
+	// It differs from the per-stream rate limiter charge above ON PURPOSE - this is not a bug.
+	// The rate limiter is tenant-facing and stays unexpanded; the rate calculator is not: it
+	// feeds the rate store the distributor reads to decide how many shards a stream gets
+	// (Distributor.shardCountFor computes rate + pushSize). The distributor now measures pushSize
+	// in expanded-equivalent bytes, so the rate term has to be in the same unit or the shard
+	// arithmetic adds two different units together. See the split documented in
+	// Distributor.PushWithResolver, which also names the follow-up that flips both back.
+	//
+	// For a batch that shares nothing this is bit for bit the old number: stored is the pushed
+	// batch, and sharedSize is 0, so the per-entry terms agree and there is no pool charge to
+	// place. Duplicate entries contribute nothing, exactly as before.
+	streamRateBytes := 0
 
 	for i := range entries {
 		// If this entry matches our last appended line's timestamp and contents,
@@ -619,7 +650,15 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		}
 		entryBytes := batch.entryTotalSize(i) + sharedCharge
 
+		// The entry is not a duplicate, so it counts towards the recorded rate whatever the
+		// verdict below is, and it counts in the expanded-equivalent unit. See streamRateBytes.
+		streamRateBytes += batch.storedEntryTotalSize(i)
+
 		now := time.Now()
+		// The limiter is charged the UNEXPANDED size, deliberately not the size recorded to the
+		// rate calculator just above: the per-stream rate limit is tenant-facing, so a tenant must
+		// not be charged more for the same payload just because its resource and scope attributes
+		// travel in a pool. See streamRateBytes for why the two differ.
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, entryBytes) {
 			// The limiter was asked for the entry plus the pending shared bytes and refused the
 			// two together, so that is the size the error reports: reporting the entry alone
@@ -630,7 +669,6 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 			// counters below only take the entry's own bytes.
 			rejectedBytes := entryBytes
 			entryBytes -= sharedCharge
-			totalBytes += entryBytes
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(rejectedBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
@@ -640,8 +678,6 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 			}
 			continue
 		}
-
-		totalBytes += entryBytes
 
 		if tooFarBehind {
 			// sharedCharge is 0 here, the shared bytes stay pending.
@@ -677,6 +713,10 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
 	// ingestion, the limiter should only be advanced when the whole stream can be
 	// sent
+	//
+	// validBytes is UNEXPANDED, like the per-entry limiter charge above and unlike
+	// streamRateBytes: the limiter is tenant-facing and the pool is one charge per batch here. The
+	// divergence from what is recorded to the rate calculator is intentional, see streamRateBytes.
 	now := time.Now()
 	if rateLimitWholeStream && !s.limiter.AllowN(now, validBytes) {
 		// Report that the whole stream was rate limited
@@ -707,20 +747,23 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	// Nothing was accepted, so nothing absorbed the shared structured metadata. Attribute it
 	// once to the discard reason of the first non-duplicate entry so the batch is accounted
 	// for exactly once overall. Nothing to do for a batch made only of duplicates.
+	//
+	// Only the discard buckets need this fallback. They are tenant-facing, so they are in the
+	// unexpanded unit where the pool is a single per-batch charge that has to land somewhere.
+	// streamRateBytes is not: it already charged every non-duplicate entry for the sets it
+	// references, whatever the verdict was, so there is nothing left over to place.
 	if unchargedShared > 0 {
 		switch firstDiscard {
 		case discardRateLimited:
 			rateLimitedBytes += unchargedShared
-			totalBytes += unchargedShared
 			unchargedShared = 0
 		case discardTooFarBehind:
 			outOfOrderBytes += unchargedShared
-			totalBytes += unchargedShared
 			unchargedShared = 0
 		}
 	}
 
-	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
+	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, streamRateBytes)
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker, format)
 	return toStore, failedEntriesWithError
 }

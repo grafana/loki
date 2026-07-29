@@ -711,6 +711,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
 	// and threaded into these closures, so a policy can override the tenant sharding behavior
 	// (e.g. toggle time sharding or use a different desired_rate).
+	//
+	// pushSize is the expanded-equivalent size of the stream, which is not the size the tenant is
+	// metered for. See the two-unit split in the validation loop below.
 	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
 			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
@@ -808,7 +811,39 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			n := 0
 			prevTs := stream.Entries[0].Timestamp
+
+			// This is the split: two sizes are accumulated for the same stream, in two
+			// deliberately different units, because they answer two different questions.
+			//
+			// streamEntriesSize is the tenant-facing size, and is UNEXPANDED: each entry's own
+			// structured metadata, plus each set of the stream's shared structured metadata pool
+			// exactly once no matter how many entries reference it. That is what the pool really
+			// costs on the wire and in memory. Every tenant-facing number shares this unit - the
+			// ingestion rate limit buckets below, the discard metrics, and the ingest-limits path
+			// (see calculateStreamSizes) - so that turning
+			// otlp_defer_structured_metadata_expansion on cannot change what a tenant is metered
+			// for the same logical payload.
+			//
+			// streamShardingSize is the internal size, and is EXPANDED-EQUIVALENT: every entry is
+			// charged for the sets it references, exactly as if those attributes had been copied
+			// into it. Sharding is not tenant-facing fairness, it is load distribution, and the
+			// load one shard puts on an ingester is still the expanded one: the ingester
+			// materializes own++resource++scope once per push batch and appends those entries to
+			// the chunk (see newPushBatch in pkg/ingester/stream.go), so per-shard append work
+			// happens at today's expanded rate. Sharding on the unexpanded size would under-shard
+			// precisely the streams the flag is meant to help - those with large resource and
+			// scope attribute sets - and concentrate that work on fewer ingesters. Using the
+			// expanded-equivalent size instead makes a flag-on stream shard exactly like the same
+			// payload pushed flag-off.
+			//
+			// TODO(otlp-deferred-expansion): flip streamShardingSize back to the unexpanded unit
+			// once the ingester-side follow-up lands, i.e. the chunkenc attribute-aware append
+			// ("feat(chunkenc): append entries with shared structured metadata without
+			// materializing expansion", reverted on this branch). Once a chunk appends entries
+			// against the pool without materializing it, per-shard cost really is the unexpanded
+			// size and the two units collapse back into one.
 			streamEntriesSize := 0
+			streamShardingSize := 0
 
 			labelNamer := otlptranslator.LabelNamer{}
 
@@ -905,8 +940,13 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				}
 
 				n++
+				// The two units of the split, accumulated per entry. The sharding size resolves
+				// the shared sets this entry references through the per-set size index built
+				// above, so the expanded-equivalent size costs two additions rather than a
+				// materialized copy of the sets per entry.
 				entrySize := util.EntryTotalSize(&entry)
 				streamEntriesSize += entrySize
+				streamShardingSize += entrySize + sharedMetadata.size
 			}
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
@@ -916,7 +956,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			// Each set of the stream's shared structured metadata pool is stored once for the
 			// whole stream, so the pool is metered once here (unexpanded accounting) rather than
-			// once per entry referencing a set.
+			// once per entry referencing a set. Only the tenant-facing size gets this: the
+			// sharding size already charged each entry for the sets it references.
 			streamEntriesSize += util.SharedSetsSize(stream.SharedStructuredMetadataSets)
 
 			// Attribute this stream's bytes/lines to its rate-limit bucket.
@@ -934,7 +975,9 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			b.lines += n
 
 			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
+			// Sharding takes the expanded-equivalent size, not the size the rate limit buckets
+			// were just charged. See the split above.
+			maybeShardStreams(stream, lbs, streamShardingSize, policy, shardCfg)
 		}
 		return nil
 	}()
@@ -1282,6 +1325,14 @@ func (d *Distributor) trackDiscardedData(
 
 type streamWithTimeShard struct {
 	logproto.Stream
+
+	// linesTotalLen is the size handed on to rate based sharding for this time shard, and counts
+	// log line bytes only - no structured metadata, shared or own. It is therefore already
+	// invariant under otlp_defer_structured_metadata_expansion: the same payload yields the same
+	// number with the flag on and off, so the expanded-equivalent unit used for the non
+	// time-sharded path (see the split in PushWithResolver) has nothing to add here. Bringing
+	// structured metadata into this number at all would change flag-off behavior, so it is left
+	// as it is.
 	linesTotalLen int
 }
 
