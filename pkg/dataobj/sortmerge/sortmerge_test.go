@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,4 +305,62 @@ func recOrder(a, b logs.Record) int {
 		return r
 	}
 	return cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano())
+}
+
+// TestIteratorWithStreamRemap_MultiSectionObjects forces each source object to
+// span multiple logs sections and verifies the merge still emits every record
+// exactly once in global order. This exercises the bounded-cache read path
+// (each section reader prefetches at most readerTargetCacheSize of page data)
+// over many concurrent section readers.
+func TestIteratorWithStreamRemap_MultiSectionObjects(t *testing.T) {
+	ctx := context.Background()
+	sortSchema := []string{"label:app"}
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Long lines against the 8 KiB TargetSectionSize force several sections
+	// per object.
+	ent := func(base time.Time, n int) []push.Entry {
+		out := make([]push.Entry, 0, n)
+		for i := range n {
+			out = append(out, push.Entry{
+				Timestamp: base.Add(time.Duration(i) * time.Second).UTC(),
+				Line:      strings.Repeat("x", 512),
+			})
+		}
+		return out
+	}
+
+	objA, closeA := buildSchemaObject(t, sortSchema, map[string][]push.Entry{
+		`{app="b"}`: ent(t0, 60),
+		`{app="a"}`: ent(t0, 60),
+	})
+	defer closeA()
+	objB, closeB := buildSchemaObject(t, sortSchema, map[string][]push.Entry{
+		`{app="a"}`: ent(t0.Add(time.Hour), 60),
+		`{app="c"}`: ent(t0.Add(time.Hour), 60),
+	})
+	defer closeB()
+
+	sections, remaps, globalSortKeys := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
+	require.Greater(t, len(sections), 2, "objects must span multiple sections for this test to be meaningful")
+
+	iter, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, globalSortKeys, sortSchema)
+	require.NoError(t, err)
+
+	var (
+		count int
+		prev  logs.Record
+		first = true
+	)
+	for res := range iter {
+		rec, err := res.Value()
+		require.NoError(t, err)
+		if !first {
+			require.LessOrEqual(t, recOrder(prev, rec), 0,
+				"output must be globally sorted by [sortKey, globalStreamID, ts DESC]")
+		}
+		prev, first = rec, false
+		count++
+	}
+	require.Equal(t, 240, count, "expected merged record count to equal sum of inputs")
 }
