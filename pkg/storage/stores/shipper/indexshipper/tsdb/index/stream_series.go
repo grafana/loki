@@ -114,6 +114,66 @@ func (r *StreamReader) ForPostingsSeries(
 	return p.Err()
 }
 
+// ForPostingsSeriesWithLabels is the labels-yielding counterpart of
+// ForPostingsSeries. On top of holding a series-section Decbuf open across
+// the batch, it also holds a symbols-section Decbuf open so that every
+// per-label symbol lookup in Decoder.prepSeries reuses the same file handle
+// via streamSymbols.LookupInto — the dominant hotspot in the chunk-filter
+// GetChunkRef workload.
+//
+// ls and chks are reusable scratch buffers, overwritten on every call.
+// Callers must copy anything they need to retain before fn returns.
+func (r *StreamReader) ForPostingsSeriesWithLabels(
+	p Postings,
+	fpFilter FingerprintFilter,
+	from, through int64,
+	ls *labels.Labels,
+	chks *[]ChunkMeta,
+	fn func(ls labels.Labels, hash uint64, chks []ChunkMeta) (stop bool),
+) error {
+	series := r.factory.NewRawDecbuf(context.Background())
+	if err := series.Err(); err != nil {
+		return err
+	}
+	defer func() { _ = series.Close() }()
+
+	symbols := r.factory.NewDecbufAtUnchecked(context.Background(), r.symbols.symOff)
+	if err := symbols.Err(); err != nil {
+		return err
+	}
+	defer func() { _ = symbols.Close() }()
+
+	// Decoder built with a lookupSymbol closure targeting the warm symbols
+	// Decbuf. Every prepSeries → LookupSymbol call flows through
+	// LookupInto instead of opening a fresh Decbuf per symbol.
+	dec := newDecoder(func(o uint32) (string, error) {
+		return r.symbols.LookupInto(&symbols, o)
+	}, DefaultMaxChunksToBypassMarkerLookup)
+
+	for p.Next() {
+		id := p.At()
+		offset := id
+		if r.version >= FormatV2 {
+			offset = id * 16
+		}
+		content, err := r.decodeUvarintSection(&series, int(offset))
+		if err != nil {
+			return err
+		}
+		hash, err := dec.Series(r.version, content, id, from, through, ls, chks)
+		if err != nil {
+			return errors.Wrap(err, "read series")
+		}
+		if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
+			continue
+		}
+		if stop := fn(*ls, hash, *chks); stop {
+			return p.Err()
+		}
+	}
+	return p.Err()
+}
+
 // Series populates lbls and chks for the given series ref, matching
 // Reader.Series semantics.
 func (r *StreamReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {

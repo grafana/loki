@@ -263,6 +263,15 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 	defer func() { ChunkMetasPool.Put(chks) }()
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
+		if br, ok := i.reader.(batchSeriesWithLabelsReader); ok {
+			return br.ForPostingsSeriesWithLabels(p, fpFilter, int64(from), int64(through), &ls, &chks, func(ls labels.Labels, hash uint64, chks []index.ChunkMeta) (stop bool) {
+				if filterer != nil && filterer.ShouldFilter(ls) {
+					return false
+				}
+				return fn(ls, model.Fingerprint(hash), chks)
+			})
+		}
+
 		for p.Next() {
 			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
 			if err != nil {
@@ -300,6 +309,22 @@ type batchSeriesReader interface {
 		from, through int64,
 		chks *[]index.ChunkMeta,
 		fn func(hash uint64, chks []index.ChunkMeta) (stop bool),
+	) error
+}
+
+// batchSeriesWithLabelsReader is the labels-yielding counterpart. In addition
+// to reusing a series-section Decbuf, StreamReader also reuses a
+// symbols-section Decbuf across the batch — Decoder.prepSeries calls
+// lookupSymbol once per label per series, so per-ref opens dominate CPU
+// under a chunk-filter GetChunkRef workload.
+type batchSeriesWithLabelsReader interface {
+	ForPostingsSeriesWithLabels(
+		p index.Postings,
+		fpFilter index.FingerprintFilter,
+		from, through int64,
+		ls *labels.Labels,
+		chks *[]index.ChunkMeta,
+		fn func(ls labels.Labels, hash uint64, chks []index.ChunkMeta) (stop bool),
 	) error
 }
 

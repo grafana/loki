@@ -79,6 +79,23 @@ func (s *streamSymbols) Lookup(o uint32) (string, error) {
 	}
 	defer func() { _ = d.Close() }()
 
+	return s.LookupInto(&d, o)
+}
+
+// LookupInto is the reusable-Decbuf variant of Lookup. Callers that need to
+// resolve many symbols in a row (per-label lookups during Decoder.prepSeries
+// on a batch of series) open a Decbuf at the symbols section once and reuse
+// it for every ordinal, avoiding N × (FilePool.Get + FileReader alloc + seek).
+//
+// The caller owns the Decbuf's lifetime; this function only ResetAts within
+// it. A prior error on the Decbuf will short-circuit and return, since the
+// underlying Decbuf.ResetAt is a no-op when d.E is non-nil — callers that
+// want to recover from an error must close and reopen the Decbuf.
+func (s *streamSymbols) LookupInto(d *streamenc.Decbuf, o uint32) (string, error) {
+	if err := d.Err(); err != nil {
+		return "", err
+	}
+
 	if s.version >= FormatV2 {
 		if int(o) >= s.seen {
 			return "", errors.Errorf("unknown symbol offset %d", o)
