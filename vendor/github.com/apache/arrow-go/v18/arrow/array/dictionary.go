@@ -700,6 +700,7 @@ func (b *dictionaryBuilder) IsNull(i int) bool { return b.idxBuilder.IsNull(i) }
 
 func (b *dictionaryBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

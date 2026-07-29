@@ -375,6 +375,7 @@ func (b *BinaryBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *BinaryBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err
@@ -466,10 +467,17 @@ func (b *BinaryViewBuilder) Resize(n int) {
 	b.rawData = arrow.ViewHeaderTraits.CastFromBytes(b.data.Bytes())
 }
 
-func (b *BinaryViewBuilder) ReserveData(length int) {
-	if int32(length) > viewValueSizeLimit {
+func checkBinaryViewValueSize(length int64) {
+	if length > int64(viewValueSizeLimit) {
 		panic(fmt.Errorf("%w: BinaryView or StringView elements cannot reference strings larger than 2GB",
 			arrow.ErrInvalid))
+	}
+}
+
+func (b *BinaryViewBuilder) ReserveData(length int) {
+	checkBinaryViewValueSize(int64(length))
+	if length == 0 {
+		return
 	}
 	b.blockBuilder.Reserve(int(length))
 }
@@ -479,9 +487,7 @@ func (b *BinaryViewBuilder) Reserve(n int) {
 }
 
 func (b *BinaryViewBuilder) Append(v []byte) {
-	if int32(len(v)) > viewValueSizeLimit {
-		panic(fmt.Errorf("%w: BinaryView or StringView elements cannot reference strings larger than 2GB", arrow.ErrInvalid))
-	}
+	checkBinaryViewValueSize(int64(len(v)))
 
 	if !arrow.IsViewInline(len(v)) {
 		b.ReserveData(len(v))
@@ -669,6 +675,7 @@ func (b *BinaryViewBuilder) Unmarshal(dec *json.Decoder) error {
 
 func (b *BinaryViewBuilder) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
 	t, err := dec.Token()
 	if err != nil {
 		return err

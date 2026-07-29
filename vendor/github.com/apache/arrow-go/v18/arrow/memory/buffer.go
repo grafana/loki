@@ -95,12 +95,25 @@ func (b *Buffer) Release() {
 	}
 }
 
-// Reset resets the buffer for reuse.
+// Reset resets the buffer for reuse. If the buffer owns memory through an
+// allocator, the supplied data is copied into allocator-owned storage.
 func (b *Buffer) Reset(buf []byte) {
 	if b.parent != nil {
 		b.parent.Release()
 		b.parent = nil
 	}
+
+	if b.mem != nil {
+		if len(buf) <= len(b.buf) {
+			copy(b.buf, buf)
+			b.Resize(len(buf))
+			return
+		}
+		b.Resize(len(buf))
+		copy(b.buf, buf)
+		return
+	}
+
 	b.buf = buf
 	b.length = len(buf)
 }
