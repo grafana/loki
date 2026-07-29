@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"sync/atomic"
 
 	"github.com/pkg/errors"
 
@@ -20,6 +21,11 @@ import (
 // specific TSDB index file on local disk.
 type FilePoolDecbufFactory struct {
 	files *filepool.FilePool
+
+	// cachedSize memoises the file size across NewRawDecbuf calls. Index
+	// files are immutable once written, so the first Stat result is valid
+	// for the factory's whole lifetime. 0 means unset.
+	cachedSize atomic.Int64
 }
 
 func NewFilePoolDecbufFactory(
@@ -94,6 +100,11 @@ func (df *FilePoolDecbufFactory) NewDecbufInSection(_ context.Context, _, _, _ i
 }
 
 func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
+	fileSize, err := df.fileSize()
+	if err != nil {
+		return Decbuf{E: errors.Wrap(err, "stat file for decbuf")}
+	}
+
 	f, err := df.files.Get()
 	if err != nil {
 		return Decbuf{E: errors.Wrap(err, "open file for decbuf")}
@@ -106,12 +117,6 @@ func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
 		}
 	}()
 
-	stat, err := f.Stat()
-	if err != nil {
-		return Decbuf{E: errors.Wrap(err, "stat file for decbuf")}
-	}
-
-	fileSize := stat.Size()
 	reader, err := NewFileReader(f, 0, int(fileSize), df.files)
 	if err != nil {
 		return Decbuf{E: errors.Wrap(err, "file reader for decbuf")}
@@ -121,10 +126,18 @@ func (df *FilePoolDecbufFactory) NewRawDecbuf(_ context.Context) Decbuf {
 	return Decbuf{r: reader}
 }
 
-// FileSize returns the current size of the underlying file. It's a
-// convenience for callers that need to seek to a tail-relative offset without
-// keeping a separate handle open.
+// FileSize returns the size of the underlying file. Cached after the first
+// call — index files are immutable, so subsequent reads never re-Stat.
 func (df *FilePoolDecbufFactory) FileSize() (int64, error) {
+	return df.fileSize()
+}
+
+// fileSize is the internal cached-size helper shared by FileSize and
+// NewRawDecbuf.
+func (df *FilePoolDecbufFactory) fileSize() (int64, error) {
+	if sz := df.cachedSize.Load(); sz > 0 {
+		return sz, nil
+	}
 	f, err := df.files.Get()
 	if err != nil {
 		return 0, err
@@ -134,7 +147,9 @@ func (df *FilePoolDecbufFactory) FileSize() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return stat.Size(), nil
+	sz := stat.Size()
+	df.cachedSize.Store(sz)
+	return sz, nil
 }
 
 // Close cleans up resources associated with this DecbufFactory.
