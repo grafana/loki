@@ -9,8 +9,6 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
-	"slices"
-	"strings"
 	"time"
 	"unsafe"
 
@@ -19,7 +17,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -142,22 +139,6 @@ type MemChunk struct {
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
 	compressedSize int
-
-	// Lazily allocated, only used by AppendWithSharedStructuredMetadata.
-	sharedSM *sharedMetadataInterner
-}
-
-// sharedMetadataInterner caches the interned form of the structured metadata sets shared by
-// the entries appended through MemChunk.AppendWithSharedStructuredMetadata, keyed by the hash
-// supplied by the caller. The symbol table is per chunk and only grows, so cache entries stay
-// valid for the whole lifetime of the chunk, block cuts included.
-type sharedMetadataInterner struct {
-	cache map[uint64]*sharedMetadata
-
-	// Scratch space to sort an entry's own structured metadata without reordering the
-	// caller's slice. A single buffer is enough because MemChunk is not safe for concurrent
-	// writes.
-	ownScratch []logproto.LabelAdapter
 }
 
 type block struct {
@@ -216,12 +197,6 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error
 	hb.size += len(line)
 
 	return false, nil
-}
-
-// AppendWithSymbols implements HeadBlock. Ordered head blocks do not store structured
-// metadata, so the already interned symbols are dropped.
-func (hb *headBlock) AppendWithSymbols(ts int64, line string, _ symbols) (bool, error) {
-	return hb.Append(ts, line, labels.EmptyLabels())
 }
 
 func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
@@ -845,40 +820,6 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 	return len(c.blocks) < blocksPerChunk
 }
 
-// SpaceForWithSharedStructuredMetadata is the SpaceFor counterpart of
-// AppendWithSharedStructuredMetadata. The shared pairs are charged at exactly the rate
-// SpaceFor would charge them had they been expanded into the entry, so a chunk fed unexpanded
-// entries cuts at the same points as one fed the equivalent pre-expanded entries and the two
-// paths produce an identical chunk stream.
-//
-// The head block actually stores the shared pairs symbolized (their strings enter the chunk
-// once, via the symbol table), so this deliberately overcharges them the same way SpaceFor
-// overcharges expanded structured metadata; see the ToDo there. Charging the symbolized rate
-// instead would pack more entries per chunk but move chunk boundaries between the deferred
-// and expanded paths - revisit together with SpaceFor's accounting, not separately.
-func (c *MemChunk) SpaceForWithSharedStructuredMetadata(e *logproto.Entry, shared push.LabelsAdapter) bool {
-	if c.targetSize > 0 {
-		// This is looking to see if the uncompressed lines will fit which is not
-		// a great check, but it will guarantee we are always under the target size
-		newHBSize := c.head.UncompressedSize() + len(e.Line)
-		structuredMetadataSize := 0
-		if c.format >= ChunkFormatV4 {
-			newHBSize += metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
-			// Order does not change byte length, so the shared pairs are summed directly
-			// instead of going through the sorting conversion metaLabelsLen needs.
-			for i := range shared {
-				newHBSize += len(shared[i].Name) + len(shared[i].Value)
-			}
-			// structured metadata is compressed while serializing the chunk so we don't know what their size would be after compression.
-			// As adoption increases, their overall size can be non-trivial so we can't ignore them while calculating chunk size.
-			structuredMetadataSize = c.symbolizer.UncompressedSize()
-		}
-		return (structuredMetadataSize + c.cutBlockSize + newHBSize) < c.targetSize
-	}
-	// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
-	return len(c.blocks) < blocksPerChunk
-}
-
 // UncompressedSize implements Chunk.
 func (c *MemChunk) UncompressedSize() int {
 	size := 0
@@ -946,114 +887,6 @@ func (c *MemChunk) Append(entry *logproto.Entry) (bool, error) {
 	}
 
 	return dup, nil
-}
-
-// AppendWithSharedStructuredMetadata appends an entry whose structured metadata is split
-// between the entry's own structured metadata and shared, a set of structured metadata that
-// logically belongs to every entry of the batch the entry came from, e.g. the resource and
-// scope attributes of an OTLP push.
-//
-// The union never has to be materialized: the chunk stores symbols for the union, ordered by
-// label name, with shared coming first and own last among the pairs sharing a label name. No
-// pair is ever dropped, not even an exact name and value duplicate, matching what Append
-// stores for the pre-merged labels.
-//
-// Own coming last is what makes the entry's own, log record level, attribute win a name
-// collision, because the read path collapses pairs repeating a label name down to the last
-// one. It also means that the chunk is only guaranteed to be byte for byte identical to one
-// built by appending entries holding the pre-merged union when own and shared share no label
-// name, which is the overwhelmingly common case. When they do collide the two paths differ,
-// and only this one is deterministic: the pre-merged path sorts the union with an unstable
-// sort, so beyond the insertion sort threshold it does not even consistently pick the same
-// winner from one append to the next.
-//
-// sharedHash must be a stable hash of the contents of shared. It is the caller's
-// responsibility to only reuse a hash for identical shared metadata: a given shared set is
-// interned once per chunk, the first time its hash is seen, and the symbols it was interned
-// into are reused for every later entry.
-//
-// Chunk formats before ChunkFormatV4 and head block formats before
-// UnorderedWithStructuredMetadataHeadBlockFmt drop shared, exactly like they drop the entry's
-// own structured metadata.
-func (c *MemChunk) AppendWithSharedStructuredMetadata(entry *logproto.Entry, sharedHash uint64, shared push.LabelsAdapter) (bool, error) {
-	entryTimestamp := entry.Timestamp.UnixNano()
-
-	// If the head block is empty but there are cut blocks, we have to make
-	// sure the new entry is not out of order compared to the previous block
-	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
-		return false, ErrOutOfOrder
-	}
-
-	if c.format < ChunkFormatV4 {
-		entry.StructuredMetadata = nil
-		shared = nil
-	}
-
-	var (
-		dup bool
-		err error
-	)
-	if len(shared) == 0 || c.head.Format() < UnorderedWithStructuredMetadataHeadBlockFmt {
-		// Nothing shared to merge in, or a head block dropping structured metadata anyway:
-		// this is the plain Append path.
-		dup, err = c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
-	} else {
-		var syms symbols
-		if syms, err = c.symbolizeWithShared(entry.StructuredMetadata, sharedHash, shared); err != nil {
-			return false, err
-		}
-		dup, err = c.head.AppendWithSymbols(entryTimestamp, entry.Line, syms)
-	}
-	if err != nil {
-		return dup, err
-	}
-
-	if c.head.UncompressedSize() >= c.blockSize {
-		return false, c.cut()
-	}
-
-	return dup, nil
-}
-
-// symbolizeWithShared interns the union of an entry's own structured metadata and a shared
-// structured metadata set, interning the shared set only the first time sharedHash is seen.
-func (c *MemChunk) symbolizeWithShared(own push.LabelsAdapter, sharedHash uint64, shared push.LabelsAdapter) (symbols, error) {
-	if c.sharedSM == nil {
-		c.sharedSM = &sharedMetadataInterner{cache: map[uint64]*sharedMetadata{}}
-	}
-
-	cached, ok := c.sharedSM.cache[sharedHash]
-	if !ok {
-		shared, _ = sortedLabelAdapters(shared, nil)
-	}
-
-	sortedOwn, scratch := sortedLabelAdapters(own, c.sharedSM.ownScratch)
-	c.sharedSM.ownScratch = scratch
-
-	syms, sm, err := c.symbolizer.AddWithShared(sortedOwn, shared, cached)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		c.sharedSM.cache[sharedHash] = sm
-	}
-
-	return syms, nil
-}
-
-// sortedLabelAdapters returns lbls sorted by label name. lbls itself is returned when it is
-// already sorted, otherwise a sorted copy is made in scratch so the caller's slice is never
-// reordered. The, possibly grown, scratch buffer is returned for reuse.
-func sortedLabelAdapters(lbls, scratch []logproto.LabelAdapter) (sorted, newScratch []logproto.LabelAdapter) {
-	byName := func(a, b logproto.LabelAdapter) int { return strings.Compare(a.Name, b.Name) }
-	if slices.IsSortedFunc(lbls, byName) {
-		return lbls, scratch
-	}
-
-	scratch = append(scratch[:0], lbls...)
-	slices.SortStableFunc(scratch, byName)
-
-	return scratch, scratch
 }
 
 // Close implements Chunk.

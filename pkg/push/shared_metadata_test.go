@@ -168,64 +168,6 @@ func TestEffectiveStructuredMetadataAliasedViewsHaveNoSpareCapacity(t *testing.T
 	})
 }
 
-func TestCombinedShared(t *testing.T) {
-	resource := LabelsAdapter{{Name: "service.name", Value: "svc"}}
-	scope := LabelsAdapter{{Name: "scope.name", Value: "lib"}}
-
-	require.Empty(t, CombinedShared(nil, nil))
-	require.Equal(t, resource, CombinedShared(resource, nil))
-	require.Equal(t, scope, CombinedShared(nil, scope))
-	require.Equal(t, LabelsAdapter{
-		{Name: "service.name", Value: "svc"},
-		{Name: "scope.name", Value: "lib"},
-	}, CombinedShared(resource, scope))
-
-	// Resource before scope: the chunk keeps the given order for two shared pairs sharing a
-	// name, and the read path keeps the last, so scope wins.
-	require.Equal(t, LabelsAdapter{
-		{Name: "host.name", Value: "from-resource"},
-		{Name: "host.name", Value: "from-scope"},
-	}, CombinedShared(
-		LabelsAdapter{{Name: "host.name", Value: "from-resource"}},
-		LabelsAdapter{{Name: "host.name", Value: "from-scope"}},
-	))
-}
-
-func TestCombinedSharedAliasedViewsHaveNoSpareCapacity(t *testing.T) {
-	t.Run("no scope aliases resource", func(t *testing.T) {
-		pool := sharedPoolWithSibling(t, LabelAdapter{Name: "service.name", Value: "svc"})
-
-		view := CombinedShared(pool.set, nil)
-		require.Equal(t, len(view), cap(view))
-
-		//nolint:gocritic // appending to the returned view is exactly what must stay harmless.
-		view = append(view, LabelAdapter{Name: "appended", Value: "appended"})
-		require.Equal(t, LabelAdapter{Name: "sibling", Value: "sibling"}, pool.sibling[0])
-	})
-
-	t.Run("no resource aliases scope", func(t *testing.T) {
-		pool := sharedPoolWithSibling(t, LabelAdapter{Name: "scope.name", Value: "lib"})
-
-		view := CombinedShared(nil, pool.set)
-		require.Equal(t, len(view), cap(view))
-
-		//nolint:gocritic // appending to the returned view is exactly what must stay harmless.
-		view = append(view, LabelAdapter{Name: "appended", Value: "appended"})
-		require.Equal(t, LabelAdapter{Name: "sibling", Value: "sibling"}, pool.sibling[0])
-	})
-
-	t.Run("both parts are copied", func(t *testing.T) {
-		resource := LabelsAdapter{{Name: "service.name", Value: "svc"}}
-		scope := LabelsAdapter{{Name: "scope.name", Value: "lib"}}
-
-		combined := CombinedShared(resource, scope)
-		combined[0] = LabelAdapter{Name: "clobbered", Value: "clobbered"}
-		combined[1] = LabelAdapter{Name: "clobbered", Value: "clobbered"}
-		require.Equal(t, LabelAdapter{Name: "service.name", Value: "svc"}, resource[0])
-		require.Equal(t, LabelAdapter{Name: "scope.name", Value: "lib"}, scope[0])
-	})
-}
-
 func TestStreamSharedFor(t *testing.T) {
 	resource := LabelsAdapter{{Name: "service.name", Value: "svc"}}
 	scope := LabelsAdapter{{Name: "scope.name", Value: "lib"}}

@@ -53,35 +53,6 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 	return merged
 }
 
-// CombinedShared returns the shared part of an entry's effective structured metadata as a
-// single list: the resource attributes followed by the scope attributes. It exists for the
-// chunk layer, whose MemChunk.AppendWithSharedStructuredMetadata takes one shared list
-// alongside the entry's own metadata rather than a resource and a scope list.
-//
-// The resource attributes come first on purpose: that is the order the shared attributes
-// appear in within EffectiveStructuredMetadata, and the order the OTLP push path expands them
-// in. The read path keeps the last pair for a repeated label name, so a name present in both
-// sets resolves to the scope value. This relies on the chunk, when it merges the shared list
-// into an entry, keeping the given order for two shared pairs carrying the same name; the
-// chunk layer is the side that has to honour that contract.
-//
-// Like EffectiveStructuredMetadata the result must be treated as read-only: with only one
-// non-empty part it aliases that part, capacity clamped so that a later append allocates
-// instead of writing into the pool's spare capacity.
-func CombinedShared(resource, scope LabelsAdapter) LabelsAdapter {
-	if len(scope) == 0 {
-		return resource[:len(resource):len(resource)]
-	}
-	if len(resource) == 0 {
-		return scope[:len(scope):len(scope)]
-	}
-
-	combined := make(LabelsAdapter, 0, len(resource)+len(scope))
-	combined = append(combined, resource...)
-	combined = append(combined, scope...)
-	return combined
-}
-
 // SharedFor resolves the shared structured metadata sets an entry of this stream references.
 // Either or both may be empty when the entry references no set.
 //
