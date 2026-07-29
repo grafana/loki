@@ -2,10 +2,6 @@
 {{- fail "Top level 'config' is not allowed. Most common configuration sections are exposed under the `loki` section. If you need to override the whole config, provide the configuration as a string that can contain template expressions under `loki.config`. Alternatively, you can provide the configuration as an external secret." }}
 {{- end }}
 
-{{- if and (not .Values.lokiCanary.enabled) .Values.test.enabled }}
-{{- fail "Helm test requires the Loki Canary to be enabled"}}
-{{- end }}
-
 {{- $singleBinaryReplicas := int .Values.singleBinary.replicas }}
 {{- $isUsingFilesystem := eq (include "loki.isUsingObjectStorage" .) "false" }}
 {{- $atLeastOneScalableReplica := or (gt (int .Values.backend.replicas) 0) (gt (int .Values.read.replicas) 0) (gt (int .Values.write.replicas) 0) }}

@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Allow disabling the Loki Canary (`lokiCanary.enabled: false`) without also having to disable Helm tests. The Helm test is already skipped when the canary is disabled, so the validation that hard-failed in that case has been removed. [#22639](https://github.com/grafana/loki/issues/22639)
+
 ## 7.1.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.6.8 (updated `enterprise.version`, and `enterprise.image.tag`).
