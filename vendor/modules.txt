@@ -966,7 +966,6 @@ github.com/grafana/dskit/log
 github.com/grafana/dskit/loser
 github.com/grafana/dskit/middleware
 github.com/grafana/dskit/modules
-github.com/grafana/dskit/mtime
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/netutil
 github.com/grafana/dskit/ring
