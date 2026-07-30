@@ -589,7 +589,7 @@ github.com/dgryski/go-metro
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
-# github.com/dlclark/regexp2/v2 v2.2.1
+# github.com/dlclark/regexp2/v2 v2.5.2
 ## explicit; go 1.25
 github.com/dlclark/regexp2/v2
 github.com/dlclark/regexp2/v2/helpers
