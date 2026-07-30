@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,9 +75,11 @@ func newCoordinator(
 			return runPlan(ctx, logger, runner, opts, plan)
 		},
 		metastoreWriter: metastoreWriter,
-		clock:           time.Now,
-		metrics:         newCoordinatorMetrics(reg),
-		limits:          limits,
+		clock: func() time.Time {
+			return time.Date(2026, time.July, 28, 13, 0, 0, 0, time.UTC)
+		},
+		metrics: newCoordinatorMetrics(reg),
+		limits:  limits,
 	}
 }
 
@@ -222,6 +225,26 @@ func (c *coordinator) compactTenantLogs(
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
+	level.Info(c.logger).Log("msg", "planned log compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs), "source_index", converged.Path)
+	if len(tasks) < 20 {
+		for _, task := range tasks {
+			totalTaskSize := int64(0)
+			sb := strings.Builder{}
+			sb.WriteString("[")
+			for i, run := range task.Runs {
+				sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+				if i != len(task.Runs)-1 {
+					sb.WriteString(", ")
+				}
+				for j := 0; j < len(run.Sections); j++ {
+					totalTaskSize += run.Sections[j].UncompressedSize
+				}
+			}
+			sb.WriteString("]")
+			level.Debug(c.logger).Log("msg", "log compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+		}
+	}
+
 	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.LogMaxRunningCompactionTasks > 0 {
@@ -306,6 +329,9 @@ func (c *coordinator) compactTenantLogs(
 			"tenant", tenant, "window", window)
 		return compactionStats{}, nil
 	}
+
+	level.Debug(c.logger).Log("msg", "log-compaction cycle completed",
+		"tenant", tenant, "files added", stats.added, "files removed", stats.removed, "tasks dispatched", stats.dispatched)
 	return stats, nil
 }
 
@@ -329,6 +355,26 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	outputs := make([]string, len(tasks))
+
+	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	if len(tasks) < 20 {
+		for _, task := range tasks {
+			totalTaskSize := int64(0)
+			sb := strings.Builder{}
+			sb.WriteString("[")
+			for i, run := range task.Runs {
+				sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+				if i != len(task.Runs)-1 {
+					sb.WriteString(", ")
+				}
+				for j := 0; j < len(run.Sections); j++ {
+					totalTaskSize += run.Sections[j].UncompressedSize
+				}
+			}
+			sb.WriteString("]")
+			level.Debug(c.logger).Log("msg", "index compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+		}
+	}
 
 	// IndexMerge opens each referenced object whole. Until it reads individual
 	// sections, one object may be repeated across task outputs and deduplicated

@@ -93,6 +93,7 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	if err != nil {
 		return nil, errors.Join(err, closer.Close())
 	}
+	c.logger.Log("msg", "SKIP uploading merged index", "path", path)
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
 		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
 	}
@@ -128,7 +129,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
-			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
+			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 2*1024*1024)
 			if openErr != nil {
 				return nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}

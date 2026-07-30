@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -47,6 +48,72 @@ func (c *Context) dataObjectBucket() objstore.Bucket {
 	return c.bucket
 }
 
+func scanLogObjectSortKeys(bucket objstore.Bucket, paths []string) {
+	for _, path := range paths {
+		obj, err := dataobj.FromBucket(context.Background(), bucket, path, 1024*1024)
+		if err != nil {
+			panic(err)
+		}
+		var sortKeys = []string{}
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			ls, err := streams.Open(context.Background(), sec)
+			if err != nil {
+				panic(err)
+			}
+			lr := streams.NewRowReader(ls)
+			lr.Open(context.Background())
+
+			s := make([]streams.Stream, 1024)
+			for {
+				n, err := lr.Read(context.Background(), s)
+				if err != nil && !errors.Is(err, io.EOF) {
+					break
+				}
+				for i := 0; i < n; i++ {
+					key, err := logsobj.ComputeSortKey(s[i].Labels, []string{"label:service_name", "label:cluster"})
+					if err != nil {
+						panic(err)
+					}
+					sortKeys = append(sortKeys, key)
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+
+		for idx, sec := range obj.Sections().Filter(logs.CheckSection) {
+			ls, err := logs.Open(context.Background(), sec)
+			if err != nil {
+				panic(err)
+			}
+			lr := logs.NewRowReader(ls)
+			lr.Open(context.Background())
+
+			minSK := ""
+			maxSK := ""
+			s := make([]logs.Record, 1024)
+			for {
+				n, err := lr.Read(context.Background(), s)
+				if err != nil {
+					break
+				}
+				for i := 0; i < n; i++ {
+					sk := sortKeys[s[i].StreamID-1]
+
+					if minSK == "" || sk < minSK {
+						minSK = sk
+					}
+					if maxSK == "" || sk > maxSK {
+						maxSK = sk
+					}
+				}
+			}
+			fmt.Printf("obj=%s sec=%d minSK=%q maxSK=%q\n", path, idx, strings.Replace(minSK, "\x00", ":", 2), strings.Replace(maxSK, "\x00", ":", 2))
+		}
+	}
+}
+
 func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
 	if c.bucket == nil {
@@ -81,6 +148,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 
 	// Consume the globally-sorted stream and build compacted object
 	w := c.newLogObjectWriter(node, table, calc)
+	lastSortKey := "unknown"
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -88,6 +156,9 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		rec, err := res.Value()
 		if err != nil {
 			return nil, err
+		}
+		if rec.SortKey != lastSortKey {
+			lastSortKey = rec.SortKey
 		}
 		if err := w.add(ctx, rec); err != nil {
 			return nil, err
@@ -101,6 +172,8 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		c.observeLogMerge(node.Tenant, logMergeObservedStats{Outcome: logMergeOutcomeEmpty}, time.Since(start))
 		return nil, fmt.Errorf("LogMerge: produced no compacted objects for tenant %q", node.Tenant)
 	}
+
+	scanLogObjectSortKeys(c.bucket, stats.OutputObjectPaths)
 
 	idxObj, idxCloser, _, err := calc.Flush()
 	if err != nil {
@@ -167,6 +240,7 @@ type LogMergeObservedStats struct {
 	OutputRecords           int
 	OutputBytesCompressed   int64
 	OutputBytesUncompressed int64
+	OutputObjectPaths       []string
 }
 
 // logMergeObservedStats is the internal alias used while assembling stats.
@@ -510,6 +584,7 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 		"records", w.objRecords,
 		"bytes", size,
 	)
+	w.stats.OutputObjectPaths = append(w.stats.OutputObjectPaths, path)
 	w.stats.OutputObjects++
 	w.stats.OutputStreams += w.objStreams
 	w.stats.OutputRecords += w.objRecords

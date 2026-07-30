@@ -194,10 +194,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 
-	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2KB")
-	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("4MB")
-	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("2MB")
-	_ = cfg.IndexobjBuilder.BufferSize.Set("16KB")
+	_ = cfg.IndexobjBuilder.TargetPageSize.Set("2MB")
+	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("512MB")
+	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("512MB")
+	_ = cfg.IndexobjBuilder.BufferSize.Set("128MB")
 	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 }
 

@@ -222,7 +222,7 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 
 	var reads []sectionRead
 	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 0)
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 1*1024*1024)
 		if err != nil {
 			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
