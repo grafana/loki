@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -44,6 +45,7 @@ func NewStore(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
+	chunkFilter chunk.RequestChunkFilterer,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (
@@ -56,7 +58,7 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, chunkFilter, reg); err != nil {
 		return nil, nil, err
 	}
 
@@ -64,7 +66,7 @@ func NewStore(
 }
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+	limits downloads.Limits, tableRange config.TableRange, chunkFilter chunk.RequestChunkFilterer, reg prometheus.Registerer) error {
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
@@ -73,7 +75,9 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		objectClient,
 		limits,
 		nil,
-		OpenShippableTSDB,
+		func(p string) (shipperindex.Index, error) {
+			return OpenShippableTSDB(p, chunkFilter)
+		},
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,
@@ -122,6 +126,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 
 		headManager := NewHeadManager(
 			name,
+			chunkFilter,
 			s.logger,
 			indexShipperCfg.ActiveIndexDirectory,
 			tsdbMetrics,

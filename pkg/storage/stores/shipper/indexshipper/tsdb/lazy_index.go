@@ -7,7 +7,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -20,13 +19,6 @@ func (f LazyIndex) Bounds() (model.Time, model.Time) {
 		return 0, 0
 	}
 	return i.Bounds()
-}
-
-func (f LazyIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i, err := f()
-	if err == nil {
-		i.SetChunkFilterer(chunkFilter)
-	}
 }
 
 func (f LazyIndex) Close() error {

@@ -54,7 +54,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 
 	tables := map[string][]*TSDBFile{
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
-			BuildIndex(b, tempDir, []LoadableSeries{
+			BuildIndex(b, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
@@ -63,7 +63,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
-			BuildIndex(b, tempDir, []LoadableSeries{
+			BuildIndex(b, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
@@ -109,7 +109,7 @@ func TestIndexClient_Stats(t *testing.T) {
 
 	tables := map[string][]*TSDBFile{
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
-			BuildIndex(t, tempDir, []LoadableSeries{
+			BuildIndex(t, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
@@ -122,7 +122,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
-			BuildIndex(t, tempDir, []LoadableSeries{
+			BuildIndex(t, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
@@ -238,7 +238,7 @@ func TestIndexClient_Volume(t *testing.T) {
 
 	tables := map[string][]*TSDBFile{
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
-			BuildIndex(t, tempDir, []LoadableSeries{
+			BuildIndex(t, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
@@ -251,7 +251,7 @@ func TestIndexClient_Volume(t *testing.T) {
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
-			BuildIndex(t, tempDir, []LoadableSeries{
+			BuildIndex(t, tempDir, nil, []LoadableSeries{
 				{
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),

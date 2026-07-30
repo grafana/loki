@@ -28,17 +28,20 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-func OpenShippableTSDB(p string) (shipperindex.Index, error) {
+// OpenShippableTSDB opens the index stored at p. chunkFilter, which may be nil,
+// is handed to the index so that it is construction data rather than something set
+// on a shared index while queries are reading it.
+func OpenShippableTSDB(p string, chunkFilter chunk.RequestChunkFilterer) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return newShippableTSDBFile(id, chunkFilter)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
-	indexFile, err := OpenShippableTSDB(path)
+	indexFile, err := OpenShippableTSDB(path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +98,11 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
+	return newShippableTSDBFile(id, nil)
+}
+
+func newShippableTSDBFile(id Identifier, chunkFilter chunk.RequestChunkFilterer) (*TSDBFile, error) {
+	idx, getRawFileReader, err := newTSDBIndexFromFile(id.Path(), chunkFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -127,19 +134,26 @@ type TSDBIndex struct {
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
+	return newTSDBIndexFromFile(location, nil)
+}
+
+func newTSDBIndexFromFile(location string, chunkFilter chunk.RequestChunkFilterer) (*TSDBIndex, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader, chunkFilter), func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func NewTSDBIndex(reader IndexReader) *TSDBIndex {
+// NewTSDBIndex builds an index over reader. chunkFilter may be nil, in which case
+// no filtering is applied.
+func NewTSDBIndex(reader IndexReader, chunkFilter chunk.RequestChunkFilterer) *TSDBIndex {
 	return &TSDBIndex{
-		reader: reader,
+		reader:      reader,
+		chunkFilter: chunkFilter,
 	}
 }
 
@@ -152,8 +166,13 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
-func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.chunkFilter = chunkFilter
+// filtererForRequest resolves the index's filterer for this request, or nil if
+// there is nothing to filter by.
+func (i *TSDBIndex) filtererForRequest(ctx context.Context) chunk.Filterer {
+	if i.chunkFilter == nil {
+		return nil
+	}
+	return i.chunkFilter.ForRequest(ctx)
 }
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
@@ -162,10 +181,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	return i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, fn, matchers...)
 }
 
@@ -263,10 +279,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 		return false
 	}
 
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	var err error
 	if filterer != nil {
 		// We need to fetch labels to pass to the filterer, even though we don't look at them in the callback.
@@ -341,14 +354,11 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
-		var filterer chunk.Filterer
 		by := make(map[string]struct{})
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-			if filterer != nil {
-				for _, k := range filterer.RequiredLabelNames() {
-					by[k] = struct{}{}
-				}
+		filterer := i.filtererForRequest(ctx)
+		if filterer != nil {
+			for _, k := range filterer.RequiredLabelNames() {
+				by[k] = struct{}{}
 			}
 		}
 
@@ -418,10 +428,7 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
 		by = make(map[string]struct{}, len(labelsToMatch))
 		for k := range labelsToMatch {

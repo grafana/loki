@@ -165,10 +165,10 @@ func newSampleQuery(query string, start, end time.Time, shards []astmapper.Shard
 }
 
 type mockChunkStore struct {
-	schemas config.SchemaConfig
-	chunks  []chunk.Chunk
-	client  *mockChunkStoreClient
-	f       chunk.RequestChunkFilterer
+	schemas       config.SchemaConfig
+	chunks        []chunk.Chunk
+	client        *mockChunkStoreClient
+	chunkFilterer chunk.RequestChunkFilterer
 }
 
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
@@ -178,12 +178,12 @@ var (
 	_ chunkclient.Client = &mockChunkStoreClient{}
 )
 
-func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams []*logproto.Stream) *mockChunkStore {
+func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, chunkFilterer chunk.RequestChunkFilterer, streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
 		chunks = append(chunks, newChunk(chunkFormat, headfmt, *s))
 	}
-	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
+	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, chunkFilterer: chunkFilterer, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
 func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error { return nil }
@@ -203,8 +203,8 @@ Outer:
 				}
 			}
 			l := labels.NewBuilder(c.Metric).Del(model.MetricNameLabel).Labels()
-			if m.f != nil {
-				if m.f.ForRequest(ctx).ShouldFilter(l) {
+			if m.chunkFilterer != nil {
+				if m.chunkFilterer.ForRequest(ctx).ShouldFilter(l) {
 					continue
 				}
 			}
@@ -223,10 +223,6 @@ func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _
 
 func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
-}
-
-func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
-	m.f = f
 }
 
 func (m *mockChunkStore) DeleteChunk(_ context.Context, _, _ model.Time, _, _ string, _ labels.Labels, _ *model.Interval) error {
@@ -412,4 +408,3 @@ var streamsFixture = []*logproto.Stream{
 		},
 	},
 }
-var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, streamsFixture)

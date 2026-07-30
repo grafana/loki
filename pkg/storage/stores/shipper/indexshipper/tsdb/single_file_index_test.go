@@ -71,7 +71,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases)
+				return BuildIndex(t, t.TempDir(), nil, cases)
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestSingleIdx(t *testing.T) {
 					_, _ = head.Append(x.Labels, labels.StableHash(x.Labels), x.Chunks)
 				}
 				reader := head.Index()
-				return NewTSDBIndex(reader)
+				return NewTSDBIndex(reader, nil)
 			},
 		},
 	} {
@@ -243,7 +243,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 	}
 
 	tempDir := b.TempDir()
-	tsdbIndex := BuildIndex(b, tempDir, []LoadableSeries{
+	tsdbIndex := BuildIndex(b, tempDir, nil, []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
 			Chunks: chunkMetas,
@@ -312,7 +312,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, nil, series)
 
 	// Create the test cases
 	testCases := []struct {
@@ -446,7 +446,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, nil, series)
 
 	from := model.TimeFromUnixNano(t1.UnixNano())
 	through := model.TimeFromUnixNano(t2.UnixNano())
@@ -526,8 +526,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 		})
 
 		t.Run("it can filter chunks", func(t *testing.T) {
-			tsdbIndex.SetChunkFilterer(&filterAll{})
-			defer tsdbIndex.SetChunkFilterer(nil)
+			tsdbIndex := BuildIndex(t, t.TempDir(), &filterAll{}, series)
 
 			matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
 			acc := seriesvolume.NewAccumulator(10, 10)
@@ -683,8 +682,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 		})
 
 		t.Run("it can filter chunks", func(t *testing.T) {
-			tsdbIndex.SetChunkFilterer(&filterAll{})
-			defer tsdbIndex.SetChunkFilterer(nil)
+			tsdbIndex := BuildIndex(t, t.TempDir(), &filterAll{}, series)
 
 			matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
 			acc := seriesvolume.NewAccumulator(10, 10)
@@ -785,7 +783,7 @@ func BenchmarkTSDBIndex_Volume(b *testing.B) {
 	through := model.Latest
 	// Create the TSDB index
 	tempDir := b.TempDir()
-	tsdbIndex := BuildIndex(b, tempDir, series)
+	tsdbIndex := BuildIndex(b, tempDir, nil, series)
 
 	b.ResetTimer()
 	b.ReportAllocs()

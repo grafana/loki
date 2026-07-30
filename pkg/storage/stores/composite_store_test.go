@@ -35,8 +35,6 @@ func (m mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ mo
 	return nil, nil
 }
 
-func (m mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
-
 func (m mockStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }

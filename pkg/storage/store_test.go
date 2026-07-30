@@ -363,7 +363,7 @@ func Test_store_SelectLogs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: storeFixture,
+				Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -694,7 +694,7 @@ func Test_store_SelectSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: storeFixture,
+				Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
@@ -738,13 +738,13 @@ func (f fakeChunkFilterer) RequiredLabelNames() []string {
 
 func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, &fakeChunkFilterer{}, streamsFixture),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
-		chunkMetrics: NilMetrics,
+		chunkMetrics:  NilMetrics,
+		chunkFilterer: &fakeChunkFilterer{},
 	}
-	s.SetChunkFilterer(&fakeChunkFilterer{})
 	ctx = user.InjectOrgID(context.Background(), "test-user")
 	it, err := s.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: newSampleQuery("count_over_time({foo=~\"ba.*\"}[1s])", from, from.Add(1*time.Hour), nil, nil)})
 	if err != nil {
@@ -778,7 +778,7 @@ func Test_ChunkFilterer(t *testing.T) {
 
 func Test_PipelineWrapper(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -808,7 +808,7 @@ func Test_PipelineWrapper(t *testing.T) {
 
 func Test_PipelineWrapper_disabled(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -895,7 +895,7 @@ func (p *mockStreamPipeline) ProcessString(ts int64, line string, lbs labels.Lab
 
 func Test_SampleWrapper(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -924,7 +924,7 @@ func Test_SampleWrapper(t *testing.T) {
 
 func Test_SampleWrapper_disabled(t *testing.T) {
 	s := &LokiStore{
-		Store: storeFixture,
+		Store: newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, nil, streamsFixture),
 		cfg: Config{
 			MaxChunkBatchSize: 10,
 		},
@@ -1061,7 +1061,7 @@ func Test_store_GetSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: newMockChunkStore(chunkfmt, headfmt, streamsFixture),
+				Store: newMockChunkStore(chunkfmt, headfmt, nil, streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: tt.batchSize,
 				},
@@ -1535,7 +1535,7 @@ func Test_GetSeries(t *testing.T) {
 
 	var (
 		store = &LokiStore{
-			Store: newMockChunkStore(chunkfmt, headfmt, []*logproto.Stream{
+			Store: newMockChunkStore(chunkfmt, headfmt, nil, []*logproto.Stream{
 				{
 					Labels: `{foo="bar",buzz="boo"}`,
 					Entries: []logproto.Entry{

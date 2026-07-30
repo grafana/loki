@@ -1775,7 +1775,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},
-		Store: newMockChunkStore(chunkfmt, headfmt, newOverlappingStreams(200, 200)),
+		Store: newMockChunkStore(chunkfmt, headfmt, nil, newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))

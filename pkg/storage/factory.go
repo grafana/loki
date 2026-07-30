@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -289,6 +290,10 @@ type Config struct {
 	// ObjectClientDecorator, if set, wraps every ObjectClient after creation.
 	// This is intended for testing (e.g. injecting latency simulation).
 	ObjectClientDecorator func(client.ObjectClient) client.ObjectClient `yaml:"-"`
+
+	// ChunkFilterer, if set, filters the chunks and series returned by the store.
+	// It is handed to the index implementations when they are built.
+	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -17,7 +18,9 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
+// BuildIndex builds an index over cases. chunkFilter may be nil, in which case the
+// index applies no filtering.
+func BuildIndex(t testing.TB, dir string, chunkFilter chunk.RequestChunkFilterer, cases []LoadableSeries) *TSDBFile {
 	b := NewBuilder(index.FormatV3)
 
 	for _, s := range cases {
@@ -35,7 +38,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst)
+	idx, err := newShippableTSDBFile(dst, chunkFilter)
 	require.Nil(t, err)
 	return idx
 }

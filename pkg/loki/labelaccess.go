@@ -34,7 +34,7 @@ func (l *Loki) setupLBAC() error {
 		Distributor:             {AuthMiddleware},
 		IndexGateway:            {LabelAccess},
 		Ingester:                {LabelAccessStoreWrapper, LabelAccessIngesterWrapper, Filterers},
-		LabelAccess:             {Store},
+		Store:                   {LabelAccess},
 		LabelAccessStoreWrapper: {Store},
 		LabelAccessTripperware:  {AuthTripperware},
 		Querier:                 {AuthMiddleware, LabelAccess, LabelAccessStoreWrapper},
@@ -71,10 +71,12 @@ func (l *Loki) initLabelAccessIngesterWrapper() (services.Service, error) {
 	return nil, nil
 }
 
+// initStoreChunkFilterer puts the chunk filterer on the storage config, so the
+// store and the index implementations underneath it are built with it. It must run
+// before Store, which is why Store depends on it.
 func (l *Loki) initStoreChunkFilterer() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing store chunk filterer")
-	filterer := labelaccess.RequestChunkFilterer{}
-	l.Store.SetChunkFilterer(&filterer)
+	l.Cfg.StorageConfig.ChunkFilterer = &labelaccess.RequestChunkFilterer{}
 	return nil, nil
 }
 
