@@ -52,7 +52,7 @@ func scanLogObjectSortKeys(bucket objstore.Bucket, paths []string) {
 	for _, path := range paths {
 		obj, err := dataobj.FromBucket(context.Background(), bucket, path, 1024*1024)
 		if err != nil {
-			panic(err)
+			continue
 		}
 		var sortKeys = []string{}
 		for _, sec := range obj.Sections().Filter(streams.CheckSection) {

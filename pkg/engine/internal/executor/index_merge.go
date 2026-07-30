@@ -93,7 +93,6 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	if err != nil {
 		return nil, errors.Join(err, closer.Close())
 	}
-	c.logger.Log("msg", "SKIP uploading merged index", "path", path)
 	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
 		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
 	}

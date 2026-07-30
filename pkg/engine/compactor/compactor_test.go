@@ -67,6 +67,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
 		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
 		PlanVersion:               defaultPlanVersion,
+		TargetWindow:              "2027-07-28T13:00:00Z",
 	}
 
 	bucket := objstore.NewInMemBucket()

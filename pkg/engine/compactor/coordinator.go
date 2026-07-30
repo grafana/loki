@@ -338,7 +338,7 @@ func (c *coordinator) compactTenantLogs(
 		g.Go(func() error {
 			plan := buildLogMergePlan(tenant, window, ts)
 			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
-			rec, err := c.runLogMergeTask(ctx, opts, plan, i)
+			rec, err := c.runLogMergeTask(gctx, opts, plan, i)
 			if err != nil {
 				return err
 			}
