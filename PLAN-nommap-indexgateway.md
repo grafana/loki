@@ -467,62 +467,72 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
 
 ### Next (from #23663; each is its own PR, ~200–800 lines diff)
 
-1. **PR: streamenc + filepool foundation (vendored from Mimir).** ★ next
-   Ports `pkg/storage/indexheader/encoding/` + `pkg/util/filepool/` from
-   Mimir into `.../tsdb/index/streamenc/` and `.../streamenc/filepool/`.
-   Provenance headers preserved. Not imported by any caller — pure
-   foundation. Adds table-driven tests for `Decbuf` codec round-trips,
-   `FileReader` positioning/read semantics, `FilePool` capacity semantics.
-2. **PR: `StreamReader` opens a `DecbufFactory` + streams TOC + Version /
-   Bounds / Checksum.** Replaces those four delegated methods with real
-   streaming reads. Everything else still delegates to `ByteSliceReader`.
-   Cross-check test still passes without modification.
-3. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
+1. **PR: streamenc + filepool foundation + streamed header/TOC/RawFileReader.**
+   ★ next — branch `dahoppe/streamenc-foundation`. Two commits:
+   - `feat(tsdb): scaffold streaming decoder derived from Mimir index-header`
+     ports `pkg/storage/indexheader/encoding/` + `pkg/util/filepool/` from
+     Mimir into `.../tsdb/index/streamenc/` and `.../streamenc/filepool/`
+     with provenance headers, plus round-trip tests for the codec,
+     positioning tests for the file reader, and capacity/metrics tests
+     for the file pool.
+   - `feat(tsdb): stream StreamReader header, TOC, and RawFileReader`
+     opens a `FilePoolDecbufFactory` at construction, parses the 5-byte
+     header + 76-byte TOC via streaming, and replaces the delegated
+     `Version` / `Bounds` / `Checksum` / `Size` / `RawFileReader` stubs
+     with real streaming implementations. Adds explicit tests for bad
+     magic / unknown version / truncated header / truncated TOC / corrupt
+     TOC CRC and for `RawFileReader` returning fresh independent handles.
+     `TestReaders_CrossCheck` unchanged.
+   Query-surface methods (Symbols, Postings, Series, label lookups,
+   ChunkStats, PostingsRanges) still delegate to `ByteSliceReader`. That
+   mmap crutch stays until every method has a native streaming
+   implementation — one method per follow-up PR.
+2. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
    Ports Mimir's `indexheader/index/symbols.go` (adapted for Loki's V4
    format) into `.../tsdb/index/streamsym.go`. Reroutes those three
    methods off the inner `ByteSliceReader`. Adds a fixture with many
    symbols to exercise the sparse scan.
-4. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
+3. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
    `postings.go` (v1 + v2). Wires into `StreamReader.Postings`. Adds
    fixtures with 10 / 1k / 100k series.
-5. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
+4. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
    decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
    `IngestedAt` field. V4 fixture included.
-6. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
+5. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
    `LabelNamesFor`.** Falls out mostly from postings-offset + series
    ports; small.
-7. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
+6. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
    open (they're small; 2 uint64 per 1024 series). Existing shard tests
    pass with `mode=stream`.
-8. **PR: drop `StreamReader.mmapReader` fallback + delete
+7. **PR: drop `StreamReader.mmapReader` fallback + delete
    `ByteSliceReader` delegation dead code.** By this point every method
    has a native streaming implementation. This is the "no more mmap on
    the stream path" milestone. Ships without changing any default —
    `mode=mmap` is still the default and still uses `ByteSliceReader`.
-9. **PR: perf tuning — `Decbuf.ReadInto` batch reads.** Corresponds to
+8. **PR: perf tuning — `Decbuf.ReadInto` batch reads.** Corresponds to
    commit `215b82d0af` on the reference branch. Preprod-measured 2.3–2.7×
    → 1.1–1.6× vs mmap p99. Include before/after numbers.
-10. **PR: perf tuning — pool CRC32 + postings-list scratch buffers.** Commit
-    `1b9dbb75b6` on reference branch.
-11. **PR: `-shipper.streaming-index-max-idle-file-handles` config knob.**
+9. **PR: perf tuning — pool CRC32 + postings-list scratch buffers.** Commit
+   `1b9dbb75b6` on reference branch.
+10. **PR: `-shipper.streaming-index-max-idle-file-handles` config knob.**
     Commit `f17424eb09` on reference branch.
-12. **PR: cache `FilePoolDecbufFactory` file size.** Commit `ce00b0eeb0`
+11. **PR: cache `FilePoolDecbufFactory` file size.** Commit `ce00b0eeb0`
     on reference branch. Small.
-13. **PR: batch series reads through a single `Decbuf`.** Commit
+12. **PR: batch series reads through a single `Decbuf`.** Commit
     `2bf0b0201d` — introduces `ForPostingsSeries` on `StreamReader` and
     `batchSeriesReader` interface. This one is bigger; may split.
-14. **PR: batch series+labels + pool symbols Decbuf.** Commit `557525bf5a`.
+13. **PR: batch series+labels + pool symbols Decbuf.** Commit `557525bf5a`.
 
 ### Later (post-parity)
 
-15. **PR: three-way / cross-mode benchmark harness in the tree.** Corresponds
+14. **PR: three-way / cross-mode benchmark harness in the tree.** Corresponds
     to Bucket C5 in Phase 2 above.
-16. **PR: metrics for the streaming path (filepool metrics + per-mode
+15. **PR: metrics for the streaming path (filepool metrics + per-mode
     latency histograms).** Bucket D1.
-17. **PR: sparse snapshots on disk (symbols + postings).** Buckets C2 + C3.
+16. **PR: sparse snapshots on disk (symbols + postings).** Buckets C2 + C3.
     May split.
-18. **PR: docs + runbook + upgrade notes.** Bucket D3.
-19. **PR: flip default from `mmap` → `stream`.** Only after Dan validates
+17. **PR: docs + runbook + upgrade notes.** Bucket D3.
+18. **PR: flip default from `mmap` → `stream`.** Only after Dan validates
     a production cell.
 
 ### Gone from the reference branch (deliberate omissions)
@@ -798,10 +808,11 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
   `StreamReader` stub that delegates every method to `ByteSliceReader`,
   and adds the `index_reader_mode` config surface (`mmap` default, `stream`
   routes to the stub). No behaviour change at any default. Phase 3
-  section above rewritten to describe the 19 follow-up PRs that rebuild
+  section above rewritten to describe the ~18 follow-up PRs that rebuild
   the reference branch on top of #23663 one step at a time. **Next PR**:
-  streamenc + filepool foundation, vendored from Mimir with round-trip
-  tests. See "PR: streamenc + filepool foundation" in the Phase 3 table.
+  streamenc + filepool foundation plus streaming header/TOC/version/
+  bounds/checksum/RawFileReader — landed on branch
+  `dahoppe/streamenc-foundation` as two commits (see "PR #1" in Phase 3).
   The buffered mode + `disable_index_mmap` alias from Phase 1 are
   deliberately being dropped in the incremental path — the OOM in
   dev-005 killed any operator case for shipping them.
