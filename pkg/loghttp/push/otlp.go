@@ -253,16 +253,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
 
-		if _, ok := stats.ResourceAndSourceMetadataLabels[policy]; !ok {
-			stats.ResourceAndSourceMetadataLabels[policy] = make(map[time.Duration]push.LabelsAdapter)
-		}
-
 		// We group by retention period to later be able to map bytes ingested to each retention period.
 		// Ex: 10GB ingested has 30d retention and 1GB has 365d retention.
 		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += resourceAttributesAsStructuredMetadataSize
 		totalBytesReceived += resourceAttributesAsStructuredMetadataSize
-
-		stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
 		for j := 0; j < sls.Len(); j++ {
 			logs := sls.At(j).LogRecords()
@@ -286,7 +280,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += scopeAttributesAsStructuredMetadataSize
 			totalBytesReceived += scopeAttributesAsStructuredMetadataSize
 
-			stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 

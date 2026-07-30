@@ -15,8 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -143,7 +141,6 @@ func NewPushStats() *Stats {
 		LogLinesBytes:                     map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
 		PolicyNumLines:                    map[string]int64{},
-		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
 		MostRecentEntryTimestampPerStream: map[string]time.Time{},
 		StreamSizeBytes:                   map[string]int64{},
 	}
@@ -159,9 +156,6 @@ type Stats struct {
 	// StructuredMetadataBytes holds the size of the original structured metadata (but after it was enriched by OLTP
 	// parser) per policy per retention. Used in billing.
 	StructuredMetadataBytes PolicyWithRetentionWithBytes
-
-	// ResourceAndSourceMetadataLabels holds structured metadata that was added by OLTP parser (scope and resource attributes)
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
 
 	// StreamLabelsSize holds the total size of stream labels after sanitization (empty labels removed and
 	// non-meaningful whitespaces removed). Not used in billing.
