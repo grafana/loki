@@ -492,7 +492,9 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 		Prefix     string         `yaml:"prefix"`
 		Period     model.Duration `yaml:"period"`
 	}{}
-	if err := value.Decode(&g); err != nil {
+	// We always want strict config parsing so leftover keys (e.g. the removed
+	// tags setting) are rejected instead of silently ignored.
+	if err := value.Load(&g, yaml.WithKnownFields(true)); err != nil {
 		return err
 	}
 
@@ -546,7 +548,9 @@ func (cfg *PeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`
 	}{}
-	if err := value.Decode(&g); err != nil {
+	// We always want strict config parsing so leftover keys (e.g. the removed
+	// tags setting) are rejected instead of silently ignored.
+	if err := value.Load(&g, yaml.WithKnownFields(true)); err != nil {
 		return err
 	}
 
