@@ -729,11 +729,16 @@ func X__atomic_compare_exchangeInt32(t *TLS, ptr, expected, desired uintptr, wea
 	exp := (*int32)(unsafe.Pointer(expected))
 	des := *(*int32)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapInt32(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapInt32(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadInt32(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadInt32(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeUint32(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -741,11 +746,16 @@ func X__atomic_compare_exchangeUint32(t *TLS, ptr, expected, desired uintptr, we
 	exp := (*uint32)(unsafe.Pointer(expected))
 	des := *(*uint32)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapUint32(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapUint32(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadUint32(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadUint32(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeInt64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -753,11 +763,16 @@ func X__atomic_compare_exchangeInt64(t *TLS, ptr, expected, desired uintptr, wea
 	exp := (*int64)(unsafe.Pointer(expected))
 	des := *(*int64)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapInt64(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapInt64(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadInt64(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadInt64(p)
-	return 0
 }
 
 func X__atomic_compare_exchangeUint64(t *TLS, ptr, expected, desired uintptr, weak, success, failure int32) int32 {
@@ -765,11 +780,16 @@ func X__atomic_compare_exchangeUint64(t *TLS, ptr, expected, desired uintptr, we
 	exp := (*uint64)(unsafe.Pointer(expected))
 	des := *(*uint64)(unsafe.Pointer(desired))
 	old := *exp
-	if atomic.CompareAndSwapUint64(p, old, des) {
-		return 1
+	for {
+		if atomic.CompareAndSwapUint64(p, old, des) {
+			return 1
+		}
+		cur := atomic.LoadUint64(p)
+		if cur != old {
+			*exp = cur
+			return 0
+		}
 	}
-	*exp = atomic.LoadUint64(p)
-	return 0
 }
 
 func X__c11_atomic_compare_exchange_strongInt8(t *TLS, ptr, expected uintptr, desired int8, success, failure int32) int32 {

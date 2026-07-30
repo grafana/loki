@@ -128299,7 +128299,7 @@ func _tre_ast_new_iter(tls *TLS, mem Ttre_mem_t, arg uintptr, min int32, max int
 	(*Ttre_iteration_t)(unsafe.Pointer(iter)).Farg = arg
 	(*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmin = min
 	(*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmax = max
-	SetBitFieldPtr8Uint32(iter+16, Uint32FromInt32(minimal), 0, 0x1)
+	SetBitFieldPtr8Uint32(iter+16, Uint32FromInt32(minimal), 7, 0x80)
 	(*Ttre_ast_node_t)(unsafe.Pointer(node)).Fnum_submatches = (*Ttre_ast_node_t)(unsafe.Pointer(arg)).Fnum_submatches
 	return node
 }
@@ -129807,7 +129807,7 @@ func _tre_add_tags(tls *TLS, mem Ttre_mem_t, stack uintptr, tree uintptr, tnfa u
 		case int32(_ITERATION):
 			iter = (*Ttre_ast_node_t)(unsafe.Pointer(node)).Fobj
 			if first_pass != 0 {
-				status = _tre_stack_push_int(tls, stack, BoolInt32(**(**int32)(__ccgo_up(regset)) >= 0 || int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x1>>0)) != 0))
+				status = _tre_stack_push_int(tls, stack, BoolInt32(**(**int32)(__ccgo_up(regset)) >= 0 || int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x80>>7)) != 0))
 				if status != REG_OK {
 					break
 				}
@@ -129816,7 +129816,7 @@ func _tre_add_tags(tls *TLS, mem Ttre_mem_t, stack uintptr, tree uintptr, tnfa u
 				if status != REG_OK {
 					break
 				}
-				status = _tre_stack_push_int(tls, stack, int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x1>>0)))
+				status = _tre_stack_push_int(tls, stack, int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x80>>7)))
 				if status != REG_OK {
 					break
 				}
@@ -129838,10 +129838,10 @@ func _tre_add_tags(tls *TLS, mem Ttre_mem_t, stack uintptr, tree uintptr, tnfa u
 				break
 			}
 			/* Regset is not empty, so add a tag here. */
-			if **(**int32)(__ccgo_up(regset)) >= 0 || int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x1>>0)) != 0 {
+			if **(**int32)(__ccgo_up(regset)) >= 0 || int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x80>>7)) != 0 {
 				if !(first_pass != 0) {
 					status = _tre_add_tag_left(tls, mem, node, tag)
-					if int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x1>>0)) != 0 {
+					if int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x80>>7)) != 0 {
 						**(**Ttre_tag_direction_t)(__ccgo_up((*Ttre_tnfa_t)(unsafe.Pointer(tnfa)).Ftag_directions + uintptr(tag)*4)) = int32(_TRE_TAG_MAXIMIZE)
 					} else {
 						**(**Ttre_tag_direction_t)(__ccgo_up((*Ttre_tnfa_t)(unsafe.Pointer(tnfa)).Ftag_directions + uintptr(tag)*4)) = direction
@@ -130268,7 +130268,7 @@ func _tre_copy_ast(tls *TLS, mem Ttre_mem_t, stack uintptr, ast uintptr, flags i
 				if status != REG_OK {
 					break
 				}
-				**(**uintptr)(__ccgo_up(result)) = _tre_ast_new_iter(tls, mem, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Farg, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmin, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmax, int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x1>>0)))
+				**(**uintptr)(__ccgo_up(result)) = _tre_ast_new_iter(tls, mem, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Farg, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmin, (*Ttre_iteration_t)(unsafe.Pointer(iter)).Fmax, int32(uint32(*(*uint8)(unsafe.Pointer(iter + 16))&0x80>>7)))
 				if **(**uintptr)(__ccgo_up(result)) == UintptrFromInt32(0) {
 					status = int32(REG_ESPACE)
 					break
