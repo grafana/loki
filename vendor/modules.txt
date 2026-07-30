@@ -54,7 +54,7 @@ cloud.google.com/go/compute/metadata
 ## explicit; go 1.25.0
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
-# cloud.google.com/go/monitoring v1.29.0
+# cloud.google.com/go/monitoring v1.30.0
 ## explicit; go 1.25.0
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb

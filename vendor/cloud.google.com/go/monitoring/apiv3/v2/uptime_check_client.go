@@ -157,7 +157,7 @@ type UptimeCheckClient struct {
 
 // Wrapper methods routed to the internal client.
 
-// Close closes the connection to the API service. The user should invoke this when
+// Close closes the connection to the API service. **Always** call Close() when
 // the client is no longer required.
 func (c *UptimeCheckClient) Close() error {
 	return c.internalClient.Close()
@@ -321,7 +321,7 @@ func (c *uptimeCheckGRPCClient) setGoogleClientInfo(keyval ...string) {
 	}
 }
 
-// Close closes the connection to the API service. The user should invoke this when
+// Close closes the connection to the API service. **Always** call Close() when
 // the client is no longer required.
 func (c *uptimeCheckGRPCClient) Close() error {
 	return c.connPool.Close()
