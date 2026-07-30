@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 
 	lokitsdb "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
