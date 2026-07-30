@@ -37,6 +37,7 @@ var (
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
 		"chunk_store_config.write_dedupe_cache_config",
+		"chunk_store_config.cache_lookups_older_than",
 		"limits_config.unordered_writes",
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
