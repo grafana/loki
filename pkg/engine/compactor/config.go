@@ -187,7 +187,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.PollingInterval, prefix+"polling-interval", defaultPollingInterval,
 		"Experimental: Coordinator main-loop cadence.")
 	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
-		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window. Raise when the index-builder lags wall-clock so the current window's ToC may not exist yet.")
+		"Experimental: Number of older metastore windows to compact in addition to the current window. 0 compacts only the current window; 1 also compacts the previous window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.IntVar(&cfg.LogMaxRunsPerTask, prefix+"logs.max-runs-per-task", defaultLogMaxRunsPerTask,

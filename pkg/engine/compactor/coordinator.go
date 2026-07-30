@@ -114,8 +114,7 @@ func (c *coordinator) Run(ctx context.Context) error {
 
 // windows returns the metastore-aligned windows the coordinator compacts on
 // each pass, newest first: the current window followed by cfg.WindowLookback
-// older windows. With the default lookback of 0 this is exactly the current
-// window, preserving the original single-window behaviour.
+// older windows. With the default lookback of 0 this is the current window.
 func (c *coordinator) windows() []time.Time {
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
@@ -129,7 +128,7 @@ func (c *coordinator) windows() []time.Time {
 // and the per-tenant enable override. workers is owned solely by the single Run
 // goroutine, so it needs no synchronization.
 func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
-	discovered, allOK := c.discoverAll(ctx)
+	discovered, allOK := c.discoverUniqueTenants(ctx)
 
 	// Per-tenant metric series are dropped by the worker goroutine on exit (see
 	// startWorker), not here, so a still-draining worker cannot resurrect a
@@ -176,11 +175,11 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	}
 }
 
-// discoverAll unions the tenant sets of every compacted window's ToC. allOK is
+// discoverUniqueTenants unions the tenant sets of every compacted window's ToC. allOK is
 // true only when every window read cleanly (a missing ToC or transient error on
 // any window clears it); reconcile uses allOK to gate absence-driven
 // cancellation so an unread window never causes a spurious cancel.
-func (c *coordinator) discoverAll(ctx context.Context) (map[string]struct{}, bool) {
+func (c *coordinator) discoverUniqueTenants(ctx context.Context) (map[string]struct{}, bool) {
 	discovered := make(map[string]struct{})
 	allOK := true
 	for _, window := range c.windows() {
@@ -792,14 +791,14 @@ func (c *coordinator) runPhaseAllWindows(ctx context.Context, tenant string, p p
 			outcome = c.runLogMergePhase(ctx, tenant, window)
 		}
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
-		worst = worseOutcome(worst, outcome)
+		worst = worstOutcome(worst, outcome)
 	}
 	return worst
 }
 
-// worseOutcome ranks phase outcomes so the tenant loop retries on any error and
+// worstOutcome ranks phase outcomes so the tenant loop retries on any error and
 // otherwise reports progress: error > swapped > no-work.
-func worseOutcome(a, b phaseOutcome) phaseOutcome {
+func worstOutcome(a, b phaseOutcome) phaseOutcome {
 	switch {
 	case a == phaseOutcomeError || b == phaseOutcomeError:
 		return phaseOutcomeError

@@ -1079,10 +1079,10 @@ func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
 }
 
 func TestWorseOutcome(t *testing.T) {
-	require.Equal(t, phaseOutcomeError, worseOutcome(phaseOutcomeNoWork, phaseOutcomeError))
-	require.Equal(t, phaseOutcomeError, worseOutcome(phaseOutcomeSwapped, phaseOutcomeError))
-	require.Equal(t, phaseOutcomeSwapped, worseOutcome(phaseOutcomeNoWork, phaseOutcomeSwapped))
-	require.Equal(t, phaseOutcomeNoWork, worseOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
+	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeNoWork, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeError, worstOutcome(phaseOutcomeSwapped, phaseOutcomeError))
+	require.Equal(t, phaseOutcomeSwapped, worstOutcome(phaseOutcomeNoWork, phaseOutcomeSwapped))
+	require.Equal(t, phaseOutcomeNoWork, worstOutcome(phaseOutcomeNoWork, phaseOutcomeNoWork))
 }
 
 func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
@@ -1097,7 +1097,7 @@ func TestDiscoverAll_UnionsPopulatedWindows(t *testing.T) {
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("acme", "bravo"))
 	c.cfg.WindowLookback = 1
 
-	discovered, allOK := c.discoverAll(ctx)
+	discovered, allOK := c.discoverUniqueTenants(ctx)
 	require.True(t, allOK, "both windows read cleanly")
 	require.ElementsMatch(t, []string{"acme", "bravo"}, keys(discovered))
 }
@@ -1117,7 +1117,7 @@ func TestDiscoverAll_CurrentMissingPreviousPresent(t *testing.T) {
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), newFakeLimits("bravo"))
 	c.cfg.WindowLookback = 1
 
-	discovered, allOK := c.discoverAll(ctx)
+	discovered, allOK := c.discoverUniqueTenants(ctx)
 	require.False(t, allOK, "the missing current-window ToC makes the picture non-authoritative")
 	require.ElementsMatch(t, []string{"bravo"}, keys(discovered),
 		"the populated previous window still yields its tenant")
