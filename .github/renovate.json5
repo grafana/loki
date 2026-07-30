@@ -191,6 +191,39 @@
         enabled: true,
       },
     },
+    {
+      // The operator module replaces github.com/grafana/loki/operator/api/loki with
+      // ./api/loki, so raising a requirement in the nested module also raises the
+      // operator module's own indirect requirements. 'gomodTidy' only tidies the module
+      // Renovate updated, which leaves operator/go.mod stale and fails the operator CI's
+      // 'make manager && git diff --exit-code' check, so tidy the parent as well.
+      matchManagers: ['gomod'],
+      matchFileNames: ['operator/api/loki/go.mod'],
+      postUpgradeTasks: {
+        commands: ['cd operator && go mod tidy'],
+        fileFilters: [
+          'operator/go.mod',
+          'operator/go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      // Same nesting problem as above: the root module replaces
+      // github.com/grafana/loki/pkg/push with ./pkg/push. The root module is vendored, so
+      // the parent needs re-vendoring on top of the tidy.
+      matchManagers: ['gomod'],
+      matchFileNames: ['pkg/push/go.mod'],
+      postUpgradeTasks: {
+        commands: ['go mod tidy && go mod vendor'],
+        fileFilters: [
+          'go.mod',
+          'go.sum',
+          'vendor/**',
+        ],
+        executionMode: 'branch',
+      },
+    },
     //
     // Section 2: disable updates. These must all stay below section 1 — see the note above
     // 'packageRules'.
