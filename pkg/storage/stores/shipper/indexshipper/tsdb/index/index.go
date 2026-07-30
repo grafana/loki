@@ -1255,7 +1255,9 @@ type StringIter interface {
 	Err() error
 }
 
-type Reader struct {
+// ByteSliceReader is an implementation of Reader used for reading indexes from
+// a ByteSlice that has either been loaded into memory or memory-mapped.
+type ByteSliceReader struct {
 	b   ByteSlice
 	toc *TOC
 
@@ -1302,19 +1304,20 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
-// NewReader returns a new index reader on the given byte slice. It automatically
+// NewByteSliceReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
-func NewReader(b ByteSlice) (*Reader, error) {
-	return newReader(b, io.NopCloser(nil))
+func NewByteSliceReader(b ByteSlice) (*ByteSliceReader, error) {
+	return newByteSliceReader(b, io.NopCloser(nil))
 }
 
-// NewFileReader returns a new index reader against the given index file.
-func NewFileReader(path string) (*Reader, error) {
+// NewMmapFileReader returns a new index reader against the given index file.
+// It uses mmap to read the file.
+func NewMmapFileReader(path string) (*ByteSliceReader, error) {
 	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
 	}
-	r, err := newReader(RealByteSlice(f.Bytes()), f)
+	r, err := newByteSliceReader(RealByteSlice(f.Bytes()), f)
 	if err != nil {
 		return nil, stderrors.Join(
 			err,
@@ -1325,8 +1328,8 @@ func NewFileReader(path string) (*Reader, error) {
 	return r, nil
 }
 
-func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
-	r := &Reader{
+func newByteSliceReader(b ByteSlice, c io.Closer) (*ByteSliceReader, error) {
+	r := &ByteSliceReader{
 		b:        b,
 		c:        c,
 		postings: map[string][]postingOffset{},
@@ -1416,11 +1419,11 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 }
 
 // Version returns the file format version of the underlying index.
-func (r *Reader) Version() int {
+func (r *ByteSliceReader) Version() int {
 	return r.version
 }
 
-func (r *Reader) RawFileReader() (io.ReadSeeker, error) {
+func (r *ByteSliceReader) RawFileReader() (io.ReadSeeker, error) {
 	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
 }
 
@@ -1431,7 +1434,7 @@ type Range struct {
 
 // PostingsRanges returns a new map of byte range in the underlying index file
 // for all postings lists.
-func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
+func (r *ByteSliceReader) PostingsRanges() (map[labels.Label]Range, error) {
 	m := map[labels.Label]Range{}
 	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
 		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
@@ -1621,39 +1624,39 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 }
 
 // Close the reader and its underlying resources.
-func (r *Reader) Close() error {
+func (r *ByteSliceReader) Close() error {
 	return r.c.Close()
 }
 
-func (r *Reader) lookupSymbol(o uint32) (string, error) {
+func (r *ByteSliceReader) lookupSymbol(o uint32) (string, error) {
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil
 	}
 	return r.symbols.Lookup(o)
 }
 
-func (r *Reader) Bounds() (int64, int64) {
+func (r *ByteSliceReader) Bounds() (int64, int64) {
 	return r.toc.Metadata.From, r.toc.Metadata.Through
 }
 
-func (r *Reader) Checksum() uint32 {
+func (r *ByteSliceReader) Checksum() uint32 {
 	return r.toc.Metadata.Checksum
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.
-func (r *Reader) Symbols() StringIter {
+func (r *ByteSliceReader) Symbols() StringIter {
 	return r.symbols.Iter()
 }
 
 // SymbolTableSize returns the symbol table size in bytes.
-func (r *Reader) SymbolTableSize() uint64 {
+func (r *ByteSliceReader) SymbolTableSize() uint64 {
 	return uint64(r.symbols.Size())
 }
 
 // LabelValues returns value tuples that exist for the given label name.
 // The returned values should be copied if they need to be used beyond the current tsdb read operation, including sending back as response.
 // TODO(replay): Support filtering by matchers
-func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
+func (r *ByteSliceReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
 		return nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
@@ -1698,7 +1701,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 
 // LabelNamesFor returns all the label names for the series referred to by IDs.
 // The names returned are sorted.
-func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
+func (r *ByteSliceReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 	// Gather offsetsMap the name offsetsMap in the symbol table first
 	offsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
@@ -1736,7 +1739,7 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 }
 
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
-func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
+func (r *ByteSliceReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
 	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
 	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1758,7 +1761,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (r *ByteSliceReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
 	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
 	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1773,7 +1776,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	return fprint, nil
 }
 
-func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (r *ByteSliceReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
 	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
 	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
@@ -1784,7 +1787,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
 }
 
-func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
+func (r *ByteSliceReader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
 	e, ok := r.postings[name]
 	if !ok {
 		return EmptyPostings(), nil
@@ -1868,13 +1871,13 @@ func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...str
 }
 
 // Size returns the size of an index file.
-func (r *Reader) Size() int64 {
+func (r *ByteSliceReader) Size() int64 {
 	return int64(r.b.Len())
 }
 
 // LabelNames returns all the unique label names present in the index.
 // TODO(twilkie) implement support for matchers
-func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (r *ByteSliceReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
 	if len(matchers) > 0 {
 		return nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}

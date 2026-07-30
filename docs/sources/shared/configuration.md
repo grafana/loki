@@ -6859,6 +6859,12 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.download-timeout
   [download_timeout: <duration> | default = 1m]
 
+  # Experimental. Implementation used to read TSDB index files off disk.
+  # Supported values: mmap (memory-map the file, the historical default) or
+  # stream (experimental, not yet fully implemented).
+  # CLI flag: -tsdb.shipper.index-reader-mode
+  [index_reader_mode: <string> | default = "mmap"]
+
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
