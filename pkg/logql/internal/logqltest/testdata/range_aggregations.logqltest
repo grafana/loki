@@ -1,0 +1,223 @@
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 61]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 61]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 31]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 31]
+
+eval instant at 60s rate({app="foo"} |~".+bar" [1m])
+  {app="foo"} 0.1
+eval range from 60s to 120s step 60s rate({app="foo"} |~".+bar" [1m])
+  {app="foo"} 0.1 0.1
+
+eval instant at 60s count_over_time({app="foo"} |~".+bar" [1m])
+  {app="foo"} 6
+eval range from 60s to 120s step 30s count_over_time({app="foo"} |~".+bar" [1m])
+  {app="foo"} 6 6 6
+
+eval instant at 300s count_over_time(({app="foo"} |~".+bar")[5m])
+  {app="foo"} 30
+eval range from 300s to 600s step 30s count_over_time(({app="foo"} |~".+bar")[5m])
+  {app="foo"} 30 30 30 30 30 30 30 30 30 30 30
+
+eval instant at 90s count_over_time({app="foo"} |~".+bar" [1m] offset 30s)
+  {app="foo"} 6
+eval range from 60s to 120s step 30s count_over_time({app="foo"} |~".+bar" [1m] offset 30s)
+  {app="foo"} 4 6 6
+
+eval instant at 60s rate(({app=~"foo|bar"} |~".+bar")[1m])
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar")[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+# absent_over_time — empty when the selector matches data.
+eval instant at 300s absent_over_time(({app="foo"} |~".+bar")[5m])
+  expect empty
+eval range from 60s to 180s step 30s absent_over_time(({app="foo"} |~".+bar")[1m])
+  expect empty
+
+# absent_over_time — 1 when the selector+filter matches nothing.
+clear
+load
+  {app="foo"} "noise" @ 0s [repeat every 10s for 61]
+
+eval instant at 300s absent_over_time(({app="foo"} |~".+bar")[5m])
+  {app="foo"} 1
+eval range from 60s to 180s step 30s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 1 1 1
+
+# absent_over_time across present→absent boundaries: matching logs exist only in a center band
+# (130s–280s), so [1m] windows before and after it catch nothing.
+clear
+load
+  {app="foo"} "xbar"  @ 130s [repeat every 30s for 6]
+  {app="foo"} "noise" @ 0s   [repeat every 30s for 15]
+
+# Absent before and after the center.
+eval range from 60s to 420s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 _ _ _ 1 1
+# Absent only at the beginning (range ends while data is present).
+eval range from 60s to 240s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 _ _
+# Absent only at the end (range starts while data is present).
+eval range from 180s to 420s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} _ _ _ 1 1
+
+clear
+load
+  {app="foo"} "xbar" @ 0s [repeat every 10s for 13]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
+
+# The [30s] range is half-open: its lower bound is exclusive, upper bound inclusive.
+eval instant at 60s rate({app="foo"}[30s])
+  {app="foo"} 0.1
+eval range from 60s to 120s step 15s rate({app="foo"}[30s])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+
+eval instant at 60s bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12 12 12 12 12
+
+eval instant at 60s bytes_rate({app="foo"}[30s])
+  {app="foo"} 0.4
+eval range from 60s to 120s step 15s bytes_rate({app="foo"}[30s])
+  {app="foo"} 0.4 0.4 0.4 0.4 0.4
+
+# bytes_over_time compared against a scalar (12 bytes per [30s] window).
+eval instant at 60s bytes_over_time({app="foo"}[30s]) > 1
+  {app="foo"} 12
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s]) > 1
+  {app="foo"} 12 12 12 12 12
+eval instant at 60s bytes_over_time({app="foo"}[30s]) > bool 1
+  {app="foo"} 1
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s]) > bool 1
+  {app="foo"} 1 1 1 1 1
+# Should return the same result as `bytes_over_time({app="foo"}[30s]) > 1`.
+# https://grafana.com/docs/loki/latest/query/#comparison-operators
+# Between a vector and a scalar, the operator is applied to every sample's value in the vector.
+eval instant at 60s 1 < bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12
+eval range from 60s to 120s step 15s 1 < bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12 12 12 12 12
+# Should return the same result as `bytes_over_time({app="foo"}[30s]) > bool 1` (bool form of the above).
+eval instant at 60s 1 < bool bytes_over_time({app="foo"}[30s])
+  {app="foo"} 1
+eval range from 60s to 120s step 15s 1 < bool bytes_over_time({app="foo"}[30s])
+  {app="foo"} 1 1 1 1 1
+
+# unwrap of a stream label `foo` (no parser stage).
+clear
+load
+  {app="foo", foo="2"} "xbar" @ 0s [repeat every 10s for 13]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
+
+eval instant at 60s rate({app="foo"} | unwrap foo [30s])
+  {app="foo"} 0.2
+eval range from 60s to 120s step 15s rate({app="foo"} | unwrap foo [30s])
+  {app="foo"} 0.2 0.2 0.2 0.2 0.2
+
+# first_over_time / last_over_time over unwrapped values.
+clear
+load
+  {app="foo", foo="2"} "xbar"  @ 0s [repeat every 10s for 61]
+  {app="foo", foo="2"} "noise" @ 5s [repeat every 10s for 61]
+
+eval instant at 60s first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])
+  {app="foo"} 2
+eval range from 60s to 120s step 30s first_over_time({app="foo"} |~".+bar" | unwrap foo [1m])
+  {app="foo"} 2 2 2
+
+eval instant at 300s last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])
+  {app="foo"} 2
+eval range from 300s to 600s step 30s last_over_time(({app="foo"} |~".+bar" | unwrap foo)[5m])
+  {app="foo"} 2 2 2 2 2 2 2 2 2 2 2
+
+# unwrap of a stream label `bar`.
+clear
+load
+  {app="foo", bar="3"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo", bar="3"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar", bar="6"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="bar", bar="6"} "noise" @ 5s [repeat every 10s for 19]
+
+eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
+  {app="foo"} 0.3
+  {app="bar"} 0.6
+eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
+  {app="foo"} 0.3 0.3 0.3 0.3 0.3
+  {app="bar"} 0.6 0.6 0.6 0.6 0.6
+
+# Combines a numeric label filter with unwrap: after logfmt, `bar > 0` drops the bar=0 lines
+# before unwrapping bazz.
+clear
+load
+  {job="foo"} "bar=1 bazz=10" @ 10s [repeat every 10s for 12]
+  {job="foo"} "bar=0 bazz=99" @ 15s [repeat every 10s for 12]
+
+eval instant at 120s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
+  {} 1
+eval range from 60s to 120s step 30s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
+  {} 1 1 1
+
+# Unwrapped-range aggregations: sum/avg/min/max/quantile/stddev/stdvar over_time (values 7 and 13).
+clear
+load
+  {app="a"} "v=7"  @ 10s  [repeat every 10s for 3]
+  {app="a"} "v=13" @ 40s  [repeat every 10s for 3]
+  {app="a"} "v=7"  @ 70s  [repeat every 10s for 3]
+  {app="a"} "v=13" @ 100s [repeat every 10s for 3]
+  {app="noise"} "noise" @ 10s [repeat every 10s for 12]
+
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 60
+eval range from 60s to 120s step 60s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 60 60
+
+eval instant at 120s avg_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10
+eval range from 60s to 120s step 60s avg_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10 10
+
+eval instant at 120s min_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 7
+eval range from 60s to 120s step 60s min_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 7 7
+
+eval instant at 120s max_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 13
+eval range from 60s to 120s step 60s max_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 13 13
+
+eval instant at 120s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10
+eval range from 60s to 120s step 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10 10
+
+eval instant at 120s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 3
+eval range from 60s to 120s step 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 3 3
+
+eval instant at 120s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 9
+eval range from 60s to 120s step 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 9 9
+
+# unwrap conversions: duration() and bytes().
+clear
+load
+  {app="a"} "d=2s"  @ 70s [repeat every 10s for 6]
+  {app="a"} "b=1KB" @ 70s [repeat every 10s for 6]
+  {app="noise"} "noise" @ 70s [repeat every 10s for 6]
+
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
+  {app="a"} 12
+eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
+  {app="a"} 6 12
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
+  {app="a"} 6000
+eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
+  {app="a"} 3000 6000
