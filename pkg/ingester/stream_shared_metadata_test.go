@@ -776,19 +776,6 @@ func TestStreamPushSharedStructuredMetadataWALRecord(t *testing.T) {
 		require.Zero(t, e.SharedResourceRef, "WAL entry %d must not keep a resource reference", i)
 		require.Zero(t, e.SharedScopeRef, "WAL entry %d must not keep a scope reference", i)
 	}
-
-	// So the segment bytes are the segment bytes of the equivalent expanding push, which is what
-	// keeps deferred expansion out of the WAL format entirely.
-	expandedStream := newSharedMetadataStream(t, nil)
-	expandedRecord := recordPool.GetRecord()
-	expandedRecord.UserID = "fake"
-
-	_, err = expandedStream.Push(context.Background(), expandedEntries(entries, sets), nil, expandedRecord, 0, true, false, nil, "otlp")
-	require.NoError(t, err)
-
-	require.Equal(t,
-		expandedRecord.EncodeEntries(wal.CurrentEntriesRec, nil),
-		record.EncodeEntries(wal.CurrentEntriesRec, nil))
 }
 
 // TestStreamPushSharedStructuredMetadataWALReplay replays a WAL record produced by a push with a
@@ -1037,6 +1024,77 @@ func TestStreamPushSharedStructuredMetadataRestartOverlap(t *testing.T) {
 		once := newOverlappingStream(t)
 		reconsume(t, once, entries)
 		require.Equal(t, closedChunkBytes(t, once), closedChunkBytes(t, s))
+	})
+}
+
+// TestStreamPushWALRecordEmissionPolicy pins the emission policy: whether or not the push
+// carried a pool, the record is written in the version it always was and carries no pool, so
+// every tenant's segments stay exactly what they were and stay readable by every Loki version.
+func TestStreamPushWALRecordEmissionPolicy(t *testing.T) {
+	entries := []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "one", StructuredMetadata: sm("trace_id", "abc")},
+		{Timestamp: time.Unix(2, 0), Line: "two"},
+	}
+	pooledEntries := []logproto.Entry{smEntry(1, "one", nil, 1, 0)}
+	pool := smPool(sm("service_name", "checkout"))
+
+	assertCurrentVersion := func(t *testing.T, record *wal.Record) {
+		t.Helper()
+
+		require.Equal(t, wal.CurrentEntriesRec, record.EntriesVersion())
+		for i := range record.RefEntries {
+			require.Empty(t, record.RefEntries[i].SharedStructuredMetadataSets,
+				"RefEntries %d must carry no pool", i)
+		}
+
+		// And the bytes are the ones the current version has always written.
+		require.Equal(t,
+			record.EncodeEntries(wal.WALRecordEntriesV3, nil),
+			record.EncodeEntries(record.EntriesVersion(), nil),
+			"the record must encode to exactly the V3 bytes")
+	}
+
+	t.Run("a pool-less push stays on the current version", func(t *testing.T) {
+		s := newSharedMetadataStream(t, nil)
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := s.Push(context.Background(), entries, nil, record, 0, true, false, nil, "loki")
+		require.NoError(t, err)
+
+		assertCurrentVersion(t, record)
+	})
+
+	t.Run("a pooled push stays on the current version too", func(t *testing.T) {
+		s := newSharedMetadataStream(t, nil)
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := s.Push(context.Background(), slices.Clone(pooledEntries), pool, record, 0, true, false, nil, "otlp")
+		require.NoError(t, err)
+
+		assertCurrentVersion(t, record)
+	})
+
+	t.Run("a record mixing a pooled and a pool-less stream", func(t *testing.T) {
+		poolLess := newSharedMetadataStream(t, nil)
+		pooled := newSharedMetadataStream(t, nil)
+		pooled.fp = 1
+
+		record := recordPool.GetRecord()
+		record.UserID = "fake"
+
+		_, err := poolLess.Push(context.Background(), entries, nil, record, 0, true, false, nil, "loki")
+		require.NoError(t, err)
+		_, err = pooled.Push(context.Background(), slices.Clone(pooledEntries), pool, record, 0, true, false, nil, "otlp")
+		require.NoError(t, err)
+
+		require.Len(t, record.RefEntries, 2)
+		assertCurrentVersion(t, record)
+
+		decoded := &wal.Record{}
+		require.NoError(t, wal.DecodeRecord(record.EncodeEntries(record.EntriesVersion(), nil), decoded))
+		require.Len(t, decoded.RefEntries, 2)
 	})
 }
 
