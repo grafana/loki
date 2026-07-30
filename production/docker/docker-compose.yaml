@@ -145,7 +145,7 @@ services:
 
   # alertmanager to enable receiving alerts
   alertmanager:
-    image: prom/alertmanager:v0.33.0@sha256:af26fbe4dd1886ac0efd7bd55cd9027da262e105b137a376522b7c14c3626e4a
+    image: prom/alertmanager:v0.33.1@sha256:9e082985f56f4c8c9f724e18f2288c6708f472e56a5286b8863d080434ea065d
     restart: unless-stopped
     ports:
       - "9093:9093"
