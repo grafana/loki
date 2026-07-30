@@ -354,6 +354,9 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 		}
 		byTS := map[int64]float64{}
 		for _, p := range s.Floats {
+			if _, dup := byTS[p.T]; dup {
+				return fmt.Errorf("%s: engine returned duplicate point for series %s at t=%dms", name, key, p.T)
+			}
 			byTS[p.T] = p.F
 		}
 		got[key] = byTS

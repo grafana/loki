@@ -139,6 +139,10 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			}),
 			want: `engine returned duplicate series {app="a"}`,
 		},
+		"matrix duplicate point": {
+			err:  compareMatrix("n", rangeCmd, oneSeries(5), promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}, {T: ts, F: 5}}}}),
+			want: `engine returned duplicate point for series {app="a"}`,
+		},
 		"empty expected but non-empty result": {
 			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, promql.Vector{{Metric: foo, F: 5}}),
 			want: "expected an empty result",
