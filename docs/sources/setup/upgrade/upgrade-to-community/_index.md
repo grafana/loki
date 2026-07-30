@@ -698,6 +698,7 @@ After a successful upgrade:
 **Cause:** The `monitoring` block was refactored in 18.0.0. Old keys such as `clusterLabelOverride`, `monitoring.serviceMonitor.clusterLabel`, `monitoring.dashboards.namespace`, `monitoring.rules.namespace`, `monitoring.rules.additionalGroups`, and `monitoring.dashboards.multiCluster` no longer exist. Alert rules under `monitoring.rules.configs` are also removed.
 
 **Fix:** Remove or rename all obsolete monitoring keys as described in [17.x to 18.0](#17x-to-180-monitoring-block-refactored). In particular:
+
 - Move alert configuration from `monitoring.rules` to `monitoring.alerts`.
 - Replace `clusterLabelOverride` with `monitoring.appInstanceLabelName` / `monitoring.appInstanceLabelValue`.
 - Rename `monitoring.dashboards.multiCluster` to `monitoring.multiCluster`.
