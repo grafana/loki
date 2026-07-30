@@ -83,6 +83,16 @@ type Config struct {
 	IngesterName           string
 	Mode                   Mode
 	IngesterDBRetainPeriod time.Duration
+
+	// MaxIdleFileHandles is the number of idle file handles the pool-backed TSDB
+	// index reader keeps open per index file for reuse. It is set programmatically
+	// from the index-gateway configuration (see indexgateway.Config).
+	MaxIdleFileHandles int
+
+	// IndexReaderImpl selects the TSDB index reader implementation ("pread" or
+	// "mmap"). It is set programmatically from the index-gateway configuration
+	// (see indexgateway.Config).
+	IndexReaderImpl string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

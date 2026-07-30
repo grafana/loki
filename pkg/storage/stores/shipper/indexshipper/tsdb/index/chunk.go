@@ -243,7 +243,7 @@ func (m *chunkPageMarker) clear() {
 	*m = chunkPageMarker{}
 }
 
-func (m *chunkPageMarker) decode(d *encoding.Decbuf) {
+func (m *chunkPageMarker) decode(d decbuf) {
 	m.ChunksInPage = d.Uvarint()
 	m.KB = d.Be32()
 	m.Entries = d.Be32()
