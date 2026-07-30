@@ -20,22 +20,35 @@ with schedulable file I/O. Mimir did the same for its store-gateway
 index-header (PR grafana/mimir#3639) and iterated a lot since; we borrow
 their `Decbuf` encoding layer and port Loki's `Reader` on top of it.
 
-**Working branch**: `dahoppe/nommap-index-gateway` (off `main`). All work
-lives here. Do not push — Dan pushes and opens PRs.
+**Working branches**:
+- `dahoppe/nommap-index-gateway` (off `main`) — the "reference" branch that
+  holds the full end-state and this plan doc. Never lands directly.
+- `dahoppe/introduce-nommap-config` (off `main`) — PR #23663, the first
+  reviewable slice: config flag + `Reader` interface + `StreamReader` stub
+  that delegates to mmap. Merging shortly (as of 2026-07-30).
+- Follow-up PR branches will be cut off `dahoppe/introduce-nommap-config`
+  (or off `main` once #23663 merges), one small step per PR.
+Do not push — Dan pushes and opens PRs.
 
-**Repository roles**:
+**Repository roles** (state on the reference branch — the merged surface
+after #23663 lands is a subset; individual follow-ups fill in each piece):
 | Concept | Loki path |
 |---|---|
-| Existing mmap Reader | `pkg/storage/stores/shipper/indexshipper/tsdb/index/index.go` |
-| Buffered Reader (Phase 1) | same file, `NewBufferedFileReader` |
-| Streaming Reader (Phase 2) | `pkg/storage/stores/shipper/indexshipper/tsdb/index/stream_*.go` |
+| Reader interface | `pkg/storage/stores/shipper/indexshipper/tsdb/index/reader.go` |
+| Existing mmap Reader (renamed) | `pkg/storage/stores/shipper/indexshipper/tsdb/index/index.go` (`ByteSliceReader`, `NewMmapFileReader`) |
+| Streaming Reader | `pkg/storage/stores/shipper/indexshipper/tsdb/index/stream_*.go` |
 | Streaming decoder (from Mimir) | `pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/` |
-| Mode dispatch | `pkg/storage/stores/shipper/indexshipper/tsdb/single_file_index.go` (`SetIndexReaderMode`) |
+| Mode dispatch | `pkg/storage/stores/shipper/indexshipper/tsdb/single_file_index.go` (`openIndexFileReader`) |
 | Config flag | `pkg/storage/stores/shipper/indexshipper/shipper.go` (`IndexReaderMode`) |
 
-**Config surface**: `-tsdb.shipper.index-reader-mode=<mmap|buffered|streaming>`
+**Config surface (post #23663)**: `-tsdb.shipper.index-reader-mode=<mmap|stream>`
 (default `mmap`) or YAML `storage_config.tsdb_shipper.index_reader_mode`.
-`disable_index_mmap` is a deprecated alias for `buffered`.
+
+The reference branch also carries a `buffered` mode and a `disable_index_mmap`
+alias from Phase 1; both are being intentionally dropped in the incremental
+PR path — buffered OOMed pods on 2026-07-29 and has no path to production,
+so shipping fewer modes reduces the config surface reviewers have to reason
+about. If we ever want it back it's one commit away on the reference branch.
 
 **How to check what's landed**:
 ```bash
@@ -428,21 +441,97 @@ Before we move to Phase 3 (split into PRs), we want:
 
 ## Phase 3 — Split into reviewable PRs
 
-Rough ordering, each should compile and pass tests standalone:
+The reference branch is one 17-commit monolith. Reviewers can't reason about
+it in one sitting, so we're rebuilding the same end-state as a chain of small,
+independently-reviewable PRs. Each compiles, tests, and adds nothing until
+the next PR wires it up — the mmap path is untouched behind the default
+`mmap` mode until the very last PR flips a default.
 
-1. **PR: streaming encoding foundation.** Just the `encoding/` package copied
-   from Mimir. Vendored / adapted, with tests. Not wired into anything.
-2. **PR: streaming postings + symbols.** The subset of Mimir's `index/`
-   package needed for our reader. Standalone with tests.
-3. **PR: streaming `Reader` implementation.** New type living alongside
-   existing `Reader`. Feature flag defined but no caller wired.
-4. **PR: wire feature flag through index-gateway construction.** Default off.
-   This is the "safe to merge" PR — mmap path unchanged.
-5. **PR: cross-check test / correctness benchmarks.** Compare streaming vs
-   mmap on real fixtures.
-6. **PR: metrics + tuning knobs.**
-7. **PR: sparse snapshots** (may split further).
-8. **PR: enable-by-default** (only after Dan validates in production).
+The order deliberately inverts the reference branch: **flag first, then
+scaffolding, then implementation**. That way every PR is safe to merge —
+even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
+
+### Merged / in flight
+
+- **PR #23663 — `chore: Introduce tsdb.shipper.index-reader-mode feature flag`**
+  (branch `dahoppe/introduce-nommap-config`, opened 2026-07-30). Contains:
+  - `IndexReaderMode` enum (`mmap` / `stream`), CLI flag, YAML field,
+    validation.
+  - `Reader` interface extracted from the existing `Reader` struct.
+  - Existing mmap-backed struct renamed to `ByteSliceReader` (opened via
+    `NewMmapFileReader`).
+  - `StreamReader` stub in `stream_reader.go` — every method delegates to
+    an inner `ByteSliceReader`. `TestReaders_CrossCheck` passes trivially.
+  - `openIndexFileReader` in `single_file_index.go` picks between them by
+    mode.
+
+### Next (from #23663; each is its own PR, ~200–800 lines diff)
+
+1. **PR: streamenc + filepool foundation (vendored from Mimir).** ★ next
+   Ports `pkg/storage/indexheader/encoding/` + `pkg/util/filepool/` from
+   Mimir into `.../tsdb/index/streamenc/` and `.../streamenc/filepool/`.
+   Provenance headers preserved. Not imported by any caller — pure
+   foundation. Adds table-driven tests for `Decbuf` codec round-trips,
+   `FileReader` positioning/read semantics, `FilePool` capacity semantics.
+2. **PR: `StreamReader` opens a `DecbufFactory` + streams TOC + Version /
+   Bounds / Checksum.** Replaces those four delegated methods with real
+   streaming reads. Everything else still delegates to `ByteSliceReader`.
+   Cross-check test still passes without modification.
+3. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
+   Ports Mimir's `indexheader/index/symbols.go` (adapted for Loki's V4
+   format) into `.../tsdb/index/streamsym.go`. Reroutes those three
+   methods off the inner `ByteSliceReader`. Adds a fixture with many
+   symbols to exercise the sparse scan.
+4. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
+   `postings.go` (v1 + v2). Wires into `StreamReader.Postings`. Adds
+   fixtures with 10 / 1k / 100k series.
+5. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
+   decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
+   `IngestedAt` field. V4 fixture included.
+6. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
+   `LabelNamesFor`.** Falls out mostly from postings-offset + series
+   ports; small.
+7. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
+   open (they're small; 2 uint64 per 1024 series). Existing shard tests
+   pass with `mode=stream`.
+8. **PR: drop `StreamReader.mmapReader` fallback + delete
+   `ByteSliceReader` delegation dead code.** By this point every method
+   has a native streaming implementation. This is the "no more mmap on
+   the stream path" milestone. Ships without changing any default —
+   `mode=mmap` is still the default and still uses `ByteSliceReader`.
+9. **PR: perf tuning — `Decbuf.ReadInto` batch reads.** Corresponds to
+   commit `215b82d0af` on the reference branch. Preprod-measured 2.3–2.7×
+   → 1.1–1.6× vs mmap p99. Include before/after numbers.
+10. **PR: perf tuning — pool CRC32 + postings-list scratch buffers.** Commit
+    `1b9dbb75b6` on reference branch.
+11. **PR: `-shipper.streaming-index-max-idle-file-handles` config knob.**
+    Commit `f17424eb09` on reference branch.
+12. **PR: cache `FilePoolDecbufFactory` file size.** Commit `ce00b0eeb0`
+    on reference branch. Small.
+13. **PR: batch series reads through a single `Decbuf`.** Commit
+    `2bf0b0201d` — introduces `ForPostingsSeries` on `StreamReader` and
+    `batchSeriesReader` interface. This one is bigger; may split.
+14. **PR: batch series+labels + pool symbols Decbuf.** Commit `557525bf5a`.
+
+### Later (post-parity)
+
+15. **PR: three-way / cross-mode benchmark harness in the tree.** Corresponds
+    to Bucket C5 in Phase 2 above.
+16. **PR: metrics for the streaming path (filepool metrics + per-mode
+    latency histograms).** Bucket D1.
+17. **PR: sparse snapshots on disk (symbols + postings).** Buckets C2 + C3.
+    May split.
+18. **PR: docs + runbook + upgrade notes.** Bucket D3.
+19. **PR: flip default from `mmap` → `stream`.** Only after Dan validates
+    a production cell.
+
+### Gone from the reference branch (deliberate omissions)
+
+- Phase 1 buffered mode + `disable_index_mmap` alias. OOM'd in dev-005 and
+  has no path to production; landing it as a shipping mode would just add
+  a config surface reviewers need to reason about and users could foot-gun
+  with. If someone specifically wants to test whole-file-in-heap reads for
+  research purposes they can build off the reference branch.
 
 ---
 
@@ -699,3 +788,20 @@ Rough ordering, each should compile and pass tests standalone:
   production-viable for the dominant workload (GetChunkRef at parity).
   Remaining gap is concentrated in GetSeries/GetShards on very large
   tenants — expected to close further with C4b once it deploys.
+
+- **2026-07-30**: PR strategy revised — reference branch is unreviewable as
+  one blob. Cut the first slice as PR #23663 (`chore: Introduce
+  tsdb.shipper.index-reader-mode feature flag`, branch
+  `dahoppe/introduce-nommap-config`, opened today). That PR is a
+  pure-refactor: extracts a `Reader` interface, renames the existing
+  implementation to `ByteSliceReader` / `NewMmapFileReader`, adds a
+  `StreamReader` stub that delegates every method to `ByteSliceReader`,
+  and adds the `index_reader_mode` config surface (`mmap` default, `stream`
+  routes to the stub). No behaviour change at any default. Phase 3
+  section above rewritten to describe the 19 follow-up PRs that rebuild
+  the reference branch on top of #23663 one step at a time. **Next PR**:
+  streamenc + filepool foundation, vendored from Mimir with round-trip
+  tests. See "PR: streamenc + filepool foundation" in the Phase 3 table.
+  The buffered mode + `disable_index_mmap` alias from Phase 1 are
+  deliberately being dropped in the incremental path — the OOM in
+  dev-005 killed any operator case for shipping them.
