@@ -932,6 +932,19 @@ func X__atomic_loadUint64(t *TLS, ptr, ret uintptr, memorder int32) {
 	X__atomic_loadInt64(t, ptr, ret, memorder)
 }
 
+// The float variants atomically load the value's bit pattern, so they delegate
+// to the same-width integer helper. wasm2c emits these for any load from shared
+// linear memory (its data pointer is _Atomic volatile), including plain f32/f64
+// loads; there is no atomic-float RMW in wasm, so only load/store are needed.
+
+func X__atomic_loadFloat32(t *TLS, ptr, ret uintptr, memorder int32) {
+	X__atomic_loadInt32(t, ptr, ret, memorder)
+}
+
+func X__atomic_loadFloat64(t *TLS, ptr, ret uintptr, memorder int32) {
+	X__atomic_loadInt64(t, ptr, ret, memorder)
+}
+
 // ----
 
 // void __atomic_store (type *ptr, type *val, int memorder)
@@ -1013,6 +1026,17 @@ func X__c11_atomic_storeUint64(t *TLS, ptr uintptr, val uint64, memorder int32) 
 }
 
 func X__atomic_storeUint64(t *TLS, ptr, val uintptr, memorder int32) {
+	X__atomic_storeInt64(t, ptr, val, memorder)
+}
+
+// The float variants atomically store the value's bit pattern (see the matching
+// note on __atomic_loadFloat32).
+
+func X__atomic_storeFloat32(t *TLS, ptr, val uintptr, memorder int32) {
+	X__atomic_storeInt32(t, ptr, val, memorder)
+}
+
+func X__atomic_storeFloat64(t *TLS, ptr, val uintptr, memorder int32) {
 	X__atomic_storeInt64(t, ptr, val, memorder)
 }
 

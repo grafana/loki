@@ -813,7 +813,7 @@ type TRtreeCursor = struct {
 	FpReadAux    uintptr
 	FsPoint      TRtreeSearchPoint
 	FaNode       [5]uintptr
-	FanQueue     [41]Tu32
+	FanQueue     [42]Tu32
 }
 
 type TRtreeMatchArg = struct {
