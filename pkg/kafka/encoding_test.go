@@ -285,11 +285,10 @@ func TestEncoderSharedStructuredMetadataLeavesNoRoom(t *testing.T) {
 	require.Contains(t, err.Error(), "shared structured metadata pool")
 }
 
-// TestEncoderLargeEntryAfterTheFirstOneWithSharedMetadata asserts that in a stream carrying a
-// shared structured metadata pool every entry, not just the first one, is weighed against the
-// per-record base: the pool is repeated in every record, so an entry that only fits without it
-// would end up in an oversized record of its own.
-func TestEncoderLargeEntryAfterTheFirstOneWithSharedMetadata(t *testing.T) {
+// TestEncoderLargeEntryAfterTheFirstOne is a regression test: the per-entry size check used to
+// only compare the first entry against the per-record base, so a bigger entry later in the
+// stream could be flushed into a record of its own that was over the limit.
+func TestEncoderLargeEntryAfterTheFirstOne(t *testing.T) {
 	const maxSize = 2048
 
 	stream := generateStream(4, 100)
@@ -313,13 +312,14 @@ func TestEncoderLargeEntryAfterTheFirstOneWithSharedMetadata(t *testing.T) {
 	require.Contains(t, err.Error(), "single entry size")
 }
 
-// TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata pins the pre-existing behavior for
-// streams that carry no shared structured metadata pool: only the first entry is weighed against
-// the per-record base, so a later entry that fits within maxSize on its own but not alongside the
-// base is emitted in a record that is over the limit, without an error.
+// TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata is the pool-less half of the check
+// above, and the point of ungating it: a stream carrying no shared structured metadata pool is
+// now held to the very same per-entry rule. Every entry is weighed against the per-record base,
+// so an entry that fits within maxSize on its own but not alongside the base is reported instead
+// of being flushed into an oversized record.
 //
-// This is a bug, but it predates the pool and is not the deferred expansion's to fix: a stream
-// without a pool must be encoded exactly the way it is today.
+// Before this, only the FIRST entry was weighed against the base for a pool-less stream, and this
+// stream encoded without error into records one of which was over the limit.
 func TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata(t *testing.T) {
 	const maxSize = 2048
 
@@ -337,22 +337,14 @@ func TestEncoderLargeEntryAfterTheFirstOneWithoutSharedMetadata(t *testing.T) {
 	require.LessOrEqual(t, entrySize, maxSize)
 	require.Greater(t, baseSize+entrySize, maxSize, "the entry must not fit alongside the base")
 
-	records, err := Encode(0, "test-tenant", stream, maxSize)
-	require.NoError(t, err, "a pool-less stream keeps today's lenient behavior")
-
-	var oversized int
-	for _, record := range records {
-		if len(record.Value) > maxSize {
-			oversized++
-		}
-	}
-	require.Equal(t, 1, oversized, "the accepted wart: the large entry lands in an oversized record")
+	_, err := Encode(0, "test-tenant", stream, maxSize)
+	require.Error(t, err, "a pool-less stream is now held to the strict per-entry check")
+	require.Contains(t, err.Error(), "single entry size")
 }
 
-// TestEncoderNoSharedMetadataBaseLeavesNoRoom pins the other half of the pre-existing behavior:
-// with no pool, a base that leaves no room for an entry is not reported upfront either. The
-// first entry still fails the per-entry check, so encoding does fail here - but with today's
-// message, not the pool-aware one.
+// TestEncoderNoSharedMetadataBaseLeavesNoRoom is the other half: with no pool, a base leaving no
+// room for the smallest possible entry is now reported upfront too, rather than being left to the
+// first entry's own check.
 func TestEncoderNoSharedMetadataBaseLeavesNoRoom(t *testing.T) {
 	stream := generateStream(4, 100)
 
@@ -361,9 +353,7 @@ func TestEncoderNoSharedMetadataBaseLeavesNoRoom(t *testing.T) {
 
 	_, err := Encode(0, "test-tenant", stream, maxSize)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "single entry size")
-	require.NotContains(t, err.Error(), "shared structured metadata pool")
-	require.NotContains(t, err.Error(), "leaves no room for a single entry")
+	require.Contains(t, err.Error(), "leaves no room for a single entry")
 }
 
 // TestEncoderEveryRecordFitsWithLargeSharedMetadata is the positive counterpart: with a pool
