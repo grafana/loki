@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -156,7 +157,7 @@ func openStructuralIndexes(t *testing.T, paths ...string) []tsdb.Index {
 
 	res := make([]tsdb.Index, 0, len(paths))
 	for _, path := range paths {
-		idx, _, err := tsdb.NewTSDBIndexFromFile(path)
+		idx, _, err := tsdb.NewTSDBIndexFromFile(path, indexshipper.IndexReaderModeMmap)
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, idx.Close())
