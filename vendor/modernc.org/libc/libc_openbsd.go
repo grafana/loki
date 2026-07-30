@@ -1786,31 +1786,49 @@ func Xreaddir(t *TLS, dir uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v dir=%v, (%v:)", t, dir, origin(2))
 	}
-	if (*darwinDir)(unsafe.Pointer(dir)).eof {
-		return 0
-	}
+	for {
+		if (*darwinDir)(unsafe.Pointer(dir)).eof {
+			return 0
+		}
 
-	if (*darwinDir)(unsafe.Pointer(dir)).l == (*darwinDir)(unsafe.Pointer(dir)).h {
-		n, err := unix.Getdirentries((*darwinDir)(unsafe.Pointer(dir)).fd, (*darwinDir)(unsafe.Pointer(dir)).buf[:], nil)
-		// trc("must read: %v %v", n, err)
-		if n == 0 {
-			if err != nil && err != io.EOF {
-				if dmesgs {
-					dmesg("%v: %v FAIL", origin(1), err)
+		if (*darwinDir)(unsafe.Pointer(dir)).l == (*darwinDir)(unsafe.Pointer(dir)).h {
+			n, err := unix.Getdirentries((*darwinDir)(unsafe.Pointer(dir)).fd, (*darwinDir)(unsafe.Pointer(dir)).buf[:], nil)
+			// trc("must read: %v %v", n, err)
+			if n == 0 {
+				if err != nil && err != io.EOF {
+					if dmesgs {
+						dmesg("%v: %v FAIL", origin(1), err)
+					}
+					t.setErrno(err)
 				}
-				t.setErrno(err)
+				(*darwinDir)(unsafe.Pointer(dir)).eof = true
+				return 0
 			}
+
+			(*darwinDir)(unsafe.Pointer(dir)).l = 0
+			(*darwinDir)(unsafe.Pointer(dir)).h = n
+			// trc("new l %v, h %v", (*darwinDir)(unsafe.Pointer(dir)).l, (*darwinDir)(unsafe.Pointer(dir)).h)
+		}
+		de := dir + unsafe.Offsetof(darwinDir{}.buf) + uintptr((*darwinDir)(unsafe.Pointer(dir)).l)
+		reclen := int((*unix.Dirent)(unsafe.Pointer(de)).Reclen)
+		if reclen <= 0 || (*darwinDir)(unsafe.Pointer(dir)).l+reclen > (*darwinDir)(unsafe.Pointer(dir)).h {
+			// Malformed record, do not spin on it. Same as the bogus pointer/reclen
+			// checks in OpenBSD's _readdir_unlocked().
 			(*darwinDir)(unsafe.Pointer(dir)).eof = true
 			return 0
 		}
 
-		(*darwinDir)(unsafe.Pointer(dir)).l = 0
-		(*darwinDir)(unsafe.Pointer(dir)).h = n
-		// trc("new l %v, h %v", (*darwinDir)(unsafe.Pointer(dir)).l, (*darwinDir)(unsafe.Pointer(dir)).h)
+		(*darwinDir)(unsafe.Pointer(dir)).l += reclen
+		// getdirentries(2) reports entries of deleted files with d_fileno set to
+		// zero, readdir(3) must not return them. On FFS such a record survives an
+		// unlink whenever it is the first one in a directory block, so a directory
+		// larger than one block will otherwise show ghost entries.
+		if (*unix.Dirent)(unsafe.Pointer(de)).Fileno == 0 {
+			continue
+		}
+
+		return de
 	}
-	de := dir + unsafe.Offsetof(darwinDir{}.buf) + uintptr((*darwinDir)(unsafe.Pointer(dir)).l)
-	(*darwinDir)(unsafe.Pointer(dir)).l += int((*unix.Dirent)(unsafe.Pointer(de)).Reclen)
-	return de
 }
 
 type darwinDir struct {
