@@ -132,6 +132,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// Gather information about the different types of push formats Loki receives
 	d.m.pushStatsCount.WithLabelValues(tenantID, pushStats.ContentType, pushStats.ContentEncoding, pushStats.ContentVersion, format).Inc()
 
+	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
+	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
+
 	if logPushRequestStreams {
 		shouldLog := true
 		if len(filterPushRequestStreamsIPs) > 0 {
