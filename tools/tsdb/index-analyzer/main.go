@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/tools/tsdb/helpers"
@@ -34,9 +33,7 @@ func main() {
 		objectClient,
 		overrides,
 		nil,
-		func(p string) (shipperindex.Index, error) {
-			return tsdb.OpenShippableTSDB(p, nil)
-		},
+		tsdb.OpenShippableTSDB,
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,

@@ -28,20 +28,17 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-// OpenShippableTSDB opens the index stored at p. chunkFilter, which may be nil,
-// is handed to the index so that it is construction data rather than something set
-// on a shared index while queries are reading it.
-func OpenShippableTSDB(p string, chunkFilter chunk.RequestChunkFilterer) (shipperindex.Index, error) {
+func OpenShippableTSDB(p string) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return newShippableTSDBFile(id, chunkFilter)
+	return NewShippableTSDBFile(id)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
-	indexFile, err := OpenShippableTSDB(path, nil)
+	indexFile, err := OpenShippableTSDB(path)
 	if err != nil {
 		return nil, err
 	}
@@ -98,11 +95,7 @@ type TSDBFile struct {
 }
 
 func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	return newShippableTSDBFile(id, nil)
-}
-
-func newShippableTSDBFile(id Identifier, chunkFilter chunk.RequestChunkFilterer) (*TSDBFile, error) {
-	idx, getRawFileReader, err := newTSDBIndexFromFile(id.Path(), chunkFilter)
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
 	if err != nil {
 		return nil, err
 	}
@@ -112,6 +105,18 @@ func newShippableTSDBFile(id Identifier, chunkFilter chunk.RequestChunkFilterer)
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
 	}, err
+}
+
+// withChunkFilterer binds the filterer to the underlying index. A TSDBFile always
+// wraps a TSDBIndex, so failing to bind means the wrapped index would answer
+// queries unfiltered, which for LBAC would leak data; report it rather than
+// silently skipping the filter.
+func (f *TSDBFile) withChunkFilterer(chunkFilter chunk.RequestChunkFilterer) (Index, error) {
+	binder, ok := f.Index.(chunkFiltererBinder)
+	if !ok {
+		return nil, fmt.Errorf("index %T wrapped by TSDBFile cannot apply a chunk filterer", f.Index)
+	}
+	return binder.withChunkFilterer(chunkFilter)
 }
 
 func (f *TSDBFile) Close() error {
@@ -134,16 +139,12 @@ type TSDBIndex struct {
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
 func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
-	return newTSDBIndexFromFile(location, nil)
-}
-
-func newTSDBIndexFromFile(location string, chunkFilter chunk.RequestChunkFilterer) (*TSDBIndex, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader, chunkFilter), func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader, nil), func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
@@ -155,6 +156,15 @@ func NewTSDBIndex(reader IndexReader, chunkFilter chunk.RequestChunkFilterer) *T
 		reader:      reader,
 		chunkFilter: chunkFilter,
 	}
+}
+
+// withChunkFilterer returns a copy of the index bound to chunkFilter, sharing the
+// same reader. Indices are cached and shared between concurrent queries, so a
+// filterer is bound by copying rather than by mutating the shared index.
+func (i *TSDBIndex) withChunkFilterer(chunkFilter chunk.RequestChunkFilterer) (Index, error) {
+	cpy := *i
+	cpy.chunkFilter = chunkFilter
+	return &cpy, nil
 }
 
 func (i *TSDBIndex) Close() error {

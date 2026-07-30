@@ -38,7 +38,12 @@ func BuildIndex(t testing.TB, dir string, chunkFilter chunk.RequestChunkFilterer
 	})
 	require.Nil(t, err)
 
-	idx, err := newShippableTSDBFile(dst, chunkFilter)
+	idx, err := NewShippableTSDBFile(dst)
 	require.Nil(t, err)
+	if chunkFilter != nil {
+		bound, err := idx.withChunkFilterer(chunkFilter)
+		require.Nil(t, err)
+		idx.Index = bound
+	}
 	return idx
 }

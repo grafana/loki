@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
-	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -75,9 +74,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		objectClient,
 		limits,
 		nil,
-		func(p string) (shipperindex.Index, error) {
-			return OpenShippableTSDB(p, chunkFilter)
-		},
+		OpenShippableTSDB,
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,
@@ -142,7 +139,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange, chunkFilter))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
 	s.Reader = NewIndexClient(multiIndex, opts, limits)

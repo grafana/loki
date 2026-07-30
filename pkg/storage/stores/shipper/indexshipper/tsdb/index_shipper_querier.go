@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -22,12 +23,20 @@ type indexShipperIterator interface {
 
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
-	shipper    indexShipperIterator
-	tableRange config.TableRange
+	shipper     indexShipperIterator
+	tableRange  config.TableRange
+	chunkFilter chunk.RequestChunkFilterer
 }
 
-func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
-	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange}
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange, chunkFilter chunk.RequestChunkFilterer) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange, chunkFilter: chunkFilter}
+}
+
+// chunkFiltererBinder is an Index that can return a copy of itself bound to a chunk
+// filterer. Binding returns a copy rather than mutating the receiver because the
+// indices the shipper hands out are cached and shared between concurrent queries.
+type chunkFiltererBinder interface {
+	withChunkFilterer(chunk.RequestChunkFilterer) (Index, error)
 }
 
 type indexIterFunc func(func(context.Context, Index) error) error
@@ -46,6 +55,21 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
 				}
+
+				// Bind the filterer here rather than where each index is built: this
+				// is the single point where indices the shipper owns enter the read path.
+				if i.chunkFilter != nil {
+					binder, ok := impl.(chunkFiltererBinder)
+					if !ok {
+						return fmt.Errorf("shipper index %T cannot apply a chunk filterer", idx)
+					}
+					filtered, err := binder.withChunkFilterer(i.chunkFilter)
+					if err != nil {
+						return err
+					}
+					impl = filtered
+				}
+
 				if multitenant {
 					impl = NewMultiTenantIndex(impl)
 				}
