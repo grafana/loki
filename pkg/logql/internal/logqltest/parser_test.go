@@ -12,25 +12,38 @@ import (
 )
 
 func TestStreamsParser(t *testing.T) {
-	s := newStreamsParser()
-	require.NoError(t, s.parse(`{app="foo"} "value={{.i}}" @ 0s [repeat every 10s for 3] [metadata lvl="info"]`))
+	t.Run("parse a log stream with repeats and structured metadata", func(t *testing.T) {
+		s := newStreamsParser()
+		require.NoError(t, s.parse(`{app="foo"} "value={{.i}}" @ 0s [repeat every 10s for 3] [metadata lvl="info"]`))
 
-	streams := s.get()
-	require.Len(t, streams, 1)
-	require.Equal(t, `{app="foo"}`, streams[0].Labels)
+		streams := s.get()
+		require.Len(t, streams, 1)
+		require.Equal(t, `{app="foo"}`, streams[0].Labels)
 
-	entries := streams[0].Entries
-	require.Len(t, entries, 3)
-	for i, e := range entries {
-		require.Equal(t, epoch.Add(time.Duration(i)*10*time.Second).UnixNano(), e.Timestamp.UnixNano())
-		require.Equal(t, "value="+strconv.Itoa(i), e.Line)
-		require.Equal(t, `{lvl="info"}`, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata).String())
-	}
+		entries := streams[0].Entries
+		require.Len(t, entries, 3)
+		for i, e := range entries {
+			require.Equal(t, epoch.Add(time.Duration(i)*10*time.Second).UnixNano(), e.Timestamp.UnixNano())
+			require.Equal(t, "value="+strconv.Itoa(i), e.Line)
+			require.Equal(t, `{lvl="info"}`, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata).String())
+		}
 
-	// Entries for the same stream labels accumulate; a missing timestamp is an error.
-	require.NoError(t, s.parse(`{app="foo"} "extra" @ 100s`))
-	require.Len(t, s.get()[0].Entries, 4)
-	require.Error(t, s.parse(`{app="foo"} "no timestamp"`))
+		// Entries for the same stream labels accumulate; a missing timestamp is an error.
+		require.NoError(t, s.parse(`{app="foo"} "extra" @ 100s`))
+		require.Len(t, s.get()[0].Entries, 4)
+		require.Error(t, s.parse(`{app="foo"} "no timestamp"`))
+	})
+
+	t.Run("selectors that differ only in label order load into one canonical stream", func(t *testing.T) {
+		s := newStreamsParser()
+		require.NoError(t, s.parse(`{app="foo", env="prod"} "x" @ 0s`))
+		require.NoError(t, s.parse(`{env="prod", app="foo"} "y" @ 10s`))
+
+		streams := s.get()
+		require.Len(t, streams, 1)
+		require.Equal(t, `{app="foo", env="prod"}`, streams[0].Labels)
+		require.Len(t, streams[0].Entries, 2)
+	})
 }
 
 func TestSplitStreamLabels(t *testing.T) {

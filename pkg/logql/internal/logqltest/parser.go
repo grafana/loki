@@ -51,11 +51,17 @@ func (p *streamsParser) parse(line string) error {
 	// must be empty, so a typo'd or unterminated directive can't be silently ignored (e.g. a broken
 	// `[repeat ...]` would otherwise quietly load a single entry).
 
-	// Consume the stream labels.
+	// Consume the stream labels. Canonicalize them so equivalent labels – that differ only in
+	// label order or spacing key – end up being assigned to the same log stream.
 	streamLabels, rest, err := splitStreamLabels(line)
 	if err != nil {
 		return err
 	}
+	parsedStreamLabels, err := syntax.ParseLabels(streamLabels)
+	if err != nil {
+		return fmt.Errorf("invalid stream labels %q: %w", streamLabels, err)
+	}
+	streamLabels = parsedStreamLabels.String()
 
 	// Consume the log message.
 	message, rest, err := splitQuoted(rest)
