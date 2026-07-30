@@ -36,12 +36,13 @@ import (
 var ErrEntriesExist = errors.New("duplicate push - entries already exist")
 
 type line struct {
-	ts      time.Time
-	content string
-	// Hash of the structured metadata the line was stored with, i.e. of its effective
-	// structured metadata once the shared sets it referenced were materialized into it. It
-	// takes part in duplicate detection, see stream.validateEntries.
-	effectiveHash uint64
+	ts                 time.Time
+	content            string
+	structuredMetadata pushtypes.LabelsAdapter
+	// Hash identifying the shared structured metadata the line referenced, i.e. its resource
+	// and scope sets together. Two otherwise identical lines that reference different sets are
+	// different lines, so the hash takes part in duplicate detection.
+	sharedHash uint64
 }
 
 // discardReason identifies the bucket an entry that failed validation was accounted to. It is
@@ -226,13 +227,13 @@ func (s *stream) Push(
 		return 0, ErrEntriesExist
 	}
 
-	// The whole push is materialized once, here, and every consumer of it downstream works on
-	// that one batch. See pushBatch.
-	batch := newPushBatch(entries, sets)
-	// The pool is stored once per stream, so it is charged once per batch. See validateEntries.
+	// Resolving what an entry shares is per entry work, but the pool it resolves against is
+	// per batch, so the content hashes and the merged pairs are computed once here and reused
+	// for every entry referencing them.
+	shared := newSharedSets(sets)
 	sharedSize := util.SharedSetsSize(sets)
 
-	toStore, invalid := s.validateEntries(ctx, batch, sharedSize, isReplay, rateLimitWholeStream, usageTracker, format)
+	toStore, invalid := s.validateEntries(ctx, entries, shared, sharedSize, isReplay, rateLimitWholeStream, usageTracker, format)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
@@ -246,8 +247,8 @@ func (s *stream) Push(
 		s.metrics.chunkCreatedStats.Inc(1)
 	}
 
-	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, usageTracker, format)
-	s.recordAndSendToTailers(record, storedEntries)
+	bytesAdded, storedEntries, entriesWithErr := s.storeEntries(ctx, toStore, shared, usageTracker, format)
+	s.recordAndSendToTailers(record, storedEntries, shared)
 
 	if len(s.chunks) != prevNumChunks {
 		s.metrics.memoryChunks.Add(float64(len(s.chunks) - prevNumChunks))
@@ -304,13 +305,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-// recordAndSendToTailers hands the entries that were just stored to the WAL and to the tail
-// clients. entries is the stored form of the push batch, see pushBatch: the entries hold all of
-// their structured metadata themselves, so both consumers take them as they are.
-//
-// Both keep reading them after this returns, the WAL encoder until the record is written and
-// the tailer queues until each client drains them, so nothing here may modify them.
-func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.Entry) {
+func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.Entry, shared *sharedSets) {
 	if len(entries) == 0 {
 		return
 	}
@@ -321,19 +316,23 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
-		// No pool is written alongside the entries: the shared structured metadata of the push
-		// is already in them, so the record is the very same record a push that shared nothing
-		// produces, in the format every Loki version can read. A replay hands these entries
-		// back untouched and rebuilds the chunk byte for byte, duplicate detection telling the
-		// same entries apart, because they are the entries that were stored.
-		record.AddEntries(uint64(s.fp), s.entryCt, nil, entries...)
+		// The entries go into the record exactly as they were pushed, keeping their own
+		// structured metadata and their references, alongside the stream's pool. The record
+		// carries the pool from WALRecordEntriesV4 on, which is the version it is written as
+		// precisely because a pool is present. A replay therefore reconstructs what was pushed,
+		// down to the chunks being byte for byte identical and duplicate detection telling the
+		// same entries apart.
+		record.AddEntries(uint64(s.fp), s.entryCt, shared.sets(), entries...)
 	} else {
 		// If record is nil, this is a WAL recovery.
 		s.metrics.recoveredEntriesTotal.Add(float64(len(entries)))
 	}
 
 	if hasTailers {
-		stream := logproto.Stream{Labels: s.labelsString, Entries: entries}
+		// Tail clients are handed the entries without the pool, so the shared metadata they
+		// reference has to be merged in and the references cleared. Only paid for when someone
+		// is actually tailing and there is something to merge.
+		stream := logproto.Stream{Labels: s.labelsString, Entries: shared.effectiveEntries(entries)}
 
 		closedTailers := []uint32{}
 
@@ -358,125 +357,177 @@ func (s *stream) recordAndSendToTailers(record *wal.Record, entries []logproto.E
 	}
 }
 
-// pushBatch is the entries of one push, in the two forms the ingester needs them in.
+// sharedSets resolves what the entries of one push batch share, against the pool of shared
+// structured metadata sets their stream carries.
 //
-// The entries of a push may carry their structured metadata split in two: their own, plus a
-// reference into the pool of shared structured metadata sets their stream carries, which holds
-// the OTLP resource and scope attributes when otlp_defer_structured_metadata_expansion is on.
-// That split is a property of the wire format, and it stops here: the batch is materialized
-// once into its effective form, and every consumer downstream of this, the chunks, the WAL
-// record and the tail clients, is handed entries that hold all of their structured metadata
-// themselves, exactly like the entries of a producer that expanded the pool itself. The storage
-// path is therefore the unchanged one, whether or not the push used the pool.
-type pushBatch struct {
-	// stored is the batch as it is ingested: appended to the chunk, written to the WAL record
-	// and sent to the tail clients. It is the materialized effective view, or the caller's own
-	// entries when there was nothing to materialize.
+// Entries reference a resource set and a scope set of the pool independently, but the chunk
+// layer and the duplicate detection both need the two as one thing: the sets concatenated into
+// the single shared list MemChunk takes, and one hash identifying that combination. A batch has
+// far fewer distinct reference pairs than entries, so both are computed once per pair.
+//
+// A nil *sharedSets means the batch shares nothing; every method is nil safe.
+type sharedSets struct {
+	// pool is a view carrying just the stream's sets, so that reference resolution goes
+	// through push.Stream.SharedFor and inherits its bounds-safe handling of a bad reference.
+	pool pushtypes.Stream
+
+	// hashes holds the content hash of each set, indexed like the pool.
+	hashes []uint64
+
+	pairs map[sharedRefPair]sharedPair
+}
+
+// sharedRefPair is the pair of pool references an entry carries.
+type sharedRefPair struct {
+	resource, scope uint32
+}
+
+// sharedPair is what a reference pair resolves to, for the consumers that need the resource
+// and scope sets as one.
+type sharedPair struct {
+	// combined is the resource attributes followed by the scope ones. Read-only: it may alias
+	// a set of the pool.
+	combined pushtypes.LabelsAdapter
+	// hash identifies combined, and is 0 when the entry references no set at all.
+	hash uint64
+	// size is the structured metadata size of combined, i.e. what the pairs an entry
+	// references would have added to that entry had the producer expanded them into it. It is
+	// the shared term of the expanded-equivalent size recorded to the stream rate calculator,
+	// see streamRateBytes in validateEntries.
 	//
-	// Immutable, and aliased well past the end of the push: the WAL encoder reads it until the
-	// record is written, and the tailer queues hold it until every tail client has drained
-	// them. Neither the entries nor their structured metadata may be modified, reordered or
-	// appended to; the materialized lists may themselves alias the pool's sets, see
-	// pushtypes.EffectiveStructuredMetadata.
-	stored []logproto.Entry
-
-	// pushed is the batch as the caller handed it over, and is nil when nothing was
-	// materialized, i.e. when stored is that batch already. It is only read for size
-	// accounting: the shared sets are charged once per batch rather than once per entry, so an
-	// entry is charged for its own structured metadata and not for the materialized union.
-	pushed []logproto.Entry
+	// Memoized with the pair rather than summed per entry: a batch has far fewer distinct
+	// reference pairs than entries, and the pool the ingester receives has already had its
+	// empty-valued pairs dropped by the distributor's sanitization, so this is exactly the
+	// size the materialized list would have measured.
+	size int
 }
 
-// newPushBatch materializes the effective view of a push, once, so that resolving the pool is
-// per batch work rather than per consumer work.
-//
-// A push that shares nothing, which is every native push and every WAL replay, is passed
-// through without a copy: its entries are stored as they are and the flag-off path stays what
-// it always was.
-func newPushBatch(entries []logproto.Entry, sets []logproto.SharedStructuredMetadataSet) pushBatch {
+func newSharedSets(sets []logproto.SharedStructuredMetadataSet) *sharedSets {
 	if len(sets) == 0 {
-		return pushBatch{stored: entries}
+		return nil
 	}
 
-	// A view carrying just the stream's sets, so that reference resolution goes through
-	// push.Stream.SharedFor and inherits its bounds-safe handling of a bad reference.
-	pool := pushtypes.Stream{SharedStructuredMetadataSets: sets}
+	hashes := make([]uint64, len(sets))
+	for i := range sets {
+		hashes[i] = util.StructuredMetadataHash(sets[i].Attrs)
+	}
 
-	stored := make([]logproto.Entry, len(entries))
+	return &sharedSets{
+		pool:   pushtypes.Stream{SharedStructuredMetadataSets: sets},
+		hashes: hashes,
+		pairs:  make(map[sharedRefPair]sharedPair, 1),
+	}
+}
+
+// empty reports whether the batch shares nothing at all.
+func (s *sharedSets) empty() bool {
+	return s == nil || len(s.pool.SharedStructuredMetadataSets) == 0
+}
+
+// sets returns the pool the entries reference, for the consumers that carry it alongside them
+// rather than merging it in, i.e. the WAL record.
+func (s *sharedSets) sets() []logproto.SharedStructuredMetadataSet {
+	if s == nil {
+		return nil
+	}
+	return s.pool.SharedStructuredMetadataSets
+}
+
+// setsFor resolves the resource and scope sets the entry references.
+func (s *sharedSets) setsFor(e *logproto.Entry) (resource, scope pushtypes.LabelsAdapter) {
+	if s.empty() {
+		return nil, nil
+	}
+	return s.pool.SharedFor(e)
+}
+
+// pairFor resolves the entry's references into the merged shared list and its hash, computing
+// them the first time a reference pair is seen in this batch and reusing them afterwards.
+func (s *sharedSets) pairFor(e *logproto.Entry) sharedPair {
+	if s.empty() {
+		return sharedPair{}
+	}
+
+	key := sharedRefPair{resource: e.SharedResourceRef, scope: e.SharedScopeRef}
+	if pair, ok := s.pairs[key]; ok {
+		return pair
+	}
+
+	resource, scope := s.pool.SharedFor(e)
+	combined := pushtypes.CombinedShared(resource, scope)
+	pair := sharedPair{
+		combined: combined,
+		hash:     util.SharedPairHash(s.hashOf(key.resource), s.hashOf(key.scope)),
+		size:     util.StructuredMetadataSize(combined),
+	}
+	s.pairs[key] = pair
+
+	return pair
+}
+
+// hashOf returns the content hash of a 1-based pool reference. A reference that resolves to no
+// set, because it is the 0 "none" reference or because it is out of range, hashes to 0, so the
+// pair hash of an entry always describes the sets it actually got.
+func (s *sharedSets) hashOf(ref uint32) uint64 {
+	if ref == 0 || uint64(ref) > uint64(len(s.hashes)) {
+		return 0
+	}
+	return s.hashes[ref-1]
+}
+
+// effectiveEntries returns a copy of entries in which each entry carries the structured
+// metadata it effectively has: the resource and scope attributes it references followed by its
+// own, which is what a producer that expanded the pool would have sent. entries is returned as
+// is when there is nothing to merge.
+//
+// The pool references are cleared on the copies. They only mean anything alongside the pool
+// they index, and this view exists for the consumer that is handed the entries without it: a
+// tailed stream carries no pool, so a surviving reference would be read against whatever pool
+// the receiver happens to have. The WAL takes the entries as they are and carries the pool
+// itself instead, see recordAndSendToTailers.
+//
+// The incoming entries are never modified: they are aliased by the caller, by the chunks they
+// were just appended to and by the WAL, so their structured metadata must not be reordered,
+// appended to or replaced. The merged slices are read-only for the same reason, see
+// pushtypes.EffectiveStructuredMetadata.
+func (s *sharedSets) effectiveEntries(entries []logproto.Entry) []logproto.Entry {
+	if s.empty() {
+		return entries
+	}
+
+	expanded := make([]logproto.Entry, len(entries))
 	for i := range entries {
-		resource, scope := pool.SharedFor(&entries[i])
+		resource, scope := s.setsFor(&entries[i])
 
-		stored[i] = entries[i]
-		stored[i].StructuredMetadata = pushtypes.EffectiveStructuredMetadata(resource, scope, entries[i].StructuredMetadata)
-		// The references only mean anything next to the pool they index, and the pool goes no
-		// further than this: what it held is in the entries now. Left in place they would be
-		// read against whatever pool the receiver of these entries happens to have.
-		stored[i].SharedResourceRef = 0
-		stored[i].SharedScopeRef = 0
+		expanded[i] = entries[i]
+		expanded[i].StructuredMetadata = pushtypes.EffectiveStructuredMetadata(resource, scope, entries[i].StructuredMetadata)
+		expanded[i].SharedResourceRef = 0
+		expanded[i].SharedScopeRef = 0
 	}
 
-	// The caller's entries are never modified: they are aliased by the caller itself, and by
-	// the replication path, so their structured metadata must not be reordered, appended to or
-	// replaced.
-	return pushBatch{stored: stored, pushed: entries}
+	return expanded
 }
 
-// len is the number of entries in the batch.
-func (b *pushBatch) len() int {
-	return len(b.stored)
-}
-
-// entryTotalSize is the size the i-th entry is accounted for: its line and its own structured
-// metadata, the shared sets being charged once for the whole batch instead. This is the
-// unexpanded, tenant-facing unit, used by the per-stream rate limiter and by the discard metrics.
-func (b *pushBatch) entryTotalSize(i int) int {
-	if b.pushed != nil {
-		return util.EntryTotalSize(&b.pushed[i])
+// spaceFor reports whether the chunk can take the entry, accounting for the shared structured
+// metadata the entry references when there is any.
+func (d *chunkDesc) spaceFor(e *logproto.Entry, shared pushtypes.LabelsAdapter) bool {
+	if len(shared) == 0 {
+		return d.chunk.SpaceFor(e)
 	}
-	return util.EntryTotalSize(&b.stored[i])
+	return d.chunk.SpaceForWithSharedStructuredMetadata(e, shared)
 }
 
-// storedEntryTotalSize is the size of the i-th entry as it is actually stored, that is with the
-// shared structured metadata it references materialized into it. It is the expanded-equivalent
-// unit: the same number the very same payload would have produced with
-// otlp_defer_structured_metadata_expansion off.
-//
-// For a batch that shares nothing, stored is the pushed batch itself, so this and entryTotalSize
-// are the same number by construction.
-func (b *pushBatch) storedEntryTotalSize(i int) int {
-	return util.EntryTotalSize(&b.stored[i])
-}
-
-// effectiveHash identifies the structured metadata the i-th entry is stored with. It is the
-// hash of the effective list, so it is a property of what the entry means and not of how its
-// metadata happened to be carried on the wire: an entry pushed with a pool and the same entry
-// replayed from a WAL record, its metadata already materialized, hash the same.
-//
-// The hash is computed on the spot rather than cached: the callers only ask for it for the
-// handful of entries a push actually compares, not for every entry of the batch.
-func (b *pushBatch) effectiveHash(i int) uint64 {
-	return util.StructuredMetadataHash(b.stored[i].StructuredMetadata)
-}
-
-// filter returns an empty batch of the same shape as this one, with room for as many entries,
-// to collect the entries of this batch that pass validation.
-func (b *pushBatch) filter() pushBatch {
-	filtered := pushBatch{stored: make([]logproto.Entry, 0, b.len())}
-	if b.pushed != nil {
-		filtered.pushed = make([]logproto.Entry, 0, b.len())
+// append adds the entry to the chunk. When the entry references shared structured metadata the
+// chunk stores the union of that and the entry's own without either side having to materialize
+// it, interning the shared part once per chunk under sharedHash.
+func (d *chunkDesc) append(e *logproto.Entry, sharedHash uint64, shared pushtypes.LabelsAdapter) (bool, error) {
+	if len(shared) == 0 {
+		return d.chunk.Append(e)
 	}
-	return filtered
+	return d.chunk.AppendWithSharedStructuredMetadata(e, sharedHash, shared)
 }
 
-// keep adds the i-th entry of src to this batch, in both of its forms.
-func (b *pushBatch) keep(src *pushBatch, i int) {
-	b.stored = append(b.stored, src.stored[i])
-	if b.pushed != nil {
-		b.pushed = append(b.pushed, src.pushed[i])
-	}
-}
-
-func (s *stream) storeEntries(ctx context.Context, batch pushBatch, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
+func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, shared *sharedSets, usageTracker push.UsageTracker, format string) (int, []logproto.Entry, []entryWithError) {
 	sp := trace.SpanFromContext(ctx)
 	sp.AddEvent("stream started to store entries", trace.WithAttributes(
 		attribute.String("labels", s.labelsString)),
@@ -486,26 +537,27 @@ func (s *stream) storeEntries(ctx context.Context, batch pushBatch, usageTracker
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
 	var invalid []entryWithError
-	entries := batch.stored
 	storedEntries := make([]logproto.Entry, 0, len(entries))
 	// s.lastLine is not read again until the next push, so only the last stored entry's values
-	// matter: assigning them once after the loop keeps the hash to one per push instead of one
-	// per entry.
+	// matter: assigning them once after the loop keeps this to one assignment per push instead
+	// of one per entry.
 	lastStored := -1
 	for i := 0; i < len(entries); i++ {
+		pair := shared.pairFor(&entries[i])
+
 		chunk := &s.chunks[len(s.chunks)-1]
-		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
+		if chunk.closed || !chunk.spaceFor(&entries[i], pair.combined) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)
 		}
 
 		chunk.lastUpdated = time.Now()
-		dup, err := chunk.chunk.Append(&entries[i])
+		dup, err := chunk.append(&entries[i], pair.hash, pair.combined)
 		if err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
-				outOfOrderBytes += batch.entryTotalSize(i)
+				outOfOrderBytes += util.EntryTotalSize(&entries[i])
 			}
 			continue
 		}
@@ -525,7 +577,10 @@ func (s *stream) storeEntries(ctx context.Context, batch pushBatch, usageTracker
 	if lastStored >= 0 {
 		s.lastLine.ts = entries[lastStored].Timestamp
 		s.lastLine.content = entries[lastStored].Line
-		s.lastLine.effectiveHash = batch.effectiveHash(lastStored)
+		s.lastLine.structuredMetadata = entries[lastStored].StructuredMetadata
+		// pairFor is memoized per reference pair, so re-resolving the last stored entry's pair
+		// here is a map lookup rather than a second merge and hash.
+		s.lastLine.sharedHash = shared.pairFor(&entries[lastStored]).hash
 	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker, format)
 	return bytesAdded, storedEntries, invalid
@@ -546,7 +601,7 @@ func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
 
 }
 
-func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSize int, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) (pushBatch, []entryWithError) {
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, shared *sharedSets, sharedSize int, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker, format string) ([]logproto.Entry, []entryWithError) {
 
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
@@ -556,13 +611,7 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
 		highestTs                            = s.highestTs
-		entries                              = batch.stored
-		toStore                              = batch.filter()
-		// The hash of lastLine's structured metadata is only needed when a candidate entry
-		// already matches lastLine's timestamp and line, which is the rare duplicate case, so it
-		// is computed on demand. While lastLineHashIdx is not -1 it names the entry of this batch
-		// lastLine was taken from and lastLine.effectiveHash is stale.
-		lastLineHashIdx = -1
+		toStore                              = make([]logproto.Entry, 0, len(entries))
 	)
 
 	// The shared structured metadata is stored once for the whole stream rather than once per
@@ -591,14 +640,19 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	// It differs from the per-stream rate limiter charge above ON PURPOSE - this is not a bug.
 	// The rate limiter is tenant-facing and stays unexpanded; the rate calculator is not: it
 	// feeds the rate store the distributor reads to decide how many shards a stream gets
-	// (Distributor.shardCountFor computes rate + pushSize). The distributor now measures pushSize
-	// in expanded-equivalent bytes, so the rate term has to be in the same unit or the shard
+	// (Distributor.shardCountFor computes rate + pushSize). The distributor measures pushSize in
+	// expanded-equivalent bytes, so the rate term has to be in the same unit or the shard
 	// arithmetic adds two different units together. See the split documented in
-	// Distributor.PushWithResolver, which also names the follow-up that flips both back.
+	// Distributor.PushWithResolver.
 	//
-	// For a batch that shares nothing this is bit for bit the old number: stored is the pushed
-	// batch, and sharedSize is 0, so the per-entry terms agree and there is no pool charge to
-	// place. Duplicate entries contribute nothing, exactly as before.
+	// The shared term comes from the memoized sharedPair.size rather than from a materialized
+	// list: the chunk now stores the shared pairs without either side expanding them, so there
+	// is no effective entry to measure. The number is the same one, since the pool reaching the
+	// ingester has already had its empty-valued pairs dropped.
+	//
+	// For a batch that shares nothing this is bit for bit the old number: every pair.size is 0
+	// and sharedSize is 0, so the per-entry terms agree and there is no pool charge to place.
+	// Duplicate entries contribute nothing, exactly as before.
 	streamRateBytes := 0
 
 	for i := range entries {
@@ -611,28 +665,34 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		// NOTE: it's still possible for duplicates to be appended if a stream is
 		// deleted from inactivity.
 		//
-		// The structured metadata is compared by the hash of its effective form, which is a
-		// property of what the entry means rather than of the shape its metadata arrived in.
-		// The two have to be told apart because the same entry reaches a stream in both
-		// shapes: after an abrupt restart the same data is replayed from the WAL, holding its
-		// metadata materialized, and re-consumed from the ingest queue, referencing a pool.
-		// Comparing the shapes would make those two look like different entries and store the
-		// line twice.
+		// The shared structured metadata is part of the comparison: entries are stored
+		// unexpanded, so two entries with the same timestamp, line and own structured
+		// metadata that reference different resource or scope sets only differ by it.
+		// Dropping the second one as a duplicate would silently lose data. Entries of one
+		// stream now reference the pool individually, so this is a per entry identity
+		// rather than a per batch one.
 		//
-		// Hashing rather than comparing the lists pairwise trades a 2^-64 chance of dropping
-		// an entry that is not in fact a duplicate for not having to keep the last line's
-		// structured metadata around, which for a pooled push would pin the sets of the whole
-		// pool it aliases for as long as the stream lives.
-		// The timestamp and the line are compared first, and the structured metadata only if
-		// they match: it is the expensive term and it decides nothing on its own.
-		if entries[i].Timestamp.Equal(lastLine.ts) && entries[i].Line == lastLine.content {
-			if lastLineHashIdx >= 0 {
-				lastLine.effectiveHash = batch.effectiveHash(lastLineHashIdx)
-				lastLineHashIdx = -1
-			}
-			if batch.effectiveHash(i) == lastLine.effectiveHash {
-				continue
-			}
+		// The identity of what an entry shares is sharedPair.hash, which is derived from the
+		// CONTENT of the sets it references (util.SharedPairHash over each set's content hash)
+		// and not from the indices it carries. Two records that hold the same sets pooled in a
+		// different order therefore agree, which is what makes the overlap of an abrupt restart
+		// safe: the same data arrives once replayed from the WAL and once re-consumed from the
+		// ingest queue, and both now carry a pool of their own (WAL records express one from
+		// WALRecordEntriesV4 on), independently built.
+		//
+		// The terms are ordered cheapest-first and the && chain short-circuits, so the two
+		// metadata terms are only evaluated for an entry whose timestamp and line already match
+		// the last line, which is the rare duplicate case. Neither term costs a hash of a
+		// materialized list: pair.hash is memoized per reference pair by pairFor, and the entry's
+		// own metadata is compared pairwise against the last line's. Retaining the own list on
+		// lastLine is safe because, unlike an effective list, it never aliases the pool, so it
+		// cannot pin the whole pool for the lifetime of the stream.
+		pair := shared.pairFor(&entries[i])
+		if entries[i].Timestamp.Equal(lastLine.ts) &&
+			entries[i].Line == lastLine.content &&
+			pair.hash == lastLine.sharedHash &&
+			labelsEqual(entries[i].StructuredMetadata, lastLine.structuredMetadata) {
+			continue
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
@@ -648,11 +708,11 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 		if !tooFarBehind {
 			sharedCharge = unchargedShared
 		}
-		entryBytes := batch.entryTotalSize(i) + sharedCharge
+		entryBytes := util.EntryTotalSize(&entries[i]) + sharedCharge
 
 		// The entry is not a duplicate, so it counts towards the recorded rate whatever the
 		// verdict below is, and it counts in the expanded-equivalent unit. See streamRateBytes.
-		streamRateBytes += batch.storedEntryTotalSize(i)
+		streamRateBytes += util.EntryTotalSize(&entries[i]) + pair.size
 
 		now := time.Now()
 		// The limiter is charged the UNEXPANDED size, deliberately not the size recorded to the
@@ -698,12 +758,13 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
-		lastLineHashIdx = i
+		lastLine.structuredMetadata = entries[i].StructuredMetadata
+		lastLine.sharedHash = pair.hash
 		if highestTs.Before(entries[i].Timestamp) {
 			highestTs = entries[i].Timestamp
 		}
 
-		toStore.keep(&batch, i)
+		toStore = append(toStore, entries[i])
 	}
 
 	// Bytes of shared structured metadata that were actually charged to an accepted entry,
@@ -720,18 +781,18 @@ func (s *stream) validateEntries(ctx context.Context, batch pushBatch, sharedSiz
 	now := time.Now()
 	if rateLimitWholeStream && !s.limiter.AllowN(now, validBytes) {
 		// Report that the whole stream was rate limited
-		rateLimitedSamples = toStore.len()
-		failedEntriesWithError = make([]entryWithError, 0, toStore.len())
-		for i := 0; i < toStore.len(); i++ {
+		rateLimitedSamples = len(toStore)
+		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
+		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{
-				&toStore.stored[i],
+				&toStore[i],
 				&validation.ErrStreamRateLimit{
 					RateLimit: flagext.ByteSize(limit),
 					Labels:    s.labelsString,
-					Bytes:     flagext.ByteSize(toStore.entryTotalSize(i)),
+					Bytes:     flagext.ByteSize(util.EntryTotalSize(&toStore[i])),
 				},
 			})
-			rateLimitedBytes += toStore.entryTotalSize(i)
+			rateLimitedBytes += util.EntryTotalSize(&toStore[i])
 		}
 		// The whole batch is discarded, so the shared structured metadata goes with it, but
 		// only if it was charged in the first place: entries dropped inside the loop above
@@ -941,4 +1002,18 @@ func (s *stream) addTailer(t *tailer) {
 	defer s.tailerMtx.Unlock()
 
 	s.tailers[t.getID()] = t
+}
+
+func labelsEqual(a, b pushtypes.LabelsAdapter) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i].Name != b[i].Name || a[i].Value != b[i].Value {
+			return false
+		}
+	}
+
+	return true
 }
