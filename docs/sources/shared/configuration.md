@@ -5515,20 +5515,6 @@ index:
   # Table period.
   [period: <duration>]
 
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# Configured how the chunks are updated and stored.
-chunks:
-  # Table prefix for all period tables.
-  [prefix: <string> | default = ""]
-
-  # Table period.
-  [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
 ```
