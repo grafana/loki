@@ -126,6 +126,12 @@ Like [PromQL](https://prometheus.io/docs/prometheus/latest/querying/operators/#a
 - `sort`: returns vector elements sorted by their sample values, in ascending order.
 - `sort_desc`: Same as sort, but sorts in descending order.
 
+{{< admonition type="note" >}}
+Metric query results are not guaranteed to be returned in any particular order, unless the query uses `sort` or `sort_desc`. Don't rely on the ordering of results in any other case.
+
+`sort` and `sort_desc` only affect the results of instant queries. The ordering of range query results is unspecified, even when the query uses `sort` or `sort_desc`.
+{{< /admonition >}}
+
 The aggregation operators can either be used to aggregate over all label values or a set of distinct label values by including a `without` or a `by` clause:
 
 ```logql
