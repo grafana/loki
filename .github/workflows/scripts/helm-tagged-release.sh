@@ -21,7 +21,6 @@ calculate_next_chart_version() {
 validate_version_update() {
   local new_chart_version=$1
   local current_chart_version=$2
-  local latest_loki_tag=$3
 
   if [[ "${new_chart_version}" == "${current_chart_version}" ]]; then
     echo "New chart version (${new_chart_version}) is the same as current version (${current_chart_version}); not submitting PR"
@@ -29,7 +28,15 @@ validate_version_update() {
   fi
 }
 
-latest_loki_tag=$(sed -E "s/v(.*)/\1/g" <<<"$1")
+if [[ -z "${1:-}" ]]; then
+  echo "usage: $0 <gel-version>" >&2
+  echo "example: $0 v3.6.11" >&2
+  exit 1
+fi
+
+# Chart 7.0.0+ is GEL-only. Loki and GEL versions have diverged (Loki on 3.7.x,
+# GEL stays on 3.6.x), so this path is driven by a GEL release version.
+latest_gel_tag=$(sed -E "s/^v//" <<<"$1")
 
 values_file=production/helm/loki/values.yaml
 chart_file=production/helm/loki/Chart.yaml
@@ -37,17 +44,16 @@ chart_file=production/helm/loki/Chart.yaml
 current_chart_version=$(get_yaml_node "${chart_file}" .version)
 new_chart_version=$(calculate_next_chart_version "${current_chart_version}")
 
-validate_version_update "${new_chart_version}" "${current_chart_version}" "${latest_loki_tag}"
+validate_version_update "${new_chart_version}" "${current_chart_version}"
 
-update_yaml_node "${values_file}" .loki.image.tag "${latest_loki_tag}"
-
-update_yaml_node "${values_file}" .enterprise.image.tag "${latest_loki_tag}"
-update_yaml_node "${chart_file}" .appVersion "${latest_loki_tag}"
+update_yaml_node "${values_file}" .enterprise.version "${latest_gel_tag}"
+update_yaml_node "${values_file}" .enterprise.image.tag "${latest_gel_tag}"
+update_yaml_node "${chart_file}" .appVersion "${latest_gel_tag}"
 update_yaml_node "${chart_file}" .version "${new_chart_version}"
 
 sed --in-place \
   --regexp-extended \
-  "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}/g" production/helm/loki/CHANGELOG.md
+  "s/## Unreleased/## Unreleased\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Enterprise Logs to ${latest_gel_tag} (updated \`enterprise.version\`, and \`enterprise.image.tag\`)./g" production/helm/loki/CHANGELOG.md
 
 # shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"

@@ -29,8 +29,10 @@ jobs:
         with:
           github_app: loki-gh-app
 
-      - name: "Login to DockerHub (from vault)"
-        uses: "grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746"
+      - name: "Login to GAR"
+        uses: grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136
+        with:
+          registry: "us-docker.pkg.dev"
 
       - name: Update/regenerate files for standard release
         id: update
@@ -41,6 +43,7 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
+          sign-commits: true
           title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
           body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}

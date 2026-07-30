@@ -7,6 +7,9 @@ script_dir=$(cd "$(dirname "$0")" && pwd)
 # shellcheck disable=SC2250,SC1091
 source "${script_dir}/common.sh"
 
+GEL_REPO="us-docker.pkg.dev/grafanalabs-global/docker-enterprise-logs-prod/enterprise-logs"
+LOKI_REPO="us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror/loki"
+
 install_crane() {
   local version="v0.21.6"
   local tmp
@@ -20,20 +23,28 @@ if ! command -v crane &>/dev/null; then
   install_crane
 fi
 
-# Uses docker hub image tags to figure out what is the latest image tag
+# Authenticate crane against GAR. login-to-gar configures the gcloud Docker credential
+# helper; crane needs an explicit login for reliable non-interactive use.
+crane auth login us-docker.pkg.dev -u oauth2accesstoken -p "$(gcloud auth print-access-token)"
+
+# Uses GAR image tags to figure out what is the latest weekly image tag.
+# Weekly tags are k317-195b91a (Loki) and weekly-k317-1a2b3c4 (GEL). The anchored
+# regex rejects branch builds such as k316-compaction-f35210d-WIP and main-<sha>.
 find_latest_image_tag() {
-  local docker_hub_repo=$1
-  local regExp="^(k|weekly-k)\d+-[a-z0-9]+"
-  local crane_results
-  crane_results="$(crane ls "${docker_hub_repo}" | grep -P "${regExp}" | sed -E "s/([weekly-]*k[[:digit:]]*)-([^-]*).*/\1-\2/g" | sort -Vur)"
-  set +o pipefail
-  echo "${crane_results}" | head -1
-  set -o pipefail
+  local repo=$1
+  local tags
+  tags="$(crane ls "${repo}" | grep -P '^(weekly-)?k\d+-[0-9a-f]{7}$' || true)"
+  if [[ -z "${tags}" ]]; then
+    echo "No weekly image tags found in ${repo}" >&2
+    exit 1
+  fi
+  awk '{ k=$0; sub(/^weekly-/,"",k); sub(/^k/,"",k); sub(/-.*/,"",k); print k"\t"$0 }' <<<"${tags}" \
+    | sort -k1,1nr | head -1 | cut -f2
 }
 
-# takes k197-abcdef and returns r197, k197-abcdef-arm64 and returns k197, weekly-k197-abcdef and returns k197
+# takes k197-abcdef and returns k197, weekly-k197-abcdef and returns k197
 extract_k_version() {
-  sed -E "s/[weekly-]*(k[[:digit:]]*).*/\1/g" <<<"$1"
+  sed -E "s/^(weekly-)?(k[0-9]+).*/\2/" <<<"$1"
 }
 
 calculate_next_chart_version() {
@@ -92,8 +103,8 @@ fi
 values_file=production/helm/loki/values.yaml
 chart_file=production/helm/loki/Chart.yaml
 
-latest_loki_tag=$(find_latest_image_tag grafana/loki)
-latest_gel_tag=$(find_latest_image_tag grafana/enterprise-logs)
+latest_loki_tag=$(find_latest_image_tag "${LOKI_REPO}")
+latest_gel_tag=$(find_latest_image_tag "${GEL_REPO}")
 current_chart_version=$(get_yaml_node "${chart_file}" .version)
 new_chart_version=$(calculate_next_chart_version "${current_chart_version}" "${latest_loki_tag}" "${k_release}")
 
