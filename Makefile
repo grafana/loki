@@ -115,7 +115,7 @@ define run_in_container
 		.
 
 	@if $(TTY_TEST); then INTERACTIVE_FLAGS='--tty --interactive'; else INTERACTIVE_FLAGS=''; fi; \
-	docker run --rm $$INTERACTIVE_FLAGS \
+	@docker run --rm $$INTERACTIVE_FLAGS \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
