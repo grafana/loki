@@ -47,7 +47,7 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           sign-commits: true
-          title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
+          title: "chore: Release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
           body: Automated PR created by [helm-tagged-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-tagged-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
           branch: helm-chart-tagged-${{ steps.update.outputs.new_chart_version }}
