@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
@@ -78,6 +79,97 @@ func (s *symbolizer) Add(lbls labels.Labels) (symbols, error) {
 	})
 
 	return syms, nil
+}
+
+// sharedMetadata is the interned form of a set of structured metadata labels shared by many
+// entries, e.g. the OTLP resource and scope attributes of a push batch. names holds the
+// interned label names, sorted, parallel to syms.
+type sharedMetadata struct {
+	names []string
+	syms  symbols
+}
+
+// AddWithShared adds an entry's own structured metadata plus a set of structured metadata
+// shared by many entries and returns a symbol for each pair of their union, ordered by label
+// name. own must be sorted by label name.
+//
+// Pairs of the two sets that share a label name are all kept, shared first and own last, and
+// so are exact duplicates: the merge never drops a pair, exactly like Add never drops one.
+// Own coming last is what makes the entry's own, log record level, attribute win the
+// collision, since the read path collapses pairs repeating a label name down to the last one.
+//
+// cached is the result of a previous call for the same shared set, or nil the first time the
+// symbolizer sees it. Only in the latter case is shared read, and it must then be sorted by
+// label name. The returned *sharedMetadata is meant to be cached by the caller and passed
+// back for the following entries carrying the same shared set: that is what makes a shared
+// set interned once instead of once per entry.
+//
+// Strings are interned in the order in which they appear in the merged union. When the two
+// sets share no label name that is the very order Add would have interned them in for the
+// equivalent pre-merged labels, so together with the ordering of the returned symbols the
+// chunk stays byte for byte identical to one built from pre-merged structured metadata. When
+// they do share a label name the two differ, see
+// MemChunk.AppendWithSharedStructuredMetadata.
+func (s *symbolizer) AddWithShared(own, shared []logproto.LabelAdapter, cached *sharedMetadata) (symbols, *sharedMetadata, error) {
+	if s.readOnly {
+		return nil, nil, errSymbolizerReadOnly
+	}
+
+	if cached == nil {
+		return s.internWithShared(own, shared)
+	}
+
+	if len(own) == 0 {
+		// Nothing to merge, the shared symbols are the entry's symbols. Symbols are only ever
+		// read, so the same slice can back every entry carrying this shared set.
+		return cached.syms, cached, nil
+	}
+
+	syms := make(symbols, 0, len(own)+len(cached.syms))
+	// Strictly less than: on an equal label name the shared pair is emitted first and the
+	// entry's own pair last, so that the own one wins at read time.
+	for i, j := 0, 0; i < len(own) || j < len(cached.syms); {
+		if j == len(cached.syms) || (i < len(own) && own[i].Name < cached.names[j]) {
+			syms = append(syms, symbol{Name: s.add(own[i].Name), Value: s.add(own[i].Value)})
+			i++
+			continue
+		}
+		syms = append(syms, cached.syms[j])
+		j++
+	}
+
+	return syms, cached, nil
+}
+
+// internWithShared handles the first entry seen for a shared set: both own and shared are
+// interned while walking their union so that new strings enter the symbol table in the same
+// order Add would have added them in for the equivalent pre-merged labels.
+func (s *symbolizer) internWithShared(own, shared []logproto.LabelAdapter) (symbols, *sharedMetadata, error) {
+	cached := &sharedMetadata{
+		names: make([]string, 0, len(shared)),
+		syms:  make(symbols, 0, len(shared)),
+	}
+	if len(own)+len(shared) == 0 {
+		return nil, cached, nil
+	}
+
+	syms := make(symbols, 0, len(own)+len(shared))
+	// Strictly less than: on an equal label name the shared pair is emitted first and the
+	// entry's own pair last, so that the own one wins at read time.
+	for i, j := 0, 0; i < len(own) || j < len(shared); {
+		if j == len(shared) || (i < len(own) && own[i].Name < shared[j].Name) {
+			syms = append(syms, symbol{Name: s.add(own[i].Name), Value: s.add(own[i].Value)})
+			i++
+			continue
+		}
+		sym := symbol{Name: s.add(shared[j].Name), Value: s.add(shared[j].Value)}
+		cached.names = append(cached.names, s.lookup(sym.Name))
+		cached.syms = append(cached.syms, sym)
+		syms = append(syms, sym)
+		j++
+	}
+
+	return syms, cached, nil
 }
 
 func (s *symbolizer) add(lbl string) uint32 {
