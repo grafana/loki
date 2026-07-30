@@ -906,12 +906,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				structuredMetadata = normalizedBuilder.Labels()
 				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
 
-				resourceMetadataLabels := sharedMetadataLabels.at(entry.SharedResourceRef)
 				scopeMetadataLabels := sharedMetadataLabels.at(entry.SharedScopeRef)
+				resourceMetadataLabels := sharedMetadataLabels.at(entry.SharedResourceRef)
 
 				if shouldDiscoverLevels {
 					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
-						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, resourceMetadataLabels, scopeMetadataLabels, entry)
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, scopeMetadataLabels, resourceMetadataLabels, entry)
 						if ok {
 							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
 						}
@@ -920,7 +920,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				if shouldDiscoverGenericFields {
 					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
 						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
-							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, resourceMetadataLabels, scopeMetadataLabels, entry)
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, scopeMetadataLabels, resourceMetadataLabels, entry)
 							if ok {
 								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
 							}

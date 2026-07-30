@@ -40,8 +40,8 @@ func TestEffectiveStructuredMetadata(t *testing.T) {
 			resource: resource,
 			own:      own,
 			expected: LabelsAdapter{
-				{Name: "traceID", Value: "1234"},
 				{Name: "service.name", Value: "svc"},
+				{Name: "traceID", Value: "1234"},
 			},
 		},
 		{
@@ -49,34 +49,32 @@ func TestEffectiveStructuredMetadata(t *testing.T) {
 			scope: scope,
 			own:   own,
 			expected: LabelsAdapter{
-				{Name: "traceID", Value: "1234"},
 				{Name: "scope.name", Value: "lib"},
+				{Name: "traceID", Value: "1234"},
 			},
 		},
 		{
-			// The order the OTLP handler expands in when it does not defer: the entry's own
-			// attributes are already there, resource is appended, then scope.
-			name:     "all three keep own, resource, scope order",
+			// The read path keeps the last pair for a repeated name, so this order gives
+			// own > scope > resource.
+			name:     "all three keep resource, scope, own order",
 			resource: resource,
 			scope:    scope,
 			own:      own,
 			expected: LabelsAdapter{
-				{Name: "traceID", Value: "1234"},
 				{Name: "service.name", Value: "svc"},
 				{Name: "scope.name", Value: "lib"},
+				{Name: "traceID", Value: "1234"},
 			},
 		},
 		{
-			// Duplicate names are kept as they are, in expansion order, rather than resolved
-			// here: what the read path makes of them is today's behavior, unchanged.
-			name:     "a name carried by all three is kept three times in expansion order",
+			name:     "own wins a collision with both shared sets by coming last",
 			resource: LabelsAdapter{{Name: "host.name", Value: "from-resource"}},
 			scope:    LabelsAdapter{{Name: "host.name", Value: "from-scope"}},
 			own:      LabelsAdapter{{Name: "host.name", Value: "from-log-record"}},
 			expected: LabelsAdapter{
-				{Name: "host.name", Value: "from-log-record"},
 				{Name: "host.name", Value: "from-resource"},
 				{Name: "host.name", Value: "from-scope"},
+				{Name: "host.name", Value: "from-log-record"},
 			},
 		},
 		{
@@ -115,9 +113,9 @@ func TestEffectiveStructuredMetadataDoesNotMutateInputs(t *testing.T) {
 	for i := range merged {
 		merged[i] = LabelAdapter{Name: "clobbered", Value: "clobbered"}
 	}
-	require.Equal(t, LabelAdapter{Name: "traceID", Value: "1234"}, own[0])
 	require.Equal(t, LabelAdapter{Name: "service.name", Value: "svc"}, resource[0])
 	require.Equal(t, LabelAdapter{Name: "scope.name", Value: "lib"}, scope[0])
+	require.Equal(t, LabelAdapter{Name: "traceID", Value: "1234"}, own[0])
 	require.Equal(t, 1, len(own))
 }
 

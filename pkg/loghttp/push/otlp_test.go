@@ -1853,12 +1853,15 @@ type flatOTLPEntry struct {
 	sm     string
 }
 
-// effectiveStructuredMetadata renders the effective structured metadata of an entry, in order.
+// sortedEffectiveStructuredMetadata renders the effective structured metadata of an entry in a
+// canonical, order-insensitive form.
 //
-// The order is compared on purpose: push.EffectiveStructuredMetadata materializes the pool in the
-// same own, resource, scope order the expanded mode appends in, so the two modes must produce the
-// very same list of pairs, duplicate names included, and not merely the same set.
-func effectiveStructuredMetadata(stream *logproto.Stream, entry *logproto.Entry) string {
+// The two expansion modes lay the same set of labels out in a different order: the expanded mode
+// appends the resource and scope attributes after the entry's own ones, while
+// push.EffectiveStructuredMetadata puts the shared ones first so that the entry's own, log record
+// level, attributes come last and therefore win a name collision on the read path. Only the set of
+// labels is compared here; the layout is what the deferred expansion is free to change.
+func sortedEffectiveStructuredMetadata(stream *logproto.Stream, entry *logproto.Entry) string {
 	resource, scope := stream.SharedFor(entry)
 	effective := push.EffectiveStructuredMetadata(resource, scope, entry.StructuredMetadata)
 
@@ -1866,6 +1869,7 @@ func effectiveStructuredMetadata(stream *logproto.Stream, entry *logproto.Entry)
 	for _, l := range effective {
 		pairs = append(pairs, fmt.Sprintf("%s=%s", l.Name, l.Value))
 	}
+	sort.Strings(pairs)
 	return strings.Join(pairs, ",")
 }
 
@@ -1877,7 +1881,7 @@ func flattenOTLPPushRequest(pr *logproto.PushRequest) []flatOTLPEntry {
 			out = append(out, flatOTLPEntry{
 				labels: stream.Labels,
 				line:   stream.Entries[j].Line,
-				sm:     effectiveStructuredMetadata(stream, &stream.Entries[j]),
+				sm:     sortedEffectiveStructuredMetadata(stream, &stream.Entries[j]),
 			})
 		}
 	}
@@ -2117,7 +2121,7 @@ func TestOTLPDeferStructuredMetadataExpansion(t *testing.T) {
 				expandedReq, expandedStats, expandedTracker := runOTLPToLokiPushRequest(t, tc.generate(), tc.cfg, false)
 				deferredReq, deferredStats, deferredTracker := runOTLPToLokiPushRequest(t, tc.generate(), tc.cfg, true)
 
-				// Same entries with the same effective structured metadata, in the same order.
+				// Same entries with the same effective structured metadata, only laid out differently.
 				require.Equal(t, flattenOTLPPushRequest(expandedReq), flattenOTLPPushRequest(deferredReq))
 
 				// Received bytes, structured metadata bytes, expanded bytes, line counts and stream

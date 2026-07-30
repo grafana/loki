@@ -368,6 +368,15 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		// stream's pool; convertMetadata only copies out of it, so aliasing a set here is safe.
 		resource, scope := stream.SharedFor(entry)
 		structuredMetadata := push.EffectiveStructuredMetadata(resource, scope, entry.StructuredMetadata)
+		if len(resource) > 0 || len(scope) > 0 {
+			// The column builder keeps only the first duplicate name per row, so a
+			// name carried both by the entry and by a shared set must be resolved
+			// here to keep the winner deterministic and consistent with the chunk
+			// store, where the entry's own value wins. Only the effective view of a
+			// pooled stream is deduplicated: entries without shared sets keep
+			// today's behavior exactly.
+			structuredMetadata = dedupeLastWins(structuredMetadata)
+		}
 
 		sz := int64(len(entry.Line))
 		for _, md := range structuredMetadata {
@@ -415,6 +424,41 @@ func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {
 	}
 	b.labelCache.Add(labelString, parsed)
 	return parsed, nil
+}
+
+// dedupeLastWins returns md with duplicate names removed, keeping the last
+// occurrence of each name. The effective metadata view orders resource, scope,
+// then entry-own attributes, so the last occurrence is the most specific one:
+// own beats scope beats resource, matching the chunk store's read-time
+// precedence. Returns md unchanged, without allocating, when all names are
+// unique; never mutates md, which may alias a stream's shared set.
+func dedupeLastWins(md push.LabelsAdapter) push.LabelsAdapter {
+	hasLaterDuplicate := func(i int) bool {
+		for j := i + 1; j < len(md); j++ {
+			if md[j].Name == md[i].Name {
+				return true
+			}
+		}
+		return false
+	}
+
+	dupes := 0
+	for i := range md {
+		if hasLaterDuplicate(i) {
+			dupes++
+		}
+	}
+	if dupes == 0 {
+		return md
+	}
+
+	deduped := make(push.LabelsAdapter, 0, len(md)-dupes)
+	for i := range md {
+		if !hasLaterDuplicate(i) {
+			deduped = append(deduped, md[i])
+		}
+	}
+	return deduped
 }
 
 func convertMetadata(md push.LabelsAdapter) labels.Labels {

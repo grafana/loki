@@ -65,14 +65,13 @@ func smEntry(ts int64, line string, own pushtypes.LabelsAdapter, resourceRef, sc
 }
 
 // effectiveSM is the structured metadata a producer that expanded the pool would have put on an
-// entry. It mirrors pushtypes.EffectiveStructuredMetadata, which today emits the entry's own
-// attributes first and then the shared ones, so that a name carried by both resolves to the
-// shared value under the read path's last-pair-wins collapse.
+// entry: resource, then scope, then the entry's own. Own comes last because the read path keeps
+// the last pair for a repeated name, which is what encodes own > scope > resource.
 func effectiveSM(resource, scope, own pushtypes.LabelsAdapter) pushtypes.LabelsAdapter {
 	out := make(pushtypes.LabelsAdapter, 0, len(resource)+len(scope)+len(own))
-	out = append(out, own...)
 	out = append(out, resource...)
 	out = append(out, scope...)
+	out = append(out, own...)
 	return out
 }
 

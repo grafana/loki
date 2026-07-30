@@ -3,21 +3,27 @@ package push
 import "fmt"
 
 // EffectiveStructuredMetadata returns the structured metadata that applies to an entry once
-// the shared structured metadata sets of its stream have been merged in: the entry's own
-// attributes first, then the resource attributes, then the scope attributes. Resolve resource
+// the shared structured metadata sets of its stream have been merged in: the resource
+// attributes first, then the scope attributes, then the entry's own ones. Resolve resource
 // and scope for an entry with Stream.SharedFor.
 //
-// That is the order the OTLP push path appends in when it expands resource and scope
-// attributes onto every entry itself, so the pairs, duplicate names included, are the ones an
-// entry whose stream was ingested with expansion enabled carries.
+// The order is what encodes precedence. Loki's read path collapses structured metadata pairs
+// that repeat a label name down to the last one, so the effective precedence is
+// own > scope > resource, which is what OpenTelemetry prescribes: the log record wins over
+// its instrumentation scope, which wins over the resource.
 //
-// Their order is not. The distributor round-trips every entry's structured metadata through
-// logproto.FromLabelAdaptersToLabels, which sorts, so with expansion enabled the resource and
-// scope pairs are sorted in among the entry's own ones, where here the three parts are simply
-// concatenated. What survives is what the pairs mean: the read path collapses repeated names
-// down to the last pair, and because the shared attributes still come after the entry's own
-// ones, a name carried by both still resolves to the shared value. Duplicate names therefore
-// keep resolving the way they do today, warts and all.
+// That is deliberately NOT what the expanded OTLP push path does. It appends the shared
+// attributes after the entry's own ones, so a name carried by both resolves to the shared value
+// there - resource and scope silently overriding the log record. Turning the flag on therefore
+// changes how a name collision resolves, in the direction OpenTelemetry specifies. Collisions
+// are the only case that moves; an entry whose own attribute names are disjoint from its
+// resource and scope names reads back exactly as before.
+//
+// Pair order still differs from the expanded path even without collisions. The distributor
+// round-trips every entry's structured metadata through logproto.FromLabelAdaptersToLabels,
+// which sorts, so with expansion enabled the resource and scope pairs are sorted in among the
+// entry's own ones, where here the three parts are simply concatenated. Nothing downstream
+// depends on that order beyond the last-pair-wins collapse above.
 //
 // The pairs themselves can differ too, in the corners where the expanded path's per-entry
 // labels.Builder round-trip does something across the merged list that sanitizing each part on
@@ -26,9 +32,6 @@ import "fmt"
 // the reasoning for accepting them, are documented next to
 // Distributor.sanitizeSharedStructuredMetadata in pkg/distributor/distributor.go, and pinned by
 // TestDistributor_DeferredExpansionParity.
-//
-// Giving the entry's own attributes precedence, which is what OpenTelemetry prescribes, is a
-// behavior change on its own and is deferred to follow-up work rather than smuggled in here.
 //
 // The entry is never modified. Appending the shared labels to Entry.StructuredMetadata in
 // place is not safe: entries are handed to the WAL, replication and tailer paths that read
@@ -48,18 +51,18 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 
 	// Exactly one part holds everything: alias it rather than copying.
 	switch total {
-	case len(own):
-		return own[:len(own):len(own)]
 	case len(resource):
 		return resource[:len(resource):len(resource)]
 	case len(scope):
 		return scope[:len(scope):len(scope)]
+	case len(own):
+		return own[:len(own):len(own)]
 	}
 
 	merged := make(LabelsAdapter, 0, total)
-	merged = append(merged, own...)
 	merged = append(merged, resource...)
 	merged = append(merged, scope...)
+	merged = append(merged, own...)
 	return merged
 }
 
@@ -68,12 +71,11 @@ func EffectiveStructuredMetadata(resource, scope, own LabelsAdapter) LabelsAdapt
 // chunk layer, whose MemChunk.AppendWithSharedStructuredMetadata takes one shared list
 // alongside the entry's own metadata rather than a resource and a scope list.
 //
-// The resource attributes come first on purpose: that is the order the shared attributes
-// appear in within EffectiveStructuredMetadata, and the order the OTLP push path expands them
-// in. The read path keeps the last pair for a repeated label name, so a name present in both
-// sets resolves to the scope value. This relies on the chunk, when it merges the shared list
-// into an entry, keeping the given order for two shared pairs carrying the same name; the
-// chunk layer is the side that has to honour that contract.
+// The resource attributes come first on purpose. The read path keeps the last pair for a
+// repeated label name, so a name present in both sets resolves to the scope value, matching
+// the own > scope > resource precedence of EffectiveStructuredMetadata. This relies on the
+// chunk, when it merges the shared list into an entry, keeping the given order for two shared
+// pairs carrying the same name; the chunk layer is the side that has to honour that contract.
 //
 // Like EffectiveStructuredMetadata the result must be treated as read-only: with only one
 // non-empty part it aliases that part, capacity clamped so that a later append allocates
