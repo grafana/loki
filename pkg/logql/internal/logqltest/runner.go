@@ -233,7 +233,7 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any) error {
 		if exp.scalar != nil {
 			return fmt.Errorf("%s: expected a scalar, got a vector", name)
 		}
-		return compareVector(name, exp, v)
+		return compareVector(name, cmd, exp, v)
 	case promql.Matrix:
 		if exp.empty {
 			if len(v) != 0 {
@@ -260,7 +260,10 @@ func compareScalar(name string, exp expectations, s promql.Scalar) error {
 	return nil
 }
 
-func compareVector(name string, exp expectations, v promql.Vector) error {
+func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector) error {
+	// Instant results carry a single timestamp: the query's evaluation time.
+	wantTS := epoch.Add(cmd.ts).UnixMilli()
+
 	// With `expect ordered` the series must appear in the given order (for sort/sort_desc).
 	if exp.ordered {
 		if len(v) != len(exp.series) {
@@ -275,6 +278,9 @@ func compareVector(name string, exp expectations, v promql.Vector) error {
 			}
 			if es.labels != v[i].Metric.String() {
 				return fmt.Errorf("%s: series at position %d: want %s, got %s", name, i, es.labels, v[i].Metric.String())
+			}
+			if v[i].T != wantTS {
+				return fmt.Errorf("%s: series %s has timestamp %dms, expected %dms", name, v[i].Metric.String(), v[i].T, wantTS)
 			}
 			if !floatsEqual(es.samples[0].value, v[i].F) {
 				return fmt.Errorf("%s: series %s (position %d) value mismatch: want %v, got %v", name, es.labels, i, es.samples[0].value, v[i].F)
@@ -300,6 +306,9 @@ func compareVector(name string, exp expectations, v promql.Vector) error {
 	got := map[string]float64{}
 	for _, s := range v {
 		key := s.Metric.String()
+		if s.T != wantTS {
+			return fmt.Errorf("%s: series %s has timestamp %dms, expected %dms", name, key, s.T, wantTS)
+		}
 		if _, dup := got[key]; dup {
 			return fmt.Errorf("%s: engine returned duplicate series %s", name, key)
 		}
@@ -334,6 +343,10 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 			break
 		}
 	}
+	stepMillisSet := make(map[int64]struct{}, len(stepMillis))
+	for _, ms := range stepMillis {
+		stepMillisSet[ms] = struct{}{}
+	}
 
 	want := map[string][]sample{}
 	for _, es := range exp.series {
@@ -354,6 +367,9 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 		}
 		byTS := map[int64]float64{}
 		for _, p := range s.Floats {
+			if _, ok := stepMillisSet[p.T]; !ok {
+				return fmt.Errorf("%s: series %s has point at unexpected timestamp t=%dms", name, key, p.T)
+			}
 			if _, dup := byTS[p.T]; dup {
 				return fmt.Errorf("%s: engine returned duplicate point for series %s at t=%dms", name, key, p.T)
 			}
@@ -370,7 +386,6 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 		if !ok {
 			return fmt.Errorf("%s: missing expected series %s; got series %v", name, k, keys(got))
 		}
-		present := 0
 		for i, p := range points {
 			ts := stepMillis[i]
 			gv, has := gotTS[ts]
@@ -380,19 +395,12 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 				}
 				continue
 			}
-			present++
 			if !has {
 				return fmt.Errorf("%s: series %s missing point at step %d (t=%dms)", name, k, i, ts)
 			}
 			if !floatsEqual(p.value, gv) {
 				return fmt.Errorf("%s: series %s step %d value mismatch: want %v, got %v", name, k, i, p.value, gv)
 			}
-		}
-		// Catch extra points the loop above can't see: it only inspects the expected step
-		// timestamps, so a point at any other timestamp would slip through. Kept last so a
-		// missing point is reported by the loop (with its exact step) before this coarser count.
-		if len(gotTS) != present {
-			return fmt.Errorf("%s: series %s has %d points, expected %d", name, k, len(gotTS), present)
 		}
 	}
 	return nil
