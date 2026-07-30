@@ -1,6 +1,7 @@
 name: Helm tagged release PR
 
 on:
+  workflow_dispatch:
   release:
     types:
       - released

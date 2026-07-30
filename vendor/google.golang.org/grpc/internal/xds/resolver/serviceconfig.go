@@ -24,7 +24,6 @@ import (
 	"math/bits"
 	rand "math/rand/v2"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	xxhash "github.com/cespare/xxhash/v2"
@@ -196,16 +195,13 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 		return nil, annotateErrorWithNodeID(status.Errorf(codes.Internal, "error retrieving cluster for match: %v (%T)", cluster, cluster), cs.xdsNodeID)
 	}
 
-	// Add a ref to the selected cluster, as this RPC needs this cluster until
-	// it is committed.
-	var ref *int32
+	// Add a ref to the selected cluster/plugin, as this RPC needs this
+	// cluster/plugin until it is committed.
 	if info, ok := cs.clusters[cluster.name]; ok {
-		ref = &info.refCount
+		info.refCount.Add(1)
+	} else if info, ok := cs.plugins[cluster.name]; ok {
+		info.refCount.Add(1)
 	}
-	if info, ok := cs.plugins[cluster.name]; ok {
-		ref = &info.refCount
-	}
-	atomic.AddInt32(ref, 1)
 
 	lbCtx := clustermanager.SetPickedCluster(rpcInfo.Context, cluster.name)
 	lbCtx = xdsresource.NewContextWithXDSConfig(lbCtx, cs.xdsConfig)
@@ -221,8 +217,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			// When the RPC is committed, the cluster is no longer required.
 			// Decrease its ref.
 			if info, ok := cs.clusters[cluster.name]; ok {
-				ref := &info.refCount
-				if v := atomic.AddInt32(ref, -1); v == 0 {
+				if v := info.refCount.Add(-1); v == 0 {
 					// We call unsubscribe rather than sendNewServiceConfig to
 					// prevent redundant updates. If the reference count in the
 					// dependency manager drops to zero, it will automatically
@@ -233,8 +228,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 				}
 			}
 			if info, ok := cs.plugins[cluster.name]; ok {
-				ref := &info.refCount
-				if v := atomic.AddInt32(ref, -1); v == 0 {
+				if v := info.refCount.Add(-1); v == 0 {
 					// This entry will be removed from activePlugins when
 					// producing a new service config update.
 					cs.sendNewServiceConfig()
@@ -350,12 +344,12 @@ func (cs *configSelector) stop() {
 	// after a new one is active, we must trigger a subsequent update to delete
 	// the now-unused clusters.
 	for _, ci := range cs.clusters {
-		if v := atomic.AddInt32(&ci.refCount, -1); v == 0 {
+		if v := ci.refCount.Add(-1); v == 0 {
 			ci.unsubscribe()
 		}
 	}
 	for _, ci := range cs.plugins {
-		if v := atomic.AddInt32(&ci.refCount, -1); v == 0 {
+		if v := ci.refCount.Add(-1); v == 0 {
 			cs.sendNewServiceConfig()
 		}
 	}
