@@ -26,16 +26,19 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+      # The chart update runs before the GitHub App token so a dispatch can
+      # validate the version bump even when Vault rejects the app-token JWT.
+      # The token is only needed to open the pull request.
+      - name: Update/regenerate files
+        id: update
+        run: |
+          bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
+
       - name: Generate GitHub App Token
         id: app-token
         uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
         with:
           github_app: loki-gh-app
-
-      - name: Update/regenerate files
-        id: update
-        run: |
-          bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8

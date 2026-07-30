@@ -23,12 +23,10 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
-        with:
-          github_app: loki-gh-app
 
+      # GAR login + chart update before the GitHub App token so workflow_dispatch
+      # can validate crane/GAR even when Vault rejects event_name=workflow_dispatch
+      # for loki-gh-app (schedule still works). App token is only needed for CPR.
       - name: "Login to GAR"
         uses: grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136
         with:
@@ -38,6 +36,12 @@ jobs:
         id: update
         run: |
           bash .github/workflows/scripts/helm-weekly-release.sh
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e # create-github-app-token/v0.3.1
+        with:
+          github_app: loki-gh-app
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
