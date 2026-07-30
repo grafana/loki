@@ -14,22 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// readerConstructor pairs a Reader implementation's name with a function
-// that opens an on-disk index using it. The cross-check tests iterate
-// over allReaderConstructors so every implementation is exercised the
-// same way against the ByteSliceReader baseline.
-type readerConstructor struct {
-	name string
-	open func(path string) (Reader, error)
-}
-
-func allReaderConstructors() []readerConstructor {
-	return []readerConstructor{
-		{name: "MmapReader", open: func(p string) (Reader, error) { return NewMmapFileReader(p) }},
-		{name: "StreamReader", open: func(p string) (Reader, error) { return NewStreamFileReader(p) }},
-	}
-}
-
 // writeCrossCheckFixture builds a small but non-trivial index used by
 // the cross-check tests: multiple label names, multiple values per
 // name, a couple of chunks per series.
