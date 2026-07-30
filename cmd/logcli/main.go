@@ -7,13 +7,16 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 	"strings"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	"github.com/git-lfs/go-netrc/netrc"
 	dskit_log "github.com/grafana/dskit/log"
 	dskit_server "github.com/grafana/dskit/server"
+	"github.com/mitchellh/go-homedir"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
@@ -84,7 +87,7 @@ or provide specific start and end times with --from and --to respectively.
 Notice that when using --from and --to then ensure to use RFC3339Nano
 time format, but without timezone at the end. The local timezone will be added
 automatically or if using  --timezone flag.
-In default output mode the --output-timestamp-format flag can be used to 
+In default output mode the --output-timestamp-format flag can be used to
 modify the output timestamp.
 
 Example:
@@ -360,6 +363,8 @@ func main() {
 	log.SetOutput(os.Stderr)
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	queryClient = fillNetrcCreds(queryClient.(*client.DefaultClient))
 
 	var dLevel dskit_log.Level
 	_ = dLevel.Set(*logLevel)
@@ -893,4 +898,65 @@ func newDeleteCancelQuery(cmd *kingpin.CmdClause) *delete.Query {
 	cmd.Flag("force", "Force cancellation of partially completed request").BoolVar(&q.Force)
 
 	return q
+}
+
+func fillNetrcCreds(c *client.DefaultClient) client.Client {
+	// Env var values take precedence.
+	if c.Username != "" && c.Password != "" {
+		return c
+	}
+
+	path := os.Getenv("NETRC")
+	if path == "" {
+		var err error
+		path, err = homedir.Dir()
+		if err != nil {
+			log.Printf(
+				"failed to get user home directory, using default username and/or password: %v",
+				err,
+			)
+
+			return c
+		}
+
+		path = filepath.Join(path, ".netrc")
+	}
+
+	path, err := homedir.Expand(path)
+	if err != nil {
+		log.Printf(
+			"failed to expand path elements, using default username and/or password: %v",
+			err,
+		)
+
+		return c
+	}
+
+	rc, err := netrc.ParseFile(path)
+	if err != nil {
+		log.Printf(
+			"failed to parse .netrc file, using default username and/or password: %v",
+			err,
+		)
+
+		return c
+	}
+
+	machine := rc.FindMachine(c.TLSConfig.ServerName, "")
+	if machine == nil {
+		log.Println("address not found in .netrc file, using default username and/or password")
+
+		return c
+	}
+
+	// Env var values take precedence.
+	if c.Username == "" {
+		c.Username = machine.Login
+	}
+
+	if c.Password == "" {
+		c.Password = machine.Password
+	}
+
+	return c
 }
