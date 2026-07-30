@@ -13,7 +13,7 @@ const (
 )
 
 const (
-	sizeOfBcachestats = 0x90
+	sizeOfBcachestats = 0x68
 )
 
 type Bcachestats struct {
@@ -27,12 +27,7 @@ type Bcachestats struct {
 	Numreads      int64
 	Cachehits     int64
 	Busymapped    int64
-	Dmapages      int64
-	Highpages     int64
 	Delwribufs    int64
 	Kvaslots      int64
 	Avail         int64
-	Highflips     int64
-	Highflops     int64
-	Dmaflips      int64
 }
