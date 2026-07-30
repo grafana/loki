@@ -71,7 +71,10 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 	// Thread the configured file-handle pool size into every index reader opened
 	// by the shipper on the read path.
 	openIndexFile := func(p string) (shipperindex.Index, error) {
-		return OpenShippableTSDB(p, tsdbindex.WithMaxIdleFileHandles(indexShipperCfg.MaxIdleFileHandles))
+		return OpenShippableTSDB(p,
+			tsdbindex.WithMaxIdleFileHandles(indexShipperCfg.MaxIdleFileHandles),
+			tsdbindex.WithReaderImpl(indexShipperCfg.IndexReaderImpl),
+		)
 	}
 	s.indexShipper, err = indexshipper.NewIndexShipper(
 		prefix,

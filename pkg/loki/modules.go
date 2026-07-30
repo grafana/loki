@@ -972,6 +972,7 @@ func (t *Loki) updateConfigForShipperStore() {
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
 	t.Cfg.StorageConfig.TSDBShipperConfig.MaxIdleFileHandles = t.Cfg.IndexGateway.MaxIdleFileHandles
+	t.Cfg.StorageConfig.TSDBShipperConfig.IndexReaderImpl = t.Cfg.IndexGateway.IndexReaderImpl
 
 	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
 	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.

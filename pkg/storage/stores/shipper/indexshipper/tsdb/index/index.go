@@ -1312,16 +1312,26 @@ func NewReader(b ByteSlice) (*Reader, error) {
 	return newReader(b, io.NopCloser(nil))
 }
 
+const (
+	// IndexReaderPread reads index sections on demand via pread(2) from a small
+	// pool of file handles (see file_pool.go). This is the default.
+	IndexReaderPread = "pread"
+	// IndexReaderMmap memory-maps the whole index file (see mmap.go). It is the
+	// legacy implementation, kept as an opt-in alternative.
+	IndexReaderMmap = "mmap"
+)
+
 // ReaderOption customizes an on-disk index Reader created by NewFileReader.
 type ReaderOption func(*readerConfig)
 
 type readerConfig struct {
 	maxIdleFileHandles int
+	useMmap            bool
 }
 
 // WithMaxIdleFileHandles sets how many idle file handles the pool-backed reader
 // keeps open for reuse. Values <= 0 are ignored and the package default
-// (MaxIdleFileHandles) is used instead.
+// (MaxIdleFileHandles) is used instead. It has no effect on the mmap reader.
 func WithMaxIdleFileHandles(n int) ReaderOption {
 	return func(c *readerConfig) {
 		if n > 0 {
@@ -1330,16 +1340,36 @@ func WithMaxIdleFileHandles(n int) ReaderOption {
 	}
 }
 
+// WithMmap selects the legacy memory-mapped reader implementation when enabled,
+// instead of the default pread-based pool reader.
+func WithMmap(enabled bool) ReaderOption {
+	return func(c *readerConfig) {
+		c.useMmap = enabled
+	}
+}
+
+// WithReaderImpl selects the reader implementation by name (IndexReaderPread or
+// IndexReaderMmap). Any value other than IndexReaderMmap selects the default
+// pread reader.
+func WithReaderImpl(impl string) ReaderOption {
+	return WithMmap(impl == IndexReaderMmap)
+}
+
 // NewFileReader returns a new index reader against the given index file.
 //
-// Instead of memory-mapping the file, sections are read on demand from a small
-// pool of file handles (see poolByteSlice). This keeps the index reader's memory
-// footprint predictable and off the kernel page cache, at the cost of reading
-// bounded sections via pread(2) rather than random access into mapped memory.
+// By default sections are read on demand from a small pool of file handles (see
+// poolByteSlice). This keeps the index reader's memory footprint predictable and
+// off the kernel page cache, at the cost of reading bounded sections via
+// pread(2) rather than random access into mapped memory. The legacy
+// memory-mapped implementation can be selected with WithMmap (see mmap.go).
 func NewFileReader(path string, opts ...ReaderOption) (*Reader, error) {
 	cfg := readerConfig{maxIdleFileHandles: MaxIdleFileHandles}
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+
+	if cfg.useMmap {
+		return newMmapFileReader(path)
 	}
 
 	fi, err := os.Stat(path)

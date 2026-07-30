@@ -68,8 +68,13 @@ type Config struct {
 
 	// MaxIdleFileHandles is the number of idle file handles the index reader
 	// keeps open per TSDB index file for reuse instead of reopening it on each
-	// read. Index files are read on demand via pread(2) rather than memory-mapped.
+	// read. Only used by the "pread" index reader implementation.
 	MaxIdleFileHandles int `yaml:"max_idle_file_handles"`
+
+	// IndexReaderImpl selects how TSDB index files are read: "pread" (default)
+	// reads sections on demand from a pool of file handles, "mmap" memory-maps
+	// the whole index file.
+	IndexReaderImpl string `yaml:"index_reader_impl"`
 }
 
 // RegisterFlags register all IndexGatewayClientConfig flags and all the flags of its subconfigs but with a prefix (ex: shipper).
@@ -90,7 +95,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// reasons (this is assured by the spikey behavior of Index Gateway latencies).
 	f.IntVar(&cfg.Ring.ReplicationFactor, "replication-factor", ReplicationFactor, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
 
-	f.IntVar(&cfg.MaxIdleFileHandles, "index-gateway.max-idle-file-handles", tsdbindex.DefaultMaxIdleFileHandles, "Maximum number of idle file handles the index gateway keeps open for each TSDB index file. Index files are read on demand via pread(2) instead of being memory-mapped; a small pool of handles per file avoids reopening the file on every read while keeping the number of open file descriptors bounded.")
+	f.IntVar(&cfg.MaxIdleFileHandles, "index-gateway.max-idle-file-handles", tsdbindex.DefaultMaxIdleFileHandles, "Maximum number of idle file handles the index gateway keeps open for each TSDB index file. Only used when -index-gateway.index-reader-impl is 'pread'. A small pool of handles per file avoids reopening the file on every read while keeping the number of open file descriptors bounded.")
+	f.StringVar(&cfg.IndexReaderImpl, "index-gateway.index-reader-impl", tsdbindex.IndexReaderPread, "How TSDB index files are read. 'pread' reads index sections on demand via pread(2) from a bounded pool of file handles, keeping memory usage predictable. 'mmap' memory-maps the whole index file, which is faster while the file stays resident in the page cache but can stall on major page faults under memory pressure.")
 }
 
 func (cfg *Config) Validate() error {
@@ -99,6 +105,11 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxIdleFileHandles < 0 {
 		return errors.New("index-gateway.max-idle-file-handles must not be negative")
+	}
+	switch cfg.IndexReaderImpl {
+	case tsdbindex.IndexReaderPread, tsdbindex.IndexReaderMmap:
+	default:
+		return fmt.Errorf("index-gateway.index-reader-impl %q not supported. list of supported implementations: %s, %s", cfg.IndexReaderImpl, tsdbindex.IndexReaderPread, tsdbindex.IndexReaderMmap)
 	}
 	return nil
 }

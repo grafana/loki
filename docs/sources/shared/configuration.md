@@ -3988,11 +3988,19 @@ ring:
   [instance_enable_ipv6: <boolean> | default = false]
 
 # Maximum number of idle file handles the index gateway keeps open for each TSDB
-# index file. Index files are read on demand via pread(2) instead of being
-# memory-mapped; a small pool of handles per file avoids reopening the file on
-# every read while keeping the number of open file descriptors bounded.
+# index file. Only used when -index-gateway.index-reader-impl is 'pread'. A
+# small pool of handles per file avoids reopening the file on every read while
+# keeping the number of open file descriptors bounded.
 # CLI flag: -index-gateway.max-idle-file-handles
 [max_idle_file_handles: <int> | default = 4]
+
+# How TSDB index files are read. 'pread' reads index sections on demand via
+# pread(2) from a bounded pool of file handles, keeping memory usage
+# predictable. 'mmap' memory-maps the whole index file, which is faster while
+# the file stays resident in the page cache but can stall on major page faults
+# under memory pressure.
+# CLI flag: -index-gateway.index-reader-impl
+[index_reader_impl: <string> | default = "pread"]
 ```
 
 ### ingester
@@ -6932,6 +6940,8 @@ tsdb_shipper:
   [ingesterdbretainperiod: <duration>]
 
   [maxidlefilehandles: <int>]
+
+  [indexreaderimpl: <string> | default = ""]
 
 # Experimental: Configures the bloom shipper component, which contains the store
 # abstraction to fetch bloom filters from and put them to object storage.

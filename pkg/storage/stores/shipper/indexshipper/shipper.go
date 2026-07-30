@@ -88,6 +88,11 @@ type Config struct {
 	// index reader keeps open per index file for reuse. It is set programmatically
 	// from the index-gateway configuration (see indexgateway.Config).
 	MaxIdleFileHandles int
+
+	// IndexReaderImpl selects the TSDB index reader implementation ("pread" or
+	// "mmap"). It is set programmatically from the index-gateway configuration
+	// (see indexgateway.Config).
+	IndexReaderImpl string
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
