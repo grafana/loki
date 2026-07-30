@@ -1,6 +1,7 @@
 name: Helm weekly release PR
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 10 * * 2' # 10 UTC every Tuesday (since ks get cut on Monday)
 

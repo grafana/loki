@@ -2,7 +2,7 @@
 Package cpuid provides information about the CPU running the current program.
 
 CPU features are detected on startup, and kept for fast access through the life of the application.
-Currently x86 / x64 (AMD64/i386) and ARM (ARM64) is supported, and no external C (cgo) code is used, which should make the library very easy to use.
+Currently x86 / x64 (AMD64/i386), ARM (ARM64), and RISC-V (RV64) are supported, and no external C (cgo) code is used, which should make the library very easy to use.
 
 You can access the CPU information by accessing the shared CPU variable of the cpuid library.
 
@@ -506,6 +506,74 @@ Exit Code 1
 | SM3          | SM3 instructions                                                 |
 | SM4          | SM4 instructions                                                 |
 | SVE          | Scalable Vector Extension                                        |
+| SVE2         | Scalable Vector Extension 2                                      |
+| SB           | Speculation barrier (SB instruction)                             |
+| SSBS         | Speculative Store Bypass Safe (PSTATE.SSBS)                      |
+| BTI          | Branch Target Identification                                     |
+| FLAGM2       | Condition flag manipulation version 2 (AXFLAG, XAFLAG)           |
+| FRINTTS      | Floating-point to integer rounding (FRINT32Z, FRINT64Z, etc)     |
+| DCPODP       | Data cache clean to Point of Deep Persistence (DC CVADP)         |
+| BF16         | BFloat16 instructions (BFDOT, BFMMLA, etc)                       |
+| I8MM         | Int8 matrix multiplication (SMMLA, UMMLA, USMMLA)                |
+| WFXT         | WFE/WFI with timeout (WFET, WFIT)                                |
+| MOPS         | Memory copy and set instructions (CPYF, SETP, etc)               |
+| HBC          | Hinted conditional branches (BC.cond)                            |
+| CSSC         | Common short sequence compression (ABS, SMAX, UMAX, etc)         |
+
+## riscv64 feature detection
+
+On `riscv64/linux`, CPU features are detected using the `riscv_hwprobe` syscall (Linux 6.4+).
+For older kernels, detection falls back to parsing `/proc/cpuinfo` for the ISA string.
+
+Cache line size is detected via `riscv_hwprobe` (Zicbom block size) or sysfs fallback.
+Other cache and topology information is not yet available.
+
+# RISC-V features:
+
+| Feature Flag   | Description                                        |
+|----------------|----------------------------------------------------|
+| RV_IMA         | IMA base (Integer, Multiply, Atomic)               |
+| RV_C           | Compressed instructions                            |
+| RV_F           | Single-precision FP                                |
+| RV_D           | Double-precision FP                                |
+| RV_V           | Vector extension (V)                               |
+| RV_ZBA         | Address generation                                 |
+| RV_ZBB         | Basic bit manipulation                             |
+| RV_ZBC         | Carry-less multiplication                          |
+| RV_ZBS         | Single-bit manipulation                            |
+| RV_ZICOND      | Integer conditional operations                     |
+| RV_ZIHINTPAUSE | Pause hint                                         |
+| RV_ZICBOM      | Cache block management operations                  |
+| RV_ZICBOZ      | Cache block zero                                   |
+| RV_ZICBOP      | Cache block prefetch                               |
+| RV_ZFA         | Additional floating-point                          |
+| RV_ZFH         | Half-precision FP                                  |
+| RV_ZFHMIN      | Minimal half-precision FP                          |
+| RV_ZTSO        | Total store ordering                               |
+| RV_ZACAS       | Atomic CAS                                         |
+| RV_ZBKB        | Bit-manipulation for crypto                        |
+| RV_ZBKC        | Carry-less multiply for crypto                     |
+| RV_ZBKX        | Crossbar permutations                              |
+| RV_ZKND        | NIST Suite: AES decrypt                            |
+| RV_ZKNE        | NIST Suite: AES encrypt                            |
+| RV_ZKNH        | NIST Suite: SHA-2 (SHA-256/SHA-512)                |
+| RV_ZKSED       | ShangMi Suite: SM4 block cipher                    |
+| RV_ZKSH        | ShangMi Suite: SM3 hash                            |
+| RV_ZKT         | Data-independent execution latency (Crypto)        |
+| RV_ZKN         | NIST Algorithm Suite (combined from individual)    |
+| RV_ZKS         | ShangMi Algorithm Suite (combined from individual) |
+| RV_ZVBB        | Vector Basic Bit-manipulation                      |
+| RV_ZVBC        | Vector Carry-less multiply                         |
+| RV_ZVKB        | Vector Bit-manipulation for crypto                 |
+| RV_ZVKG        | Vector GCM/GMAC                                    |
+| RV_ZVKNED      | NIST Suite: Vector AES encrypt+decrypt             |
+| RV_ZVKNHA      | NIST Suite: Vector SHA-2 (SHA-256)                 |
+| RV_ZVKNHB      | NIST Suite: Vector SHA-2 (SHA-512)                 |
+| RV_ZVKSED      | ShangMi Suite: Vector SM4                          |
+| RV_ZVKSH       | ShangMi Suite: Vector SM3 hash                     |
+| RV_ZVKT        | Vector Data-independent execution latency          |
+| RV_ZVKNG       | NIST Suite with GCM (combined from individual)     |
+| RV_ZVKSG       | ShangMi Suite with GCM (combined from individual)  |
 
 # license
 

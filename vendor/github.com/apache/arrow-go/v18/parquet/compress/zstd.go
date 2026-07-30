@@ -64,7 +64,7 @@ func (p *zstdEncoderPool) getEncoderFromPool(level zstd.EncoderLevel) *zstd.Enco
 		if !ok {
 			pool = &sync.Pool{
 				New: func() interface{} {
-					enc, _ := zstd.NewWriter(nil, zstd.WithZeroFrames(true), zstd.WithEncoderLevel(level), zstd.WithEncoderConcurrency(1))
+					enc, _ := zstd.NewWriter(nil, zstd.WithZeroFrames(true), zstd.WithEncoderLevel(level), zstd.WithEncoderConcurrency(1), zstd.WithAllLitEntropyCompression(true))
 					return enc
 				},
 			}
@@ -92,7 +92,7 @@ func (p *zstdEncoderPool) putEncoderToPool(enc *zstd.Encoder, level zstd.Encoder
 
 func getencoder() *zstd.Encoder {
 	initEncoder.Do(func() {
-		enc, _ = zstd.NewWriter(nil, zstd.WithZeroFrames(true))
+		enc, _ = zstd.NewWriter(nil, zstd.WithZeroFrames(true), zstd.WithAllLitEntropyCompression(true))
 	})
 	return enc
 }
@@ -105,21 +105,39 @@ func getdecoder() *zstd.Decoder {
 }
 
 func (zstdCodec) Decode(dst, src []byte) []byte {
-	dst, err := getdecoder().DecodeAll(src, dst[:0])
+	dst, err := (zstdCodec{}).DecodeWithError(dst, src)
 	if err != nil {
 		panic(err)
 	}
 	return dst
 }
 
+func (zstdCodec) DecodeWithError(dst, src []byte) ([]byte, error) {
+	dst, err := getdecoder().DecodeAll(src, dst[:0])
+	return dst, err
+}
+
+var globalDecoderPool = sync.Pool{
+	New: func() interface{} {
+		dec, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+		return dec
+	},
+}
+
 func (z *zstdcloser) Close() error {
-	z.Decoder.Close()
+	if z.Decoder == nil {
+		return nil
+	}
+	_ = z.Reset(nil)
+	globalDecoderPool.Put(z.Decoder)
+	z.Decoder = nil
 	return nil
 }
 
 func (zstdCodec) NewReader(r io.Reader) io.ReadCloser {
-	ret, _ := zstd.NewReader(r)
-	return &zstdcloser{ret}
+	dec := globalDecoderPool.Get().(*zstd.Decoder)
+	_ = dec.Reset(r)
+	return &zstdcloser{dec}
 }
 
 func (zstdCodec) NewWriter(w io.Writer) io.WriteCloser {

@@ -291,14 +291,14 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 	/* Test that this call is being made from within an SQLITE_DELETE or
 	 ** SQLITE_UPDATE pre-update callback, and that iIdx is within range. */
 	if !(p != 0) || (*TPreUpdate)(unsafe.Pointer(p)).Fop == int32(SQLITE_INSERT) {
-		rc = _sqlite3MisuseError(tls, int32(95782))
+		rc = _sqlite3MisuseError(tls, int32(95913))
 		goto preupdate_old_out
 	}
 	if (*TPreUpdate)(unsafe.Pointer(p)).FpPk != 0 {
 		iStore = _sqlite3TableColumnToIndex(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpPk, iIdx)
 	} else {
 		if iIdx >= int32((*TTable)(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab)).FnCol) {
-			rc = _sqlite3MisuseError(tls, int32(95788))
+			rc = _sqlite3MisuseError(tls, int32(95919))
 			goto preupdate_old_out
 		} else {
 			iStore = int32(_sqlite3TableColumnToStorage(tls, (*TPreUpdate)(unsafe.Pointer(p)).FpTab, int16(iIdx)))
@@ -358,7 +358,7 @@ func Xsqlite3_preupdate_old(tls *libc.TLS, db uintptr, iIdx int32, ppValue uintp
 					})(unsafe.Pointer((*TPreUpdate)(unsafe.Pointer(p)).FpTab + 64))).FpDfltList + 8 + uintptr(libc.Int32FromUint16((*TColumn)(unsafe.Pointer(pCol)).FiDflt)-int32(1))*32))).FpExpr
 					rc = _sqlite3ValueFromExpr(tls, db, pDflt, (*Tsqlite3)(unsafe.Pointer(db)).Fenc, (*TColumn)(unsafe.Pointer(pCol)).Faffinity, bp)
 					if rc == SQLITE_OK && **(**uintptr)(__ccgo_up(bp)) == uintptr(0) {
-						rc = _sqlite3CorruptError(tls, int32(95844))
+						rc = _sqlite3CorruptError(tls, int32(95975))
 					}
 					**(**uintptr)(__ccgo_up((*TPreUpdate)(unsafe.Pointer(p)).FapDflt + uintptr(iIdx)*8)) = **(**uintptr)(__ccgo_up(bp))
 				}
@@ -3412,18 +3412,26 @@ func _memdbOpen(tls *libc.TLS, pVfs uintptr, zName uintptr, pFd uintptr, flags i
 //	** size.
 //	*/
 func _pager_delsuper(tls *libc.TLS, pPager uintptr, zSuper uintptr) (r int32) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var c, flags, flags1, rc int32
-	var nSuperPtr Ti64
-	var pJournal, pSuper, pVfs, zFree, zJournal, zSuperJournal, zSuperPtr uintptr
+	bp := tls.Alloc(32)
+	defer tls.Free(32)
+	var bSeen, c, flags, flags1, rc int32
+	var pJournal, pSuper, pVfs, zFree, zJournal, zSuperJournal uintptr
 	var v1, v2, v3 uint8
 	var _ /* exists at bp+8 */ int32
 	var _ /* nSuperJournal at bp+0 */ Ti64
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = c, flags, flags1, nSuperPtr, pJournal, pSuper, pVfs, rc, zFree, zJournal, zSuperJournal, zSuperPtr, v1, v2, v3
+	var _ /* zSuperPtr at bp+16 */ uintptr
+	_, _, _, _, _, _, _, _, _, _, _, _, _, _ = bSeen, c, flags, flags1, pJournal, pSuper, pVfs, rc, zFree, zJournal, zSuperJournal, v1, v2, v3
 	pVfs = (*TPager)(unsafe.Pointer(pPager)).FpVfs /* Malloc'd child-journal file descriptor */
-	zSuperJournal = uintptr(0)                     /* Space to hold super-journal filename */
-	zFree = uintptr(0)                             /* Amount of space allocated to zSuperPtr[] */
+	zSuperJournal = uintptr(0)                     /* Pointer to one journal within MJ file */
+	zFree = uintptr(0)                             /* Free this buffer */
+	bSeen = 0                                      /* If super-journal contains pPager->zJournal */
+	/* Check if this looks like a real super-journal name. If it does not,
+	 ** return SQLITE_OK without attempting to delete it. This is to limit
+	 ** the degree to which a crafted journal file can be used to cause
+	 ** SQLite to delete arbitrary files. */
+	if _pagerIsSuperJrnlName(tls, zSuper) == 0 {
+		return SQLITE_OK
+	}
 	/* Allocate space for both the pJournal and pSuper file descriptors.
 	 ** If successful, open the super-journal file for reading.
 	 */
@@ -3448,8 +3456,7 @@ func _pager_delsuper(tls *libc.TLS, pPager uintptr, zSuper uintptr) (r int32) {
 	if rc != SQLITE_OK {
 		goto delsuper_out
 	}
-	nSuperPtr = int64(1) + int64((*Tsqlite3_vfs)(unsafe.Pointer(pVfs)).FmxPathname)
-	zFree = _sqlite3Malloc(tls, libc.Uint64FromInt64(int64(4)+**(**Ti64)(__ccgo_up(bp))+int64(2)+nSuperPtr+int64(2)))
+	zFree = _sqlite3Malloc(tls, libc.Uint64FromInt64(int64(4)+**(**Ti64)(__ccgo_up(bp))+int64(2)))
 	if !(zFree != 0) {
 		rc = int32(SQLITE_NOMEM)
 		goto delsuper_out
@@ -3463,7 +3470,6 @@ func _pager_delsuper(tls *libc.TLS, pPager uintptr, zSuper uintptr) (r int32) {
 	**(**uint8)(__ccgo_up(zFree + 1)) = v1
 	**(**uint8)(__ccgo_up(zFree)) = v1
 	zSuperJournal = zFree + 4
-	zSuperPtr = zSuperJournal + uintptr(**(**Ti64)(__ccgo_up(bp))+int64(2))
 	rc = _sqlite3OsRead(tls, pSuper, zSuperJournal, int32(**(**Ti64)(__ccgo_up(bp))), 0)
 	if rc != SQLITE_OK {
 		goto delsuper_out
@@ -3472,31 +3478,42 @@ func _pager_delsuper(tls *libc.TLS, pPager uintptr, zSuper uintptr) (r int32) {
 	**(**uint8)(__ccgo_up(zSuperJournal + uintptr(**(**Ti64)(__ccgo_up(bp))+int64(1)))) = uint8(0)
 	zJournal = zSuperJournal
 	for int64(zJournal)-int64(zSuperJournal) < **(**Ti64)(__ccgo_up(bp)) {
-		rc = _sqlite3OsAccess(tls, pVfs, zJournal, SQLITE_ACCESS_EXISTS, bp+8)
-		if rc != SQLITE_OK {
-			goto delsuper_out
-		}
-		if **(**int32)(__ccgo_up(bp + 8)) != 0 {
-			flags1 = libc.Int32FromInt32(SQLITE_OPEN_READONLY) | libc.Int32FromInt32(SQLITE_OPEN_SUPER_JOURNAL)
-			rc = _sqlite3OsOpen(tls, pVfs, zJournal, pJournal, flags1, uintptr(0))
+		if libc.Xstrcmp(tls, zJournal, (*TPager)(unsafe.Pointer(pPager)).FzJournal) == 0 {
+			bSeen = int32(1)
+		} else {
+			rc = _sqlite3OsAccess(tls, pVfs, zJournal, SQLITE_ACCESS_EXISTS, bp+8)
 			if rc != SQLITE_OK {
 				goto delsuper_out
 			}
-			rc = _readSuperJournal(tls, pJournal, zSuperPtr, libc.Uint64FromInt64(nSuperPtr))
-			_sqlite3OsClose(tls, pJournal)
-			if rc != SQLITE_OK {
-				goto delsuper_out
-			}
-			c = libc.BoolInt32(libc.Int32FromUint8(**(**uint8)(__ccgo_up(zSuperPtr))) != 0 && libc.Xstrcmp(tls, zSuperPtr, zSuper) == 0)
-			if c != 0 {
-				/* We have a match. Do not delete the super-journal file. */
-				goto delsuper_out
+			if **(**int32)(__ccgo_up(bp + 8)) != 0 {
+				**(**uintptr)(__ccgo_up(bp + 16)) = uintptr(0)
+				flags1 = libc.Int32FromInt32(SQLITE_OPEN_READONLY) | libc.Int32FromInt32(SQLITE_OPEN_SUPER_JOURNAL)
+				rc = _sqlite3OsOpen(tls, pVfs, zJournal, pJournal, flags1, uintptr(0))
+				if rc != SQLITE_OK {
+					goto delsuper_out
+				}
+				rc = _readSuperJournal(tls, pJournal, uint64(1)+libc.Uint64FromInt32((*Tsqlite3_vfs)(unsafe.Pointer(pVfs)).FmxPathname), bp+16)
+				_sqlite3OsClose(tls, pJournal)
+				if rc != SQLITE_OK {
+					goto delsuper_out
+				}
+				c = libc.BoolInt32(**(**uintptr)(__ccgo_up(bp + 16)) != uintptr(0) && libc.Xstrcmp(tls, **(**uintptr)(__ccgo_up(bp + 16)), zSuper) == 0)
+				_freeSuperJournal(tls, **(**uintptr)(__ccgo_up(bp + 16)))
+				if c != 0 {
+					/* We have a match. Do not delete the super-journal file. */
+					goto delsuper_out
+				}
 			}
 		}
 		zJournal = zJournal + uintptr(_sqlite3Strlen30(tls, zJournal)+libc.Int32FromInt32(1))
 	}
 	_sqlite3OsClose(tls, pSuper)
-	rc = _sqlite3OsDelete(tls, pVfs, zSuper, 0)
+	if bSeen != 0 {
+		/* Only delete the super-journal if bSeen is true - indicating that
+		 ** the super-journal contained a pointer to this database's journal
+		 ** file. */
+		rc = _sqlite3OsDelete(tls, pVfs, zSuper, 0)
+	}
 	goto delsuper_out
 delsuper_out:
 	;
@@ -3882,7 +3899,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	_, _, _, _ = cnt, limit, ofst, total
 	total = uint32(0)
 	limit = _rbuDeltaGetInt(tls, bp, bp+8)
-	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
+	if **(**int32)(__ccgo_up(bp + 8)) <= 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
 		/* ERROR: size integer not terminated by "\n" */
 		return -int32(1)
 	}
@@ -3890,12 +3907,15 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 	for **(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 && **(**int32)(__ccgo_up(bp + 8)) > 0 {
 		cnt = _rbuDeltaGetInt(tls, bp, bp+8)
+		if **(**int32)(__ccgo_up(bp + 8)) <= 0 {
+			return -int32(1)
+		}
 		switch libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) {
 		case int32('@'):
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 			ofst = _rbuDeltaGetInt(tls, bp, bp+8)
-			if **(**int32)(__ccgo_up(bp + 8)) > 0 && libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
+			if **(**int32)(__ccgo_up(bp + 8)) > 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
 				/* ERROR: copy command not terminated by ',' */
 				return -int32(1)
 			}
@@ -3920,7 +3940,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 				/* ERROR:  insert command gives an output larger than predicted */
 				return -int32(1)
 			}
-			if libc.Int32FromUint32(cnt) > **(**int32)(__ccgo_up(bp + 8)) {
+			if libc.Int64FromUint32(cnt) > int64(**(**int32)(__ccgo_up(bp + 8))) {
 				/* ERROR: insert count exceeds size of delta */
 				return -int32(1)
 			}
@@ -3954,7 +3974,7 @@ func _rbuDeltaOutputSize(tls *libc.TLS, _zDelta uintptr, _lenDelta int32) (r int
 	var size int32
 	_ = size
 	size = libc.Int32FromUint32(_rbuDeltaGetInt(tls, bp, bp+8))
-	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
+	if **(**int32)(__ccgo_up(bp + 8)) <= 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
 		/* ERROR: size integer not terminated by "\n" */
 		return -int32(1)
 	}
@@ -4045,42 +4065,39 @@ func _rbuStep(tls *libc.TLS, p uintptr) (r int32) {
 // C documentation
 //
 //	/*
-//	** When this is called the journal file for pager pPager must be open.
-//	** This function attempts to read a super-journal file name from the
-//	** end of the file and, if successful, copies it into memory supplied
-//	** by the caller. See comments above writeSuperJournal() for the format
-//	** used to store a super-journal file name at the end of a journal file.
+//	** Parameter pJrnl is a file-handle open on a journal file. This function
+//	** attempts to read a super-journal file name from the end of the journal
+//	** file. If successful, it sets output parameter (*pzSuper) to point to a
+//	** buffer containing the super-journal name as a nul-terminated string.
+//	** The caller is responsible for freeing the buffer using freeSuperJournal().
 //	**
-//	** zSuper must point to a buffer of at least nSuper bytes allocated by
-//	** the caller. This should be sqlite3_vfs.mxPathname+1 (to ensure there is
-//	** enough space to write the super-journal name). If the super-journal
-//	** name in the journal is longer than nSuper bytes (including a
-//	** nul-terminator), then this is handled as if no super-journal name
-//	** were present in the journal.
+//	** Refer to comments above writeSuperJournal() for the format used to store
+//	** a super-journal file name at the end of a journal file.
 //	**
-//	** If a super-journal file name is present at the end of the journal
-//	** file, then it is copied into the buffer pointed to by zSuper. A
-//	** nul-terminator byte is appended to the buffer following the
-//	** super-journal file name.
+//	** Parameter nSuper is passed the maximum allowable size of the super journal
+//	** name in bytes. If the super-journal name in the journal is longer than
+//	** nSuper bytes (including a nul-terminator), then this is handled as if no
+//	** super-journal name were present in the journal.
 //	**
-//	** If it is determined that no super-journal file name is present
-//	** zSuper[0] is set to 0 and SQLITE_OK returned.
-//	**
-//	** If an error occurs while reading from the journal file, an SQLite
-//	** error code is returned.
+//	** If there is no super-journal name at the end of pJrnl, (*pzSuper) is
+//	** set to 0 and SQLITE_OK is returned. Or, if an error occurs while reading
+//	** the super-journal name, an SQLite error code is returned and (*pzSuper)
+//	** is set to 0.
 //	*/
-func _readSuperJournal(tls *libc.TLS, pJrnl uintptr, zSuper uintptr, nSuper Tu64) (r int32) {
+func _readSuperJournal(tls *libc.TLS, pJrnl uintptr, nSuper Tu64, pzSuper uintptr) (r int32) {
 	bp := tls.Alloc(32)
 	defer tls.Free(32)
-	var rc, v1, v2, v4, v6, v8 int32
+	var rc, v1, v2, v4, v6 int32
 	var u Tu32
-	var v3, v5, v7, v9 bool
+	var zOut uintptr
+	var v3, v5, v7 bool
 	var _ /* aMagic at bp+24 */ [8]uint8
 	var _ /* cksum at bp+16 */ Tu32
 	var _ /* len at bp+0 */ Tu32
 	var _ /* szJ at bp+8 */ Ti64
-	_, _, _, _, _, _, _, _, _, _, _ = rc, u, v1, v2, v3, v4, v5, v6, v7, v8, v9 /* A buffer to hold the magic header */
-	**(**uint8)(__ccgo_up(zSuper)) = uint8('\000')
+	_, _, _, _, _, _, _, _, _, _ = rc, u, zOut, v1, v2, v3, v4, v5, v6, v7 /* A buffer to hold the magic header */
+	zOut = uintptr(0)
+	**(**uintptr)(__ccgo_up(pzSuper)) = uintptr(0)
 	v1 = _sqlite3OsFileSize(tls, pJrnl, bp+8)
 	rc = v1
 	if v3 = SQLITE_OK != v1 || **(**Ti64)(__ccgo_up(bp + 8)) < int64(16); !v3 {
@@ -4095,36 +4112,41 @@ func _readSuperJournal(tls *libc.TLS, pJrnl uintptr, zSuper uintptr, nSuper Tu64
 		v6 = _sqlite3OsRead(tls, pJrnl, bp+24, int32(8), **(**Ti64)(__ccgo_up(bp + 8))-int64(8))
 		rc = v6
 	}
-	if v9 = v7 || SQLITE_OK != v6 || libc.Xmemcmp(tls, bp+24, uintptr(unsafe.Pointer(&_aJournalMagic)), uint64(8)) != 0; !v9 {
-		v8 = _sqlite3OsRead(tls, pJrnl, zSuper, libc.Int32FromUint32(**(**Tu32)(__ccgo_up(bp))), **(**Ti64)(__ccgo_up(bp + 8))-int64(16)-libc.Int64FromUint32(**(**Tu32)(__ccgo_up(bp))))
-		rc = v8
-	}
-	if v9 || SQLITE_OK != v8 {
+	if v7 || SQLITE_OK != v6 || libc.Xmemcmp(tls, bp+24, uintptr(unsafe.Pointer(&_aJournalMagic)), uint64(8)) != 0 {
 		return rc
 	}
-	/* See if the checksum matches the super-journal name */
-	u = uint32(0)
-	for {
-		if !(u < **(**Tu32)(__ccgo_up(bp))) {
-			break
+	zOut = _sqlite3MallocZero(tls, uint64(uint32(4)+**(**Tu32)(__ccgo_up(bp))+uint32(2)))
+	if !(zOut != 0) {
+		rc = int32(SQLITE_NOMEM)
+	} else {
+		zOut = zOut + 4
+		v1 = _sqlite3OsRead(tls, pJrnl, zOut, libc.Int32FromUint32(**(**Tu32)(__ccgo_up(bp))), **(**Ti64)(__ccgo_up(bp + 8))-int64(16)-libc.Int64FromUint32(**(**Tu32)(__ccgo_up(bp))))
+		rc = v1
+		if SQLITE_OK == v1 { /* Unsigned loop counter */
+			/* See if the checksum matches the super-journal name */
+			u = uint32(0)
+			for {
+				if !(u < **(**Tu32)(__ccgo_up(bp))) {
+					break
+				}
+				**(**Tu32)(__ccgo_up(bp + 16)) = **(**Tu32)(__ccgo_up(bp + 16)) - uint32(**(**uint8)(__ccgo_up(zOut + uintptr(u))))
+				goto _9
+			_9:
+				;
+				u = u + 1
+			}
 		}
-		**(**Tu32)(__ccgo_up(bp + 16)) = **(**Tu32)(__ccgo_up(bp + 16)) - uint32(**(**uint8)(__ccgo_up(zSuper + uintptr(u))))
-		goto _10
-	_10:
-		;
-		u = u + 1
+		if rc != SQLITE_OK || **(**Tu32)(__ccgo_up(bp + 16)) != 0 {
+			/* If the checksum doesn't add up, then one or more of the disk sectors
+			 ** containing the super-journal filename is corrupted. This means
+			 ** definitely roll back, so just return SQLITE_OK and report a (nul)
+			 ** super-journal filename.  */
+			_freeSuperJournal(tls, zOut)
+			zOut = uintptr(0)
+		}
 	}
-	if **(**Tu32)(__ccgo_up(bp + 16)) != 0 {
-		/* If the checksum doesn't add up, then one or more of the disk sectors
-		 ** containing the super-journal filename is corrupted. This means
-		 ** definitely roll back, so just return SQLITE_OK and report a (nul)
-		 ** super-journal filename.
-		 */
-		**(**Tu32)(__ccgo_up(bp)) = uint32(0)
-	}
-	**(**uint8)(__ccgo_up(zSuper + uintptr(**(**Tu32)(__ccgo_up(bp))))) = uint8('\000')
-	**(**uint8)(__ccgo_up(zSuper + uintptr(**(**Tu32)(__ccgo_up(bp))+uint32(1)))) = uint8('\000')
-	return SQLITE_OK
+	**(**uintptr)(__ccgo_up(pzSuper)) = zOut
+	return rc
 }
 
 // C documentation
@@ -4503,8 +4525,8 @@ func _sqlite3AddCheckConstraint(tls *libc.TLS, pParse uintptr, pCheckExpr uintpt
 			FregRowid       int32
 			FregRoot        int32
 			FconstraintName TToken
-		})(unsafe.Pointer(pParse + 248))).FconstraintName.Fn != 0 {
-			_sqlite3ExprListSetName(tls, pParse, (*TTable)(unsafe.Pointer(pTab)).FpCheck, pParse+248+16, int32(1))
+		})(unsafe.Pointer(pParse + 256))).FconstraintName.Fn != 0 {
+			_sqlite3ExprListSetName(tls, pParse, (*TTable)(unsafe.Pointer(pTab)).FpCheck, pParse+256+16, int32(1))
 		} else {
 			zStart = zStart + 1
 			for {
@@ -4992,7 +5014,7 @@ func _sqlite3ExprCodeIN(tls *libc.TLS, pParse uintptr, pExpr uintptr, destIfFals
 			goto sqlite3ExprCodeIN_oom_error
 		}
 		if _sqlite3ExprCanBeNull(tls, p) != 0 {
-			_sqlite3VdbeAddOp2(tls, v, int32(OP_IsNull), rLhs+i, destStep2)
+			_sqlite3VdbeAddOp2(tls, v, int32(OP_IsNull), rLhs+**(**int32)(__ccgo_up(aiMap + uintptr(i)*4)), destStep2)
 		}
 		goto _8
 	_8:
@@ -5074,8 +5096,8 @@ func _sqlite3ExprCodeIN(tls *libc.TLS, pParse uintptr, pExpr uintptr, destIfFals
 			 ** ...)" is the collating sequence of x.".  */
 			pColl1 = _sqlite3ExprCollSeq(tls, pParse, p1)
 		}
-		_sqlite3VdbeAddOp3(tls, v, int32(OP_Column), **(**int32)(__ccgo_up(bp + 8)), i, r3)
-		_sqlite3VdbeAddOp4(tls, v, int32(OP_Ne), rLhs+i, destNotNull, r3, pColl1, -int32(2))
+		_sqlite3VdbeAddOp3(tls, v, int32(OP_Column), **(**int32)(__ccgo_up(bp + 8)), **(**int32)(__ccgo_up(aiMap + uintptr(i)*4)), r3)
+		_sqlite3VdbeAddOp4(tls, v, int32(OP_Ne), rLhs+**(**int32)(__ccgo_up(aiMap + uintptr(i)*4)), destNotNull, r3, pColl1, -int32(2))
 		_sqlite3ReleaseTempReg(tls, pParse, r3)
 		goto _9
 	_9:
@@ -6296,53 +6318,14 @@ func _sqlite3NestedParse(tls *libc.TLS, pParse uintptr, zFormat uintptr, va uint
 		return
 	}
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested + 1
-	libc.Xmemcpy(tls, bp, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+280)), libc.Uint64FromInt64(416)-uint64(libc.UintptrFromInt32(0)+280))
-	libc.Xmemset(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+280)), 0, libc.Uint64FromInt64(416)-uint64(libc.UintptrFromInt32(0)+280))
+	libc.Xmemcpy(tls, bp, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
+	libc.Xmemset(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), 0, libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
 	**(**Tu32)(__ccgo_up(db + 44)) |= uint32(DBFLAG_PreferBuiltin)
 	_sqlite3RunParser(tls, pParse, zSql)
 	(*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags = savedDbFlags
 	_sqlite3DbFree(tls, db, zSql)
-	libc.Xmemcpy(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+280)), bp, libc.Uint64FromInt64(416)-uint64(libc.UintptrFromInt32(0)+280))
+	libc.Xmemcpy(tls, pParse+uintptr(uint64(libc.UintptrFromInt32(0)+288)), bp, libc.Uint64FromInt64(424)-uint64(libc.UintptrFromInt32(0)+288))
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested - 1
-}
-
-// C documentation
-//
-//	/*
-//	** Given a SELECT statement, generate a Table structure that describes
-//	** the result set of that SELECT.
-//	*/
-func _sqlite3ResultSetOfSelect(tls *libc.TLS, pParse uintptr, pSelect uintptr, aff uint8) (r uintptr) {
-	var db, pTab uintptr
-	var savedFlags Tu64
-	_, _, _ = db, pTab, savedFlags
-	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-	savedFlags = (*Tsqlite3)(unsafe.Pointer(db)).Fflags
-	**(**Tu64)(__ccgo_up(db + 48)) &= ^libc.Uint64FromInt32(SQLITE_FullColNames)
-	**(**Tu64)(__ccgo_up(db + 48)) |= uint64(SQLITE_ShortColNames)
-	_sqlite3SelectPrep(tls, pParse, pSelect, uintptr(0))
-	(*Tsqlite3)(unsafe.Pointer(db)).Fflags = savedFlags
-	if (*TParse)(unsafe.Pointer(pParse)).FnErr != 0 {
-		return uintptr(0)
-	}
-	for (*TSelect)(unsafe.Pointer(pSelect)).FpPrior != 0 {
-		pSelect = (*TSelect)(unsafe.Pointer(pSelect)).FpPrior
-	}
-	pTab = _sqlite3DbMallocZero(tls, db, uint64(120))
-	if pTab == uintptr(0) {
-		return uintptr(0)
-	}
-	(*TTable)(unsafe.Pointer(pTab)).FnTabRef = uint32(1)
-	(*TTable)(unsafe.Pointer(pTab)).FzName = uintptr(0)
-	(*TTable)(unsafe.Pointer(pTab)).FnRowLogEst = int16(200)
-	_sqlite3ColumnsFromExprList(tls, pParse, (*TSelect)(unsafe.Pointer(pSelect)).FpEList, pTab+54, pTab+8)
-	_sqlite3SubqueryColumnTypes(tls, pParse, pTab, pSelect, aff)
-	(*TTable)(unsafe.Pointer(pTab)).FiPKey = int16(-int32(1))
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		_sqlite3DeleteTable(tls, db, pTab)
-		return uintptr(0)
-	}
-	return pTab
 }
 
 // C documentation
@@ -7432,7 +7415,7 @@ func _whereAddIndexedExpr(tls *libc.TLS, pParse uintptr, pIdx uintptr, iIdxCur i
 		}
 		(*TParse)(unsafe.Pointer(pParse)).FpIdxEpr = p
 		if (*TIndexedExpr)(unsafe.Pointer(p)).FpIENext == uintptr(0) {
-			pArg = pParse + 96
+			pArg = pParse + 104
 			_sqlite3ParserAddCleanup(tls, pParse, __ccgo_fp(_whereIndexedExprCleanup), pArg)
 		}
 		goto _1
@@ -7511,7 +7494,7 @@ func _wherePartIdxExpr(tls *libc.TLS, pParse uintptr, pIdx uintptr, pPart uintpt
 					(*TIndexedExpr)(unsafe.Pointer(p)).Faff = aff
 					(*TParse)(unsafe.Pointer(pParse)).FpIdxPartExpr = p
 					if (*TIndexedExpr)(unsafe.Pointer(p)).FpIENext == uintptr(0) {
-						pArg = pParse + 104
+						pArg = pParse + 112
 						_sqlite3ParserAddCleanup(tls, pParse, __ccgo_fp(_whereIndexedExprCleanup), pArg)
 					}
 				}

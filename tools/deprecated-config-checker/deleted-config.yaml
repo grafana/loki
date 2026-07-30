@@ -27,6 +27,8 @@ common:
       admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
+  remote_write:
+    client: "Use clients instead."
   storage:
     s3:
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
@@ -87,6 +89,7 @@ compactor:
 chunk_store_config:
   max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
   write_dedupe_cache_config: "Write dedupe cache is removed along with deprecated index types."
+  cache_lookups_older_than: "Index entry caching is removed along with deprecated index types."
 
 limits_config:
   unordered_writes: "This setting is removed."

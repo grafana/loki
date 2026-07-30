@@ -184,7 +184,8 @@ func (w *Writer) initPCU(ctx context.Context) error {
 	// Track PCU operations using client feature tracking header.
 	ctx = addFeatureAttributes(ctx, featurePCU)
 
-	pCtx, cancel := context.WithCancel(ctx)
+	bgCtx := contextWithoutMetrics(ctx)
+	pCtx, cancel := context.WithCancel(bgCtx)
 
 	state := &pcuState{
 		ctx:             pCtx,

@@ -1,7 +1,6 @@
 // Copyright (c) 2015 Klaus Post, released under MIT License. See LICENSE file.
 
 //go:build arm64 && !gccgo && !noasm && !appengine
-// +build arm64,!gccgo,!noasm,!appengine
 
 package cpuid
 
@@ -189,6 +188,7 @@ func addInfo(c *CPUInfo, safe bool) {
 	f.setIf(instAttrReg0&(0xf<<60) != 0, RNDR)
 	f.setIf(instAttrReg0&(0xf<<56) != 0, TLB)
 	f.setIf(instAttrReg0&(0xf<<52) != 0, TS)
+	f.setIf(instAttrReg0&(0xf<<52) == 2<<52, FLAGM2) // TS == 0b0010 (FEAT_FlagM2)
 	f.setIf(instAttrReg0&(0xf<<48) != 0, FHM)
 	f.setIf(instAttrReg0&(0xf<<44) != 0, ASIMDDP)
 	f.setIf(instAttrReg0&(0xf<<40) != 0, SM4)
@@ -244,6 +244,13 @@ func addInfo(c *CPUInfo, safe bool) {
 	// 	fmt.Println("APA")
 	// }
 	f.setIf(instAttrReg1&(0xf<<0) != 0, DCPOP)
+	f.setIf(instAttrReg1&(0xf<<0) == 2<<0, DCPODP) // DPB == 0b0010 (FEAT_DPB2)
+
+	// Upper ID_AA64ISAR1_EL1 fields, not in the table above.
+	f.setIf(instAttrReg1&(0xf<<32) != 0, FRINTTS) // bits [35:32]
+	f.setIf(instAttrReg1&(0xf<<36) != 0, SB)      // bits [39:36]
+	f.setIf(instAttrReg1&(0xf<<44) != 0, BF16)    // bits [47:44]
+	f.setIf(instAttrReg1&(0xf<<52) != 0, I8MM)    // bits [55:52]
 
 	// Store
 	c.featureSet.or(f)

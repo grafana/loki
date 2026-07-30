@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
 	yaml "go.yaml.in/yaml/v4"
 
@@ -21,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -73,18 +70,6 @@ type TableRange struct {
 // TableRanges represents a list of table ranges for multiple schemas.
 type TableRanges []TableRange
 
-// TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
-func (t TableRanges) TableInRange(tableName string) (bool, error) {
-	tableNumber, err := ExtractTableNumberFromName(tableName)
-	if err != nil {
-		return false, err
-	}
-
-	cfg := t.ConfigForTableNumber(tableNumber)
-	return cfg != nil &&
-		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName, nil
-}
-
 func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
 		if cfg := r.ConfigForTableNumber(tableNumber); cfg != nil {
@@ -93,14 +78,6 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	}
 
 	return nil
-}
-
-func (t TableRanges) TableNameFor(table int64) (string, bool) {
-	cfg := t.ConfigForTableNumber(table)
-	if cfg == nil {
-		return "", false
-	}
-	return fmt.Sprintf("%s%d", cfg.IndexTables.Prefix, table), true
 }
 
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
@@ -361,7 +338,7 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 
 func defaultRowShards(schema string) uint32 {
 	switch schema {
-	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
+	case "v9":
 		return 0
 	default:
 		return 16
@@ -613,95 +590,6 @@ func (cfg PeriodicTableConfig) Validate() error {
 	}
 
 	return nil
-}
-
-// AutoScalingConfig for DynamoDB tables.
-type AutoScalingConfig struct {
-	Enabled     bool    `yaml:"enabled"`
-	RoleARN     string  `yaml:"role_arn"`
-	MinCapacity int64   `yaml:"min_capacity"`
-	MaxCapacity int64   `yaml:"max_capacity"`
-	OutCooldown int64   `yaml:"out_cooldown"`
-	InCooldown  int64   `yaml:"in_cooldown"`
-	TargetValue float64 `yaml:"target"`
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *AutoScalingConfig) RegisterFlags(argPrefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, argPrefix+".enabled", false, "Should we enable autoscale for the table.")
-	f.StringVar(&cfg.RoleARN, argPrefix+".role-arn", "", "AWS AutoScaling role ARN")
-	f.Int64Var(&cfg.MinCapacity, argPrefix+".min-capacity", 3000, "DynamoDB minimum provision capacity.")
-	f.Int64Var(&cfg.MaxCapacity, argPrefix+".max-capacity", 6000, "DynamoDB maximum provision capacity.")
-	f.Int64Var(&cfg.OutCooldown, argPrefix+".out-cooldown", 1800, "DynamoDB minimum seconds between each autoscale up.")
-	f.Int64Var(&cfg.InCooldown, argPrefix+".in-cooldown", 1800, "DynamoDB minimum seconds between each autoscale down.")
-	f.Float64Var(&cfg.TargetValue, argPrefix+".target-value", 80, "DynamoDB target ratio of consumed capacity to provisioned capacity.")
-}
-
-func (cfg *PeriodicTableConfig) PeriodicTables(from, through model.Time, pCfg ProvisionConfig, beginGrace, endGrace time.Duration, retention time.Duration) []TableDesc {
-	var (
-		periodSecs     = int64(cfg.Period / time.Second)
-		beginGraceSecs = int64(beginGrace / time.Second)
-		endGraceSecs   = int64(endGrace / time.Second)
-		firstTable     = from.Unix() / periodSecs
-		lastTable      = through.Unix() / periodSecs
-		tablesToKeep   = int64(retention/time.Second) / periodSecs
-		now            = mtime.Now().Unix()
-		nowWeek        = now / periodSecs
-		result         = []TableDesc{}
-	)
-	// If interval ends exactly on a period boundary, don’t include the upcoming period
-	if through.Unix()%periodSecs == 0 {
-		lastTable--
-	}
-	// Don't make tables further back than the configured retention
-	if retention > 0 && lastTable > tablesToKeep && lastTable-firstTable >= tablesToKeep {
-		firstTable = lastTable - tablesToKeep
-	}
-	for i := firstTable; i <= lastTable; i++ {
-		tableName := cfg.tableForPeriod(i)
-		table := TableDesc{}
-
-		// if now is within table [start - grace, end + grace), then we need some write throughput
-		if (i*periodSecs)-beginGraceSecs <= now && now < (i*periodSecs)+periodSecs+endGraceSecs {
-			table = pCfg.ActiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags)
-
-			level.Debug(log.Logger).Log("msg", "Table is Active",
-				"tableName", table.Name,
-				"provisionedRead", table.ProvisionedRead,
-				"provisionedWrite", table.ProvisionedWrite,
-				"useOnDemandMode", table.UseOnDemandIOMode,
-				"useWriteAutoScale", table.WriteScale.Enabled,
-				"useReadAutoScale", table.ReadScale.Enabled)
-
-		} else {
-			// Autoscale last N tables
-			// this is measured against "now", since the lastWeek is the final week in the schema config range
-			// the N last tables in that range will always be set to the inactive scaling settings.
-			disableAutoscale := i < (nowWeek - pCfg.InactiveWriteScaleLastN)
-			table = pCfg.InactiveTableProvisionConfig.BuildTableDesc(tableName, cfg.Tags, disableAutoscale)
-
-			level.Debug(log.Logger).Log("msg", "Table is Inactive",
-				"tableName", table.Name,
-				"provisionedRead", table.ProvisionedRead,
-				"provisionedWrite", table.ProvisionedWrite,
-				"useOnDemandMode", table.UseOnDemandIOMode,
-				"useWriteAutoScale", table.WriteScale.Enabled,
-				"useReadAutoScale", table.ReadScale.Enabled)
-		}
-
-		result = append(result, table)
-	}
-	return result
-}
-
-// ChunkTableFor calculates the chunk table shard for a given point in time.
-func (cfg SchemaConfig) ChunkTableFor(t model.Time) (string, error) {
-	for i := range cfg.Configs {
-		if t >= cfg.Configs[i].From.Time && (i+1 == len(cfg.Configs) || t < cfg.Configs[i+1].From.Time) {
-			return cfg.Configs[i].ChunkTables.TableFor(t), nil
-		}
-	}
-	return "", fmt.Errorf("no chunk table found for time %v", t)
 }
 
 // SchemaForTime returns the Schema PeriodConfig to use for a given point in time.
