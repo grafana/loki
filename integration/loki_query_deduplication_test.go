@@ -132,8 +132,8 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 
 	cliDistributor := client.New(tenant, "", tDistributor.HTTPURL())
 	cliFrontend := client.New(tenant, "", tQueryFrontend.HTTPURL())
-	ingesterCli := client.New(tenant, "", tIngester.HTTPURL())
-	indexGatewayCli := client.New("", "", tIndexGateway.HTTPURL())
+	cliIngester := client.New(tenant, "", tIngester.HTTPURL())
+	cliIndexGateway := client.New("", "", tIndexGateway.HTTPURL())
 
 	structuredMetadata := func(a string) map[string]string { return map[string]string{"a": a} }
 	streamLabels := func(kv ...string) map[string]string {
@@ -169,7 +169,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	// making freshly-shipped TSDB indexes discoverable.
 	syncIndexes := func() {
 		require.Eventually(t, func() bool {
-			started, err := indexGatewayCli.TriggerSyncIndexes()
+			started, err := cliIndexGateway.TriggerSyncIndexes()
 			if err != nil {
 				t.Logf("syncIndexes trigger: %v", err)
 				return false
@@ -177,7 +177,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 			return started
 		}, 10*time.Second, 50*time.Millisecond, "a manual index sync should be accepted")
 		require.Eventually(t, func() bool {
-			inProgress, err := indexGatewayCli.SyncIndexesInProgress()
+			inProgress, err := cliIndexGateway.SyncIndexesInProgress()
 			if err != nil {
 				t.Logf("syncIndexes progress: %v", err)
 				return false
@@ -219,7 +219,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	// copies then live in separate chunks, merged and deduplicated only on read.
 	require.NoError(t, cliDistributor.PushLogLine("c5", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
 	waitForLogLine(`{case="c5"}`, "c5") // ensure the first copy is consumed before flushing it
-	require.NoError(t, ingesterCli.FlushTenant(`{case="c5"}`))
+	require.NoError(t, cliIngester.FlushTenant(`{case="c5"}`))
 	syncIndexes()
 	require.NoError(t, cliDistributor.PushLogLine("c5-sep", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
 	require.NoError(t, cliDistributor.PushLogLine("c5", tsC5, structuredMetadata("1"), streamLabels("case", "c5")))
@@ -231,6 +231,21 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 
 	// runAssertions runs the five dedup assertions against cliFrontend.
 	runAssertions := func(t *testing.T, storage string) {
+		// Negative control, checked once per phase: whether the querier reaches the
+		// ingesters is governed by -querier.query-store-only (a phase-level property),
+		// so the ingester phase must reach them and the store phase must not. The
+		// populated-stats check keeps TotalReached == 0 meaningful (not "stats absent").
+		{
+			resp, err := rangeQuery(`{case="sentinel"}`)
+			require.NoError(t, err, storage)
+			require.Positive(t, resp.Data.Statistics.Summary.TotalEntriesReturned, "%s: stats should be populated", storage)
+			if storage == "store" {
+				require.Zero(t, resp.Data.Statistics.Ingester.TotalReached, "%s: store phase must not query ingesters", storage)
+			} else {
+				require.Positive(t, resp.Data.Statistics.Ingester.TotalReached, "%s: ingester phase must query ingesters", storage)
+			}
+		}
+
 		// case 1: same stream and structured metadata, different timestamp -> NOT deduped
 		{
 			resp, err := rangeQuery(`{case="c1"}`)
@@ -240,17 +255,6 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 			require.ElementsMatch(t, []string{"c1", "c1"}, linesFromResponse(resp), storage)
 			require.NotEqual(t, entries[0][0], entries[1][0], "%s case1: entries must keep distinct timestamps", storage)
 			require.Zero(t, resp.Data.Statistics.TotalDuplicates(), "%s case1: no entry should be deduplicated at query time", storage)
-
-			// Negative control: prove the phase reads the expected source. Phase 1 must
-			// reach the ingesters; the store-only phase must not.
-			if storage == "store" {
-				// Assert the stats are populated first, so TotalReached == 0 means
-				// "no ingester queried" rather than "stats absent".
-				require.Positive(t, resp.Data.Statistics.Summary.TotalEntriesReturned, "%s: stats should be populated", storage)
-				require.Zero(t, resp.Data.Statistics.Ingester.TotalReached, "%s: store phase must not query ingesters", storage)
-			} else {
-				require.Positive(t, resp.Data.Statistics.Ingester.TotalReached, "%s: ingester phase must query ingesters", storage)
-			}
 		}
 
 		// case 2: same timestamp and structured metadata, different stream -> NOT deduped
@@ -342,7 +346,7 @@ func TestDedupMicroServicesKafka(t *testing.T) {
 	// Phase 2: flush everything to the chunk store, discover the index, and re-query
 	// store-only so results provably come from the store.
 	tsdbsBeforeFlush := countShippedTSDBs(t, tIngester.ClusterSharedPath())
-	require.NoError(t, ingesterCli.FlushTenant(""))
+	require.NoError(t, cliIngester.FlushTenant(""))
 	require.Greater(t, countShippedTSDBs(t, tIngester.ClusterSharedPath()), tsdbsBeforeFlush,
 		"the whole-tenant flush should ship additional TSDB indexes to object storage")
 	syncIndexes()
