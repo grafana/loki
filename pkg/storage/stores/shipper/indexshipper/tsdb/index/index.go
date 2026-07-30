@@ -1306,6 +1306,22 @@ func (b RealByteSlice) Sub(start, end int) ByteSlice {
 	return b[start:end]
 }
 
+// decbuf is the minimal decoding interface shared by the []byte-backed
+// encoding.Decbuf and the streaming streamDecbuf. The series and chunk decoders
+// operate against it so the same decode logic serves both the in-memory/mmap
+// readers (via *encoding.Decbuf) and the file-backed streaming reader (via
+// *streamDecbuf).
+type decbuf interface {
+	Be32() uint32
+	Be64() uint64
+	Uvarint() int
+	Uvarint64() uint64
+	Varint64() int64
+	Skip(l int)
+	Len() int
+	Err() error
+}
+
 // NewReader returns a new index reader on the given byte slice. It automatically
 // handles different format versions.
 func NewReader(b ByteSlice) (*Reader, error) {
@@ -1921,16 +1937,44 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	if r.version >= FormatV2 {
 		offset = id * 16
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-	if d.Err() != nil {
-		return 0, d.Err()
+	d, stream, err := r.seriesDecbufAt(int(offset))
+	if err != nil {
+		return 0, err
 	}
+	defer releaseStreamDecbuf(stream)
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d, id, from, through, lbls, chks)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
 	return fprint, nil
+}
+
+// seriesDecbufAt returns a decoder positioned at the content of the series
+// record at absolute offset off.
+//
+// For FormatV3+ file-backed indexes it streams the record through a pooled bufio
+// buffer (see stream_reader.go), which keeps the reader's memory footprint
+// independent of the record size. In-memory (RealByteSlice / mmap) readers and
+// FormatV2 (and earlier) records are decoded from a materialised buffer: the
+// former is already zero-copy, and the latter is required because the prior-v3
+// chunk sampler needs random access to the record's bytes.
+//
+// The second return value is the streaming decoder to release (nil on the
+// buffered path); callers must pass it to releaseStreamDecbuf when done.
+func (r *Reader) seriesDecbufAt(off int) (decbuf, *streamDecbuf, error) {
+	if pbs, ok := r.b.(*poolByteSlice); ok && r.version >= FormatV3 {
+		d, err := newSeriesStreamDecbuf(pbs.pool, pbs.length, off)
+		if err != nil {
+			return nil, nil, err
+		}
+		return d, d, nil
+	}
+	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, off, castagnoliTable))
+	if err := d.Err(); err != nil {
+		return nil, nil, err
+	}
+	return &d, nil, nil
 }
 
 func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
@@ -1940,12 +1984,13 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	if r.version >= FormatV2 {
 		offset = id * 16
 	}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-	if d.Err() != nil {
-		return 0, ChunkStats{}, d.Err()
+	d, stream, err := r.seriesDecbufAt(int(offset))
+	if err != nil {
+		return 0, ChunkStats{}, err
 	}
+	defer releaseStreamDecbuf(stream)
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
+	return r.dec.ChunkStats(r.version, d, id, from, through, lbls, by)
 }
 
 func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
@@ -2313,11 +2358,9 @@ func buildChunkSamples(version int, d encoding.Decbuf, numChunks int, info *chun
 
 // prepSeries returns series labels for a series, only returning selected `by` label names.
 // If `by` is nil, it returns all labels for the series.
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeries(d decbuf, lbls *labels.Labels, by map[string]struct{}) (uint64, error) {
 	builder := labelpool.Get()
 	defer labelpool.Put(builder)
-
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
 
 	fprint := d.Be64()
 	k := d.Uvarint()
@@ -2327,12 +2370,12 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 		lvo := uint32(d.Uvarint())
 
 		if d.Err() != nil {
-			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
+			return 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
 		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
 		ln, err := dec.LookupSymbol(lno)
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label name")
+			return 0, errors.Wrap(err, "lookup label name")
 		}
 
 		if by != nil {
@@ -2343,7 +2386,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 
 		lv, err := dec.LookupSymbol(lvo)
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label value")
+			return 0, errors.Wrap(err, "lookup label value")
 		}
 
 		builder.Add(ln, lv)
@@ -2352,13 +2395,11 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, by map[string]stru
 	// Commit built labels.
 	builder.Sort()
 	*lbls = builder.Labels()
-	return &d, fprint, nil
+	return fprint, nil
 }
 
-// skipSeriesLabels reads past the label section in buffer b, ready to read chunks after that.
-func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
-
+// skipSeriesLabels reads past the label section, positioning d to read chunks after that.
+func (dec *Decoder) skipSeriesLabels(d decbuf) (uint64, error) {
 	fprint := d.Be64()
 	k := d.Uvarint()
 
@@ -2367,15 +2408,15 @@ func (dec *Decoder) skipSeriesLabels(b []byte) (*encoding.Decbuf, uint64, error)
 		_ = d.Uvarint()
 
 		if d.Err() != nil {
-			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
+			return 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
 	}
 
-	return &d, fprint, nil
+	return fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeries(b, lbls, by)
+func (dec *Decoder) ChunkStats(version int, d decbuf, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+	fp, err := dec.prepSeries(d, lbls, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2384,14 +2425,14 @@ func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRe
 	return fp, stats, err
 }
 
-func (dec *Decoder) readChunkStats(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
+func (dec *Decoder) readChunkStats(version int, d decbuf, seriesRef storage.SeriesRef, from, through int64) (ChunkStats, error) {
 	if version > FormatV2 {
 		return dec.readChunkStatsV3(version, d, from, through)
 	}
 	return dec.readChunkStatsPriorV3(d, seriesRef, from, through)
 }
 
-func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) readChunkStatsV3(version int, d decbuf, from, through int64) (res ChunkStats, err error) {
 	nChunks := d.Uvarint()
 	markersLn := int(d.Be32()) // markersLn
 	startMarkers := d.Len()
@@ -2478,7 +2519,7 @@ func (dec *Decoder) readChunkStatsV3(version int, d *encoding.Decbuf, from, thro
 	return res, d.Err()
 }
 
-func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) accumulateChunkStats(version int, d decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
 	var prevMaxT int64
 	chunkMeta := &ChunkMeta{}
 	for i := 0; i < nChunks; i++ {
@@ -2497,7 +2538,7 @@ func (dec *Decoder) accumulateChunkStats(version int, d *encoding.Decbuf, nChunk
 	return res, d.Err()
 }
 
-func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
+func (dec *Decoder) readChunkStatsPriorV3(d decbuf, seriesRef storage.SeriesRef, from, through int64) (res ChunkStats, err error) {
 	// prior to v3, chunks needed iteration for stats aggregation
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
@@ -2519,12 +2560,11 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 
 // Series decodes a series entry from the given byte slice into lbls and chks.
 // lbls can be nil, indicating the caller only wants the chunks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
-	var d *encoding.Decbuf
+func (dec *Decoder) Series(version int, d decbuf, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (fprint uint64, err error) {
 	if lbls == nil {
-		d, fprint, err = dec.skipSeriesLabels(b)
+		fprint, err = dec.skipSeriesLabels(d)
 	} else {
-		d, fprint, err = dec.prepSeries(b, lbls, nil)
+		fprint, err = dec.prepSeries(d, lbls, nil)
 	}
 	if err != nil {
 		return 0, err
@@ -2541,7 +2581,7 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 	return fprint, nil
 }
 
-func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
+func (dec *Decoder) readChunks(version int, d decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
 	// read chunks based on fmt
 	if version > FormatV2 {
 		return dec.readChunksV3(version, d, from, through, chks)
@@ -2549,7 +2589,7 @@ func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storag
 	return dec.readChunksPriorV3(version, d, seriesRef, from, through, chks)
 }
 
-func (dec *Decoder) readChunksV3(version int, d *encoding.Decbuf, from int64, through int64, chks *[]ChunkMeta) error {
+func (dec *Decoder) readChunksV3(version int, d decbuf, from int64, through int64, chks *[]ChunkMeta) error {
 	nChunks := d.Uvarint()
 	chunksRemaining := nChunks
 
@@ -2620,7 +2660,7 @@ iterate:
 	return d.Err()
 }
 
-func (dec *Decoder) readChunksPriorV3(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
+func (dec *Decoder) readChunksPriorV3(version int, d decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {
 	// Read the chunks meta data.
 	k := d.Uvarint()
 
@@ -2628,7 +2668,14 @@ func (dec *Decoder) readChunksPriorV3(version int, d *encoding.Decbuf, seriesRef
 		return d.Err()
 	}
 
-	chunksSample, err := dec.getOrCreateChunksSample(version, encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()}), seriesRef, k)
+	// The prior-v3 chunk sampler needs random access to the remaining bytes, so
+	// it only supports the in-memory []byte decoder. V2 series therefore always
+	// take the buffered (non-streaming) decode path (see Reader.Series).
+	getter, ok := d.(interface{ Get() []byte })
+	if !ok {
+		return errors.New("prior-v3 series decoding requires a buffered decoder")
+	}
+	chunksSample, err := dec.getOrCreateChunksSample(version, encoding.DecWrap(tsdb_enc.Decbuf{B: getter.Get()}), seriesRef, k)
 	if err != nil {
 		return err
 	}
@@ -2664,14 +2711,14 @@ func (dec *Decoder) readChunksPriorV3(version int, d *encoding.Decbuf, seriesRef
 	return d.Err()
 }
 
-func readChunkMeta(version int, d *encoding.Decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
+func readChunkMeta(version int, d decbuf, prevChunkMaxt int64, chunkMeta *ChunkMeta) error {
 	// Decode the diff against previous chunk as varint
 	// instead of uvarint because chunks may overlap
 	mint := d.Varint64() + prevChunkMaxt
 	return readChunkMetaWithForcedMintime(version, d, mint, chunkMeta, false)
 }
 
-func readChunkMetaWithForcedMintime(version int, d *encoding.Decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
+func readChunkMetaWithForcedMintime(version int, d decbuf, mint int64, chunkMeta *ChunkMeta, decodeMinT bool) error {
 	if decodeMinT {
 		// skip the mint delta since we're forcing, but still need to
 		// remove the bytes from our buffer
