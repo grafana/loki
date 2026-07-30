@@ -2732,10 +2732,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
 [l2_chunk_cache_handoff: <duration> | default = 0s]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### common

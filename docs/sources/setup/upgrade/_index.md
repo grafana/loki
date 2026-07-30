@@ -81,6 +81,7 @@ As a result, the following have been removed:
 - The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
 - The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
+- The setting `-store.cache-lookups-older-than` (`chunk_store_config.cache_lookups_older_than` in the yaml file) has been removed as it was only used to cache index entries for legacy storage backends that have been removed as well.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 
