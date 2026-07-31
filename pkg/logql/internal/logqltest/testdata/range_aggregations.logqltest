@@ -189,21 +189,26 @@ eval instant at 110s last_over_time({app="a"} | logfmt | unwrap v [30s])
 eval instant at 125s first_over_time({app="a"} | logfmt | unwrap v [30s])
   {app="a"} NaN
 
-# first/last_over_time with grouping (by pod; app dropped). Distinct timestamps keep first/last
-# deterministic: pod=1 {v=2@20s, v=4@30s}, pod=2 {v=10@40s, v=20@50s}.
+# first_over_time() / last_over_time() with grouping.
 clear
 load
   {app="a", pod="1"} "v=2"  @ 20s
   {app="a", pod="1"} "v=4"  @ 30s
   {app="a", pod="2"} "v=10" @ 40s
   {app="a", pod="2"} "v=20" @ 50s
-  {app="a", pod="1"} "noise" @ 25s   # no `v` -> dropped by unwrap
+  {app="a", pod="1"} "noise" @ 25s
+
 eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 2
   {pod="2"} 10
 eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 4
   {pod="2"} 20
+
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 2
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 20
 
 # quantile_over_time.
 clear
@@ -264,21 +269,26 @@ eval range from 20s to 50s step 30s quantile_over_time(0.5, {app="a"} | logfmt |
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
   {app="a"} 4.5 _ 6
 
-# quantile_over_time with grouping: by/without combine the unwrapped samples across the streams in
-# each group. Two pods under app="a": pod=1 {2,4}, pod=2 {10,20}; by (app) folds all four into one
-# group (median of {2,4,10,20} = 7).
+# quantile_over_time() with grouping.
 clear
 load
   {app="a", pod="1"} "v=2"  @ 20s
   {app="a", pod="1"} "v=4"  @ 30s
   {app="a", pod="2"} "v=10" @ 40s
   {app="a", pod="2"} "v=20" @ 50s
-  {app="a", pod="1"} "noise" @ 25s   # no `v` -> dropped by unwrap
+  {app="a", pod="1"} "noise" @ 25s
+
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 3
   {pod="2"} 15
 eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
   {app="a"} 7
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 7
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
+  {pod="1"} 3
+  {pod="2"} 15
 
 # unwrap of a stream label `bar`.
 clear
