@@ -3,7 +3,7 @@
 // Provenance-includes-license: AGPL-3.0-only
 // Provenance-includes-copyright: The Grafana Mimir Authors.
 
-package encoding
+package streamenc
 
 import (
 	"context"
@@ -17,8 +17,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	promencoding "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/objstore/providers/filesystem"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
@@ -32,10 +30,9 @@ func BenchmarkDecbufFactory_NewDecbufAtUnchecked(b *testing.B) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	diskFactory, bucketFactory := createDecbufFactoriesWithBytes(b, 1, testContentSize, enc)
+	diskFactory := createDecbufFactoryWithBytes(b, 1, testContentSize, enc)
 	factories := map[string]DecbufFactory{
-		"disk":   diskFactory,
-		"bucket": bucketFactory,
+		"disk": diskFactory,
 	}
 	b.ResetTimer()
 
@@ -60,7 +57,7 @@ func TestDecbufFactory_NewDecbufAtChecked_InvalidCRC(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutBytes([]byte{0, 0, 0, 0})
 
-	testDecbufFactory(t, testContentSize, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		d := factory.NewDecbufAtChecked(context.Background(), 0, table)
 		t.Cleanup(func() {
 			require.NoError(t, d.Close())
@@ -74,7 +71,7 @@ func TestDecbufFactory_NewDecbufAtChecked_InvalidLength(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	testDecbufFactory(t, testContentSize+1000, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize+1000, enc, func(t *testing.T, factory DecbufFactory) {
 		d := factory.NewDecbufAtChecked(context.Background(), 0, table)
 		t.Cleanup(func() {
 			require.NoError(t, d.Close())
@@ -88,7 +85,7 @@ func TestDecbufFactory_NewDecbufAtChecked_HappyPath(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	testDecbufFactory(t, testContentSize, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		d := factory.NewDecbufAtChecked(context.Background(), 0, table)
 		t.Cleanup(func() {
 			require.NoError(t, d.Close())
@@ -105,8 +102,8 @@ func TestDecbufFactory_NewDecbufAtChecked_MultipleInstances(t *testing.T) {
 
 	// Note that we create the factory ourselves instead of using testDecbufFactory because
 	// we only want to test the case where file handles are pooled and hence will be reused
-	// between different Decbuf instances; bucket-based factory is also not tested here.
-	factory, _ := createDecbufFactoriesWithBytes(t, 1, testContentSize, enc)
+	// between different Decbuf instances.
+	factory := createDecbufFactoryWithBytes(t, 1, testContentSize, enc)
 	t.Cleanup(func() {
 		_ = factory.Close()
 	})
@@ -137,7 +134,7 @@ func TestDecbufFactory_NewDecbufAtChecked_Concurrent(t *testing.T) {
 		concurrency = 10
 	)
 
-	testDecbufFactory(t, testContentSize, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		g, ctx := errgroup.WithContext(context.Background())
 
 		for i := 0; i < concurrency; i++ {
@@ -167,7 +164,7 @@ func TestDecbufFactory_NewDecbufAtUnchecked_HappyPath(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	testDecbufFactory(t, testContentSize, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		d := factory.NewDecbufAtUnchecked(context.Background(), 0)
 		t.Cleanup(func() {
 			require.NoError(t, d.Close())
@@ -182,7 +179,7 @@ func TestDecbufFactory_NewDecbufRaw_HappyPath(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	testDecbufFactory(t, testContentSize, enc, true, true, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		d := factory.NewRawDecbuf(context.Background())
 		t.Cleanup(func() {
 			require.NoError(t, d.Close())
@@ -193,69 +190,11 @@ func TestDecbufFactory_NewDecbufRaw_HappyPath(t *testing.T) {
 	})
 }
 
-// TestDecbufFactory_NewDecbufInSection_HappyPath tests that creating a new Decbuf for a table section
-// starts the reader in the correct place by placing a test byte at the expected start offset.
-func TestDecbufFactory_NewDecbufInSection_HappyPath(t *testing.T) {
-	testByte := byte(0x02)
-	startOffset := 10
-	endOffset := 25
-	enc := createTestEncoderWithTestByte(testContentSize, startOffset-numLenBytes, testByte)
-	enc.PutHash(crc32.New(table))
-
-	testDisk := false // NewDecbufInSection is currently only implemented for BucketDecbufFactory
-	testDecbufFactory(t, testContentSize, enc, testDisk, true, func(t *testing.T, factory DecbufFactory) {
-		d := factory.NewDecbufInSection(context.Background(), 0, startOffset, endOffset)
-		t.Cleanup(func() {
-			require.NoError(t, d.Close())
-		})
-		require.NoError(t, d.Err())
-		require.Equal(t, endOffset-startOffset, d.Len())
-		// Make sure our start offset is placed where we expected by reading the first byte
-		require.Equal(t, testByte, d.Byte())
-	})
-}
-
-// TestDecbufFactory_NewDecbufInSection_SectionEndOffsetBeyondTableLength tests that calling NewDecbufInSection
-// with an end offset beyond the end of the table produces a Decbuf that ends at the end of the table.
-func TestDecbufFactory_NewDecbufInSection_SectionEndOffsetBeyondTableLength(t *testing.T) {
-	testByte := byte(0x02)
-	enc := createTestEncoderWithTestByte(testContentSize, 10-numLenBytes, testByte)
-	enc.PutHash(crc32.New(table))
-
-	testDisk := false // NewDecbufInSection is currently only implemented for BucketDecbufFactory
-	testDecbufFactory(t, testContentSize, enc, testDisk, true, func(t *testing.T, factory DecbufFactory) {
-		d := factory.NewDecbufInSection(context.Background(), 0, 10, testContentSize+1000)
-		t.Cleanup(func() {
-			require.NoError(t, d.Close())
-		})
-		require.NoError(t, d.Err())
-		require.Equal(t, testContentSize+numLenBytes-10, d.Len())
-		require.Equal(t, testByte, d.Byte())
-	})
-}
-
-// TestDecbufFactory_NewDecbufInSection_SectionEndOffsetBeforeStartOffset tests that attempting to call NewDecbufInSection
-// with an end offset before the start offset returns an error.
-func TestDecbufFactory_NewDecbufInSection_SectionEndOffsetBeforeStartOffset(t *testing.T) {
-	enc := createTestEncoder(testContentSize)
-	enc.PutHash(crc32.New(table))
-
-	testDisk := false // NewDecbufInSection is currently only implemented for BucketDecbufFactory
-	testDecbufFactory(t, testContentSize, enc, testDisk, true, func(t *testing.T, factory DecbufFactory) {
-		d := factory.NewDecbufInSection(context.Background(), 0, 2500, 30)
-		t.Cleanup(func() {
-			require.NoError(t, d.Close())
-		})
-		require.Error(t, d.Err())
-	})
-}
-
 func TestDecbufFactory_Stop(t *testing.T) {
 	enc := createTestEncoder(testContentSize)
 	enc.PutHash(crc32.New(table))
 
-	testBucket := false // bucket-based factory does not do anything on close and will not error
-	testDecbufFactory(t, testContentSize, enc, true, testBucket, func(t *testing.T, factory DecbufFactory) {
+	testDecbufFactory(t, testContentSize, enc, func(t *testing.T, factory DecbufFactory) {
 		require.NoError(t, factory.Close())
 
 		d := factory.NewRawDecbuf(context.Background())
@@ -269,44 +208,19 @@ func TestDecbufFactory_Stop(t *testing.T) {
 
 func testDecbufFactory(
 	t *testing.T,
-	len int,
+	length int,
 	enc promencoding.Encbuf,
-	testDisk bool,
-	testBucket bool,
 	test func(t *testing.T, factory DecbufFactory),
 ) {
-	if testDisk {
-		t.Run("DecbufFactory=Disk-Pooled", func(t *testing.T) {
-			diskFactory, _ := createDecbufFactoriesWithBytes(t, 1, len, enc)
-			test(t, diskFactory)
-		})
+	t.Run("DecbufFactory=Disk-Pooled", func(t *testing.T) {
+		diskFactory := createDecbufFactoryWithBytes(t, 1, length, enc)
+		test(t, diskFactory)
+	})
 
-		t.Run("DecbufFactory=Disk-NoPool", func(t *testing.T) {
-			diskFactory, _ := createDecbufFactoriesWithBytes(t, 0, len, enc)
-			test(t, diskFactory)
-		})
-	}
-
-	if testBucket {
-		t.Run("DecbufFactory=Bucket", func(t *testing.T) {
-			_, bucketFactory := createDecbufFactoriesWithBytes(t, 0, len, enc)
-			test(t, bucketFactory)
-		})
-	}
-
-}
-
-func createTestEncoderWithTestByte(numBytes, testByteOffset int, testByte byte) promencoding.Encbuf {
-	enc := promencoding.Encbuf{}
-
-	for i := 0; i < testByteOffset; i++ {
-		enc.PutByte(0x01)
-	}
-	enc.PutByte(testByte)
-	for i := testByteOffset + 1; i < numBytes; i++ {
-		enc.PutByte(0x01)
-	}
-	return enc
+	t.Run("DecbufFactory=Disk-NoPool", func(t *testing.T) {
+		diskFactory := createDecbufFactoryWithBytes(t, 0, length, enc)
+		test(t, diskFactory)
+	})
 }
 
 func createTestEncoder(numBytes int) promencoding.Encbuf {
@@ -319,11 +233,11 @@ func createTestEncoder(numBytes int) promencoding.Encbuf {
 	return enc
 }
 
-func createDecbufFactoriesWithBytes(t testing.TB, filePoolSize uint, len int, enc promencoding.Encbuf) (*FilePoolDecbufFactory, *BucketDecbufFactory) {
+func createDecbufFactoryWithBytes(t testing.TB, filePoolSize uint, length int, enc promencoding.Encbuf) *FilePoolDecbufFactory {
 	// Prepend the contents of the buffer with the length of the content portion
 	// which does not include the trailing 4 bytes for a CRC 32.
 	lenBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBytes, uint32(len))
+	binary.BigEndian.PutUint32(lenBytes, uint32(length))
 	bytes := append(lenBytes, enc.Get()...)
 
 	dir := t.TempDir()
@@ -337,13 +251,5 @@ func createDecbufFactoriesWithBytes(t testing.TB, filePoolSize uint, len int, en
 		_ = diskFactory.Close()
 	})
 
-	bkt, err := filesystem.NewBucket(dir)
-	require.NoError(t, err)
-	instBkt := objstore.WithNoopInstr(bkt)
-	t.Cleanup(func() {
-		require.NoError(t, bkt.Close())
-	})
-	bucketFactory := NewBucketDecbufFactory(instBkt, fileName)
-
-	return diskFactory, bucketFactory
+	return diskFactory
 }

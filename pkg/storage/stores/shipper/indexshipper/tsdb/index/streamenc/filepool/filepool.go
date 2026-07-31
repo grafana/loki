@@ -16,7 +16,7 @@ import (
 
 var ErrPoolStopped = errors.New("file handle pool is stopped")
 
-type FilePoolMetrics struct {
+type FilePoolMetrics struct { // nolint:revive
 	openCount        prometheus.Counter
 	pooledOpenCount  prometheus.Counter
 	closeCount       prometheus.Counter
@@ -26,25 +26,25 @@ type FilePoolMetrics struct {
 func NewFilePoolMetrics(reg prometheus.Registerer) *FilePoolMetrics {
 	return &FilePoolMetrics{
 		openCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "file_handle_unpooled_open_total",
-			Help: "Total number of times index-header file has been opened instead of using a pooled handle.",
+			Name: "loki_tsdb_index_file_handle_unpooled_open_total",
+			Help: "Total number of times a TSDB index file has been opened instead of using a pooled handle.",
 		}),
 		pooledOpenCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "file_handle_pooled_open_total",
-			Help: "Total number of times a pooled index-header file handle has been used instead of opened.",
+			Name: "loki_tsdb_index_file_handle_pooled_open_total",
+			Help: "Total number of times a pooled TSDB index file handle has been used instead of opened.",
 		}),
 		closeCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "file_handle_unpooled_close_total",
-			Help: "Total number of times index-header file has been closed instead of returning the handle to the pool.",
+			Name: "loki_tsdb_index_file_handle_unpooled_close_total",
+			Help: "Total number of times a TSDB index file has been closed instead of returning the handle to the pool.",
 		}),
 		pooledCloseCount: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "file_handle_pooled_close_total",
-			Help: "Total number of times pooled index-header file handle has been returned to the pool instead of closed.",
+			Name: "loki_tsdb_index_file_handle_pooled_close_total",
+			Help: "Total number of times a pooled TSDB index file handle has been returned to the pool instead of closed.",
 		}),
 	}
 }
 
-type FilePoolCloser interface {
+type FilePoolCloser interface { // nolint:revive
 	Put(*os.File) error
 }
 
@@ -72,15 +72,15 @@ type FilePool struct {
 	metrics *FilePoolMetrics
 }
 
-// NewFilePool creates a new file pool for path with cap capacity. If cap is 0,
+// NewFilePool creates a new file pool for path with capacity capacity. If capacity is 0,
 // Get always opens new file handles and Put always closes them immediately.
-func NewFilePool(path string, cap uint, metrics *FilePoolMetrics) *FilePool {
+func NewFilePool(path string, capacity uint, metrics *FilePoolMetrics) *FilePool {
 	return &FilePool{
 		path: path,
-		// We don't care if cap is 0 which means the channel will be unbuffered. Because
+		// We don't care if capacity is 0 which means the channel will be unbuffered. Because
 		// we have default cases for reads and writes to the channel, we will always open
 		// new files and close file handles immediately if the channel is unbuffered.
-		handles: make(chan *os.File, cap),
+		handles: make(chan *os.File, capacity),
 		metrics: metrics,
 	}
 }
