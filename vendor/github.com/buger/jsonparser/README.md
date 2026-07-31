@@ -1,7 +1,26 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) ![License](https://img.shields.io/dub/l/vibe-d.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) [![Audit](https://img.shields.io/badge/ReqProof-L3%20Assurance-success)](https://reqproof.com) ![License](https://img.shields.io/dub/l/vibe-d.svg)
 # Alternative JSON parser for Go (10x times faster standard library)
 
 It does not require you to know the structure of the payload (eg. create structs), and allows accessing fields by providing the path to them. It is up to **10 times faster** than standard `encoding/json` package (depending on payload size and usage), **allocates no memory**. See benchmarks below.
+
+---
+
+## 🔒 Formally Verified — the first Go library proven to L3 assurance by [ReqProof](https://reqproof.com)
+
+jsonparser is the **reference case study** for [ReqProof](https://reqproof.com) — a git-native requirements-engineering and formal-verification platform. Every public API is traced to a formal requirement, every requirement is tested with **100% Modified Condition/Decision Coverage (MC/DC)**, and the entire parser is fuzzed by a custom **structure-aware JSON fuzzer** ([github.com/probelabs/json-fuzz](https://github.com/probelabs/json-fuzz)) that generates grammar-valid mutations at 250,000 inputs/second.
+
+| Metric | Value |
+|---|---|
+| Requirements traced | 118 (7 stakeholder + 111 system) |
+| Proof audit | **0 errors, 0 warnings** (L3 strict) |
+| Code-level MC/DC | **100% decisions, 100% conditions** |
+| Requirement-side MC/DC | **377/377 witness rows covered** |
+| Fuzz executions | 16M+ (structure-aware + path-mutation + encoding/json differential) |
+| Bugs found & fixed by the proof review | 7 (4 panics, 2 data-corruption, 1 encoding bug) |
+
+The proof review caught bugs that years of community use, OSS-Fuzz, and standard fuzzing had missed — including a panic class across 8 unchecked-dereference sites, a silent data-loss bug in `Set`, and a malformed-output bug in `Delete`. [Read the full root-cause analysis →](docs/proof-gap-root-cause.md)
+
+---
 
 ## Rationale
 Originally I made this for a project that relies on a lot of 3rd party APIs that can be unpredictable and complex.
