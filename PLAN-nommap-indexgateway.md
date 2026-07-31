@@ -69,16 +69,31 @@ scheme are recorded in Claude's local memory file `preprod_observability.md`
 so `git log <sha>` maps a running pod to a set of shipped proposals.
 
 **Where we are** (see "Current status" section at end for detail):
-- Phase 1 (buffered): shipped. Not the production path — buffered holds every
-  cached file's bytes on the Go heap and OOMed pods in <preprod-ns> (see
-  2026-07-29 entry).
-- Phase 2 Bucket A (streaming, 8 commits): shipped, verified via cross-check
-  tests. First preprod round showed ~2.3-2.7× latency regression from
-  per-byte reads. Progressively closed by C0, C1, C2, C3, C4 (see below).
-- Bucket C perf tuning: **five commits landed on 2026-07-29** that took
-  GetChunkRef to mmap parity and dropped GetSeries from ~8× to ~2.3× the
-  mmap baseline. Detailed measurements in the 2026-07-29 entry.
-- Buckets B/D/E remain individually gated. Only start on explicit go-ahead.
+- **Two PRs open on the incremental path**:
+  - **PR #23663** (branch `dahoppe/introduce-nommap-config`, rebased on
+    main 2026-07-31) — flag + Reader-interface extraction + StreamReader
+    stub. Merges with no behaviour change.
+  - **PR #23696** (branch `dahoppe/streamenc-foundation`, stacked on
+    #23663) — vendored streamenc, adapted for Loki, and streaming
+    header/TOC/RawFileReader. Three commits ready for review.
+    Deployed to a preprod primary IG on 2026-07-31 with
+    `-tsdb.shipper.index-reader-mode=stream`; zero errors, latency
+    back to baseline within one 5m bucket post-restart. Stream mode
+    confirmed via CPU profile (metrics-side confirmation blocked
+    until item 7 in the Next ordering lands).
+- **Reference-branch history** (kept for measurements):
+  - Phase 1 (buffered): shipped but not viable for production —
+    OOMed pods in preprod (see 2026-07-29 entry).
+  - Phase 2 Bucket A (streaming, 8 commits): shipped, verified via
+    cross-check tests. First preprod round showed ~2.3-2.7× latency
+    regression from per-byte reads. Progressively closed by C0, C1,
+    C2, C3, C4.
+  - Bucket C perf tuning: **five commits landed on 2026-07-29** that
+    took GetChunkRef to mmap parity and dropped GetSeries from ~8× to
+    ~2.3× the mmap baseline. Detailed measurements in the 2026-07-29
+    entry.
+  - Buckets B/D/E remain individually gated. Only start on explicit
+    go-ahead.
 
 **Skills**:
 - Interacting with the running cluster / dashboards uses `gcx` — see
@@ -451,10 +466,12 @@ The order deliberately inverts the reference branch: **flag first, then
 scaffolding, then implementation**. That way every PR is safe to merge —
 even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
 
-### Merged / in flight
+### In flight (open PRs)
 
 - **PR #23663 — `chore: Introduce tsdb.shipper.index-reader-mode feature flag`**
-  (branch `dahoppe/introduce-nommap-config`, opened 2026-07-30). Contains:
+  (branch `dahoppe/introduce-nommap-config`, opened 2026-07-30, still
+  OPEN). Rebased onto `main` on 2026-07-31 to keep the stack current.
+  Contains:
   - `IndexReaderMode` enum (`mmap` / `stream`), CLI flag, YAML field,
     validation.
   - `Reader` interface extracted from the existing `Reader` struct.
@@ -464,51 +481,103 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
     an inner `ByteSliceReader`. `TestReaders_CrossCheck` passes trivially.
   - `openIndexFileReader` in `single_file_index.go` picks between them by
     mode.
+- **PR #23696 — `chore: Implement streaming reading of header and TOC`**
+  (branch `dahoppe/streamenc-foundation`, opened 2026-07-31, still
+  OPEN). Stacked on top of #23663. Three commits:
+  - `Vendor Mimir's streaming index encoding + tests` — verbatim copy of
+    Mimir's `pkg/storage/indexheader/encoding/` + `pkg/util/filepool/`
+    (source **and** tests) with SPDX/Provenance headers preserved and
+    the intra-batch `filepool` import path rewritten to Loki's. The
+    tests don't compile as-is (they reference
+    `github.com/grafana/mimir/pkg/util/test` and `BucketDecbufFactory`);
+    the second commit adapts them.
+  - `Adapt vendored streamenc for Loki` — package renamed
+    `encoding` → `streamenc`; filepool metric names prefixed
+    `loki_tsdb_index_`; test files adapted (dropped bucket-backed path
+    and benchmarks, replaced `test.NewTB(t)`/`test.TB` with plain
+    `*testing.T`, replaced two `test.EqualSlices` with `bytes.Equal`).
+    Includes small fixes for CI: parameter shadowing (`cap uint` →
+    `capacity uint` in `NewFilePool`, `len int` → `length int` in
+    factory_test.go) and `// nolint:revive` on the vendored
+    `FilePoolMetrics` / `FilePoolCloser` stutter (following the
+    `pkg/queue/queue.go` precedent).
+  - `Implement streaming reading of header and TOC` — `NewStreamFileReader`
+    opens a `FilePoolDecbufFactory`, parses the 5-byte header and the
+    76-byte TOC using **only** Mimir's existing Decbuf primitives
+    (`ResetAt` → `CheckCrc32` → `ResetAt` → `Be64` × 9 → `Be32` —
+    mirrors `TOCFromIndexHeader` in Mimir), and serves `Version` /
+    `Bounds` / `Checksum` / `Size` / `RawFileReader` from the streamed
+    state. Query-surface methods (Symbols, Postings, Series, label
+    lookups, ChunkStats, PostingsRanges) still delegate to
+    `ByteSliceReader`. As part of the same PR, the `Reader() (io.ReadSeeker, error)`
+    interface on `shipperindex.Index`, `tsdbindex.Reader.RawFileReader`,
+    and `tsdb.GetRawFileReaderFunc` becomes `io.ReadSeekCloser` — this
+    fixes a real production FD leak in the shipper upload path
+    (`uploads/index_set.go:152` and the equivalent
+    `compactor/index_set.go:316`) that was previously invisible because
+    the `bytes.Reader` return from `ByteSliceReader.RawFileReader` needed
+    no Close. Test coverage: six new `TestReaders_*` subtests iterate
+    over both readers and assert matching rejection behavior on bad
+    magic / unknown version / truncated header / truncated TOC /
+    corrupt TOC CRC, plus independence of concurrent `RawFileReader`
+    handles.
 
-### Next (from #23663; each is its own PR, ~200–800 lines diff)
+Deliberately kept out of this PR (deferred to follow-ups when the
+supporting profiling data lands):
+  - `Decbuf.ReadInto`. Not needed for header/TOC; Mimir doesn't have it
+    and its `TOCFromIndexHeader` uses the exact `ResetAt`+`CheckCrc32`+
+    rewind pattern we adopted. Later series-record work will justify it
+    with measured overhead (reference-branch commit `215b82d0af`).
+  - `FilePoolDecbufFactory.FileSize` cache. Not measurable at
+    construction time. Later Bucket A work will justify it with the
+    "fstat = 7.6% of CPU" profile (reference-branch commit
+    `ce00b0eeb0`).
+  - Nil-metrics guards inside filepool. Kept Mimir's original
+    non-nil-safe form; `NewStreamFileReader` passes
+    `filepool.NewFilePoolMetrics(nil)` — an **unregistered** metrics
+    struct (promauto handles nil Registerer). Downside: streamenc
+    counters don't appear in Prometheus scrapes. Fix belongs to a
+    "metrics for the streaming path" PR that plumbs a real Registerer
+    through the whole open-index chain (`store.init` →
+    `OpenShippableTSDB` → `NewShippableTSDBFile` → `NewTSDBIndexFromFile`
+    → `openIndexFileReader` → `NewStreamFileReader`). Estimated at
+    ~10 files / ~15 callsites / one construction-site change; mostly
+    mechanical.
 
-1. **PR: streamenc + filepool foundation + streamed header/TOC/RawFileReader.**
-   ★ next — branch `dahoppe/streamenc-foundation`. Two commits:
-   - `feat(tsdb): scaffold streaming decoder derived from Mimir index-header`
-     ports `pkg/storage/indexheader/encoding/` + `pkg/util/filepool/` from
-     Mimir into `.../tsdb/index/streamenc/` and `.../streamenc/filepool/`
-     with provenance headers, plus round-trip tests for the codec,
-     positioning tests for the file reader, and capacity/metrics tests
-     for the file pool.
-   - `feat(tsdb): stream StreamReader header, TOC, and RawFileReader`
-     opens a `FilePoolDecbufFactory` at construction, parses the 5-byte
-     header + 76-byte TOC via streaming, and replaces the delegated
-     `Version` / `Bounds` / `Checksum` / `Size` / `RawFileReader` stubs
-     with real streaming implementations. Adds explicit tests for bad
-     magic / unknown version / truncated header / truncated TOC / corrupt
-     TOC CRC and for `RawFileReader` returning fresh independent handles.
-     `TestReaders_CrossCheck` unchanged.
-   Query-surface methods (Symbols, Postings, Series, label lookups,
-   ChunkStats, PostingsRanges) still delegate to `ByteSliceReader`. That
-   mmap crutch stays until every method has a native streaming
-   implementation — one method per follow-up PR.
-2. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
+### Next (from #23696; each is its own PR, ~200–800 lines diff)
+
+1. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
    Ports Mimir's `indexheader/index/symbols.go` (adapted for Loki's V4
    format) into `.../tsdb/index/streamsym.go`. Reroutes those three
    methods off the inner `ByteSliceReader`. Adds a fixture with many
    symbols to exercise the sparse scan.
-3. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
+2. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
    `postings.go` (v1 + v2). Wires into `StreamReader.Postings`. Adds
    fixtures with 10 / 1k / 100k series.
-4. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
+3. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
    decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
    `IngestedAt` field. V4 fixture included.
-5. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
+4. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
    `LabelNamesFor`.** Falls out mostly from postings-offset + series
    ports; small.
-6. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
+5. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
    open (they're small; 2 uint64 per 1024 series). Existing shard tests
    pass with `mode=stream`.
-7. **PR: drop `StreamReader.mmapReader` fallback + delete
+6. **PR: drop `StreamReader.mmapReader` fallback + delete
    `ByteSliceReader` delegation dead code.** By this point every method
    has a native streaming implementation. This is the "no more mmap on
    the stream path" milestone. Ships without changing any default —
    `mode=mmap` is still the default and still uses `ByteSliceReader`.
+7. **PR: metrics wiring for the streaming path.** Plumbs a real
+   `prometheus.Registerer` from `store.NewStore` down through
+   `OpenShippableTSDB` / `NewShippableTSDBFile` / `NewTSDBIndexFromFile`
+   / `openIndexFileReader` into `NewStreamFileReader` so
+   `loki_tsdb_index_file_handle_{pooled,unpooled}_{open,close}_total`
+   become scrapable. Currently a `NewFilePoolMetrics(nil)` sentinel is
+   used, which makes it impossible to confirm from Prom whether stream
+   mode is actually engaged — verified in preprod on 2026-07-31.
+   ~10 files, mostly mechanical parameter threading. Do this before
+   the perf tuning PRs below so their profiles/graphs make sense.
 8. **PR: perf tuning — `Decbuf.ReadInto` batch reads.** Corresponds to
    commit `215b82d0af` on the reference branch. Preprod-measured 2.3–2.7×
    → 1.1–1.6× vs mmap p99. Include before/after numbers.
@@ -527,17 +596,15 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
 
 14. **PR: three-way / cross-mode benchmark harness in the tree.** Corresponds
     to Bucket C5 in Phase 2 above.
-15. **PR: metrics for the streaming path (filepool metrics + per-mode
-    latency histograms).** Bucket D1.
-16. **PR: sparse snapshots on disk (symbols + postings).** Buckets C2 + C3.
+15. **PR: sparse snapshots on disk (symbols + postings).** Buckets C2 + C3.
     May split.
-17. **PR: docs + runbook + upgrade notes.** Bucket D3.
-18. **PR: flip default from `mmap` → `stream`.** Only after Dan validates
+16. **PR: docs + runbook + upgrade notes.** Bucket D3.
+17. **PR: flip default from `mmap` → `stream`.** Only after Dan validates
     a production cell.
 
 ### Gone from the reference branch (deliberate omissions)
 
-- Phase 1 buffered mode + `disable_index_mmap` alias. OOM'd in dev-005 and
+- Phase 1 buffered mode + `disable_index_mmap` alias. OOM'd in preprod and
   has no path to production; landing it as a shipping mode would just add
   a config surface reviewers need to reason about and users could foot-gun
   with. If someone specifically wants to test whole-file-in-heap reads for
@@ -685,10 +752,10 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
   in the memory file).
 
 - **2026-07-29**: heavy perf iteration day. Started from a buffered-mode
-  OOM report (<preprod-ns>), diagnosed via CPU + goroutine profiling, and
+  OOM report in preprod, diagnosed via CPU + goroutine profiling, and
   landed **five commits** on the branch that closed most of the remaining
   streaming-vs-mmap gap. Each was built into a custom GEL image and
-  measured in preprod against `<preprod-ns>/index-gateway`.
+  measured in preprod against the primary index-gateway.
 
   Commits (all on `dahoppe/nommap-index-gateway`, off `main`):
 
@@ -730,7 +797,7 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
 
   **Two production incidents examined:**
 
-  - *<preprod-ns> buffered-mode OOM* (initial trigger for the day):
+  - *preprod buffered-mode OOM* (initial trigger for the day):
     `index_reader_mode: buffered` caused the IG to `os.ReadFile` every
     locally-cached TSDB into the Go heap, per index file per tenant.
     Startup died mid-`loadLocalTables` after 91 tables. Confirmed
@@ -738,7 +805,7 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
     all bytes on heap"). Buffered is not viable for large cached working
     sets; treat as small-scale-only.
 
-  - *<preprod-ns> `--analyze-labels` incident (~13:33–14:17 UTC)*: user
+  - *preprod `--analyze-labels` incident (~13:33–14:17 UTC)*: user
     ran `logcli series '{}' --analyze-labels --since=72h` on tenant <tenant-id>.
     That tenant produces **4.7 GB compressed TSDB blobs per compaction
     slice**. Each attempted download took ~31 s network + ~60 s gzip
@@ -815,4 +882,101 @@ even the fully-fleshed-out `stream` mode is only reached by explicit opt-in.
   `dahoppe/streamenc-foundation` as two commits (see "PR #1" in Phase 3).
   The buffered mode + `disable_index_mmap` alias from Phase 1 are
   deliberately being dropped in the incremental path — the OOM in
-  dev-005 killed any operator case for shipping them.
+  preprod killed any operator case for shipping them.
+
+- **2026-07-31**: PR #23696 opened
+  (`chore: Implement streaming reading of header and TOC`, branch
+  `dahoppe/streamenc-foundation`, stacked on #23663). Restructured to
+  three commits at Dan's direction so each can be reviewed on its own
+  and the "here's what we borrowed from Mimir" vs "here's what we
+  changed for Loki" boundaries are obvious:
+  1. `Vendor Mimir's streaming index encoding + tests` — verbatim
+     Mimir source + tests + Provenance headers.
+  2. `Adapt vendored streamenc for Loki` — package rename, Loki metric
+     prefix, test-file adaptations for the pieces we don't have
+     (`test.TB`, `BucketDecbufFactory`), lint fixes (`cap`/`len`
+     shadowing renames, `// nolint:revive` on FilePoolMetrics/Closer
+     stutter).
+  3. `Implement streaming reading of header and TOC` — the actual
+     StreamReader wiring plus the `io.ReadSeeker` → `io.ReadSeekCloser`
+     interface change with production leak fixes at the two known
+     callers.
+
+  Design decisions made along the way, all recorded in the PR
+  description and reflected in the "deliberately kept out" list above:
+  - Used Mimir's `ResetAt` + `CheckCrc32` + rewind pattern in `readTOC`
+    (matching `pkg/storage/indexheader/toc.go` in Mimir) rather than
+    adding `Decbuf.ReadInto`.
+  - Dropped the FileSize cache (do a plain `os.Stat` at construction
+    in `NewStreamFileReader`; leaves `file_factory.go` bit-for-bit
+    Mimir modulo the package rename).
+  - Kept Mimir's non-nil-metrics assumption; pass an unregistered
+    `NewFilePoolMetrics(nil)` from `NewStreamFileReader`. Observability
+    cost noted below.
+  - Interface change to `io.ReadSeekCloser` promoted from a
+    test-cleanup fix to a real production leak fix in
+    `uploads/index_set.go:152` and `compactor/index_set.go:316`. Mock
+    impls updated to return fresh `os.Open` handles.
+
+  Late in the day both PR branches were rebased onto `main` so a fresh
+  custom GEL image could be built (`bucket.NewClient` signature was
+  advanced by PR #23643 on main, so building against the older
+  enterprise-logs pin failed until we caught up).
+
+- **2026-07-31 preprod signal — image tag recorded in the memory
+  file, deployed to a preprod primary IG statefulset (4 pods),
+  rollout ~16:11–16:14 UTC. Compactor/ingester/querier remained on
+  the current weekly release image. Streaming mode confirmed active
+  via CPU profiling.**
+  - **No panics, no fatals, no non-transient error logs.** Zero
+    `status="error"` on `loki_index_gateway_requests_total`
+    throughout the rollout window.
+  - **Latency returned to baseline within one 5m bucket after
+    rollout completed at 16:14.** During the rolling restart
+    (16:08–16:14) client p99 was elevated as pods dropped in and out
+    (GetShards briefly to 400–1770 ms) — this is normal rollout
+    behaviour, not a code regression. Post-rollout (16:15+):
+    GetChunkRef 74–95 ms, GetSeries 40–95 ms, GetShards
+    109 ms → 80 ms → 17 ms → 28 ms, GetStats 13–83 ms — all inside
+    the pre-rollout envelope.
+  - **Resource usage**: memory 0.16 → 0.26 GB working-set at 6 min
+    post-restart, growing naturally as caches warm; CPU 0.04–0.12
+    core (unchanged); `container_memory_mapped_file` 1.1–1.7 GB
+    (matches pre-rollout — mmap crutch still active in stream mode);
+    `pgmajfault` 1–55/s (matches pre-rollout — query methods still
+    hit the mmap path via delegation).
+  - **Confirming stream mode from metrics alone is currently
+    impossible** because `loki_tsdb_index_file_handle_*` counters
+    are created against an unregistered Registerer and never scraped.
+    We had to fall back to inspecting a CPU profile to see
+    `streamenc.(*FilePoolDecbufFactory).NewRawDecbuf` on the hot
+    path. Adding this metrics-plumbing PR (item 7 in the Next
+    ordering) is now the next priority so we can see mode-selection
+    directly and get file-handle-pool visibility for the perf work
+    that follows.
+
+- **2026-07-31 review-comment fixes to commit 3 of PR #23696**:
+  - Cursor Bugbot flagged the two `RawFileReader()` results in
+    `TestReaders_RawFileReaderIndependence` as left open. Root cause
+    ran deeper than the test: `Reader() (io.ReadSeeker, error)` on
+    `shipperindex.Index` didn't require Close, and the production
+    upload paths in both `uploads/index_set.go:152` and
+    `compactor/index_set.go:316` genuinely leaked a `*os.File` per
+    upload in streaming mode. Promoted the interface to
+    `io.ReadSeekCloser` on the three touched types (`Index.Reader`,
+    `Reader.RawFileReader`, `GetRawFileReaderFunc`), wrapped
+    `ByteSliceReader.RawFileReader`'s `bytes.NewReader` return in a
+    local `nopCloserReadSeeker` (no-op Close), and added
+    log-and-continue `defer idxReader.Close()` on both production
+    upload callsites plus `defer require.NoError(rf.Close())` on the
+    test.
+  - **Reviewer-directed cleanup**: kept commit 2 tightly focused on
+    Loki adaptations only. `cap uint`/`len int` shadow warnings
+    fixed via rename; `FilePoolMetrics`/`FilePoolCloser` stutter
+    warnings suppressed with `// nolint:revive` following the
+    `pkg/queue/queue.go` precedent (renaming the types would ripple
+    to `file_factory.go`, `stream_reader.go`, and factory_test.go —
+    not worth the churn for a stylistic lint). Method order in
+    `stream_reader.go` preserved to match the base branch so the
+    diff shows single-line replacements per delegated method rather
+    than a full-file reorder.
