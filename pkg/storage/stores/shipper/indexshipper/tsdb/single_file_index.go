@@ -26,8 +26,9 @@ import (
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
-// GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
-type GetRawFileReaderFunc func() (io.ReadSeeker, error)
+// GetRawFileReaderFunc returns an io.ReadSeekCloser for reading raw tsdb file from disk.
+// The caller owns the returned reader and must Close it.
+type GetRawFileReaderFunc func() (io.ReadSeekCloser, error)
 
 func OpenShippableTSDB(p string, mode indexshipper.IndexReaderMode) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
@@ -112,7 +113,7 @@ func (f *TSDBFile) Close() error {
 	return f.Index.Close()
 }
 
-func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
+func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 	return f.getRawFileReader()
 }
 
@@ -133,7 +134,7 @@ func NewTSDBIndexFromFile(location string, mode indexshipper.IndexReaderMode) (*
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader), func() (io.ReadSeekCloser, error) {
 		return reader.RawFileReader()
 	}, nil
 }
