@@ -63,10 +63,10 @@ github.com/DmitriyVTitov/size v1.5.0 h1:/PzqxYrOyOUX1BXj6J9OuVRVGe+66VL4D9FlUaW5
 github.com/DmitriyVTitov/size v1.5.0/go.mod h1:le6rNI4CoLQV1b9gzp1+3d7hMAD/uu2QcJ+aYbNgiU0=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 h1:l7+6kwRMJNwdCvYdDl7Eax+wzEYHSnNY7zrrfbhDdTA=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0/go.mod h1:pJTkW8hEUIIi3Pf65lPZOnn4Y81yCllX6IWk2jNXdkM=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 h1:jLdiS1vO+XJFyDSWRHBx56r4s/NNtcl5J6KyCcWUX/w=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0/go.mod h1:8lmpHY+1VRoteiOwyrQMDt1YGXOrFKCz+1wJW7n3ODY=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.57.0 h1:cSjUzZ7KU8hicTgzaSv9NmSyM9fTVK3y5lsBUl3wOis=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.57.0/go.mod h1:dzcEjy1WJ0Q4u9twNR3LcLhNoYMRCrMCMafpxa0TjPQ=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.59.0 h1:c/Ivw7FuawPLfrr+zB0LZKeCchO2cAHQpF2qZ6OV7rQ=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.59.0/go.mod h1:Zba7lknY/d78oxbKqFTmCsaGwfpzeJ3ktrrLXtnTV6g=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.59.0 h1:xTXsqDOj5k9mK3VVWHYUryryJCIdYfXxdjKFwpzINUw=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.59.0/go.mod h1:V9g30lTKzfUsEW+gpWssck6u9IhARajmipodImLLcwI=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.59.0 h1:18FRm6ZcN/x9+ZmhMr96hLcTtlLn2/gHPuDLVeg7XcY=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.59.0/go.mod h1:YqwkQPrWSC7+byyc1VlKbWLBF5JsW5IoL6xUkemYSXk=
 github.com/HdrHistogram/hdrhistogram-go v1.2.0 h1:XMJkDWuz6bM9Fzy7zORuVFKH7ZJY41G2q8KWhVGkNiY=
