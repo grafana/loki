@@ -174,9 +174,9 @@ func TestOverwriteMarshalingStringMapYAML(t *testing.T) {
 }
 
 func TestLimitsDoesNotMutate(t *testing.T) {
-	initialDefault := defaultLimits
+	initialDefault := defaultLimits.Load()
 	defer func() {
-		defaultLimits = initialDefault
+		defaultLimits.Store(initialDefault)
 	}()
 
 	defaultOTLPConfig := push.OTLPConfig{
@@ -799,9 +799,9 @@ func TestPolicyShardStreams(t *testing.T) {
 }
 
 func TestOTLPConfig(t *testing.T) {
-	initialDefault := defaultLimits
+	initialDefault := defaultLimits.Load()
 	defer func() {
-		defaultLimits = initialDefault
+		defaultLimits.Store(initialDefault)
 	}()
 
 	for _, tc := range []struct {

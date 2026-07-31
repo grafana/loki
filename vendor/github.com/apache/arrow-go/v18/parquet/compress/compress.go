@@ -94,6 +94,34 @@ type Codec interface {
 	Decode(dst, src []byte) []byte
 }
 
+// ErrorCodec is implemented by codecs that can report block decoding errors.
+// It is optional so codecs registered by existing users remain compatible.
+type ErrorCodec interface {
+	Codec
+	DecodeWithError(dst, src []byte) ([]byte, error)
+}
+
+// Decode decodes a block and returns malformed-input errors instead of panicking.
+// Codecs that do not implement ErrorCodec are protected by a panic recovery for
+// backwards compatibility with the original Codec interface.
+func Decode(codec Codec, dst, src []byte) (decoded []byte, err error) {
+	if codec, ok := codec.(ErrorCodec); ok {
+		return codec.DecodeWithError(dst, src)
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			switch recovered := recovered.(type) {
+			case error:
+				err = recovered
+			default:
+				err = fmt.Errorf("parquet/compress: decode failed: %v", recovered)
+			}
+		}
+	}()
+	return codec.Decode(dst, src), nil
+}
+
 // StreamingCodec is an interface that may be implemented for compression codecs that expose a streaming API.
 type StreamingCodec interface {
 	// NewReader provides a reader that wraps a stream with compressed data to stream the uncompressed data
@@ -141,6 +169,10 @@ func (nocodec) Decode(dst, src []byte) []byte {
 		copy(dst, src)
 	}
 	return dst
+}
+
+func (n nocodec) DecodeWithError(dst, src []byte) ([]byte, error) {
+	return n.Decode(dst, src), nil
 }
 
 type writerNopCloser struct {

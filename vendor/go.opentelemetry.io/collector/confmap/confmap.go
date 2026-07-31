@@ -39,6 +39,16 @@ func WithIgnoreUnused() UnmarshalOption {
 	return internal.WithIgnoreUnused()
 }
 
+// WithForceUnmarshaler sets an option to run a top-level Unmarshal method,
+// even if the Conf being unmarshaled is already a parameter from an Unmarshal method.
+// To avoid infinite recursion, this should only be used when unmarshaling into
+// a different type from the current Unmarshaler.
+// For instance, this should be used in wrapper types such as configoptional.Optional
+// to ensure the inner type's Unmarshal method is called.
+func WithForceUnmarshaler() UnmarshalOption {
+	return internal.WithForceUnmarshaler()
+}
+
 type MarshalOption = internal.MarshalOption
 
 // Unmarshaler interface may be implemented by types to customize their behavior when being unmarshaled from a Conf.
