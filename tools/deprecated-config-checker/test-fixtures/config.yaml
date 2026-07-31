@@ -63,6 +63,7 @@ ruler:
       url: "http://localhost:3100/api/prom/push"
 
 storage_config:
+  disable_broad_index_queries: true # DELETED
   bigtable: # DEPRECATED
     project: "my-project"
   cassandra: # DEPRECATED
