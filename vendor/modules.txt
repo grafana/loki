@@ -1762,7 +1762,7 @@ go.opentelemetry.io/collector/confmap/internal/third_party/composehook
 # go.opentelemetry.io/collector/confmap/xconfmap v0.157.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/confmap/xconfmap
-# go.opentelemetry.io/collector/consumer v1.61.0
+# go.opentelemetry.io/collector/consumer v1.63.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
@@ -1790,7 +1790,7 @@ go.opentelemetry.io/collector/pdata/ptrace
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/pipeline
 go.opentelemetry.io/collector/pipeline/internal/globalsignal
-# go.opentelemetry.io/collector/processor v1.61.0
+# go.opentelemetry.io/collector/processor v1.63.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/processor
 # go.opentelemetry.io/contrib/bridges/prometheus v0.69.0
