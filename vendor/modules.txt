@@ -1,7 +1,7 @@
 # cel.dev/expr v0.25.2
 ## explicit; go 1.23.0
 cel.dev/expr
-# charm.land/bubbles/v2 v2.1.0
+# charm.land/bubbles/v2 v2.1.1
 ## explicit; go 1.25.0
 charm.land/bubbles/v2/cursor
 charm.land/bubbles/v2/help
