@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sort"
 	"strings"
@@ -32,7 +31,6 @@ type MockStorage struct {
 	*InMemoryObjectClient
 
 	mtx       sync.RWMutex
-	tables    map[string]*mockTable
 	schemaCfg config.SchemaConfig
 
 	mode MockStorageMode
@@ -57,18 +55,14 @@ func (m *InMemoryObjectClient) Internals() map[string][]byte {
 	return m.objects
 }
 
-type mockTable struct {
-	write, read int64
-}
-
 var singleton *MockStorage
 
 func ResetMockStorage() {
 	singleton = nil
 }
 
-// NewMockStorage creates a mock storage singleton
-// MockStorage implements the interfaces client.ObjectClient, index.Client, index.TableClient, and storage.SchemaConfigProvider
+// NewMockStorage creates a mock storage singleton.
+// MockStorage implements the interfaces client.ObjectClient and storage.SchemaConfigProvider.
 func NewMockStorage() *MockStorage {
 	if singleton == nil {
 		singleton = &MockStorage{
@@ -82,7 +76,6 @@ func NewMockStorage() *MockStorage {
 					},
 				},
 			},
-			tables: map[string]*mockTable{},
 		}
 	}
 	return singleton
@@ -118,84 +111,6 @@ func (*MockStorage) Stop() {
 func (m *MockStorage) SetMode(mode MockStorageMode) {
 	m.mode = mode
 	m.InMemoryObjectClient.mode = mode
-}
-
-// ListTables implements StorageClient.
-func (m *MockStorage) ListTables(_ context.Context) ([]string, error) {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	var tableNames []string
-	for tableName := range m.tables {
-		func(tableName string) {
-			tableNames = append(tableNames, tableName)
-		}(tableName)
-	}
-	return tableNames, nil
-}
-
-// CreateTable implements StorageClient.
-func (m *MockStorage) CreateTable(_ context.Context, desc config.TableDesc) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if _, ok := m.tables[desc.Name]; ok {
-		return fmt.Errorf("table already exists")
-	}
-
-	m.tables[desc.Name] = &mockTable{
-		write: desc.ProvisionedWrite,
-		read:  desc.ProvisionedRead,
-	}
-
-	return nil
-}
-
-// DeleteTable implements StorageClient.
-func (m *MockStorage) DeleteTable(_ context.Context, name string) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if _, ok := m.tables[name]; !ok {
-		return fmt.Errorf("table does not exist")
-	}
-
-	delete(m.tables, name)
-
-	return nil
-}
-
-// DescribeTable implements StorageClient.
-func (m *MockStorage) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	table, ok := m.tables[name]
-	if !ok {
-		return config.TableDesc{}, false, fmt.Errorf("not found")
-	}
-
-	return config.TableDesc{
-		Name:             name,
-		ProvisionedRead:  table.read,
-		ProvisionedWrite: table.write,
-	}, true, nil
-}
-
-// UpdateTable implements StorageClient.
-func (m *MockStorage) UpdateTable(_ context.Context, _, desc config.TableDesc) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	table, ok := m.tables[desc.Name]
-	if !ok {
-		return fmt.Errorf("not found")
-	}
-
-	table.read = desc.ProvisionedRead
-	table.write = desc.ProvisionedWrite
-
-	return nil
 }
 
 // ObjectExists implments client.ObjectClient

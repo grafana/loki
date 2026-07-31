@@ -15,8 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -29,6 +27,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -142,7 +141,6 @@ func NewPushStats() *Stats {
 		LogLinesBytes:                     map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
 		PolicyNumLines:                    map[string]int64{},
-		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
 		MostRecentEntryTimestampPerStream: map[string]time.Time{},
 		StreamSizeBytes:                   map[string]int64{},
 	}
@@ -158,9 +156,6 @@ type Stats struct {
 	// StructuredMetadataBytes holds the size of the original structured metadata (but after it was enriched by OLTP
 	// parser) per policy per retention. Used in billing.
 	StructuredMetadataBytes PolicyWithRetentionWithBytes
-
-	// ResourceAndSourceMetadataLabels holds structured metadata that was added by OLTP parser (scope and resource attributes)
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
 
 	// StreamLabelsSize holds the total size of stream labels after sanitization (empty labels removed and
 	// non-meaningful whitespaces removed). Not used in billing.
@@ -188,6 +183,10 @@ type Stats struct {
 	// This is the actual size of data that is being ingested and stored in Loki.
 	// For non-OTLP requests, TotalExpandedEntriesSize should be the same as the total size of LogLinesBytes and StructuredMetadataBytes.
 	TotalExpandedEntriesSize int64
+
+	// OTLPAttributes breaks TotalExpandedEntriesSize down per resource and scope attribute.
+	// Is only populated for OTLP requests when logOTLPAttributeExpansion is true.
+	OTLPAttributes *otlpattrs.Accumulator
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {

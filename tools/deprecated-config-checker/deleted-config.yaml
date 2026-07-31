@@ -60,6 +60,9 @@ schema_config:
           "grpc",
         ]
       _msg: "Use a different supported object storage instead."
+    chunks: "The chunks block is removed as it only configured chunk tables for removed legacy storage backends. TSDB stores chunks directly in object storage."
+    index:
+      tags: "The tags setting is removed as it only applied to managed tables of removed legacy storage backends."
 
 storage_config:
   bigtable: "Support for Bigtable is removed."
@@ -89,6 +92,7 @@ compactor:
 chunk_store_config:
   max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
   write_dedupe_cache_config: "Write dedupe cache is removed along with deprecated index types."
+  cache_lookups_older_than: "Index entry caching is removed along with deprecated index types."
 
 limits_config:
   unordered_writes: "This setting is removed."

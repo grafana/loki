@@ -81,6 +81,9 @@ As a result, the following have been removed:
 - The setting `-store.index-cache-write` (`chunk_store_config.write_dedupe_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends that have been removed as well.
 - The setting `-store.index-cache-read` (`storage_config.index_queries_cache_config` block in the yaml file) has been removed as it was only used for legacy storage backends (`boltdb-shipper`) that have been removed as well.
 - The setting `-store.index-cache-validity` (`storage_config.index_cache_validity` block in the yaml file) has been removed as it was only used in combination with the removed `-store.index-cache-read` setting.
+- The setting `-store.cache-lookups-older-than` (`chunk_store_config.cache_lookups_older_than` in the yaml file) has been removed as it was only used to cache index entries for legacy storage backends that have been removed as well.
+- The `chunks` block (`chunks:` under a `schema_config` `period_config` in the yaml file) has been removed as it only configured chunk tables for legacy storage backends that have been removed as well. TSDB stores chunks directly in object storage. Remove the `chunks` block from every `period_config`.
+- The `tags` setting (`tags:` under the `index` block of a `schema_config` `period_config` in the yaml file) has been removed as it only applied to managed tables of legacy storage backends that have been removed as well. Remove the `tags` setting from every `period_config`.
 
 Use the `deprecated-config-checker` tool to validate your `config.yaml`.
 

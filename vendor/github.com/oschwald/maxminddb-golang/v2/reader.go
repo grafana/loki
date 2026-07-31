@@ -100,8 +100,8 @@
 //
 // # Thread Safety
 //
-// All Reader methods are thread-safe. The Reader can be safely shared across
-// multiple goroutines.
+// Reader lookup, decode, and iteration methods are safe to call concurrently.
+// Close must not be called concurrently with other Reader or Result methods.
 package maxminddb
 
 import (
@@ -133,8 +133,8 @@ type mmapCleanup struct {
 // Reader holds the data corresponding to the MaxMind DB file. Its only public
 // field is Metadata, which contains the metadata from the MaxMind DB file.
 //
-// All of the methods on Reader are thread-safe. The struct may be safely
-// shared across goroutines.
+// Reader lookup, decode, and iteration methods are safe to call concurrently.
+// Close must not be called concurrently with other Reader or Result methods.
 type Reader struct {
 	hasMappedFile     *atomic.Bool
 	decoder           decoder.ReflectionDecoder

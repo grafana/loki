@@ -159,7 +159,7 @@ func _closeUnixFile(tls *libc.TLS, id uintptr) (r int32) {
 	_ = pFile
 	pFile = id
 	if (*TunixFile)(unsafe.Pointer(pFile)).Fh >= 0 {
-		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42499))
+		_robust_close(tls, pFile, (*TunixFile)(unsafe.Pointer(pFile)).Fh, int32(42509))
 		(*TunixFile)(unsafe.Pointer(pFile)).Fh = -int32(1)
 	}
 	Xsqlite3_free(tls, (*TunixFile)(unsafe.Pointer(pFile)).FpPreallocatedUnused)
@@ -1193,6 +1193,12 @@ type max_align_t = Tmax_align_t
 /*
 ** GCC does not define the offsetof() macro so we'll have to do it
 ** ourselves.
+ */
+
+/*
+** sizeof64() is like sizeof(), but always returns a 64-bit value, even
+** on 32-bit builds. This can help to avoid overflow by ensuring 64-bit
+** arithmetic is used consistently in both 32-bit and 64-bit builds.
  */
 
 /*

@@ -48,7 +48,7 @@ compactor:
   deletion_mode: "delete" # DELETED
 
 chunk_store_config:
-  cache_lookups_older_than: 1h
+  cache_lookups_older_than: 1h # DELETED
   write_dedupe_cache_config: # DEPRECATED
     default_validity: 30m
   max_look_back_period: 1m # DELETED
@@ -94,6 +94,14 @@ schema_config:
     - from: 2020-10-10
       store: tsdb
       object_store: aws
+      chunks: # DELETED
+        prefix: chunks_
+        period: 24h
+      index:
+        prefix: index_
+        period: 24h
+        tags: # DELETED
+          foo: bar
     - from: 2020-10-11
       store: aws # DEPRECATED
       object_store: aws-dynamo # DEPRECATED

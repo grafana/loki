@@ -18,98 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
-func TestChunkTableFor(t *testing.T) {
-	tablePeriod, err := time.ParseDuration("168h")
-	require.NoError(t, err)
-
-	periodConfigs := []PeriodConfig{
-		{
-			From: MustParseDayTime("1970-01-01"),
-			IndexTables: IndexPeriodicTableConfig{
-				PeriodicTableConfig: PeriodicTableConfig{
-					Prefix: "index_1_",
-					Period: tablePeriod,
-				}},
-			ChunkTables: PeriodicTableConfig{
-				Prefix: "chunks_1_",
-				Period: tablePeriod,
-			},
-		},
-		{
-			From: MustParseDayTime("2019-01-02"),
-			IndexTables: IndexPeriodicTableConfig{
-				PeriodicTableConfig: PeriodicTableConfig{
-					Prefix: "index_2_",
-					Period: tablePeriod,
-				}},
-			ChunkTables: PeriodicTableConfig{
-				Prefix: "chunks_2_",
-				Period: tablePeriod,
-			},
-		},
-		{
-			From: MustParseDayTime("2019-03-06"),
-			IndexTables: IndexPeriodicTableConfig{
-				PeriodicTableConfig: PeriodicTableConfig{
-					Prefix: "index_3_",
-					Period: tablePeriod,
-				}},
-			ChunkTables: PeriodicTableConfig{
-				Prefix: "chunks_3_",
-				Period: tablePeriod,
-			},
-		},
-	}
-
-	schemaCfg := SchemaConfig{
-		Configs: periodConfigs,
-	}
-
-	testCases := []struct {
-		timeStr    string // RFC3339
-		chunkTable string
-	}{
-		{
-			timeStr:    "1970-01-01T00:00:00Z",
-			chunkTable: "chunks_1_0",
-		},
-		{
-			timeStr:    "1970-01-01T00:00:01Z",
-			chunkTable: "chunks_1_0",
-		},
-		{
-			timeStr:    "2019-01-01T00:00:00Z",
-			chunkTable: "chunks_1_2556",
-		},
-		{
-			timeStr:    "2019-01-01T23:59:59Z",
-			chunkTable: "chunks_1_2556",
-		},
-		{
-			timeStr:    "2019-01-02T00:00:00Z",
-			chunkTable: "chunks_2_2556",
-		},
-		{
-			timeStr:    "2019-03-06T00:00:00Z",
-			chunkTable: "chunks_3_2565",
-		},
-		{
-			timeStr:    "2020-03-06T00:00:00Z",
-			chunkTable: "chunks_3_2618",
-		},
-	}
-
-	for _, tc := range testCases {
-		ts, err := time.Parse(time.RFC3339, tc.timeStr)
-		require.NoError(t, err)
-
-		table, err := schemaCfg.ChunkTableFor(model.TimeFromUnix(ts.Unix()))
-		require.NoError(t, err)
-
-		require.Equal(t, tc.chunkTable, table)
-	}
-}
-
 func TestSchemaConfig_Validate(t *testing.T) {
 	t.Parallel()
 
@@ -130,20 +38,7 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: errInvalidTablePeriod,
 		},
-		"should fail on chunk table period not multiple of 24h for schema v10": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema: "v10",
-						IndexTables: IndexPeriodicTableConfig{
-							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour}},
-						ChunkTables: PeriodicTableConfig{Period: 6 * time.Hour},
-					},
-				},
-			},
-			err: errInvalidTablePeriod,
-		},
-		"should pass on index and chunk table period multiple of 24h for schema v10": {
+		"should pass on index table period multiple of 24h for schema v10": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{
 					{
@@ -152,7 +47,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 							PathPrefix:          "index/",
 							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour},
 						},
-						ChunkTables: PeriodicTableConfig{Period: 24 * time.Hour},
 					},
 				},
 			},
@@ -165,20 +59,18 @@ func TestSchemaConfig_Validate(t *testing.T) {
 							PathPrefix:          "index/",
 							PeriodicTableConfig: PeriodicTableConfig{Period: 24 * time.Hour},
 						},
-						ChunkTables: PeriodicTableConfig{Period: 24 * time.Hour},
 					},
 				},
 			},
 			err: nil,
 		},
-		"should pass on index and chunk table period set to zero (no period tables)": {
+		"should pass on index table period set to zero (no period tables)": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{
 					{
 						Schema: "v10",
 						IndexTables: IndexPeriodicTableConfig{
 							PeriodicTableConfig: PeriodicTableConfig{Period: 0}},
-						ChunkTables: PeriodicTableConfig{Period: 0},
 					},
 				},
 			},
@@ -191,7 +83,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 							PathPrefix:          "index/",
 							PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 						},
-						ChunkTables: PeriodicTableConfig{Period: 0},
 					},
 				},
 			},
@@ -311,7 +202,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 		{
@@ -322,7 +212,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 			err: "invalid schema version",
 		},
@@ -335,7 +224,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 		{
@@ -347,7 +235,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 		{
@@ -358,7 +245,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 			err: "must have row_shards > 0 (current: 0) for schema (v10)",
 		},
@@ -371,7 +257,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 		{
@@ -383,7 +268,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 		{
@@ -395,7 +279,6 @@ func TestPeriodConfig_Validate(t *testing.T) {
 					PathPrefix:          "index/",
 					PeriodicTableConfig: PeriodicTableConfig{Period: 0},
 				},
-				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
 	} {
@@ -447,8 +330,6 @@ func TestIndexPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 	yamlFile := `path_prefix: loki_index/
 prefix: cortex_
 period: 1w
-tags:
-    foo: bar
 `
 
 	cfg := IndexPeriodicTableConfig{}
@@ -460,9 +341,6 @@ tags:
 		PeriodicTableConfig: PeriodicTableConfig{
 			Prefix: "cortex_",
 			Period: 7 * 24 * time.Hour,
-			Tags: map[string]string{
-				"foo": "bar",
-			},
 		},
 	}
 
@@ -477,8 +355,6 @@ tags:
 func TestPeriodicTableConfigCustomUnmarshalling(t *testing.T) {
 	yamlFile := `prefix: cortex_
 period: 1w
-tags:
-    foo: bar
 `
 
 	cfg := PeriodicTableConfig{}
@@ -488,9 +364,6 @@ tags:
 	expectedCfg := PeriodicTableConfig{
 		Prefix: "cortex_",
 		Period: 7 * 24 * time.Hour,
-		Tags: map[string]string{
-			"foo": "bar",
-		},
 	}
 
 	require.Equal(t, expectedCfg, cfg)
@@ -512,7 +385,6 @@ func TestSchemaForTime(t *testing.T) {
 				PeriodicTableConfig: PeriodicTableConfig{
 					Prefix: "index_",
 					Period: 604800000000000,
-					Tags:   nil,
 				}},
 			RowShards: 16,
 		},
@@ -525,7 +397,6 @@ func TestSchemaForTime(t *testing.T) {
 				PeriodicTableConfig: PeriodicTableConfig{
 					Prefix: "index_",
 					Period: 604800000000000,
-					Tags:   nil,
 				}},
 			RowShards: 32,
 		},
@@ -742,69 +613,6 @@ func TestActiveIndexType(t *testing.T) {
 		IndexType: "third",
 	})
 	assert.Equal(t, 1, ActivePeriodConfig(cfg.Configs))
-}
-
-func TestTableRanges_TableInRange(t *testing.T) {
-	tableRanges := TableRanges{
-		TableRange{
-			Start: 1,
-			End:   10,
-			PeriodConfig: &PeriodConfig{IndexTables: IndexPeriodicTableConfig{
-				PeriodicTableConfig: PeriodicTableConfig{
-					Prefix: "index_",
-					Period: 24 * time.Hour,
-				}}},
-		},
-		TableRange{
-			Start: 11,
-			End:   20,
-			PeriodConfig: &PeriodConfig{IndexTables: IndexPeriodicTableConfig{
-				PeriodicTableConfig: PeriodicTableConfig{
-					Prefix: "index_foo_",
-					Period: 24 * time.Hour,
-				}}},
-		},
-	}
-
-	for _, tc := range []struct {
-		tableNumber int64
-		tableName   string
-		expResp     bool
-		expError    error
-	}{
-		{
-			tableName: "index_1",
-			expResp:   true,
-		},
-		{
-			tableName: "index_foo_15",
-			expResp:   true,
-		},
-		// wrong prefix
-		{
-			tableName: "index_foo_5",
-		},
-		// wrong prefix
-		{
-			tableName: "index_15",
-		},
-		// invalid table name
-		{
-			tableName: "index_foo",
-			expError:  errInvalidTableName,
-		},
-	} {
-		t.Run(fmt.Sprintf("table %s", tc.tableName), func(t *testing.T) {
-			ok, err := tableRanges.TableInRange(tc.tableName)
-			require.Equal(t, tc.expResp, ok)
-
-			if tc.expError != nil {
-				require.ErrorIs(t, err, tc.expError)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
 }
 
 func TestTableRange_TableInRange(t *testing.T) {
