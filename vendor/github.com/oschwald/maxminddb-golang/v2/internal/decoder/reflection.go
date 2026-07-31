@@ -37,6 +37,7 @@ func New(buffer []byte) ReflectionDecoder {
 // Returns true if the value is a map or array with size 0.
 func (d *ReflectionDecoder) IsEmptyValueAt(offset uint) (bool, error) {
 	dataOffset := offset
+	followedPointers := 0
 	for {
 		kindNum, size, newOffset, err := d.decodeCtrlData(dataOffset)
 		if err != nil {
@@ -44,6 +45,12 @@ func (d *ReflectionDecoder) IsEmptyValueAt(offset uint) (bool, error) {
 		}
 
 		if kindNum == KindPointer {
+			if followedPointers >= maximumDataStructureDepth {
+				return false, mmdberrors.NewInvalidDatabaseError(
+					"exceeded maximum data structure depth; database is likely corrupt",
+				)
+			}
+			followedPointers++
 			dataOffset, _, err = d.decodePointer(size, newOffset)
 			if err != nil {
 				return false, err
@@ -59,15 +66,14 @@ func (d *ReflectionDecoder) IsEmptyValueAt(offset uint) (bool, error) {
 // Decode decodes the data value at offset and stores it in the value
 // pointed at by v.
 func (d *ReflectionDecoder) Decode(offset uint, v any) error {
-	// Check if the type implements Unmarshaler interface without reflection
-	if unmarshaler, ok := v.(Unmarshaler); ok {
-		decoder := NewDecoder(d.DataDecoder, offset)
-		return unmarshaler.UnmarshalMaxMindDB(decoder)
-	}
-
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return errors.New("result param must be a pointer")
+	}
+
+	if unmarshaler, ok := v.(Unmarshaler); ok {
+		decoder := NewDecoder(d.DataDecoder, offset)
+		return unmarshaler.UnmarshalMaxMindDB(decoder)
 	}
 
 	_, err := d.decode(offset, rv, 0)
@@ -586,7 +592,7 @@ func (d *ReflectionDecoder) unmarshalPointer(
 
 	// Check for pointer-to-pointer by looking at what we're about to decode
 	// This is done efficiently by checking the control byte at the pointer location
-	if len(d.buffer) > int(pointer) {
+	if pointer < uint(len(d.buffer)) {
 		controlByte := d.buffer[pointer]
 		if Kind(controlByte>>5) == KindPointer {
 			return 0, mmdberrors.NewInvalidDatabaseError(

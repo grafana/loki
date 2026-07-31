@@ -247,13 +247,13 @@ func (m *ArchiveTraceResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ArchiveTraceResponse proto.InternalMessageInfo
 
-// Query parameters to find traces. Except for num_traces, all fields should be treated
-// as forming a conjunction, e.g., "service_name='X' AND operation_name='Y' AND ...".
+// Query parameters to find traces. Except for search_depth and raw_traces, all fields
+// should be treated as forming a conjunction, e.g., "service_name='X' AND operation_name='Y' AND ...".
 // All fields are matched against individual spans, not at the trace level.
 // The returned results contain traces where at least one span matches the conditions.
-// When num_traces results in fewer traces returned, there is no required ordering.
+// When search_depth results in fewer traces returned, there is no required ordering.
 //
-// Note: num_traces should restrict the number of traces returned, but not all backends
+// Note: search_depth should restrict the number of traces returned, but not all backends
 // interpret it this way. For instance, in Cassandra this limits the number of _spans_
 // that match the conditions, and the resulting number of traces can be less.
 //

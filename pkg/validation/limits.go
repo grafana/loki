@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
+	"go.uber.org/atomic"
 	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
@@ -594,6 +595,8 @@ func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 	// again, we have to hide it using a type indirection.  See prometheus/config.
 	type plain Limits
 
+	defaultLimits := defaultLimits.Load()
+
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		b, err := yaml.Marshal(defaultLimits)
@@ -706,13 +709,16 @@ func (l *Limits) Validate() error {
 // to default to any values specified on the command line, not default
 // command line values.  This global contains those values.  I (Tom) cannot
 // find a nicer way I'm afraid.
-var defaultLimits *Limits
+// Atomic because a process running more than one Loki instance, as the
+// integration tests do, sets it while another instance is reloading its runtime
+// config. Only ever replaced as a whole, never mutated once published.
+var defaultLimits atomic.Pointer[Limits]
 
 // SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
 // Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
 // those values.
 func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
-	defaultLimits = &defaults
+	defaultLimits.Store(&defaults)
 }
 
 type TenantLimits interface {

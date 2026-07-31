@@ -20,6 +20,7 @@ package jaegerremote // import "go.opentelemetry.io/contrib/samplers/jaegerremot
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -291,8 +292,11 @@ func (f *httpSamplingStrategyFetcher) Fetch(serviceName string) ([]byte, error) 
 	v := url.Values{}
 	v.Set("service", serviceName)
 	uri := f.serverURL + "?" + v.Encode()
-
-	resp, err := f.httpClient.Get(uri)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, uri, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := f.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

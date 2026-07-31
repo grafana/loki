@@ -299,7 +299,7 @@ func _disableLookaside(tls *libc.TLS, pParse uintptr) {
 	_ = db
 	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
 	(*TParse)(unsafe.Pointer(pParse)).FdisableLookaside = (*TParse)(unsafe.Pointer(pParse)).FdisableLookaside + 1
-	libc.Xmemset(tls, pParse+248, 0, uint64(32))
+	libc.Xmemset(tls, pParse+256, 0, uint64(32))
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable = (*Tsqlite3)(unsafe.Pointer(db)).Flookaside.FbDisable + 1
 	(*Tsqlite3)(unsafe.Pointer(db)).Flookaside.Fsz = uint16(0)
 }

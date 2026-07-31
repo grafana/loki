@@ -122,6 +122,7 @@ type TParse = struct {
 	FnMem             int32
 	FszOpAlloc        int32
 	FiSelfTab         int32
+	FnNestSel         int32
 	FnLabel           int32
 	FnLabelAlloc      int32
 	FaLabel           uintptr
@@ -597,12 +598,14 @@ func Xsqlite3_backup_finish(tls *libc.TLS, p uintptr) (r int32) {
 	if (*Tsqlite3_backup)(unsafe.Pointer(p)).FisAttached != 0 {
 		pp = _sqlite3PagerBackupPtr(tls, _sqlite3BtreePager(tls, (*Tsqlite3_backup)(unsafe.Pointer(p)).FpSrc))
 		for **(**uintptr)(__ccgo_up(pp)) != p {
-			pp = **(**uintptr)(__ccgo_up(pp)) + 64
+			pp = **(**uintptr)(__ccgo_up(pp)) + 72
 		}
 		**(**uintptr)(__ccgo_up(pp)) = (*Tsqlite3_backup)(unsafe.Pointer(p)).FpNext
 	}
 	/* If a transaction is still open on the Btree, roll it back. */
-	_sqlite3BtreeRollback(tls, (*Tsqlite3_backup)(unsafe.Pointer(p)).FpDest, SQLITE_OK, 0)
+	if (*Tsqlite3_backup)(unsafe.Pointer(p)).FpDest != 0 {
+		_sqlite3BtreeRollback(tls, (*Tsqlite3_backup)(unsafe.Pointer(p)).FpDest, SQLITE_OK, 0)
+	}
 	/* Set the error code of the destination database handle. */
 	if (*Tsqlite3_backup)(unsafe.Pointer(p)).Frc == int32(SQLITE_DONE) {
 		v1 = SQLITE_OK
@@ -758,12 +761,15 @@ func Xsqlite3_db_cacheflush(tls *libc.TLS, db uintptr) (r int32) {
 //	** of range.
 //	*/
 func Xsqlite3_db_name(tls *libc.TLS, db uintptr, N int32) (r uintptr) {
-	if N < 0 || N >= (*Tsqlite3)(unsafe.Pointer(db)).FnDb {
-		return uintptr(0)
-	} else {
-		return (**(**TDb)(__ccgo_up((*Tsqlite3)(unsafe.Pointer(db)).FaDb + uintptr(N)*32))).FzDbSName
+	var zRet uintptr
+	_ = zRet
+	zRet = uintptr(0)
+	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
+	if N >= 0 && N < (*Tsqlite3)(unsafe.Pointer(db)).FnDb {
+		zRet = (**(**TDb)(__ccgo_up((*Tsqlite3)(unsafe.Pointer(db)).FaDb + uintptr(N)*32))).FzDbSName
 	}
-	return r
+	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
+	return zRet
 }
 
 // C documentation
@@ -808,6 +814,7 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 	var ii int32
 	var pMod, pNext, pThis uintptr
 	_, _, _, _ = ii, pMod, pNext, pThis
+	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	pThis = (*THash)(unsafe.Pointer(db + 576)).Ffirst
 	for {
 		if !(pThis != 0) {
@@ -836,6 +843,7 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 		;
 		pThis = pNext
 	}
+	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	return SQLITE_OK
 }
 
@@ -850,10 +858,17 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 //	** added or changed.
 //	*/
 func Xsqlite3_expired(tls *libc.TLS, pStmt uintptr) (r int32) {
+	var iRet int32
 	var p uintptr
-	_ = p
-	p = pStmt
-	return libc.BoolInt32(p == uintptr(0) || int32(Tbft(*(*uint16)(unsafe.Pointer(p + 200))&0x3>>0)) != 0)
+	_, _ = iRet, p
+	iRet = int32(1)
+	if pStmt != 0 {
+		p = pStmt
+		Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
+		iRet = int32(Tbft(*(*uint16)(unsafe.Pointer(p + 200)) & 0x3 >> 0))
+		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
+	}
+	return iRet
 }
 
 // C documentation
@@ -970,6 +985,7 @@ func Xsqlite3_limit(tls *libc.TLS, db uintptr, limitId int32, newLimit int32) (r
 	if limitId < 0 || limitId >= libc.Int32FromInt32(SQLITE_LIMIT_PARSER_DEPTH)+libc.Int32FromInt32(1) {
 		return -int32(1)
 	}
+	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	oldLimit = **(**int32)(__ccgo_up(db + 136 + uintptr(limitId)*4))
 	if newLimit >= 0 { /* IMP: R-52476-28732 */
 		if newLimit > _aHardLimit[limitId] {
@@ -981,6 +997,7 @@ func Xsqlite3_limit(tls *libc.TLS, db uintptr, limitId int32, newLimit int32) (r
 		}
 		**(**int32)(__ccgo_up(db + 136 + uintptr(limitId)*4)) = newLimit
 	}
+	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	return oldLimit /* IMP: R-53341-35419 */
 }
 
@@ -1852,7 +1869,7 @@ func Xsqlite3_vtab_rhs_value(tls *libc.TLS, pIdxInfo uintptr, iCons int32, ppVal
 	pVal = uintptr(0)
 	rc = SQLITE_OK
 	if iCons < 0 || iCons >= (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint {
-		rc = _sqlite3MisuseError(tls, int32(173284)) /* EV: R-30545-25046 */
+		rc = _sqlite3MisuseError(tls, int32(173448)) /* EV: R-30545-25046 */
 	} else {
 		if *(*uintptr)(unsafe.Pointer(pH + 32 + uintptr(iCons)*8)) == uintptr(0) {
 			pTerm = _termFromWhereClause(tls, (*THiddenIndexInfo)(unsafe.Pointer(pH)).FpWC, (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(iCons)*12))).FiTermOffset)
@@ -7845,7 +7862,7 @@ func _renameTokenFind(tls *libc.TLS, pParse uintptr, pCtx uintptr, pPtr uintptr)
 	if pPtr == uintptr(0) {
 		return uintptr(0)
 	}
-	pp = pParse + 408
+	pp = pParse + 416
 	for {
 		if !(**(**uintptr)(__ccgo_up(pp)) != 0) {
 			break
@@ -8972,7 +8989,7 @@ func _sqlite3BeginWriteOperation(tls *libc.TLS, pParse uintptr, setStatement int
 	}
 	pToplevel = v1
 	_sqlite3CodeVerifySchemaAtToplevel(tls, pToplevel, iDb)
-	**(**TyDbMask)(__ccgo_up(pToplevel + 112)) |= libc.Uint32FromInt32(1) << iDb
+	**(**TyDbMask)(__ccgo_up(pToplevel + 120)) |= libc.Uint32FromInt32(1) << iDb
 	v1 = pToplevel + 32
 	*(*Tu8)(unsafe.Pointer(v1)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v1))) | setStatement)
 }
@@ -9119,7 +9136,7 @@ func _sqlite3CodeVerifyNamedSchema(tls *libc.TLS, pParse uintptr, zDb uintptr) {
 //	*/
 func _sqlite3CodeVerifySchemaAtToplevel(tls *libc.TLS, pToplevel uintptr, iDb int32) {
 	if libc.BoolInt32((*TParse)(unsafe.Pointer(pToplevel)).FcookieMask&(libc.Uint32FromInt32(1)<<iDb) != uint32(0)) == 0 {
-		**(**TyDbMask)(__ccgo_up(pToplevel + 116)) |= libc.Uint32FromInt32(1) << iDb
+		**(**TyDbMask)(__ccgo_up(pToplevel + 124)) |= libc.Uint32FromInt32(1) << iDb
 		if libc.Bool(!(libc.Int32FromInt32(OMIT_TEMPDB) != 0)) && iDb == int32(1) {
 			_sqlite3OpenTempDatabase(tls, pToplevel)
 		}
@@ -11088,7 +11105,7 @@ func _sqlite3ProgressCheck(tls *libc.TLS, p uintptr) {
 		if (*TParse)(unsafe.Pointer(p)).Frc == int32(SQLITE_INTERRUPT) {
 			(*TParse)(unsafe.Pointer(p)).FnProgressSteps = uint32(0)
 		} else {
-			v2 = p + 128
+			v2 = p + 136
 			*(*Tu32)(unsafe.Pointer(v2)) = *(*Tu32)(unsafe.Pointer(v2)) + 1
 			v1 = *(*Tu32)(unsafe.Pointer(v2))
 			if v1 >= (*Tsqlite3)(unsafe.Pointer(db)).FnProgressOps {
@@ -12237,7 +12254,7 @@ func _sqlite3VdbeFinishMoveto(tls *libc.TLS, p uintptr) (r int32) {
 		return rc
 	}
 	if **(**int32)(__ccgo_up(bp)) != 0 {
-		return _sqlite3CorruptError(tls, int32(91561))
+		return _sqlite3CorruptError(tls, int32(91686))
 	}
 	(*TVdbeCursor)(unsafe.Pointer(p)).FdeferredMoveto = uint8(0)
 	(*TVdbeCursor)(unsafe.Pointer(p)).FcacheStatus = uint32(CACHE_STALE)
@@ -12349,7 +12366,7 @@ func _sqlite3VdbeMakeLabel(tls *libc.TLS, pParse uintptr) (r int32) {
 	var v1 int32
 	var v2 uintptr
 	_, _ = v1, v2
-	v2 = pParse + 72
+	v2 = pParse + 76
 	*(*int32)(unsafe.Pointer(v2)) = *(*int32)(unsafe.Pointer(v2)) - 1
 	v1 = *(*int32)(unsafe.Pointer(v2))
 	return v1
