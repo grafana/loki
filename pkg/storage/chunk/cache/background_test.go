@@ -27,8 +27,8 @@ func TestBackground(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}

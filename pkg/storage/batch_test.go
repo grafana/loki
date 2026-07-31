@@ -40,8 +40,8 @@ func Test_batchIterSafeStart(t *testing.T) {
 		},
 	}
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -72,16 +72,16 @@ func Test_batchIterSafeStart(t *testing.T) {
 func Test_newLogBatchChunkIterator(t *testing.T) {
 	periodConfigs := []config.PeriodConfig{
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v11",
+			From:   config.DayTime{Time: 0},
+			Schema: "v11",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v12",
+			From:   config.DayTime{Time: 0},
+			Schema: "v12",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v13",
+			From:   config.DayTime{Time: 0},
+			Schema: "v13",
 		},
 	}
 
@@ -1013,8 +1013,8 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 
 func Test_newSampleBatchChunkIterator(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1402,8 +1402,8 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
@@ -1439,8 +1439,8 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 
 func TestPartitionOverlappingchunks(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1529,8 +1529,8 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 func TestBuildHeapIterator(t *testing.T) {
 
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1701,8 +1701,8 @@ func Test_IsInvalidChunkError(t *testing.T) {
 
 func TestBatchCancel(t *testing.T) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1732,8 +1732,8 @@ func TestBatchCancel(t *testing.T) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
+				From:   config.DayTime{Time: 0},
+				Schema: "v11",
 			},
 		},
 	}
@@ -1751,8 +1751,8 @@ var entry logproto.Entry
 
 func Benchmark_store_OverlappingChunks(b *testing.B) {
 	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
+		From:   config.DayTime{Time: 0},
+		Schema: "v11",
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
