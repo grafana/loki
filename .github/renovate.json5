@@ -2,7 +2,6 @@
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
     'github>grafana/grafana-renovate-config//presets/base',
-    'github>grafana/grafana-renovate-config//presets/automerge',
     'github>grafana/grafana-renovate-config//presets/labels',
     'github>grafana/grafana-renovate-config//presets/docker',
     'github>grafana/grafana-renovate-config//presets/github-actions',
@@ -41,7 +40,7 @@
       },
     },
     {
-      // Auto-merge the rest of the npm updates
+      // Keep npm updates enabled on main; tailwindcss is disabled below.
       matchManagers: [
         'npm',
       ],
@@ -52,11 +51,8 @@
         'main',
       ],
       enabled: true,
-      autoApprove: true,
-      automerge: true,
     },
     {
-      // Don't automatically merge GitHub Actions updates
       matchManagers: [
         'github-actions',
       ],
@@ -70,12 +66,9 @@
       digest: {
         enabled: true,
       },
-      autoApprove: false,
-      automerge: false,
     },
     {
       // Separate out Helm updates from other dependencies
-      // Don't automatically merge Helm updates
       // Updates to this require the docs to be updated
       matchManagers: [
         'helm-requirements',
@@ -90,31 +83,9 @@
       matchPackageNames: [
         '!grafana/loki',
       ],
-      autoApprove: false,
-      automerge: false,
     },
     {
-      // Auto-merge minor and patch Go module updates after 3 days
-      matchManagers: [
-        'gomod',
-      ],
-      matchFileNames: [
-        '!operator/go.mod',
-        '!operator/api/loki/go.mod',
-        '!pkg/push/go.mod',
-      ],
-      groupName: '{{packageName}}',
-      enabled: true,
-      matchUpdateTypes: [
-        'minor',
-        'patch',
-      ],
-      minimumReleaseAge: '3 days',
-      automerge: true,
-      autoApprove: true,
-    },
-    {
-      // Don't auto-merge major Go module updates, wait 3 days
+      // Wait 3 days before opening Go module updates
       matchManagers: [
         'gomod',
       ],
@@ -127,16 +98,16 @@
       enabled: true,
       matchUpdateTypes: [
         'major',
+        'minor',
+        'patch',
       ],
       minimumReleaseAge: '3 days',
-      automerge: false,
-      autoApprove: false,
     },
     {
       // Group the aws-sdk-go-v2 family into a single PR. The sub-modules version in
       // lockstep, so per-module PRs (via the '{{packageName}}' grouping above) conflict
       // against each other on the shared go.sum. This overrides only groupName, inheriting
-      // the enable/automerge/minimumReleaseAge behaviour from the gomod rules above.
+      // the enable/minimumReleaseAge behaviour from the gomod rule above.
       matchManagers: [
         'gomod',
       ],
@@ -244,23 +215,17 @@
         'operator/api/loki/go.mod',
       ],
       enabled: false,
-      autoApprove: false,
-      automerge: false,
     },
     {
       // Disable all updates for pkg/push/go.mod (deps of the submodule).
       matchFileNames: ['pkg/push/go.mod'],
       enabled: false,
-      autoApprove: false,
-      automerge: false,
     },
     {
       // Do not bump github.com/grafana/loki/pkg/push in any go.mod.
       matchManagers: ['gomod'],
       matchPackageNames: ['github.com/grafana/loki/pkg/push'],
       enabled: false,
-      autoApprove: false,
-      automerge: false,
     },
     {
       // Release branches take security updates only. 'vulnerabilityAlerts' is merged after
@@ -295,8 +260,6 @@
       'area/security',
       'severity:{{vulnerabilitySeverity}}',
     ],
-    automerge: false,
-    autoApprove: false,
   },
   osvVulnerabilityAlerts: true,
   prConcurrentLimit: 0,
