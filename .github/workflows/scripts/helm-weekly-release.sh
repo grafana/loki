@@ -38,8 +38,11 @@ find_latest_image_tag() {
     echo "No weekly image tags found in ${repo}" >&2
     exit 1
   fi
+  # head closing the pipe makes sort exit 141 (SIGPIPE), which pipefail treats as failure.
+  set +o pipefail
   awk '{ k=$0; sub(/^weekly-/,"",k); sub(/^k/,"",k); sub(/-.*/,"",k); print k"\t"$0 }' <<<"${tags}" \
     | sort -k1,1nr | head -1 | cut -f2
+  set -o pipefail
 }
 
 # takes k197-abcdef and returns k197, weekly-k197-abcdef and returns k197
