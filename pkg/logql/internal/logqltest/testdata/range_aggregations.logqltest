@@ -497,3 +497,18 @@ eval range from 180s to 210s step 30s rate_counter({app="a"} | logfmt | unwrap c
   {app="a"} 1 2
 eval instant at 240s rate_counter({app="a"} | logfmt | unwrap c [150s])
   {app="a"} 0.8
+
+# Order of the two caps matters (Prometheus applies the threshold cap BEFORE the zero-point cap): a
+# far first sample is clamped to +half an interval first, and the zero point can then only shorten it
+# further — it cannot pull the extrapolation back past that clamp. Here the counter is 0 at 160s and
+# climbs by 2/s (c=40 at 180s, so its zero point is only 20s back). Window (120,210]: the first sample
+# (180s) is 60s from the lower edge (> the 33s threshold) → clamped to +15s (avg/2); the zero point
+# 20s back sits between avg/2 and the threshold, so it does NOT shorten the 15s. Increase 60 over 30s:
+# 60 x (30+15)/30 / 90s = 1. (Applying the zero point first would extrapolate to 20s → 100/90.)
+clear
+load
+  {app="a"} "c=40"  @ 180s
+  {app="a"} "c=100" @ 210s
+  {app="a"} "noise" @ 150s
+eval instant at 210s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1
