@@ -62,7 +62,6 @@ func TestMetasFetcher(t *testing.T) {
 						Period: 24 * time.Hour,
 					},
 				},
-				RowShards: 16,
 			},
 		},
 	}

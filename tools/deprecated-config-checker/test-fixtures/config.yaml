@@ -95,6 +95,7 @@ schema_config:
     - from: 2020-10-10
       store: tsdb
       object_store: aws
+      row_shards: 16 # DELETED
       chunks: # DELETED
         prefix: chunks_
         period: 24h

@@ -39,25 +39,24 @@ func shardResolverForConf(
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	if conf.IndexType == types.IndexTypeTSDB {
-		return &dynamicShardResolver{
-			ctx:              ctx,
-			logger:           logger,
-			statsHandler:     statsHandler,
-			retryNextHandler: retryNext,
-			next:             next,
-			limits:           limits,
-			from:             model.Time(r.GetStart().UnixMilli()),
-			through:          model.Time(r.GetEnd().UnixMilli()),
-			maxParallelism:   maxParallelism,
-			maxShards:        maxShards,
-			defaultLookback:  defaultLookback,
-		}, true
-	}
-	if conf.RowShards < 2 {
+	// TSDB is the only supported index type; other types are rejected at store
+	// construction, so sharding is always resolved dynamically.
+	if conf.IndexType != types.IndexTypeTSDB {
 		return nil, false
 	}
-	return logql.ConstantShards(conf.RowShards), true
+	return &dynamicShardResolver{
+		ctx:              ctx,
+		logger:           logger,
+		statsHandler:     statsHandler,
+		retryNextHandler: retryNext,
+		next:             next,
+		limits:           limits,
+		from:             model.Time(r.GetStart().UnixMilli()),
+		through:          model.Time(r.GetEnd().UnixMilli()),
+		maxParallelism:   maxParallelism,
+		maxShards:        maxShards,
+		defaultLookback:  defaultLookback,
+	}, true
 }
 
 type dynamicShardResolver struct {

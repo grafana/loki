@@ -5514,9 +5514,6 @@ index:
 
   # Table period.
   [period: <duration>]
-
-# How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int> | default = 16]
 ```
 
 ### profiling

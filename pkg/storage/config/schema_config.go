@@ -27,6 +27,12 @@ const (
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores (tsdb)
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour
 
+	// DefaultRowShards is the fixed number of row shards used to fan out series
+	// queries. It was previously the row_shards schema setting, which was always
+	// left at its default; TSDB (the only index type) resolves log and metric
+	// query sharding dynamically and ignores it.
+	DefaultRowShards = 16
+
 	pathPrefixDelimiter = "/"
 )
 
@@ -115,7 +121,6 @@ type PeriodConfig struct {
 	ObjectType  string                   `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config)."`
 	Schema      string                   `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v13."`
 	IndexTables IndexPeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
-	RowShards   uint32                   `yaml:"row_shards" doc:"default=16|description=How many shards will be created. Only used if schema is v10 or greater."`
 
 	// Integer representation of schema used for hot path calculation. Populated on unmarshaling.
 	schemaInt *int `yaml:"-"`
@@ -335,15 +340,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 	return usingForPeriodConfigs(configs, IsObjectStorageIndex)
 }
 
-func defaultRowShards(schema string) uint32 {
-	switch schema {
-	case "v9":
-		return 0
-	default:
-		return 16
-	}
-}
-
 // ForEachAfter will call f() on every entry after t, splitting
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
@@ -363,10 +359,6 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.IndexTables.PathPrefix == "" {
 		cfg.IndexTables.PathPrefix = "index/"
-	}
-
-	if cfg.RowShards == 0 {
-		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
 }
 
@@ -430,16 +422,11 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12, 13, 14:
-		if cfg.RowShards == 0 {
-			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
-		}
-	case 9:
+	case 9, 10, 11, 12, 13, 14:
 		return nil
 	default:
 		return errInvalidSchemaVersion
 	}
-	return nil
 }
 
 // Load the yaml file, or build the config from legacy command-line flags

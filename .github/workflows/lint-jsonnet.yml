@@ -7,6 +7,8 @@ on:
       - "**/*.libsonnet"
       - "**/jsonnetfile.json"
       - "**/jsonnetfile.lock.json"
+      - "production/loki-mixin/**" # the mixin imports raw .json dashboards as source
+      - "production/loki-mixin-compiled/**"
       - ".github/workflows/lint-jsonnet.yml" # validate changes to the workflow itself
 
 permissions:

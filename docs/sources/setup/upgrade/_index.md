@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### Breaking change: Removal of the `row_shards` schema setting
+
+The `row_shards` setting on a `schema_config` `period_config` has been removed. It configured a static query shard factor for legacy (non-TSDB) index types. TSDB, the only supported index type, resolves log and metric query sharding dynamically from index statistics and ignores `row_shards`; series queries continue to use the previous default factor of 16. Because schema config is parsed strictly, a leftover `row_shards:` key now fails config load. Remove the `row_shards` setting from every `period_config`; the `deprecated-config-checker` tool will flag it.
+
 ### TSDB schema v14
 
 Loki now supports the experimental TSDB storage schema `v14`. Schema v14 uses the
