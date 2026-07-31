@@ -25,7 +25,10 @@ fi
 
 # Authenticate crane against GAR. login-to-gar configures the gcloud Docker credential
 # helper; crane needs an explicit login for reliable non-interactive use.
+# Disable xtrace so the access token is not printed in Actions logs.
+set +x
 crane auth login us-docker.pkg.dev -u oauth2accesstoken -p "$(gcloud auth print-access-token)"
+set -x
 
 # Uses GAR image tags to figure out what is the latest weekly image tag.
 # Weekly tags are k317-195b91a (Loki) and weekly-k317-1a2b3c4 (GEL). The anchored
