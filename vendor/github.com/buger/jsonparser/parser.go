@@ -93,7 +93,12 @@ func findTokenStart(data []byte, token byte) int {
 
 // SYS-REQ-001, SYS-REQ-020, SYS-REQ-024
 func findKeyStart(data []byte, key string) (int, error) {
-	i := nextToken(data)
+	return findKeyStartConfig(DefaultConfig, data, key)
+}
+
+// SYS-REQ-115
+func findKeyStartConfig(config Config, data []byte, key string) (int, error) {
+	i := nextTokenConfig(config, data)
 	if i == -1 {
 		return i, KeyPathNotFoundError
 	}
@@ -105,24 +110,28 @@ func findKeyStart(data []byte, key string) (int, error) {
 	}
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 
-	if ku, err := Unescape(StringToBytes(key), stackbuf[:]); err == nil {
+	if ku, err := unescapeConfig(config, StringToBytes(key), stackbuf[:]); err == nil {
 		key = bytesToString(&ku)
 	}
 
 	for i < ln {
 		switch data[i] {
-		case '"':
+		case '"', '\'':
+			quote := data[i]
+			if quote == '\'' && !config.AllowSingleQuotes {
+				break
+			}
 			i++
 			keyBegin := i
 
-			strEnd, keyEscaped := stringEnd(data[i:])
+			strEnd, keyEscaped := stringEndConfig(config, data[i:], quote)
 			if strEnd == -1 {
 				break
 			}
 			i += strEnd
 			keyEnd := i - 1
 
-			valueOffset := nextToken(data[i:])
+			valueOffset := nextTokenConfig(config, data[i:])
 			if valueOffset == -1 {
 				break
 			}
@@ -134,7 +143,7 @@ func findKeyStart(data []byte, key string) (int, error) {
 			// for unescape: if there are no escape sequences, this is cheap; if there are, it is a
 			// bit more expensive, but causes no allocations unless len(key) > unescapeStackBufSize
 			if keyEscaped {
-				if ku, err := Unescape(k, stackbuf[:]); err != nil {
+				if ku, err := unescapeConfig(config, k, stackbuf[:]); err != nil {
 					break
 				} else {
 					k = ku
@@ -146,12 +155,12 @@ func findKeyStart(data []byte, key string) (int, error) {
 			}
 
 		case '[':
-			end := blockEnd(data[i:], data[i], ']')
+			end := blockEndConfig(config, data[i:], data[i], ']')
 			if end != -1 {
 				i = i + end
 			}
 		case '{':
-			end := blockEnd(data[i:], data[i], '}')
+			end := blockEndConfig(config, data[i:], data[i], '}')
 			if end != -1 {
 				i = i + end
 			}
@@ -224,6 +233,11 @@ func tokenStart(data []byte) int {
 //	  return true
 //	}
 func nextToken(data []byte) int {
+	return nextTokenConfig(DefaultConfig, data)
+}
+
+// SYS-REQ-115
+func nextTokenConfig(_ Config, data []byte) int {
 	for i, c := range data {
 		// reqproof:invariant 0 <= i
 		// reqproof:invariant i <= len(data)
@@ -279,14 +293,19 @@ func lastToken(data []byte) int {
 // Tries to find the end of string
 // Support if string contains escaped quote symbols.
 func stringEnd(data []byte) (int, bool) {
-	// fast path: SIMD-scan for the first '"' or '\'. If no '\' precedes the
-	// first '"' (the overwhelmingly common case for JSON string values),
+	return stringEndConfig(DefaultConfig, data, '"')
+}
+
+// SYS-REQ-115
+func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
+	// Fast path: SIMD-scan for the first matching quote or '\'. If no '\'
+	// precedes the first quote (the overwhelmingly common case for strings),
 	// the quote is unescaped and we return directly — skipping the per-byte
 	// escape-tracking loop. Bound: bytes.IndexByte finds the first match in
 	// either direction, so firstBackslash > firstQuote (or == -1) is exactly
 	// the condition "no backslash precedes the closing quote", which is
 	// equivalent to the slow loop's `escaped == false` state at the quote.
-	firstQuote := bytes.IndexByte(data, '"')
+	firstQuote := bytes.IndexByte(data, quote)
 	if firstQuote == -1 {
 		// Slow path's tail semantics: return -1 with escaped flag true iff
 		// at least one '\' was encountered before end-of-input.
@@ -296,11 +315,11 @@ func stringEnd(data []byte) (int, bool) {
 	if firstBackslash == -1 || firstBackslash > firstQuote {
 		return firstQuote + 1, false
 	}
-	// Slow path: at least one '\' precedes the first '"' — the per-byte
+	// Slow path: at least one '\' precedes the first quote — the per-byte
 	// walker is needed to disambiguate escaped vs. unescaped quotes.
 	escaped := false
 	for i, c := range data {
-		if c == '"' {
+		if c == quote {
 			if !escaped {
 				return i + 1, false
 			} else {
@@ -329,14 +348,23 @@ func stringEnd(data []byte) (int, bool) {
 // Find end of the data structure, array or object.
 // For array openSym and closeSym will be '[' and ']', for object '{' and '}'
 func blockEnd(data []byte, openSym byte, closeSym byte) int {
+	return blockEndConfig(DefaultConfig, data, openSym, closeSym)
+}
+
+// SYS-REQ-115
+func blockEndConfig(config Config, data []byte, openSym byte, closeSym byte) int {
 	level := 0
 	i := 0
 	ln := len(data)
 
 	for i < ln {
 		switch data[i] {
-		case '"': // If inside string, skip it
-			se, _ := stringEnd(data[i+1:])
+		case '"', '\'': // If inside a configured string, skip it
+			quote := data[i]
+			if quote == '\'' && !config.AllowSingleQuotes {
+				break
+			}
+			se, _ := stringEndConfig(config, data[i+1:], quote)
 			if se == -1 {
 				return -1
 			}
@@ -359,6 +387,11 @@ func blockEnd(data []byte, openSym byte, closeSym byte) int {
 
 // SYS-REQ-001, SYS-REQ-020, SYS-REQ-021, SYS-REQ-022, SYS-REQ-023, SYS-REQ-047, SYS-REQ-111
 func searchKeys(data []byte, keys ...string) int {
+	return searchKeysConfig(DefaultConfig, data, keys...)
+}
+
+// SYS-REQ-115
+func searchKeysConfig(config Config, data []byte, keys ...string) int {
 	keyLevel := 0
 	level := 0
 	i := 0
@@ -374,18 +407,22 @@ func searchKeys(data []byte, keys ...string) int {
 
 	for i < ln {
 		switch data[i] {
-		case '"':
+		case '"', '\'':
+			quote := data[i]
+			if quote == '\'' && !config.AllowSingleQuotes {
+				break
+			}
 			i++
 			keyBegin := i
 
-			strEnd, keyEscaped := stringEnd(data[i:])
+			strEnd, keyEscaped := stringEndConfig(config, data[i:], quote)
 			if strEnd == -1 {
 				return -1
 			}
 			i += strEnd
 			keyEnd := i - 1
 
-			valueOffset := nextToken(data[i:])
+			valueOffset := nextTokenConfig(config, data[i:])
 			if valueOffset == -1 {
 				return -1
 			}
@@ -405,7 +442,7 @@ func searchKeys(data []byte, keys ...string) int {
 				var keyUnesc []byte
 				if !keyEscaped {
 					keyUnesc = key
-				} else if ku, err := Unescape(key, stackbuf[:]); err != nil {
+				} else if ku, err := unescapeConfig(config, key, stackbuf[:]); err != nil {
 					return -1
 				} else {
 					keyUnesc = ku
@@ -437,7 +474,7 @@ func searchKeys(data []byte, keys ...string) int {
 			// in case parent key is matched then only we will increase the level otherwise can directly
 			// can move to the end of this block
 			if !lastMatched {
-				end := blockEnd(data[i:], '{', '}')
+				end := blockEndConfig(config, data[i:], '{', '}')
 				if end == -1 {
 					return -1
 				}
@@ -470,7 +507,7 @@ func searchKeys(data []byte, keys ...string) int {
 				var valueFound []byte
 				var valueOffset int
 				curI := i
-				ArrayEach(data[i:], func(value []byte, dataType ValueType, offset int, err error) {
+				arrayEachConfig(config, data[i:], func(value []byte, dataType ValueType, offset int, err error) {
 					if curIdx == aIdx {
 						valueFound = value
 						valueOffset = offset
@@ -485,7 +522,7 @@ func searchKeys(data []byte, keys ...string) int {
 				if valueFound == nil {
 					return -1
 				} else {
-					subIndex := searchKeys(valueFound, keys[level+1:]...)
+					subIndex := searchKeysConfig(config, valueFound, keys[level+1:]...)
 					if subIndex < 0 {
 						return -1
 					}
@@ -493,7 +530,7 @@ func searchKeys(data []byte, keys ...string) int {
 				}
 			} else {
 				// Do not search for keys inside arrays
-				if arraySkip := blockEnd(data[i:], '[', ']'); arraySkip == -1 {
+				if arraySkip := blockEndConfig(config, data[i:], '[', ']'); arraySkip == -1 {
 					return -1
 				} else {
 					i += arraySkip - 1
@@ -1124,7 +1161,7 @@ Returns:
 */
 // SYS-REQ-010, SYS-REQ-033, SYS-REQ-034, SYS-REQ-035, SYS-REQ-048, SYS-REQ-049, SYS-REQ-050, SYS-REQ-056
 func Delete(data []byte, keys ...string) []byte {
-	result, _ := DeleteFound(data, keys...)
+	result, _ := deleteFoundConfig(DefaultConfig, data, keys...)
 	return result
 }
 
@@ -1132,6 +1169,11 @@ func Delete(data []byte, keys ...string) []byte {
 // value was found and removed. When found is false, result is data unchanged.
 // SYS-REQ-010
 func DeleteFound(data []byte, keys ...string) (result []byte, found bool) {
+	return deleteFoundConfig(DefaultConfig, data, keys...)
+}
+
+// SYS-REQ-115
+func deleteFoundConfig(config Config, data []byte, keys ...string) (result []byte, found bool) {
 	lk := len(keys)
 	if lk == 0 {
 		// Deleting the root produces an empty document whose backing array
@@ -1149,21 +1191,21 @@ func DeleteFound(data []byte, keys ...string) (result []byte, found bool) {
 	var err error
 	if !array {
 		if len(keys) > 1 {
-			_, _, startOffset, endOffset, err = internalGet(data, keys[:lk-1]...)
+			_, _, startOffset, endOffset, err = internalGetConfig(config, data, keys[:lk-1]...)
 			if err != nil {
 				// problem parsing the data
 				return data, false
 			}
 		}
 
-		keyOffset, err = findKeyStart(data[startOffset:endOffset], keys[lk-1])
+		keyOffset, err = findKeyStartConfig(config, data[startOffset:endOffset], keys[lk-1])
 		if err == KeyPathNotFoundError {
 			// problem parsing the data
 			return data, false
 		}
 		keyOffset += startOffset
 		var subEndOffset int
-		_, _, _, subEndOffset, err = internalGet(data[startOffset:endOffset], keys[lk-1])
+		_, _, _, subEndOffset, err = internalGetConfig(config, data[startOffset:endOffset], keys[lk-1])
 		if err != nil {
 			return data, false
 		}
@@ -1199,7 +1241,7 @@ func DeleteFound(data []byte, keys ...string) (result []byte, found bool) {
 			keyOffset = tokStart
 		}
 	} else {
-		_, _, keyOffset, endOffset, err = internalGet(data, keys...)
+		_, _, keyOffset, endOffset, err = internalGetConfig(config, data, keys...)
 		if err != nil {
 			// problem parsing the data
 			return data, false
@@ -1241,7 +1283,7 @@ func DeleteFound(data []byte, keys ...string) (result []byte, found bool) {
 	// Extract nextToken once to avoid the redundant double call in the original code.
 	prevTok := lastToken(data[:keyOffset])
 	remainedValue := data[endOffset:]
-	remainedTok := nextToken(remainedValue)
+	remainedTok := nextTokenConfig(config, remainedValue)
 
 	var newOffset int
 	// Cleanup must remove the trailing comma both for objects (close '}') and
@@ -1278,12 +1320,17 @@ Returns:
 */
 // SYS-REQ-009, SYS-REQ-051, SYS-REQ-068, SYS-REQ-069, SYS-REQ-070, SYS-REQ-110
 func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error) {
+	return setConfig(DefaultConfig, data, setValue, keys...)
+}
+
+// SYS-REQ-115
+func setConfig(config Config, data []byte, setValue []byte, keys ...string) (value []byte, err error) {
 	// ensure keys are set
 	if len(keys) == 0 {
 		return nil, KeyPathNotFoundError
 	}
 
-	_, _, startOffset, endOffset, err := internalGet(data, keys...)
+	_, _, startOffset, endOffset, err := internalGetConfig(config, data, keys...)
 	if err != nil {
 		if err != KeyPathNotFoundError {
 			// problem parsing the data
@@ -1293,7 +1340,7 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 		// does any subpath exist?
 		var depth int
 		for i := range keys {
-			_, _, start, end, sErr := internalGet(data, keys[:i+1]...)
+			_, _, start, end, sErr := internalGetConfig(config, data, keys[:i+1]...)
 			if sErr != nil {
 				break
 			} else {
@@ -1313,7 +1360,7 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 		coerceTopLevel := false
 		coerceStart := 0
 		if endOffset == -1 {
-			firstToken := nextToken(data)
+			firstToken := nextTokenConfig(config, data)
 			if firstToken < 0 {
 				return nil, KeyPathNotFoundError
 			}
@@ -1341,7 +1388,7 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 				return nil, KeyPathNotFoundError
 			} else {
 				// Don't need a comma if the input is an empty object
-				secondToken := firstToken + 1 + nextToken(data[firstToken+1:])
+				secondToken := firstToken + 1 + nextTokenConfig(config, data[firstToken+1:])
 				if data[secondToken] == '}' {
 					comma = false
 				}
@@ -1368,7 +1415,7 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 				// if subpath is a non-empty object, add to it
 				// or if subpath is a non-empty array, add to it
 				// guard: nextToken returns -1 on truncated input; bounds-check the computed offset.
-				subObjOff := startOffset + 1 + nextToken(data[startOffset+1:])
+				subObjOff := startOffset + 1 + nextTokenConfig(config, data[startOffset+1:])
 				// The array-append condition must fire for ANY non-empty array
 				// (scalar, string, bool, null, nested, or object elements), not
 				// just arrays whose first element happens to be '{'. The former
@@ -1414,13 +1461,18 @@ func Set(data []byte, setValue []byte, keys ...string) (value []byte, err error)
 
 // SYS-REQ-001, SYS-REQ-027
 func getType(data []byte, offset int) ([]byte, ValueType, int, error) {
+	return getTypeConfig(DefaultConfig, data, offset)
+}
+
+// SYS-REQ-115
+func getTypeConfig(config Config, data []byte, offset int) ([]byte, ValueType, int, error) {
 	var dataType ValueType
 	endOffset := offset
 
 	// if string value
-	if data[offset] == '"' {
+	if data[offset] == '"' || (config.AllowSingleQuotes && data[offset] == '\'') {
 		dataType = String
-		if idx, _ := stringEnd(data[offset+1:]); idx != -1 {
+		if idx, _ := stringEndConfig(config, data[offset+1:], data[offset]); idx != -1 {
 			endOffset += idx + 1
 		} else {
 			return nil, dataType, offset, MalformedStringError
@@ -1428,7 +1480,7 @@ func getType(data []byte, offset int) ([]byte, ValueType, int, error) {
 	} else if data[offset] == '[' { // if array value
 		dataType = Array
 		// break label, for stopping nested loops
-		endOffset = blockEnd(data[offset:], '[', ']')
+		endOffset = blockEndConfig(config, data[offset:], '[', ']')
 
 		if endOffset == -1 {
 			return nil, dataType, offset, MalformedArrayError
@@ -1438,7 +1490,7 @@ func getType(data []byte, offset int) ([]byte, ValueType, int, error) {
 	} else if data[offset] == '{' { // if object value
 		dataType = Object
 		// break label, for stopping nested loops
-		endOffset = blockEnd(data[offset:], '{', '}')
+		endOffset = blockEndConfig(config, data[offset:], '{', '}')
 
 		if endOffset == -1 {
 			return nil, dataType, offset, MalformedObjectError
@@ -1497,20 +1549,25 @@ func Get(data []byte, keys ...string) (value []byte, dataType ValueType, offset 
 
 // SYS-REQ-001
 func internalGet(data []byte, keys ...string) (value []byte, dataType ValueType, offset, endOffset int, err error) {
+	return internalGetConfig(DefaultConfig, data, keys...)
+}
+
+// SYS-REQ-115
+func internalGetConfig(config Config, data []byte, keys ...string) (value []byte, dataType ValueType, offset, endOffset int, err error) {
 	if len(keys) > 0 {
-		if offset = searchKeys(data, keys...); offset == -1 {
+		if offset = searchKeysConfig(config, data, keys...); offset == -1 {
 			return nil, NotExist, -1, -1, KeyPathNotFoundError
 		}
 	}
 
 	// Go to closest value
-	nO := nextToken(data[offset:])
+	nO := nextTokenConfig(config, data[offset:])
 	if nO == -1 {
 		return nil, NotExist, offset, -1, MalformedJsonError
 	}
 
 	offset += nO
-	value, dataType, endOffset, err = getType(data, offset)
+	value, dataType, endOffset, err = getTypeConfig(config, data, offset)
 	if err != nil {
 		return value, dataType, offset, endOffset, err
 	}
@@ -1526,11 +1583,16 @@ func internalGet(data []byte, keys ...string) (value []byte, dataType ValueType,
 // SYS-REQ-006, SYS-REQ-028, SYS-REQ-029, SYS-REQ-052, SYS-REQ-053, SYS-REQ-055, SYS-REQ-083
 // ArrayEach is used when iterating arrays, accepts a callback function with the same return arguments as `Get`.
 func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int, err error), keys ...string) (offset int, err error) {
+	return arrayEachConfig(DefaultConfig, data, cb, keys...)
+}
+
+// SYS-REQ-115
+func arrayEachConfig(config Config, data []byte, cb func(value []byte, dataType ValueType, offset int, err error), keys ...string) (offset int, err error) {
 	if len(data) == 0 {
 		return -1, MalformedObjectError
 	}
 
-	nT := nextToken(data)
+	nT := nextTokenConfig(config, data)
 	if nT == -1 {
 		return -1, MalformedJsonError
 	}
@@ -1553,12 +1615,12 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 	offset = nT + 1
 
 	if len(keys) > 0 {
-		if offset = searchKeys(data, keys...); offset == -1 {
+		if offset = searchKeysConfig(config, data, keys...); offset == -1 {
 			return offset, KeyPathNotFoundError
 		}
 
 		// Go to closest value
-		nO := nextToken(data[offset:])
+		nO := nextTokenConfig(config, data[offset:])
 		if nO == -1 {
 			return offset, MalformedJsonError
 		}
@@ -1572,7 +1634,7 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 		offset++
 	}
 
-	nO := nextToken(data[offset:])
+	nO := nextTokenConfig(config, data[offset:])
 	if nO == -1 {
 		return offset, MalformedJsonError
 	}
@@ -1584,7 +1646,7 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 	}
 
 	for {
-		v, t, o, e := Get(data[offset:])
+		v, t, o, e := config.Get(data[offset:])
 
 		if o == 0 {
 			// When Get returns endOffset==0, it always means a parse error
@@ -1604,7 +1666,7 @@ func ArrayEach(data []byte, cb func(value []byte, dataType ValueType, offset int
 
 		offset += o
 
-		skipToToken := nextToken(data[offset:])
+		skipToToken := nextTokenConfig(config, data[offset:])
 		if skipToToken == -1 {
 			return offset, MalformedArrayError
 		}
@@ -1727,11 +1789,16 @@ func arrayEachErr(data []byte, cb func(value []byte, dataType ValueType, offset 
 // SYS-REQ-007, SYS-REQ-030, SYS-REQ-031, SYS-REQ-032, SYS-REQ-054, SYS-REQ-084
 // ObjectEach iterates over the key-value pairs of a JSON object, invoking a given callback for each such entry
 func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType ValueType, offset int) error, keys ...string) (err error) {
+	return objectEachConfig(DefaultConfig, data, callback, keys...)
+}
+
+// SYS-REQ-115
+func objectEachConfig(config Config, data []byte, callback func(key []byte, value []byte, dataType ValueType, offset int) error, keys ...string) (err error) {
 	offset := 0
 
 	// Descend to the desired key, if requested
 	if len(keys) > 0 {
-		if off := searchKeys(data, keys...); off == -1 {
+		if off := searchKeysConfig(config, data, keys...); off == -1 {
 			return KeyPathNotFoundError
 		} else {
 			offset = off
@@ -1739,7 +1806,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 	}
 
 	// Validate and skip past opening brace
-	if off := nextToken(data[offset:]); off == -1 {
+	if off := nextTokenConfig(config, data[offset:]); off == -1 {
 		return MalformedObjectError
 	} else if offset += off; data[offset] != '{' {
 		return MalformedObjectError
@@ -1748,7 +1815,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 	}
 
 	// Skip to the first token inside the object, or stop if we find the ending brace
-	if off := nextToken(data[offset:]); off == -1 {
+	if off := nextTokenConfig(config, data[offset:]); off == -1 {
 		return MalformedJsonError
 	} else if offset += off; data[offset] == '}' {
 		return nil
@@ -1768,6 +1835,11 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		switch data[offset] {
 		case '"':
 			offset++ // accept as string and skip opening quote
+		case '\'':
+			if !config.AllowSingleQuotes {
+				return MalformedObjectError
+			}
+			offset++ // accept as string and skip opening quote
 		case '}':
 			return nil // we found the end of the object; stop and return success
 		default:
@@ -1776,7 +1848,8 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 
 		// Find the end of the key string
 		var keyEscaped bool
-		if off, esc := stringEnd(data[offset:]); off == -1 {
+		quote := data[offset-1]
+		if off, esc := stringEndConfig(config, data[offset:], quote); off == -1 {
 			return MalformedJsonError
 		} else {
 			key, keyEscaped = data[offset:offset+off-1], esc
@@ -1786,7 +1859,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		// Unescape the string if needed
 		if keyEscaped {
 			var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
-			if keyUnescaped, err := Unescape(key, stackbuf[:]); err != nil {
+			if keyUnescaped, err := unescapeConfig(config, key, stackbuf[:]); err != nil {
 				return MalformedStringEscapeError
 			} else {
 				key = keyUnescaped
@@ -1794,7 +1867,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		}
 
 		// Step 2: skip the colon
-		if off := nextToken(data[offset:]); off == -1 {
+		if off := nextTokenConfig(config, data[offset:]); off == -1 {
 			return MalformedJsonError
 		} else if offset += off; data[offset] != ':' {
 			return MalformedJsonError
@@ -1803,7 +1876,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		}
 
 		// Step 3: find the associated value, then invoke the callback
-		if value, valueType, off, err := Get(data[offset:]); err != nil {
+		if value, valueType, off, err := config.Get(data[offset:]); err != nil {
 			return err
 		} else if err := callback(key, value, valueType, offset+off); err != nil { // Invoke the callback here!
 			return err
@@ -1812,7 +1885,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		}
 
 		// Step 4: skip over the next comma to the following token, or stop if we hit the ending brace
-		if off := nextToken(data[offset:]); off == -1 {
+		if off := nextTokenConfig(config, data[offset:]); off == -1 {
 			return MalformedArrayError
 		} else {
 			offset += off
@@ -1827,7 +1900,7 @@ func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType Va
 		}
 
 		// Skip to the next token after the comma
-		if off := nextToken(data[offset:]); off == -1 {
+		if off := nextTokenConfig(config, data[offset:]); off == -1 {
 			return MalformedArrayError
 		} else {
 			offset += off
