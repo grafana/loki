@@ -33,10 +33,15 @@ eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m])
   {app="foo", tier="gold"} 6
   {app="foobar", tier="2"} 6
 
-# Empty replacement deletes dst label.
+# Empty replacement – coming from empty dst value – deletes dst label.
 eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "tier", "", "app", "foo")
   {app="foo"} 6
   {app="foobar", tier="2"} 6
+
+# Empty replacement – coming from regexp capture group – deletes dst label.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "app", "$1", "app", "foo(.*)")
+   {tier="1"} 6
+   {app="bar", tier="2"} 6
 
 # dst==src rewrites the label in place.
 eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "app", "$1", "app", "f(.*)")
