@@ -87,7 +87,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0
-	google.golang.org/api v0.290.0
+	google.golang.org/api v0.291.0
 	google.golang.org/grpc v1.82.1
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
@@ -417,7 +417,7 @@ require (
 	golang.org/x/tools v0.48.0
 	google.golang.org/genproto v0.0.0-20260622175928-b703f567277d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260720211330-0afa2a65878a // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260720211330-0afa2a65878a
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	k8s.io/client-go v0.36.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
