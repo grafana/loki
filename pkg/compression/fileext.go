@@ -9,6 +9,7 @@ const (
 	ExtLZ4    = ".lz4"
 	ExtFlate  = ".zz"
 	ExtZstd   = ".zst"
+	ExtS2     = ".s2"
 )
 
 func ToFileExtension(e Codec) string {
@@ -25,6 +26,8 @@ func ToFileExtension(e Codec) string {
 		return ExtFlate
 	case Zstd:
 		return ExtZstd
+	case S2:
+		return ExtS2
 	default:
 		panic(fmt.Sprintf("invalid codec: %d, supported: %s", e, SupportedCodecs()))
 	}
@@ -44,6 +47,8 @@ func FromFileExtension(ext string) Codec {
 		return Flate
 	case ExtZstd:
 		return Zstd
+	case ExtS2:
+		return S2
 	default:
 		panic(fmt.Sprintf("invalid file extension: %s", ext))
 	}
