@@ -79,3 +79,25 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Drop Scope Attribute named `method.name` and store all other Scope Attributes as Structured Metadata.
 * Store Log Attribute named `user.id` as Structured Metadata and drop all other Log Attributes.
+
+#### Example 4
+
+```yaml
+limits_config:
+  otlp_config:
+    log_attributes:
+      - action: index_label
+        attributes:
+          - log.level
+    severity_text_as_label: true
+```
+
+With the example config, here is how various kinds of Attributes would be stored:
+
+* Store all 17 Resource Attributes mentioned earlier as index labels.
+* Store the `log.level` Log Attribute as an index label and store all other Log Attributes as Structured Metadata.
+* Store the log record's `severity_text` field as an index label (in addition to Structured Metadata).
+
+{{< admonition type="caution" >}}
+Promoting Log Attributes (or `severity_text`) to index labels can lead to high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), because Log Attributes are set per log record rather than per resource. Only promote a Log Attribute to an index label when its set of values is bounded.
+{{< /admonition >}}
