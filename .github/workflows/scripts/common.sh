@@ -12,8 +12,16 @@ update_yaml_node() {
   local yaml_node=$2
   local new_value=$3
   local patch_content
-  # diff exits 1 when files differ; ignore that so set -e doesn't abort.
-  patch_content="$(diff -U0 -w -b --ignore-blank-lines "${filename}" <(yq eval "${yaml_node} = \"${new_value}\"" "${filename}") || true)"
+  local diff_rc
+  # diff exits 1 when files differ; anything above that is a real error.
+  set +e
+  patch_content="$(diff -U0 -w -b --ignore-blank-lines "${filename}" <(yq eval "${yaml_node} = \"${new_value}\"" "${filename}"))"
+  diff_rc=$?
+  set -e
+  if (( diff_rc > 1 )); then
+    echo "diff failed for ${yaml_node} in ${filename} (exit ${diff_rc})" >&2
+    return "${diff_rc}"
+  fi
   if [[ -z "${patch_content}" ]]; then
     echo "No change for ${yaml_node} in ${filename} (already ${new_value})"
     return 0
