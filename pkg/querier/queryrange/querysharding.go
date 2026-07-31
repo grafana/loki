@@ -429,9 +429,9 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli())
-	// cannot shard with this timerange
-	if err != nil {
+	// GetConf validates that the request fits within a single sharding config;
+	// the returned config is otherwise unused since the shard factor is fixed.
+	if _, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli()); err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
 		return ss.next.Do(ctx, r)
 	}
@@ -442,14 +442,14 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 	}
 
 	ss.metrics.DownstreamQueries.WithLabelValues("series").Inc()
-	ss.metrics.DownstreamFactor.Observe(float64(conf.RowShards))
+	ss.metrics.DownstreamFactor.Observe(float64(config.DefaultRowShards))
 
-	requests := make([]queryrangebase.Request, 0, conf.RowShards)
-	for i := 0; i < int(conf.RowShards); i++ {
+	requests := make([]queryrangebase.Request, 0, config.DefaultRowShards)
+	for i := 0; i < config.DefaultRowShards; i++ {
 		shardedRequest := *req
 		shardedRequest.Shards = []string{astmapper.ShardAnnotation{
 			Shard: i,
-			Of:    int(conf.RowShards),
+			Of:    config.DefaultRowShards,
 		}.String()}
 		requests = append(requests, &shardedRequest)
 	}

@@ -82,7 +82,6 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	s := config.SchemaConfig{
@@ -127,7 +126,6 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}

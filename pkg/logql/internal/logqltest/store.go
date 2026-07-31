@@ -61,7 +61,6 @@ func newTestingChunkStore(t *testing.T) *testingChunkStore {
 			PathPrefix:          "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{Prefix: "index_", Period: 24 * time.Hour},
 		},
-		RowShards: 16,
 	}
 	schemaCfg := config.SchemaConfig{Configs: []config.PeriodConfig{period}}
 

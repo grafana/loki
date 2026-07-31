@@ -127,7 +127,6 @@ func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}
@@ -170,7 +169,6 @@ func testCache(t *testing.T, cache cache.Cache) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}

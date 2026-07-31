@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
@@ -311,7 +310,6 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 			mware := newASTMapperware(
 				ShardingConfigs{
 					config.PeriodConfig{
-						RowShards: 2,
 						IndexType: types.IndexTypeTSDB,
 					},
 				},
@@ -417,7 +415,7 @@ func Test_ShardingByPass(t *testing.T) {
 	mware := newASTMapperware(
 		ShardingConfigs{
 			config.PeriodConfig{
-				RowShards: 2,
+				IndexType: types.IndexTypeTSDB,
 			},
 		},
 		testEngineOpts,
@@ -426,7 +424,7 @@ func Test_ShardingByPass(t *testing.T) {
 		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
-		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
+		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, tsdbMaxQueryParallelism: 1},
 		0,
 		[]string{},
 	)
@@ -573,7 +571,6 @@ func Test_InstantSharding(t *testing.T) {
 func Test_SeriesShardingHandler(t *testing.T) {
 	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		config.PeriodConfig{
-			RowShards: 3,
 			IndexType: types.IndexTypeTSDB,
 		},
 	},
@@ -615,37 +612,26 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		Path:    "foo",
 	})
 
-	expected := &LokiSeriesResponse{
-		Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
-		Status:     "success",
-		Version:    1,
-		Data: []logproto.SeriesIdentifier{
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "foo", Value: "bar"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "0_of_3"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "1_of_3"},
-				},
-			},
-			{
-				Labels: []logproto.SeriesIdentifier_LabelsEntry{
-					{Key: "shard", Value: "2_of_3"},
-				},
+	// Series queries fan out into config.DefaultRowShards shards.
+	expectedData := []logproto.SeriesIdentifier{
+		{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
+				{Key: "foo", Value: "bar"},
 			},
 		},
 	}
+	for i := 0; i < config.DefaultRowShards; i++ {
+		expectedData = append(expectedData, logproto.SeriesIdentifier{
+			Labels: []logproto.SeriesIdentifier_LabelsEntry{
+				{Key: "shard", Value: fmt.Sprintf("%d_of_%d", i, config.DefaultRowShards)},
+			},
+		})
+	}
+
 	actual := response.(*LokiSeriesResponse)
 	require.NoError(t, err)
-	require.Equal(t, expected.Status, actual.Status)
-	require.ElementsMatch(t, expected.Data, actual.Data)
+	require.Equal(t, "success", actual.Status)
+	require.ElementsMatch(t, expectedData, actual.Data)
 }
 
 func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
@@ -653,12 +639,10 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 	confs := ShardingConfigs{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
-			RowShards: 2,
 			IndexType: types.IndexTypeTSDB,
 		},
 		{
 			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-			RowShards: 3,
 			IndexType: types.IndexTypeTSDB,
 		},
 	}
@@ -846,12 +830,10 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 	confs := ShardingConfigs{
 		{
 			From:      config.DayTime{Time: now.Add(-30 * 24 * time.Hour)},
-			RowShards: 2,
 			IndexType: types.IndexTypeTSDB,
 		},
 		{
 			From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-			RowShards: 3,
 			IndexType: types.IndexTypeTSDB,
 		},
 	}
@@ -869,7 +851,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				EndTs:   now.Time(),
 				Path:    "foo",
 			},
-			numExpectedShards: 3,
+			numExpectedShards: 16,
 		},
 		{
 			name: "series query touching just the prev schema config",
@@ -879,7 +861,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				EndTs:   confs[0].From.Time.Add(time.Hour).Time(),
 				Path:    "foo",
 			},
-			numExpectedShards: 2,
+			numExpectedShards: 16,
 		},
 		{
 			name: "series query covering both schemas",

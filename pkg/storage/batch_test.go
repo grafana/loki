@@ -42,7 +42,6 @@ func Test_batchIterSafeStart(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -75,17 +74,14 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		{
 			From:      config.DayTime{Time: 0},
 			Schema:    "v11",
-			RowShards: 16,
 		},
 		{
 			From:      config.DayTime{Time: 0},
 			Schema:    "v12",
-			RowShards: 16,
 		},
 		{
 			From:      config.DayTime{Time: 0},
 			Schema:    "v13",
-			RowShards: 16,
 		},
 	}
 
@@ -1019,7 +1015,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1409,7 +1404,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}
@@ -1447,7 +1441,6 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1538,7 +1531,6 @@ func TestBuildHeapIterator(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1711,7 +1703,6 @@ func TestBatchCancel(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
@@ -1743,7 +1734,6 @@ func TestBatchCancel(t *testing.T) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}
@@ -1763,7 +1753,6 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	periodConfig := config.PeriodConfig{
 		From:      config.DayTime{Time: 0},
 		Schema:    "v11",
-		RowShards: 16,
 	}
 
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()

@@ -29,7 +29,6 @@ func TestBackground(t *testing.T) {
 			{
 				From:      config.DayTime{Time: 0},
 				Schema:    "v11",
-				RowShards: 16,
 			},
 		},
 	}
