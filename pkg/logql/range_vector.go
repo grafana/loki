@@ -16,10 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/vector"
 )
 
-// BatchRangeVectorAggregator aggregates samples for a given range of samples.
-// It receives the current milliseconds timestamp and the list of point within
-// the range.
-type BatchRangeVectorAggregator func([]promql.FPoint) float64
+// BatchRangeVectorAggregator aggregates the samples within a range window. It
+// receives the samples in the window and the window end timestamp in nanoseconds.
+type BatchRangeVectorAggregator func(samples []promql.FPoint, rangeEnd int64) float64
 
 // RangeStreamingAgg streaming aggregates sample for each sample
 type RangeStreamingAgg interface {
@@ -56,7 +55,7 @@ func newRangeVectorIterator(
 		overlap = true
 	}
 	if !overlap {
-		_, err := streamingAggregator(expr)
+		_, err := streamingAggregator(expr, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +194,7 @@ func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
 		r.at = append(r.at, promql.Sample{
-			F:      r.agg(series.Floats),
+			F:      r.agg(series.Floats, r.current),
 			T:      ts,
 			Metric: series.Metric,
 		})
@@ -257,8 +256,8 @@ func aggregator(r *syntax.RangeAggregationExpr) (BatchRangeVectorAggregator, err
 
 // rateLogs calculates the per-second rate of log lines or values extracted
 // from log lines
-func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.FPoint) float64 {
-	return func(samples []promql.FPoint) float64 {
+func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.FPoint, _ int64) float64 {
+	return func(samples []promql.FPoint, _ int64) float64 {
 		if !computeValues {
 			return float64(len(samples)) / selRange.Seconds()
 		}
@@ -272,27 +271,27 @@ func rateLogs(selRange time.Duration, computeValues bool) func(samples []promql.
 
 // rateCounter calculates the per-second rate of values extracted from log lines
 // and treat them like a "counter" metric.
-func rateCounter(selRange time.Duration) func(samples []promql.FPoint) float64 {
-	return func(samples []promql.FPoint) float64 {
-		return extrapolatedRate(samples, selRange, true, true)
+func rateCounter(selRange time.Duration) func(samples []promql.FPoint, rangeEnd int64) float64 {
+	return func(samples []promql.FPoint, rangeEnd int64) float64 {
+		return extrapolatedRate(samples, selRange, rangeEnd, true, true)
 	}
 }
 
-// extrapolatedRate function is taken from prometheus code promql/functions.go:59
-// extrapolatedRate is a utility function for rate/increase/delta.
-// It calculates the rate (allowing for counter resets if isCounter is true),
-// extrapolates if the first/last sample is close to the boundary, and returns
-// the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []promql.FPoint, selRange time.Duration, isCounter, isRate bool) float64 {
+// extrapolatedRate is adapted from Prometheus. It calculates the rate (allowing for counter
+// resets if isCounter is true), extrapolates if the first/last sample is close to the
+// boundary, and returns the result as either per-second (if isRate is true) or overall.
+//
+// Two differences from Prometheus:
+//  1. Sample timestamps and rangeEnd are nanoseconds (not milliseconds)
+//  2. The range boundaries come from the query window (rangeEnd and rangeEnd-selRange)
+//     rather than being approximated from the first/last sample.
+func extrapolatedRate(samples []promql.FPoint, selRange time.Duration, rangeEnd int64, isCounter, isRate bool) float64 {
 	// No sense in trying to compute a rate without at least two points. Drop
 	// this Vector element.
 	if len(samples) < 2 {
 		return 0
 	}
-	var (
-		rangeStart = samples[0].T - durationMilliseconds(selRange)
-		rangeEnd   = samples[len(samples)-1].T
-	)
+	rangeStart := rangeEnd - selRange.Nanoseconds()
 
 	resultValue := samples[len(samples)-1].F - samples[0].F
 	if isCounter {
@@ -305,11 +304,12 @@ func extrapolatedRate(samples []promql.FPoint, selRange time.Duration, isCounter
 		}
 	}
 
-	// Duration between first/last samples and boundary of range.
-	durationToStart := float64(samples[0].T-rangeStart) / 1000
-	durationToEnd := float64(rangeEnd-samples[len(samples)-1].T) / 1000
+	// Duration between first/last samples and boundary of range, in seconds
+	// (timestamps are nanoseconds).
+	durationToStart := float64(samples[0].T-rangeStart) / 1e9
+	durationToEnd := float64(rangeEnd-samples[len(samples)-1].T) / 1e9
 
-	sampledInterval := float64(samples[len(samples)-1].T-samples[0].T) / 1000
+	sampledInterval := float64(samples[len(samples)-1].T-samples[0].T) / 1e9
 	averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
 
 	if isCounter && resultValue > 0 && samples[0].F >= 0 {
@@ -352,23 +352,19 @@ func extrapolatedRate(samples []promql.FPoint, selRange time.Duration, isCounter
 	return resultValue
 }
 
-func durationMilliseconds(d time.Duration) int64 {
-	return int64(d / (time.Millisecond / time.Nanosecond))
-}
-
 // rateLogBytes calculates the per-second rate of log bytes.
-func rateLogBytes(selRange time.Duration) func(samples []promql.FPoint) float64 {
-	return func(samples []promql.FPoint) float64 {
-		return sumOverTime(samples) / selRange.Seconds()
+func rateLogBytes(selRange time.Duration) func(samples []promql.FPoint, _ int64) float64 {
+	return func(samples []promql.FPoint, _ int64) float64 {
+		return sumOverTime(samples, 0) / selRange.Seconds()
 	}
 }
 
 // countOverTime counts the amount of log lines.
-func countOverTime(samples []promql.FPoint) float64 {
+func countOverTime(samples []promql.FPoint, _ int64) float64 {
 	return float64(len(samples))
 }
 
-func sumOverTime(samples []promql.FPoint) float64 {
+func sumOverTime(samples []promql.FPoint, _ int64) float64 {
 	var sum float64
 	for _, v := range samples {
 		sum += v.F
@@ -376,7 +372,7 @@ func sumOverTime(samples []promql.FPoint) float64 {
 	return sum
 }
 
-func avgOverTime(samples []promql.FPoint) float64 {
+func avgOverTime(samples []promql.FPoint, _ int64) float64 {
 	var mean, count float64
 	for _, v := range samples {
 		count++
@@ -402,7 +398,7 @@ func avgOverTime(samples []promql.FPoint) float64 {
 	return mean
 }
 
-func maxOverTime(samples []promql.FPoint) float64 {
+func maxOverTime(samples []promql.FPoint, _ int64) float64 {
 	maxVal := samples[0].F
 	for _, v := range samples {
 		if v.F > maxVal || math.IsNaN(maxVal) {
@@ -412,7 +408,7 @@ func maxOverTime(samples []promql.FPoint) float64 {
 	return maxVal
 }
 
-func minOverTime(samples []promql.FPoint) float64 {
+func minOverTime(samples []promql.FPoint, _ int64) float64 {
 	minVal := samples[0].F
 	for _, v := range samples {
 		if v.F < minVal || math.IsNaN(minVal) {
@@ -424,7 +420,7 @@ func minOverTime(samples []promql.FPoint) float64 {
 
 // stdvarOverTime calculates the variance using Welford's online algorithm.
 // See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-func stdvarOverTime(samples []promql.FPoint) float64 {
+func stdvarOverTime(samples []promql.FPoint, _ int64) float64 {
 	var aux, count, mean float64
 	for _, v := range samples {
 		count++
@@ -435,7 +431,7 @@ func stdvarOverTime(samples []promql.FPoint) float64 {
 	return aux / count
 }
 
-func stddevOverTime(samples []promql.FPoint) float64 {
+func stddevOverTime(samples []promql.FPoint, _ int64) float64 {
 	var aux, count, mean float64
 	for _, v := range samples {
 		count++
@@ -446,8 +442,8 @@ func stddevOverTime(samples []promql.FPoint) float64 {
 	return math.Sqrt(aux / count)
 }
 
-func quantileOverTime(q float64) func(samples []promql.FPoint) float64 {
-	return func(samples []promql.FPoint) float64 {
+func quantileOverTime(q float64) func(samples []promql.FPoint, _ int64) float64 {
+	return func(samples []promql.FPoint, _ int64) float64 {
 		values := make(vector.HeapByMaxValue, 0, len(samples))
 		for _, v := range samples {
 			values = append(values, promql.Sample{F: v.F})
@@ -486,21 +482,21 @@ func Quantile(q float64, values vector.HeapByMaxValue) float64 {
 	return values[int(lowerIndex)].F*(1-weight) + values[int(upperIndex)].F*weight
 }
 
-func first(samples []promql.FPoint) float64 {
+func first(samples []promql.FPoint, _ int64) float64 {
 	if len(samples) == 0 {
 		return math.NaN()
 	}
 	return samples[0].F
 }
 
-func last(samples []promql.FPoint) float64 {
+func last(samples []promql.FPoint, _ int64) float64 {
 	if len(samples) == 0 {
 		return math.NaN()
 	}
 	return samples[len(samples)-1].F
 }
 
-func one(_ []promql.FPoint) float64 {
+func one(_ []promql.FPoint, _ int64) float64 {
 	return 1.0
 }
 
@@ -567,7 +563,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			}
 
 			// never err here ,we have check error at evaluator.go rangeAggEvaluator() func
-			rangeAgg, _ = streamingAggregator(r.r)
+			rangeAgg, _ = streamingAggregator(r.r, end)
 			r.windowRangeAgg[lbs] = rangeAgg
 		}
 		p := promql.FPoint{
@@ -596,12 +592,12 @@ func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	return ts, SampleVector(r.at)
 }
 
-func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, error) {
+func streamingAggregator(r *syntax.RangeAggregationExpr, rangeEnd int64) (RangeStreamingAgg, error) {
 	switch r.Operation {
 	case syntax.OpRangeTypeRate:
 		return newRateLogs(r.Left.Interval, r.Left.Unwrap != nil), nil
 	case syntax.OpRangeTypeRateCounter:
-		return &RateCounterOverTime{selRange: r.Left.Interval, samples: make([]promql.FPoint, 0)}, nil
+		return &RateCounterOverTime{selRange: r.Left.Interval, rangeEnd: rangeEnd, samples: make([]promql.FPoint, 0)}, nil
 	case syntax.OpRangeTypeCount:
 		return &CountOverTime{}, nil
 	case syntax.OpRangeTypeBytesRate:
@@ -664,6 +660,7 @@ func (a *RateLogsOverTime) at() float64 {
 type RateCounterOverTime struct {
 	samples  []promql.FPoint
 	selRange time.Duration
+	rangeEnd int64
 }
 
 func (a *RateCounterOverTime) agg(sample promql.FPoint) {
@@ -671,7 +668,7 @@ func (a *RateCounterOverTime) agg(sample promql.FPoint) {
 }
 
 func (a *RateCounterOverTime) at() float64 {
-	return extrapolatedRate(a.samples, a.selRange, true, true)
+	return extrapolatedRate(a.samples, a.selRange, a.rangeEnd, true, true)
 }
 
 // rateLogBytes calculates the per-second rate of log bytes.

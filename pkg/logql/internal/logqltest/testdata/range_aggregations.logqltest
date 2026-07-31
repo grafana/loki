@@ -376,3 +376,124 @@ eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
   {app="a"} 6000
 eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
   {app="a"} 3000 6000
+
+# rate_counter treats the unwrapped value as a counter: the per-second increase over the range with
+# counter resets added back, using Prometheus-style boundary extrapolation.
+#
+# The fixtures in this scenario contain:
+#   (0, 60]     c=<none>     empty
+#   (60, 120]   c=100, 130   increase 30
+#   (120, 180]  c=160, 250   increase 90
+#   (180, 240]  c=280, 340   increase 60
+#   (240, 300]  c=<none>     empty
+#   (300, 360]  c=400, 430   increase 30
+#   (360, 420]  c=460, 550   increase 90
+#   (420, 480]  c=580, 640   increase 60
+#   (480, 540]  c=<none>     empty
+clear
+load
+  {app="a"} "c=100" @ 90s
+  {app="a"} "c=130" @ 120s
+  {app="a"} "c=160" @ 150s
+  {app="a"} "c=250" @ 180s
+  {app="a"} "c=280" @ 210s
+  {app="a"} "c=340" @ 240s
+  {app="a"} "c=400" @ 330s
+  {app="a"} "c=430" @ 360s
+  {app="a"} "c=460" @ 390s
+  {app="a"} "c=550" @ 420s
+  {app="a"} "c=580" @ 450s
+  {app="a"} "c=640" @ 480s
+  {app="a"} "noise" @ 15s [repeat every 30s for 18]
+
+# Non-overlapping range vector selectors.
+#
+# In the fixtures we use, a [1m] window extrapolates the 30s to its lower edge, so:
+# rate = increase/30 (30->1, 60->2, 90->3).
+eval instant at 480s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2
+eval range from 60s to 540s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} _ 1 3 2 _ 1 3 2 _
+eval range from 60s to 180s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} _ 1 3
+eval range from 240s to 360s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2 _ 1
+eval range from 420s to 540s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 3 2 _
+
+# Overlapping range vector selectors (a sample falls in more than 1 step):
+#  (60,240]  sees +240 over 150s, extrapolated to 180s: 240 x (180/150) / 180s = 1.6
+#  (120,300] sees +180 over 90s,  extrapolated to 135s: 180 x (135/90)  / 180s = 1.5
+#  (180,360] sees +150 over 150s, extrapolated to 180s: 150 x (180/150) / 180s = 1
+eval instant at 360s rate_counter({app="a"} | logfmt | unwrap c [3m])
+  {app="a"} 1
+eval range from 240s to 360s step 60s rate_counter({app="a"} | logfmt | unwrap c [3m])
+  {app="a"} 1.6 1.5 1
+
+# Single sample in the window returns 0 (a rate needs at least 2 points).
+eval instant at 90s rate_counter({app="a"} | logfmt | unwrap c [10s])
+  {app="a"} 0
+
+# No samples in the window returns an empty result.
+eval instant at 300s rate_counter({app="a"} | logfmt | unwrap c [10s])
+  expect empty
+
+# rate_counter requires unwrap.
+eval instant at 60s rate_counter({app="a"}[1m])
+  expect fail msg: invalid aggregation rate_counter without unwrap
+
+# rate_counter treats any decrease as a counter reset and adds the pre-drop value back, so the rate
+# stays positive instead of going negative.:
+#  (30,150] sees +90 (60,90,30,60) over 90s, extrapolated to 120s: 90 x (120/90) / 120s = 1
+#  (60,120] sees +30 (90,30)       over 30s, extrapolated to 60s:  30 x (60/30) / 60s = 1
+clear
+load
+  {app="a"} "c=30" @ 30s
+  {app="a"} "c=60" @ 60s
+  {app="a"} "c=90" @ 90s
+  {app="a"} "c=30" @ 120s      # reset: 90 -> 30
+  {app="a"} "c=60" @ 150s
+  {app="a"} "noise" @ 15s [repeat every 30s for 6]
+eval instant at 150s rate_counter({app="a"} | logfmt | unwrap c [2m])
+  {app="a"} 1
+eval instant at 120s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 1
+
+# rate_counter never extrapolates a counter below zero. If extrapolating back to a window's lower
+# edge would cross the counter's zero point, back-extrapolation stops at the zero point instead.
+#
+# In this test fixtures, the zero point is at timestamp 60s (simulate a counter that is 0 at 60s
+# and then climbs by 60 every 30s), so:
+#  (45,105] sees +60 (30, 90)  over 30s, extrapolated to 45s (zero point is at 60s > range start at 45s): 60 x (45/30) / 60s = 1.5
+#  (75,135] sees +60 (90, 150) over 30s, extrapolated to 60s (zero point is at 60s < range start at 75s): 60 x (60/30) / 60s = 2
+clear
+load
+  {app="a"} "c=30"  @ 75s
+  {app="a"} "c=90"  @ 105s
+  {app="a"} "c=150" @ 135s
+  {app="a"} "noise" @ 60s [repeat every 30s for 4]
+eval instant at 105s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 1.5
+eval instant at 135s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2
+
+# rate_counter extrapolates each side of the window to its edge, but caps that extrapolation at half
+# an average sampling interval when the nearest sample sits farther from the edge than ~1.1x the
+# average interval.
+#
+# In this test fixtures, the counter climbs by 60 every 30s (using large values so the zero point logic
+# never triggers), with samples only at 150s and 180s (average interval 30s, threshold ~33s), so:
+#  (90,180]  sees +60 (600, 660) over 30s, extrapolated to 45s (first sample 150s is 60s from range start 90s > 33s, so gets LEFT capped +15s): 60 x (45/30) / 90s = 1
+#  (120,210] sees +60 (600, 660) over 30s, extrapolated to 90s (both samples within 33s of the edges, no cap): 60 x (90/30) / 90s = 2
+#  (90,240]  sees +60 (600, 660) over 30s, extrapolated to 60s (first sample 150s is 60s from range start 90s AND last sample 180s is 60s from range end 240s, both > 33s, so BOTH sides capped +15s): 60 x (60/30) / 150s = 0.8
+clear
+load
+  {app="a"} "c=600" @ 150s
+  {app="a"} "c=660" @ 180s
+  {app="a"} "noise" @ 15s [repeat every 30s for 8]
+eval instant at 180s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1
+eval range from 180s to 210s step 30s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1 2
+eval instant at 240s rate_counter({app="a"} | logfmt | unwrap c [150s])
+  {app="a"} 0.8

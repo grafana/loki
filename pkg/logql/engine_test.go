@@ -183,9 +183,13 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
 			},
-			// there are 15 samples (from 47 to 61) matched from the generated series
-			// (61 - 47) / 30 = 0.4666
-			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.46666766666666665, Metric: labels.FromStrings("app", "foo")}},
+			// 15 samples match the window (30s, 60s]: t=46..60 with values 47..61, so the
+			// counter increases by 14 over a 14s sampled interval (avg 1s between samples).
+			// The first sample is 16s past the window start (>> the sample spacing), so the
+			// counter start is extrapolated by half an average interval (0.5s); the last
+			// sample sits at the window end, so there is no extrapolation there.
+			// rate = 14 * (14 + 0.5) / 14 / 30 = 14.5 / 30 = 0.4833
+			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.4833333333333334, Metric: labels.FromStrings("app", "foo")}},
 		},
 	} {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
