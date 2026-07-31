@@ -737,13 +737,13 @@ func _sqlite3NestedParse(tls *libc.TLS, pParse uintptr, zFormat uintptr, va uint
 		return
 	}
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested + 1
-	libc.Xmemcpy(tls, bp, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+204)), libc.Uint32FromInt64(280)-uint32(libc.UintptrFromInt32(0)+204))
-	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+204)), 0, libc.Uint32FromInt64(280)-uint32(libc.UintptrFromInt32(0)+204))
+	libc.Xmemcpy(tls, bp, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
+	libc.Xmemset(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), 0, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
 	**(**Tu32)(__ccgo_up(db + 24)) |= uint32(DBFLAG_PreferBuiltin)
 	_sqlite3RunParser(tls, pParse, zSql)
 	(*Tsqlite3)(unsafe.Pointer(db)).FmDbFlags = savedDbFlags
 	_sqlite3DbFree(tls, db, zSql)
-	libc.Xmemcpy(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+204)), bp, libc.Uint32FromInt64(280)-uint32(libc.UintptrFromInt32(0)+204))
+	libc.Xmemcpy(tls, pParse+uintptr(uint32(libc.UintptrFromInt32(0)+208)), bp, libc.Uint32FromInt64(284)-uint32(libc.UintptrFromInt32(0)+208))
 	(*TParse)(unsafe.Pointer(pParse)).Fnested = (*TParse)(unsafe.Pointer(pParse)).Fnested - 1
 }
 
@@ -763,7 +763,7 @@ func _sqlite3Prepare16(tls *libc.TLS, db uintptr, zSql uintptr, nBytes int32, pr
 	rc = SQLITE_OK
 	**(**uintptr)(__ccgo_up(ppStmt)) = uintptr(0)
 	if !(_sqlite3SafetyCheckOk(tls, db) != 0) || zSql == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(148771))
+		return _sqlite3MisuseError(tls, int32(148902))
 	}
 	/* Make sure nBytes is non-negative and correct.  It should be the
 	 ** number of bytes until the end of the input buffer or until the first

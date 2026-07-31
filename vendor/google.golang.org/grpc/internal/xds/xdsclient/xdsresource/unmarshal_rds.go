@@ -241,7 +241,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			route.Path = &pt.Path
 		case *v3routepb.RouteMatch_SafeRegex:
 			regex := pt.SafeRegex.GetRegex()
-			re, err := regexp.Compile(regex)
+			re, err := matcher.CompileSafeRegex(regex)
 			if err != nil {
 				return nil, nil, fmt.Errorf("route %+v contains an invalid regex %q", r, regex)
 			}
@@ -261,7 +261,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 				header.ExactMatch = &ht.ExactMatch
 			case *v3routepb.HeaderMatcher_SafeRegexMatch:
 				regex := ht.SafeRegexMatch.GetRegex()
-				re, err := regexp.Compile(regex)
+				re, err := matcher.CompileSafeRegex(regex)
 				if err != nil {
 					return nil, nil, fmt.Errorf("route %+v contains an invalid regex %q", r, regex)
 				}

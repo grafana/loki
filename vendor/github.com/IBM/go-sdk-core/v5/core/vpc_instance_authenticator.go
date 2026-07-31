@@ -39,16 +39,22 @@ import (
 //	Authorization: Bearer <access-token>
 type VpcInstanceAuthenticator struct {
 	// [optional] The CRN of the linked trusted IAM profile to be used as the identity of the compute resource.
-	// At most one of IAMProfileCRN or IAMProfileID may be specified.  If neither one is specified, then
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
 	// the default IAM profile defined for the compute resource will be used.
 	// Default value: ""
 	IAMProfileCRN string
 
 	// [optional] The ID of the linked trusted IAM profile to be used when obtaining the IAM access token.
-	// At most one of IAMProfileCRN or IAMProfileID may be specified.  If neither one is specified, then
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
 	// the default IAM profile defined for the compute resource will be used.
 	// Default value: ""
 	IAMProfileID string
+
+	// [optional] The name of the linked trusted IAM profile to be used when obtaining the IAM access token.
+	// At most one of IAMProfileCRN, IAMProfileID or IAMProfileName may be specified.  If neither one is specified, then
+	// the default IAM profile defined for the compute resource will be used.
+	// Default value: ""
+	IAMProfileName string
 
 	// [optional] The VPC Instance Metadata Service's base endpoint URL.
 	// Default value: "http://169.254.169.254"
@@ -109,44 +115,50 @@ func NewVpcInstanceAuthenticatorBuilder() *VpcInstanceAuthenticatorBuilder {
 
 // SetIAMProfileCRN sets the IAMProfileCRN field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileCRN(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.IAMProfileCRN = s
+	builder.IAMProfileCRN = s
 	return builder
 }
 
 // SetIAMProfileID sets the IAMProfileID field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileID(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.IAMProfileID = s
+	builder.IAMProfileID = s
+	return builder
+}
+
+// SetIAMProfileName sets the IAMProfileName field in the builder.
+func (builder *VpcInstanceAuthenticatorBuilder) SetIAMProfileName(s string) *VpcInstanceAuthenticatorBuilder {
+	builder.IAMProfileName = s
 	return builder
 }
 
 // SetURL sets the URL field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetURL(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.URL = s
+	builder.URL = s
 	return builder
 }
 
 // SetClient sets the Client field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetClient(client *http.Client) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.Client = client
+	builder.Client = client
 	return builder
 }
 
 // SetServiceVersion sets the ServiceVersion field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetServiceVersion(s string) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.ServiceVersion = s
+	builder.ServiceVersion = s
 	return builder
 }
 
 // SetTokenLifetime sets the TokenLifetime field in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) SetTokenLifetime(lifetime int) *VpcInstanceAuthenticatorBuilder {
-	builder.VpcInstanceAuthenticator.TokenLifetime = lifetime
+	builder.TokenLifetime = lifetime
 	return builder
 }
 
 // Build() returns a validated instance of the VpcInstanceAuthenticator with the config that was set in the builder.
 func (builder *VpcInstanceAuthenticatorBuilder) Build() (*VpcInstanceAuthenticator, error) {
 	// Make sure the config is valid.
-	err := builder.VpcInstanceAuthenticator.Validate()
+	err := builder.Validate()
 	if err != nil {
 		return nil, RepurposeSDKProblem(err, "validation-failed")
 	}
@@ -230,6 +242,7 @@ func newVpcInstanceAuthenticatorFromMap(properties map[string]string) (authentic
 	authenticator, err = NewVpcInstanceAuthenticatorBuilder().
 		SetIAMProfileCRN(properties[PROPNAME_IAM_PROFILE_CRN]).
 		SetIAMProfileID(properties[PROPNAME_IAM_PROFILE_ID]).
+		SetIAMProfileName(properties[PROPNAME_IAM_PROFILE_NAME]).
 		SetURL(properties[PROPNAME_AUTH_URL]).
 		SetServiceVersion(properties[PROPNAME_VPC_IMS_VERSION]).
 		Build()
@@ -276,12 +289,21 @@ func (authenticator *VpcInstanceAuthenticator) setTokenData(tokenData *iamTokenD
 
 // Validate the authenticator's configuration.
 //
-// Ensures that one of IAMProfileName or IAMProfileID are specified, and the ClientId and ClientSecret pair are
-// mutually inclusive.
+// Ensures that at most one of IAMProfileCRN, IAMProfileID, or IAMProfileName is specified.
 func (authenticator *VpcInstanceAuthenticator) Validate() error {
-	// Check to make sure that at most one of IAMProfileCRN or IAMProfileID are specified.
-	if authenticator.IAMProfileCRN != "" && authenticator.IAMProfileID != "" {
-		err := fmt.Errorf(ERRORMSG_ATMOST_ONE_PROP_ERROR, "IAMProfileCRN", "IAMProfileID")
+	// Check to make sure that at most one of IAMProfileCRN, IAMProfileID, or IAMProfileName are specified.
+	counter := 0
+	if authenticator.IAMProfileCRN != "" {
+		counter++
+	}
+	if authenticator.IAMProfileID != "" {
+		counter++
+	}
+	if authenticator.IAMProfileName != "" {
+		counter++
+	}
+	if counter > 1 {
+		err := fmt.Errorf(ERRORMSG_ATMOST_ONE_PROP_ERROR, "IAMProfileCRN", "IAMProfileID", "IAMProfileName")
 		return SDKErrorf(err, "", "both-props", getComponentInfo())
 	}
 
@@ -430,6 +452,9 @@ func (authenticator *VpcInstanceAuthenticator) retrieveIamAccessToken(
 	}
 	if authenticator.IAMProfileID != "" {
 		requestBody = fmt.Sprintf(`{"trusted_profile": {"id": "%s"}}`, authenticator.IAMProfileID)
+	}
+	if authenticator.IAMProfileName != "" {
+		requestBody = fmt.Sprintf(`{"trusted_profile": {"name": "%s"}}`, authenticator.IAMProfileName)
 	}
 	if requestBody != "" {
 		_, _ = builder.SetBodyContentString(requestBody)

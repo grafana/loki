@@ -1,7 +1,26 @@
-[![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) ![License](https://img.shields.io/dub/l/vibe-d.svg)
+[![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) [![Audit](https://img.shields.io/badge/ReqProof-L3%20Assurance-success)](https://reqproof.com) ![License](https://img.shields.io/dub/l/vibe-d.svg)
 # Alternative JSON parser for Go (10x times faster standard library)
 
 It does not require you to know the structure of the payload (eg. create structs), and allows accessing fields by providing the path to them. It is up to **10 times faster** than standard `encoding/json` package (depending on payload size and usage), **allocates no memory**. See benchmarks below.
+
+---
+
+## 🔒 Formally Verified — the first Go library proven to L3 assurance by [ReqProof](https://reqproof.com)
+
+jsonparser is the **reference case study** for [ReqProof](https://reqproof.com) — a git-native requirements-engineering and formal-verification platform. Every public API is traced to a formal requirement, every requirement is tested with **100% Modified Condition/Decision Coverage (MC/DC)**, and the entire parser is fuzzed by a custom **structure-aware JSON fuzzer** ([github.com/probelabs/json-fuzz](https://github.com/probelabs/json-fuzz)) that generates grammar-valid mutations at 250,000 inputs/second.
+
+| Metric | Value |
+|---|---|
+| Requirements traced | 118 (7 stakeholder + 111 system) |
+| Proof audit | **0 errors, 0 warnings** (L3 strict) |
+| Code-level MC/DC | **100% decisions, 100% conditions** |
+| Requirement-side MC/DC | **377/377 witness rows covered** |
+| Fuzz executions | 16M+ (structure-aware + path-mutation + encoding/json differential) |
+| Bugs found & fixed by the proof review | 7 (4 panics, 2 data-corruption, 1 encoding bug) |
+
+The proof review caught bugs that years of community use, OSS-Fuzz, and standard fuzzing had missed — including a panic class across 8 unchecked-dereference sites, a silent data-loss bug in `Set`, and a malformed-output bug in `Delete`. [Read the full root-cause analysis →](docs/proof-gap-root-cause.md)
+
+---
 
 ## Rationale
 Originally I made this for a project that relies on a lot of 3rd party APIs that can be unpredictable and complex.
@@ -55,16 +74,16 @@ if value, err := jsonparser.GetInt(data, "company", "size"); err == nil {
   size = value
 }
 
-// You can use `ArrayEach` helper to iterate items [item1, item2 .... itemN]
-jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+// You can use `EachArray` helper to iterate items [item1, item2 .... itemN]
+jsonparser.EachArray(data, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
 	fmt.Println(jsonparser.Get(value, "url"))
 }, "person", "avatars")
 
 // Or use can access fields by index!
 jsonparser.GetString(data, "person", "avatars", "[0]", "url")
 
-// You can use `ObjectEach` helper to iterate objects { "key1":object1, "key2":object2, .... "keyN":objectN }
-jsonparser.ObjectEach(data, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+// You can use `EachObject` helper to iterate objects { "key1":object1, "key2":object2, .... "keyN":objectN }
+jsonparser.EachObject(data, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
         fmt.Printf("Key: '%s'\n Value: '%s'\n Type: %s\n", string(key), string(value), dataType)
 	return nil
 }, "person", "name")
@@ -89,6 +108,72 @@ jsonparser.EachKey(data, func(idx int, value []byte, vt jsonparser.ValueType, er
 
 // For more information see docs below
 ```
+
+## Lenient Parsing
+
+The package-level functions remain strict RFC 8259 parsers. For inputs that use
+single-quoted strings or non-standard escapes, use a `Config` explicitly:
+
+```go
+data := []byte(`{'name':'Ada','role':'engineer'}`)
+
+name, err := jsonparser.Lenient.GetString(data, "name")
+// name == "Ada"
+```
+
+`Lenient` enables both compatibility options. You can also enable only the
+extension your input requires:
+
+```go
+config := jsonparser.Config{AllowUnknownEscapes: true}
+data := []byte("{\"path\":\"docs\\`draft\\x\"}")
+
+path, err := config.GetString(data, "path")
+// path == "docs`draftx"
+```
+
+The config-aware `Get`, `GetString`, `Set`, `Delete`, `ArrayEach`, and
+`ObjectEach` methods share the same signatures and behavior as their
+package-level counterparts apart from the enabled parsing extensions.
+`jsonparser.DefaultConfig` is strict; `jsonparser.Lenient` enables
+`AllowSingleQuotes` and `AllowUnknownEscapes`.
+
+## Streaming
+
+`ReaderParser` provides the same path-based lookup model for JSON read from an
+`io.Reader`, so a large document does not need to be loaded into a single byte
+slice:
+
+```go
+file, err := os.Open("large.json")
+if err != nil {
+	log.Fatal(err)
+}
+defer file.Close()
+
+parser := jsonparser.NewReaderParser(file)
+name, err := parser.GetString("person", "name")
+```
+
+To process a root array incrementally, use `ArrayEach`. Each callback value is
+valid for the duration of the callback; copy it if it must be retained:
+
+```go
+parser := jsonparser.NewReaderParser(file)
+err := parser.ArrayEach(func(value []byte, valueType jsonparser.ValueType, err error) {
+	if err != nil {
+		return
+	}
+	process(value, valueType)
+})
+```
+
+The parser reads in 64 KiB chunks and discards completed prefixes. Its default
+sliding-window target is 64 MiB; customize it with
+`jsonparser.Config{MaxBufferSize: size}`. A single returned value or array
+element may exceed that target because its complete bytes are supplied to the
+caller. Create a new `ReaderParser` for each lookup or array traversal.
+`ReaderParser` also honors `AllowSingleQuotes` and `AllowUnknownEscapes`.
 
 ## Reference
 
@@ -146,15 +231,19 @@ func GetInt(data []byte, keys ...string) (val int64, err error)
 If you know the key type, you can use the helpers above.
 If key data type do not match, it will return error.
 
-### **`ArrayEach`**
+### **`EachArray`**
 ```go
-func ArrayEach(data []byte, cb func(value []byte, dataType jsonparser.ValueType, offset int, err error), keys ...string)
+func EachArray(data []byte, cb func(value []byte, dataType jsonparser.ValueType, offset int, err error), keys ...string)
 ```
 Needed for iterating arrays, accepts a callback function with the same return arguments as `Get`.
+`ArrayEach` remains available as a backward-compatible alias.
+The error-returning and wildcard variants follow the same naming convention:
+use `EachArrayErr` and `EachArrayWildcard`; `ArrayEachErr` and
+`ArrayEachWildcard` remain available for backward compatibility.
 
-### **`ObjectEach`**
+### **`EachObject`**
 ```go
-func ObjectEach(data []byte, callback func(key []byte, value []byte, dataType ValueType, offset int) error, keys ...string) (err error)
+func EachObject(data []byte, callback func(key []byte, value []byte, dataType ValueType, offset int) error, keys ...string) (err error)
 ```
 Needed for iterating object, accepts a callback function. Example:
 ```go
@@ -162,8 +251,9 @@ var handler func([]byte, []byte, jsonparser.ValueType, int) error
 handler = func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
 	//do stuff here
 }
-jsonparser.ObjectEach(myJson, handler)
+jsonparser.EachObject(myJson, handler)
 ```
+`ObjectEach` remains available as a backward-compatible alias.
 
 
 ### **`EachKey`**
