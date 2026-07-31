@@ -1527,7 +1527,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	_, _, _, _ = cnt, limit, ofst, total
 	total = uint32(0)
 	limit = _rbuDeltaGetInt(tls, bp, bp+8)
-	if int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
+	if **(**int32)(__ccgo_up(bp + 8)) <= 0 || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32('\n') {
 		/* ERROR: size integer not terminated by "\n" */
 		return -int32(1)
 	}
@@ -1535,12 +1535,15 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 	**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 	for **(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp)))) != 0 && **(**int32)(__ccgo_up(bp + 8)) > 0 {
 		cnt = _rbuDeltaGetInt(tls, bp, bp+8)
+		if **(**int32)(__ccgo_up(bp + 8)) <= 0 {
+			return -int32(1)
+		}
 		switch int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) {
 		case int32('@'):
 			**(**uintptr)(__ccgo_up(bp)) = **(**uintptr)(__ccgo_up(bp)) + 1
 			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - 1
 			ofst = _rbuDeltaGetInt(tls, bp, bp+8)
-			if **(**int32)(__ccgo_up(bp + 8)) > 0 && int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
+			if **(**int32)(__ccgo_up(bp + 8)) > 0 || int32(**(**int8)(__ccgo_up(**(**uintptr)(__ccgo_up(bp))))) != int32(',') {
 				/* ERROR: copy command not terminated by ',' */
 				return -int32(1)
 			}
@@ -1565,7 +1568,7 @@ func _rbuDeltaApply(tls *libc.TLS, zSrc uintptr, lenSrc int32, _zDelta uintptr, 
 				/* ERROR:  insert command gives an output larger than predicted */
 				return -int32(1)
 			}
-			if libc.Int32FromUint32(cnt) > **(**int32)(__ccgo_up(bp + 8)) {
+			if libc.Int64FromUint32(cnt) > int64(**(**int32)(__ccgo_up(bp + 8))) {
 				/* ERROR: insert count exceeds size of delta */
 				return -int32(1)
 			}

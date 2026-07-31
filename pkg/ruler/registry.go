@@ -359,8 +359,12 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 				clt.WriteRelabelConfigs = v.WriteRelabelConfigs
 			}
 
+			// Cast [rulerconfig.RemoteWriteConfig] to [config.RemoteWriteConfig] so it can be used to merge with [clt].
+			// This can be done safely without copying, because the structs are identical
+			// and mergo only reads [casted].
+			casted := (*config.RemoteWriteConfig)(v)
 			// merge with override
-			if err := mergo.Merge(&clt, *v, mergo.WithOverride); err != nil {
+			if err := mergo.Merge(&clt, casted, mergo.WithOverride); err != nil {
 				return nil, fmt.Errorf("failed to apply remote write clients configs: %w", err)
 			}
 		}

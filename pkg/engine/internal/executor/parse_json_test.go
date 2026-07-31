@@ -145,7 +145,17 @@ func TestJSONParser_Process(t *testing.T) {
 			"nested number keys",
 			[]byte(`{"parent": {"456child": "value"}}`),
 			nil,
-			map[string]string{"parent__456child": "value"},
+			map[string]string{"parent_456child": "value"},
+		},
+		{
+			"deeply nested digit-start keys use single underscore per level",
+			[]byte(`{"statistics":{"file_count_per_level":{"0":5,"1":7},"kv_store_statistics":{"11":{"kv_store_bytes":100}}}}`),
+			nil,
+			map[string]string{
+				"statistics_file_count_per_level_0":                "5",
+				"statistics_file_count_per_level_1":                "7",
+				"statistics_kv_store_statistics_11_kv_store_bytes": "100",
+			},
 		},
 		{
 			"nested bad key replaced",

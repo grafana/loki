@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type rangeAggregationOptions struct {
@@ -160,8 +159,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			},
 		} // value column expression
 
-		startedAt     = time.Now()
-		inputReadTime time.Duration
 	)
 
 	r.aggregator.Reset() // reset before reading new inputs
@@ -170,9 +167,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
-			inputStart := time.Now()
 			record, err := input.Read(ctx)
-			inputReadTime += time.Since(inputStart)
 
 			if err != nil {
 				if errors.Is(err, EOF) {
@@ -256,11 +251,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 	r.inputsExhausted = true
 
 	rec, err := r.aggregator.BuildRecord()
-
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		computeTime := time.Since(startedAt) - inputReadTime
-		region.Record(StatPipelineExecDuration.Observe(computeTime.Seconds()))
-	}
 
 	return rec, err
 }

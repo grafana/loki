@@ -7,6 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [v3.27.3] - 2026-07-22
+
+### Changed
+
+- Various dependency upgrades
+
+## [v3.27.2] - 2026-06-30
+
+### Changed
+
+- Upgrade `golang.org/x/crypto` and `golang.org/x/net` to address security advisories (CVE fixes)
+- Various dependency upgrades
+
 ## [v3.27.1] - 2026-04-24
 
 ### Changed
@@ -312,7 +325,9 @@ Here's a quick summary:
 - Add new `context.Context`-aware functions and methods, for both sql and go migrations.
 - Return error when no migration files found or dir is not a directory.
 
-[Unreleased]: https://github.com/pressly/goose/compare/v3.27.1...HEAD
+[Unreleased]: https://github.com/pressly/goose/compare/v3.27.3...HEAD
+[v3.27.3]: https://github.com/pressly/goose/compare/v3.27.2...v3.27.3
+[v3.27.2]: https://github.com/pressly/goose/compare/v3.27.1...v3.27.2
 [v3.27.1]: https://github.com/pressly/goose/compare/v3.27.0...v3.27.1
 [v3.27.0]: https://github.com/pressly/goose/compare/v3.26.0...v3.27.0
 [v3.26.0]: https://github.com/pressly/goose/compare/v3.25.0...v3.26.0

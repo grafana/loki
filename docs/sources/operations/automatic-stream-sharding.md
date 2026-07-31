@@ -13,9 +13,9 @@ Automatic stream sharding can keep streams under a `desired_rate` by adding new 
 existing streams. When properly tuned, this can eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
 
-**To enable automatic stream sharding:**
+Automatic stream sharding is enabled by default (`shard_streams.enabled` defaults to `true`). To tune it or confirm it's on:
 
-1. Edit the global [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) of the Loki configuration file:
+1. Check or set the global [`limits_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) in the Loki configuration file:
 
    ```yaml
    limits_config:

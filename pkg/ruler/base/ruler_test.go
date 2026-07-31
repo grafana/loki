@@ -121,7 +121,8 @@ func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
 	dir := t.TempDir()
 
-	tracker := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	tracker, err := promql.NewActiveQueryTracker(dir, 20, util_log.SlogFromGoKit(log.NewNopLogger()))
+	require.NoError(t, err)
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		MaxSamples:         1e6,

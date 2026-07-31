@@ -52,7 +52,7 @@ func TestIndexBuilder_CleanShutdown(t *testing.T) {
 	require.NoError(t, err)
 
 	var logBuf bytes.Buffer
-	logger := log.NewLogfmtLogger(&logBuf)
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(&logBuf))
 
 	builder, err := NewIndexBuilder(
 		Config{
@@ -533,12 +533,8 @@ func (c *blockingCalculator) Calculate(ctx context.Context, _ log.Logger, _ *dat
 	return ctx.Err()
 }
 
-func (c *blockingCalculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return nil, nil, fmt.Errorf("unexpected flush")
-}
-
-func (c *blockingCalculator) TimeRanges() []multitenancy.TimeRange {
-	return nil
+func (c *blockingCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+	return nil, nil, nil, fmt.Errorf("unexpected flush")
 }
 
 func (c *blockingCalculator) Reset() {}

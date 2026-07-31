@@ -30,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/scratch"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -117,15 +116,6 @@ func (t *thread) State() threadState {
 	t.stateMut.RLock()
 	defer t.stateMut.RUnlock()
 	return t.state
-}
-
-// dataBucketXCap wraps the source-object bucket for tracing, returning nil when
-// no separate data bucket is configured so the executor falls back to Bucket.
-func (t *thread) dataBucketXCap() objstore.Bucket {
-	if t.DataBucket == nil {
-		return nil
-	}
-	return bucket.NewXCapBucket(t.DataBucket)
 }
 
 // Run starts the thread. Run will request and run tasks in a loop until the
@@ -228,8 +218,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	cfg := executor.Config{
 		BatchSize:      t.BatchSize,
 		PrefetchBytes:  t.PrefetchBytes,
-		Bucket:         bucket.NewXCapBucket(t.Bucket),
-		DataBucket:     t.dataBucketXCap(),
+		Bucket:         t.Bucket,
+		DataBucket:     t.DataBucket,
 		Metastore:      t.Metastore,
 		StreamFilterer: t.StreamFilterer,
 		TaskCaches:     t.TaskCaches,
@@ -464,16 +454,6 @@ func commOutcome(err error) metrictimer.Outcome {
 	return outcomeError
 }
 
-// recordBatchBytes returns the total in-memory size in bytes of all column
-// buffers in a RecordBatch.
-func recordBatchBytes(rec arrow.RecordBatch) int64 {
-	var n int64
-	for i := 0; i < int(rec.NumCols()); i++ {
-		n += int64(rec.Column(i).Data().SizeInBytes())
-	}
-	return n
-}
-
 func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase *slotPhaseTracker, pipeline executor.Pipeline, sinks []recordSink, logger log.Logger) (totalRows int, retErr error) {
 	region := xcap.RegionFromContext(ctx)
 
@@ -561,7 +541,6 @@ func (t *thread) drainPipeline(ctx context.Context, taskType taskType, slotPhase
 
 		region.Record(workerstat.TaskRecordsSent.Observe(1))
 		region.Record(workerstat.TaskRowsSent.Observe(rec.NumRows()))
-		region.Record(workerstat.TaskWireBytes.Observe(recordBatchBytes(rec)))
 	}
 
 	return totalRows, nil

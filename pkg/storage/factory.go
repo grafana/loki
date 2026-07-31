@@ -270,8 +270,7 @@ type Config struct {
 	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
 	ObjectPrefix         string                    `yaml:"object_prefix" doc:"description=Experimental. Sets a constant prefix for all keys inserted into object storage. Example: loki/"`
 
-	DisableBroadIndexQueries bool `yaml:"disable_broad_index_queries"`
-	MaxParallelGetChunk      int  `yaml:"max_parallel_get_chunk"`
+	MaxParallelGetChunk int `yaml:"max_parallel_get_chunk"`
 
 	UseThanosObjstore bool                         `yaml:"use_thanos_objstore"`
 	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store"`
@@ -308,7 +307,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
 	f.StringVar(&cfg.ObjectPrefix, "store.object-prefix", "", "The prefix to all keys inserted in object storage. Example: loki-instances/west/")
-	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")

@@ -450,10 +450,12 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 }
 
 var columnDatatypes = map[ColumnType]arrow.DataType{
-	ColumnTypeInvalid:      arrow.Null,
-	ColumnTypePath:         arrow.BinaryTypes.String,
-	ColumnTypeMinTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMaxTimestamp: arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeInvalid:              arrow.Null,
+	ColumnTypePath:                 arrow.BinaryTypes.String,
+	ColumnTypeMinTimestamp:         arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMaxTimestamp:         arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeFileSize:             arrow.PrimitiveTypes.Int64,
+	ColumnTypeUncompressedLogsSize: arrow.PrimitiveTypes.Int64,
 }
 
 func columnToField(col *Column) arrow.Field {

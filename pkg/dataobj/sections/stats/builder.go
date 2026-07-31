@@ -82,9 +82,11 @@ func (b *Builder) Reset() {
 //
 // Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
-	// Iterates the SortSchema with [strings.SplitSeq] so the function does not
-	// allocate per comparison; the flush sort invokes it O(n log n) times.
-	for key := range strings.SplitSeq(a.SortSchema, ",") {
+	for fqn := range strings.SplitSeq(a.SortSchema, ",") {
+		typ, key, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" || key == "" {
+			continue
+		}
 		if va, vb := a.Labels[key], b.Labels[key]; va != vb {
 			return strings.Compare(va, vb)
 		}

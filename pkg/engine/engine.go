@@ -250,7 +250,7 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 	ctx, task := gotrace.NewTask(ctx, "Engine.Execute")
 	defer task.End()
 
-	ctx, span := xcap.StartSpan(ctx, tracer, "Engine.Execute",
+	ctx, span := tracer.Start(ctx, "Engine.Execute",
 		trace.WithAttributes(
 			attribute.Stringer("query_id", q.id),
 			attribute.String("type", string(logql.GetRangeType(params))),

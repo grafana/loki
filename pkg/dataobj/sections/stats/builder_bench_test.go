@@ -49,7 +49,7 @@ func makeBenchStats(n int) []Stat {
 		rows[i] = Stat{
 			ObjectPath:   fmt.Sprintf("logs/tenant/obj-%06d", i),
 			SectionIndex: int64(i % 8),
-			SortSchema:   "service_name,namespace,pod",
+			SortSchema:   "label:service_name,label:namespace,label:pod",
 			Labels: map[string]string{
 				"service_name": fmt.Sprintf("svc-%d", i%512),
 				"namespace":    fmt.Sprintf("ns-%d", i%32),

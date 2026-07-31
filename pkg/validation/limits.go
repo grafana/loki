@@ -14,9 +14,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
+	"go.uber.org/atomic"
 	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
+	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
@@ -84,6 +84,8 @@ var (
 		"Severity_Text",
 		"SEVERITY_TEXT",
 	}
+
+	errLogCompactionRequiresIndex = errors.New("dataobj_log_compaction_enabled requires dataobj_index_compaction_enabled")
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -162,10 +164,10 @@ type Limits struct {
 	VolumeMaxSeries                      int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
-	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerAlertManagerConfig     *ruler_config.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
-	RulerTenantShardSize        int                              `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup   int                             `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant int                             `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerAlertManagerConfig     *rulerconfig.AlertManagerConfig `yaml:"ruler_alertmanager_config" json:"ruler_alertmanager_config" doc:"hidden"`
+	RulerTenantShardSize        int                             `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 
 	// TODO(dannyk): add HTTP client overrides (basic auth / tls config, etc)
 	// Ruler remote-write limits.
@@ -201,7 +203,7 @@ type Limits struct {
 	// deprecated use RulerRemoteWriteConfig instead
 	RulerRemoteWriteSigV4Config *sigv4.SigV4Config `yaml:"ruler_remote_write_sigv4_config" json:"ruler_remote_write_sigv4_config" doc:"deprecated|description=Use 'ruler_remote_write_config' instead. Configures AWS's Signature Verification 4 signing process to sign every remote write request."`
 
-	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
+	RulerRemoteWriteConfig map[string]rulerconfig.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
 	// TODO(dannyk): possible enhancement is to align this with rule group interval
 	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
@@ -231,6 +233,8 @@ type Limits struct {
 	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
 
 	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	DataObjIndexCompactionEnabled  bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
+	DataObjLogCompactionEnabled    bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
 	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
 	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
 	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
@@ -348,13 +352,6 @@ type StreamRetention struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
-}
-
-// LimitError are errors that do not comply with the limits specified.
-type LimitError string
-
-func (e LimitError) Error() string {
-	return string(e)
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -504,6 +501,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
+	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
+	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
 	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
@@ -595,6 +594,8 @@ func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
 	type plain Limits
+
+	defaultLimits := defaultLimits.Load()
 
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
@@ -697,6 +698,10 @@ func (l *Limits) Validate() error {
 		return fmt.Errorf("sort_schema: %w", err)
 	}
 
+	if l.DataObjLogCompactionEnabled && !l.DataObjIndexCompactionEnabled {
+		return errLogCompactionRequiresIndex
+	}
+
 	return nil
 }
 
@@ -704,13 +709,16 @@ func (l *Limits) Validate() error {
 // to default to any values specified on the command line, not default
 // command line values.  This global contains those values.  I (Tom) cannot
 // find a nicer way I'm afraid.
-var defaultLimits *Limits
+// Atomic because a process running more than one Loki instance, as the
+// integration tests do, sets it while another instance is reloading its runtime
+// config. Only ever replaced as a whole, never mutated once published.
+var defaultLimits atomic.Pointer[Limits]
 
 // SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
 // Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
 // those values.
 func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
-	defaultLimits = &defaults
+	defaultLimits.Store(&defaults)
 }
 
 type TenantLimits interface {
@@ -1002,7 +1010,7 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 }
 
 // RulerAlertManagerConfig returns the alertmanager configurations to use for a given user.
-func (o *Overrides) RulerAlertManagerConfig(userID string) *ruler_config.AlertManagerConfig {
+func (o *Overrides) RulerAlertManagerConfig(userID string) *rulerconfig.AlertManagerConfig {
 	return o.getOverridesForUser(userID).RulerAlertManagerConfig
 }
 
@@ -1089,7 +1097,7 @@ func (o *Overrides) RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Confi
 }
 
 // RulerRemoteWriteConfig returns the remote-write configurations to use for a given user and a given remote client.
-func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.RemoteWriteConfig {
+func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig {
 	if c, ok := o.getOverridesForUser(userID).RulerRemoteWriteConfig[id]; ok {
 		return &c
 	}
@@ -1203,6 +1211,17 @@ func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 
 func (o *Overrides) BloomCreationEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCreationEnabled
+}
+
+// CompactionPhases returns which dataobj compaction phases run for the tenant.
+// runIndex is true when either index or log compaction is enabled; runLog is
+// true only when log compaction is enabled.
+func (o *Overrides) CompactionPhases(userID string) (runIndex, runLog bool) {
+	l := o.getOverridesForUser(userID)
+	// runIndex stays correct (index || log) even if Validate's log-implies-index
+	// rule is ever bypassed, e.g. by an unvalidated runtime override.
+	return l.DataObjIndexCompactionEnabled || l.DataObjLogCompactionEnabled,
+		l.DataObjLogCompactionEnabled
 }
 
 func (o *Overrides) BloomPlanningStrategy(userID string) string {

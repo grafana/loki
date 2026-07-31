@@ -19,6 +19,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
@@ -454,13 +455,11 @@ func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger
 
 // flushIndex flushes the current calculator state to an index object
 func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (string, error) {
-	tenantTimeRanges := si.calculator.TimeRanges()
-	if len(tenantTimeRanges) == 0 {
-		return "", nil // Nothing to flush
-	}
-
-	obj, closer, err := si.calculator.Flush()
+	obj, closer, tenantTimeRanges, err := si.calculator.Flush()
 	if err != nil {
+		if errors.Is(err, indexobj.ErrBuilderEmpty) {
+			return "", nil // Nothing to flush
+		}
 		return "", fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer closer.Close()
@@ -480,12 +479,15 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 		return "", fmt.Errorf("failed to upload index: %w", err)
 	}
 
+	fileSize := uint64(obj.Size())
+	for i := range tenantTimeRanges {
+		tenantTimeRanges[i].FileSize = fileSize
+	}
+
 	metastoreTocWriter := metastore.NewTableOfContentsWriter(si.indexStorageBucket, si.logger)
 	if err := metastoreTocWriter.WriteEntry(ctx, key, tenantTimeRanges); err != nil {
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
-
-	si.calculator.Reset()
 
 	level.Debug(si.logger).Log("msg", "flushed index object", "partition", partition,
 		"path", key, "size", obj.Size(), "tenants", len(tenantTimeRanges))

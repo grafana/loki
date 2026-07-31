@@ -41,10 +41,11 @@ func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config
 	cachePath := filepath.Join(path, cacheDirName)
 
 	cfg := Config{
-		CacheDir:     cachePath,
-		SyncInterval: time.Hour,
-		CacheTTL:     time.Hour,
-		Limits:       &mockLimits{},
+		CacheDir:        cachePath,
+		SyncInterval:    time.Hour,
+		CacheTTL:        time.Hour,
+		DownloadTimeout: 5 * time.Minute,
+		Limits:          &mockLimits{},
 	}
 
 	if tableRangeToHandle == nil {
@@ -135,8 +136,9 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 	}
 
 	cfg := Config{
-		SyncInterval: time.Hour,
-		CacheTTL:     time.Hour,
+		SyncInterval:    time.Hour,
+		CacheTTL:        time.Hour,
+		DownloadTimeout: 5 * time.Minute,
 	}
 
 	tableManager := &tableManager{

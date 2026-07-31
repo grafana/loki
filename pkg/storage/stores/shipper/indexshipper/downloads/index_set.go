@@ -52,6 +52,7 @@ type indexSet struct {
 	cacheLocation     string
 	logger            log.Logger
 	maxConcurrent     int
+	downloadTimeout   time.Duration
 
 	lastUsedAt time.Time
 	index      map[string]index.Index
@@ -61,7 +62,7 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger) (IndexSet, error) {
+func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger, downloadTimeout time.Duration) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -83,6 +84,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		cacheLocation:     cacheLocation,
 		logger:            logger,
 		maxConcurrent:     maxConcurrent,
+		downloadTimeout:   downloadTimeout,
 		lastUsedAt:        time.Now(),
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
@@ -97,7 +99,7 @@ func (t *indexSet) Init(forQuerying bool, logger log.Logger) (err error) {
 	// Using background context to avoid cancellation of download when request times out.
 	// We would anyways need the files for serving next requests.
 	ctx := context.Background()
-	ctx, t.cancelFunc = context.WithTimeout(ctx, downloadTimeout)
+	ctx, t.cancelFunc = context.WithTimeout(ctx, t.downloadTimeout)
 
 	defer func() {
 		if err != nil {
@@ -183,6 +185,10 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 	defer t.indexMtx.rUnlock()
 
+	if t.err != nil {
+		return t.err
+	}
+
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
@@ -201,6 +207,10 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		return err
 	}
 	defer t.indexMtx.rUnlock()
+
+	if t.err != nil {
+		return t.err
+	}
 
 	logger := spanlogger.FromContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))

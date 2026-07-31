@@ -102,7 +102,7 @@ verify that the rate of logs being stored in Loki corresponds to the rate they a
 created by Loki Canary.
 
 `-metric-test-interval` and `-metric-test-range` are used to tune this feature, but
-by default every `15m` the canary will run a `count_over_time` instant-query to Loki
+by default every `1h` the canary will run a `count_over_time` instant-query to Loki
 for a range of `24h`.
 
 If the canary has not run for `-metric-test-range` (`24h`) the query range is adjusted

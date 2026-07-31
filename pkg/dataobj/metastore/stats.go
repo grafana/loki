@@ -24,11 +24,6 @@ var (
 	// atleast one pointer.
 	StatMetastorePointerSectionsProductive = xcap.NewStatisticInt64("metastore.sections.productive", xcap.AggregationTypeSum)
 
-	StatMetastoreStreamsRead             = xcap.NewStatisticInt64("metastore.sections.streams.read", xcap.AggregationTypeSum)
-	StatMetastoreStreamsReadTime         = xcap.NewStatisticFloat64("metastore.sections.streams.read.duration", xcap.AggregationTypeSum)
-	StatMetastoreSectionPointersRead     = xcap.NewStatisticInt64("metastore.sections.pointers.read", xcap.AggregationTypeSum)
-	StatMetastoreSectionPointersReadTime = xcap.NewStatisticFloat64("metastore.sections.pointers.read.duration", xcap.AggregationTypeSum)
-
 	// StatPostingsLabelColumnNameTotalPages – the total number of "column_name" column pages for label-based postings,
 	// sum across all the sections.
 	StatPostingsLabelColumnNameTotalPages = xcap.NewStatisticInt64(

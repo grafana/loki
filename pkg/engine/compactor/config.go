@@ -24,21 +24,19 @@ type Config struct {
 	// even if their target is selected.
 	Enabled bool `yaml:"enabled"`
 
-	// MaxRunningCompactionTasks caps how many IndexMerge tasks the
-	// coordinator runs concurrently per tenant within a single cycle.
-	// Applied via errgroup.SetLimit on the per-tenant goroutine group in
-	// runTenantCycle. Zero means unlimited (one goroutine per task with no
-	// admission throttle). Negative values are rejected at config validation.
+	// MaxRunningCompactionTasks caps how many IndexMerge tasks the coordinator
+	// runs concurrently per tenant. Zero means unlimited (one goroutine per task
+	// with no admission throttle). Negative values are rejected at config
+	// validation.
 	MaxRunningCompactionTasks int `yaml:"max_running_compaction_tasks"`
 
 	// LogMaxRunningCompactionTasks caps how many LogMerge tasks the coordinator
-	// runs concurrently per tenant within a single cycle. Zero means unlimited.
-	// Negative values are rejected at config validation.
+	// runs concurrently per tenant. Zero means unlimited. Negative values are
+	// rejected at config validation.
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each
-	// tick reads the most-recent ToC and runs a compaction plan per tenant
-	// that has > 1 index in the window.
+	// tick reads the most-recent ToC and plans compaction per tenant.
 	PollingInterval time.Duration `yaml:"polling_interval"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
