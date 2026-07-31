@@ -212,7 +212,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 	for tenant, cancel := range workers {
 		// A worker stays alive whenever any phase runs; runLog is irrelevant to
 		// liveness because it implies runIndex.
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
+		if runIndex, _ := c.phasesFor(tenant); !runIndex {
 			cancel()
 			delete(workers, tenant)
 		}
@@ -226,7 +226,7 @@ func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.
 		if _, running := workers[tenant]; running {
 			continue
 		}
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
+		if runIndex, _ := c.phasesFor(tenant); !runIndex {
 			continue
 		}
 		c.startWorker(ctx, workers, wg, tenant)
