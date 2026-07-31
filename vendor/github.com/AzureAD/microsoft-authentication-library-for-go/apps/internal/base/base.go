@@ -55,6 +55,7 @@ type AcquireTokenSilentParameters struct {
 	UserAssertion       string
 	AuthorizationType   authority.AuthorizeType
 	Claims              string
+	ClientClaims        string
 	AuthnScheme         authority.AuthenticationScheme
 	ExtraBodyParameters map[string]string
 	CacheKeyComponents  map[string]string
@@ -65,22 +66,39 @@ type AcquireTokenSilentParameters struct {
 // Code challenges are used to secure authorization code grants; for more information, visit
 // https://tools.ietf.org/html/rfc7636.
 type AcquireTokenAuthCodeParameters struct {
-	Scopes      []string
-	Code        string
-	Challenge   string
-	Claims      string
-	RedirectURI string
-	AppType     accesstokens.AppType
-	Credential  *accesstokens.Credential
-	TenantID    string
+	Scopes             []string
+	Code               string
+	Challenge          string
+	Claims             string
+	ClientClaims       string
+	RedirectURI        string
+	AppType            accesstokens.AppType
+	Credential         *accesstokens.Credential
+	TenantID           string
+	CacheKeyComponents map[string]string
 }
 
 type AcquireTokenOnBehalfOfParameters struct {
-	Scopes        []string
-	Claims        string
-	Credential    *accesstokens.Credential
-	TenantID      string
-	UserAssertion string
+	Scopes             []string
+	Claims             string
+	ClientClaims       string
+	Credential         *accesstokens.Credential
+	TenantID           string
+	UserAssertion      string
+	CacheKeyComponents map[string]string
+}
+
+// AcquireTokenByUserFICParameters contains the parameters to acquire a user token via the user_fic flow.
+type AcquireTokenByUserFICParameters struct {
+	Scopes                          []string
+	Claims                          string
+	ClientClaims                    string
+	Credential                      *accesstokens.Credential
+	TenantID                        string
+	UserFederatedIdentityCredential string
+	Username                        string
+	UserObjectID                    string
+	CacheKeyComponents              map[string]string
 }
 
 // AuthResult contains the results of one token acquisition operation in PublicClientApplication
@@ -322,7 +340,9 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	authParams.HomeAccountID = silent.Account.HomeAccountID
 	authParams.AuthorizationType = silent.AuthorizationType
 	authParams.Claims = silent.Claims
+	authParams.ClientClaims = silent.ClientClaims
 	authParams.UserAssertion = silent.UserAssertion
+	authParams.IsAppTokenCache = silent.IsAppCache
 	if silent.AuthnScheme != nil {
 		authParams.AuthnScheme = silent.AuthnScheme
 	}
@@ -414,6 +434,10 @@ func (b Client) AcquireTokenByAuthCode(ctx context.Context, authCodeParams Acqui
 		return AuthResult{}, err
 	}
 	authParams.Claims = authCodeParams.Claims
+	authParams.ClientClaims = authCodeParams.ClientClaims
+	if authCodeParams.CacheKeyComponents != nil {
+		authParams.CacheKeyComponents = authCodeParams.CacheKeyComponents
+	}
 	authParams.Scopes = authCodeParams.Scopes
 	authParams.Redirecturi = authCodeParams.RedirectURI
 	authParams.AuthorizationType = authority.ATAuthCode
@@ -441,13 +465,15 @@ func (b Client) AcquireTokenByAuthCode(ctx context.Context, authCodeParams Acqui
 func (b Client) AcquireTokenOnBehalfOf(ctx context.Context, onBehalfOfParams AcquireTokenOnBehalfOfParameters) (AuthResult, error) {
 	var ar AuthResult
 	silentParameters := AcquireTokenSilentParameters{
-		Scopes:            onBehalfOfParams.Scopes,
-		RequestType:       accesstokens.ATConfidential,
-		Credential:        onBehalfOfParams.Credential,
-		UserAssertion:     onBehalfOfParams.UserAssertion,
-		AuthorizationType: authority.ATOnBehalfOf,
-		TenantID:          onBehalfOfParams.TenantID,
-		Claims:            onBehalfOfParams.Claims,
+		Scopes:             onBehalfOfParams.Scopes,
+		RequestType:        accesstokens.ATConfidential,
+		Credential:         onBehalfOfParams.Credential,
+		UserAssertion:      onBehalfOfParams.UserAssertion,
+		AuthorizationType:  authority.ATOnBehalfOf,
+		TenantID:           onBehalfOfParams.TenantID,
+		Claims:             onBehalfOfParams.Claims,
+		ClientClaims:       onBehalfOfParams.ClientClaims,
+		CacheKeyComponents: onBehalfOfParams.CacheKeyComponents,
 	}
 	ar, err := b.AcquireTokenSilent(ctx, silentParameters)
 	if err == nil {
@@ -459,8 +485,12 @@ func (b Client) AcquireTokenOnBehalfOf(ctx context.Context, onBehalfOfParams Acq
 	}
 	authParams.AuthorizationType = authority.ATOnBehalfOf
 	authParams.Claims = onBehalfOfParams.Claims
+	authParams.ClientClaims = onBehalfOfParams.ClientClaims
 	authParams.Scopes = onBehalfOfParams.Scopes
 	authParams.UserAssertion = onBehalfOfParams.UserAssertion
+	if onBehalfOfParams.CacheKeyComponents != nil {
+		authParams.CacheKeyComponents = onBehalfOfParams.CacheKeyComponents
+	}
 	if authParams.ExtraBodyParameters != nil {
 		authParams.ExtraBodyParameters = silentParameters.ExtraBodyParameters
 	}
@@ -469,6 +499,30 @@ func (b Client) AcquireTokenOnBehalfOf(ctx context.Context, onBehalfOfParams Acq
 		ar, err = b.AuthResultFromToken(ctx, authParams, token)
 	}
 	return ar, err
+}
+
+// AcquireTokenByUserFIC acquires a user-scoped token using the user_fic grant type.
+func (b Client) AcquireTokenByUserFIC(ctx context.Context, params AcquireTokenByUserFICParameters) (AuthResult, error) {
+	authParams, err := b.AuthParams.WithTenant(params.TenantID)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	authParams.AuthorizationType = authority.ATUserFIC
+	authParams.Claims = params.Claims
+	authParams.ClientClaims = params.ClientClaims
+	if params.CacheKeyComponents != nil {
+		authParams.CacheKeyComponents = params.CacheKeyComponents
+	}
+	authParams.Scopes = params.Scopes
+	authParams.UserFederatedIdentityCredential = params.UserFederatedIdentityCredential
+	authParams.Username = params.Username
+	authParams.UserObjectID = params.UserObjectID
+
+	token, err := b.Token.UserFederatedIdentityCredential(ctx, authParams, params.Credential)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	return b.AuthResultFromToken(ctx, authParams, token)
 }
 
 func (b Client) AuthResultFromToken(ctx context.Context, authParams authority.AuthParams, token accesstokens.TokenResponse) (AuthResult, error) {
@@ -525,7 +579,7 @@ func (b Client) Account(ctx context.Context, homeAccountID string) (shared.Accou
 		authParams := b.AuthParams // This is a copy, as we don't have a pointer receiver and .AuthParams is not a pointer.
 		authParams.AuthorizationType = authority.AccountByID
 		authParams.HomeAccountID = homeAccountID
-		key := b.AuthParams.CacheKey(false)
+		key := authParams.CacheKey(false)
 		err := b.cacheAccessor.Replace(ctx, b.manager, cache.ReplaceHints{PartitionKey: key})
 		if err != nil {
 			return shared.Account{}, err
