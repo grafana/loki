@@ -32,10 +32,10 @@ jobs:
         with:
           registry: "us-docker.pkg.dev"
 
-      - name: Update/regenerate files for standard release
+      - name: Update/regenerate files for weekly release
         id: update
         run: |
-          bash .github/workflows/scripts/helm-weekly-release.sh
+          bash .github/workflows/scripts/helm-weekly-release.sh -k
 
       - name: Generate GitHub App Token
         id: app-token

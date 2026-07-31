@@ -28,6 +28,23 @@ validate_version_update() {
   fi
 }
 
+# Guards against re-dispatching the same gel_version, which would otherwise bump the
+# chart and add a changelog entry describing a GEL update that never happened.
+validate_gel_update() {
+  local values_file=$1
+  local new_gel_version=$2
+
+  local current_gel_version
+  current_gel_version=$(get_yaml_node "${values_file}" .enterprise.version)
+  local current_gel_image_tag
+  current_gel_image_tag=$(get_yaml_node "${values_file}" .enterprise.image.tag)
+
+  if [[ "${current_gel_version}" == "${new_gel_version}" && "${current_gel_image_tag}" == "${new_gel_version}" ]]; then
+    echo "Chart already uses GEL version ${new_gel_version}; not submitting PR"
+    exit 1
+  fi
+}
+
 if [[ -z "${1:-}" ]]; then
   echo "usage: $0 <gel-version>" >&2
   echo "example: $0 v3.6.11" >&2
@@ -44,6 +61,7 @@ chart_file=production/helm/loki/Chart.yaml
 current_chart_version=$(get_yaml_node "${chart_file}" .version)
 new_chart_version=$(calculate_next_chart_version "${current_chart_version}")
 
+validate_gel_update "${values_file}" "${latest_gel_tag}"
 validate_version_update "${new_chart_version}" "${current_chart_version}"
 
 update_yaml_node "${values_file}" .enterprise.version "${latest_gel_tag}"
