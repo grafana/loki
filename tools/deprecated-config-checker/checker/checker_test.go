@@ -52,6 +52,7 @@ var (
 		"storage_config.aws.dynamodb",
 		"storage_config.index_queries_cache_config",
 		"storage_config.index_cache_validity",
+		"storage_config.disable_broad_index_queries",
 		"schema_config.configs.[0].chunks",
 		"schema_config.configs.[0].index.tags",
 		"schema_config.configs.[1].store",

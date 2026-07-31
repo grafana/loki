@@ -6794,11 +6794,6 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# Disable broad index queries which results in reduced cache usage and faster
-# query performance at the expense of somewhat higher QPS on the index store.
-# CLI flag: -store.disable-broad-index-queries
-[disable_broad_index_queries: <boolean> | default = false]
-
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
