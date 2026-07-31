@@ -541,10 +541,11 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 
 		// encodeChunk mutates the chunk (writes block offsets) so hold chunkMtx
 		// for the duration of encode. Store Put remains unlocked.
-		chunkMtx.Lock()
-		err := i.encodeChunk(ctx, &ch, c)
-		chunkMtx.Unlock()
-		if err != nil {
+		if err := func() error {
+			chunkMtx.Lock()
+			defer chunkMtx.Unlock()
+			return i.encodeChunk(ctx, &ch, c)
+		}(); err != nil {
 			return err
 		}
 
