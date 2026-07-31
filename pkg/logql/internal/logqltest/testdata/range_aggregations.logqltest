@@ -189,6 +189,22 @@ eval instant at 110s last_over_time({app="a"} | logfmt | unwrap v [30s])
 eval instant at 125s first_over_time({app="a"} | logfmt | unwrap v [30s])
   {app="a"} NaN
 
+# first/last_over_time with grouping (by pod; app dropped). Distinct timestamps keep first/last
+# deterministic: pod=1 {v=2@20s, v=4@30s}, pod=2 {v=10@40s, v=20@50s}.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s   # no `v` -> dropped by unwrap
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+
 # quantile_over_time.
 clear
 load
@@ -220,6 +236,10 @@ eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m])
 eval instant at 60s quantile_over_time(-0.1, {app="a"} | logfmt | unwrap v [1m])
   expect fail msg: unexpected -
 
+# quantile_over_time requires an unwrap.
+eval instant at 60s quantile_over_time(0.5, {app="a"}[1m])
+  expect fail msg: invalid aggregation quantile_over_time without unwrap
+
 # Single-sample window: any quantile returns that value.
 eval instant at 10s quantile_over_time(0, {app="a"} | logfmt | unwrap v [5s])
   {app="a"} 1
@@ -243,6 +263,22 @@ eval range from 20s to 50s step 30s quantile_over_time(0.5, {app="a"} | logfmt |
 # Output gap.
 eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
   {app="a"} 4.5 _ 6
+
+# quantile_over_time with grouping: by/without combine the unwrapped samples across the streams in
+# each group. Two pods under app="a": pod=1 {2,4}, pod=2 {10,20}; by (app) folds all four into one
+# group (median of {2,4,10,20} = 7).
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s   # no `v` -> dropped by unwrap
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 15
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
+  {app="a"} 7
 
 # unwrap of a stream label `bar`.
 clear
