@@ -288,6 +288,14 @@ type compactionStats struct {
 	dispatched *atomic.Int32
 }
 
+func newCompactionStats() compactionStats {
+	return compactionStats{
+		removed:    atomic.NewInt32(0),
+		added:      atomic.NewInt32(0),
+		dispatched: atomic.NewInt32(0),
+	}
+}
+
 // compactTenantLogs dispatches LogMerge tasks for a single index and swaps the
 // ToC. Stats are zero-valued on any no-op (terminal index or race-loss swap).
 func (c *coordinator) compactTenantLogs(
@@ -299,13 +307,13 @@ func (c *coordinator) compactTenantLogs(
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
 	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
+		return newCompactionStats(), fmt.Errorf("reading log section refs: %w", err)
 	}
 
 	runs := v2.CalculateRuns(sections, compareSortKey)
 	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
@@ -368,7 +376,7 @@ func (c *coordinator) compactTenantLogs(
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
+		return newCompactionStats(), fmt.Errorf("failed to execute log-merge tasks: %w", err)
 	}
 
 	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
@@ -378,7 +386,7 @@ func (c *coordinator) compactTenantLogs(
 		}
 	}
 	if len(newEntries) == 0 {
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	// A converged row of 0 uncompressed size means unknown. Legacy objects
@@ -399,7 +407,9 @@ func (c *coordinator) compactTenantLogs(
 	}
 
 	if c.cfg.DryRun {
-		return compactionStats{dispatched: atomic.NewInt32(int32(len(tasks)))}, nil
+		stats := newCompactionStats()
+		stats.dispatched.Store(int32(len(tasks)))
+		return stats, nil
 	}
 
 	c.fillFileSizes(ctx, newEntries)
@@ -408,12 +418,12 @@ func (c *coordinator) compactTenantLogs(
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
+		return newCompactionStats(), fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
 			"window", window)
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
@@ -508,7 +518,7 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
+		return newCompactionStats(), fmt.Errorf("discover index section bounds: %w", err)
 	}
 
 	runs := v2.CalculateRuns(sections, compareIndexSortKey)
@@ -519,7 +529,7 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	if converged {
 		level.Debug(c.logger).Log("msg", "index-compaction: window converged, skipping",
 			"tenant", tenant, "window", window, "input_runs", inputRuns)
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
@@ -591,17 +601,17 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 		}
 	}
 	if len(completedTasks) == 0 {
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	oldPaths := taskObjectPaths(completedTasks)
 	newEntries, err := makeIndexTocEntries(completedTasks, completedOutputs, entries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
+		return newCompactionStats(), fmt.Errorf("build index ToC entries: %w", err)
 	}
 
 	if c.cfg.DryRun {
-		return compactionStats{}, nil
+		return newCompactionStats(), nil
 	}
 
 	c.fillFileSizes(ctx, newEntries)
@@ -610,7 +620,7 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	defer cancel()
 	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
+		return newCompactionStats(), fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
 		level.Debug(c.logger).Log("msg", "index-compaction ToC replace race-loss",
@@ -868,13 +878,14 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 	}
 
 	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "window", window, "index_entries_to_process", len(entries))
-	var agg compactionStats
+	agg := newCompactionStats()
 	anySwapped := false
 	anyError := false
 	cycleG, cycleCyx := errgroup.WithContext(ctx)
 	outcomes := make([]phaseOutcome, len(entries))
 	for i, entry := range entries {
 		if ctx.Err() != nil {
+			outcomes[i] = phaseOutcomeError
 			return phaseOutcomeError
 		}
 		cycleG.Go(func() error {
@@ -903,6 +914,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 			return nil
 		})
 	}
+	cycleG.Wait()
 
 	dur := c.clock().Sub(start)
 	switch {
@@ -960,11 +972,11 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 
 		if outcome != phaseOutcomeError {
-			if p == phaseIndexMerge && iterations == maxIndexIterations {
+			if p == phaseIndexMerge && iterations >= maxIndexIterations {
 				p = p.flip()
 				iterations = 0
 			} else if p == phaseLogMerge {
-				p.flip()
+				p = p.flip()
 			}
 		}
 	}

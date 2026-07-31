@@ -24,7 +24,7 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -238,9 +238,9 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	// A successful log-compaction reports its index/task deltas so the
 	// indexes_added/removed and tasks metrics reflect the work (regression:
 	// these were previously dropped, leaving the log-compaction path invisible).
-	require.Equal(t, 1, stats.removed, "the single converged index is removed")
-	require.Equal(t, 1, stats.added, "one merged index is added")
-	require.Equal(t, 1, stats.dispatched, "one log-merge task is dispatched")
+	require.Equal(t, int32(1), stats.removed.Load(), "the single converged index is removed")
+	require.Equal(t, int32(1), stats.added.Load(), "one merged index is added")
+	require.Equal(t, int32(1), stats.dispatched.Load(), "one log-merge task is dispatched")
 
 	dispatches := runner.snapshot()
 	require.Len(t, dispatches, 1, "two runs -> one task -> one LogMerge plan")
@@ -300,7 +300,7 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
-	require.Zero(t, stats.added)
+	require.Zero(t, stats.added.Load())
 	require.Empty(t, runner.snapshot(), "terminal window dispatches no plans")
 	require.Empty(t, replacer.snapshot(), "terminal window performs no swap")
 }
@@ -324,7 +324,7 @@ func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
 
 	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
 	require.NoError(t, err)
-	require.Equal(t, compactionStats{}, stats)
+	require.Equal(t, newCompactionStats(), stats)
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
 }
@@ -352,7 +352,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
-	require.Zero(t, stats.added)
+	require.Zero(t, stats.added.Load())
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
 }
@@ -422,7 +422,7 @@ func TestCompactTenantLogs_SwapRaceLossConverged(t *testing.T) {
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
-	require.Zero(t, stats.added)
+	require.Zero(t, stats.added.Load())
 }
 
 func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
@@ -440,7 +440,7 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err)
-	require.Zero(t, stats.added)
+	require.Zero(t, stats.added.Load())
 	require.NotEmpty(t, runner.snapshot(), "dry-run still dispatches")
 	require.Empty(t, replacer.snapshot(), "dry-run must not swap the ToC")
 }
@@ -481,7 +481,7 @@ func TestCompactTenantLogs_TransientFailureRetriesAndSwaps(t *testing.T) {
 	stats, err := c.compactTenantLogs(ctx, "acme", window, entry)
 
 	require.NoError(t, err, "a transient task failure must be recovered by retry")
-	require.Positive(t, stats.added, "retry recovers the failed task and the ToC swaps")
+	require.Positive(t, stats.added.Load(), "retry recovers the failed task and the ToC swaps")
 }
 
 func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
@@ -580,7 +580,7 @@ func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
 	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
 
 	require.NoError(t, err)
-	require.Equal(t, compactionStats{}, stats)
+	require.Equal(t, newCompactionStats(), stats)
 	require.Empty(t, runner.snapshot())
 	require.Empty(t, replacer.snapshot())
 	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
@@ -1125,12 +1125,17 @@ func TestRunTenantLoop_ErrorRetries(t *testing.T) {
 		}
 
 		done := make(chan struct{})
-		go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+		go func() {
+			for range 3 {
+				c.runTenantLoop(ctx, "acme")
+			}
+			close(done)
+		}()
 
 		require.Eventually(t, func() bool {
 			mu.Lock()
 			defer mu.Unlock()
-			return len(phases) >= 3
+			return len(phases) >= 5
 		}, 2*time.Second, 5*time.Millisecond)
 		cancel()
 		<-done
@@ -1445,6 +1450,7 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 	var phases []string
 	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
 		mu.Lock()
+		fmt.Println(opts.Actor[1])
 		if len(phases) == 0 || phases[len(phases)-1] != opts.Actor[1] {
 			phases = append(phases, opts.Actor[1])
 		}
@@ -1453,7 +1459,10 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+	go func() {
+		c.runTenantLoop(ctx, "acme")
+		close(done)
+	}()
 
 	require.Eventually(t, func() bool {
 		mu.Lock()
