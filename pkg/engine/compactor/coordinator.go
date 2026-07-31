@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -282,9 +283,9 @@ func (c *coordinator) discover(ctx context.Context, window time.Time) (map[strin
 // compactionStats reports the results of a single tenant compaction. The zero
 // value (all fields 0) represents a no-op success.
 type compactionStats struct {
-	removed    int
-	added      int
-	dispatched int
+	removed    *atomic.Int32
+	added      *atomic.Int32
+	dispatched *atomic.Int32
 }
 
 // compactTenantLogs dispatches LogMerge tasks for a single index and swaps the
@@ -295,6 +296,7 @@ func (c *coordinator) compactTenantLogs(
 	window time.Time,
 	converged indexEntry,
 ) (compactionStats, error) {
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
 	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
@@ -302,15 +304,15 @@ func (c *coordinator) compactTenantLogs(
 
 	runs := v2.CalculateRuns(sections, compareSortKey)
 	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
-		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
-			"tenant", tenant, "window", window)
+		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
-	level.Info(c.logger).Log("msg", "planned log compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs), "source_index", converged.Path)
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
 	if len(tasks) < 20 {
+		// Debugging: Print the task details if there aren't too many.
 		for _, task := range tasks {
 			totalTaskSize := int64(0)
 			sb := strings.Builder{}
@@ -325,7 +327,7 @@ func (c *coordinator) compactTenantLogs(
 				}
 			}
 			sb.WriteString("]")
-			level.Debug(c.logger).Log("msg", "log compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+			level.Debug(entryLogger).Log("msg", "log compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
 		}
 	}
 
@@ -391,13 +393,13 @@ func (c *coordinator) compactTenantLogs(
 
 	oldPaths := []string{converged.Path}
 	stats := compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
+		removed:    atomic.NewInt32(int32(len(oldPaths))),
+		added:      atomic.NewInt32(int32(len(newEntries))),
+		dispatched: atomic.NewInt32(int32(len(tasks))),
 	}
 
 	if c.cfg.DryRun {
-		return compactionStats{dispatched: len(tasks)}, nil
+		return compactionStats{dispatched: atomic.NewInt32(int32(len(tasks)))}, nil
 	}
 
 	c.fillFileSizes(ctx, newEntries)
@@ -409,13 +411,12 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
-			"tenant", tenant, "window", window)
+		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
+			"window", window)
 		return compactionStats{}, nil
 	}
 
-	level.Debug(c.logger).Log("msg", "log-compaction cycle completed",
-		"tenant", tenant, "files added", stats.added, "files removed", stats.removed, "tasks dispatched", stats.dispatched)
+	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	return stats, nil
 }
 
@@ -540,7 +541,7 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 				}
 			}
 			sb.WriteString("]")
-			level.Debug(c.logger).Log("msg", "index compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+			level.Debug(c.logger).Log("msg", "index compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
 		}
 	}
 
@@ -623,9 +624,9 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 		"added_indexes", len(newEntries),
 	)
 	return compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
+		removed:    atomic.NewInt32(int32(len(oldPaths))),
+		added:      atomic.NewInt32(int32(len(newEntries))),
+		dispatched: atomic.NewInt32(int32(len(tasks))),
 	}, nil
 }
 
@@ -825,7 +826,7 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 	}
 	// compactTenant returns zero stats for every no-op success; a real swap sets
 	// added > 0.
-	if stats.added == 0 {
+	if stats.added.Load() == 0 {
 		c.metrics.observeTenantCycle(tenant, "converged", dur, compactionStats{})
 		return phaseOutcomeNoWork
 	}
@@ -866,33 +867,41 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		return phaseOutcomeNoWork
 	}
 
+	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "window", window, "index_entries_to_process", len(entries))
 	var agg compactionStats
 	anySwapped := false
 	anyError := false
-	for _, entry := range entries {
+	cycleG, cycleCyx := errgroup.WithContext(ctx)
+	outcomes := make([]phaseOutcome, len(entries))
+	for i, entry := range entries {
 		if ctx.Err() != nil {
 			return phaseOutcomeError
 		}
-		stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
-		if err != nil {
-			// Only shut down when the coordinator context is cancelled. A
-			// DeadlineExceeded from this index's child ToCConsolidateTimeout is
-			// an ordinary per-index failure: record it and move on so a single
-			// slow swap doesn't skip the remaining indexes.
-			if ctx.Err() != nil {
-				return phaseOutcomeError
+		cycleG.Go(func() error {
+			level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", window, "index", entry.Path, "progress", fmt.Sprintf("%d/%d", i+1, len(entries)))
+			stats, err := c.compactTenantLogs(cycleCyx, tenant, window, entry)
+			if err != nil {
+				// Only shut down when the coordinator context is cancelled. A
+				// DeadlineExceeded from this index's child ToCConsolidateTimeout is
+				// an ordinary per-index failure: record it and move on so a single
+				// slow swap doesn't skip the remaining indexes.
+				if cycleCyx.Err() != nil {
+					outcomes[i] = phaseOutcomeError
+					return nil
+				}
+				level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
+					"tenant", tenant, "window", window, "index", entry.Path, "err", err)
+				anyError = true
+				return nil
 			}
-			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
-				"tenant", tenant, "window", window, "index", entry.Path, "err", err)
-			anyError = true
-			continue
-		}
-		if stats.added > 0 {
-			anySwapped = true
-			agg.removed += stats.removed
-			agg.added += stats.added
-			agg.dispatched += stats.dispatched
-		}
+			if stats.added.Load() > 0 {
+				anySwapped = true
+				agg.removed.Add(stats.removed.Load())
+				agg.added.Add(stats.added.Load())
+				agg.dispatched.Add(stats.dispatched.Load())
+			}
+			return nil
+		})
 	}
 
 	dur := c.clock().Sub(start)
@@ -919,6 +928,8 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 // disabled, so an index-only tenant runs IndexMerge exclusively.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	maxIndexIterations := 3
+	iterations := 0
 	for {
 		if ctx.Err() != nil {
 			return
@@ -939,6 +950,7 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		switch p {
 		case phaseIndexMerge:
 			outcome = c.runIndexMergePhase(ctx, tenant, window)
+			iterations++
 		case phaseLogMerge:
 			outcome = c.runLogMergePhase(ctx, tenant, window)
 		}
@@ -948,7 +960,12 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 
 		if outcome != phaseOutcomeError {
-			p = p.flip()
+			if p == phaseIndexMerge && iterations == maxIndexIterations {
+				p = p.flip()
+				iterations = 0
+			} else if p == phaseLogMerge {
+				p.flip()
+			}
 		}
 	}
 }
