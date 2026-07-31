@@ -149,7 +149,7 @@ require (
 )
 
 require (
-	github.com/containerd/ttrpc v1.2.8 // indirect
+	github.com/containerd/ttrpc v1.2.9 // indirect
 	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
 	github.com/go-openapi/swag/pools v0.27.3 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
