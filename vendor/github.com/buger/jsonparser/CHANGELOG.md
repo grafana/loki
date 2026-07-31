@@ -1,5 +1,117 @@
 # Changelog
 
+## [v1.5.0] — 2026-07-28
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance
+
+v1.5.0 extends the formal-verification coverage to **123 requirements** (0 errors, 0 warnings) across all new APIs. Every new function is traced via source annotations, tested with MC/DC witnesses, and covered by the structure-aware fuzzer.
+
+### Config struct — opt-in lenient parsing (#160, #115)
+
+```go
+var Lenient = jsonparser.Config{AllowSingleQuotes: true, AllowUnknownEscapes: true}
+Lenient.Get(data, "key")  // parses {'key':'value'} and unknown escapes
+```
+
+- **`AllowSingleQuotes`** — accept `'key':'value'` alongside `"key":"value"` (JavaScript/Python-style). The same escape rules apply inside single-quoted strings.
+- **`AllowUnknownEscapes`** — pass through unknown escape sequences (`` \` ``, `\x`) literally instead of erroring.
+- The default Config is strict (RFC 8259 only). Package-level functions are unchanged.
+- Config methods mirror the full API: `Get`, `GetString`, `Set`, `Delete`, `ArrayEach`, `ObjectEach`.
+
+### Streaming ReaderParser (#132, #257)
+
+```go
+rp := jsonparser.NewReaderParser(file)  // any io.Reader
+rp.Get("users", "[0]", "name")          // path-based access from a stream
+```
+
+- Path-based access to JSON data from an `io.Reader` — **no need to load the entire document into memory**.
+- Buffers data incrementally in 64KB chunks; memory is bounded by the largest value, not the document size.
+- Enables parsing **10GB+ JSON files** without OOM.
+- Methods: `Get`, `GetString`, `ArrayEach`.
+
+### Name aliases (#66)
+
+Canonical `EachXxx` pattern added alongside existing `XxxEach` names:
+
+| New (canonical) | Old (kept for compat) |
+|---|---|
+| `EachArray` | `ArrayEach` |
+| `EachObject` | `ObjectEach` |
+| `EachArrayErr` | `ArrayEachErr` |
+| `EachArrayWildcard` | `ArrayEachWildcard` |
+
+`EachKey`, `EachKeyErr`, `EachKeyWildcard` already matched the pattern. All old names remain functional.
+
+### Proof
+
+- 2 new SYS-REQs: 115 (Config/lenient parsing), 116 (streaming ReaderParser)
+- **123 requirements, 0 errors, 0 warnings, 279/279 functions traced**
+
+---
+
+## [v1.4.0] — 2026-07-28
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance
+
+v1.4.0 adds 9 new backward-compatible APIs, each traced to a formal requirement and verified with MC/DC coverage. **121 requirements, 0 errors, 0 warnings.**
+
+### New APIs
+
+**Iteration with error/break control** — resolves #53, #129, #176, #230, #255, #262
+- `ArrayEachErr` — callback returns `error` to stop early (`io.EOF` = graceful stop)
+- `EachKeyErr` — same pattern for EachKey
+
+**Safe string handling** — resolves #144, #158, #218, #270
+- `Escape(s string) []byte` — RFC 8259 string escaping (inverse of `Unescape`)
+- `SetString(data, val, keys...)` — Set with auto-quoted value
+
+**Container accessors** — resolves #175, #261, #271
+- `GetArrayLen` / `GetObjectLen` — count elements without a callback
+- `GetUint64` — uint64 variant of `GetInt`
+
+**Delete found signal** — resolves #229
+- `DeleteFound(data, keys...) ([]byte, bool)` — returns whether the key was found
+
+**Wildcard paths** — resolves #112
+- `EachKeyWildcard`, `ArrayEachWildcard`, `SetWildcard` — `[*]` path component
+
+**JSONPath compiled paths** — resolves #234, #251
+- `ParsePath("$.users[0].name")` → `[]string` path
+- `CompilePath` + `CompiledPath` — pre-compile and reuse with Get/Set/Delete
+
+### Fixes
+- EachKey no longer panics with >64 key components (#56)
+- Set pre-allocates output buffer, reducing allocations from 6 to 1 (#107)
+
+### Proof
+- 3 new SYS-REQs: 112 (container length), 113 (wildcard paths), 114 (compiled paths)
+- **121 requirements, 384 MC/DC witness rows, 0 uncovered**
+
+---
+
+## [v1.3.1] — 2026-07-28
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance
+
+v1.3.1 fixes 3 bugs that escaped the initial proof review, with new proof gates to prevent recurrence.
+
+### Bug fixes
+
+- **Fix Set/Delete input-buffer aliasing** (#209, #141) — `Set` and `Delete` no longer corrupt the caller's input `[]byte` when the slice has spare capacity. All mutation paths now allocate a fresh buffer.
+- **Fix EachKey array-index inconsistency** (#232) — `EachKey` now descends into terminal array-index paths consistently with `Get`.
+- **Fix benchmark measuring ffjson, not encoding/json** (#126) — benchmark payload types stripped of generated methods.
+
+### Proof strengthening
+
+| Bug | Proof gap | New gate |
+|---|---|---|
+| #209/#141 Set aliasing | No obligation said "Set must not mutate the input buffer" | New obligation `no_input_mutation` + `assertInputUnchanged` gate |
+| #232 EachKey ≠ Get | No cross-API consistency obligation | New obligation `api_consistency` + differential gate |
+| #126 benchmark ffjson | Proof didn't cover benchmarks | Benchmark honesty lint |
+
+---
+
 ## [v1.3.0] — 2026-07-27
 
 ### Formally verified by [ReqProof](https://reqproof.com)

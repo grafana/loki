@@ -25,38 +25,43 @@ func combineUTF16Surrogates(high, low rune) rune {
 
 const badHex = -1
 
-// reqproof:lemma h2I_range func(c byte) bool {
-//   r := h2I(c)
-//   return r == -1 || (r >= 0 && r <= 15)
-// }
-// reqproof:lemma h2I_decimal_digit func(c byte) bool {
-//   if c < '0' || c > '9' { return true }
-//   r := h2I(c)
-//   return r >= 0 && r <= 9
-// }
-// reqproof:lemma h2I_uppercase_hex func(c byte) bool {
-//   if c < 'A' || c > 'F' { return true }
-//   r := h2I(c)
-//   return r >= 10 && r <= 15
-// }
-// reqproof:lemma h2I_lowercase_hex func(c byte) bool {
-//   if c < 'a' || c > 'f' { return true }
-//   r := h2I(c)
-//   return r >= 10 && r <= 15
-// }
-// reqproof:lemma h2I_nondigit_is_badhex func(c byte) bool {
-//   if c >= '0' && c <= '9' { return true }
-//   if c >= 'A' && c <= 'F' { return true }
-//   if c >= 'a' && c <= 'f' { return true }
-//   return h2I(c) == badHex
-// }
-// reqproof:lemma h2I_nonneg_implies_le_15 func(c byte) bool {
-//   r := h2I(c)
-//   if r >= 0 {
-//     return r <= 15
-//   }
-//   return true
-// }
+//	reqproof:lemma h2I_range func(c byte) bool {
+//	  r := h2I(c)
+//	  return r == -1 || (r >= 0 && r <= 15)
+//	}
+//
+//	reqproof:lemma h2I_decimal_digit func(c byte) bool {
+//	  if c < '0' || c > '9' { return true }
+//	  r := h2I(c)
+//	  return r >= 0 && r <= 9
+//	}
+//
+//	reqproof:lemma h2I_uppercase_hex func(c byte) bool {
+//	  if c < 'A' || c > 'F' { return true }
+//	  r := h2I(c)
+//	  return r >= 10 && r <= 15
+//	}
+//
+//	reqproof:lemma h2I_lowercase_hex func(c byte) bool {
+//	  if c < 'a' || c > 'f' { return true }
+//	  r := h2I(c)
+//	  return r >= 10 && r <= 15
+//	}
+//
+//	reqproof:lemma h2I_nondigit_is_badhex func(c byte) bool {
+//	  if c >= '0' && c <= '9' { return true }
+//	  if c >= 'A' && c <= 'F' { return true }
+//	  if c >= 'a' && c <= 'f' { return true }
+//	  return h2I(c) == badHex
+//	}
+//
+//	reqproof:lemma h2I_nonneg_implies_le_15 func(c byte) bool {
+//	  r := h2I(c)
+//	  if r >= 0 {
+//	    return r <= 15
+//	  }
+//	  return true
+//	}
 func h2I(c byte) int {
 	if c >= 48 && c <= 57 { // '0'..'9'
 		return int(c - 48)
@@ -94,24 +99,27 @@ func decodeSingleUnicodeEscape(in []byte) (rune, bool) {
 // which is used to describe UTF16 chars.
 // Source: https://en.wikipedia.org/wiki/Plane_(Unicode)#Basic_Multilingual_Plane
 //
-// reqproof:lemma isUTF16EncodedRune_low_excluded func(r rune) bool {
-//   return !(r < 0xD800) || !isUTF16EncodedRune(r)
-// }
-// reqproof:lemma isUTF16EncodedRune_const_high_bound func(r rune) bool {
-//   // Fix #6: package-level const highSurrogateOffset (= 0xD800) now
-//   // resolves at translation time. Below the high surrogate offset
-//   // means definitely outside the UTF-16 surrogate range.
-//   return !(r < highSurrogateOffset) || !isUTF16EncodedRune(r)
-// }
-// reqproof:lemma isUTF16EncodedRune_const_bmp_bound func(r rune) bool {
-//   // Fix #6: package-level const basicMultilingualPlaneReservedOffset (= 0xDFFF).
-//   // Above the BMP-reserved offset means outside the UTF-16 surrogate range.
-//   return !(r > basicMultilingualPlaneReservedOffset) || !isUTF16EncodedRune(r)
-// }
+//	reqproof:lemma isUTF16EncodedRune_low_excluded func(r rune) bool {
+//	  return !(r < 0xD800) || !isUTF16EncodedRune(r)
+//	}
+//
+//	reqproof:lemma isUTF16EncodedRune_const_high_bound func(r rune) bool {
+//	  // Fix #6: package-level const highSurrogateOffset (= 0xD800) now
+//	  // resolves at translation time. Below the high surrogate offset
+//	  // means definitely outside the UTF-16 surrogate range.
+//	  return !(r < highSurrogateOffset) || !isUTF16EncodedRune(r)
+//	}
+//
+//	reqproof:lemma isUTF16EncodedRune_const_bmp_bound func(r rune) bool {
+//	  // Fix #6: package-level const basicMultilingualPlaneReservedOffset (= 0xDFFF).
+//	  // Above the BMP-reserved offset means outside the UTF-16 surrogate range.
+//	  return !(r > basicMultilingualPlaneReservedOffset) || !isUTF16EncodedRune(r)
+//	}
 func isUTF16EncodedRune(r rune) bool {
 	return 0xD800 <= r && r <= 0xDFFF
 }
 
+// SYS-REQ-115
 func decodeUnicodeEscape(in []byte) (rune, int) {
 	if r, ok := decodeSingleUnicodeEscape(in); !ok {
 		// Invalid Unicode escape
@@ -170,6 +178,11 @@ var backslashCharEscapeTable = [...]byte{
 // how many characters were consumed from 'in' and emitted into 'out'.
 // If a valid escape sequence does not appear as a prefix of 'in', (-1, -1) to signal the error.
 func unescapeToUTF8(in, out []byte) (inLen int, outLen int) {
+	return unescapeToUTF8Config(DefaultConfig, in, out)
+}
+
+// SYS-REQ-115
+func unescapeToUTF8Config(config Config, in, out []byte) (inLen int, outLen int) {
 	if len(in) < 2 || in[0] != '\\' {
 		// Invalid escape due to insufficient characters for any escape or no initial backslash
 		return -1, -1
@@ -181,6 +194,11 @@ func unescapeToUTF8(in, out []byte) (inLen int, outLen int) {
 		// Valid basic 2-character escapes (use lookup table)
 		out[0] = backslashCharEscapeTable[e]
 		return 2, 1
+	case '\'':
+		if config.AllowSingleQuotes {
+			out[0] = e
+			return 2, 1
+		}
 	case 'u':
 		// Unicode escape
 		if r, inLen := decodeUnicodeEscape(in); inLen == -1 {
@@ -191,6 +209,14 @@ func unescapeToUTF8(in, out []byte) (inLen int, outLen int) {
 			outLen := utf8.EncodeRune(out, r)
 			return inLen, outLen
 		}
+	}
+
+	if config.AllowUnknownEscapes {
+		// Lenient mode treats the escaped byte as a literal and discards the
+		// escape marker. A trailing '\' and malformed \u escape remain errors:
+		// they are truncated/invalid encodings, not unknown escape names.
+		out[0] = in[1]
+		return 2, 1
 	}
 
 	return -1, -1
@@ -245,12 +271,22 @@ func SetString(data []byte, val string, keys ...string) ([]byte, error) {
 
 // unescape unescapes the string contained in 'in' and returns it as a slice.
 // If 'in' contains no escaped characters:
-//   Returns 'in'.
+//
+//	Returns 'in'.
+//
 // Else, if 'out' is of sufficient capacity (guaranteed if cap(out) >= len(in)):
-//   'out' is used to build the unescaped string and is returned with no extra allocation
+//
+//	'out' is used to build the unescaped string and is returned with no extra allocation
+//
 // Else:
-//   A new slice is allocated and returned.
+//
+//	A new slice is allocated and returned.
 func Unescape(in, out []byte) ([]byte, error) {
+	return unescapeConfig(DefaultConfig, in, out)
+}
+
+// SYS-REQ-115
+func unescapeConfig(config Config, in, out []byte) ([]byte, error) {
 	firstBackslash := bytes.IndexByte(in, '\\')
 	if firstBackslash == -1 {
 		return in, nil
@@ -274,7 +310,7 @@ func Unescape(in, out []byte) ([]byte, error) {
 	// leaves at least the backslash character in `in`.
 	for {
 		// Unescape the next escaped character
-		inLen, bufLen := unescapeToUTF8(in, buf)
+		inLen, bufLen := unescapeToUTF8Config(config, in, buf)
 		if inLen == -1 {
 			return nil, MalformedStringEscapeError
 		}
