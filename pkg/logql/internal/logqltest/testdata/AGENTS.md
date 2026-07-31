@@ -1,102 +1,119 @@
 # Authoring LogQL `.logqltest` scripts
 
-This is the guide for **writing** the `testdata/*.logqltest` correctness scripts (for humans and
-agents). For the DSL **syntax** (`load` / `clear` / `eval`, timestamps, sample notation, etc.)
-see [`README.md`](../README.md). Follow the conventions below so the corpus stays consistent and
-each test genuinely earns its place.
+Guide for **writing** the `testdata/*.logqltest` correctness scripts. For DSL **syntax**
+(`load` / `clear` / `eval`, timestamps, sample notation) see [`README.md`](../README.md).
 
-## 1. Organize by feature, one file per feature
+## Scenario
 
-Each `.logqltest` file targets one core LogQL feature. Current / expected files:
-
-- `range_aggregations.logqltest` — `count_over_time`, `rate`, `bytes_over_time`,
-  `bytes_rate`, `absent_over_time`, and the unwrapped `sum/avg/min/max/first/last/quantile/
-  stddev/stdvar_over_time`.
-- `vector_aggregations.logqltest` — `sum/avg/min/max/count/stddev/stdvar/topk/bottomk/sort/sort_desc`
-  and `by`/`without` grouping.
-- `binary_operations.logqltest` — arithmetic, comparison, logical/set (`and`/`or`/`unless`), the
-  `bool` modifier, and vector matching (`on`/`ignoring`/`group_left`/`group_right`).
-- `functions.logqltest` — `label_replace`, `vector`.
-- (add more as coverage grows: `line_filters.logqltest`, `label_filters.logqltest`,
-  `parsers.logqltest`, `formatters.logqltest`, …)
-
-## 2. Scenario structure
-
-The unit is a **scenario**, not a single query:
+A scenario is one `clear` + `load` + the queries that share its data:
 
 ```
 clear
 load
-  <streams: signal + noise>
-
-eval instant at <T> <query>
+  {app="a"}     "msg" @ 20s      # signal
+  {app="noise"} "x"   @ 20s      # noise the query must drop
+eval instant at 60s <query>
   <expected>
-eval range from <T-N·S> to <T> step <S> <query>
+eval range from 40s to 60s step 20s <query>   # last step == the instant above
   <expected>
 ```
 
-- **Start every scenario with `clear`**, then `load` its own data. This isolates scenarios so
-  one can't leak streams into another (loads are otherwise cumulative).
-- **Run one or more queries per fixture.** If several queries exercise the same data (e.g.
-  `count_over_time(...)` and `sum by (...) (count_over_time(...))`), keep them under one
-  `clear`/`load` — only start a new scenario when the data must change.
-- **Test every query both instant and range, back to back.** Pick a query time `T`; the instant
-  runs `at T`, and the range runs `from T-N·S to T step S` so its **last step equals the instant**
-  (same value, easy to cross-check) while earlier steps exercise the sliding window.
-- **`sort` / `sort_desc` are the exception — instant only.** They assert order, so use
-  `expect ordered` (positional comparison) with distinct, non-`NaN` values.
+## Terminology
 
-## 3. Always load noise that exercises the tested filter
+- **Range vector duration** — the duration inside `[…]`, such as the `[1m]` in `rate(…[1m])`.
+  Written `[R]` below.
 
-Every scenario loads **noise** the query must exclude, so the test proves its filtering actually
-*excludes* — not merely that it counts what matches. **Every `load` block includes noise**, and the
-noise must exercise the *same* filter the test asserts on:
+## Checklist — apply to every scenario
+
+1. **Isolate the scenario.** Start with `clear`, then `load` its own streams.
+   Loads are cumulative, so a scenario that forgets `clear` inherits earlier streams.
+
+2. **Load noise the query must drop.** Every `load` carries a `"noise"` line that exercises the
+   *same* filter under test (table below).
+   A `{app="noise"}` stream proves nothing about a `|~` line filter, because the selector drops it
+   first. Line-filter noise needs the same labels and metadata, and differs only in the line.
+
+3. **Test instant and range, back to back.** Run each query `at T` and `from T−N·S to T step S`,
+   sized so the last range step equals the instant. This gives an easy cross-check.
+   Exception: `sort` and `sort_desc` are instant-only. Assert them with `expect ordered` over
+   distinct, non-`NaN` values.
+
+4. **Cover both window overlaps and a gap.** For range functions, test three shapes: instant,
+   overlapping (`step ≤ [R]`), and non-overlapping (`step > [R]`). Also add an empty window that
+   emits an output gap (`_`). Describe these at the language level (window overlap), not engine
+   internals.
+
+5. **Test both grouping keywords.** When a function takes `by` or `without`, test both.
+   `by(l)` keeps only `l`; `without(l)` keeps the rest. Both combine samples across the streams in a
+   group.
+
+6. **Cover the edge cases, not only the happy path.** Read the implementation to list them. For
+   Prometheus-ported functions such as rates and quantiles, also cross-check
+   `promql/promqltest/testdata/*.test`.
+   Usual cases: an empty window (emits no series, except `absent_over_time`, which gives `1`); the
+   half-open boundary; a single-sample window; `NaN` and `±Inf`; and invalid queries via
+   `expect fail` (forbidden grouping, an unwrap-only op without `| unwrap`, a bad `label_replace`
+   regex, `vector(<non-number>)`).
+
+7. **Keep one scenario per function.** Put all of a function's cases in its own scenario: the happy
+   path, edge cases, grouping, and `expect fail`.
+   Do not make a shared "grouping" or "parse errors" scenario. Split a function only for genuinely
+   distinct modes, such as `rate`'s log-range form and its `| unwrap` form.
+
+8. **Hand-compute discriminating expected values.** Never pin what the engine emits.
+   Avoid a value that a degenerate case or a likely bug also gives. For example, `0` is the result of
+   an empty window, a single sample, and broken counter-reset compensation, so a test that expects
+   `0` can pass while the feature is broken. If you are unsure of the value, probe it with a throwaway
+   scenario, confirm it, then delete the probe.
+
+9. **Make the file green before you move on.** Run
+   `go test ./pkg/logql/internal/logqltest/ -run 'TestLogQLScripts/<file>.logqltest' -v`.
+   If you cannot reproduce an expected value from real logs, surface it as a real discrepancy. Do not
+   pin the engine's output.
+
+## Noise by filter type
 
 | The query filters by… | Noise to add |
 |-----------------------|--------------|
-| Line filter (`\|~`, `\|=`, `!~`, `!=`) | the **same** stream (identical labels + structured metadata) with a `"noise"` line the filter drops |
+| Line filter (`\|~`, `\|=`, `!~`, `!=`) | the **same** stream (identical labels + metadata) with a `"noise"` line the filter drops |
 | Numeric / label filter (`\| bar > 0`) | the same stream with a failing value (`bar=0`) |
 | Structured metadata (`\| lvl="error"`) | the same stream with a different metadata value (`lvl="info"`) |
 | Label selector only (no line filter) | a separate `{app="noise"}` stream the selector drops |
-| Time window (`[1m]`) | entries spanning ~2× the window so the older half falls outside |
+| Range vector duration (`[R]`) | entries that span ~2× the duration so the older half falls outside |
 
-The point is to make the *actual code path under test* do its job. A `{app="noise"}` stream proves
-nothing about a `|~` line filter — the selector drops it first. So for a line-filter test the noise
-must reach the filter: same stream labels and structured metadata as the valid logs, only the log
-line differs (`"noise"`).
+Don't mix line-filtered and non-line-filtered queries under one `load`: same-label `"noise"` is
+dropped by the former but **counted** by the latter — split them into separate scenarios.
 
-Consequence: don't mix line-filtered and non-line-filtered queries under one `load`. Same-label
-`"noise"` lines are dropped by the former but **counted** by the latter, so split them into separate
-scenarios, each carrying the noise its queries exercise.
+## Half-open window
 
-Make noise self-identifying: use a `"noise"` log line (and, for selector-only noise, an
-`{app="noise"}` label) so a reader sees at a glance what must be dropped — no explanatory comment
-needed.
+`[R]` at `T` covers `(T−R, T]` — lower bound exclusive, upper inclusive. Exercise it directly: place
+a sample at `T−R` (must be excluded) and one at `T` (must be included). Give
+`first_over_time` / `last_over_time` samples **distinct timestamps** so their selection is
+deterministic.
 
-## 4. Comments
+## Comments
 
-Sparse and purposeful. Never restate the query, and never re-explain these conventions (that
-loads carry noise is stated here, once — not per load):
+Write every comment in **Simplified Technical English** (ASD-STE100): one idea per sentence
+(≤ ~20 words), active voice, simple present or past tense (no perfect, progressive, or `-ing`
+forms), and plain common words used the same way every time — one term per concept, no synonyms.
 
-- Comment a `clear`/`load` **only** when the fixture itself isn't self-evident (e.g. a
-  non-obvious value distribution).
-- Annotate an `eval` **only** when the expected value's derivation is non-obvious (e.g. why a
-  window yields N) — one line, at the eval, not per result line.
-- No line-by-line narration.
+Keep them terse and mostly **inline** — let the DSL and expected values carry the meaning; comment
+only what they can't show, and prefer a trailing `# …` on the relevant line over a separate line.
 
-## 5. Expected results are absolute truth
+- **Section header:** name the function(s), e.g. `# count_over_time()` or
+  `# stddev_over_time() / stdvar_over_time() with grouping`. A short qualifier is fine (`edge cases:`,
+  `with grouping`, `unwrapped`); do **not** prose-explain what the function does.
+- **Inline derivation on the result line** when the value isn't obvious — the formula
+  (`{app="a"} 2.6   # (0.4 x 2) + (0.6 x 3) = 2.6`) or the per-step window math
+  (`{app="a"} 2 3   # (−30s,30s]={1,2,3}→2, (0s,60s]={1,2,3,4,5}→3`).
+- **Inline tag on a range eval** for its window shape (`… count_over_time(…[1m])  # overlapping`),
+  and on a `load` line for what it contributes (`{app="a"} "ccc" @ 40s   # 3 bytes`).
+- **Explain a mechanism** (grouping, `_extracted` precedence, …) **once**, in the first scenario that
+  needs it — not per scenario.
+- Never restate the query; no line-by-line narration.
 
-Expected values are hand-computed, not whatever the engine happens to emit. When porting a case
-from a Go test, preserve its original expected value and reconstruct log input that reproduces
-it through the full pipeline. Remember Loki's range window is **half-open**: `[R]` at time `T`
-covers `(T-R, T]` (lower bound exclusive, upper inclusive).
+## Files
 
-## 6. Run it
-
-```
-go test ./pkg/logql/internal/logqltest/ -run 'TestLogQLScripts/<file>.logqltest' -v
-```
-
-Every scenario must be green before moving on. If an expected value can't be reproduced from
-real logs, that's a genuine discrepancy to surface — don't paper over it by pinning whatever the
-engine returned.
+One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
+`functions` (`label_replace`, `vector`), `conversions`, … add more as coverage grows
+(`line_filters`, `label_filters`, `parsers`, `formatters`, …).
