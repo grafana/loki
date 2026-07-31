@@ -3,7 +3,7 @@
 // Provenance-includes-license: AGPL-3.0-only
 // Provenance-includes-copyright: The Grafana Mimir Authors.
 
-package encoding
+package streamenc
 
 import (
 	"context"

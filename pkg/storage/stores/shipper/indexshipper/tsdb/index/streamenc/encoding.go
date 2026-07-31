@@ -6,7 +6,7 @@
 // Provenance-includes-license: Apache-2.0
 // Provenance-includes-copyright: The Prometheus Authors.
 
-package encoding
+package streamenc
 
 import (
 	"encoding/binary"
