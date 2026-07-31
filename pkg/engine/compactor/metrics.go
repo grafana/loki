@@ -224,9 +224,9 @@ func (m *coordinatorMetrics) recordTenantCycle(
 	// The compacted outcome adds/removes indexes and dispatches tasks, so
 	// record its deltas.
 	if outcome == "compacted" {
-		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed))
-		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added))
-		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched))
+		m.indexesRemovedTotal.WithLabelValues(tenant).Add(float64(stats.removed.Load()))
+		m.indexesAddedTotal.WithLabelValues(tenant).Add(float64(stats.added.Load()))
+		m.tasksTotal.WithLabelValues(tenant).Add(float64(stats.dispatched.Load()))
 	}
 }
 
