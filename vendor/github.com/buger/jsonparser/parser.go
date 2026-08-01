@@ -1378,6 +1378,10 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 		// the output is always valid JSON.
 		coerceTopLevel := false
 		coerceStart := 0
+		topLevelArrayAppend := false
+		topLevelArrayEmpty := false
+		topLevelArrayStart := 0
+		topLevelArrayInsertOffset := 0
 		if endOffset == -1 {
 			firstToken := nextTokenConfig(config, data)
 			if firstToken < 0 {
@@ -1400,10 +1404,39 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 				comma = false
 				object = !pathIsIndex
 				endOffset = lastToken(data)
+			} else if pathIsIndex && dataIsArray {
+				// SYS-REQ-110: a missing index in a top-level array appends at
+				// the array's end, just as it does for a nested array.
+				arrayEnd := blockEndConfig(config, data[firstToken:], '[', ']')
+				if arrayEnd == -1 {
+					return nil, MalformedArrayError
+				}
+				endOffset = firstToken + arrayEnd - 1
+				topLevelArrayAppend = true
+				topLevelArrayStart = firstToken
+				topLevelArrayInsertOffset = endOffset
+
+				interior := data[firstToken+1 : endOffset]
+				lastInteriorToken := lastToken(interior)
+				if lastInteriorToken == -1 {
+					// createInsertComponent wraps an index component in brackets
+					// when comma is false, so replace the empty root array.
+					comma = false
+					topLevelArrayEmpty = true
+				} else if interior[lastInteriorToken] == ',' {
+					// Replace a trailing comma (and any whitespace after it)
+					// with the normal comma-prefixed append component.
+					beforeComma := lastToken(interior[:lastInteriorToken])
+					if beforeComma == -1 {
+						comma = false
+						topLevelArrayEmpty = true
+					} else {
+						topLevelArrayInsertOffset = firstToken + 1 + lastInteriorToken
+					}
+				}
 			} else if !dataIsObject {
-				// Matching array+array-index is intentionally unsupported at the
-				// top level (unchanged behavior); non-container input and the
-				// degenerate empty-key-on-non-object case are rejected.
+				// Non-container input and the degenerate empty-key-on-non-object
+				// case are rejected.
 				return nil, KeyPathNotFoundError
 			} else {
 				// Don't need a comma if the input is an empty object
@@ -1455,6 +1488,13 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 			if coerceTopLevel {
 				startOffset = coerceStart
 				depthOffset = endOffset + 1
+			} else if topLevelArrayAppend {
+				if topLevelArrayEmpty {
+					startOffset = topLevelArrayStart
+					depthOffset = endOffset + 1
+				} else {
+					startOffset = topLevelArrayInsertOffset
+				}
 			} else {
 				startOffset = depthOffset
 			}

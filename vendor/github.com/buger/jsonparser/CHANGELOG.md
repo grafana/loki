@@ -1,5 +1,28 @@
 # Changelog
 
+## [v1.6.0] — 2026-07-29
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### New API — `Append`
+
+```go
+// Append to an array without knowing its length
+data, _ = jsonparser.Append(data, []byte(`"new_item"`), "items")
+```
+
+- **`Append(data, value, keys...)`** — appends `value` to the end of the JSON array addressed by `keys`. Addresses the top-level value when `keys` is empty; auto-vivifies a missing keyed path as a single-element array. Returns `MalformedArrayError` when the addressed value is not an array. Traced to SYS-REQ-009, SYS-REQ-110.
+
+### Known issues — all resolved (zero open)
+
+- **KI-2 fixed** — `ParseInt("-")` now returns an error instead of `(0, nil)`. One-line sign-only guard in `bytes.go:parseInt` (after stripping the sign byte, an empty remainder returns `(0, false, false)`).
+- **KI-3 fixed** — `Set` with an array-index path component under an object parent (and vice-versa) now auto-coerces the container type instead of emitting malformed JSON. (Disposition already set to `fixed` in v1.5.x.)
+- **KI-4 fixed** — `Set` on a top-level array-index beyond length now appends at the array's end (matching nested-array behavior under SYS-REQ-110) instead of returning `KeyPathNotFoundError`. Also cleans up trailing commas in malformed arrays.
+
+**Zero open known issues.** Every previously shipped known issue is now resolved and covered by ReqProof L3 Assurance.
+
+---
+
 ## [v1.5.1] — 2026-07-28
 
 ### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)

@@ -18,6 +18,9 @@ func parseInt(bytes []byte) (v int64, ok bool, overflow bool) {
 		neg = true
 		i = 1
 	}
+	if i == l {
+		return 0, false, false
+	}
 
 	if l-i < 19 {
 		for ; i < l; i++ {
