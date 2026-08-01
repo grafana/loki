@@ -314,6 +314,20 @@ Accepts multiple keys to specify path to JSON value (in case of updating or crea
 
 Note that keys can be an array indexes: `jsonparser.Delete(data, "person", "avatars", "[0]", "url")`
 
+### **`Append`**
+```go
+func Append(data []byte, value []byte, keys ...string) ([]byte, error)
+```
+Appends `value` to the end of the JSON array addressed by `keys`. When `keys` is
+empty, `Append` addresses the top-level value. If a keyed path does not exist,
+`Append` creates it as a single-element array using `Set`'s auto-vivification
+behavior. Returns `MalformedArrayError` if the addressed value is not an array.
+
+```go
+// Append to an array without knowing its length
+data, _ = jsonparser.Append(data, []byte(`"new_item"`), "items")
+```
+
 
 ## What makes it so fast?
 * It does not rely on `encoding/json`, `reflection` or `interface{}`, the only real package dependency is `bytes`.
