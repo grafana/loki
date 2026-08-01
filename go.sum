@@ -519,8 +519,8 @@ github.com/hashicorp/go-hclog v1.6.3/go.mod h1:W4Qnvbt70Wk/zYJryRzDRU/4r0kIg0PVH
 github.com/hashicorp/go-immutable-radix v1.0.0/go.mod h1:0y9vanUI8NX6FsYoO3zeMjhV/C5i9g4Q3DwcSNZ4P60=
 github.com/hashicorp/go-immutable-radix v1.3.1 h1:DKHmCUm2hRBK510BaiZlwvpD40f8bJFeZnpfm2KLowc=
 github.com/hashicorp/go-immutable-radix v1.3.1/go.mod h1:0y9vanUI8NX6FsYoO3zeMjhV/C5i9g4Q3DwcSNZ4P60=
-github.com/hashicorp/go-metrics v0.6.0 h1:+kjWqHRH2HxAocneVfB/BI6EeWUUHyPhyQZozMT8Ed4=
-github.com/hashicorp/go-metrics v0.6.0/go.mod h1:0B52B5pZ7+qm5Zhzs8Fygr87isvmUgr0Zv9rmJ9qsnQ=
+github.com/hashicorp/go-metrics v0.6.1 h1:V7j9cgHTXl4OebnX3y0l6ZSoO5dTp0VI0K8Y7JfRsS4=
+github.com/hashicorp/go-metrics v0.6.1/go.mod h1:XOozbQKeJz12GG8cCcQb/E5vNVeTdJt0aHbM+uHnL1M=
 github.com/hashicorp/go-msgpack/v2 v2.1.5 h1:Ue879bPnutj/hXfmUk6s/jtIK90XxgiUIcXRl656T44=
 github.com/hashicorp/go-msgpack/v2 v2.1.5/go.mod h1:bjCsRXpZ7NsJdk45PoCQnzRGDaK8TKm5ZnDI/9y3J4M=
 github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+lD48awMYo=

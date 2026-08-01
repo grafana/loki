@@ -1031,8 +1031,8 @@ github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.3.1
 ## explicit
 github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-metrics v0.6.0
-## explicit; go 1.25
+# github.com/hashicorp/go-metrics v0.6.1
+## explicit; go 1.25.0
 github.com/hashicorp/go-metrics
 github.com/hashicorp/go-metrics/compat
 github.com/hashicorp/go-metrics/prometheus
