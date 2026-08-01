@@ -1,5 +1,30 @@
 # Changelog
 
+## [v1.5.1] — 2026-07-28
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### Performance — 6.1x large-payload speedup
+
+- **Fix stringEnd unbounded backslash scan** — `stringEndConfig` was scanning the ENTIRE remaining parent document for backslashes (`bytes.IndexByte(data, '\\')`) instead of just the string body. On a 24kb large payload this walked tens of KB per string. Now bounded to `data[:firstQuote]` (the string body only). **128µs → 22µs (5.8x).**
+- **SWAR string scan** — replaced two separate `bytes.IndexByte` calls (quote + backslash) with a single inline 8-byte SWAR (SIMD-Within-A-Register) loop that checks for both characters simultaneously. **22µs → 21µs (additional 8%).**
+- **Benchmark suite updated** — all comparison libraries (gabs, easyjson, ffjson, etc.) updated to latest versions. Benchmark methodology documented (Apple M4 Max, Go 1.26.3, median of 5 runs). The `encoding/json` benchmark no longer uses ffjson-generated methods (the #126 ffjson measurement bug was fixed in v1.3.1).
+- **README benchmarks refreshed** — all numbers now reflect real measurements on modern hardware with current library versions.
+
+### Updated benchmark results (Apple M4 Max, Go 1.26.3, median of 5 runs)
+
+| Payload | jsonparser | encoding/json | easyjson | Speedup vs encoding/json |
+|---|---|---|---|---|
+| Small (190B, Get) | 382 ns | 1,335 ns | 312 ns | 3.5x |
+| Small (190B, EachKey) | 241 ns | — | — | 5.5x |
+| Medium (2.4kB, Get) | 3,894 ns | 10,564 ns | 2,444 ns | 2.7x |
+| Medium (2.4kB, EachKey) | 1,923 ns | — | — | 5.5x |
+| Large (24kB) | 20,788 ns | 134,123 ns | 32,765 ns | **6.4x** |
+
+All jsonparser results: **0 bytes allocated, 0 allocations**.
+
+---
+
 ## [v1.5.0] — 2026-07-28
 
 ### Covered by [ReqProof](https://reqproof.com) — L3 Assurance
