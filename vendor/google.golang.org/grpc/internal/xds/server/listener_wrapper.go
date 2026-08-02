@@ -439,7 +439,13 @@ func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerUpdate, onDone
 	}
 	l := lw.parent
 	ilc := update.TCPListener
-	// Make sure that the socket address on the received Listener resource
+
+	// A server-side listener update must contain inbound listener configuration
+	// (TCPListener). If it is nil, it indicates that a client-side listener (API
+	// Listener) resource was received instead. In this case, we transition the
+	// server to non-serving mode.
+	//
+	// Also, make sure that the socket address on the received Listener resource
 	// matches the address of the net.Listener passed to us by the user. This
 	// check is done here instead of at the XDSClient layer because of the
 	// following couple of reasons:
@@ -451,11 +457,16 @@ func (lw *ldsWatcher) ResourceChanged(update *xdsresource.ListenerUpdate, onDone
 	// What this means is that the XDSClient has ACKed a resource which can push
 	// the server into a "not serving" mode. This is not ideal, but this is
 	// what we have decided to do.
-	if ilc.Address != l.addr || ilc.Port != l.port {
+	if ilc == nil || (ilc.Address != l.addr || ilc.Port != l.port) {
 		// TODO(purnesh42h): Are there any other cases where this can be
 		// treated as an ambient error?
 		l.mu.Lock()
-		err := fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		var err error
+		if ilc == nil {
+			err = fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("received client-side listener resource %q on server-side", lw.name))
+		} else {
+			err = fmt.Errorf("[xDS node id: %v]: %w", l.xdsNodeID, fmt.Errorf("address (%s:%s) in Listener update does not match listening address: (%s:%s)", ilc.Address, ilc.Port, l.addr, l.port))
+		}
 		l.switchModeLocked(connectivity.ServingModeNotServing, err)
 		l.mu.Unlock()
 		return
