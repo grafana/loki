@@ -1,5 +1,45 @@
 # Changelog
 
+## [v1.6.1] — 2026-07-29
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### Performance — gjson-style fast-skip in hot loops
+
+Ported gjson's `>'\\'` fast-skip trick to three inner loops in parser.go:
+`stringEndConfig` tail, `blockEndConfig`, and `searchKeysConfig`. The trick
+uses a single unsigned comparison (`byte > 0x5C`) to skip all non-structural
+bytes in bulk, reducing per-byte branch overhead.
+
+| Payload | Before | After | Improvement |
+|---|---|---|---|
+| Small (190B) | 382 ns | **339 ns** | -11.3% |
+| Medium (2.4kB) | 3,899 ns | **3,141 ns** | -19.4% |
+| Large (24kB) | 20,788 ns | **20,114 ns** | -3.2% |
+
+Zero allocations maintained on all paths.
+
+### Benchmarks — now includes gjson and sonic
+
+Added [tidwall/gjson](https://github.com/tidwall/gjson) (15.5k⭐, path-based
+parser like jsonparser) and [bytedance/sonic](https://github.com/bytedance/sonic)
+(9.6k⭐, SIMD-accelerated deserializer) to the benchmark suite.
+
+**Final leaderboard (large payload):**
+
+| Library | time/op | bytes/op | allocs/op |
+|---|---|---|---|
+| **buger/jsonparser** | **20,114** | **0** | **0** |
+| tidwall/gjson | 22,756 | 28,672 | 2 |
+| mailru/easyjson | 33,771 | 4,016 | 134 |
+| bytedance/sonic | 41,053 | 31,368 | 71 |
+| pquerna/ffjson | 59,063 | 4,822 | 144 |
+| encoding/json | 130,565 | 4,432 | 147 |
+
+jsonparser is **the fastest across all payload sizes** and the **only zero-allocation** parser.
+
+---
+
 ## [v1.6.0] — 2026-07-29
 
 ### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
