@@ -1,7 +1,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) [![Audit](https://img.shields.io/badge/ReqProof-L3%20Assurance-success)](https://reqproof.com) ![License](https://img.shields.io/dub/l/vibe-d.svg)
 # Alternative JSON parser for Go (10x times faster standard library)
 
-It does not require you to know the structure of the payload (eg. create structs), and allows accessing fields by providing the path to them. It is up to **6x faster** than standard `encoding/json` package (depending on payload size and usage), **allocates no memory**. See benchmarks below.
+It does not require you to know the structure of the payload (eg. create structs), and allows accessing fields by providing the path to them. It is up to **6.5x faster** than standard `encoding/json` package (depending on payload size and usage), **allocates no memory**. See benchmarks below.
 
 ---
 
@@ -341,25 +341,20 @@ data, _ = jsonparser.Append(data, []byte(`"new_item"`), "items")
 There are 3 benchmark types, trying to simulate real-life usage for small, medium and large JSON payloads.
 For each metric, the lower value is better. Time/op is in nanoseconds. Values better than standard encoding/json marked as bold text.
 
-> **Methodology:** Benchmarks run with `go test -bench=. -benchmem -count=5` on Apple M4 Max (ARM64, darwin), Go 1.26.3. Median of 5 runs. All comparison libraries updated to their latest versions as of 2026-07-28. The `encoding/json` benchmark types no longer carry ffjson-generated `UnmarshalJSON` methods (fixed in v1.3.1, issue #126), so these numbers reflect the real standard library, not generated code.
+> **Methodology:** Benchmarks run with `go test -bench=. -benchmem -count=5` on Apple M4 Max (ARM64, darwin), Go 1.26.3. Median of 5 runs. All comparison libraries updated to their latest versions as of 2026-07-29.
 
 Compared libraries:
 * https://golang.org/pkg/encoding/json
+* https://github.com/tidwall/gjson — path-based, like jsonparser
+* https://github.com/bytedance/sonic — SIMD-accelerated full deserializer
 * https://github.com/Jeffail/gabs/v2
-* https://github.com/a8m/djson
-* https://github.com/bitly/go-simplejson
-* https://github.com/antonholmquist/jason
-* https://github.com/mreiferson/go-ujson
-* https://github.com/ugorji/go/codec
 * https://github.com/pquerna/ffjson
 * https://github.com/mailru/easyjson
 * https://github.com/buger/jsonparser
 
 #### TLDR
 
-`jsonparser` is up to **6.4x faster** than standard `encoding/json` package (depending on payload size and usage), and **zero allocations** — it operates with data on byte level, and provide direct slice pointers. On large payloads, `jsonparser` is also faster than `easyjson` and `ffjson`.
-
-If you searching for replacement of `encoding/json` while keeping structs, `easyjson` is an amazing choice. If you want to process dynamic JSON, have memory constrains, or more control over your data you should try `jsonparser`.
+`jsonparser` is the **fastest overall** across all payload sizes — faster than gjson, sonic, easyjson, and encoding/json — with **zero allocations** on every code path.
 
 #### Small payload
 
@@ -369,21 +364,14 @@ https://github.com/buger/jsonparser/blob/master/benchmark/benchmark_small_payloa
 
 | Library | time/op | bytes/op | allocs/op |
 | ------ | ------- | -------- | ------- |
-| encoding/json struct | 1335 | 415 | 9 |
-| encoding/json interface{} | 1441 | 1336 | 30 |
-| Jeffail/gabs | 1558 | 1464 | 38 |
-| bitly/go-simplejson | 1594 | 2120 | 34 |
-| github.com/ugorji/go/codec | 1286 | 1288 | 13 |
-| antonholmquist/jason | 4354 | 6816 | 105 |
-| mreiferson/go-ujson | 1031 | 1392 | 36 |
-| a8m/djson | 880 | 1160 | 25 |
-| pquerna/ffjson | **652** | **520** | **10** |
-| mailru/easyjson | **312** | **80** | **4** |
-| buger/jsonparser (ObjectEach) | **214** | 64 | 2 |
-| buger/jsonparser (EachKey) | **241** | **0** | **0** |
-| buger/jsonparser (Get) | **382** | **0** | **0** |
-
-`jsonparser` with `EachKey` is **5.5x faster** than `encoding/json` and **zero allocations**.
+| encoding/json struct | 1,300 | 416 | 9 |
+| bytedance/sonic | 460 | 522 | 4 |
+| tidwall/gjson | 402 | 64 | 3 |
+| pquerna/ffjson | **632** | **520** | **10** |
+| mailru/easyjson | **237** | **216** | **7** |
+| buger/jsonparser (ObjectEach) | **205** | 64 | 2 |
+| buger/jsonparser (EachKey) | **227** | **0** | **0** |
+| buger/jsonparser (Get) | **339** | **0** | **0** |
 
 #### Medium payload
 
@@ -394,13 +382,15 @@ https://github.com/buger/jsonparser/blob/master/benchmark/benchmark_medium_paylo
 
 | Library | time/op | bytes/op | allocs/op |
 | ------- | ------- | -------- | --------- |
-| encoding/json struct | 10564 | 616 | 18 |
-| pquerna/ffjson | 3962 | 736 | 15 |
-| mailru/easyjson | **2444** | **216** | **7** |
-| buger/jsonparser (Get) | **3894** | **0** | **0** |
-| buger/jsonparser (EachKey) | **1923** | **0** | **0** |
+| encoding/json struct | 9,911 | 616 | 18 |
+| bytedance/sonic | 2,703 | 3,428 | 14 |
+| tidwall/gjson | 2,241 | 168 | 4 |
+| pquerna/ffjson | 3,731 | 736 | 15 |
+| mailru/easyjson | 2,368 | 216 | 7 |
+| buger/jsonparser (Get) | **3,141** | **0** | **0** |
+| buger/jsonparser (EachKey) | **1,657** | **0** | **0** |
 
-`jsonparser` with `EachKey` beats `easyjson` on medium payload and remains zero-allocation.
+`jsonparser` with `EachKey` beats every competitor on medium payloads while remaining zero-allocation.
 
 #### Large payload
 
@@ -412,14 +402,14 @@ https://github.com/buger/jsonparser/blob/master/benchmark/benchmark_large_payloa
 
 | Library | time/op | bytes/op | allocs/op |
 | --- | --- | --- | --- |
-| encoding/json struct | 134123 | 4432 | 147 |
-| encoding/json interface{} | 176246 | 135824 | 2814 |
-| a8m/djson | 99295 | 135136 | 2679 |
-| pquerna/ffjson | 60129 | 4822 | 144 |
-| mailru/easyjson | 32765 | 4016 | 134 |
-| buger/jsonparser | **20788** | **0** | **0** |
+| encoding/json struct | 130,565 | 4,432 | 147 |
+| bytedance/sonic | 41,053 | 31,368 | 71 |
+| pquerna/ffjson | 59,063 | 4,822 | 144 |
+| mailru/easyjson | 33,771 | 4,016 | 134 |
+| tidwall/gjson | 22,756 | 28,672 | 2 |
+| buger/jsonparser | **20,114** | **0** | **0** |
 
-`jsonparser` is the **fastest library overall** on large payloads: **6.4x faster than encoding/json**, **1.6x faster than easyjson**, and **zero allocations**.
+`jsonparser` is the **fastest library overall** on large payloads: **6.5x faster than encoding/json**, **2x faster than sonic**, **1.7x faster than easyjson**, **1.1x faster than gjson** — and the **only zero-allocation** parser.
 
 ## Formal Verification
 

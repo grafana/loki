@@ -340,6 +340,14 @@ func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
 	}
 	escaped := false
 	for ; i < n; i++ {
+		// gjson trick: the only bytes this loop acts on are the closing quote
+		// and the backslash. For double-quote strings quote=0x22, for
+		// single-quote quote=0x27; backslash=0x5C. All three are <= 0x5C, so a
+		// single unsigned comparison skips every other byte (letters, digits,
+		// punctuation, high UTF-8 bytes) without touching them.
+		if data[i] > '\\' {
+			continue
+		}
 		c := data[i]
 		if c == quote {
 			if !escaped {
@@ -377,6 +385,30 @@ func blockEndConfig(config Config, data []byte, openSym byte, closeSym byte) int
 	ln := len(data)
 
 	for i < ln {
+		// Fast-skip non-structural bytes before dispatching to the switch.
+		// Two categories are skipped in bulk with a single comparison each:
+		//  1. Control/whitespace bytes (<= 0x20): indentation, spaces, newlines.
+		//  2. Bytes > 0x5C that are not the open/close symbol: lowercase letters
+		//     (true/false/null), and high UTF-8 bytes.
+		// The open/close symbols themselves (e.g. '{'=0x7B, '}'=0x7D, ']'=0x5D)
+		// are > 0x5C and must NOT be skipped, hence the explicit exclusions.
+		// '"' (0x22), '\'' (0x27) and '[' (0x5B) are <= 0x5C so they are never
+		// caught by the second clause and always reach the switch.
+		for i < ln {
+			c := data[i]
+			if c <= ' ' {
+				i++
+				continue
+			}
+			if c > '\\' && c != openSym && c != closeSym {
+				i++
+				continue
+			}
+			break
+		}
+		if i >= ln {
+			break
+		}
 		switch data[i] {
 		case '"', '\'': // If inside a configured string, skip it
 			quote := data[i]
@@ -425,6 +457,28 @@ func searchKeysConfig(config Config, data []byte, keys ...string) int {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 
 	for i < ln {
+		// Fast-skip non-structural bytes before dispatching to the switch.
+		// Skip control/whitespace (<= 0x20) and bytes > 0x5C that are not '{'
+		// (0x7B) or '}' (0x7D) — the only structural chars handled below that
+		// exceed the 0x5C threshold. '"' (0x22), '\'' (0x27), '[' (0x5B) and
+		// ':' (0x3A) are all <= 0x5C and always reach the switch. This is the
+		// gjson key-scan trick: a single unsigned comparison advances past
+		// value content (true/false/null letters, high bytes) and indentation.
+		for i < ln {
+			c := data[i]
+			if c <= ' ' {
+				i++
+				continue
+			}
+			if c > '\\' && c != '{' && c != '}' {
+				i++
+				continue
+			}
+			break
+		}
+		if i >= ln {
+			break
+		}
 		switch data[i] {
 		case '"', '\'':
 			quote := data[i]
