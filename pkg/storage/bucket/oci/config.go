@@ -14,9 +14,6 @@ type Config struct {
 	TenancyOCID          string                 `yaml:"tenancy_ocid"`
 	UserOCID             string                 `yaml:"user_ocid"`
 	Region               string                 `yaml:"region"`
-	Fingerprint          string                 `yaml:"fingerprint"`
-	PrivateKey           string                 `yaml:"privatekey"`
-	Passphrase           string                 `yaml:"passphrase"`
 	PartSize             int64                  `yaml:"part_size"`
 	MaxRequestRetries    int                    `yaml:"max_request_retries"`
 	RequestRetryInterval int                    `yaml:"request_retry_interval"`

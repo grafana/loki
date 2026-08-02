@@ -1312,6 +1312,13 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
+# github.com/oracle/oci-go-sdk/v65 v65.117.1
+## explicit; go 1.24.0
+github.com/oracle/oci-go-sdk/v65/common
+github.com/oracle/oci-go-sdk/v65/common/auth
+github.com/oracle/oci-go-sdk/v65/common/utils
+github.com/oracle/oci-go-sdk/v65/objectstorage
+github.com/oracle/oci-go-sdk/v65/objectstorage/transfer
 # github.com/oschwald/geoip2-golang/v2 v2.2.0
 ## explicit; go 1.25.0
 github.com/oschwald/geoip2-golang/v2
@@ -1620,6 +1627,7 @@ github.com/thanos-io/objstore/providers/azure
 github.com/thanos-io/objstore/providers/bos
 github.com/thanos-io/objstore/providers/filesystem
 github.com/thanos-io/objstore/providers/gcs
+github.com/thanos-io/objstore/providers/oci
 github.com/thanos-io/objstore/providers/oss
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
@@ -1704,6 +1712,9 @@ github.com/xhit/go-str2duration/v2
 # github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e
 ## explicit; go 1.19
 github.com/xo/terminfo
+# github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
+## explicit; go 1.17
+github.com/youmark/pkcs8
 # github.com/yuin/gopher-lua v1.1.2
 ## explicit; go 1.23
 github.com/yuin/gopher-lua
