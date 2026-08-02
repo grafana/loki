@@ -58,6 +58,17 @@ eval instant at 60s count_over_time({app="a"} | logfmt --strict [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt --strict | __error__="" [1m])
   expect empty
 
+# logfmt() must not let a log field named __error__ clobber the reserved error label.
+clear
+load
+  {app="a"} `__error__=boom ok=1` @ 20s [repeat every 20s for 3]
+  {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", ok="1"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])   # overlapping
+  {app="a", ok="1"} 2 3
+
 # logfmt() with label expressions.
 clear
 load
@@ -124,6 +135,17 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
   expect fail msg: JSONParserErr
 eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
   {app="a", ok="1"} 2
+
+# json() must not let a log field named __error__ clobber the reserved error label.
+clear
+load
+  {app="a"} `{"__error__":"boom","ok":"1"}` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"z":1}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  {app="a", ok="1"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])   # overlapping
+  {app="a", ok="1"} 2 3
 
 # json() with label expressions:
 # - `user.id` reads a nested field.
@@ -251,3 +273,14 @@ eval instant at 60s count_over_time({app="a"} | unpack [1m])
   expect fail msg: JSONParserErr
 eval instant at 60s count_over_time({app="a"} | unpack | __error__="" [1m])
   expect empty
+
+# unpack() must not let a packed field named __error__ clobber the reserved error label.
+clear
+load
+  {app="a"} `{"__error__":"boom","lvl":"info","_entry":"real message"}` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | unpack [1m])
+  {app="a", lvl="info"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack [1m])   # overlapping
+  {app="a", lvl="info"} 2 3

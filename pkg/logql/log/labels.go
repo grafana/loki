@@ -342,6 +342,13 @@ func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
 // The value `v` may not be set if a category with higher preference already contains `n`.
 // Category preference goes as Parsed > Structured Metadata > Stream.
 func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
+	// A parsed label must never become one of the reserved error labels: those are managed only
+	// through SetErr / SetErrorDetails. Without this guard a log field literally named __error__
+	// (e.g. extracted by json or logfmt) is read as a pipeline error and fails the query.
+	if category == ParsedLabel && (n == logqlmodel.ErrorLabel || n == logqlmodel.ErrorDetailsLabel) {
+		return b
+	}
+
 	// Parsed takes precedence over Structured Metadata and Stream labels.
 	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
 	if category == ParsedLabel {
