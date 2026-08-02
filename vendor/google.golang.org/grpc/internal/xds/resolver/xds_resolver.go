@@ -27,6 +27,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"google.golang.org/grpc"
 	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/grpclog"
@@ -414,7 +415,7 @@ func (r *xdsResolver) newConfigSelector() (_ *configSelector, err error) {
 
 	for i, rt := range r.xdsConfig.VirtualHost.Routes {
 		clusters := rinternal.NewWRR.(func() wrr.WRR)()
-		interceptors := []iresolver.ClientInterceptor{}
+		interceptors := []httpfilter.ClientInterceptor{}
 		// TODO: Carve out the common logic between the ClusterSpecifierPlugin
 		// and WeightedClusters.
 		if rt.ClusterSpecifierPlugin != "" {
@@ -594,8 +595,8 @@ func (r *xdsResolver) onResourceError(err error) {
 // followed by the route override, and finally the virtual host override.
 //
 // Only executed in the context of a serializer callback.
-func (r *xdsResolver) newInterceptor(filters []xdsresource.HTTPFilter, clusterOverride, routeOverride, virtualHostOverride map[string]httpfilter.FilterConfig) (_ iresolver.ClientInterceptor, err error) {
-	interceptors := make([]iresolver.ClientInterceptor, 0, len(filters))
+func (r *xdsResolver) newInterceptor(filters []xdsresource.HTTPFilter, clusterOverride, routeOverride, virtualHostOverride map[string]httpfilter.FilterConfig) (_ httpfilter.ClientInterceptor, err error) {
+	interceptors := make([]httpfilter.ClientInterceptor, 0, len(filters))
 	defer func() {
 		// Clean up any interceptors that were successfully built before the
 		// error occurred, to avoid leaking resources.
@@ -652,18 +653,18 @@ func (r *xdsResolver) newInterceptor(filters []xdsresource.HTTPFilter, clusterOv
 // interceptorList is a client interceptor that contains a list of client
 // interceptors to execute in order.
 type interceptorList struct {
-	interceptors []iresolver.ClientInterceptor
+	interceptors []httpfilter.ClientInterceptor
 }
 
-func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, _ func(), newStream func(ctx context.Context, _ func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
+func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, newStream func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error), opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	for idx := len(il.interceptors) - 1; idx >= 0; idx-- {
 		ns := newStream
 		i := il.interceptors[idx]
-		newStream = func(ctx context.Context, done func()) (iresolver.ClientStream, error) {
-			return i.NewStream(ctx, ri, done, ns)
+		newStream = func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+			return i.NewStream(ctx, ri, ns, opts...)
 		}
 	}
-	return newStream(ctx, func() {})
+	return newStream(ctx, opts...)
 }
 
 func (il *interceptorList) Close() {
@@ -684,7 +685,7 @@ func (r *xdsResolver) getOrCreateClientFilter(builder httpfilter.ClientFilterBui
 		return clientFilter
 	}
 
-	cf := builder.BuildClientFilter()
+	cf := builder.BuildClientFilter(httpfilter.ClientFilterOptions{FilterName: key.name})
 	r.httpFilters[key] = cf
 	return cf
 }
