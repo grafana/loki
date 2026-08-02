@@ -1,0 +1,253 @@
+# logfmt()
+clear
+load
+  {app="a"}     "level=info status=200" @ 20s [repeat every 20s for 4]
+  {app="noise"} "level=info status=200" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", level="info", status="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt [1m])   # overlapping
+  {app="a", level="info", status="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt [1m]) # non-overlapping
+  {app="a", level="info", status="200"} 3 _
+
+# logfmt() edge cases:
+# - Keys sanitize non-word characters to `_`.
+# - Empty values are kept only when --keep-empty is specified.
+# - A duplicate key keeps the first.
+# - A quoted value holds spaces.
+clear
+load
+  {app="a"} `a-b=1 9x=2 dup=first dup=second msg="hi there" empty=` @ 20s [repeat every 20s for 3]
+  {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", a_b="1", _9x="2", dup="first", msg="hi there"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt --keep-empty [1m])
+  {app="a", a_b="1", _9x="2", dup="first", msg="hi there", empty=""} 3
+
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
+  {app="a", a_b="1", _9x="2", dup="first", msg="hi there"} 2 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt --keep-empty [1m])
+  {app="a", a_b="1", _9x="2", dup="first", msg="hi there", empty=""} 2 3
+
+# logfmt() clashing labels keep the loser under `<name>_extracted`, following the base-name
+# precedence stream > metadata > parsed (the same for every parser).
+clear
+load
+  {app="a", sl="s", sm="s", tri="s"} `sl=p md=p tri=p` @ 20s [repeat every 20s for 3] [metadata md="m" sm="m" tri="m"]
+  {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])
+  {app="a", sl="s", sl_extracted="p", md="m", md_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 2 3
+
+# logfmt() partially malformed line: the parser keeps the valid pairs and drops the bad one, or
+# fails the whole line under --strict.
+clear
+load
+  {app="a"} `good=1 bad="unterminated` @ 20s [repeat every 20s for 3]
+  {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | logfmt [1m])
+  {app="a", good="1"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt --strict [1m])
+  expect fail msg: LogfmtParserErr
+# A __error__ filter drops the failing line.
+eval instant at 60s count_over_time({app="a"} | logfmt --strict | __error__="" [1m])
+  expect empty
+
+# logfmt() with label expressions.
+clear
+load
+  {app="a"} "level=info status=200 msg=hi" @ 20s [repeat every 20s for 4]
+  {app="noise"} "x=1" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | logfmt level, code="status" [1m])
+  {app="a", level="info", code="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt level, code="status" [1m])   # overlapping
+  {app="a", level="info", code="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt level, code="status" [1m]) # non-overlapping
+  {app="a", level="info", code="200"} 3 _
+
+# json()
+clear
+load
+  {app="a"} `{"level":"info","status":200}` @ 20s [repeat every 20s for 4]
+  {app="noise"} `{"level":"info"}` @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  {app="a", level="info", status="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json [1m])  # overlapping
+  {app="a", level="info", status="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json [1m]) # non-overlapping
+  {app="a", level="info", status="200"} 3 _
+
+# json() edge cases:
+# - Nested objects flatten with `_`.
+# - Numbers and booleans become strings.
+# - Null and arrays drop.
+clear
+load
+  {app="a"} `{"lvl":"warn","obj":{"x":1,"y":{"z":2}},"ok":true,"no":false,"nil":null,"arr":[1,2],"f":1.5}` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"a":1}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  {app="a", lvl="warn", obj_x="1", obj_y_z="2", ok="true", no="false", f="1.5"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])  # overlapping
+  {app="a", lvl="warn", obj_x="1", obj_y_z="2", ok="true", no="false", f="1.5"} 2 3
+
+# json() edge cases:
+# - A dotted key sanitizes to `_`.
+# - A clashing name gets `_extracted`.
+# - A duplicate key keeps the first.
+clear
+load
+  {app="a", level="stream"} `{"level":"parsed","a.b":1,"dup":"first","dup":"second"}` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"x":1}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  {app="a", level="stream", level_extracted="parsed", a_b="1", dup="first"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | json [1m])  # overlapping
+  {app="a", level="stream", level_extracted="parsed", a_b="1", dup="first"} 2 3
+
+# json() malformed line: the query fails, unless a __error__ filter drops the bad line.
+clear
+load
+  {app="a"} `{"ok":1}` @ 20s
+  {app="a"} `broken`   @ 40s
+  {app="a"} `{"ok":1}` @ 60s
+  {app="noise"} `{"z":1}` @ 20s
+
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
+  {app="a", ok="1"} 2
+
+# json() with label expressions:
+# - `user.id` reads a nested field.
+# - `tags[0]` indexes an array.
+# - A path with no match adds an empty-value label.
+# - An invalid expression fails at parse time.
+clear
+load
+  {app="a"} `{"user":{"id":"u1","name":"alice"},"tags":["x","y"]}` @ 20s [repeat every 20s for 4]
+  {app="noise"} `{"a":1}` @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | json who="user.id", tag="tags[0]" [1m])
+  {app="a", who="u1", tag="x"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json who="user.id", tag="tags[0]" [1m])  # overlapping
+  {app="a", who="u1", tag="x"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json who="user.id", tag="tags[0]" [1m]) # non-overlapping
+  {app="a", who="u1", tag="x"} 3 _
+eval instant at 60s count_over_time({app="a"} | json age="user.age" [1m])
+  {app="a", age=""} 3
+eval instant at 60s count_over_time({app="a"} | json bad="user[" [1m])
+  expect fail msg: cannot parse expression
+
+# regexp()
+clear
+load
+  {app="a"} "GET /home 200" @ 20s [repeat every 20s for 4]
+  {app="noise"} "GET /home 200" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+) (?P<status>\d+)` [1m])
+  {app="a", method="GET", path="/home", status="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+) (?P<status>\d+)` [1m])  # overlapping
+  {app="a", method="GET", path="/home", status="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+) (?P<status>\d+)` [1m]) # non-overlapping
+  {app="a", method="GET", path="/home", status="200"} 3 _
+
+# regexp() edge cases:
+# - A non-match extracts nothing and keeps the line.
+# - A clashing name gets `_extracted`.
+# - An invalid regexp fails at parse time (no capture, duplicate name, or bad syntax).
+clear
+load
+  {app="a", method="stream"} "PUT /x" @ 20s [repeat every 20s for 3]
+  {app="noise"} "y" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | regexp `(?P<num>\d+)` [1m])
+  {app="a", method="stream"} 3
+eval instant at 60s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])
+  {app="a", method="stream", method_extracted="PUT", path="/x"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | regexp `(?P<method>\w+) (?P<path>\S+)` [1m])  # overlapping
+  {app="a", method="stream", method_extracted="PUT", path="/x"} 2 3
+eval instant at 60s count_over_time({app="a"} | regexp `nocapture` [1m])
+  expect fail msg: at least one named capture must be supplied
+eval instant at 60s count_over_time({app="a"} | regexp `(?P<x>.)(?P<x>.)` [1m])
+  expect fail msg: duplicate extracted label name
+eval instant at 60s count_over_time({app="a"} | regexp `(` [1m])
+  expect fail msg: error parsing regexp
+
+# pattern()
+clear
+load
+  {app="a"} "GET /home 200" @ 20s [repeat every 20s for 4]
+  {app="noise"} "GET /home 200" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | pattern `<method> <path> <status>` [1m])
+  {app="a", method="GET", path="/home", status="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | pattern `<method> <path> <status>` [1m])  # overlapping
+  {app="a", method="GET", path="/home", status="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | pattern `<method> <path> <status>` [1m]) # non-overlapping
+  {app="a", method="GET", path="/home", status="200"} 3 _
+# `<_>` skips a field.
+eval instant at 60s count_over_time({app="a"} | pattern `<method> <_> <status>` [1m])
+  {app="a", method="GET", status="200"} 3
+
+# pattern() edge cases:
+# - A short line fills only the leading captures.
+# - A clashing name gets `_extracted`.
+# - A pattern with no capture fails at parse time.
+clear
+load
+  {app="a", method="stream"} "POST" @ 20s [repeat every 20s for 3]
+  {app="noise"} "y" @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | pattern `<method> <path>` [1m])
+  {app="a", method="stream", method_extracted="POST"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | pattern `<method> <path>` [1m])  # overlapping
+  {app="a", method="stream", method_extracted="POST"} 2 3
+eval instant at 60s count_over_time({app="a"} | pattern `no captures here` [1m])
+  expect fail msg: at least one capture is required
+
+# unpack() promotes to labels the string fields of a json line.
+clear
+load
+  {app="a"} `{"lvl":"info","cluster":"eu","num":5,"_entry":"real message"}` @ 20s [repeat every 20s for 4]
+  {app="noise"} `{"a":"b","_entry":"x"}` @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | unpack [1m])
+  {app="a", lvl="info", cluster="eu"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | unpack [1m])  # overlapping
+  {app="a", lvl="info", cluster="eu"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | unpack [1m]) # non-overlapping
+  {app="a", lvl="info", cluster="eu"} 3 _
+
+# unpack() edge cases:
+# - A clashing name gets `_extracted`.
+# - The promoted `_entry` line feeds a following parser.
+clear
+load
+  {app="a", lvl="stream"} `{"lvl":"packed","_entry":"code=42"}` @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | unpack [1m])
+  {app="a", lvl="stream", lvl_extracted="packed"} 3
+eval instant at 60s count_over_time({app="a"} | unpack | logfmt [1m])
+  {app="a", lvl="stream", lvl_extracted="packed", code="42"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | unpack | logfmt [1m])  # overlapping
+  {app="a", lvl="stream", lvl_extracted="packed", code="42"} 2 3
+
+# unpack() fails on a non-json line; a __error__ filter drops it.
+clear
+load
+  {app="a"} "not json" @ 20s [repeat every 20s for 3]
+  {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
+
+eval instant at 60s count_over_time({app="a"} | unpack [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s count_over_time({app="a"} | unpack | __error__="" [1m])
+  expect empty
