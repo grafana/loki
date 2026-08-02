@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/atomic"
+	"sync/atomic"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"

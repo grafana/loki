@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/atomic"
+	"sync/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

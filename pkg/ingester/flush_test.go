@@ -24,7 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
+	"sync/atomic"
 
 	"github.com/grafana/dskit/tenant"
 

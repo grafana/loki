@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/atomic"
+	"sync/atomic"
 
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
