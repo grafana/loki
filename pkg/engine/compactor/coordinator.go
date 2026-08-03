@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -208,6 +209,7 @@ func (c *coordinator) compactTenantLogs(
 	window time.Time,
 	converged indexEntry,
 ) (compactionStats, error) {
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
 	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
@@ -215,12 +217,30 @@ func (c *coordinator) compactTenantLogs(
 
 	runs := v2.CalculateRuns(sections, compareSortKey)
 	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
-		level.Debug(c.logger).Log("msg", "log-compaction: window not worth compacting, skipping",
-			"tenant", tenant, "window", window)
+		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return compactionStats{}, nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
+
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:taskCnt] {
+		totalTaskSize := int64(0)
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
+			for j := 0; j < len(run.Sections); j++ {
+				totalTaskSize += run.Sections[j].UncompressedSize
+			}
+		}
+		sb.WriteString("]")
+		level.Debug(entryLogger).Log("msg", "log compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+	}
 
 	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
@@ -302,10 +322,12 @@ func (c *coordinator) compactTenantLogs(
 		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
-			"tenant", tenant, "window", window)
+		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
+			"window", window)
 		return compactionStats{}, nil
 	}
+
+	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
 	return stats, nil
 }
 
@@ -329,6 +351,25 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	outputs := make([]string, len(tasks))
+
+	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:taskCnt] {
+		totalTaskSize := int64(0)
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
+			for j := 0; j < len(run.Sections); j++ {
+				totalTaskSize += run.Sections[j].UncompressedSize
+			}
+		}
+		sb.WriteString("]")
+		level.Debug(c.logger).Log("msg", "index compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+	}
 
 	// IndexMerge opens each referenced object whole. Until it reads individual
 	// sections, one object may be repeated across task outputs and deduplicated
@@ -652,13 +693,15 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 		return phaseOutcomeNoWork
 	}
 
+	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "window", window, "index_entries_to_process", len(entries))
 	var agg compactionStats
 	anySwapped := false
 	anyError := false
-	for _, entry := range entries {
+	for i, entry := range entries {
 		if ctx.Err() != nil {
 			return phaseOutcomeError
 		}
+		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", window, "index", entry.Path, "progress", fmt.Sprintf("%d/%d", i+1, len(entries)))
 		stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
 		if err != nil {
 			// Only shut down when the coordinator context is cancelled. A
