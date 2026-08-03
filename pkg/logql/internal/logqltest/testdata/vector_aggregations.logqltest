@@ -1,0 +1,211 @@
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 10]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 10]
+
+eval instant at 60s avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 4.5
+eval range from 60s to 180s step 30s avg(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 4.5 4.5 4.5 4.5 4.5
+
+eval instant at 60s min(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.05
+eval range from 60s to 180s step 30s min(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s max by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s max(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.1
+eval range from 60s to 180s step 30s max(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.1 0.1 0.1 0.1 0.1
+
+eval instant at 60s sum(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.15
+eval range from 60s to 180s step 30s sum(rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {} 0.15 0.15 0.15 0.15 0.15
+
+eval instant at 60s count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)
+  {} 2
+eval range from 60s to 180s step 30s count(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app)
+  {} 2 2 2 2 2
+
+# topk(), bottomk(), sort() and sort_desc()
+#
+# In this scenario, "foo" and "bar" apps are each split by pod, so {app=~"foo|bar"} selector
+# matches four distinct rates: foo/a=0.1, foo/b=0.2, bar/a=0.05, bar/b=0.25.
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 0s  [repeat every 10s for 19]
+  {app="foo", pod="a"} "noise" @ 5s  [repeat every 10s for 19]
+  {app="foo", pod="b"} "xbar"  @ 0s  [repeat every 5s  for 37]
+  {app="foo", pod="b"} "noise" @ 2s  [repeat every 5s  for 37]
+  {app="bar", pod="a"} "xbar"  @ 0s  [repeat every 20s for 10]
+  {app="bar", pod="a"} "noise" @ 10s [repeat every 20s for 10]
+  {app="bar", pod="b"} "xbar"  @ 0s  [repeat every 4s  for 46]
+  {app="bar", pod="b"} "noise" @ 2s  [repeat every 4s  for 46]
+
+eval instant at 60s topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="b"} 0.25
+  {app="foo", pod="b"} 0.2
+eval range from 60s to 180s step 30s topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="b"} 0.25 0.25 0.25 0.25 0.25
+  {app="foo", pod="b"} 0.2 0.2 0.2 0.2 0.2
+
+eval instant at 60s topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="b"} 0.25
+eval range from 60s to 180s step 30s topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="b"} 0.25 0.25 0.25 0.25 0.25
+
+eval instant at 60s topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)
+  {app="foo", pod="b"} 0.2
+  {app="bar", pod="b"} 0.25
+eval range from 60s to 180s step 30s topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)
+  {app="foo", pod="b"} 0.2 0.2 0.2 0.2 0.2
+  {app="bar", pod="b"} 0.25 0.25 0.25 0.25 0.25
+
+eval instant at 60s bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="a"} 0.05
+  {app="foo", pod="a"} 0.1
+eval range from 60s to 180s step 30s bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="a"} 0.05 0.05 0.05 0.05 0.05
+  {app="foo", pod="a"} 0.1 0.1 0.1 0.1 0.1
+
+eval instant at 60s bottomk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="a"} 0.05
+eval range from 60s to 180s step 30s bottomk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))
+  {app="bar", pod="a"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s bottomk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)
+  {app="foo", pod="a"} 0.1
+  {app="bar", pod="a"} 0.05
+eval range from 60s to 180s step 30s bottomk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)
+  {app="foo", pod="a"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar", pod="a"} 0.05 0.05 0.05 0.05 0.05
+
+# The four values interleave against label order, so sort by value is distinguishable
+# from sort by label.
+eval instant at 60s sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1
+  expect ordered
+  {app="bar", pod="a"} 1.05
+  {app="foo", pod="a"} 1.1
+  {app="foo", pod="b"} 1.2
+  {app="bar", pod="b"} 1.25
+eval instant at 60s sort_desc(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1
+  expect ordered
+  {app="bar", pod="b"} 1.25
+  {app="foo", pod="b"} 1.2
+  {app="foo", pod="a"} 1.1
+  {app="bar", pod="a"} 1.05
+
+# bottomk(3) without (app) drops the highest-rate stream (buzz).
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 10]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 10]
+  {app="fuzz"} "xbar"  @ 0s [repeat every 5s for 37]
+  {app="fuzz"} "noise" @ 2s [repeat every 5s for 37]
+  {app="buzz"} "xbar"  @ 0s [repeat every 4s for 46]
+  {app="buzz"} "noise" @ 2s [repeat every 4s for 46]
+
+eval instant at 60s bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app)
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+  {app="fuzz"} 0.2
+eval range from 60s to 180s step 30s bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app)
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+  {app="fuzz"} 0.2 0.2 0.2 0.2 0.2
+
+eval instant at 60s bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app) + 1
+  {app="foo"} 1.1
+  {app="bar"} 1.05
+  {app="fuzz"} 1.2
+eval range from 60s to 180s step 30s bottomk(3,rate(({app=~"foo|bar|fuzz|buzz"} |~".+bar")[1m])) without (app) + 1
+  {app="foo"} 1.1 1.1 1.1 1.1 1.1
+  {app="bar"} 1.05 1.05 1.05 1.05 1.05
+  {app="fuzz"} 1.2 1.2 1.2 1.2 1.2
+
+# Grouping.
+clear
+load
+  {app="foo", namespace="a", cluster="c1"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo", namespace="a", cluster="c1"} "noise" @ 5s [repeat every 10s for 19]
+  {app="foo", namespace="a", cluster="c2"} "xbar"  @ 0s [repeat every 5s  for 37]
+  {app="foo", namespace="a", cluster="c2"} "noise" @ 2s [repeat every 5s  for 37]
+  {app="bar", namespace="b", cluster="c2"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="bar", namespace="b", cluster="c2"} "noise" @ 5s [repeat every 10s for 19]
+
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)
+  {app="foo"} 18
+  {app="bar"} 6
+eval range from 60s to 180s step 30s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (app)
+  {app="foo"} 18 18 18 18 18
+  {app="bar"} 6 6 6 6 6
+
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace, app)
+  {app="foo", namespace="a"} 18
+  {app="bar", namespace="b"} 6
+eval range from 60s to 180s step 30s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace, app)
+  {app="foo", namespace="a"} 18 18 18 18 18
+  {app="bar", namespace="b"} 6 6 6 6 6
+
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,cluster, app)
+  {app="foo", namespace="a", cluster="c1"} 6
+  {app="foo", namespace="a", cluster="c2"} 12
+  {app="bar", namespace="b", cluster="c2"} 6
+eval range from 60s to 180s step 30s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (namespace,cluster, app)
+  {app="foo", namespace="a", cluster="c1"} 6 6 6 6 6
+  {app="foo", namespace="a", cluster="c2"} 12 12 12 12 12
+  {app="bar", namespace="b", cluster="c2"} 6 6 6 6 6
+
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster, namespace, app)
+  {app="foo", namespace="a", cluster="c1"} 6
+  {app="foo", namespace="a", cluster="c2"} 12
+  {app="bar", namespace="b", cluster="c2"} 6
+eval range from 60s to 180s step 30s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) by (cluster, namespace, app)
+  {app="foo", namespace="a", cluster="c1"} 6 6 6 6 6
+  {app="foo", namespace="a", cluster="c2"} 12 12 12 12 12
+  {app="bar", namespace="b", cluster="c2"} 6 6 6 6 6
+
+eval instant at 90s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)
+  {app="foo", namespace="a"} 18
+  {app="bar", namespace="b"} 6
+eval range from 60s to 180s step 30s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace,app)
+  {app="foo", namespace="a"} 11 18 18 18 18
+  {app="bar", namespace="b"} 4 6 6 6 6
+
+# stdvar without (app): counts 6 and 12 → variance 9.
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 5s for 37]
+  {app="bar"} "noise" @ 2s [repeat every 5s for 37]
+
+eval instant at 60s stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m]))
+  {} 9
+eval range from 60s to 180s step 30s stdvar without (app) (count_over_time(({app=~"foo|bar"} |~".+bar")[1m]))
+  {} 9 9 9 9 9
+
+# stddev: counts 6 and 30 → stddev 12.
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 2s for 91]
+  {app="bar"} "noise" @ 1s [repeat every 2s for 91]
+
+eval instant at 60s stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m]))
+  {} 12
+eval range from 60s to 180s step 30s stddev(count_over_time(({app=~"foo|bar"} |~".+bar")[1m]))
+  {} 12 12 12 12 12

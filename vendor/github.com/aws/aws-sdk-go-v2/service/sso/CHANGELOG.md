@@ -1,3 +1,21 @@
+# v1.33.2 (2026-07-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.1 (2026-07-28)
+
+* **Dependency Update**: Update to smithy-go v1.27.5.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.0 (2026-07-21)
+
+* **Feature**: Add an option to clients to disable clock skew
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.1 (2026-07-13)
+
+* No change notes available for this release.
+
 # v1.32.0 (2026-07-06)
 
 * **Feature**: Add request serialization snapshot tests.

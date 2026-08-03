@@ -276,8 +276,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
-				Schema:    "v11",
+				Schema: "v11",
 				From: config.DayTime{
 					Time: model.Now(),
 				},

@@ -1,3 +1,25 @@
+# v1.5.2 (2026-07-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.5.1 (2026-07-28)
+
+* **Dependency Update**: Update to smithy-go v1.27.5.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.5.0 (2026-07-21)
+
+* **Feature**: Add an option to clients to disable clock skew
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.4.1 (2026-07-13)
+
+* No change notes available for this release.
+
+# v1.4.0 (2026-07-08.2)
+
+* **Feature**: Adds support for OAuth 2.0 token operations in AWS Sign-In, CreateOAuth2TokenWithIAM (client credentials flow), IntrospectOAuth2TokenWithIAM (token inspection), and RevokeOAuth2TokenWithIAM (token revocation).
+
 # v1.3.0 (2026-07-06)
 
 * **Feature**: Add request serialization snapshot tests.

@@ -36,8 +36,7 @@ type Config struct {
 	LogMaxRunningCompactionTasks int `yaml:"logs_max_running_compaction_tasks"`
 
 	// PollingInterval is the cadence of the coordinator's main loop. Each
-	// tick reads the most-recent ToC and runs a compaction plan per tenant
-	// that has > 1 index in the window.
+	// tick reads the most-recent ToC and plans compaction per tenant.
 	PollingInterval time.Duration `yaml:"polling_interval"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a

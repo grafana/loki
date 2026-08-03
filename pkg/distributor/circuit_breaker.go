@@ -177,7 +177,7 @@ func (b *trialCircuitBreaker) handleOpenErr(_ error) {
 		// A failure in the half-open state re-opens the circuit breaker. This is
 		// essential for correctness to avoid deadlocks in the half-open state where
 		// all trial requests have completed but neither threshold to close or re-open
-		// the circuit breaker was satisifed.
+		// the circuit breaker was satisfied.
 		b.open()
 	default:
 		// circuitBreakerOpen is unreachable: Allow() returns noopDoneFunc when open,
