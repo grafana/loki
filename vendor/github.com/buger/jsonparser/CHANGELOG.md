@@ -1,5 +1,93 @@
 # Changelog
 
+## [v1.6.1] — 2026-07-29
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### Performance — gjson-style fast-skip in hot loops
+
+Ported gjson's `>'\\'` fast-skip trick to three inner loops in parser.go:
+`stringEndConfig` tail, `blockEndConfig`, and `searchKeysConfig`. The trick
+uses a single unsigned comparison (`byte > 0x5C`) to skip all non-structural
+bytes in bulk, reducing per-byte branch overhead.
+
+| Payload | Before | After | Improvement |
+|---|---|---|---|
+| Small (190B) | 382 ns | **339 ns** | -11.3% |
+| Medium (2.4kB) | 3,899 ns | **3,141 ns** | -19.4% |
+| Large (24kB) | 20,788 ns | **20,114 ns** | -3.2% |
+
+Zero allocations maintained on all paths.
+
+### Benchmarks — now includes gjson and sonic
+
+Added [tidwall/gjson](https://github.com/tidwall/gjson) (15.5k⭐, path-based
+parser like jsonparser) and [bytedance/sonic](https://github.com/bytedance/sonic)
+(9.6k⭐, SIMD-accelerated deserializer) to the benchmark suite.
+
+**Final leaderboard (large payload):**
+
+| Library | time/op | bytes/op | allocs/op |
+|---|---|---|---|
+| **buger/jsonparser** | **20,114** | **0** | **0** |
+| tidwall/gjson | 22,756 | 28,672 | 2 |
+| mailru/easyjson | 33,771 | 4,016 | 134 |
+| bytedance/sonic | 41,053 | 31,368 | 71 |
+| pquerna/ffjson | 59,063 | 4,822 | 144 |
+| encoding/json | 130,565 | 4,432 | 147 |
+
+jsonparser is **the fastest across all payload sizes** and the **only zero-allocation** parser.
+
+---
+
+## [v1.6.0] — 2026-07-29
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### New API — `Append`
+
+```go
+// Append to an array without knowing its length
+data, _ = jsonparser.Append(data, []byte(`"new_item"`), "items")
+```
+
+- **`Append(data, value, keys...)`** — appends `value` to the end of the JSON array addressed by `keys`. Addresses the top-level value when `keys` is empty; auto-vivifies a missing keyed path as a single-element array. Returns `MalformedArrayError` when the addressed value is not an array. Traced to SYS-REQ-009, SYS-REQ-110.
+
+### Known issues — all resolved (zero open)
+
+- **KI-2 fixed** — `ParseInt("-")` now returns an error instead of `(0, nil)`. One-line sign-only guard in `bytes.go:parseInt` (after stripping the sign byte, an empty remainder returns `(0, false, false)`).
+- **KI-3 fixed** — `Set` with an array-index path component under an object parent (and vice-versa) now auto-coerces the container type instead of emitting malformed JSON. (Disposition already set to `fixed` in v1.5.x.)
+- **KI-4 fixed** — `Set` on a top-level array-index beyond length now appends at the array's end (matching nested-array behavior under SYS-REQ-110) instead of returning `KeyPathNotFoundError`. Also cleans up trailing commas in malformed arrays.
+
+**Zero open known issues.** Every previously shipped known issue is now resolved and covered by ReqProof L3 Assurance.
+
+---
+
+## [v1.5.1] — 2026-07-28
+
+### Covered by [ReqProof](https://reqproof.com) — L3 Assurance (123 requirements, 0 errors, 0 warnings)
+
+### Performance — 6.1x large-payload speedup
+
+- **Fix stringEnd unbounded backslash scan** — `stringEndConfig` was scanning the ENTIRE remaining parent document for backslashes (`bytes.IndexByte(data, '\\')`) instead of just the string body. On a 24kb large payload this walked tens of KB per string. Now bounded to `data[:firstQuote]` (the string body only). **128µs → 22µs (5.8x).**
+- **SWAR string scan** — replaced two separate `bytes.IndexByte` calls (quote + backslash) with a single inline 8-byte SWAR (SIMD-Within-A-Register) loop that checks for both characters simultaneously. **22µs → 21µs (additional 8%).**
+- **Benchmark suite updated** — all comparison libraries (gabs, easyjson, ffjson, etc.) updated to latest versions. Benchmark methodology documented (Apple M4 Max, Go 1.26.3, median of 5 runs). The `encoding/json` benchmark no longer uses ffjson-generated methods (the #126 ffjson measurement bug was fixed in v1.3.1).
+- **README benchmarks refreshed** — all numbers now reflect real measurements on modern hardware with current library versions.
+
+### Updated benchmark results (Apple M4 Max, Go 1.26.3, median of 5 runs)
+
+| Payload | jsonparser | encoding/json | easyjson | Speedup vs encoding/json |
+|---|---|---|---|---|
+| Small (190B, Get) | 382 ns | 1,335 ns | 312 ns | 3.5x |
+| Small (190B, EachKey) | 241 ns | — | — | 5.5x |
+| Medium (2.4kB, Get) | 3,894 ns | 10,564 ns | 2,444 ns | 2.7x |
+| Medium (2.4kB, EachKey) | 1,923 ns | — | — | 5.5x |
+| Large (24kB) | 20,788 ns | 134,123 ns | 32,765 ns | **6.4x** |
+
+All jsonparser results: **0 bytes allocated, 0 allocations**.
+
+---
+
 ## [v1.5.0] — 2026-07-28
 
 ### Covered by [ReqProof](https://reqproof.com) — L3 Assurance

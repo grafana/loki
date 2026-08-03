@@ -2,6 +2,7 @@ package jsonparser
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -298,49 +299,75 @@ func stringEnd(data []byte) (int, bool) {
 
 // SYS-REQ-115
 func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
-	// Fast path: SIMD-scan for the first matching quote or '\'. If no '\'
-	// precedes the first quote (the overwhelmingly common case for strings),
-	// the quote is unescaped and we return directly — skipping the per-byte
-	// escape-tracking loop. Bound: bytes.IndexByte finds the first match in
-	// either direction, so firstBackslash > firstQuote (or == -1) is exactly
-	// the condition "no backslash precedes the closing quote", which is
-	// equivalent to the slow loop's `escaped == false` state at the quote.
-	firstQuote := bytes.IndexByte(data, quote)
-	if firstQuote == -1 {
-		// Slow path's tail semantics: return -1 with escaped flag true iff
-		// at least one '\' was encountered before end-of-input.
-		return -1, bytes.IndexByte(data, '\\') != -1
+	// SWAR (SIMD-Within-A-Register) fast path: scan 8 bytes at a time for
+	// either the closing quote or a backslash, then a per-byte tail that
+	// counts the run of '\\' before each quote candidate.
+	//
+	// Investigation: easyjson's jlexer.findStringLen
+	// (mailru/easyjson@v0.9.2/jlexer/lexer.go:247) uses a single SIMD
+	// bytes.IndexByte('"') plus a backward backslash-run count, deferring the
+	// separate backslash scan to unescapeStringToken. That style was ported
+	// and benchmarked here as "single IndexByte for the quote + a bounded
+	// bytes.IndexByte(data[:firstQuote], '\\') for the escape flag". On
+	// arm64 (Apple M4 Max, NEON) the two IndexByte *function calls* cost more
+	// than this inline 8-byte SWAR loop, because jsonparser must compute the
+	// escape flag inline (its callers gate unescapeConfig on it), so the
+	// second scan cannot be deferred the way easyjson defers it.
+	//
+	// Measured on M4 Max (BenchmarkJsonParserLarge, median of 5):
+	//   SWAR (this):          ~21000 ns/op
+	//   two-IndexByte port:   ~22600 ns/op  (-7%)
+	// For reference easyjson itself is ~33200 ns/op here, so jsonparser
+	// already leads; the easyjson technique is not beneficial on arm64.
+	const swarLsb = 0x0101010101010101
+	const swarMsb = 0x8080808080808080
+	broadcastQuote := uint64(quote) * swarLsb
+	broadcastBackslash := uint64('\\') * swarLsb
+
+	i := 0
+	n := len(data)
+	for i+8 <= n {
+		w := binary.LittleEndian.Uint64(data[i:])
+		xq := w ^ broadcastQuote
+		xb := w ^ broadcastBackslash
+		quoteHit := (xq - swarLsb) & ^xq & swarMsb
+		bsHit := (xb - swarLsb) & ^xb & swarMsb
+		if quoteHit|bsHit == 0 {
+			i += 8
+			continue
+		}
+		break
 	}
-	firstBackslash := bytes.IndexByte(data, '\\')
-	if firstBackslash == -1 || firstBackslash > firstQuote {
-		return firstQuote + 1, false
-	}
-	// Slow path: at least one '\' precedes the first quote — the per-byte
-	// walker is needed to disambiguate escaped vs. unescaped quotes.
 	escaped := false
-	for i, c := range data {
+	for ; i < n; i++ {
+		// gjson trick: the only bytes this loop acts on are the closing quote
+		// and the backslash. For double-quote strings quote=0x22, for
+		// single-quote quote=0x27; backslash=0x5C. All three are <= 0x5C, so a
+		// single unsigned comparison skips every other byte (letters, digits,
+		// punctuation, high UTF-8 bytes) without touching them.
+		if data[i] > '\\' {
+			continue
+		}
+		c := data[i]
 		if c == quote {
 			if !escaped {
 				return i + 1, false
-			} else {
-				j := i - 1
-				for {
-					if j < 0 || data[j] != '\\' {
-						return i + 1, true // even number of backslashes
-					}
-					j--
-					if j < 0 || data[j] != '\\' {
-						break // odd number of backslashes
-					}
-					j--
-
+			}
+			j := i - 1
+			for {
+				if j < 0 || data[j] != '\\' {
+					return i + 1, true // even run of backslashes
 				}
+				j--
+				if j < 0 || data[j] != '\\' {
+					break // odd run of backslashes -> quote is escaped
+				}
+				j--
 			}
 		} else if c == '\\' {
 			escaped = true
 		}
 	}
-
 	return -1, escaped
 }
 
@@ -358,6 +385,30 @@ func blockEndConfig(config Config, data []byte, openSym byte, closeSym byte) int
 	ln := len(data)
 
 	for i < ln {
+		// Fast-skip non-structural bytes before dispatching to the switch.
+		// Two categories are skipped in bulk with a single comparison each:
+		//  1. Control/whitespace bytes (<= 0x20): indentation, spaces, newlines.
+		//  2. Bytes > 0x5C that are not the open/close symbol: lowercase letters
+		//     (true/false/null), and high UTF-8 bytes.
+		// The open/close symbols themselves (e.g. '{'=0x7B, '}'=0x7D, ']'=0x5D)
+		// are > 0x5C and must NOT be skipped, hence the explicit exclusions.
+		// '"' (0x22), '\'' (0x27) and '[' (0x5B) are <= 0x5C so they are never
+		// caught by the second clause and always reach the switch.
+		for i < ln {
+			c := data[i]
+			if c <= ' ' {
+				i++
+				continue
+			}
+			if c > '\\' && c != openSym && c != closeSym {
+				i++
+				continue
+			}
+			break
+		}
+		if i >= ln {
+			break
+		}
 		switch data[i] {
 		case '"', '\'': // If inside a configured string, skip it
 			quote := data[i]
@@ -406,6 +457,28 @@ func searchKeysConfig(config Config, data []byte, keys ...string) int {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 
 	for i < ln {
+		// Fast-skip non-structural bytes before dispatching to the switch.
+		// Skip control/whitespace (<= 0x20) and bytes > 0x5C that are not '{'
+		// (0x7B) or '}' (0x7D) — the only structural chars handled below that
+		// exceed the 0x5C threshold. '"' (0x22), '\'' (0x27), '[' (0x5B) and
+		// ':' (0x3A) are all <= 0x5C and always reach the switch. This is the
+		// gjson key-scan trick: a single unsigned comparison advances past
+		// value content (true/false/null letters, high bytes) and indentation.
+		for i < ln {
+			c := data[i]
+			if c <= ' ' {
+				i++
+				continue
+			}
+			if c > '\\' && c != '{' && c != '}' {
+				i++
+				continue
+			}
+			break
+		}
+		if i >= ln {
+			break
+		}
 		switch data[i] {
 		case '"', '\'':
 			quote := data[i]
@@ -1359,6 +1432,10 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 		// the output is always valid JSON.
 		coerceTopLevel := false
 		coerceStart := 0
+		topLevelArrayAppend := false
+		topLevelArrayEmpty := false
+		topLevelArrayStart := 0
+		topLevelArrayInsertOffset := 0
 		if endOffset == -1 {
 			firstToken := nextTokenConfig(config, data)
 			if firstToken < 0 {
@@ -1381,10 +1458,39 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 				comma = false
 				object = !pathIsIndex
 				endOffset = lastToken(data)
+			} else if pathIsIndex && dataIsArray {
+				// SYS-REQ-110: a missing index in a top-level array appends at
+				// the array's end, just as it does for a nested array.
+				arrayEnd := blockEndConfig(config, data[firstToken:], '[', ']')
+				if arrayEnd == -1 {
+					return nil, MalformedArrayError
+				}
+				endOffset = firstToken + arrayEnd - 1
+				topLevelArrayAppend = true
+				topLevelArrayStart = firstToken
+				topLevelArrayInsertOffset = endOffset
+
+				interior := data[firstToken+1 : endOffset]
+				lastInteriorToken := lastToken(interior)
+				if lastInteriorToken == -1 {
+					// createInsertComponent wraps an index component in brackets
+					// when comma is false, so replace the empty root array.
+					comma = false
+					topLevelArrayEmpty = true
+				} else if interior[lastInteriorToken] == ',' {
+					// Replace a trailing comma (and any whitespace after it)
+					// with the normal comma-prefixed append component.
+					beforeComma := lastToken(interior[:lastInteriorToken])
+					if beforeComma == -1 {
+						comma = false
+						topLevelArrayEmpty = true
+					} else {
+						topLevelArrayInsertOffset = firstToken + 1 + lastInteriorToken
+					}
+				}
 			} else if !dataIsObject {
-				// Matching array+array-index is intentionally unsupported at the
-				// top level (unchanged behavior); non-container input and the
-				// degenerate empty-key-on-non-object case are rejected.
+				// Non-container input and the degenerate empty-key-on-non-object
+				// case are rejected.
 				return nil, KeyPathNotFoundError
 			} else {
 				// Don't need a comma if the input is an empty object
@@ -1436,6 +1542,13 @@ func setConfig(config Config, data []byte, setValue []byte, keys ...string) (val
 			if coerceTopLevel {
 				startOffset = coerceStart
 				depthOffset = endOffset + 1
+			} else if topLevelArrayAppend {
+				if topLevelArrayEmpty {
+					startOffset = topLevelArrayStart
+					depthOffset = endOffset + 1
+				} else {
+					startOffset = topLevelArrayInsertOffset
+				}
 			} else {
 				startOffset = depthOffset
 			}
