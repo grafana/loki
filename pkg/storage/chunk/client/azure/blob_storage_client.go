@@ -86,28 +86,28 @@ var (
 
 // BlobStorageConfig defines the configurable flags that can be defined when using azure blob storage.
 type BlobStorageConfig struct {
-	Environment             string         `yaml:"environment"`
-	StorageAccountName      string         `yaml:"account_name"`
-	StorageAccountKey       flagext.Secret `yaml:"account_key"`
-	ConnectionString        flagext.Secret `yaml:"connection_string"`
-	ContainerName           string         `yaml:"container_name"`
-	ActiveDirectoryEndpoint string         `yaml:"active_directory_endpoint"`
-	EndpointSuffix          string         `yaml:"endpoint_suffix"`
-	UseManagedIdentity      bool           `yaml:"use_managed_identity"`
-	UseFederatedToken       bool           `yaml:"use_federated_token"`
-	UserAssignedID          string         `yaml:"user_assigned_id"`
-	UseServicePrincipal     bool           `yaml:"use_service_principal"`
-	ClientID                string         `yaml:"client_id"`
-	ClientSecret            flagext.Secret `yaml:"client_secret"`
-	TenantID                string         `yaml:"tenant_id"`
-	ChunkDelimiter          string         `yaml:"chunk_delimiter"`
-	DownloadBufferSize      int            `yaml:"download_buffer_size"`
-	UploadBufferSize        int            `yaml:"upload_buffer_size"`
-	UploadBufferCount       int            `yaml:"upload_buffer_count"`
-	RequestTimeout          time.Duration  `yaml:"request_timeout"`
-	MaxRetries              int            `yaml:"max_retries"`
-	MinRetryDelay           time.Duration  `yaml:"min_retry_delay"`
-	MaxRetryDelay           time.Duration  `yaml:"max_retry_delay"`
+	Environment             string                `yaml:"environment"`
+	StorageAccountName      string                `yaml:"account_name"`
+	StorageAccountKey       flagext.Secret        `yaml:"account_key"`
+	ConnectionString        flagext.Secret        `yaml:"connection_string"`
+	ContainerName           string                `yaml:"container_name"`
+	ActiveDirectoryEndpoint string                `yaml:"active_directory_endpoint"`
+	EndpointSuffix          string                `yaml:"endpoint_suffix"`
+	UseManagedIdentity      bool                  `yaml:"use_managed_identity"`
+	UseFederatedToken       bool                  `yaml:"use_federated_token"`
+	UserAssignedID          string                `yaml:"user_assigned_id"`
+	UseServicePrincipal     bool                  `yaml:"use_service_principal"`
+	ClientID                string                `yaml:"client_id"`
+	ClientSecret            flagext.Secret        `yaml:"client_secret"`
+	TenantID                string                `yaml:"tenant_id"`
+	ChunkDelimiter          string                `yaml:"chunk_delimiter"`
+	DownloadBufferSize      int                   `yaml:"download_buffer_size"`
+	UploadBufferSize        int                   `yaml:"upload_buffer_size"`
+	UploadBufferCount       int                   `yaml:"upload_buffer_count"`
+	RequestTimeout          time.Duration         `yaml:"request_timeout"`
+	MaxRetries              int                   `yaml:"max_retries"`
+	MinRetryDelay           time.Duration         `yaml:"min_retry_delay"`
+	MaxRetryDelay           time.Duration         `yaml:"max_retry_delay"`
 	HTTPConfig              BlobStorageHTTPConfig `yaml:"http_config"`
 }
 

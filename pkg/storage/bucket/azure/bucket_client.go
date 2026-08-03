@@ -32,14 +32,14 @@ func newBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 	bucketConfig.MaxRetries = cfg.MaxRetries
 	bucketConfig.UserAssignedID = cfg.UserAssignedID
 	bucketConfig.HTTPConfig.Transport = cfg.Transport
-	bucketConfig.HTTPConfig.IdleConnTimeout       = model.Duration(cfg.HTTP.IdleConnTimeout)
+	bucketConfig.HTTPConfig.IdleConnTimeout = model.Duration(cfg.HTTP.IdleConnTimeout)
 	bucketConfig.HTTPConfig.ResponseHeaderTimeout = model.Duration(cfg.HTTP.ResponseHeaderTimeout)
-	bucketConfig.HTTPConfig.InsecureSkipVerify    = cfg.HTTP.InsecureSkipVerify
-	bucketConfig.HTTPConfig.TLSHandshakeTimeout   = model.Duration(cfg.HTTP.TLSHandshakeTimeout)
+	bucketConfig.HTTPConfig.InsecureSkipVerify = cfg.HTTP.InsecureSkipVerify
+	bucketConfig.HTTPConfig.TLSHandshakeTimeout = model.Duration(cfg.HTTP.TLSHandshakeTimeout)
 	bucketConfig.HTTPConfig.ExpectContinueTimeout = model.Duration(cfg.HTTP.ExpectContinueTimeout)
-	bucketConfig.HTTPConfig.MaxIdleConns          = cfg.HTTP.MaxIdleConns
-	bucketConfig.HTTPConfig.MaxIdleConnsPerHost   = cfg.HTTP.MaxIdleConnsPerHost
-	bucketConfig.HTTPConfig.MaxConnsPerHost       = cfg.HTTP.MaxConnsPerHost
+	bucketConfig.HTTPConfig.MaxIdleConns = cfg.HTTP.MaxIdleConns
+	bucketConfig.HTTPConfig.MaxIdleConnsPerHost = cfg.HTTP.MaxIdleConnsPerHost
+	bucketConfig.HTTPConfig.MaxConnsPerHost = cfg.HTTP.MaxConnsPerHost
 	bucketConfig.HTTPConfig.TLSConfig = exthttp.TLSConfig{
 		CAFile:     cfg.HTTP.TLSConfig.CAPath,
 		CertFile:   cfg.HTTP.TLSConfig.CertPath,
