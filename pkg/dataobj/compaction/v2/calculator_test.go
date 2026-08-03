@@ -60,7 +60,7 @@ func TestCalculateRuns(t *testing.T) {
 				testSection("o", 0, key("a", 0), key("b", 0)),
 				testSection("o", 1, key("b", 0), key("c", 0)),
 			},
-			want: [][]int64{{0}, {1}},
+			want: [][]int64{{0, 1}},
 		},
 		{
 			name: "overlapping",

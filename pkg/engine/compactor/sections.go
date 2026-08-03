@@ -42,7 +42,8 @@ func compareSortKey(a, b sortKey) int {
 	if n := slices.Compare(a.labels, b.labels); n != 0 {
 		return n
 	}
-	return cmp.Compare(a.timestamp, b.timestamp)
+	// Compare timestamps in descending order
+	return cmp.Compare(b.timestamp, a.timestamp)
 }
 
 type indexSortKey struct {

@@ -32,15 +32,23 @@ func sortSections[K any](sections []Section[K], compare CompareFunc[K]) {
 
 	sort.Slice(sections, func(i, j int) bool {
 		a, b := sections[i], sections[j]
+
+		// Keep objects together, because they are already a run by design.
+		if a.Ref.ObjectPath != b.Ref.ObjectPath {
+			return a.Ref.ObjectPath < b.Ref.ObjectPath
+		}
+		if a.Ref.SectionIndex != b.Ref.SectionIndex {
+			return a.Ref.SectionIndex < b.Ref.SectionIndex
+		}
+
+		// Compare sort-key for different objects
 		if n := compare(a.Min, b.Min); n != 0 {
 			return n < 0
 		}
 		if n := compare(a.Max, b.Max); n != 0 {
 			return n < 0
 		}
-		if a.Ref.ObjectPath != b.Ref.ObjectPath {
-			return a.Ref.ObjectPath < b.Ref.ObjectPath
-		}
+
 		return a.Ref.SectionIndex < b.Ref.SectionIndex
 	})
 }
@@ -93,8 +101,8 @@ func calculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []*run[
 	for _, section := range sections {
 		var best *run[K]
 		for _, candidate := range runs {
-			canFollow := compare(candidate.topMax, section.Min) < 0
-			isCloser := best == nil || compare(candidate.topMax, best.topMax) > 0
+			canFollow := compare(candidate.topMax, section.Min) <= 0
+			isCloser := best == nil || compare(candidate.topMax, best.topMax) >= 0
 			if canFollow && isCloser {
 				best = candidate
 			}
