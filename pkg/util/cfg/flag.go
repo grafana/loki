@@ -42,6 +42,74 @@ func dFlags(fs *flag.FlagSet, args []string) Source {
 	}
 }
 
+// filterUnknownFlags returns args with any flags not defined in fs removed,
+// recording each removed flag name in u. It lets non-strict parsing tolerate
+// unknown CLI flags instead of letting the flag package abort. A space-
+// separated value of an unknown flag is dropped too, since Loki takes no
+// positional arguments and leaving a stray token would terminate flag parsing.
+func filterUnknownFlags(fs *flag.FlagSet, args []string, u *UnknownFields) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return append(out, args[i:]...)
+		}
+
+		name, ok := flagName(arg)
+		if !ok {
+			out = append(out, arg)
+			continue
+		}
+
+		hasValue := strings.ContainsRune(arg, '=')
+		if f := fs.Lookup(name); f != nil {
+			out = append(out, arg)
+			// A known non-boolean flag in `-name value` form consumes the next
+			// token as its value; keep them together so filtering an adjacent
+			// unknown flag cannot separate them.
+			if !hasValue && !isBoolFlag(f) && i+1 < len(args) {
+				out = append(out, args[i+1])
+				i++
+			}
+			continue
+		}
+
+		u.add(name)
+		if !hasValue && i+1 < len(args) {
+			if _, isFlag := flagName(args[i+1]); !isFlag && args[i+1] != "--" {
+				i++
+			}
+		}
+	}
+	return out
+}
+
+// flagName extracts the flag name from a CLI token, mirroring the flag
+// package's own parsing of `-name`, `--name`, and `-name=value` forms. It
+// returns false for non-flag tokens and the `--` terminator.
+func flagName(arg string) (string, bool) {
+	if len(arg) < 2 || arg[0] != '-' {
+		return "", false
+	}
+	numMinus := 1
+	if arg[1] == '-' {
+		numMinus = 2
+	}
+	name := arg[numMinus:]
+	if len(name) == 0 || name[0] == '-' || name[0] == '=' {
+		return "", false
+	}
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		name = name[:eq]
+	}
+	return name, true
+}
+
+func isBoolFlag(f *flag.Flag) bool {
+	bf, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && bf.IsBoolFlag()
+}
+
 func categorizedUsage(fs *flag.FlagSet) func() {
 	categories := make(map[string][]string)
 	return func() {

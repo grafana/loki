@@ -31,6 +31,15 @@ type StrictParser interface {
 // logger and metrics registry are initialized.
 func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) (*UnknownFields, error) {
 	unknown := &UnknownFields{}
+
+	// Discover the defined flags on a throwaway flagset so unknown CLI flags can
+	// be filtered out before any parsing. This mirrors how ConfigFileLoader
+	// enumerates flags and prevents the flag package from aborting on unknown
+	// flags; strictness is enforced centrally once the config is resolved.
+	known := flag.NewFlagSet("known-flags", flag.ContinueOnError)
+	dst.Clone().RegisterFlags(known)
+	args = filterUnknownFlags(known, args, unknown)
+
 	err := Unmarshal(dst,
 		// First populate the config with defaults including flags from the command line
 		Defaults(fs),
