@@ -544,13 +544,66 @@ supporting profiling data lands):
     ~10 files / ~15 callsites / one construction-site change; mostly
     mechanical.
 
+- **PR #23730 — `chore: Implement streaming reading of symbols section`**
+  (branch `dahoppe/stream-symbols`, stacked on `dahoppe/streamenc-foundation`
+  / #23696, opened 2026-08-03, OPEN). Single commit `caec49bc21`. This is the
+  "stream Symbols" step from the Next list — but it **pivoted from streaming
+  `Symbols()` to removing it**, after confirming during the work that the
+  method is dead in Loki:
+  - **Removed `Symbols()` and `SymbolTableSize()` from the `index.Reader`
+    interface** (`.../tsdb/index/reader.go`). Neither has a production caller:
+    they're inherited from Prometheus's reader API (Prometheus calls `Symbols()`
+    during compaction to copy the symbol table forward); Loki's compaction
+    instead rebuilds symbols from series labels via `AddSymbol`, so it never
+    reads the table back. Verified across loki-2 **and** enterprise-logs — only
+    tests call them. (Also confirmed Loki has never *written* a V1 index: the
+    writer hardcoded FormatV2 from its first commit `1837c9e0b2` / PR #5376;
+    V1 is read-only Prometheus-compat. So the streaming reader is V2+-only.)
+  - **Cascade from that removal**: `Symbols()` was also declared on the
+    `tsdb.IndexReader` interface (`querier.go`) — `index.Reader` is passed as a
+    `tsdb.IndexReader` in `single_file_index.go`, so removing it from one forced
+    removing it from the other (compile), which in turn made
+    `headIndexReader.Symbols()` an unused method (removed, for lint).
+    `MemPostings.Symbols()` was left (exported API, harmless). See the new
+    "Open questions" note on de-duplicating these two interfaces — the
+    duplication is what made this a multi-file edit.
+  - **Kept `ByteSliceReader.Symbols()`** as a concrete mmap-only helper (no
+    longer on the interface) because two pre-existing, unrelated tests depend
+    on it — notably `builder_test.go`'s "sorts symbols before writing" (a real
+    builder invariant, in an external package with no other way to read symbols
+    back). `builder_test.go`'s `getReader` now returns the concrete
+    `*index.ByteSliceReader`.
+  - **Implemented `streamSymbols`** (`.../tsdb/index/stream_symbols.go`) as the
+    foundation for later `Series`/label streaming: `newStreamSymbols` scans the
+    symbol section once at construction (CRC-validated) capturing a sparse
+    offset table (every `symbolFactor`-th symbol); `Lookup(n)` seeks via the
+    sparse table then walks forward up to `symbolFactor` symbols. Built at
+    construction on `StreamReader.symbols`, but not yet wired to any interface
+    method (Series/labels still delegate to `ByteSliceReader`).
+  - `ReverseLookup` and `Iter` were implemented then dropped at Dan's
+    direction: `Iter` only existed to back the removed `Symbols()`;
+    `ReverseLookup` is only needed to warm a name-symbol cache (write/open-path)
+    and can be re-added when a caller appears.
+  - Test: `TestStreamSymbols_LookupMatchesMmap` cross-checks
+    `streamSymbols.Lookup` against the mmap `Symbols.Lookup` over every ordinal
+    plus count parity and identical out-of-range rejection, on V3 + V4
+    many-symbol fixtures.
+  - **Method takeaway — prune before you stream.** `SymbolTableSize` (removed
+    in #23730's parent work), `Symbols` (this PR), and `PostingsRanges` (plan
+    already flags it callerless) are all dead on `index.Reader`. Audit the
+    interface for dead methods before implementing a streaming version of each.
+
 ### Next (from #23696; each is its own PR, ~200–800 lines diff)
 
-1. **PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**
-   Ports Mimir's `indexheader/index/symbols.go` (adapted for Loki's V4
-   format) into `.../tsdb/index/streamsym.go`. Reroutes those three
-   methods off the inner `ByteSliceReader`. Adds a fixture with many
-   symbols to exercise the sparse scan.
+1. ~~**PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**~~
+   **LANDED as PR #23730** (see "In flight" above) — but pivoted: `Symbols`
+   and `SymbolTableSize` were **removed** from the reader interface (dead in
+   Loki) rather than streamed. What shipped: a `streamSymbols` type with
+   `newStreamSymbols` + `Lookup` (sparse-offset seek), built at construction
+   as the foundation for streaming `Series`/label methods, plus a
+   Lookup-parity test vs the mmap `Symbols`. `ReverseLookup`/`Iter` were
+   dropped (no caller); `lookupSymbol` wiring comes with the Series/labels
+   PRs below, which are `streamSymbols.Lookup`'s first real consumers.
 2. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
    `postings.go` (v1 + v2). Wires into `StreamReader.Postings`. Adds
    fixtures with 10 / 1k / 100k series.
@@ -998,3 +1051,31 @@ supporting profiling data lands):
     `stream_reader.go` preserved to match the base branch so the
     diff shows single-line replacements per delegated method rather
     than a full-file reorder.
+
+- **2026-08-03**: PR #23730 opened
+  (`chore: Implement streaming reading of symbols section`, branch
+  `dahoppe/stream-symbols`, stacked on #23696, single commit
+  `caec49bc21`). This is the "stream Symbols" step from the Next list,
+  but it pivoted to **removing** `Symbols()` + `SymbolTableSize()` from
+  the `index.Reader` interface (both dead in Loki — confirmed across
+  loki-2 and enterprise-logs) and shipping a `streamSymbols` type
+  (`newStreamSymbols` + `Lookup`) as the sparse-offset foundation for
+  the later `Series`/label streaming PRs. Full detail in the #23730
+  entry under "In flight". Highlights:
+  - Established that Loki **never wrote V1 indexes** (writer hardcoded
+    FormatV2 from `1837c9e0b2` / PR #5376; V1 is read-only
+    Prometheus-compat) — so the streaming symbol reader is V2+-only.
+  - Removing `Symbols()` cascaded through `tsdb.IndexReader`
+    (`querier.go`) and `headIndexReader` because `index.Reader` is used
+    as a `tsdb.IndexReader`. That coupling motivated the new
+    "Open questions" note to de-duplicate the two interfaces.
+  - `ByteSliceReader.Symbols()` kept as a concrete mmap-only helper to
+    preserve pre-existing builder/reader tests.
+  - Confirmed takeaway: **prune dead interface methods before streaming
+    them**. `SymbolTableSize`, `Symbols` (done) and `PostingsRanges`
+    (pending) are all callerless on `index.Reader`.
+  - Note: the `dahoppe/stream-symbols` branch pointer was repeatedly
+    reset to `4a10d6df11` mid-session by an external process (likely
+    another running `claude` session against this checkout); commits
+    survived as objects each time. Worth ruling out before the next
+    stacked PR.
