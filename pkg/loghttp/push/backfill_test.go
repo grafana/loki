@@ -137,6 +137,22 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 		require.Nil(t, req)
 	})
 
+	t.Run("otlp: reserved backfill label via indexed log attribute is rejected", func(t *testing.T) {
+		// Log attributes promoted to index labels are merged into the stream labels after the
+		// resource-attribute check, so they must be checked as well.
+		ld := singleResourceLogs("service.name", "service-1")
+		ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).Attributes().PutStr(constants.BackfillLabel, "true")
+
+		cfg := DefaultOTLPConfig(GlobalOTLPConfig{DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"}})
+		cfg.LogAttributes = []AttributesConfig{{Action: IndexLabel, Attributes: []string{constants.BackfillLabel}}}
+
+		stats := NewPushStats()
+		streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+		_, err := otlpToLokiPushRequest(context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "reserved")
+	})
+
 	t.Run("otlp: restrictive tenant config cannot drop backfill labels", func(t *testing.T) {
 		// Service-name discovery is off and the only indexed attribute does not match the resource,
 		// so without injection this stream would carry no index labels at all.

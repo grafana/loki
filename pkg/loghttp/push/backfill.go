@@ -69,3 +69,10 @@ func ExtractBackfillShardContext(ctx context.Context) string {
 func errReservedBackfillLabels() error {
 	return fmt.Errorf("streams must not contain the reserved labels %s or %s; set the %s header to mark a push as backfill data", constants.BackfillLabel, constants.BackfillShardLabel, HTTPHeaderBackfillShardKey)
 }
+
+// hasReservedBackfillLabels reports whether ls carries either internal backfill label.
+func hasReservedBackfillLabels(ls model.LabelSet) bool {
+	_, hasBackfillLabel := ls[constants.BackfillLabel]
+	_, hasBackfillShardLabel := ls[constants.BackfillShardLabel]
+	return hasBackfillLabel || hasBackfillShardLabel
+}

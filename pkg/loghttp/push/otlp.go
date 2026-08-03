@@ -187,9 +187,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 		// The backfill labels are reserved for Loki: they may only be added below, from the
 		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
-		_, hasBackfillLabel := streamLabels[constants.BackfillLabel]
-		_, hasBackfillShardLabel := streamLabels[constants.BackfillShardLabel]
-		if hasBackfillLabel || hasBackfillShardLabel {
+		if hasReservedBackfillLabels(streamLabels) {
 			return nil, errReservedBackfillLabels()
 		}
 
@@ -305,6 +303,12 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				var entryLbs labels.Labels
 
 				if len(logLabels) > 0 {
+					// Log attributes promoted to index labels must not smuggle in the reserved
+					// backfill labels either (they would overwrite the header-injected ones).
+					if hasReservedBackfillLabels(logLabels) {
+						return nil, errReservedBackfillLabels()
+					}
+
 					// Combine resource labels with log attributes
 					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
 					for k, v := range streamLabels {
