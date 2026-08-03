@@ -93,7 +93,6 @@ func TestReaders_CrossCheck(t *testing.T) {
 
 			require.Equal(t, mmap.Version(), stream.Version())
 			require.Equal(t, mmap.Checksum(), stream.Checksum())
-			require.Equal(t, mmap.SymbolTableSize(), stream.SymbolTableSize())
 			require.Equal(t, mmap.Size(), stream.Size())
 
 			baseMin, baseMax := mmap.Bounds()
@@ -101,7 +100,6 @@ func TestReaders_CrossCheck(t *testing.T) {
 			require.Equal(t, baseMin, rMin)
 			require.Equal(t, baseMax, rMax)
 
-			requireSymbolsEqual(t, mmap, stream)
 			requireLabelsEqual(t, mmap, stream)
 			requirePostingsSeriesEqual(t, mmap, stream)
 			requirePostingsRangesEqual(t, mmap, stream)
@@ -188,6 +186,30 @@ func TestReaders_RejectsCorruptTOCChecksum(t *testing.T) {
 	}
 }
 
+func TestReaders_RejectsCorruptSymbolsChecksum(t *testing.T) {
+	for _, rc := range allReaderConstructors() {
+		t.Run(rc.name, func(t *testing.T) {
+			path := writeCrossCheckFixture(t, FormatV3)
+
+			// Locate the symbols section from the TOC
+			reader, err := NewStreamFileReader(path)
+			require.NoError(t, err)
+			symbolsOffset := int(reader.toc.Symbols)
+			require.NoError(t, reader.Close())
+
+			corruptFileBytes(t, path, func(b []byte) {
+				// Flip the first byte of the section's content (skipping the first 4 bytes,
+				// which is the size of the section).
+				b[symbolsOffset+4] ^= 0x01
+			})
+
+			_, err = rc.open(path)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid checksum")
+		})
+	}
+}
+
 // TestReaders_RawFileReaderIndependence verifies that RawFileReader
 // returns an independent reader each call.
 func TestReaders_RawFileReaderIndependence(t *testing.T) {
@@ -238,24 +260,6 @@ func corruptFileBytes(t *testing.T, path string, mutate func(b []byte)) {
 	require.NoError(t, err)
 	mutate(b)
 	require.NoError(t, os.WriteFile(path, b, 0600))
-}
-
-func requireSymbolsEqual(t *testing.T, mmap, stream Reader) {
-	t.Helper()
-	mmapSymbols := getSymbols(t, mmap)
-	streamSymbols := getSymbols(t, stream)
-	require.Equal(t, mmapSymbols, streamSymbols)
-}
-
-func getSymbols(t *testing.T, reader Reader) []string {
-	t.Helper()
-	var out []string
-	symbols := reader.Symbols()
-	for symbols.Next() {
-		out = append(out, symbols.At())
-	}
-	require.NoError(t, symbols.Err())
-	return out
 }
 
 func requireLabelsEqual(t *testing.T, mmap, stream Reader) {

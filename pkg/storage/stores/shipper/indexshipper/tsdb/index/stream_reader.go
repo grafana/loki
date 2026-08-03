@@ -27,6 +27,8 @@ type StreamReader struct {
 	size    int64
 	version int
 	toc     *TOC
+
+	symbols *streamSymbols
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
@@ -58,6 +60,12 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 		return nil, err
 	}
 	reader.toc = toc
+
+	reader.symbols, err = newStreamSymbols(context.Background(), factory, int(toc.Symbols))
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
 
 	// Fallback used by not-yet-ported methods
 	mmapReader, err := NewMmapFileReader(path)
@@ -166,14 +174,6 @@ func (s StreamReader) Bounds() (int64, int64) {
 
 func (s StreamReader) Checksum() uint32 {
 	return s.toc.Metadata.Checksum
-}
-
-func (s StreamReader) Symbols() StringIter {
-	return s.mmapReader.Symbols()
-}
-
-func (s StreamReader) SymbolTableSize() uint64 {
-	return s.mmapReader.SymbolTableSize()
 }
 
 func (s StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
