@@ -102,7 +102,6 @@ func TestReaders_CrossCheck(t *testing.T) {
 
 			requireLabelsEqual(t, mmap, stream)
 			requirePostingsSeriesEqual(t, mmap, stream)
-			requirePostingsRangesEqual(t, mmap, stream)
 		})
 	}
 }
@@ -349,13 +348,4 @@ func requireChunkStatsEqual(t *testing.T, mmap Reader, stream Reader, seriesRef 
 		require.Equal(t, mmapChunkStats, streamChunkStats)
 		require.Equal(t, mmapLabels, streamLabels)
 	}
-}
-
-func requirePostingsRangesEqual(t *testing.T, base, other Reader) {
-	t.Helper()
-	baseRanges, err := base.PostingsRanges()
-	require.NoError(t, err)
-	otherRanges, err := other.PostingsRanges()
-	require.NoError(t, err)
-	require.Equal(t, baseRanges, otherRanges)
 }

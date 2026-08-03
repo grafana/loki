@@ -28,7 +28,8 @@ type StreamReader struct {
 	version int
 	toc     *TOC
 
-	symbols *streamSymbols
+	symbols  *streamSymbols
+	postings *streamPostings
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
@@ -62,6 +63,12 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 	reader.toc = toc
 
 	reader.symbols, err = newStreamSymbols(context.Background(), factory, int(toc.Symbols))
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+
+	reader.postings, err = newStreamPostings(context.Background(), factory, int(toc.PostingsTable))
 	if err != nil {
 		_ = factory.Close()
 		return nil, err
@@ -164,10 +171,6 @@ func (s StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
 	return os.Open(s.path)
 }
 
-func (s StreamReader) PostingsRanges() (map[labels.Label]Range, error) {
-	return s.mmapReader.PostingsRanges()
-}
-
 func (s StreamReader) Bounds() (int64, int64) {
 	return s.toc.Metadata.From, s.toc.Metadata.Through
 }
@@ -200,8 +203,20 @@ func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls
 	return s.mmapReader.ChunkStats(id, from, through, lbls, by)
 }
 
-func (s StreamReader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
-	return s.mmapReader.Postings(name, fpFilter, values...)
+// Postings returns a postings iterator for the given label name and values.
+// Values must be provided in ascending order.
+//
+// A non-nil FingerprintFilter (shard-aware queries) still falls through to the
+// mmap reader: the streaming reader does not yet load the fingerprint-offsets
+// table needed to shard postings — that is a later step. The common
+// fpFilter==nil path is served natively by streamPostings.
+func (s StreamReader) Postings(labelName string, fpFilter FingerprintFilter, labelValues ...string) (Postings, error) {
+	if fpFilter != nil {
+		// Serve shard-aware queries from mmap reader until we've implemented
+		// reading the fingerprint offsets table needed to serve these properly.
+		return s.mmapReader.Postings(labelName, fpFilter, labelValues...)
+	}
+	return s.postings.postingsFor(labelName, labelValues...)
 }
 
 func (s StreamReader) Size() int64 {
