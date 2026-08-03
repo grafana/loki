@@ -327,20 +327,27 @@ func TestLabelsBuilder_Set_IgnoresReservedErrorLabels(t *testing.T) {
 	lbs := labels.FromStrings("app", "a")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 
-	// A parsed field named __error__ or __error_details__ (e.g. extracted by json or logfmt) must not
-	// become a label: it would otherwise be read as a pipeline error and fail the query.
+	// A parsed field named __error__, __error_details__ or __preserve_error__ (e.g. extracted by json
+	// or logfmt) must not become a label: __error__ would be read as a pipeline error and fail the
+	// query, and __preserve_error__ could suppress a genuine error.
 	b.Set(ParsedLabel, logqlmodel.ErrorLabel, "boom")
 	b.Set(ParsedLabel, logqlmodel.ErrorDetailsLabel, "details")
+	b.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
 	b.Set(ParsedLabel, "ok", "1")
 
 	require.False(t, b.HasErr(), "a parsed __error__ must not set the builder error")
 	require.Equal(t, labels.FromStrings("app", "a", "ok", "1"), b.LabelsResult().Labels())
 
-	// A genuine error, set through SetErr, still surfaces as the __error__ label.
+	// The reserved labels are still produced through their dedicated setters.
 	b.Reset()
 	b.SetErr("JSONParserErr")
+	b.SetErrorDetails("boom details")
+	b.SetPreserveError()
 	b.Set(ParsedLabel, "ok", "1")
-	require.Equal(t, "JSONParserErr", b.LabelsResult().Labels().Get(logqlmodel.ErrorLabel))
+	res := b.LabelsResult().Labels()
+	require.Equal(t, "JSONParserErr", res.Get(logqlmodel.ErrorLabel))
+	require.Equal(t, "boom details", res.Get(logqlmodel.ErrorDetailsLabel))
+	require.Equal(t, "true", res.Get(logqlmodel.PreserveErrorLabel))
 }
 
 func TestLabelsBuilder_UnsortedLabels(t *testing.T) {

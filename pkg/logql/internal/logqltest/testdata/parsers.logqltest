@@ -58,16 +58,22 @@ eval instant at 60s count_over_time({app="a"} | logfmt --strict [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt --strict | __error__="" [1m])
   expect empty
 
-# logfmt() must not let a log field named __error__ clobber the reserved error label.
+# logfmt() must not let a log field clobber a reserved error label. The three reserved names
+# (__error__, __error_details__, __preserve_error__) are dropped from extracted data, so the query
+# does not fail and a field named __preserve_error__ cannot mask a real error.
 clear
 load
-  {app="a"} `__error__=boom ok=1` @ 20s [repeat every 20s for 3]
+  {app="a"} `__error__=boom __error_details__=d __preserve_error__=true ok=1` @ 20s [repeat every 20s for 3]
+  {app="b"} `__preserve_error__=true bad="unterminated` @ 20s [repeat every 20s for 3]
   {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | logfmt [1m])
   {app="a", ok="1"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])   # overlapping
   {app="a", ok="1"} 2 3
+# A data __preserve_error__ no longer suppresses a genuine --strict parse error.
+eval instant at 60s count_over_time({app="b"} | logfmt --strict [1m])
+  expect fail msg: LogfmtParserErr
 
 # logfmt() with label expressions.
 clear
@@ -136,10 +142,11 @@ eval instant at 60s count_over_time({app="a"} | json [1m])
 eval instant at 60s count_over_time({app="a"} | json | __error__="" [1m])
   {app="a", ok="1"} 2
 
-# json() must not let a log field named __error__ clobber the reserved error label.
+# json() must not let a log field clobber a reserved error label: the three reserved names
+# (__error__, __error_details__, __preserve_error__) are dropped from extracted data.
 clear
 load
-  {app="a"} `{"__error__":"boom","ok":"1"}` @ 20s [repeat every 20s for 3]
+  {app="a"} `{"__error__":"boom","__error_details__":"d","__preserve_error__":"true","ok":"1"}` @ 20s [repeat every 20s for 3]
   {app="noise"} `{"z":1}` @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | json [1m])
@@ -274,10 +281,11 @@ eval instant at 60s count_over_time({app="a"} | unpack [1m])
 eval instant at 60s count_over_time({app="a"} | unpack | __error__="" [1m])
   expect empty
 
-# unpack() must not let a packed field named __error__ clobber the reserved error label.
+# unpack() must not let a packed field clobber a reserved error label (__error__,
+# __error_details__, __preserve_error__); they are dropped and only lvl survives.
 clear
 load
-  {app="a"} `{"__error__":"boom","lvl":"info","_entry":"real message"}` @ 20s [repeat every 20s for 3]
+  {app="a"} `{"__error__":"boom","__preserve_error__":"true","lvl":"info","_entry":"real message"}` @ 20s [repeat every 20s for 3]
   {app="noise"} `{"_entry":"x"}` @ 20s [repeat every 20s for 3]
 
 eval instant at 60s count_over_time({app="a"} | unpack [1m])

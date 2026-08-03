@@ -782,7 +782,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
+		lbs.SetPreserveError()
 	}
 }
 
