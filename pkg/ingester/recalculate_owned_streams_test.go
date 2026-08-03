@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -267,4 +268,40 @@ type mockPartitionRingReader struct {
 
 func (m mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 	return m.ring
+}
+
+type mockOwnershipStrategy struct {
+	ringChanged bool
+}
+
+func (m *mockOwnershipStrategy) checkRingForChanges() (bool, error) { return m.ringChanged, nil }
+func (m *mockOwnershipStrategy) isOwnedStream(*stream) (bool, error) {
+	return true, nil
+}
+
+func Test_recalculateOwnedStreams_rebucketsWithoutRingChange(t *testing.T) {
+	inst, limits := streamCountBucketsTestInstance(t)
+
+	err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: `{job="replay", n="0"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))},
+		{Labels: `{job="app", n="0"}`, Entries: entries(1, time.Now().Add(-5*time.Minute))},
+	}})
+	require.NoError(t, err)
+	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+	// Remove the override at runtime; the ring does NOT change, but the periodic job must
+	// still converge bucket membership.
+	limits.DefaultLimits().PolicyOverrideLimits = nil
+
+	service := newRecalculateOwnedStreamsSvc(
+		(&mockTenantsSuplier{tenants: []*instance{inst}}).get,
+		&mockOwnershipStrategy{ringChanged: false},
+		50*time.Millisecond,
+		log.NewNopLogger(),
+	)
+	service.recalculate()
+
+	require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 0, inst.ownedStreamsSvc.getStreamCount("replay"))
 }

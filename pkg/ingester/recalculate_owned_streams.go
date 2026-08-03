@@ -56,7 +56,17 @@ func (s *recalculateOwnedStreamsSvc) recalculate() {
 		return
 	}
 	if !ringChanged {
-		level.Debug(s.logger).Log("msg", "ring is not changed, skipping the job")
+		level.Debug(s.logger).Log("msg", "ring is not changed, only re-checking stream count buckets")
+		// Ownership is unaffected, but a runtime change to policy stream-count overrides can
+		// re-assign streams' buckets; converge membership here. Ring changes converge it via
+		// updateOwnedStreams below.
+		// NOTE: this runs on every tick; the per-stream work is a memoized map lookup plus a
+		// string compare, so it should be cheap even for large stream counts. If it ever shows
+		// up in profiles, cache each tenant's effective stream-count override set (the
+		// policy -> local/global limit pairs plus use_owned_stream_count) and skip the pass
+		// when it is unchanged since the previous tick — bucket membership can only change
+		// when that config changes.
+		s.rebucketStreamCounts()
 		return
 	}
 	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
@@ -71,6 +81,15 @@ func (s *recalculateOwnedStreamsSvc) recalculate() {
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to re-evaluate streams ownership", "tenant", instance.instanceID, "err", err)
 		}
+	}
+}
+
+func (s *recalculateOwnedStreamsSvc) rebucketStreamCounts() {
+	for _, instance := range s.instancesSupplier() {
+		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
+			continue
+		}
+		instance.rebucketOwnedStreams()
 	}
 }
 
