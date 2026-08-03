@@ -30,12 +30,15 @@ const (
 	V3ClusterType     = "envoy.config.cluster.v3.Cluster"
 	V3EndpointsType   = "envoy.config.endpoint.v3.ClusterLoadAssignment"
 
-	V3ResourceWrapperURL      = googleapiPrefix + "envoy.service.discovery.v3.Resource"
-	V3ListenerURL             = googleapiPrefix + V3ListenerType
-	V3RouteConfigURL          = googleapiPrefix + V3RouteConfigType
-	V3ClusterURL              = googleapiPrefix + V3ClusterType
-	V3EndpointsURL            = googleapiPrefix + V3EndpointsType
-	V3HTTPConnManagerURL      = googleapiPrefix + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
-	V3UpstreamTLSContextURL   = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
-	V3DownstreamTLSContextURL = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext"
+	V3ResourceWrapperURL              = googleapiPrefix + "envoy.service.discovery.v3.Resource"
+	V3ListenerURL                     = googleapiPrefix + V3ListenerType
+	V3RouteConfigURL                  = googleapiPrefix + V3RouteConfigType
+	V3ClusterURL                      = googleapiPrefix + V3ClusterType
+	V3EndpointsURL                    = googleapiPrefix + V3EndpointsType
+	V3HTTPConnManagerURL              = googleapiPrefix + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
+	V3UpstreamTLSContextURL           = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext"
+	V3DownstreamTLSContextURL         = googleapiPrefix + "envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext"
+	V3HTTP11ProxyUpstreamTransportURL = googleapiPrefix + "envoy.extensions.transport_sockets.http_11_proxy.v3.Http11ProxyUpstreamTransport"
+	V3AddressURL                      = googleapiPrefix + "envoy.config.core.v3.Address"
+	V3AudienceURL                     = googleapiPrefix + "envoy.extensions.filters.http.gcp_authn.v3.Audience"
 )

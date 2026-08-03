@@ -35,6 +35,7 @@ import (
 	"google.golang.org/grpc/internal/wrr"
 	"google.golang.org/grpc/internal/xds/balancer/clusterimpl"
 	"google.golang.org/grpc/internal/xds/balancer/clustermanager"
+	"google.golang.org/grpc/internal/xds/httpfilter"
 	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -104,15 +105,15 @@ type virtualHost struct {
 
 // routeCluster holds information about a cluster as referenced by a route.
 type routeCluster struct {
-	name        string                      // Name of the cluster.
-	interceptor iresolver.ClientInterceptor // HTTP filters to run for RPCs matching this route.
+	name        string                       // Name of the cluster.
+	interceptor httpfilter.ClientInterceptor // HTTP filters to run for RPCs matching this route.
 }
 
 type route struct {
-	m                 *xdsresource.CompositeMatcher // converted from route matchers
-	actionType        xdsresource.RouteActionType   // holds route action type
-	clusters          wrr.WRR                       // holds *routeCluster entries
-	interceptors      []iresolver.ClientInterceptor // Interceptors across clusters belonging to this route
+	m                 *xdsresource.CompositeMatcher  // converted from route matchers
+	actionType        xdsresource.RouteActionType    // holds route action type
+	clusters          wrr.WRR                        // holds *routeCluster entries
+	interceptors      []httpfilter.ClientInterceptor // Interceptors across clusters belonging to this route
 	maxStreamDuration time.Duration
 	retryConfig       *xdsresource.RetryConfig
 	hashPolicies      []*xdsresource.HashPolicy
