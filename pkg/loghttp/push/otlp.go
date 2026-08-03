@@ -185,6 +185,14 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		resourceAttributesAsStructuredMetadata := resResult.StructuredMetadata
 		streamLabels := resResult.StreamLabels
 
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		_, hasBackfillLabel := streamLabels[constants.BackfillLabel]
+		_, hasBackfillShardLabel := streamLabels[constants.BackfillShardLabel]
+		if hasBackfillLabel || hasBackfillShardLabel {
+			return nil, errReservedBackfillLabels()
+		}
+
 		if backfillShard != "" {
 			streamLabels[constants.BackfillLabel] = "true"
 			streamLabels[constants.BackfillShardLabel] = model.LabelValue(backfillShard)

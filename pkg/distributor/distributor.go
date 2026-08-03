@@ -807,9 +807,18 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			prevTs := stream.Entries[0].Timestamp
 			streamEntriesSize := 0
 
+			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
+			// label is reserved: the push parsers reject streams that already carry it, so it can
+			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
+			// validation. Entries too far in the future are still rejected.
+			entryValidationContext := validationContext
+			if lbs.Has(constants.BackfillLabel) {
+				entryValidationContext.rejectOldSample = false
+			}
+
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
+				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
