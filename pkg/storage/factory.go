@@ -451,9 +451,10 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
 		if err != nil {
 			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
-			var blankConfig bucket.Config
+			var blankConfig bucket.ConfigWithNamedStores
 			blankConfig.RegisterFlags(&flag.FlagSet{}) // Get defaults
-			if reflect.DeepEqual(&cfg.ObjectStore.Config, &blankConfig) {
+			blankConfig.NamedStores.Validate()         // Set `storeType` to empty map.
+			if reflect.DeepEqual(&cfg.ObjectStore, &blankConfig) {
 				return nil, fmt.Errorf("when use_thanos_objstore is true, config must be specified in the object_store section: %w", err)
 			}
 		}
