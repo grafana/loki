@@ -3,8 +3,9 @@ package oci
 import (
 	"flag"
 	"fmt"
-	objstoreoci "github.com/thanos-io/objstore/providers/oci"
 	"strings"
+
+	objstoreoci "github.com/thanos-io/objstore/providers/oci"
 )
 
 type Config struct {
