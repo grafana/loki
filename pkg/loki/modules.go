@@ -1110,6 +1110,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 			Enabled:  true,
 			V2Range:  t.Cfg.QueryEngine.ValidQueryRange,
 			Validate: engine_v2.IsQuerySupported,
+			ForceV1:  t.Cfg.QueryEngine.MatchesV1OnlySelector,
 			Handler:  handler,
 		}
 	}
