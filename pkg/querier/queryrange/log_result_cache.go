@@ -385,7 +385,7 @@ func emptyResponse(lokiReq *LokiRequest) *LokiResponse {
 		Statistics: stats.Result{},
 		Direction:  lokiReq.Direction,
 		Limit:      lokiReq.Limit,
-		Version:    1,
+		Version:    uint32(loghttp.GetVersion(lokiReq.Path)),
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     []logproto.Stream{},

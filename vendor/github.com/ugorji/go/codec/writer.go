@@ -1,25 +1,35 @@
-// Copyright (c) 2012-2018 Ugorji Nwoke. All rights reserved.
+// Copyright (c) 2012-2020 Ugorji Nwoke. All rights reserved.
 // Use of this source code is governed by a MIT license found in the LICENSE file.
 
 package codec
 
-import "io"
+import (
+	"io"
+)
+
+const maxConsecutiveEmptyWrites = 16 // 2 is sufficient, 16 is enough, 64 is optimal
 
 // encWriter abstracts writing to a byte array or to an io.Writer.
-type encWriter interface {
+type encWriterI interface {
 	writeb([]byte)
 	writestr(string)
 	writeqstr(string) // write string wrapped in quotes ie "..."
 	writen1(byte)
+
+	// add convenience functions for writing 2,4
 	writen2(byte, byte)
-	// writen will write up to 7 bytes at a time.
-	writen(b [rwNLen]byte, num uint8)
+	writen4([4]byte)
+	writen8([8]byte)
+
+	// isBytes() bool
 	end()
+
+	resetIO(w io.Writer, bufsize int, blist *bytesFreeList)
+	resetBytes(in []byte, out *[]byte)
 }
 
 // ---------------------------------------------
 
-// bufioEncWriter
 type bufioEncWriter struct {
 	w io.Writer
 
@@ -30,16 +40,18 @@ type bufioEncWriter struct {
 	b [16]byte // scratch buffer and padding (cache-aligned)
 }
 
-func (z *bufioEncWriter) reset(w io.Writer, bufsize int, blist *bytesFreelist) {
+// MARKER: use setByteAt/byteAt to elide the bounds-checks
+// when we are sure that we don't go beyond the bounds.
+
+func (z *bufioEncWriter) resetBytes(in []byte, out *[]byte) {
+	halt.errorStr("resetBytes is unsupported by bufioEncWriter")
+}
+
+func (z *bufioEncWriter) resetIO(w io.Writer, bufsize int, blist *bytesFreeList) {
 	z.w = w
 	z.n = 0
-	if bufsize <= 0 {
-		bufsize = defEncByteBufSize
-	}
-	// bufsize must be >= 8, to accomodate writen methods (where n <= 8)
-	if bufsize <= 8 {
-		bufsize = 8
-	}
+	// use minimum bufsize of 16, matching the array z.b and accommodating writen methods (where n <= 8)
+	bufsize = max(16, bufsize) // max(byteBufSize, bufsize)
 	if cap(z.buf) < bufsize {
 		if len(z.buf) > 0 && &z.buf[0] != &z.b[0] {
 			blist.put(z.buf)
@@ -53,23 +65,24 @@ func (z *bufioEncWriter) reset(w io.Writer, bufsize int, blist *bytesFreelist) {
 	z.buf = z.buf[:cap(z.buf)]
 }
 
-//go:noinline - flush only called intermittently
 func (z *bufioEncWriter) flushErr() (err error) {
-	n, err := z.w.Write(z.buf[:z.n])
-	z.n -= n
-	if z.n > 0 && err == nil {
-		err = io.ErrShortWrite
+	var n int
+	for i := maxConsecutiveEmptyReads; i > 0; i-- {
+		n, err = z.w.Write(z.buf[:z.n])
+		z.n -= n
+		if z.n == 0 || err != nil {
+			return
+		}
+		// at this point: z.n > 0 && err == nil
+		if n > 0 {
+			copy(z.buf, z.buf[n:z.n+n])
+		}
 	}
-	if n > 0 && z.n > 0 {
-		copy(z.buf, z.buf[n:z.n+n])
-	}
-	return err
+	return io.ErrShortWrite // OR io.ErrNoProgress: not enough (or no) data written
 }
 
 func (z *bufioEncWriter) flush() {
-	if err := z.flushErr(); err != nil {
-		panic(err)
-	}
+	halt.onerror(z.flushErr())
 }
 
 func (z *bufioEncWriter) writeb(s []byte) {
@@ -105,7 +118,8 @@ func (z *bufioEncWriter) writeqstr(s string) {
 	if z.n+len(s)+2 > len(z.buf) {
 		z.flush()
 	}
-	z.buf[z.n] = '"'
+	setByteAt(z.buf, uint(z.n), '"')
+	// z.buf[z.n] = '"'
 	z.n++
 LOOP:
 	a := len(z.buf) - z.n
@@ -116,7 +130,8 @@ LOOP:
 		goto LOOP
 	}
 	z.n += copy(z.buf[z.n:], s)
-	z.buf[z.n] = '"'
+	setByteAt(z.buf, uint(z.n), '"')
+	// z.buf[z.n] = '"'
 	z.n++
 }
 
@@ -124,7 +139,8 @@ func (z *bufioEncWriter) writen1(b1 byte) {
 	if 1 > len(z.buf)-z.n {
 		z.flush()
 	}
-	z.buf[z.n] = b1
+	setByteAt(z.buf, uint(z.n), b1)
+	// z.buf[z.n] = b1
 	z.n++
 }
 
@@ -132,17 +148,31 @@ func (z *bufioEncWriter) writen2(b1, b2 byte) {
 	if 2 > len(z.buf)-z.n {
 		z.flush()
 	}
-	z.buf[z.n+1] = b2
-	z.buf[z.n] = b1
+	setByteAt(z.buf, uint(z.n+1), b2)
+	setByteAt(z.buf, uint(z.n), b1)
+	// z.buf[z.n+1] = b2
+	// z.buf[z.n] = b1
 	z.n += 2
 }
 
-func (z *bufioEncWriter) writen(b [rwNLen]byte, num uint8) {
-	if int(num) > len(z.buf)-z.n {
+func (z *bufioEncWriter) writen4(b [4]byte) {
+	if 4 > len(z.buf)-z.n {
 		z.flush()
 	}
-	copy(z.buf[z.n:], b[:num])
-	z.n += int(num)
+	// setByteAt(z.buf, uint(z.n+3), b4)
+	// setByteAt(z.buf, uint(z.n+2), b3)
+	// setByteAt(z.buf, uint(z.n+1), b2)
+	// setByteAt(z.buf, uint(z.n), b1)
+	copy(z.buf[z.n:], b[:])
+	z.n += 4
+}
+
+func (z *bufioEncWriter) writen8(b [8]byte) {
+	if 8 > len(z.buf)-z.n {
+		z.flush()
+	}
+	copy(z.buf[z.n:], b[:])
+	z.n += 8
 }
 
 func (z *bufioEncWriter) endErr() (err error) {
@@ -152,7 +182,13 @@ func (z *bufioEncWriter) endErr() (err error) {
 	return
 }
 
+func (z *bufioEncWriter) end() {
+	halt.onerror(z.endErr())
+}
+
 // ---------------------------------------------
+
+var bytesEncAppenderDefOut = []byte{}
 
 // bytesEncAppender implements encWriter and can write to an byte slice.
 type bytesEncAppender struct {
@@ -168,7 +204,6 @@ func (z *bytesEncAppender) writestr(s string) {
 }
 func (z *bytesEncAppender) writeqstr(s string) {
 	z.b = append(append(append(z.b, '"'), s...), '"')
-
 	// z.b = append(z.b, '"')
 	// z.b = append(z.b, s...)
 	// z.b = append(z.b, '"')
@@ -177,91 +212,28 @@ func (z *bytesEncAppender) writen1(b1 byte) {
 	z.b = append(z.b, b1)
 }
 func (z *bytesEncAppender) writen2(b1, b2 byte) {
-	z.b = append(z.b, b1, b2) // cost: 81
+	z.b = append(z.b, b1, b2)
 }
-func (z *bytesEncAppender) writen(s [rwNLen]byte, num uint8) {
-	// if num <= rwNLen {
-	if int(num) <= len(s) {
-		z.b = append(z.b, s[:num]...)
-	}
+
+func (z *bytesEncAppender) writen4(b [4]byte) {
+	z.b = append(z.b, b[:]...)
+	// z.b = append(z.b, b1, b2, b3, b4) // prevents inlining encWr.writen4
 }
-func (z *bytesEncAppender) endErr() error {
+
+func (z *bytesEncAppender) writen8(b [8]byte) {
+	z.b = append(z.b, b[:]...)
+	// z.b = append(z.b, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7])
+}
+
+func (z *bytesEncAppender) end() {
 	*(z.out) = z.b
-	return nil
 }
-func (z *bytesEncAppender) reset(in []byte, out *[]byte) {
+
+func (z *bytesEncAppender) resetBytes(in []byte, out *[]byte) {
 	z.b = in[:0]
 	z.out = out
 }
 
-// --------------------------------------------------
-
-type encWr struct {
-	bytes bool // encoding to []byte
-	js    bool // is json encoder?
-	be    bool // is binary encoder?
-
-	c containerState
-
-	calls uint16
-
-	wb bytesEncAppender
-	wf *bufioEncWriter
+func (z *bytesEncAppender) resetIO(w io.Writer, bufsize int, blist *bytesFreeList) {
+	halt.errorStr("resetIO is unsupported by bytesEncAppender")
 }
-
-func (z *encWr) writeb(s []byte) {
-	if z.bytes {
-		z.wb.writeb(s)
-	} else {
-		z.wf.writeb(s)
-	}
-}
-func (z *encWr) writeqstr(s string) {
-	if z.bytes {
-		z.wb.writeqstr(s)
-	} else {
-		z.wf.writeqstr(s)
-	}
-}
-func (z *encWr) writestr(s string) {
-	if z.bytes {
-		z.wb.writestr(s)
-	} else {
-		z.wf.writestr(s)
-	}
-}
-func (z *encWr) writen1(b1 byte) {
-	if z.bytes {
-		z.wb.writen1(b1)
-	} else {
-		z.wf.writen1(b1)
-	}
-}
-func (z *encWr) writen2(b1, b2 byte) {
-	if z.bytes {
-		z.wb.writen2(b1, b2)
-	} else {
-		z.wf.writen2(b1, b2)
-	}
-}
-func (z *encWr) writen(b [rwNLen]byte, num uint8) {
-	if z.bytes {
-		z.wb.writen(b, num)
-	} else {
-		z.wf.writen(b, num)
-	}
-}
-func (z *encWr) endErr() error {
-	if z.bytes {
-		return z.wb.endErr()
-	}
-	return z.wf.endErr()
-}
-
-func (z *encWr) end() {
-	if err := z.endErr(); err != nil {
-		panic(err)
-	}
-}
-
-var _ encWriter = (*encWr)(nil)

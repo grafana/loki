@@ -124,7 +124,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
-	renamedLabelSources := labelFmtRenameSources(expr)
+	labelFmtRemovedNames := labelFmtRemovedColumnNames(expr)
 
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
@@ -151,12 +151,19 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			if err != nil {
 				return nil, err
 			}
-			_, shouldDelete := renamedLabelSources[ident.ShortName()]
-			// A `label_format dst=src` rename removes the source label regardless of
-			// which category it came from (stream label, structured metadata, or a
-			// parsed field), matching the classic engine which
-			// deletes the name from every category. Only builtin/generated columns
-			// (timestamp, message, __error__, value) must be preserved.
+			_, shouldDelete := labelFmtRemovedNames[ident.ShortName()]
+			// label_format removes label-like columns whose short name matches
+			// either a rename source or a SET/rename target:
+			//   - `label_format dst=src` (rename): remove `src` (the source
+			//     vanishes from the label set) and `dst` (so the new column
+			//     replaces any pre-existing one rather than colliding with it).
+			//   - `label_format dst=value` (SET): remove `dst` so the new
+			//     column replaces any pre-existing one.
+			// This mirrors v1's LabelsFormatter.Process which calls
+			// lbs.Set(ParsedLabel, ...), and lbs.Set(ParsedLabel) deletes the
+			// same name from stream/metadata categories before adding the
+			// parsed value. Only builtin/generated columns (timestamp, message,
+			// __error__, value) are preserved.
 			shouldDelete = shouldDelete && isLabelLikeColumn(ident.ColumnType())
 			if !ident.Equal(semconv.ColumnIdentValue) && !shouldDelete {
 				outputCols = append(outputCols, batch.Column(i))
@@ -217,7 +224,16 @@ func isLabelLikeColumn(ct types.ColumnType) bool {
 	}
 }
 
-func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
+// labelFmtRemovedColumnNames returns the set of short column names that
+// label_format must strip from the input before adding the new parsed
+// columns. For each labelfmt entry:
+//   - the target (Name) is always removed, so the new value replaces any
+//     pre-existing column of the same name regardless of category.
+//   - the source (Value) is additionally removed when Rename is true, so
+//     the original column disappears from the label set as v1 does.
+//
+// Returns nil when the expression isn't a labelfmt parse or has no entries.
+func labelFmtRemovedColumnNames(expr physical.Expression) map[string]struct{} {
 	parseExpr, ok := expr.(*physical.VariadicExpr)
 	if !ok || parseExpr.Op != types.VariadicOpParseLabelfmt || len(parseExpr.Expressions) < 3 {
 		return nil
@@ -230,16 +246,17 @@ func labelFmtRenameSources(expr physical.Expression) map[string]struct{} {
 	if !ok {
 		return nil
 	}
-	renameSources := make(map[string]struct{})
+	removed := make(map[string]struct{})
 	for _, labelFmt := range labelFmts {
+		removed[labelFmt.Name] = struct{}{}
 		if labelFmt.Rename {
-			renameSources[labelFmt.Value] = struct{}{}
+			removed[labelFmt.Value] = struct{}{}
 		}
 	}
-	if len(renameSources) == 0 {
+	if len(removed) == 0 {
 		return nil
 	}
-	return renameSources
+	return removed
 }
 
 // mergeColumns merges two columns by preferring values from the new column (b),

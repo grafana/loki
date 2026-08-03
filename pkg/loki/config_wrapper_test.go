@@ -93,6 +93,7 @@ server:
 			config, defaults := testContext(emptyConfigString, nil)
 
 			assert.EqualValues(t, defaults.Ruler.RulePath, config.Ruler.RulePath)
+			assert.EqualValues(t, defaults.Ruler.WAL.Dir, config.Ruler.WAL.Dir)
 			assert.EqualValues(t, defaults.Ingester.WAL.Dir, config.Ingester.WAL.Dir)
 		})
 
@@ -103,6 +104,7 @@ common:
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/ruler-wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
@@ -115,6 +117,7 @@ common:
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
+			assert.EqualValues(t, "/opt/loki/ruler-wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
 			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
@@ -125,10 +128,13 @@ common:
 common:
   path_prefix: /opt/loki
 ruler:
-  rule_path: /etc/ruler/rules`
+  rule_path: /etc/ruler/rules
+  wal:
+    dir: /etc/ruler/wal`
 			config, _ := testContext(configFileString, nil)
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/etc/ruler/wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 
@@ -136,9 +142,10 @@ ruler:
 			configFileString := `---
 common:
   path_prefix: /opt/loki`
-			config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules"})
+			config, _ := testContext(configFileString, []string{"-ruler.rule-path", "/etc/ruler/rules", "-ruler.wal.dir", "/etc/ruler/wal"})
 
 			assert.EqualValues(t, "/etc/ruler/rules", config.Ruler.RulePath)
+			assert.EqualValues(t, "/etc/ruler/wal", config.Ruler.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 		})
 	})

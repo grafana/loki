@@ -2,6 +2,7 @@ package rendezvous
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -103,7 +104,8 @@ func TestPartitionWatcher_PicksUpChanges(t *testing.T) {
 	writePartitionRing(t, kvClient, activePartitionRing(2))
 
 	require.Eventually(t, func() bool {
-		return watcher.ShuffleSharder() != initial
+		ss := watcher.ShuffleSharder()
+		return slices.Equal(ss.partitions, []int32{2})
 	}, 5*time.Second, 10*time.Millisecond, "watcher did not pick up KV change")
 
 	updated := watcher.ShuffleSharder()

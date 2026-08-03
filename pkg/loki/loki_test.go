@@ -82,7 +82,6 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 	}{
 		{name: "Target All includes Querier", target: flagext.StringSliceCSV{"all"}, module: Querier, want: true},
 		{name: "Target Querier does not include Distributor", target: flagext.StringSliceCSV{"querier"}, module: Distributor, want: false},
-		{name: "Target Read includes Query Frontend", target: flagext.StringSliceCSV{"read"}, module: QueryFrontend, want: true},
 		{name: "Target Querier does not include Query Frontend", target: flagext.StringSliceCSV{"querier"}, module: QueryFrontend, want: false},
 		{name: "Target Query Frontend does not include Querier", target: flagext.StringSliceCSV{"query-frontend"}, module: Querier, want: false},
 		{name: "Multi target includes querier", target: flagext.StringSliceCSV{"query-frontend", "query-scheduler", "querier"}, module: Querier, want: true},
@@ -340,4 +339,70 @@ func unregisterLokiMetrics(loki *Loki) {
 	prometheus.Unregister(loki.Metrics.ReceivedMessageSize)
 	prometheus.Unregister(loki.Metrics.SentMessageSize)
 	prometheus.Unregister(loki.Metrics.InflightRequests)
+}
+
+func TestNoAuthTenantDefault(t *testing.T) {
+	cfg := Config{}
+	f := flag.NewFlagSet("test", flag.PanicOnError)
+	cfg.RegisterFlags(f)
+
+	require.Equal(t, "fake", cfg.NoAuthTenant, "default no_auth_tenant should be 'fake' for backwards compatibility")
+}
+
+func TestNoAuthTenantValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		authEnabled bool
+		tenant      string
+		wantErr     bool
+	}{
+		{
+			name:        "auth disabled with default tenant",
+			authEnabled: false,
+			tenant:      "fake",
+			wantErr:     false,
+		},
+		{
+			name:        "auth disabled with custom tenant",
+			authEnabled: false,
+			tenant:      "my-org",
+			wantErr:     false,
+		},
+		{
+			name:        "auth disabled with empty tenant",
+			authEnabled: false,
+			tenant:      "",
+			wantErr:     true,
+		},
+		{
+			name:        "auth disabled with whitespace-only tenant",
+			authEnabled: false,
+			tenant:      "   ",
+			wantErr:     true,
+		},
+		{
+			name:        "auth enabled ignores no_auth_tenant",
+			authEnabled: true,
+			tenant:      "",
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{}
+			f := flag.NewFlagSet("test", flag.PanicOnError)
+			cfg.RegisterFlags(f)
+			cfg.AuthEnabled = tt.authEnabled
+			cfg.NoAuthTenant = tt.tenant
+
+			err := cfg.validateNoAuthTenant()
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "no_auth_tenant")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

@@ -335,15 +335,23 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 			return nil, unimplementedFeature(fmt.Sprintf("unwrap conversion operation %q", e.Left.Unwrap.Operation))
 		}
 
-		// Unwrap turns a column into numerical `value` column, and that original column should be dropped from the result.
-		builder = builder.
-			Cast(unwrapIdentifier, unwrapOperation).
-			ProjectDrop(&ColumnRef{
+		// Unwrap turns a column into numerical `value` column. By default we
+		// drop the source column from the label set since it's been consumed
+		// as the sample value. v1 makes an exception: if the immediately
+		// wrapping vector aggregation explicitly groups by the unwrap
+		// identifier (e.g. `sum by (totalSize) (... | unwrap totalSize ...)`),
+		// v1 preserves the column so the group-by actually produces per-value
+		// series. Match that behavior here — dropping unconditionally would
+		// silently collapse such queries to a single-value output.
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+		if !outerGroupingReferencesUnwrap(wc.outerVecGrouping, unwrapIdentifier) {
+			builder = builder.ProjectDrop(&ColumnRef{
 				Ref: types.ColumnRef{
 					Column: unwrapIdentifier,
 					Type:   types.ColumnTypeAmbiguous,
 				},
 			})
+		}
 
 		// Filter out rows with any errors because rows with errors have invalid numeric values.
 		builder = builder.Select(
@@ -404,6 +412,13 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, wc *walkContext) (Valu
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, wc *walkContext) (Value, error) {
+	// Save-restore outerVecGrouping so a nested VectorAggregation restores
+	// its parent's grouping on exit. This lets a child RangeAggregation with
+	// unwrap see its DIRECT wrapping vector aggregation's grouping.
+	prev := wc.outerVecGrouping
+	wc.outerVecGrouping = e.Grouping
+	defer func() { wc.outerVecGrouping = prev }()
+
 	left, err := walk(e.Left, wc)
 	if err != nil {
 		return nil, err
@@ -469,10 +484,31 @@ func walkLiteral(e *syntax.LiteralExpr, _ *walkContext) (Value, error) {
 	return NewLiteral(e.Val), nil
 }
 
+// outerGroupingReferencesUnwrap reports whether the enclosing vector
+// aggregation's `by (...)` clause names the unwrap identifier — meaning the
+// user wants distinct series per unwrap-value and the source column must
+// therefore survive as a label. `without (...)` and bare aggregations return
+// false since neither preserves a specific label the user asked to group by.
+func outerGroupingReferencesUnwrap(g *syntax.Grouping, unwrapIdentifier string) bool {
+	if g == nil || g.Without {
+		return false
+	}
+	for _, name := range g.Groups {
+		if name == unwrapIdentifier {
+			return true
+		}
+	}
+	return false
+}
+
 type walkContext struct {
 	ctx     context.Context
 	params  logql.Params
 	deletes []*deletion.Request
+	// outerVecGrouping is the grouping of the immediate enclosing
+	// VectorAggregation expression, or nil if the range aggregation being
+	// walked is not directly wrapped by a vector aggregation.
+	outerVecGrouping *syntax.Grouping
 }
 
 func walk(e syntax.Expr, wc *walkContext) (Value, error) {

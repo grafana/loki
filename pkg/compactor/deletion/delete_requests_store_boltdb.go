@@ -279,6 +279,14 @@ func (ds *deleteRequestsStoreBoltDB) GetCacheGenerationNumber(ctx context.Contex
 	return genNumber, nil
 }
 
+// UpdateCacheGenerationNumber bumps the cache generation number for the user so any query result caches get invalidated.
+func (ds *deleteRequestsStoreBoltDB) UpdateCacheGenerationNumber(ctx context.Context, userID string) error {
+	writeBatch := ds.indexClient.NewWriteBatch()
+	ds.updateCacheGen(userID, writeBatch)
+
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
+}
+
 func (ds *deleteRequestsStoreBoltDB) queryDeleteRequests(ctx context.Context, deleteQuery boltdbcommon.Query) ([]deletionproto.DeleteRequest, error) {
 	var deleteRequests []deletionproto.DeleteRequest
 	var err error

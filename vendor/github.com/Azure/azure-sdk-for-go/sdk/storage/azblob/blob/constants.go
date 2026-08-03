@@ -68,6 +68,7 @@ const (
 	AccessTierP70     AccessTier = generated.AccessTierP70
 	AccessTierP80     AccessTier = generated.AccessTierP80
 	AccessTierPremium AccessTier = generated.AccessTierPremium
+	AccessTierSmart   AccessTier = generated.AccessTierSmart
 )
 
 // PossibleAccessTierValues returns the possible values for the AccessTier const type.
@@ -148,9 +149,10 @@ func PossibleEncryptionAlgorithmTypeValues() []EncryptionAlgorithmType {
 type ArchiveStatus = generated.ArchiveStatus
 
 const (
-	ArchiveStatusRehydratePendingToCool ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
-	ArchiveStatusRehydratePendingToHot  ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
-	ArchiveStatusRehydratePendingToCold ArchiveStatus = generated.ArchiveStatusRehydratePendingToCold
+	ArchiveStatusRehydratePendingToCool  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCool
+	ArchiveStatusRehydratePendingToHot   ArchiveStatus = generated.ArchiveStatusRehydratePendingToHot
+	ArchiveStatusRehydratePendingToCold  ArchiveStatus = generated.ArchiveStatusRehydratePendingToCold
+	ArchiveStatusRehydratePendingToSmart ArchiveStatus = generated.ArchiveStatusRehydratePendingToSmart
 )
 
 // PossibleArchiveStatusValues returns the possible values for the ArchiveStatus const type.

@@ -205,11 +205,9 @@ func TestMappingStrings(t *testing.T) {
 			in: `max(sum by (abc) (rate({foo="bar"} | json | label_format bazz=buzz [5m])))`,
 			out: `max(
 				sum by (abc) (
-					sum without() (
-						downstream<rate({foo="bar"}|json|label_formatbazz=buzz[5m]),shard=0_of_2>
-						++
-						downstream<rate({foo="bar"}|json|label_formatbazz=buzz[5m]),shard=1_of_2>
-					)
+					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=0_of_2>
+					++
+					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -325,11 +323,9 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m])) by (bar)`,
 			out: `sum by (bar) (
-				sum without() (
-					downstream<count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m]),shard=0_of_2>
-					++
-					downstream<count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m]),shard=1_of_2>
-				)
+				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=0_of_2>
+				++
+				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=1_of_2>
 			)`,
 		},
 		{
@@ -405,50 +401,18 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
-			in: `sum(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster))`,
-			out: `sum(
-				(
-					sum by (cluster) (
-						downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m])),shard=0_of_2>
-						++
-						downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m])),shard=1_of_2>
-					)
-					/
-					sum by (cluster) (
-						downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=0_of_2>
-						++
-						downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=1_of_2>
-					)
-				)
-			)`,
-		},
-		{
-			in: `sum(max_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster))`,
-			out: `sum(
-				max by (cluster) (
-					downstream<max_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m]) by (cluster),shard=0_of_2>
-					++
-					downstream<max_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | unwrap busy [5m]) by (cluster),shard=1_of_2>
-				)
-			)`,
-		},
-		{
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
 			out: `(
 				sum without() (
-					sum without() (
-						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=0_of_2>
-						++
-						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=1_of_2>
-					)
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
 				)
 				/
 				sum without(busy) (
-					sum without() (
-						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=0_of_2>
-						++
-						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=1_of_2>
-					)
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -456,20 +420,116 @@ func TestMappingStrings(t *testing.T) {
 			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m]) without (foo)`,
 			out: `(
 				sum without(foo) (
-					sum without() (
-						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=0_of_2>
-						++
-						downstream<sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m]),shard=1_of_2>
-					)
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
 				)
 				/
 				sum without(foo,busy) (
-					sum without() (
-						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=0_of_2>
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
+		// Outer sum around a non-additive range aggregation with label
+		// reduction: must fall through to the range-aggr merger so per-shard
+		// partials are combined by max/min/... — not by the outer sum.
+		{
+			in: `sum(max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]))`,
+			out: `sum(
+				max without () (
+					downstream<max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz))`,
+			out: `sum(
+				min by (baz) (
+					downstream<min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz), shard=0_of_2>
+					++
+					downstream<min_over_time({foo="bar"} | logfmt | unwrap bar [5m]) by (baz), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]))`,
+			out: `sum(
+				max without () (
+					downstream<max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | json | label_format new=level | unwrap value [5m]), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz))`,
+			out: `sum(
+				max without (baz) (
+					downstream<max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz), shard=0_of_2>
+					++
+					downstream<max_over_time({foo="bar"} | logfmt | unwrap bar [5m]) without (baz), shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum(avg by (a) (rate({foo="bar"}[5m])))`,
+			out: `sum(
+				(
+					sum by (a) (
+						downstream<sum by (a) (rate({foo="bar"}[5m])), shard=0_of_2>
 						++
-						downstream<count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m]),shard=1_of_2>
+						downstream<sum by (a) (rate({foo="bar"}[5m])), shard=1_of_2>
+					)
+					/
+					sum by (a) (
+						downstream<count by (a) (rate({foo="bar"}[5m])), shard=0_of_2>
+						++
+						downstream<count by (a) (rate({foo="bar"}[5m])), shard=1_of_2>
 					)
 				)
+			)`,
+		},
+		{
+			// avg_over_time with drop: guard fires and mapRangeAggregationExpr's
+			// avg-decomposition kicks in. Both the resulting sum(sum_over_time)
+			// and sum(count_over_time) are additive → fast path at each leg.
+			in: `sum(avg_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m]))`,
+			out: `sum(
+				(
+					sum without () (
+						downstream<sum without () (sum_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m])), shard=0_of_2>
+						++
+						downstream<sum without () (sum_over_time({foo="bar"} | logfmt | drop level | unwrap bar [5m])), shard=1_of_2>
+					)
+					/
+					sum without (bar) (
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level [5m])), shard=0_of_2>
+						++
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level [5m])), shard=1_of_2>
+					)
+				)
+			)`,
+		},
+		// Outer sum around an additive range aggregation with label reduction:
+		// per-shard sum-compression is safe — preserve the fast path.
+		{
+			in: `sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m]))`,
+			out: `sum(
+				downstream<sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m])), shard=0_of_2>
+				++
+				downstream<sum(count_over_time({foo="bar"} | logfmt | drop __error__ [5m])), shard=1_of_2>
+			)`,
+		},
+		{
+			in: `sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m]))`,
+			out: `sum(
+				downstream<sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m])), shard=0_of_2>
+				++
+				downstream<sum(count_over_time({foo="bar"} | logfmt | label_format new=level [5m])), shard=1_of_2>
 			)`,
 		},
 		// should be noop if VectorExpr

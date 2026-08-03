@@ -137,6 +137,32 @@ func (r *Region) Observations() []AggregatedObservation {
 	return observations
 }
 
+// MergeObservations folds all observations from src into r using
+// [AggregatedObservation.Merge] semantics.
+func (r *Region) MergeObservations(src *Region) {
+	if r == nil || src == nil {
+		return
+	}
+
+	src.mu.RLock()
+	defer src.mu.RUnlock()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for key, srcObs := range src.observations {
+		if existing, ok := r.observations[key]; ok {
+			existing.Merge(srcObs)
+		} else {
+			r.observations[key] = &AggregatedObservation{
+				Statistic: srcObs.Statistic,
+				Value:     srcObs.Value,
+				Count:     srcObs.Count,
+			}
+		}
+	}
+}
+
 // End completes the Region. Updates to the Region are ignored after
 // calling End.
 func (r *Region) End() {

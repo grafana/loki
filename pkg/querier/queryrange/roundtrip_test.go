@@ -1202,7 +1202,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/loki/api/v1/query_range",
+			path:       "/api/prom/query",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1217,7 +1217,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/loki/api/v1/series",
+			path:       "/api/prom/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1227,7 +1227,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/loki/api/v1/labels",
+			path:       "/api/prom/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1237,7 +1237,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/loki/api/v1/label",
+			path:       "/api/prom/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1247,7 +1247,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/loki/api/v1/label/__name__/values",
+			path:       "/api/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1283,8 +1283,10 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 
 	statsTestCfg := testConfig
 	statsTestCfg.ShardedQueries = true
-	statsSchemas := testSchemas
-	statsSchemas[0].RowShards = 4
+	// TSDB is the only index type; sharding is resolved dynamically from index
+	// stats. The downstream handler below returns a byte count of 4x the default
+	// max bytes per shard so every split deterministically shards into 4.
+	statsSchemas := testSchemasTSDB
 
 	for _, tc := range []struct {
 		name               string
@@ -1340,7 +1342,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 				},
 			},
 			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
-			expectedShardStats: 12, // 3 time splits * 4 row shards
+			expectedShardStats: 20, // range query with a [1h] range vector resolves shards over 5 sharded subqueries * 4 shards each
 		},
 		{
 			name: "range query not split",
@@ -1369,7 +1371,15 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
-			_, h := promqlResult(matrix)
+			_, promHandler := promqlResult(matrix)
+			h := base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+				if _, ok := r.(*logproto.IndexStatsRequest); ok {
+					return &IndexStatsResponse{
+						Response: &logproto.IndexStatsResponse{Bytes: 4 * 600 << 20},
+					}, nil
+				}
+				return promHandler.Do(ctx, r)
+			})
 			lokiResponse, err := tpw.Wrap(h).Do(ctx, tc.request)
 			require.NoError(t, err)
 
@@ -1543,10 +1553,6 @@ func (f fakeLimits) ShardAggregations(string) []string {
 
 func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
 	return f.enableMultiVariantQueries
-}
-
-func (f fakeLimits) MaxScanTaskParallelism(_ string) int {
-	return 0
 }
 
 func (f fakeLimits) DebugEngineTasks(_ string) bool {

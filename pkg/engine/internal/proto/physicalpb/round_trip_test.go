@@ -20,12 +20,6 @@ import (
 // that the recovered node deep-equals the input. This catches "added a struct
 // field but forgot to copy it in marshal_node.go / unmarshal_node.go" silent
 // bugs without requiring the test author to enumerate every field.
-//
-// TODO: physical.LogMerge is omitted because it has no proto representation:
-// the type switches in marshal_node.go and unmarshal_node.go don't include it,
-// so any plan containing it errors out at serialization time. Adding it
-// here would surface that gap, but as a separate finding from this test's
-// "fields not copied" focus. Once proto support lands, add it to the list.
 func TestRoundTripNodes_Reflection(t *testing.T) {
 	cases := []physical.Node{
 		new(physical.Batching),

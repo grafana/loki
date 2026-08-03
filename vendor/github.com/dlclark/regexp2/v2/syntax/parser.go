@@ -1486,10 +1486,11 @@ func (p *parser) parseProperty() (string, error) {
 	if p.charsRight() >= 1 && p.rightChar(0) != '{' && (!p.useOptionE() || !p.useOptionU()) {
 		ch := string(p.moveRightGetChar())
 		// check if it's a valid cat
-		if !isValidUnicodeCat(ch) {
+		canonical, ok := canonicalUnicodeCatName(ch)
+		if !ok {
 			return "", p.getErr(ErrUnknownSlashP, ch)
 		}
-		return ch, nil
+		return canonical, nil
 	}
 
 	if p.charsRight() < 3 {
@@ -1503,7 +1504,7 @@ func (p *parser) parseProperty() (string, error) {
 	startpos := p.textpos()
 	for p.charsRight() > 0 {
 		ch = p.moveRightGetChar()
-		if !IsWordChar(ch) && ch != '-' {
+		if !IsWordChar(ch) && ch != '-' && ch != '=' {
 			p.moveLeft()
 			break
 		}
@@ -1514,11 +1515,12 @@ func (p *parser) parseProperty() (string, error) {
 		return "", p.getErr(ErrIncompleteSlashP)
 	}
 
-	if !isValidUnicodeCat(capname) {
+	canonical, ok := canonicalUnicodeCatName(capname)
+	if !ok {
 		return "", p.getErr(ErrUnknownSlashP, capname)
 	}
 
-	return capname, nil
+	return canonical, nil
 }
 
 // Returns ReNode type for zero-length assertions with a \ code.

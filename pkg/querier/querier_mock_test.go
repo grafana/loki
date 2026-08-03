@@ -305,6 +305,10 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
+func (s *storeMock) FlushIndexes(_ context.Context) error {
+	return nil
+}
+
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	if args.Get(0) == nil {

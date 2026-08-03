@@ -28,6 +28,7 @@ common:
         bucket_name: {{ .Buckets }}
         region: {{ .Region }}
         endpoint: s3.{{.Region}}.amazonaws.com
+        native_aws_auth_enabled: true
         {{- else }}
         endpoint: {{ .Endpoint }}
         bucket_name: {{ .Buckets }}

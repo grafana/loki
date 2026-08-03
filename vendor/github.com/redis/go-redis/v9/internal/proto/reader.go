@@ -533,6 +533,84 @@ func (r *Reader) ReadFloat() (float64, error) {
 	return 0, fmt.Errorf("redis: can't parse float reply: %.100q", line)
 }
 
+// ReadStringInto reads a string-typed reply directly into buf, avoiding the
+// per-call allocation that ReadString incurs. It returns the number of bytes
+// written to buf.
+//
+// Supported reply types:
+//   - $<n>\r\n<payload>\r\n  bulk string (the GET path; payload is read
+//     straight into buf via bufio.Reader — for payloads larger than the
+//     bufio buffer this is effectively zero-copy from the socket)
+//   - +<status>\r\n          simple string, copied from the header line
+//   - :<int>\r\n             integer, copied as its ASCII representation
+//   - ,<float>\r\n           float, copied as its ASCII representation
+//
+// Errors, nil, push notifications, and RESP3 attributes are intercepted
+// by ReadLine and surfaced through err. RESP3 verbatim strings
+// (=<n>\r\n<txt:payload>\r\n) are intentionally not handled — they are
+// never returned by GET-family commands, and including them re-introduces
+// a hazard class where the response-type byte read from a stale `line[0]`
+// after a bufio refill can be misinterpreted as the verbatim format tag.
+//
+// If the bulk payload does not fit in buf, an error is returned and the
+// payload plus the trailing CRLF are drained from the reader so the
+// connection stays aligned for the next reply. For simple-string / integer
+// / float responses the payload lives in the (already-consumed) header
+// line, so no drain is needed.
+func (r *Reader) ReadStringInto(buf []byte) (int, error) {
+	line, err := r.ReadLine()
+	if err != nil {
+		return 0, err
+	}
+
+	switch line[0] {
+	case RespStatus:
+		// Simple string — data is in the line itself.
+		s := line[1:]
+		if len(s) > len(buf) {
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", len(s), len(buf))
+		}
+		return copy(buf, s), nil
+
+	case RespString:
+		n, err := replyLen(line)
+		if err != nil {
+			return 0, err
+		}
+		if n > len(buf) {
+			// Drain the payload + trailing \r\n so the next read on this
+			// connection sees the start of the next reply rather than the
+			// tail of this one. Otherwise the unread bytes corrupt the
+			// stream and the bad connection gets handed back to the pool.
+			if _, derr := r.rd.Discard(n + 2); derr != nil {
+				return 0, derr
+			}
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", n, len(buf))
+		}
+		// Read data directly into the user's buffer through the bufio.Reader.
+		// bufio.Reader.Read first drains its internal buffer, then for
+		// remaining data larger than its buffer size reads directly from the
+		// underlying reader (socket) — effectively zero-copy.
+		if _, err := io.ReadFull(r.rd, buf[:n]); err != nil {
+			return 0, err
+		}
+		// Discard trailing \r\n.
+		if _, err := r.rd.Discard(2); err != nil {
+			return 0, err
+		}
+		return n, nil
+
+	case RespInt, RespFloat:
+		s := line[1:]
+		if len(s) > len(buf) {
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", len(s), len(buf))
+		}
+		return copy(buf, s), nil
+	}
+
+	return 0, fmt.Errorf("redis: can't parse reply=%.100q reading string into buffer", line)
+}
+
 func (r *Reader) ReadString() (string, error) {
 	line, err := r.ReadLine()
 	if err != nil {

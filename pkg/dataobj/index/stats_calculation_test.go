@@ -101,10 +101,50 @@ func readStatsTable(ctx context.Context, r *stats.Reader) (arrow.Table, error) {
 	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
 }
 
+func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	ctx := &logsCalculationContext{
+		tenantID:   "tenant-1",
+		objectPath: "test/path/obj1",
+		sectionIdx: 0,
+		streamLabels: map[int64]labels.Labels{
+			1: labels.FromStrings("service_name", "svcA", "cluster", "c1"),
+		},
+		builder: builder,
+	}
+	calc := &statsCalculation{schema: []string{"label:service_name", "label:cluster"}}
+
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
+	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, []logs.Record{
+		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("x")},
+	}))
+	require.NoError(t, calc.Flush(context.Background(), ctx))
+
+	actual := flushAndReadAllStatsTable(t, builder)
+	require.Len(t, actual, 1)
+
+	require.Equal(t, "label:service_name,label:cluster", actual[0]["sort_schema.utf8"],
+		"stats sort_schema must store the fully-qualified schema")
+	require.Equal(t, "svcA", actual[0]["service_name.label.utf8"],
+		"label columns must stay keyed by the bare Prometheus name")
+	require.Equal(t, "c1", actual[0]["cluster.label.utf8"],
+		"label columns must stay keyed by the bare Prometheus name")
+}
+
+func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	ctx := makeTestCalcContext(builder)
+	calc := &statsCalculation{schema: []string{"metadata:trace_id"}}
+
+	err := calc.Prepare(context.Background(), ctx, nil, logs.Stats{})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "metadata:trace_id")
+}
+
 func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -135,7 +175,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "service_name",
+		"sort_schema.utf8":        "label:service_name",
 		"service_name.label.utf8": "",
 		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
 		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
@@ -146,7 +186,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "service_name",
+		"sort_schema.utf8":        "label:service_name",
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts1,
 		"max_timestamp.timestamp": ts2,
@@ -157,7 +197,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "service_name",
+		"sort_schema.utf8":        "label:service_name",
 		"service_name.label.utf8": "svcB",
 		"min_timestamp.timestamp": ts3,
 		"max_timestamp.timestamp": ts3,
@@ -169,7 +209,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 func TestStatsCalculation_MetadataFields(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -187,7 +227,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "service_name",
+		"sort_schema.utf8":        "label:service_name",
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts,
 		"max_timestamp.timestamp": ts,
@@ -196,10 +236,38 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	}, actual[0])
 }
 
+func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	ctx := makeTestCalcContext(builder)
+	calc := &statsCalculation{schema: defaultSortSchema}
+
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
+
+	// The uncompressed_logs_size byte contract is line bytes plus structured
+	// metadata value bytes, matching streams.Stream.UncompressedSize captured
+	// during initial indexing. A one-byte line with ten bytes of metadata must
+	// report eleven bytes so compaction output agrees with initial ToC values.
+	ts := time.Unix(500, 0).UTC()
+	batch := []logs.Record{
+		{
+			StreamID:  1,
+			Timestamp: ts,
+			Line:      []byte("x"),
+			Metadata:  labels.FromStrings("trace_id", "0123456789"),
+		},
+	}
+	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
+	require.NoError(t, calc.Flush(context.Background(), ctx))
+
+	actual := flushAndReadAllStatsTable(t, builder)
+	require.Len(t, actual, 1)
+	require.Equal(t, int64(len("x")+len("0123456789")), actual[0]["uncompressed_size.int64"])
+}
+
 func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -217,7 +285,7 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 
@@ -250,7 +318,7 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
-	calc := &statsCalculation{sortSchemaKeys: defaultSortSchemaKeys}
+	calc := &statsCalculation{schema: defaultSortSchema}
 
 	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, nil))

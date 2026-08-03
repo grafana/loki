@@ -8,9 +8,9 @@ local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'golang:%s' % goVersion;
 local golangCiLintVersion = 'v2.10.1';
 local imageBuildTimeoutMin = 60;
-local imagePrefix = 'grafana';
 local weeklyImageRegistry = 'us-docker.pkg.dev';
 local weeklyImagePrefix = '%s/grafanalabs-global/dockerhub-loki-prod-mirror' % weeklyImageRegistry;
+local imagePrefix = weeklyImagePrefix;
 local dockerPluginDir = 'clients/cmd/docker-driver';
 local runner = import 'workflows/runner.libsonnet',
       r = runner.withDefaultMapping();  // Do we need a different mapping?
@@ -91,6 +91,7 @@ local weeklyImageJobs = {
       pluginBuildDir=dockerPluginDir,
       releaseBranchTemplate='release-\\${major}.\\${minor}.x',
       releaseRepo='grafana/loki',
+      publishDockerPlugins=false,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({

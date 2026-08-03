@@ -2,6 +2,7 @@ package postings
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -40,6 +41,26 @@ func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Tenant returns the tenant for this builder.
 func (b *Builder) Tenant() string { return b.tenant }
+
+// TimeRange returns the minimum and maximum observation timestamp across all
+// observed label and bloom postings, as the union of the two aggregators. It
+// returns zero time.Time values when nothing has been observed.
+//
+// Call TimeRange before Flush: Flush resets the builder and clears the range.
+func (b *Builder) TimeRange() (time.Time, time.Time) {
+	lMin, lMax := b.labels.TimeRange()
+	bMin, bMax := b.blooms.TimeRange()
+
+	minTime := lMin
+	if minTime.IsZero() || (!bMin.IsZero() && bMin.Before(minTime)) {
+		minTime = bMin
+	}
+	maxTime := lMax
+	if maxTime.IsZero() || (!bMax.IsZero() && bMax.After(maxTime)) {
+		maxTime = bMax
+	}
+	return minTime, maxTime
+}
 
 // Type returns the [dataobj.SectionType] of the postings builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -85,6 +86,9 @@ var unicodeCategories = func() map[string]*unicode.RangeTable {
 		retVal[k] = unicode.Categories[v]
 	}
 	for k, v := range unicode.Properties {
+		retVal[k] = v
+	}
+	for k, v := range unicodeAliasCategories {
 		retVal[k] = v
 	}
 	return retVal
@@ -633,13 +637,61 @@ func (c *CharSet) addNegativeRanges(ranges []SingleRange) {
 	c.canonicalize()
 }
 
-func isValidUnicodeCat(catName string) bool {
-	_, ok := unicodeCategories[catName]
-	return ok
+func normalizeUnicodeCategoryAlias(catName string) string {
+	var b strings.Builder
+	b.Grow(len(catName))
+	for _, ch := range catName {
+		switch ch {
+		case '_', '-', ' ':
+			continue
+		default:
+			b.WriteRune(unicode.ToLower(ch))
+		}
+	}
+	return b.String()
+}
+
+func canonicalUnicodeCatName(catName string) (string, bool) {
+	if _, ok := unicodeCategories[catName]; ok {
+		return catName, true
+	}
+
+	normalized := normalizeUnicodeCategoryAlias(catName)
+	if canonical, ok := unicodeSupportedPropertyAliases[normalized]; ok {
+		return canonical, true
+	}
+	if canonical, ok := unicodeBarePropertyValueAliases[normalized]; ok {
+		return canonical, true
+	}
+
+	if eq := strings.IndexRune(catName, '='); eq >= 0 {
+		propName := catName[:eq]
+		valueName := catName[eq+1:]
+		prop, ok := unicodeSupportedPropertyAliases[normalizeUnicodeCategoryAlias(propName)]
+		if !ok {
+			return "", false
+		}
+		values := unicodeSupportedPropertyValueAliases[prop]
+		if values == nil {
+			return "", false
+		}
+		value, ok := values[normalizeUnicodeCategoryAlias(valueName)]
+		if !ok {
+			return "", false
+		}
+		canonical := prop + "=" + value
+		if _, ok := unicodeCategories[canonical]; ok {
+			return canonical, true
+		}
+	}
+
+	return "", false
 }
 
 func (c *CharSet) addCategory(categoryName string, negate, caseInsensitive bool) {
-	if !isValidUnicodeCat(categoryName) {
+	var ok bool
+	categoryName, ok = canonicalUnicodeCatName(categoryName)
+	if !ok {
 		// unknown unicode category, script, or property "blah"
 		panic(fmt.Errorf("unknown unicode category, script, or property '%v'", categoryName))
 
@@ -662,28 +714,19 @@ func (c *CharSet) addCaseEquivalences() {
 	if c.anything {
 		return
 	}
-	for i := 0; i < len(c.ranges); i++ {
+	rangeCount := len(c.ranges)
+	for i := 0; i < rangeCount; i++ {
 		r := c.ranges[i]
-		if r.First == r.Last {
-			equiv := tryFindCaseEquivalences(r.First)
+		// For a single range that's in the set, adds any additional ranges
+		// necessary to ensure that lowercase equivalents are also included.
+		for i := r.First; i <= r.Last; i++ {
+			equiv := tryFindCaseEquivalences(i)
 			for _, eq := range equiv {
-				c.addChar(eq)
+				c.ranges = append(c.ranges, SingleRange{First: eq, Last: eq})
 			}
-		} else {
-			c.addCaseEquivalenceRange(r.First, r.Last)
 		}
 	}
-}
-
-// For a single range that's in the set, adds any additional ranges
-// necessary to ensure that lowercase equivalents are also included.
-func (c *CharSet) addCaseEquivalenceRange(chMin, chMax rune) {
-	for i := chMin; i <= chMax; i++ {
-		equiv := tryFindCaseEquivalences(i)
-		for _, eq := range equiv {
-			c.addChar(eq)
-		}
-	}
+	c.canonicalize()
 }
 
 // Performs a fast lookup which determines if a character is involved in case conversion, as well as
@@ -1084,7 +1127,7 @@ func (c *CharSet) addLowercaseRange(chMin, chMax rune) {
 		}
 
 		if chMinT < chMin || chMaxT > chMax {
-			c.addRange(chMinT, chMaxT)
+			c.ranges = append(c.ranges, SingleRange{First: chMinT, Last: chMaxT})
 		}
 	}
 }

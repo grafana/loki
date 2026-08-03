@@ -3,6 +3,7 @@ package queryrange
 import (
 	"net/http"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -82,8 +83,9 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	version := loghttp.GetVersion(r.RequestURI)
 	encodingFlags := httpreq.ExtractEncodingFlags(r)
-	if err := encodeResponseJSONTo(response, w, encodingFlags); err != nil {
+	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }

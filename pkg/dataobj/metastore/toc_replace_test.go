@@ -22,10 +22,12 @@ import (
 
 // tocRow is a flattened (tenant, path, start, end) view of a ToC for assertion convenience.
 type tocRow struct {
-	Tenant    string
-	Path      string
-	StartUnix int64
-	EndUnix   int64
+	Tenant               string
+	Path                 string
+	StartUnix            int64
+	EndUnix              int64
+	FileSize             uint64
+	UncompressedLogsSize uint64
 }
 
 // readToC reads all index pointers from a ToC at the given path, flattened by tenant.
@@ -52,10 +54,12 @@ func readToC(ctx context.Context, t *testing.T, bucket objstore.Bucket, path str
 			n, err := reader.Read(ctx, buf)
 			for i := range n {
 				rows = append(rows, tocRow{
-					Tenant:    section.Tenant,
-					Path:      buf[i].Path,
-					StartUnix: buf[i].StartTs.UTC().Unix(),
-					EndUnix:   buf[i].EndTs.UTC().Unix(),
+					Tenant:               section.Tenant,
+					Path:                 buf[i].Path,
+					StartUnix:            buf[i].StartTs.UTC().Unix(),
+					EndUnix:              buf[i].EndTs.UTC().Unix(),
+					FileSize:             buf[i].FileSize,
+					UncompressedLogsSize: buf[i].UncompressedLogsSize,
 				})
 			}
 			if err == io.EOF {
@@ -83,11 +87,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	b, err := indexobj.NewBuilder(tocBuilderCfg, nil)
 	require.NoError(t, err)
 	for _, r := range rows {
-		require.NoError(t, b.AppendIndexPointer(
-			r.Tenant, r.Path,
-			time.Unix(r.StartUnix, 0).UTC(),
-			time.Unix(r.EndUnix, 0).UTC(),
-		))
+		require.NoError(t, b.AppendIndexPointer(r.Tenant, indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC(), FileSize: r.FileSize, UncompressedLogsSize: r.UncompressedLogsSize}))
 	}
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)
@@ -104,10 +104,10 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	seedToC(t, bucket, window, []tocRow{
-		{"tenantA", "idx/a-0", 10, 20},
-		{"tenantA", "idx/a-1", 30, 40},
-		{"tenantB", "idx/b-0", 11, 21},
-		{"tenantB", "idx/b-1", 31, 41},
+		{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41, FileSize: 0, UncompressedLogsSize: 0},
 	})
 
 	writer := &TableOfContentsWriter{
@@ -128,9 +128,9 @@ func TestReplaceIndexPointers_RoundTrip(t *testing.T) {
 
 	got := readToC(ctx, t, bucket, TableOfContentsPath(window))
 	want := []tocRow{
-		{"tenantA", "idx/a-new", 100, 110},
-		{"tenantB", "idx/b-0", 11, 21},
-		{"tenantB", "idx/b-1", 31, 41},
+		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41, FileSize: 0, UncompressedLogsSize: 0},
 	}
 	require.Equal(t, want, got)
 }
@@ -150,22 +150,22 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			// of idx/... paths. This is the L1 → L1 re-compaction shape.
 			name: "disjoint indexes per tenant",
 			seedRows: []tocRow{
-				{"tenantA", "idx/a-0", 10, 20},
-				{"tenantA", "idx/a-1", 30, 40},
-				{"tenantA", "idx/a-2", 50, 60},
-				{"tenantB", "idx/b-0", 11, 21},
-				{"tenantB", "idx/b-1", 31, 41},
-				{"tenantB", "idx/b-2", 51, 61},
-				{"tenantC", "idx/c-0", 12, 22},
-				{"tenantC", "idx/c-1", 32, 42},
-				{"tenantC", "idx/c-2", 52, 62},
+				{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantA", Path: "idx/a-1", StartUnix: 30, EndUnix: 40, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantA", Path: "idx/a-2", StartUnix: 50, EndUnix: 60, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantB", Path: "idx/b-1", StartUnix: 31, EndUnix: 41, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantB", Path: "idx/b-2", StartUnix: 51, EndUnix: 61, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantC", Path: "idx/c-0", StartUnix: 12, EndUnix: 22, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantC", Path: "idx/c-1", StartUnix: 32, EndUnix: 42, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantC", Path: "idx/c-2", StartUnix: 52, EndUnix: 62, FileSize: 0, UncompressedLogsSize: 0},
 			},
 			targetTenant: "tenantA",
 			oldPaths:     []string{"idx/a-0", "idx/a-1", "idx/a-2"},
 			newEntries: []TableOfContentsEntry{
 				{Path: "idx/a-merged", StartTime: unixTime(10), EndTime: unixTime(60)},
 			},
-			wantTargetRows: []tocRow{{"tenantA", "idx/a-merged", 10, 60}},
+			wantTargetRows: []tocRow{{Tenant: "tenantA", Path: "idx/a-merged", StartUnix: 10, EndUnix: 60, FileSize: 0, UncompressedLogsSize: 0}},
 			otherTenants:   []string{"tenantB", "tenantC"},
 		},
 		{
@@ -176,18 +176,18 @@ func TestReplaceIndexPointers_MultiTenantPreservation(t *testing.T) {
 			// remain. This exercises the `sectionTenant == tenant` guard.
 			name: "shared L0 indexes across tenants",
 			seedRows: []tocRow{
-				{"tenantA", "idx/l0-shared-0", 10, 20},
-				{"tenantB", "idx/l0-shared-0", 10, 20},
-				{"tenantA", "idx/l0-shared-1", 30, 40},
-				{"tenantB", "idx/l0-shared-1", 30, 40},
-				{"tenantC", "idx/c-0", 12, 22},
+				{Tenant: "tenantA", Path: "idx/l0-shared-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantB", Path: "idx/l0-shared-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantA", Path: "idx/l0-shared-1", StartUnix: 30, EndUnix: 40, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantB", Path: "idx/l0-shared-1", StartUnix: 30, EndUnix: 40, FileSize: 0, UncompressedLogsSize: 0},
+				{Tenant: "tenantC", Path: "idx/c-0", StartUnix: 12, EndUnix: 22, FileSize: 0, UncompressedLogsSize: 0},
 			},
 			targetTenant: "tenantA",
 			oldPaths:     []string{"idx/l0-shared-0", "idx/l0-shared-1"},
 			newEntries: []TableOfContentsEntry{
 				{Path: "idx/a-l1", StartTime: unixTime(10), EndTime: unixTime(40)},
 			},
-			wantTargetRows: []tocRow{{"tenantA", "idx/a-l1", 10, 40}},
+			wantTargetRows: []tocRow{{Tenant: "tenantA", Path: "idx/a-l1", StartUnix: 10, EndUnix: 40, FileSize: 0, UncompressedLogsSize: 0}},
 			otherTenants:   []string{"tenantB", "tenantC"},
 		},
 	}
@@ -251,8 +251,8 @@ func TestReplaceIndexPointers_RaceLossOldPathsAlreadyGone(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	seedToC(t, bucket, window, []tocRow{
-		{"tenantA", "idx/a-already-rolled-up", 10, 60}, // simulates "the other coordinator's swap already landed"
-		{"tenantB", "idx/b-0", 11, 21},
+		{Tenant: "tenantA", Path: "idx/a-already-rolled-up", StartUnix: 10, EndUnix: 60, FileSize: 0, UncompressedLogsSize: 0}, // simulates "the other coordinator's swap already landed"
+		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
 	})
 	preSwap := readToC(ctx, t, bucket, TableOfContentsPath(window))
 
@@ -345,8 +345,8 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 	inner := objstore.NewInMemBucket()
 
 	seedToC(t, inner, window, []tocRow{
-		{"tenantA", "idx/a-0", 10, 20},
-		{"tenantB", "idx/b-0", 11, 21},
+		{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
 	})
 
 	flaky := &flakyBucket{
@@ -372,8 +372,8 @@ func TestReplaceIndexPointers_RetriesOnConditionalWriteFailure(t *testing.T) {
 
 	got := readToC(ctx, t, inner, TableOfContentsPath(window))
 	require.Equal(t, []tocRow{
-		{"tenantA", "idx/a-new", 100, 110},
-		{"tenantB", "idx/b-0", 11, 21},
+		{Tenant: "tenantA", Path: "idx/a-new", StartUnix: 100, EndUnix: 110, FileSize: 0, UncompressedLogsSize: 0},
+		{Tenant: "tenantB", Path: "idx/b-0", StartUnix: 11, EndUnix: 21, FileSize: 0, UncompressedLogsSize: 0},
 	}, got)
 }
 
@@ -381,7 +381,7 @@ func TestReplaceIndexPointers_RetryExhaustion(t *testing.T) {
 	ctx := context.Background()
 	window := unixTime(0)
 	inner := objstore.NewInMemBucket()
-	seedToC(t, inner, window, []tocRow{{"tenantA", "idx/a-0", 10, 20}})
+	seedToC(t, inner, window, []tocRow{{Tenant: "tenantA", Path: "idx/a-0", StartUnix: 10, EndUnix: 20, FileSize: 0, UncompressedLogsSize: 0}})
 
 	// Always fail. Build a wrapper that returns errPreconditionFailed every call.
 	alwaysFail := &alwaysFailBucket{Bucket: inner}
@@ -487,4 +487,80 @@ func TestReplaceIndexPointers_EmptyOldOrNewPaths_Errors(t *testing.T) {
 	require.Error(t, err)
 	require.False(t, swapped)
 	require.Equal(t, 0, bucket.calls, "must bypass GetAndReplace entirely")
+}
+
+func TestReplaceIndexPointers_PreservesSizesDuringReplay(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20, 5000, 50000},
+		{"tenantA", "idx/a-1", 30, 40, 6000, 60000},
+		{"tenantB", "idx/b-0", 11, 21, 7000, 70000},
+	})
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{
+			{Path: "new-idx-0", StartTime: unixTime(100), EndTime: unixTime(110)},
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, swapped, "expected swap to apply")
+
+	rows := readToC(ctx, t, bucket, TableOfContentsPath(window))
+
+	rowsByPath := make(map[string]tocRow)
+	for _, r := range rows {
+		key := r.Tenant + ":" + r.Path
+		rowsByPath[key] = r
+	}
+
+	untouchedRow := rowsByPath["tenantA:idx/a-1"]
+	require.Equal(t, uint64(6000), untouchedRow.FileSize, "FileSize should be preserved during replay")
+	require.Equal(t, uint64(60000), untouchedRow.UncompressedLogsSize, "UncompressedLogsSize should be preserved during replay")
+
+	otherTenantRow := rowsByPath["tenantB:idx/b-0"]
+	require.Equal(t, uint64(7000), otherTenantRow.FileSize, "Other tenant sizes should be preserved")
+	require.Equal(t, uint64(70000), otherTenantRow.UncompressedLogsSize, "Other tenant sizes should be preserved")
+}
+
+func TestReplaceIndexPointersNewEntrySizes(t *testing.T) {
+	ctx := context.Background()
+	window := unixTime(0)
+	bucket := objstore.NewInMemBucket()
+
+	seedToC(t, bucket, window, []tocRow{
+		{"tenantA", "idx/a-0", 10, 20, 0, 0},
+	})
+
+	writer := &TableOfContentsWriter{
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
+		builderOnce: sync.Once{},
+	}
+
+	swapped, err := writer.ReplaceIndexPointers(ctx, window, "tenantA",
+		[]string{"idx/a-0"},
+		[]TableOfContentsEntry{
+			{Path: "idx/a-new", StartTime: unixTime(100), EndTime: unixTime(110), FileSize: 8192, UncompressedLogsSize: 81920},
+		},
+	)
+	require.NoError(t, err)
+	require.True(t, swapped, "expected swap to apply")
+
+	rows := readToC(ctx, t, bucket, TableOfContentsPath(window))
+	require.Len(t, rows, 1)
+	require.Equal(t, "tenantA", rows[0].Tenant)
+	require.Equal(t, uint64(8192), rows[0].FileSize, "new entry FileSize must be persisted")
+	require.Equal(t, uint64(81920), rows[0].UncompressedLogsSize, "new entry UncompressedLogsSize must be persisted")
 }

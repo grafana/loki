@@ -884,14 +884,11 @@ func TestPlanner_MetadataColumnResolution(t *testing.T) {
 		cat := &catalog{
 			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
 				{
-					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
-					StreamIDs:  []int64{1, 2},
-					Start:      timeStart,
-					End:        timeEnd,
-					AmbiguousPredicatesByStream: map[int64][]string{
-						1: {"app", "foo"},
-						2: {"app", "bar"},
-					},
+					SectionKey:          metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:           []int64{1, 2},
+					Start:               timeStart,
+					End:                 timeEnd,
+					AmbiguousPredicates: []string{"app", "foo", "bar"},
 				},
 			},
 		}

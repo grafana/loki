@@ -81,6 +81,8 @@ type config struct {
 	colorCodes bool
 	// custom colors to use for colorCodes
 	customColors map[string]string
+	// color to apply to spinner
+	spinnerColorCode string
 
 	// show rate of change in kB/sec or MB/sec
 	showBytes bool
@@ -287,6 +289,13 @@ func OptionEnableColorCodes(colorCodes bool) Option {
 func OptionSetCustomColorCodes(customColors map[string]string) Option {
 	return func(p *ProgressBar) {
 		p.config.customColors = customColors
+	}
+}
+
+// OptionSetSpinnerColorCode sets color code for spinner
+func OptionSetSpinnerColorCode(colorCode string) Option {
+	return func(p *ProgressBar) {
+		p.config.spinnerColorCode = colorCode
 	}
 }
 
@@ -1114,6 +1123,74 @@ func getStringWidth(c config, str string) int {
 	return stringWidth
 }
 
+func renderDeterminateProgressBar(c config, s *state, bar, stats, leftBrac, rightBrac string) string {
+	if rightBrac == "" {
+		str := fmt.Sprintf("%4d%% %s %s",
+			s.currentPercent,
+			bar,
+			stats)
+		if (s.currentPercent == 100 && c.showElapsedTimeOnFinish) || c.elapsedTime {
+			str = fmt.Sprintf("%s [%s]", str, leftBrac)
+		}
+
+		if c.showDescriptionAtLineEnd {
+			return fmt.Sprintf("\r%s %s ", str, c.description)
+		}
+		return fmt.Sprintf("\r%s%s ", c.description, str)
+	}
+
+	if s.currentPercent == 100 {
+		str := fmt.Sprintf("%4d%% %s %s",
+			s.currentPercent,
+			bar,
+			stats)
+
+		if c.showElapsedTimeOnFinish {
+			str = fmt.Sprintf("%s [%s]", str, leftBrac)
+		}
+
+		if c.showDescriptionAtLineEnd {
+			return fmt.Sprintf("\r%s %s", str, c.description)
+		}
+		return fmt.Sprintf("\r%s%s", c.description, str)
+	}
+
+	str := fmt.Sprintf("%4d%% %s %s [%s:%s]",
+		s.currentPercent,
+		bar,
+		stats,
+		leftBrac,
+		rightBrac)
+
+	if c.showDescriptionAtLineEnd {
+		return fmt.Sprintf("\r%s %s", str, c.description)
+	}
+	return fmt.Sprintf("\r%s%s", c.description, str)
+}
+
+func fitProgressBarWidth(c config, s *state, barStart, barEnd, stats, leftBrac, rightBrac string) int {
+	if c.fullWidth || c.ignoreLength || c.width <= 0 {
+		return c.width
+	}
+
+	terminalWidth, err := termWidth(c.writer)
+	if err != nil || terminalWidth <= 0 {
+		return c.width
+	}
+
+	bar := barStart + strings.Repeat(c.theme.SaucerPadding, c.width) + barEnd
+	lineWidth := getStringWidth(c, renderDeterminateProgressBar(c, s, bar, stats, leftBrac, rightBrac))
+	if lineWidth <= terminalWidth {
+		return c.width
+	}
+
+	fitWidth := c.width - (lineWidth - terminalWidth)
+	if fitWidth < 0 {
+		return 0
+	}
+	return fitWidth
+}
+
 func renderProgressBar(c config, s *state) (int, error) {
 	var sb strings.Builder
 
@@ -1243,6 +1320,10 @@ func renderProgressBar(c config, s *state) (int, error) {
 	if (s.currentSaucerSize > 0 || s.currentPercent > 0) && c.theme.BarStartFilled != "" {
 		barStart = c.theme.BarStartFilled
 	}
+	c.width = fitProgressBarWidth(c, s, barStart, barEnd, sb.String(), leftBrac, rightBrac)
+	if !c.ignoreLength {
+		s.currentSaucerSize = int(float64(s.currentPercent) / 100.0 * float64(c.width))
+	}
 	if s.currentSaucerSize > 0 {
 		if c.ignoreLength {
 			saucer = strings.Repeat(c.theme.SaucerPadding, s.currentSaucerSize-1)
@@ -1294,6 +1375,10 @@ func renderProgressBar(c config, s *state) (int, error) {
 			spinner = selectedSpinner[s.spinnerIdx]
 			s.spinnerIdx = (s.spinnerIdx + 1) % len(selectedSpinner)
 		}
+		// if set add spinner color code
+		if c.spinnerColorCode != "" && c.colorCodes {
+			spinner = "[" + c.spinnerColorCode + "]" + spinner + "[reset]"
+		}
 		if c.elapsedTime {
 			if c.showDescriptionAtLineEnd {
 				str = fmt.Sprintf("\r%s %s [%s] %s ",
@@ -1322,61 +1407,11 @@ func renderProgressBar(c config, s *state) (int, error) {
 			}
 		}
 	} else if rightBrac == "" {
-		str = fmt.Sprintf("%4d%% %s%s%s%s%s %s",
-			s.currentPercent,
-			barStart,
-			saucer,
-			saucerHead,
-			strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-			barEnd,
-			sb.String())
-		if (s.currentPercent == 100 && c.showElapsedTimeOnFinish) || c.elapsedTime {
-			str = fmt.Sprintf("%s [%s]", str, leftBrac)
-		}
-
-		if c.showDescriptionAtLineEnd {
-			str = fmt.Sprintf("\r%s %s ", str, c.description)
-		} else {
-			str = fmt.Sprintf("\r%s%s ", c.description, str)
-		}
+		bar := barStart + saucer + saucerHead + strings.Repeat(c.theme.SaucerPadding, repeatAmount) + barEnd
+		str = renderDeterminateProgressBar(c, s, bar, sb.String(), leftBrac, rightBrac)
 	} else {
-		if s.currentPercent == 100 {
-			str = fmt.Sprintf("%4d%% %s%s%s%s%s %s",
-				s.currentPercent,
-				barStart,
-				saucer,
-				saucerHead,
-				strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-				barEnd,
-				sb.String())
-
-			if c.showElapsedTimeOnFinish {
-				str = fmt.Sprintf("%s [%s]", str, leftBrac)
-			}
-
-			if c.showDescriptionAtLineEnd {
-				str = fmt.Sprintf("\r%s %s", str, c.description)
-			} else {
-				str = fmt.Sprintf("\r%s%s", c.description, str)
-			}
-		} else {
-			str = fmt.Sprintf("%4d%% %s%s%s%s%s %s [%s:%s]",
-				s.currentPercent,
-				barStart,
-				saucer,
-				saucerHead,
-				strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-				barEnd,
-				sb.String(),
-				leftBrac,
-				rightBrac)
-
-			if c.showDescriptionAtLineEnd {
-				str = fmt.Sprintf("\r%s %s", str, c.description)
-			} else {
-				str = fmt.Sprintf("\r%s%s", c.description, str)
-			}
-		}
+		bar := barStart + saucer + saucerHead + strings.Repeat(c.theme.SaucerPadding, repeatAmount) + barEnd
+		str = renderDeterminateProgressBar(c, s, bar, sb.String(), leftBrac, rightBrac)
 	}
 
 	if c.colorCodes {

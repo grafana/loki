@@ -246,3 +246,18 @@ func ShouldRetry(err error) bool {
 	}
 	return false
 }
+
+func isError(err error, httpErrorCode int, grpcErrorCode codes.Code) bool {
+	var e *googleapi.Error
+	if errors.As(err, &e) {
+		if e.Code == httpErrorCode {
+			return true
+		}
+	}
+	if s, ok := status.FromError(err); ok {
+		if s.Code() == grpcErrorCode {
+			return true
+		}
+	}
+	return false
+}

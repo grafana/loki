@@ -3,6 +3,7 @@ package postings
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -58,6 +59,8 @@ func (e *bloomPostingEntry) BitmapBytes() []byte {
 type bloomAggregator struct {
 	entries       map[bloomPostingKey]*bloomPostingEntry
 	estimatedSize int
+	minTimestamp  time.Time
+	maxTimestamp  time.Time
 }
 
 // newBloomAggregator creates a new bloomAggregator.
@@ -132,6 +135,14 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	}
 	entry.UncompressedSize += obs.UncompressedSize
 
+	ts := obs.Timestamp.UTC()
+	if a.minTimestamp.IsZero() || ts.Before(a.minTimestamp) {
+		a.minTimestamp = ts
+	}
+	if a.maxTimestamp.IsZero() || ts.After(a.maxTimestamp) {
+		a.maxTimestamp = ts
+	}
+
 	return nil
 }
 
@@ -185,8 +196,16 @@ func (a *bloomAggregator) EstimatedSize() int {
 	return a.estimatedSize
 }
 
+// TimeRange returns the minimum and maximum observation timestamp seen by the
+// aggregator. It returns zero time.Time values when nothing has been observed.
+func (a *bloomAggregator) TimeRange() (time.Time, time.Time) {
+	return a.minTimestamp, a.maxTimestamp
+}
+
 // Reset clears all accumulated state including prepared columns.
 func (a *bloomAggregator) Reset() {
 	a.entries = make(map[bloomPostingKey]*bloomPostingEntry)
 	a.estimatedSize = 0
+	a.minTimestamp = time.Time{}
+	a.maxTimestamp = time.Time{}
 }

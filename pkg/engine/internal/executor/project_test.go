@@ -839,41 +839,34 @@ func TestNewProjectPipeline_DuplicateColumnPanic(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedRows := arrowtest.Rows{
-			// Row 1: JSON parsed status="200", logfmt fails (null) → keep "200"
+			// Row 1: JSON parsed status="200", logfmt fails → keep "200".
+			// Non-strict logfmt does not add [__error__] / [__error_details__].
 			{
-				"utf8.builtin.message":             `{"level":"info","status":200}`,
-				"utf8.generated.__error__":         "LogfmtParserErr",
-				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
-				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
-				"utf8.parsed.method":               nil,
-				"utf8.parsed.status":               "200", // Kept from original JSON parse
+				"utf8.builtin.message": `{"level":"info","status":200}`,
+				"utf8.parsed.level":    nil, // logfmt didn't parse, so null
+				"utf8.parsed.method":   nil,
+				"utf8.parsed.status":   "200", // Kept from original JSON parse
 			},
 			// Row 2: No previous status (null), logfmt parses status="404" → use "404"
 			{
-				"utf8.builtin.message":             `level=info status=404 method=GET`,
-				"utf8.generated.__error__":         "",
-				"utf8.generated.__error_details__": "",
-				"utf8.parsed.level":                "info",
-				"utf8.parsed.method":               "GET",
-				"utf8.parsed.status":               "404",
+				"utf8.builtin.message": `level=info status=404 method=GET`,
+				"utf8.parsed.level":    "info",
+				"utf8.parsed.method":   "GET",
+				"utf8.parsed.status":   "404",
 			},
-			// Row 3: JSON parsed status="500", logfmt fails (null) → keep "500"
+			// Row 3: JSON parsed status="500", logfmt fails → keep "500"
 			{
-				"utf8.builtin.message":             `{"level":"error","status":500}`,
-				"utf8.generated.__error__":         "LogfmtParserErr",
-				"utf8.generated.__error_details__": "logfmt syntax error at pos 2 : unexpected '\"'",
-				"utf8.parsed.level":                nil, // logfmt didn't parse, so null
-				"utf8.parsed.method":               nil,
-				"utf8.parsed.status":               "500", // Kept from original JSON parse
+				"utf8.builtin.message": `{"level":"error","status":500}`,
+				"utf8.parsed.level":    nil,
+				"utf8.parsed.method":   nil,
+				"utf8.parsed.status":   "500",
 			},
 			// Row 4: No previous status (null), logfmt also does't parse status
 			{
-				"utf8.builtin.message":             `level=info method=GET`,
-				"utf8.generated.__error__":         "",
-				"utf8.generated.__error_details__": "",
-				"utf8.parsed.level":                "info",
-				"utf8.parsed.method":               "GET",
-				"utf8.parsed.status":               nil,
+				"utf8.builtin.message": `level=info method=GET`,
+				"utf8.parsed.level":    "info",
+				"utf8.parsed.method":   "GET",
+				"utf8.parsed.status":   nil,
 			},
 		}
 
@@ -978,7 +971,7 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			expected: arrowtest.Rows{{
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
-				"utf8.label.foo":                 "dev",
+				"utf8.parsed.foo":                "dev",
 			}},
 		},
 		{
@@ -989,7 +982,7 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			expected: arrowtest.Rows{{
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
-				"utf8.label.foo":                 "dev",
+				"utf8.parsed.foo":                "dev",
 			}},
 		},
 		{
@@ -1000,7 +993,7 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			expected: arrowtest.Rows{{
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
-				"utf8.label.foo":                 "dev",
+				"utf8.parsed.foo":                "dev",
 			}},
 		},
 		{
@@ -1014,14 +1007,15 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
 				"utf8.generated.bar":             "dev",
-				"utf8.label.foo":                 "dev",
+				"utf8.parsed.foo":                "dev",
 			}},
 		},
 		{
 			// Collision: the rename destination `foo` already exists as a label.
-			// The source `bar` is dropped and the existing `foo` is overwritten
-			// with the source's value (mirrors v1 "rename and overwrite existing
-			// label").
+			// Both the source `bar` and the existing `foo` label are dropped,
+			// and the rename's value lands at `parsed.foo` (mirrors v1, where
+			// LabelsFormatter calls lbs.Set(ParsedLabel, "foo", "dev") which
+			// deletes any stream-label `foo` before writing the parsed value).
 			name: "rename overwrites existing destination label",
 			dataFields: []arrow.Field{
 				semconv.FieldFromFQN("utf8.label.foo", false),
@@ -1032,13 +1026,14 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			expected: arrowtest.Rows{{
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
-				"utf8.label.foo":                 "dev",
+				"utf8.parsed.foo":                "dev",
 			}},
 		},
 		{
 			// Template renders to empty (literal ""); the pre-existing destination
-			// label `foo` must be overwritten with "". v1 semantics: a template
-			// always writes its result, including an empty result.`
+			// label `foo` is removed and the new `parsed.foo` carries the rendered
+			// empty value. v1 semantics: a template always writes its result,
+			// including an empty result.
 			name: "template literal empty overwrites existing destination",
 			dataFields: []arrow.Field{
 				semconv.FieldFromFQN("utf8.label.foo", false),
@@ -1048,12 +1043,13 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 			expected: arrowtest.Rows{{
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
-				"utf8.label.foo":                 "",
+				"utf8.parsed.foo":                "",
 			}},
 		},
 		{
 			// Template references a label whose value is empty; the rendered
-			// result is "" and that overwrites the pre-existing destination.
+			// result is "" and lands at `parsed.foo`, while the pre-existing
+			// `label.foo` is dropped.
 			name: "template referencing empty-valued label overwrites existing destination",
 			dataFields: []arrow.Field{
 				semconv.FieldFromFQN("utf8.label.foo", false),
@@ -1065,7 +1061,27 @@ func TestNewProjectPipeline_LabelFmtRenameDropsSourceColumn(t *testing.T) {
 				"utf8.builtin.message":           msg,
 				"timestamp_ns.builtin.timestamp": ts,
 				"utf8.label.bar":                 "",
-				"utf8.label.foo":                 "",
+				"utf8.parsed.foo":                "",
+			}},
+		},
+		{
+			// `label_format foo="bar"` must NOT touch `foo_extracted` — it's
+			// a different short name.
+			name: "set target preserves the matching _extracted column",
+			dataFields: []arrow.Field{
+				semconv.FieldFromFQN("utf8.label.foo", false),
+				semconv.FieldFromFQN("utf8.parsed.foo_extracted", false),
+			},
+			dataValues: arrowtest.Row{
+				"utf8.label.foo":            "from-stream",
+				"utf8.parsed.foo_extracted": "from-json",
+			},
+			labelFmts: []log.LabelFmt{{Name: "foo", Value: "bar", Rename: false}},
+			expected: arrowtest.Rows{{
+				"utf8.builtin.message":           msg,
+				"timestamp_ns.builtin.timestamp": ts,
+				"utf8.parsed.foo":                "bar",
+				"utf8.parsed.foo_extracted":      "from-json",
 			}},
 		},
 	}

@@ -26,8 +26,7 @@ type RingWatcher struct {
 // NewRingWatcher creates a service.Service that watches a ring for a leader instance.
 // The leader instance is the instance that owns the key `RingKeyOfLeader`.
 // It provides functions to get the leader's address, and to check whether a given instance in the ring is leader.
-// Bloom planner and bloom builder use this ring watcher to hook into index gateway ring when they are run as
-// part of the `backend` target of the Simple Scalable Deployment (SSD).
+// Bloom planner and bloom builder use this ring watcher to hook into the index gateway ring.
 // It should not be used for any other components outside of the bloombuild package.
 func NewRingWatcher(id string, ring *ring.Ring, lookupPeriod time.Duration, logger log.Logger) *RingWatcher {
 	w := &RingWatcher{

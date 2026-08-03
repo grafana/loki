@@ -2,6 +2,8 @@
 #
 # The syntax for this file is the same as the syntax for deprecated-config.yaml.
 
+legacy-read-mode: "Legacy read SSD mode is deprecated and will be eventually removed. Use the new read and backend targets."
+
 ingester:
   max_transfer_retries: "Enable the ingester WAL and rely on new ingesters to replay the WAL."
 
@@ -25,6 +27,8 @@ common:
       admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
+  remote_write:
+    client: "Use clients instead."
   storage:
     s3:
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
@@ -56,6 +60,10 @@ schema_config:
           "grpc",
         ]
       _msg: "Use a different supported object storage instead."
+    chunks: "The chunks block is removed as it only configured chunk tables for removed legacy storage backends. TSDB stores chunks directly in object storage."
+    index:
+      tags: "The tags setting is removed as it only applied to managed tables of removed legacy storage backends."
+    row_shards: "The row_shards setting is removed. It configured a static query shard factor for removed legacy index types; TSDB resolves query sharding dynamically."
 
 storage_config:
   bigtable: "Support for Bigtable is removed."
@@ -64,6 +72,7 @@ storage_config:
   grpc_store: "Support for gRPC store is removed."
   index_queries_cache_config: "Index read cache configuration is removed."
   index_cache_validity: "Index cache validity is removed."
+  disable_broad_index_queries: "Broad index queries are removed along with the legacy index types."
   boltdb_shipper:
     shared_store: "object_store setting in the period_config will be used to configure the store for the index."
     shared_store_key_prefix: "Path prefix for storing the index can now be configured by setting path_prefix under index key in period_config."
@@ -85,9 +94,13 @@ compactor:
 chunk_store_config:
   max_look_back_period: "Use global or per-tenant max_query_lookback configuration from limits_config."
   write_dedupe_cache_config: "Write dedupe cache is removed along with deprecated index types."
+  cache_lookups_older_than: "Index entry caching is removed along with deprecated index types."
 
 limits_config:
   unordered_writes: "This setting is removed."
   ruler_evaluation_delay_duration: "This setting is removed."
   enforce_metric_name: "This setting is removed."
   allow_deletes: "This setting is removed."
+  ruler_enable_wal_replay: "This setting is removed. The ruler now always wipes its remote-write WAL on startup, so there is nothing to replay."
+  per_tenant_override_config: "This setting is removed in favor of runtime_config.file"
+  per_tenant_override_period: "This setting is removed in favor of runtime_config.period"

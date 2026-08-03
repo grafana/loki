@@ -7,16 +7,16 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/config"
+	promconfig "github.com/prometheus/prometheus/config"
 	"go.yaml.in/yaml/v4"
 
-	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 )
 
 type Config struct {
-	ruler.Config `yaml:",inline"`
+	rulerbase.Config `yaml:",inline"`
 
 	WAL instance.Config `yaml:"wal,omitempty"`
 	// we cannot define this in the WAL config since it creates an import cycle
@@ -53,26 +53,15 @@ func (c *Config) Validate() error {
 }
 
 type RemoteWriteConfig struct {
-	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
-	Enabled             bool                                `yaml:"enabled"`
-	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
-	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add an X-Scope-OrgID header in remote write requests with the tenant ID of a Loki tenant that the recording rules are part of."`
+	Clients             map[string]promconfig.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of RemoteWriteConfig is not permitted. If specified, it will be dropped during config parsing."`
+	Enabled             bool                                    `yaml:"enabled"`
+	ConfigRefreshPeriod time.Duration                           `yaml:"config_refresh_period"`
+	AddOrgIDHeader      bool                                    `yaml:"add_org_id_header" doc:"description=Add an X-Scope-OrgID header in remote write requests with the tenant ID of a Loki tenant that the recording rules are part of."`
 }
 
 func (c *RemoteWriteConfig) Validate() error {
 	if !c.Enabled {
 		return nil
-	}
-
-	if (c.Client == nil || c.Client.URL == nil) && len(c.Clients) == 0 {
-		return errors.New("remote-write enabled but no clients URL are configured")
-	}
-
-	if c.Client != nil {
-		if err := c.Client.Validate(model.UTF8Validation); err != nil {
-			return fmt.Errorf("invalid remote write client: %w", err)
-		}
 	}
 
 	if len(c.Clients) > 0 {
@@ -85,6 +74,8 @@ func (c *RemoteWriteConfig) Validate() error {
 				return fmt.Errorf("invalid remote write client for tenant %q: %w", id, err)
 			}
 		}
+	} else {
+		return errors.New("remote-write enabled but no clients are configured")
 	}
 
 	return nil
@@ -102,13 +93,6 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 		return nil, err
 	}
 
-	// BasicAuth.Password has a type of Secret (github.com/prometheus/common/config/config.go),
-	// so when its value is marshaled it is obfuscated as "<secret>".
-	// Here we copy the original password into the cloned config.
-	if n.Client != nil && n.Client.HTTPClientConfig.BasicAuth != nil {
-		n.Client.HTTPClientConfig.BasicAuth.Password = c.Client.HTTPClientConfig.BasicAuth.Password
-	}
-
 	for id := range n.Clients {
 		if n.Clients[id].HTTPClientConfig.BasicAuth != nil {
 			n.Clients[id].HTTPClientConfig.BasicAuth.Password = c.Clients[id].HTTPClientConfig.BasicAuth.Password
@@ -122,9 +106,9 @@ func (c *RemoteWriteConfig) Clone() (*RemoteWriteConfig, error) {
 func (c *RemoteWriteConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.AddOrgIDHeader, "ruler.remote-write.add-org-id-header", true, "Add X-Scope-OrgID header in remote write requests.")
 	f.BoolVar(&c.Enabled, "ruler.remote-write.enabled", false, "Enable remote-write functionality.")
-	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -limits.per-user-override-period.")
+	f.DurationVar(&c.ConfigRefreshPeriod, "ruler.remote-write.config-refresh-period", 10*time.Second, "Minimum period to wait between refreshing remote-write reconfigurations. This should be greater than or equivalent to -runtime-config.reload-period.")
 
 	if c.Clients == nil {
-		c.Clients = make(map[string]config.RemoteWriteConfig)
+		c.Clients = make(map[string]promconfig.RemoteWriteConfig)
 	}
 }

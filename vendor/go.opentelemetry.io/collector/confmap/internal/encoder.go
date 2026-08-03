@@ -11,16 +11,38 @@ import (
 	encoder "go.opentelemetry.io/collector/confmap/internal/mapstructure"
 )
 
+func Encode(rawVal any, set MarshalOptions) (any, error) {
+	enc := encoder.New(EncoderConfig(rawVal, set))
+	data, err := enc.Encode(rawVal)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 // EncoderConfig returns a default encoder.EncoderConfig that includes
 // an EncodeHook that handles both TextMarshaler and Marshaler
 // interfaces.
-func EncoderConfig(rawVal any, _ MarshalOptions) *encoder.EncoderConfig {
+func EncoderConfig(rawVal any, opts MarshalOptions) *encoder.EncoderConfig {
+	hooks := []mapstructure.DecodeHookFunc{
+		encoder.YamlMarshalerHookFunc(),
+	}
+
+	if opts.OpaqueUnredacted {
+		hooks = append(hooks, encoder.StringTextUnredactedHookFunc())
+	}
+
+	hooks = append(hooks,
+		encoder.TextMarshalerHookFunc(),
+		// This must come before unmarshalerHookFunc; the two may both want to trigger
+		// their corresponding interface for structs implementing both, and the scalar
+		// interfaces are the ones that will sometimes defer to the non-scalar interfaces.
+		scalarMarshalerHookFunc(),
+		marshalerHookFunc(rawVal),
+	)
+
 	return &encoder.EncoderConfig{
-		EncodeHook: mapstructure.ComposeDecodeHookFunc(
-			encoder.YamlMarshalerHookFunc(),
-			encoder.TextMarshalerHookFunc(),
-			marshalerHookFunc(rawVal),
-		),
+		EncodeHook: mapstructure.ComposeDecodeHookFunc(hooks...),
 	}
 }
 

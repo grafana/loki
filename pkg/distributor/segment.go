@@ -51,6 +51,7 @@ type segmentationPartitionResolver struct {
 	// Metrics.
 	resolveFailed                   prometheus.Counter
 	resolveTotal                    prometheus.Counter
+	resolveRateAbsent               prometheus.Counter
 	tenantShuffleShardSize          prometheus.Histogram
 	segmentationKeyShuffleShardSize prometheus.Histogram
 }
@@ -75,6 +76,10 @@ func newSegmentationPartitionResolver(
 		resolveTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_segmentation_partition_resolver_keys_total",
 			Help: "Total number of segmentation keys passed to the resolver.",
+		}),
+		resolveRateAbsent: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_segmentation_partition_resolver_keys_rate_absent_total",
+			Help: "Total number of segmentation keys that we skipped shuffle sharding on segmentation key for due to absent rate.",
 		}),
 		tenantShuffleShardSize: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_distributor_segmentation_partition_resolver_tenant_shuffle_shard_size",
@@ -122,13 +127,22 @@ func (r *segmentationPartitionResolver) resolveRendezvousHashing(tenant string, 
 		numTenantShuffleShardPartitions = numPartitionsForRateRendezvousHashing(tenantRateLimitBytes, r.perPartitionRateBytes, shuffleSharder.Size())
 	}
 	shuffleSharder = shuffleSharder.ShuffleShard(tenant, numTenantShuffleShardPartitions)
+	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
 
 	// Shuffle shard for the segmentation key.
-	numSegKeyShuffleShardPartitions := numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+	var numSegKeyShuffleShardPartitions int
+	if rateBytes == 0 {
+		// rateBytes being 0 doesn't imply that the segmentation key has low/no traffic, it
+		// tells us that we don't have rate data for this segmentation key.
+		// If the segmentation key rate is unknown, don't shard based on the segmentation key - all the
+		// traffic for that key would end up in one partition, potentially creating a hotspot.
+		r.resolveRateAbsent.Inc()
+		numSegKeyShuffleShardPartitions = shuffleSharder.Size()
+	} else {
+		numSegKeyShuffleShardPartitions = numPartitionsForRateRendezvousHashing(rateBytes, r.perPartitionRateBytes, shuffleSharder.Size())
+		r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
+	}
 	shuffleSharder = shuffleSharder.ShuffleShard(string(key), numSegKeyShuffleShardPartitions)
-
-	r.tenantShuffleShardSize.Observe(float64(numTenantShuffleShardPartitions))
-	r.segmentationKeyShuffleShardSize.Observe(float64(numSegKeyShuffleShardPartitions))
 
 	// Finally, shard based on the hash key.
 	partition, err := shuffleSharder.Shard(hashKey)
@@ -173,15 +187,19 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to shuffle shard tenant: %w", err)
 	}
+	r.tenantShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
+
 	// If the rate is 0, we cannot make a decision to shuffle shard the segmentation
 	// key. We fallback to choosing a partition for the hash key.
 	if rateBytes == 0 {
+		r.resolveRateAbsent.Inc()
 		return subring.ActivePartitionForKey(hashKey)
 	}
 	numShuffleShardPartitions := numPartitionsForRateConsistentHashing(rateBytes, r.perPartitionRateBytes, subring.ActivePartitionsCount())
 	// If the segmentation key is small enough that it does not need to be sharded,
 	// we can avoid doing an expensive shuffle shard.
 	if numShuffleShardPartitions == 1 {
+		r.segmentationKeyShuffleShardSize.Observe(1)
 		return subring.ActivePartitionForKey(uint32(key.Sum64()))
 	}
 	subring, err = subring.ShuffleShard(string(key), numShuffleShardPartitions)
@@ -189,6 +207,7 @@ func (r *segmentationPartitionResolver) resolveConsistentHashing(tenant string, 
 		r.resolveFailed.Inc()
 		return 0, fmt.Errorf("failed to get segmentation key subring: %w", err)
 	}
+	r.segmentationKeyShuffleShardSize.Observe(float64(subring.ActivePartitionsCount()))
 	// TODO(grobinson): We need to use a different method that does not depend on
 	// stream sharding, as this information comes from the ingesters.
 	return subring.ActivePartitionForKey(hashKey)

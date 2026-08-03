@@ -11,7 +11,6 @@ package libyaml
 
 import (
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -39,6 +38,7 @@ func (t *TagDirective) GetHandle() string { return string(t.handle) }
 // GetPrefix returns the tag prefix.
 func (t *TagDirective) GetPrefix() string { return string(t.prefix) }
 
+// Encoding represents the character encoding of a YAML stream.
 type Encoding int
 
 // The stream encoding.
@@ -51,6 +51,7 @@ const (
 	UTF16BE_ENCODING // The UTF-16-BE encoding with BOM.
 )
 
+// LineBreak represents the line break style used in YAML output.
 type LineBreak int
 
 // Line break types.
@@ -63,6 +64,7 @@ const (
 	CRLN_BREAK // Use CR LN for line breaks (DOS style).
 )
 
+// QuoteStyle represents the preferred quote style for scalar values.
 type QuoteStyle int
 
 // Quote style types for required quoting.
@@ -82,6 +84,7 @@ func (q QuoteStyle) ScalarStyle() ScalarStyle {
 	return SINGLE_QUOTED_SCALAR_STYLE
 }
 
+// ErrorType represents the category of error that occurred during processing.
 type ErrorType int
 
 // Many bad things could happen with the parser and emitter.
@@ -101,10 +104,11 @@ const (
 // Mark holds the pointer position.
 type Mark struct {
 	Index  int // The position index.
-	Line   int // The position line (1-indexed).
-	Column int // The position column (0-indexed internally, displayed as 1-indexed).
+	Line   int // The position line (1-indexed; 0 means unknown).
+	Column int // The position column (1-indexed; 0 means unknown).
 }
 
+// String returns a human-readable string representation of the position mark.
 func (m Mark) String() string {
 	var builder strings.Builder
 	if m.Line == 0 {
@@ -112,17 +116,60 @@ func (m Mark) String() string {
 	}
 
 	fmt.Fprintf(&builder, "line %d", m.Line)
-	if m.Column != 0 {
-		fmt.Fprintf(&builder, ", column %d", m.Column+1)
+	if m.Column > 0 {
+		fmt.Fprintf(&builder, ", column %d", m.Column)
 	}
 
 	return builder.String()
 }
 
+// shortString returns a compact position string.
+// Returns "<unknown position>" when Line is 0 (position not known).
+// When Column is 0 (unknown), it is omitted from output ("L{line}");
+// otherwise it is displayed as "L{line}.C{col}".
+func (m Mark) shortString() string {
+	if m.Line == 0 {
+		return "<unknown position>"
+	}
+	if m.Column > 0 {
+		return fmt.Sprintf("L%d.C%d", m.Line, m.Column)
+	}
+	return fmt.Sprintf("L%d", m.Line)
+}
+
+// rangeString formats a position range from start mark m to end mark.
+// Both marks use shortString for their individual display.
+// When marks are on the same line:
+//   - Both Column==0: just "L2" (unknown columns, no range shown)
+//   - Both Column>0: "L2.C6-C7" (compact column range)
+//   - Mixed columns: "L1.C4-L1" (full start with line-only end)
+//
+// When marks are on different lines: "L1.C8-L2.C3"
+func (m Mark) rangeString(end Mark) string {
+	start := m.shortString()
+	if m.Line == end.Line {
+		if m.Column == 0 && end.Column == 0 {
+			// Same line, unknown columns: just "L2"
+			return start
+		}
+		if m.Column > 0 && end.Column > 0 {
+			if m.Column == end.Column {
+				// Same position: just "L2.C6"
+				return start
+			}
+			// Same line with columns: "L2.C6-C7"
+			return fmt.Sprintf("%s-C%d", start, end.Column)
+		}
+	}
+	return fmt.Sprintf("%s-%s", start, end.shortString())
+}
+
 // Node Styles
 
+// styleInt is the underlying type for style constants.
 type styleInt int8
 
+// ScalarStyle represents the formatting style of a scalar value.
 type ScalarStyle styleInt
 
 // Scalar styles.
@@ -155,6 +202,7 @@ func (style ScalarStyle) String() string {
 	}
 }
 
+// SequenceStyle represents the formatting style of a sequence node.
 type SequenceStyle styleInt
 
 // Sequence styles.
@@ -166,6 +214,7 @@ const (
 	FLOW_SEQUENCE_STYLE  // The flow sequence style.
 )
 
+// MappingStyle represents the formatting style of a mapping node.
 type MappingStyle styleInt
 
 // Mapping styles.
@@ -179,6 +228,7 @@ const (
 
 // Tokens
 
+// TokenType represents the type of a scanned token.
 type TokenType int
 
 // Token types.
@@ -215,6 +265,7 @@ const (
 	COMMENT_TOKEN // A COMMENT token.
 )
 
+// String returns a string representation of the token type.
 func (tt TokenType) String() string {
 	switch tt {
 	case NO_TOKEN:
@@ -297,6 +348,7 @@ type Token struct {
 
 // Events
 
+// EventType represents the type of a parsing or emitting event.
 type EventType int8
 
 // Event types.
@@ -317,6 +369,7 @@ const (
 	TAIL_COMMENT_EVENT
 )
 
+// eventStrings maps EventType constants to their string representations.
 var eventStrings = []string{
 	NO_EVENT:             "none",
 	STREAM_START_EVENT:   "stream start",
@@ -332,6 +385,7 @@ var eventStrings = []string{
 	TAIL_COMMENT_EVENT:   "tail comment",
 }
 
+// String returns a string representation of the event type.
 func (e EventType) String() string {
 	if e < 0 || int(e) >= len(eventStrings) {
 		return fmt.Sprintf("unknown event %d", e)
@@ -382,9 +436,14 @@ type Event struct {
 	Style Style
 }
 
-func (e *Event) ScalarStyle() ScalarStyle     { return ScalarStyle(e.Style) }
+// ScalarStyle returns the style of a scalar event.
+func (e *Event) ScalarStyle() ScalarStyle { return ScalarStyle(e.Style) }
+
+// SequenceStyle returns the style of a sequence event.
 func (e *Event) SequenceStyle() SequenceStyle { return SequenceStyle(e.Style) }
-func (e *Event) MappingStyle() MappingStyle   { return MappingStyle(e.Style) }
+
+// MappingStyle returns the style of a mapping event.
+func (e *Event) MappingStyle() MappingStyle { return MappingStyle(e.Style) }
 
 // GetEncoding returns the stream encoding (for STREAM_START_EVENT).
 func (e *Event) GetEncoding() Encoding { return e.encoding }
@@ -396,7 +455,6 @@ func (e *Event) GetVersionDirective() *VersionDirective { return e.versionDirect
 func (e *Event) GetTagDirectives() []TagDirective { return e.tagDirectives }
 
 // Nodes
-
 const (
 	NULL_TAG      = "tag:yaml.org,2002:null"      // The tag !!null with the only possible value: null.
 	BOOL_TAG      = "tag:yaml.org,2002:bool"      // The tag !!bool with the values: true and false.
@@ -416,419 +474,3 @@ const (
 	DEFAULT_SEQUENCE_TAG = SEQ_TAG // The default sequence tag is !!seq.
 	DEFAULT_MAPPING_TAG  = MAP_TAG // The default mapping tag is !!map.
 )
-
-type NodeType int
-
-// Node types.
-const (
-	// An empty node.
-	NO_NODE NodeType = iota
-
-	SCALAR_NODE   // A scalar node.
-	SEQUENCE_NODE // A sequence node.
-	MAPPING_NODE  // A mapping node.
-)
-
-// NodeItem represents an element of a sequence node.
-type NodeItem int
-
-// NodePair represents an element of a mapping node.
-type NodePair struct {
-	key   int // The key of the element.
-	value int // The value of the element.
-}
-
-// parserNode represents a single node in the YAML document tree.
-type parserNode struct {
-	typ NodeType // The node type.
-	tag []byte   // The node tag.
-
-	// The node data.
-
-	// The scalar parameters (for SCALAR_NODE).
-	scalar struct {
-		value  []byte      // The scalar value.
-		length int         // The length of the scalar value.
-		style  ScalarStyle // The scalar style.
-	}
-
-	// The sequence parameters (for YAML_SEQUENCE_NODE).
-	sequence struct {
-		items_data []NodeItem    // The stack of sequence items.
-		style      SequenceStyle // The sequence style.
-	}
-
-	// The mapping parameters (for MAPPING_NODE).
-	mapping struct {
-		pairs_data  []NodePair   // The stack of mapping pairs (key, value).
-		pairs_start *NodePair    // The beginning of the stack.
-		pairs_end   *NodePair    // The end of the stack.
-		pairs_top   *NodePair    // The top of the stack.
-		style       MappingStyle // The mapping style.
-	}
-
-	start_mark Mark // The beginning of the node.
-	end_mark   Mark // The end of the node.
-}
-
-// Document structure.
-type Document struct {
-	// The document nodes.
-	nodes []parserNode
-
-	// The version directive.
-	version_directive *VersionDirective
-
-	// The list of tag directives.
-	tag_directives_data  []TagDirective
-	tag_directives_start int // The beginning of the tag directives list.
-	tag_directives_end   int // The end of the tag directives list.
-
-	start_implicit int // Is the document start indicator implicit?
-	end_implicit   int // Is the document end indicator implicit?
-
-	// The start/end of the document.
-	start_mark, end_mark Mark
-}
-
-// ReadHandler is called when the [Parser] needs to read more bytes from the
-// source. The handler should write not more than size bytes to the buffer.
-// The number of written bytes should be set to the size_read variable.
-//
-// [in,out]   data        A pointer to an application data specified by
-//
-//	yamlParser.setInput().
-//
-// [out]      buffer      The buffer to write the data from the source.
-// [in]       size        The size of the buffer.
-// [out]      size_read   The actual number of bytes read from the source.
-//
-// On success, the handler should return 1.  If the handler failed,
-// the returned value should be 0. On EOF, the handler should set the
-// size_read to 0 and return 1.
-type ReadHandler func(parser *Parser, buffer []byte) (n int, err error)
-
-// SimpleKey holds information about a potential simple key.
-type SimpleKey struct {
-	flow_level   int  // What flow level is the key at?
-	required     bool // Is a simple key required?
-	token_number int  // The number of the token.
-	mark         Mark // The position mark.
-}
-
-// ParserState represents the state of the parser.
-type ParserState int
-
-const (
-	PARSE_STREAM_START_STATE ParserState = iota
-
-	PARSE_IMPLICIT_DOCUMENT_START_STATE           // Expect the beginning of an implicit document.
-	PARSE_DOCUMENT_START_STATE                    // Expect DOCUMENT-START.
-	PARSE_DOCUMENT_CONTENT_STATE                  // Expect the content of a document.
-	PARSE_DOCUMENT_END_STATE                      // Expect DOCUMENT-END.
-	PARSE_BLOCK_NODE_STATE                        // Expect a block node.
-	PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE        // Expect the first entry of a block sequence.
-	PARSE_BLOCK_SEQUENCE_ENTRY_STATE              // Expect an entry of a block sequence.
-	PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE         // Expect an entry of an indentless sequence.
-	PARSE_BLOCK_MAPPING_FIRST_KEY_STATE           // Expect the first key of a block mapping.
-	PARSE_BLOCK_MAPPING_KEY_STATE                 // Expect a block mapping key.
-	PARSE_BLOCK_MAPPING_VALUE_STATE               // Expect a block mapping value.
-	PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE         // Expect the first entry of a flow sequence.
-	PARSE_FLOW_SEQUENCE_ENTRY_STATE               // Expect an entry of a flow sequence.
-	PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE   // Expect a key of an ordered mapping.
-	PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE // Expect a value of an ordered mapping.
-	PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE   // Expect the and of an ordered mapping entry.
-	PARSE_FLOW_MAPPING_FIRST_KEY_STATE            // Expect the first key of a flow mapping.
-	PARSE_FLOW_MAPPING_KEY_STATE                  // Expect a key of a flow mapping.
-	PARSE_FLOW_MAPPING_VALUE_STATE                // Expect a value of a flow mapping.
-	PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE          // Expect an empty value of a flow mapping.
-	PARSE_END_STATE                               // Expect nothing.
-)
-
-func (ps ParserState) String() string {
-	switch ps {
-	case PARSE_STREAM_START_STATE:
-		return "PARSE_STREAM_START_STATE"
-	case PARSE_IMPLICIT_DOCUMENT_START_STATE:
-		return "PARSE_IMPLICIT_DOCUMENT_START_STATE"
-	case PARSE_DOCUMENT_START_STATE:
-		return "PARSE_DOCUMENT_START_STATE"
-	case PARSE_DOCUMENT_CONTENT_STATE:
-		return "PARSE_DOCUMENT_CONTENT_STATE"
-	case PARSE_DOCUMENT_END_STATE:
-		return "PARSE_DOCUMENT_END_STATE"
-	case PARSE_BLOCK_NODE_STATE:
-		return "PARSE_BLOCK_NODE_STATE"
-	case PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE:
-		return "PARSE_BLOCK_SEQUENCE_FIRST_ENTRY_STATE"
-	case PARSE_BLOCK_SEQUENCE_ENTRY_STATE:
-		return "PARSE_BLOCK_SEQUENCE_ENTRY_STATE"
-	case PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE:
-		return "PARSE_INDENTLESS_SEQUENCE_ENTRY_STATE"
-	case PARSE_BLOCK_MAPPING_FIRST_KEY_STATE:
-		return "PARSE_BLOCK_MAPPING_FIRST_KEY_STATE"
-	case PARSE_BLOCK_MAPPING_KEY_STATE:
-		return "PARSE_BLOCK_MAPPING_KEY_STATE"
-	case PARSE_BLOCK_MAPPING_VALUE_STATE:
-		return "PARSE_BLOCK_MAPPING_VALUE_STATE"
-	case PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE:
-		return "PARSE_FLOW_SEQUENCE_FIRST_ENTRY_STATE"
-	case PARSE_FLOW_SEQUENCE_ENTRY_STATE:
-		return "PARSE_FLOW_SEQUENCE_ENTRY_STATE"
-	case PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE:
-		return "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_KEY_STATE"
-	case PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE:
-		return "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_VALUE_STATE"
-	case PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE:
-		return "PARSE_FLOW_SEQUENCE_ENTRY_MAPPING_END_STATE"
-	case PARSE_FLOW_MAPPING_FIRST_KEY_STATE:
-		return "PARSE_FLOW_MAPPING_FIRST_KEY_STATE"
-	case PARSE_FLOW_MAPPING_KEY_STATE:
-		return "PARSE_FLOW_MAPPING_KEY_STATE"
-	case PARSE_FLOW_MAPPING_VALUE_STATE:
-		return "PARSE_FLOW_MAPPING_VALUE_STATE"
-	case PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE:
-		return "PARSE_FLOW_MAPPING_EMPTY_VALUE_STATE"
-	case PARSE_END_STATE:
-		return "PARSE_END_STATE"
-	}
-	return "<unknown parser state>"
-}
-
-// AliasData holds information about aliases.
-type AliasData struct {
-	anchor []byte // The anchor.
-	index  int    // The node id.
-	mark   Mark   // The anchor mark.
-}
-
-// Parser structure holds all information about the current
-// state of the parser.
-type Parser struct {
-	lastError error
-
-	// Reader stuff
-	read_handler ReadHandler // Read handler.
-
-	input_reader io.Reader // File input data.
-	input        []byte    // String input data.
-	input_pos    int
-
-	eof bool // EOF flag
-
-	buffer     []byte // The working buffer.
-	buffer_pos int    // The current position of the buffer.
-
-	unread int // The number of unread characters in the buffer.
-
-	newlines int // The number of line breaks since last non-break/non-blank character
-
-	raw_buffer     []byte // The raw buffer.
-	raw_buffer_pos int    // The current position of the buffer.
-
-	encoding Encoding // The input encoding.
-
-	offset int  // The offset of the current position (in bytes).
-	mark   Mark // The mark of the current position.
-
-	// Comments
-
-	HeadComment  []byte // The current head comments
-	LineComment  []byte // The current line comments
-	FootComment  []byte // The current foot comments
-	tail_comment []byte // Foot comment that happens at the end of a block.
-	stem_comment []byte // Comment in item preceding a nested structure (list inside list item, etc)
-
-	comments      []Comment // The folded comments for all parsed tokens
-	comments_head int
-
-	// Scanner stuff
-
-	stream_start_produced bool // Have we started to scan the input stream?
-	stream_end_produced   bool // Have we reached the end of the input stream?
-
-	flow_level int // The number of unclosed '[' and '{' indicators.
-
-	tokens          []Token // The tokens queue.
-	tokens_head     int     // The head of the tokens queue.
-	tokens_parsed   int     // The number of tokens fetched from the queue.
-	token_available bool    // Does the tokens queue contain a token ready for dequeueing.
-
-	indent  int   // The current indentation level.
-	indents []int // The indentation levels stack.
-
-	simple_key_allowed  bool        // May a simple key occur at the current position?
-	simple_key_possible bool        // Is the current simple key possible?
-	simple_key          SimpleKey   // The current simple key.
-	simple_key_stack    []SimpleKey // The stack of simple keys.
-
-	// Parser stuff
-
-	state          ParserState    // The current parser state.
-	states         []ParserState  // The parser states stack.
-	marks          []Mark         // The stack of marks.
-	tag_directives []TagDirective // The list of TAG directives.
-
-	// Representer stuff
-
-	aliases []AliasData // The alias data.
-
-	document *Document // The currently parsed document.
-}
-
-type Comment struct {
-	ScanMark  Mark // Position where scanning for comments started
-	TokenMark Mark // Position after which tokens will be associated with this comment
-	StartMark Mark // Position of '#' comment mark
-	EndMark   Mark // Position where comment terminated
-
-	Head []byte
-	Line []byte
-	Foot []byte
-}
-
-// Emitter Definitions
-
-// WriteHandler is called when the [Emitter] needs to flush the accumulated
-// characters to the output.  The handler should write @a size bytes of the
-// @a buffer to the output.
-//
-// @param[in,out]   data        A pointer to an application data specified by
-//
-//	yamlEmitter.setOutput().
-//
-// @param[in]       buffer      The buffer with bytes to be written.
-// @param[in]       size        The size of the buffer.
-//
-// @returns On success, the handler should return @c 1.  If the handler failed,
-// the returned value should be @c 0.
-type WriteHandler func(emitter *Emitter, buffer []byte) error
-
-type EmitterState int
-
-// The emitter states.
-const (
-	// Expect STREAM-START.
-	EMIT_STREAM_START_STATE EmitterState = iota
-
-	EMIT_FIRST_DOCUMENT_START_STATE       // Expect the first DOCUMENT-START or STREAM-END.
-	EMIT_DOCUMENT_START_STATE             // Expect DOCUMENT-START or STREAM-END.
-	EMIT_DOCUMENT_CONTENT_STATE           // Expect the content of a document.
-	EMIT_DOCUMENT_END_STATE               // Expect DOCUMENT-END.
-	EMIT_FLOW_SEQUENCE_FIRST_ITEM_STATE   // Expect the first item of a flow sequence.
-	EMIT_FLOW_SEQUENCE_TRAIL_ITEM_STATE   // Expect the next item of a flow sequence, with the comma already written out
-	EMIT_FLOW_SEQUENCE_ITEM_STATE         // Expect an item of a flow sequence.
-	EMIT_FLOW_MAPPING_FIRST_KEY_STATE     // Expect the first key of a flow mapping.
-	EMIT_FLOW_MAPPING_TRAIL_KEY_STATE     // Expect the next key of a flow mapping, with the comma already written out
-	EMIT_FLOW_MAPPING_KEY_STATE           // Expect a key of a flow mapping.
-	EMIT_FLOW_MAPPING_SIMPLE_VALUE_STATE  // Expect a value for a simple key of a flow mapping.
-	EMIT_FLOW_MAPPING_VALUE_STATE         // Expect a value of a flow mapping.
-	EMIT_BLOCK_SEQUENCE_FIRST_ITEM_STATE  // Expect the first item of a block sequence.
-	EMIT_BLOCK_SEQUENCE_ITEM_STATE        // Expect an item of a block sequence.
-	EMIT_BLOCK_MAPPING_FIRST_KEY_STATE    // Expect the first key of a block mapping.
-	EMIT_BLOCK_MAPPING_KEY_STATE          // Expect the key of a block mapping.
-	EMIT_BLOCK_MAPPING_SIMPLE_VALUE_STATE // Expect a value for a simple key of a block mapping.
-	EMIT_BLOCK_MAPPING_VALUE_STATE        // Expect a value of a block mapping.
-	EMIT_END_STATE                        // Expect nothing.
-)
-
-// Emitter holds all information about the current state of the emitter.
-type Emitter struct {
-	// Writer stuff
-
-	write_handler WriteHandler // Write handler.
-
-	output_buffer *[]byte   // String output data.
-	output_writer io.Writer // File output data.
-
-	buffer     []byte // The working buffer.
-	buffer_pos int    // The current position of the buffer.
-
-	encoding Encoding // The stream encoding.
-
-	// Emitter stuff
-
-	canonical       bool       // If the output is in the canonical style?
-	BestIndent      int        // The number of indentation spaces.
-	best_width      int        // The preferred width of the output lines.
-	unicode         bool       // Allow unescaped non-ASCII characters?
-	line_break      LineBreak  // The preferred line break.
-	quotePreference QuoteStyle // Preferred quote style when quoting is required.
-
-	state  EmitterState   // The current emitter state.
-	states []EmitterState // The stack of states.
-
-	events      []Event // The event queue.
-	events_head int     // The head of the event queue.
-
-	indents []int // The stack of indentation levels.
-
-	tag_directives []TagDirective // The list of tag directives.
-
-	indent int // The current indentation level.
-
-	CompactSequenceIndent bool // Is '- ' is considered part of the indentation for sequence elements?
-
-	flow_level int // The current flow level.
-
-	root_context       bool // Is it the document root context?
-	sequence_context   bool // Is it a sequence context?
-	mapping_context    bool // Is it a mapping context?
-	simple_key_context bool // Is it a simple mapping key context?
-
-	line       int  // The current line.
-	column     int  // The current column.
-	whitespace bool // If the last character was a whitespace?
-	indention  bool // If the last character was an indentation character (' ', '-', '?', ':')?
-	OpenEnded  bool // If an explicit document end is required?
-
-	space_above bool // Is there's an empty line above?
-	foot_indent int  // The indent used to write the foot comment above, or -1 if none.
-
-	// Anchor analysis.
-	anchor_data struct {
-		anchor []byte // The anchor value.
-		alias  bool   // Is it an alias?
-	}
-
-	// Tag analysis.
-	tag_data struct {
-		handle []byte // The tag handle.
-		suffix []byte // The tag suffix.
-	}
-
-	// Scalar analysis.
-	scalar_data struct {
-		value                 []byte      // The scalar value.
-		multiline             bool        // Does the scalar contain line breaks?
-		flow_plain_allowed    bool        // Can the scalar be expressed in the flow plain style?
-		block_plain_allowed   bool        // Can the scalar be expressed in the block plain style?
-		single_quoted_allowed bool        // Can the scalar be expressed in the single quoted style?
-		block_allowed         bool        // Can the scalar be expressed in the literal or folded styles?
-		style                 ScalarStyle // The output style.
-	}
-
-	// Comments
-	HeadComment []byte
-	LineComment []byte
-	FootComment []byte
-	TailComment []byte
-
-	key_line_comment []byte
-
-	// Representer stuff
-
-	opened bool // If the stream was already opened?
-	closed bool // If the stream was already closed?
-
-	// The information associated with the document nodes.
-	anchors *struct {
-		references int  // The number of references.
-		anchor     int  // The anchor id.
-		serialized bool // If the node has been emitted?
-	}
-
-	last_anchor_id int // The last assigned anchor id.
-
-	document *Document // The currently emitted document.
-}

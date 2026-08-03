@@ -20,9 +20,11 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 **To use a managed object store:**
 
-1. In the `values.yaml` file, set the value for `storage.type` to `azure`, `gcs`, or `s3`.
+1. In the `values.yaml` file, set `loki.storage.type` to `azure`, `gcs`, or `s3`.
 
 1. Configure the storage client under `loki.storage.azure`, `loki.storage.gcs`, or `loki.storage.s3`.
+
+1. Set `loki.storage.bucketNames.chunks` and `loki.storage.bucketNames.ruler` to your bucket or container names.
 
 **To install Minio alongside Loki:**
 
@@ -50,6 +52,9 @@ Loki supports using Thanos-compatible storage clients as an alternative to the b
    loki:
      storage:
        use_thanos_objstore: true
+       bucketNames:
+         chunks: <YOUR_CHUNKS_BUCKET>
+         ruler: <YOUR_RULER_BUCKET>
        object_store:
          type: s3  # Valid options: s3, gcs, azure
          s3:
@@ -83,7 +88,7 @@ Loki supports using Thanos-compatible storage clients as an alternative to the b
        bucketNames:
          chunks: <bucket name>
          ruler: <bucket name>
-         admin: <bucket name>
+         admin: <bucket name>  #only needed for GEL installations
    ```
 
    Note that `endpoint`, `secretAccessKey` and `accessKeyId` have been omitted.

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/pkg/errors"
@@ -16,7 +17,8 @@ import (
 )
 
 const (
-	rulerAPIPath = "/loki/api/v1/rules"
+	rulerAPIPath  = "/loki/api/v1/rules"
+	legacyAPIPath = "/api/prom/rules"
 )
 
 var (
@@ -26,12 +28,13 @@ var (
 
 // Config is used to configure a Ruler Client
 type Config struct {
-	User      string `yaml:"user"`
-	Key       string `yaml:"key"`
-	Address   string `yaml:"address"`
-	ID        string `yaml:"id"`
-	TLS       tls.ClientConfig
-	AuthToken string `yaml:"auth_token"`
+	User            string `yaml:"user"`
+	Key             string `yaml:"key"`
+	Address         string `yaml:"address"`
+	ID              string `yaml:"id"`
+	TLS             tls.ClientConfig
+	UseLegacyRoutes bool   `yaml:"use_legacy_routes"`
+	AuthToken       string `yaml:"auth_token"`
 }
 
 // LokiClient is used to get and load rules into a Loki ruler
@@ -79,6 +82,9 @@ func New(cfg Config) (*LokiClient, error) {
 	}
 
 	path := rulerAPIPath
+	if cfg.UseLegacyRoutes {
+		path = legacyAPIPath
+	}
 
 	return &LokiClient{
 		user:      cfg.User,
@@ -89,6 +95,20 @@ func New(cfg Config) (*LokiClient, error) {
 		apiPath:   path,
 		authToken: cfg.AuthToken,
 	}, nil
+}
+
+// Query executes a PromQL query against the Cortex cluster.
+func (r *LokiClient) Query(ctx context.Context, query string) (*http.Response, error) {
+
+	query = fmt.Sprintf("query=%s&time=%d", query, time.Now().Unix())
+	escapedQuery := url.PathEscape(query)
+
+	res, err := r.doRequest(ctx, "/api/prom/api/v1/query?"+escapedQuery, "GET", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
 }
 
 func (r *LokiClient) doRequest(ctx context.Context, path, method string, payload []byte) (*http.Response, error) {

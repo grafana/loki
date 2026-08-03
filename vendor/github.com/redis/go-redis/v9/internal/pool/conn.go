@@ -114,6 +114,11 @@ type Conn struct {
 	// to inform the goroutine using the connection why the connection was closed.
 	closeReason uberatomic.String
 
+	// closeOnPutReason marks an in-use connection for removal when it is returned
+	// to the pool. The socket is left open for the in-flight command and closed
+	// by ConnPool.Put.
+	closeOnPutReason uberatomic.String
+
 	// maintenanceNotifications upgrade support: relaxed timeouts during migrations/failovers
 
 	// Using atomic operations for lock-free access to avoid mutex contention
@@ -435,6 +440,17 @@ func (cn *Conn) IncrementAndGetHandoffRetries(n int) int {
 // IsPooled returns true if the connection is managed by a pool and will be pooled on Put.
 func (cn *Conn) IsPooled() bool {
 	return cn.pooled
+}
+
+// MarkCloseOnPut marks the connection for removal when it is returned to the pool.
+func (cn *Conn) MarkCloseOnPut(reason string) {
+	cn.closeOnPutReason.Store(reason)
+}
+
+// CloseOnPutReason returns a non-empty reason when the connection should be
+// removed instead of pooled on Put.
+func (cn *Conn) CloseOnPutReason() string {
+	return cn.closeOnPutReason.Load()
 }
 
 // IsPubSub returns true if the connection is used for PubSub.

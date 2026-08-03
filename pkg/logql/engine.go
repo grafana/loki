@@ -574,20 +574,16 @@ func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, s
 	for next {
 		vec = r.SampleVector()
 
-		if httpreq.IsLogsDrilldownRequest(ctx) {
-			// For Logs Drilldown requests, use limited vectorsToSeries to prevent exceeding maxSeries
-			limitExceeded := vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries)
-			// If the limit was exceeded (series were skipped), add warning and break
-			if limitExceeded {
-				metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
-				break // Break out of the loop to return partial results
-			}
-		} else {
-			// For non-drilldown requests, use unlimited vectorsToSeries and check for hard limit
-			vectorsToSeries(vec, seriesIndex)
-			if len(seriesIndex) > maxSeries {
+		// vectorsToSeriesWithLimit stops accumulating once maxSeries distinct series
+		// exist and reports whether the limit was hit, so seriesIndex never grows past
+		// maxSeries regardless of request type.
+		if vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries) {
+			if !httpreq.IsLogsDrilldownRequest(ctx) {
 				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 			}
+			// Logs Drilldown returns partial results with a warning instead of failing.
+			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			break
 		}
 
 		next, _, r = stepEvaluator.Next()

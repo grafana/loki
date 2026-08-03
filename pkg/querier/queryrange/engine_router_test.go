@@ -283,7 +283,7 @@ func Test_engineRouter_Do(t *testing.T) {
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
 			Limit:     r.(*LokiRequest).Limit,
-			Version:   1,
+			Version:   uint32(loghttp.VersionV1),
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result: []logproto.Stream{
@@ -336,7 +336,7 @@ func Test_engineRouter_Do(t *testing.T) {
 				Limit:     1000,
 				Step:      1000,
 				Direction: logproto.BACKWARD,
-				Path:      "/loki/api/v1/query_range",
+				Path:      "/api/prom/query_range",
 				Plan: &plan.QueryPlan{
 					AST: syntax.MustParseExpr(`{foo="bar"}`),
 				},

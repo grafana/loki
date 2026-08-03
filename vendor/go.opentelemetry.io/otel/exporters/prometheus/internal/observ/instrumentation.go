@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus/internal"
 	"go.opentelemetry.io/otel/exporters/prometheus/internal/x"
 	"go.opentelemetry.io/otel/metric"
-	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
-	"go.opentelemetry.io/otel/semconv/v1.40.0/otelconv"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
+	"go.opentelemetry.io/otel/semconv/v1.41.0/otelconv"
 )
 
 const (
@@ -71,6 +71,7 @@ var (
 func get[T any](p *sync.Pool) *[]T { return p.Get().(*[]T) }
 
 func put[T any](p *sync.Pool, s *[]T) {
+	clear(*s)     // erase elements to allow GC to collect what they refer to.
 	*s = (*s)[:0] // Reset.
 	p.Put(s)
 }

@@ -72,6 +72,7 @@ type PutBucketArgs struct {
 	EnableMultiAz   bool   `json:"enableMultiAz"`
 	LccLocation     string `json:"lccLocation,omitempty"`
 	EnableDedicated bool   `json:"enableDedicated,omitempty"`
+	MetaType        string `json:"metaType,omitempty"`
 }
 
 // ListObjectsResult defines the result structure of ListObjects api.
@@ -758,7 +759,7 @@ type PutBucketNotificationReq struct {
 }
 
 type EncryptionKey struct {
-	Key string `json:"key"`
+	Key string `json:"key,omitempty"`
 }
 
 type PutBucketNotificationSt struct {
@@ -766,7 +767,7 @@ type PutBucketNotificationSt struct {
 	Name        string                        `json:"name"`
 	AppId       string                        `json:"appId"`
 	Status      string                        `json:"status"`
-	Encryption  EncryptionKey                 `json:"encryption"`
+	Encryption  EncryptionKey                 `json:"encryption,omitempty"`
 	Resources   []string                      `json:"resources"`
 	Events      []string                      `json:"events"`
 	Apps        []PutBucketNotificationAppsSt `json:"apps"`

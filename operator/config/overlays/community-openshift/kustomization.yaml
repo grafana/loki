@@ -33,3 +33,4 @@ patches:
 - path: manager_related_image_patch.yaml
 - path: manager_resource_reqs_patch.yaml
 - path: prometheus_service_monitor_patch.yaml
+- path: remove_telemetry_rules.yaml

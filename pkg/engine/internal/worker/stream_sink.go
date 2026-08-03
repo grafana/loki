@@ -19,10 +19,12 @@ import (
 
 // streamSink allows for sending records remotely across a stream.
 type streamSink struct {
-	Logger      log.Logger
+	Logger  log.Logger
+	Metrics *metrics
+
 	WireMetrics *wire.Metrics
-	Scheduler   *wire.Peer
 	Stream      *workflow.Stream
+	TaskType    taskType
 	Dialer      func(ctx context.Context, addr net.Addr) (wire.Conn, error)
 
 	initOnce  sync.Once
@@ -40,18 +42,12 @@ type streamSink struct {
 
 // Bind informs the sink about the address to send stream data to. Calls to Bind
 // after the first will return an error.
-func (sink *streamSink) Bind(ctx context.Context, destination net.Addr) error {
+func (sink *streamSink) Bind(destination net.Addr) error {
 	sink.lazyInit()
 
 	var bound bool
 	sink.bindOnce.Do(func() {
 		bound = true
-
-		// Best-effort inform the scheduler that we're ready to send data.
-		_ = sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: sink.Stream.ULID,
-			State:    workflow.StreamStateOpen,
-		})
 
 		sink.destination = destination
 		close(sink.bound) // Wake up any Send goroutines
@@ -112,25 +108,23 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 }
 
 func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
-	peer, err := sink.getPeer(ctx)
-	if err != nil {
-		return fmt.Errorf("connecting to peer: %w", err)
-	}
+	// stream_data keeps its callback because it also resolves the peer before
+	// sending; getPeer is timed inside the same site rather than split out.
+	_, err := sink.Metrics.timeCommSite("stream_data_sync", sendModeSync, wire.StreamDataMessage{}.Kind(), sink.TaskType, func() error {
+		peer, err := sink.getPeer(ctx)
+		if err != nil {
+			return fmt.Errorf("connecting to peer: %w", err)
+		}
 
-	// TODO(rfratto): We should send a Blocked status update to the scheduler if
-	// SendMessage doesn't finish quickly enough.
-	//
-	// We need to find a way to efficiently do that here that doesn't cancel the
-	// send.
-	err = peer.SendMessage(ctx, wire.StreamDataMessage{
-		StreamID: sink.Stream.ULID,
-		Data:     rec,
+		if err := peer.SendMessage(ctx, wire.StreamDataMessage{
+			StreamID: sink.Stream.ULID,
+			Data:     rec,
+		}); err != nil {
+			return fmt.Errorf("sending data to peer: %w", err)
+		}
+		return nil
 	})
-	if err != nil {
-		return fmt.Errorf("sending data to peer: %w", err)
-	}
-
-	return nil
+	return err
 }
 
 func (sink *streamSink) getPeer(ctx context.Context) (*wire.Peer, error) {
@@ -186,21 +180,8 @@ func (sink *streamSink) isRetryable(err error) bool {
 	return errors.Is(err, wire.ErrConnClosed)
 }
 
-// Close closes the sink.
-func (sink *streamSink) Close(ctx context.Context) error {
+// Close releases the sink's local connection resources.
+func (sink *streamSink) Close() {
 	sink.lazyInit()
-
-	var err error
-
-	sink.closeOnce.Do(func() {
-		sink.cancel()
-
-		// Best-effort inform the scheduler that we're done sending data.
-		err = sink.Scheduler.SendMessageAsync(ctx, wire.StreamStatusMessage{
-			StreamID: sink.Stream.ULID,
-			State:    workflow.StreamStateClosed,
-		})
-	})
-
-	return err
+	sink.closeOnce.Do(sink.cancel)
 }

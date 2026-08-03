@@ -57,11 +57,13 @@ func (sc *stringCache) internAt(offset, size uint, data []byte) string {
 	// The +1 bias reserves 0 as the "no prior miss" sentinel so the initial
 	// zero state of recentMisses[i] never spuriously matches a real offset of 0.
 	admissionValue := uint64(offset) + 1
-	if sc.recentMisses[i].Swap(admissionValue) == admissionValue {
+	if sc.recentMisses[i].Load() == admissionValue {
 		entry.Store(&cacheEntry{
 			str:    str,
 			offset: offset,
 		})
+	} else {
+		sc.recentMisses[i].Store(admissionValue)
 	}
 
 	return str

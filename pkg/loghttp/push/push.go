@@ -15,8 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
@@ -28,12 +26,15 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
+	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
 )
 
 var (
@@ -42,8 +43,14 @@ var (
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, resource and scope attributes are considered only once per request.",
 	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"}) // TODO rename is_internal_stream to has_internal_streams
+
+	expandedBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_expanded_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes. For OTLP, all attributes added as structured metadata are considered.",
+	}, []string{"tenant", "format"})
 
 	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
@@ -134,7 +141,6 @@ func NewPushStats() *Stats {
 		LogLinesBytes:                     map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:           map[string]map[time.Duration]int64{},
 		PolicyNumLines:                    map[string]int64{},
-		ResourceAndSourceMetadataLabels:   map[string]map[time.Duration]push.LabelsAdapter{},
 		MostRecentEntryTimestampPerStream: map[string]time.Time{},
 		StreamSizeBytes:                   map[string]int64{},
 	}
@@ -151,9 +157,6 @@ type Stats struct {
 	// parser) per policy per retention. Used in billing.
 	StructuredMetadataBytes PolicyWithRetentionWithBytes
 
-	// ResourceAndSourceMetadataLabels holds structured metadata that was added by OLTP parser (scope and resource attributes)
-	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
-
 	// StreamLabelsSize holds the total size of stream labels after sanitization (empty labels removed and
 	// non-meaningful whitespaces removed). Not used in billing.
 	StreamLabelsSize int64
@@ -165,17 +168,36 @@ type Stats struct {
 	StreamSizeBytes map[string]int64
 
 	HashOfAllStreams uint64
-	ContentType      string
-	ContentEncoding  string
+	ContentType      string // application/json, application/x-protobuf
+	ContentEncoding  string // snappy, gzip, deflate
+	ContentVersion   string // v1 for /loki/api/v1/push, v0 for /prom/api/push
 
 	BodySize int64
 	// Extra is a place for a wrapped parser to record any interesting stats as key-value pairs to be logged
 	Extra []any
 
 	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
+
+	// TotalExpandedEntriesSize is the total size of all entries including the size of resource and scope
+	// attributes that are copied into the entry's structured metadata.
+	// This is the actual size of data that is being ingested and stored in Loki.
+	// For non-OTLP requests, TotalExpandedEntriesSize should be the same as the total size of LogLinesBytes and StructuredMetadataBytes.
+	TotalExpandedEntriesSize int64
+
+	// OTLPAttributes breaks TotalExpandedEntriesSize down per resource and scope attribute.
+	// Is only populated for OTLP requests when logOTLPAttributeExpansion is true.
+	OTLPAttributes *otlpattrs.Accumulator
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecompressedSize int64, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
+	// If the X-Loki-Backfill-Shard header is set, validate it and stash the shard in the request
+	// context so the format parsers (Loki and OTLP) add the internal backfill labels to every stream.
+	if shard, ok, err := ExtractAndValidateBackfillShard(r); err != nil {
+		return nil, nil, err
+	} else if ok {
+		r = r.Clone(InjectBackfillShardContext(r.Context(), shard))
+	}
+
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, util.ErrMessageSizeTooLarge) {
@@ -236,6 +258,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 		}
 	}
 
+	expandedBytesIngested.WithLabelValues(userID, format).Add(float64(pushStats.TotalExpandedEntriesSize))
+
 	var totalNumLines int64
 	// incrementing tenant metrics if we have a tenant.
 	for policy, numLines := range pushStats.PolicyNumLines {
@@ -259,6 +283,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize + pushStats.StreamLabelsSize)),
+		"totalExpandedSize", humanize.Bytes(uint64(pushStats.TotalExpandedEntriesSize + pushStats.StreamLabelsSize)),
 		"mostRecentLagMs", mostRecentLagMs,
 	}
 
@@ -370,7 +395,13 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 
 		// todo once https://github.com/weaveworks/common/commit/73225442af7da93ec8f6a6e2f7c8aafaee3f8840 is in Loki.
 		// We can try to pass the body as bytes.buffer instead to avoid reading into another buffer.
-		err = unmarshal.DecodePushRequest(body, &req)
+		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+			err = unmarshal.DecodePushRequest(body, &req)
+			pushStats.ContentVersion = "v1"
+		} else {
+			err = unmarshal2.DecodePushRequest(body, &req)
+			pushStats.ContentVersion = "v0"
+		}
 
 		if err != nil {
 			return nil, err
@@ -409,6 +440,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
 	}
 
+	// If this is a backfill push (X-Loki-Backfill-Shard header), every stream gets the internal
+	// backfill labels added below.
+	backfillShard := ExtractBackfillShardContext(r.Context())
+
 	for i := range req.Streams {
 		s := req.Streams[i]
 
@@ -444,6 +479,13 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
+		}
+
+		if backfillShard != "" {
+			lbs = labels.NewBuilder(lbs).
+				Set(constants.BackfillLabel, "true").
+				Set(constants.BackfillShardLabel, backfillShard).
+				Labels()
 		}
 
 		// Update labels. They were sanitized and potentially with the added service_name label.
@@ -515,7 +557,9 @@ func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.Pus
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			streamSizeBytes += int64(util.EntryTotalSize(&e))
+			entryTotal := int64(util.EntryTotalSize(&e))
+			streamSizeBytes += entryTotal
+			pushStats.TotalExpandedEntriesSize += entryTotal
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {

@@ -32,6 +32,7 @@ This guide was accurate at the time it was last updated on **10th of June, 2025*
 ## Prerequisites
 
 - Helm 3 or above. Refer to [Installing Helm](https://helm.sh/docs/intro/install/). This should be installed on your local machine.
+- Kubernetes 1.25 or later.
 - A running Kubernetes cluster on GCP. Refer to [Create a cluster and deploy a workload in the Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/quickstarts/create-cluster).
 - Kubectl installed on your local machine. Refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
 - gcloud CLI installed on your local machine. Refer to [Install the Google Cloud CLI](https://cloud.google.com/sdk/docs/install-sdk). In this guide, we use gcloud CLI to create the GKE cluster and modify the IAM roles and policies locally.
@@ -298,7 +299,7 @@ Loki by default does not come with any authentication. Since we will be deployin
     htpasswd -c .htpasswd <username>
     ```
 
-    This will create a file called `auth` with the username `loki`. You will be prompted to enter a password.
+    This will create a file called `.htpasswd` with the username you provided. You will be prompted to enter a password.
 
 1. Create a Kubernetes secret with the `.htpasswd` file:
 
@@ -349,14 +350,9 @@ loki:
   compactor:
     retention_enabled: true
     delete_request_store: gcs
-  ruler:
+  rulerConfig:
     enable_api: true
-    storage_config:
-      type: gcs
-      gcs_storage_config:
-        region: <REGION> # The GCS region, for example europe-west4
-        bucketnames: <RULER_BUCKET_NAME> # Your actual gcs bucket name, for example, loki-gcp-ruler
-      alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+    alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
   querier:
     max_concurrent: 4
@@ -399,6 +395,10 @@ compactor:
 indexGateway:
   replicas: 2
   maxUnavailable: 1
+
+patternIngester:
+  enabled: true
+  replicas: 1
 
 ruler:
   replicas: 1
@@ -458,8 +458,8 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 - **Loki Config vs. Values Config:**
   - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
-  - The key configuration to focus on for chunks is the `storage_config` section, where you define the GCS bucket region and name. This tells Loki where to store the chunks.
-  - The `ruler` section defines the configuration for the ruler, including the GCS bucket region and name. This tells Loki where to store the alert and recording rules.
+  - The key configuration for chunks is `loki.storage` (type, `bucketNames`, and provider settings), which the chart maps into Loki's `common.storage` section. This tells Loki where to store the chunks.
+  - The `rulerConfig` section defines ruler-specific settings such as `enable_api` and `alertmanager_url`. Ruler object storage is derived automatically from `loki.storage` and `loki.storage.bucketNames.ruler`.
   - For the full Loki configuration, refer to the [Loki Configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) documentation.
 
 - **Storage:**
@@ -490,7 +490,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     helm install --values values.yaml loki grafana-community/loki -n loki --create-namespace
     ```
 
-    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
+    **Ensure the namespace and service account name in your values (`serviceAccount.name`) match the Workload Identity principal used in the bucket IAM bindings.**
 
 2. Verify the deployment:
 
@@ -513,9 +513,10 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     loki-gateway-5f97f78755-hm6mx           1/1     Running   0          10m
     loki-index-gateway-0                    1/1     Running   0          10m
     loki-index-gateway-1                    1/1     Running   0          10m
-    loki-ingester-zone-a-0                  1/1     Running   0          10m
-    loki-ingester-zone-b-0                  1/1     Running   0          10m
-    loki-ingester-zone-c-0                  1/1     Running   0          10m
+    loki-ingester-0                         1/1     Running   0          10m
+    loki-ingester-1                         1/1     Running   0          10m
+    loki-ingester-2                         1/1     Running   0          10m
+    loki-pattern-ingester-0                 1/1     Running   0          10m
     loki-querier-89d4ff448-4vr9b            1/1     Running   0          10m
     loki-querier-89d4ff448-7nvrf            1/1     Running   0          10m
     loki-querier-89d4ff448-q89kh            1/1     Running   0          10m

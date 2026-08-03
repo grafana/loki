@@ -101,9 +101,9 @@ func (q *query) Duration() time.Duration {
 	return q.finishTime.Sub(q.startTime)
 }
 
-// Prepare constucts a workflow from the given physical plan. The returned
+// Prepare constructs a workflow from the given physical plan. The returned
 // workflow must be closed to release resources.
-func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLanes bool) (wf *workflow.Workflow, err error) {
+func (q *query) Prepare(ctx context.Context, plan *physical.Plan) (wf *workflow.Workflow, err error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "query.Prepare")
 	defer span.End()
 
@@ -125,18 +125,10 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 		)
 	}()
 
-	var maxRunningScanTasks int
-	if useAdmissionLanes {
-		maxRunningScanTasks = q.engine.limits.MaxScanTaskParallelism(q.tenantID)
-	}
-
 	opts := workflow.Options{
 		ID:     q.id,
 		Tenant: q.tenantID,
 		Actor:  httpreq.ExtractActorPath(ctx),
-
-		MaxRunningScanTasks:  maxRunningScanTasks,
-		MaxRunningOtherTasks: 0,
 
 		CacheEnabled:                 q.useCache,
 		MaxTaskCacheSize:             uint64(q.engine.cfg.Executor.TaskResultsCache.TaskResultMaxCacheableSize),
@@ -160,7 +152,8 @@ func (q *query) Prepare(ctx context.Context, plan *physical.Plan, useAdmissionLa
 
 	// The execution plan can be way more verbose than the physical plan, so we
 	// only log it at debug level.
-	level.Debug(q.logger).Log(
+	// Sprint is expensive on large workflows due to iterating all the nodes, so also execute it off the hot path.
+	go level.Debug(q.logger).Log(
 		"msg", "execution-plan-detail",
 		"plan", workflow.Sprint(wf),
 	)

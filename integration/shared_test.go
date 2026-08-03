@@ -7,11 +7,7 @@ import (
 	"time"
 )
 
-var randomGenerator *rand.Rand
-
-func init() {
-	randomGenerator = rand.New(rand.NewSource(time.Now().UnixNano()))
-}
+var randomGenerator = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 

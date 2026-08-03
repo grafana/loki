@@ -39,7 +39,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -70,21 +69,15 @@ type RemoteEvaluator struct {
 	overrides RulesLimits
 	logger    log.Logger
 
-	// we don't want/need to log all the additional context, such as
-	// caller=spanlogger.go:116 component=ruler evaluation_mode=remote method=ruler.remoteEvaluation.Query
-	// in insights logs, so create a new logger
-	insightsLogger log.Logger
-
 	metrics *metrics
 }
 
 func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger, registerer prometheus.Registerer) (*RemoteEvaluator, error) {
 	return &RemoteEvaluator{
-		client:         client,
-		overrides:      overrides,
-		logger:         logger,
-		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler"),
-		metrics:        newMetrics(registerer),
+		client:    client,
+		overrides: overrides,
+		logger:    logger,
+		metrics:   newMetrics(registerer),
 	}, nil
 }
 
@@ -281,14 +274,14 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		return nil, fmt.Errorf("%d bytes exceeds response size limit of %d (defined by ruler_remote_evaluation_max_response_size)", len(resp.Body), maxSize)
 	}
 
-	level.Debug(logger).Log("msg", "rule evaluation succeeded")
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
 	dr, err := r.decodeResponse(ctx, resp, orgID)
 	if err != nil {
 		return nil, err
 	}
-	level.Info(r.insightsLogger).Log("rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+
+	level.Info(logger).Log("msg", "rule evaluation succeeded", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed)
 	return dr, err
 }
 

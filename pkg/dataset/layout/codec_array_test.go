@@ -48,6 +48,37 @@ func TestCodec_Array(t *testing.T) {
 	columnartest.RequireArraysEqual(t, expect, actual, memory.Bitmap{})
 }
 
+func TestCodec_Array_ConstantProjection(t *testing.T) {
+	var alloc memory.Allocator
+	var store buffer.MemoryStore
+
+	w, err := layout.NewWriter(&alloc, &store, &layout.SpecArray{
+		Spec: &array.SpecPlain{},
+	}, &types.Int64{})
+	require.NoError(t, err)
+	require.NoError(t, w.Append(t.Context(), columnartest.Array(t, types.KindInt64, &alloc,
+		int64(1), int64(2), int64(3),
+	)))
+	encoded, err := w.Flush(t.Context())
+	require.NoError(t, err)
+
+	r, err := layout.NewReader(&alloc, encoded, &store)
+	require.NoError(t, err)
+	defer r.Close()
+	_, err = r.Next(t.Context(), math.MaxInt)
+	require.NoError(t, err)
+
+	actual, err := r.Project(t.Context(), &alloc, &expr.Constant{
+		Value: &columnar.NumberScalar[int64]{Value: 5},
+	}, memory.Bitmap{})
+	require.NoError(t, err)
+	columnartest.RequireArraysEqual(t,
+		columnartest.Array(t, types.KindInt64, &alloc, int64(5), int64(5), int64(5)),
+		actual,
+		memory.Bitmap{},
+	)
+}
+
 func TestCodec_Array_Windowing(t *testing.T) {
 	var alloc memory.Allocator
 	var store buffer.MemoryStore

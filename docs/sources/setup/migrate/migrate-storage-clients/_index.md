@@ -2,7 +2,11 @@
 title: Migrate to Thanos storage clients
 menuTitle: Migrate to Thanos storage clients
 description: Migration guide for moving from existing storage clients to Thanos storage clients.
-weight: 
+weight: 300
+keywords:
+  - migrate
+  - thanos
+  - storage
 ---
 # Migrate to Thanos storage clients
 

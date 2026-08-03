@@ -84,6 +84,11 @@ func WithPreWrapper(wrapper PreWrapper) Option {
 	}
 }
 
+// WithModeClasses adds the style's mode (eg. "light" or "dark") as a CSS
+// class on wrapper elements and scopes WriteCSS rules by mode. This enables
+// combining light and dark stylesheets and switching themes at runtime.
+func WithModeClasses(b bool) Option { return func(f *Formatter) { f.modeClasses = b } }
+
 // WrapLongLines wraps long lines.
 func WrapLongLines(b bool) Option {
 	return func(f *Formatter) {
@@ -207,6 +212,7 @@ type Formatter struct {
 	inlineCode            bool
 	preventSurroundingPre bool
 	tabWidth              int
+	modeClasses           bool
 	wrapLongLines         bool
 	lineNumbers           bool
 	lineNumbersInTable    bool
@@ -425,7 +431,7 @@ func (f *Formatter) modeClass(style *chroma.Style) string {
 // style's mode class alongside the existing class. Used for the outer
 // wrapper and standalone <body> so external CSS can target the mode.
 func (f *Formatter) styleAttrWithMode(styles map[chroma.TokenType]string, tt chroma.TokenType, style *chroma.Style) string {
-	if !f.Classes {
+	if !f.Classes || !f.modeClasses {
 		return f.styleAttr(styles, tt)
 	}
 	cls := f.class(tt)
@@ -469,9 +475,15 @@ func (f *Formatter) writeCSSRule(w io.Writer, comment string, selector string, s
 // token's rule materialised explicitly for both themes.
 func (f *Formatter) WriteCSS(w io.Writer, style *chroma.Style) error {
 	css := f.styleCache.get(style, false)
-	modeCls := f.modeClass(style)
-	chromaSel := fmt.Sprintf(".%schroma.%s", f.prefix, modeCls)
-	bgSel := fmt.Sprintf(".%sbg.%s", f.prefix, modeCls)
+	var chromaSel, bgSel string
+	if f.modeClasses {
+		modeCls := f.modeClass(style)
+		chromaSel = fmt.Sprintf(".%schroma.%s", f.prefix, modeCls)
+		bgSel = fmt.Sprintf(".%sbg.%s", f.prefix, modeCls)
+	} else {
+		chromaSel = fmt.Sprintf(".%schroma", f.prefix)
+		bgSel = fmt.Sprintf(".%sbg", f.prefix)
+	}
 
 	// Special-case background as it is mapped to the outer ".chroma" class.
 	if err := f.writeCSSRule(w, chroma.Background.String(), bgSel, css[chroma.Background]); err != nil {

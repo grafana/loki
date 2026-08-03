@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
 type rangeAggregationOptions struct {
@@ -160,12 +159,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 			},
 		} // value column expression
 
-		startedAt     = time.Now()
-		inputReadTime time.Duration
 	)
-
-	labelValuesCache := newLabelValuesCache()
-	fieldsCache := newFieldsCache()
 
 	r.aggregator.Reset() // reset before reading new inputs
 	inputsExhausted := false
@@ -173,9 +167,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
-			inputStart := time.Now()
 			record, err := input.Read(ctx)
-			inputReadTime += time.Since(inputStart)
 
 			if err != nil {
 				if errors.Is(err, EOF) {
@@ -216,6 +208,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 				valArr = valVec.(*array.Float64)
 			}
 
+			labelNames := make([]arrow.Field, 0, len(groupingFields))
+			labelValues := make([]string, 0, len(arrays))
+			windowEnds := make([]time.Time, 0, 4) // best guess
 			for row := range int(record.NumRows()) {
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
@@ -231,13 +226,23 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 					value = valArr.Value(row)
 				}
 
-				labelValues := labelValuesCache.getLabelValues(arrays, row)
-				labels := fieldsCache.getFields(arrays, groupingFields, row)
-
-				for _, w := range windows {
-					if err := r.aggregator.Add(w.end, value, labels, labelValues); err != nil {
-						return nil, err
+				labelValues = labelValues[:0]
+				labelNames = labelNames[:0]
+				for i, arr := range arrays {
+					if arr.IsNull(row) {
+						continue
 					}
+					labelValues = append(labelValues, arr.Value(row))
+					labelNames = append(labelNames, groupingFields[i])
+				}
+
+				windowEnds = windowEnds[:0]
+				for _, w := range windows {
+					windowEnds = append(windowEnds, w.end)
+				}
+
+				if err := r.aggregator.AddN(windowEnds, value, labelNames, labelValues); err != nil {
+					return nil, err
 				}
 			}
 		}
@@ -246,11 +251,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 	r.inputsExhausted = true
 
 	rec, err := r.aggregator.BuildRecord()
-
-	if region := xcap.RegionFromContext(ctx); region != nil {
-		computeTime := time.Since(startedAt) - inputReadTime
-		region.Record(xcap.StatPipelineExecDuration.Observe(computeTime.Seconds()))
-	}
 
 	return rec, err
 }

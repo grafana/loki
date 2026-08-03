@@ -9,6 +9,16 @@ import (
 
 // YAMLMerger takes a set of given YAML fragments and merges them into a single YAML document.
 // The order in which these fragments is supplied is maintained, so subsequent fragments will override preceding ones.
+//
+// NOTE: Merging round-trips each fragment through a generic map[string]interface{}
+// (see yamlToMap) and then re-marshals the result. This means scalars are resolved
+// by their YAML core tags rather than by the target Go types, so type-specific
+// UnmarshalYAML implementations do not run here. In particular, an unquoted date
+// such as `from: 2023-01-01` is resolved via the !!timestamp tag into a time.Time
+// and re-marshalled in canonical RFC3339 form (`2023-01-01T00:00:00Z`). When Loki
+// later parses the merged config, DayTime.UnmarshalYAML then fails because it only
+// accepts the `2006-01-02` layout. To avoid this, keep such dates quoted (e.g.
+// `from: "2023-01-01"`) so they are treated as !!str and preserved verbatim.
 type YAMLMerger struct {
 	fragments [][]byte
 }

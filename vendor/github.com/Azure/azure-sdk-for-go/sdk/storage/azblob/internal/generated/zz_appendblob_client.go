@@ -30,7 +30,7 @@ type AppendBlobClient struct {
 // AppendBlob. Append Block is supported only on version 2015-02-21 version or later.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2026-04-06
+// Generated from API version 2026-06-06
 //   - contentLength - The length of the request.
 //   - body - Initial data
 //   - options - AppendBlobClientAppendBlockOptions contains the optional parameters for the AppendBlobClient.AppendBlock method.
@@ -208,7 +208,7 @@ func (client *AppendBlobClient) appendBlockHandleResponse(resp *http.Response) (
 // created with x-ms-blob-type set to AppendBlob. Append Block is supported only on version 2015-02-21 version or later.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2026-04-06
+// Generated from API version 2026-06-06
 //   - sourceURL - Specify a URL to the copy source.
 //   - contentLength - The length of the request.
 //   - options - AppendBlobClientAppendBlockFromURLOptions contains the optional parameters for the AppendBlobClient.AppendBlockFromURL
@@ -407,7 +407,7 @@ func (client *AppendBlobClient) appendBlockFromURLHandleResponse(resp *http.Resp
 // Create - The Create Append Blob operation creates a new append blob.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2026-04-06
+// Generated from API version 2026-06-06
 //   - contentLength - The length of the request.
 //   - options - AppendBlobClientCreateOptions contains the optional parameters for the AppendBlobClient.Create method.
 //   - BlobHTTPHeaders - BlobHTTPHeaders contains a group of parameters for the BlobClient.SetHTTPHeaders method.
@@ -580,7 +580,7 @@ func (client *AppendBlobClient) createHandleResponse(resp *http.Response) (Appen
 // or later.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2026-04-06
+// Generated from API version 2026-06-06
 //   - options - AppendBlobClientSealOptions contains the optional parameters for the AppendBlobClient.Seal method.
 //   - LeaseAccessConditions - LeaseAccessConditions contains a group of parameters for the ContainerClient.GetProperties method.
 //   - ModifiedAccessConditions - ModifiedAccessConditions contains a group of parameters for the ContainerClient.Delete method.

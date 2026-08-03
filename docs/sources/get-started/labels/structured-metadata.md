@@ -64,6 +64,8 @@ Along with that, there are separate limits on how much structured metadata can b
 [max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
+Log lines that exceed either limit are rejected by the distributor with an HTTP 400 response, and the discarded entries are counted in the `loki_discarded_samples_total` metric with reason `structured_metadata_too_large` or `structured_metadata_too_many`.
+A large OpenTelemetry log attribute such as `exception.stacktrace` can be the cause — refer to [Handle large attributes such as stack traces](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#handle-large-attributes-such-as-stack-traces) for mitigations.
 {{< /admonition >}}
 
 ## Querying structured metadata

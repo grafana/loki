@@ -23,11 +23,12 @@ import (
 
 // Default values.
 var (
-	defaultEndpoint                        = "localhost:4318"
-	defaultPath                            = "/v1/logs"
-	defaultTimeout                         = 10 * time.Second
-	defaultProxy    HTTPTransportProxyFunc = http.ProxyFromEnvironment
-	defaultRetryCfg                        = retry.DefaultConfig
+	defaultEndpoint                              = "localhost:4318"
+	defaultPath                                  = "/v1/logs"
+	defaultTimeout                               = 10 * time.Second
+	defaultMaxRequestSize                        = 64 * 1024 * 1024
+	defaultProxy          HTTPTransportProxyFunc = http.ProxyFromEnvironment
+	defaultRetryCfg                              = retry.DefaultConfig
 )
 
 // Environment variable keys.
@@ -89,16 +90,17 @@ type fnOpt func(config) config
 func (f fnOpt) applyHTTPOption(c config) config { return f(c) }
 
 type config struct {
-	endpoint    setting[string]
-	path        setting[string]
-	insecure    setting[bool]
-	tlsCfg      setting[*tls.Config]
-	headers     setting[map[string]string]
-	compression setting[Compression]
-	timeout     setting[time.Duration]
-	proxy       setting[HTTPTransportProxyFunc]
-	retryCfg    setting[retry.Config]
-	httpClient  *http.Client
+	endpoint       setting[string]
+	path           setting[string]
+	insecure       setting[bool]
+	tlsCfg         setting[*tls.Config]
+	headers        setting[map[string]string]
+	compression    setting[Compression]
+	maxRequestSize setting[int]
+	timeout        setting[time.Duration]
+	proxy          setting[HTTPTransportProxyFunc]
+	retryCfg       setting[retry.Config]
+	httpClient     *http.Client
 }
 
 func newConfig(options []Option) config {
@@ -132,6 +134,9 @@ func newConfig(options []Option) config {
 	c.timeout = c.timeout.Resolve(
 		getenv[time.Duration](envTimeout, convDuration),
 		fallback[time.Duration](defaultTimeout),
+	)
+	c.maxRequestSize = c.maxRequestSize.Resolve(
+		fallback[int](defaultMaxRequestSize),
 	)
 	c.proxy = c.proxy.Resolve(
 		fallback[HTTPTransportProxyFunc](defaultProxy),
@@ -309,6 +314,19 @@ func WithHeaders(headers map[string]string) Option {
 func WithTimeout(duration time.Duration) Option {
 	return fnOpt(func(c config) config {
 		c.timeout = newSetting(duration)
+		return c
+	})
+}
+
+// WithMaxRequestSize sets the maximum size, in bytes, of a serialized export
+// request, before compression, that the exporter will send.
+//
+// If size is less than or equal to zero, no request-size limit is applied.
+// Disabling the limit is not recommended because it can lead to excessive
+// resource consumption or abuse.
+func WithMaxRequestSize(size int) Option {
+	return fnOpt(func(c config) config {
+		c.maxRequestSize = newSetting(size)
 		return c
 	})
 }

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
+
+	"go.uber.org/atomic"
 )
 
 var (
@@ -132,11 +135,31 @@ type localConn struct {
 
 	write chan<- Frame
 	read  <-chan Frame
+
+	metrics atomic.Pointer[Metrics]
 }
 
 var _ Conn = (*localConn)(nil)
 
+func (c *localConn) setMetrics(metrics *Metrics) {
+	c.metrics.Store(metrics)
+}
+
+func (c *localConn) transport() transport { return transportLocal }
+
 func (c *localConn) Send(ctx context.Context, frame Frame) error {
+	return c.sendFrame(ctx, frame, sendModeInternal)
+}
+
+func (c *localConn) sendFrame(ctx context.Context, frame Frame, sendMode sendMode) error {
+	metrics := c.metrics.Load()
+	timer := metrics.startFrameSend(transportLocal, frame, sendMode)
+	defer timer.Done(outcomeNone)
+
+	return c.send(ctx, frame)
+}
+
+func (c *localConn) send(ctx context.Context, frame Frame) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -148,6 +171,8 @@ func (c *localConn) Send(ctx context.Context, frame Frame) error {
 }
 
 func (c *localConn) Recv(ctx context.Context) (Frame, error) {
+	start := time.Now()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -158,6 +183,9 @@ func (c *localConn) Recv(ctx context.Context) (Frame, error) {
 			// Close our end, in case it's not already closed.
 			_ = c.Close()
 			return nil, ErrConnClosed
+		}
+		if metrics := c.metrics.Load(); metrics != nil {
+			metrics.observeFrameReceive(phaseLocalChannelReceive, transportLocal, frame, sendModeInternal, time.Since(start))
 		}
 		return frame, nil
 	}

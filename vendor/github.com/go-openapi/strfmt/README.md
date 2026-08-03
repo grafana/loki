@@ -16,14 +16,6 @@ Golang support for string formats defined by JSON Schema and OpenAPI.
 
 ## Announcements
 
-* **2025-12-19** : new community chat on discord
-  * a new discord community channel is available to be notified of changes and support users
-  * our venerable Slack channel remains open, and will be eventually discontinued on **2026-03-31**
-
-You may join the discord community by clicking the invite link on the discord badge (also above). [![Discord Channel][discord-badge]][discord-url]
-
-Or join our Slack channel: [![Slack Channel][slack-logo]![slack-badge]][slack-url]
-
 * **2026-03-07** : v0.26.0 **dropped dependency to the mongodb driver**
   * mongodb users can still use this package without any change
   * however, we have frozen the back-compatible support for mongodb driver at v2.5.0
@@ -75,7 +67,7 @@ It also provides convenient extensions to go-openapi users.
 - [x] go-openapi custom format extensions
   - bsonobjectid (BSON objectID)
   - creditcard
-  - duration (e.g. "3 weeks", "1ms")
+  - duration (e.g. "3 weeks", "1ms") (aka "duration-human")
   - hexcolor (e.g. "#FFFFFF")
   - isbn, isbn10, isbn13
   - mac (e.g "01:02:03:04:05:06")
@@ -84,10 +76,25 @@ It also provides convenient extensions to go-openapi users.
   - uuid, uuid3, uuid4, uuid5, uuid7
   - cidr (e.g. "192.0.2.1/24", "2001:db8:a0b:12f0::1/32")
   - ulid (e.g. "00000PP9HGSBSSDZ1JTEXBJ0PW", [spec](https://github.com/ulid/spec))
+- [x] JSON-schema draft 2020 formats
+  - duration-iso8601 B(e.g. "P2W")
 
 > NOTE: as the name stands for, this package is intended to support string formatting only.
 > It does not provide validation for numerical values with swagger format extension for JSON types "number" or
 > "integer" (e.g. float, double, int32...).
+
+## Durations
+
+We have 2 very different definitions of the "duration" format: the "human-readable" duration that used to be just "duration",
+and the new "duration-iso8601". There is no "dual" parser that accepts both formats: types are specialized.
+
+To clarify the situation, a new alias for the duration format is introduced "duration-human" (e.g. "1 ms"), as opposed to
+"duration-iso8601".
+
+The `Default` format registry wires "duration-human" as the default mapping for "duration"
+(preexisting behavior, no breaking change - aligned with Swagger 2.0 which did not define "duration").
+
+A new `JSONSchema2020` registry wires "duration-iso8601" as the default mapping for "duration".
 
 ### Type conversion
 
@@ -112,6 +119,7 @@ List of defined types:
 - Date
 - DateTime
 - Duration
+- DurationISO8601 and  `ISODuration[P ISODurationPolicy]` (for optional behavior)
 - Email
 - HexColor
 - Hostname
@@ -177,9 +185,9 @@ This library ships under the [SPDX-License-Identifier: Apache-2.0](./LICENSE).
 ## Other documentation
 
 * [All-time contributors](./CONTRIBUTORS.md)
-* [Contributing guidelines](.github/CONTRIBUTING.md)
-* [Maintainers documentation](docs/MAINTAINERS.md)
-* [Code style](docs/STYLE.md)
+* [Contributing guidelines][contributing-doc-site]
+* [Maintainers documentation][maintainers-doc-site]
+* [Code style][style-doc-site]
 
 ## Cutting a new release
 
@@ -214,9 +222,6 @@ Maintainers can cut a new release by either:
 [doc-url]: https://goswagger.io/go-openapi
 [godoc-badge]: https://pkg.go.dev/badge/github.com/go-openapi/strfmt
 [godoc-url]: http://pkg.go.dev/github.com/go-openapi/strfmt
-[slack-logo]: https://a.slack-edge.com/e6a93c1/img/icons/favicon-32.png
-[slack-badge]: https://img.shields.io/badge/slack-blue?link=https%3A%2F%2Fgoswagger.slack.com%2Farchives%2FC04R30YM
-[slack-url]: https://goswagger.slack.com/archives/C04R30YMU
 [discord-badge]: https://img.shields.io/discord/1446918742398341256?logo=discord&label=discord&color=blue
 [discord-url]: https://discord.gg/FfnFYaC3k5
 
@@ -228,3 +233,7 @@ Maintainers can cut a new release by either:
 [goversion-url]: https://github.com/go-openapi/strfmt/blob/master/go.mod
 [top-badge]: https://img.shields.io/github/languages/top/go-openapi/strfmt
 [commits-badge]: https://img.shields.io/github/commits-since/go-openapi/strfmt/latest
+<!-- Organization docs -->
+[contributing-doc-site]: https://go-openapi.github.io/doc-site/contributing/contributing/index.html
+[maintainers-doc-site]: https://go-openapi.github.io/doc-site/maintainers/index.html
+[style-doc-site]: https://go-openapi.github.io/doc-site/contributing/style/index.html

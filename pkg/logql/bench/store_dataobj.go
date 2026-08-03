@@ -72,6 +72,8 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 		return nil, fmt.Errorf("failed to create bucket: %w", err)
 	}
 
+	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
+
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		BuilderBaseConfig: logsobj.BuilderBaseConfig{
 			TargetPageSize:          2 * 1024 * 1024, // 2MB
@@ -81,12 +83,11 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 			BufferSize:              16 * 1024 * 1024,  // 16MB
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil, logsobj.NewBuilderMetrics())
+	}, nil, logsobj.NewBuilderMetrics(), logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)
 	}
 
-	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
 	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
 
@@ -169,8 +170,7 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, timeRanges, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}

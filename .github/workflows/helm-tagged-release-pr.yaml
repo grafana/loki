@@ -1,33 +1,40 @@
 name: Helm tagged release PR
 
 on:
-  release:
-    types:
-      - released
+  workflow_dispatch:
+    inputs:
+      gel_version:
+        description: "GEL release version to bump the chart to (e.g. v3.6.11)"
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  weekly-release-pr:
+  tagged-release-pr:
     runs-on: ubuntu-x64
     permissions:
       contents: "read"
       id-token: "write"
       pull-requests: "write"
     env:
-      RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
+      RELEASE_VERSION: "${{ inputs.gel_version }}"
       BUILD_IN_CONTAINER: false
     steps:
+      # Checkout the workflow ref (the branch selected at dispatch), not a fixed
+      # main tip: that way a feature-branch smoke test runs the branch's script.
+      # After merge, dispatch from main so Chart.yaml/values come from main.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
-      - name: Install helm-docs
+      # The chart update runs before the GitHub App token so a dispatch can
+      # validate the version bump even when Vault rejects the app-token JWT.
+      # The token is only needed to open the pull request.
+      - name: Update/regenerate files
+        id: update
         run: |
-          HELM_DOCS_VERSION="v1.11.2"
-          curl -fsSL "https://github.com/norwoodj/helm-docs/releases/download/${HELM_DOCS_VERSION}/helm-docs_${HELM_DOCS_VERSION#v}_Linux_x86_64.tar.gz" \
-            | tar -xzf - -C "$RUNNER_TEMP" helm-docs
-          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
 
       - name: Generate GitHub App Token
         id: app-token
@@ -35,16 +42,12 @@ jobs:
         with:
           github_app: loki-gh-app
 
-      - name: Update/regenerate files
-        id: update
-        run: |
-          bash .github/workflows/scripts/helm-tagged-release.sh ${RELEASE_VERSION}
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
-          title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
+          sign-commits: true
+          title: "chore: Release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
           body: Automated PR created by [helm-tagged-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-tagged-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
           branch: helm-chart-tagged-${{ steps.update.outputs.new_chart_version }}

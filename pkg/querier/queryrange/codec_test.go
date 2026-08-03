@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
@@ -89,7 +90,22 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				AST: syntax.MustParseExpr(`{foo="bar"}`),
 			},
 		}, false},
-
+		{"legacy query_range with refexp", func() (*http.Request, error) {
+			return http.NewRequest(http.MethodGet,
+				fmt.Sprintf(`/api/prom/query?start=%d&end=%d&query={foo="bar"}&interval=10&limit=200&direction=BACKWARD&regexp=foo`, start.UnixNano(), end.UnixNano()), nil)
+		}, &LokiRequest{
+			Query:     `{foo="bar"} |~ "foo"`,
+			Limit:     200,
+			Step:      14000, // step is expected in ms; calculated default if request param not present
+			Interval:  10000, // interval is expected in ms
+			Direction: logproto.BACKWARD,
+			Path:      "/api/prom/query",
+			StartTs:   start,
+			EndTs:     end,
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(`{foo="bar"} |~ "foo"`),
+			},
+		}, false},
 		{"series", func() (*http.Request, error) {
 			return http.NewRequest(http.MethodGet,
 				fmt.Sprintf(`/series?start=%d&end=%d&match={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
@@ -473,7 +489,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   1,
+				Version:   uint32(loghttp.VersionV1),
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
@@ -488,7 +504,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   1,
+				Version:   uint32(loghttp.VersionV1),
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithStructuredMetadata,
@@ -503,7 +519,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   1,
+				Version:   uint32(loghttp.VersionV1),
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithCategories,
@@ -511,17 +527,39 @@ func Test_codec_DecodeResponse(t *testing.T) {
 				Statistics: statsResult,
 			}, "",
 		},
-
+		{
+			"streams legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(streamsString))},
+			&LokiRequest{Direction: logproto.FORWARD, Limit: 100, Path: "/api/prom/query_range"},
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionLegacy),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreams,
+				},
+				Statistics: statsResult,
+			}, "",
+		},
 		{
 			"series", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesString))},
 			&LokiSeriesRequest{Path: "/loki/api/v1/series"},
 			&LokiSeriesResponse{
 				Status:  "success",
-				Version: 1,
+				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
 			}, "",
 		},
-
+		{
+			"labels legacy", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelsString))},
+			NewLabelRequest(time.Now(), time.Now(), "", "", "/api/prom/label"),
+			&LokiLabelNamesResponse{
+				Status:  "success",
+				Version: uint32(loghttp.VersionLegacy),
+				Data:    labelsData,
+			}, "",
+		},
 		{
 			"index stats", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(indexStatsString))},
 			&logproto.IndexStatsRequest{},
@@ -1195,7 +1233,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   1,
+				Version:   uint32(loghttp.VersionV1),
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreams,
@@ -1209,7 +1247,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
 				Limit:     100,
-				Version:   1,
+				Version:   uint32(loghttp.VersionV1),
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result:     logStreamsWithCategories,
@@ -1221,12 +1259,25 @@ func Test_codec_EncodeResponse(t *testing.T) {
 				httpreq.LokiEncodingFlagsHeader: string(httpreq.FlagCategorizeLabels),
 			},
 		},
-
+		{
+			"loki legacy", "/api/promt/query",
+			&LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: logproto.FORWARD,
+				Limit:     100,
+				Version:   uint32(loghttp.VersionLegacy),
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result:     logStreams,
+				},
+				Statistics: statsResult,
+			}, streamsStringLegacy, false, nil,
+		},
 		{
 			"loki series", "/loki/api/v1/series",
 			&LokiSeriesResponse{
 				Status:  "success",
-				Version: 1,
+				Version: uint32(loghttp.VersionV1),
 				Data:    seriesData,
 			}, seriesString, false, nil,
 		},
@@ -1234,11 +1285,18 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			"loki labels", "/loki/api/v1/labels",
 			&LokiLabelNamesResponse{
 				Status:  "success",
-				Version: 1,
+				Version: uint32(loghttp.VersionV1),
 				Data:    labelsData,
 			}, labelsString, false, nil,
 		},
-
+		{
+			"loki labels legacy", "/api/prom/label",
+			&LokiLabelNamesResponse{
+				Status:  "success",
+				Version: uint32(loghttp.VersionLegacy),
+				Data:    labelsData,
+			}, labelsLegacyString, false, nil,
+		},
 		{
 			"index stats", "/loki/api/v1/index/stats",
 			&IndexStatsResponse{
@@ -1906,6 +1964,46 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 	})
 }
 
+// Test_codec_MergeResponse_DetectedLabelsResponse is a regression test for
+// https://github.com/grafana/loki/issues/16315: a multi-tenant detected_labels query 500s with
+// "too short binary".
+func Test_codec_MergeResponse_DetectedLabelsResponse(t *testing.T) {
+	// Build a response as MultiTenantQuerier.DetectedLabels would: per-tenant
+	// labels merged through detected.MergeLabels.
+	buildTenantMergedResponse := func(label string, cardinality int) *DetectedLabelsResponse {
+		var perTenant []*logproto.DetectedLabel
+		for tenant := 0; tenant < 2; tenant++ {
+			sketch := hyperloglog.New()
+			for i := 0; i < cardinality; i++ {
+				sketch.Insert([]byte(fmt.Sprintf("tenant-%d-value-%d", tenant, i)))
+			}
+			marshalled, err := sketch.MarshalBinary()
+			require.NoError(t, err)
+			perTenant = append(perTenant, &logproto.DetectedLabel{Label: label, Sketch: marshalled})
+		}
+
+		merged, err := detected.MergeLabels(perTenant)
+		require.NoError(t, err)
+
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{DetectedLabels: merged},
+		}
+	}
+
+	// Two split-interval responses, each already merged across tenants.
+	responses := []queryrangebase.Response{
+		buildTenantMergedResponse("foo", 5),
+		buildTenantMergedResponse("foo", 7),
+	}
+
+	got, err := DefaultCodec.MergeResponse(responses...)
+	require.NoError(t, err)
+
+	response := got.(*DetectedLabelsResponse).Response
+	require.Len(t, response.DetectedLabels, 1)
+	require.Equal(t, "foo", response.DetectedLabels[0].Label)
+}
+
 type badResponse struct{}
 
 func (badResponse) Reset()                                                 {}
@@ -2307,6 +2405,8 @@ var (
 			]
 		}
 	}`
+	streamsStringLegacy = `{
+		` + statsResultString + `"streams":[{"labels":"{test=\"test\"}","entries":[{"ts":"1970-01-02T10:17:36.789012345Z","line":"super line"}]},{"labels":"{test=\"test\", x=\"a\", y=\"b\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line2"}]}, {"labels":"{test=\"test\", x=\"a\", y=\"b\", z=\"text\"}","entries":[{"ts":"1970-01-02T10:17:36.789012346Z","line":"super line3 z=text"}]}]}`
 	logStreamsWithStructuredMetadata = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
@@ -2413,6 +2513,12 @@ var (
 	labelsString = `{
 		"status": "success",
 		"data": [
+			"foo",
+			"bar"
+		]
+	}`
+	labelsLegacyString = `{
+		"values": [
 			"foo",
 			"bar"
 		]
@@ -2630,7 +2736,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.BACKWARD,
-		Version:   1,
+		Version:   uint32(loghttp.VersionV1),
 		Limit:     1000,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,

@@ -16,7 +16,7 @@ This is a go-gettable library, so install is easy:
 Version 2 includes changes that may affect compatibility with existing v1 users:
 
 * The module path is now `github.com/dlclark/regexp2/v2`, so imports need to use the `/v2` suffix.
-* The minimum supported Go version is now Go 1.26.
+* The minimum supported Go version is now Go 1.25.
 * Changes to support https://github.com/dlclark/regexp2cg are merged in to support generated regex engines.
 * `Regexp.Split` is now available for splitting strings with regexp matches.
 * The new `compat` sub-package provides a [`regexp` compatibility adapter](#regexp-compatibility-adapter) with the same `Find*` and `Match*` method signatures as `regexp.Regexp`, plus a `compat.Matcher` interface that is implemented by both `*regexp.Regexp` and the adapter.
@@ -38,7 +38,7 @@ if isMatch, _ := re.MatchString(`Something to match`); isMatch {
 }
 ```
 
-The only error that the `*Match*` methods *should* return is a Timeout if you set the `re.MatchTimeout` field.  Any other error is a bug in the `regexp2` package.  If you need more details about capture groups in a match then use the `FindStringMatch` method, like so:
+The `*Match*` methods can return a timeout error if you set the `re.MatchTimeout` field, or `ErrBacktrackingStackLimit` if a match exceeds its configured backtracking stack size. Any other error is a bug in the `regexp2` package. If you need more details about capture groups in a match then use the `FindStringMatch` method, like so:
 
 ```go
 if m, _ := re.FindStringMatch(`Something to match`); m != nil {
@@ -76,6 +76,22 @@ func regexp2FindAllString(re *regexp2.Regexp, s string) []string {
 
 The internals of `regexp2` always operate on `[]rune` so `RuneIndex` and `RuneLength` data in a `Match` always reference a position in `rune`s rather than `byte`s (even if the input was given as a string). `ByteRange()` provides UTF-8 byte offsets, matching the original string input for string APIs. It's advisable to use the provided `String()` methods when you do not need explicit offsets. `ByteRange()` lazily caches byte offsets on the shared match text, so the first call on captures from the same match is not safe to run concurrently with other `ByteRange()` calls on that match.
 
+## Unicode character classes
+
+`regexp2` supports Unicode character classes with `\p{...}` and negated classes with `\P{...}`. Outside ECMAScript Unicode mode, it also accepts the RE2/PCRE-style one-letter form, such as `\pL`.
+
+The class name may be a Go Unicode category, category alias, script, or property exposed by the Go standard library Unicode tables. For example:
+
+```go
+letter := regexp2.MustCompile(`\p{L}+`)
+katakana := regexp2.MustCompile(`\p{Katakana}+`)
+notEmoji := regexp2.MustCompile(`\P{Emoji}+`)
+```
+
+`regexp2` also supports Unicode property selection syntax in the form `\p{property=value}`. Property and value aliases are matched loosely: case, hyphens, and underscores are ignored. For example, `\p{GCB=RI}`, `\p{grapheme_cluster_break=regional_indicator}`, and `\p{grapheme-cluster-break=regional-indicator}` all refer to the same class.
+
+Valid property names and aliases come from Unicode 17.0.0 [`PropertyAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyAliases.txt). Valid property values and aliases come from Unicode 17.0.0 [`PropertyValueAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt). The generated tables use Unicode 17.0.0 data from [`DerivedCoreProperties.txt`](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt), [`emoji/emoji-data.txt`](https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt), [`auxiliary/GraphemeBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt), [`auxiliary/WordBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt), and [`auxiliary/SentenceBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/SentenceBreakProperty.txt) for the package-local properties whose data changes more frequently than the Go standard library tables.
+
 ## `regexp` compatibility adapter
 
 The `github.com/dlclark/regexp2/v2/compat` package provides an adapter for callers that want the same `Find*` and `Match*` method signatures as the standard library's `regexp.Regexp`, while still using the `regexp2` engine.
@@ -112,7 +128,7 @@ func findWords(re compat.Matcher, input string) []string {
 }
 ```
 
-Because those standard-library method signatures do not return errors, the adapter panics if the wrapped regexp2 matcher returns an error such as a match timeout. Use the main `regexp2` APIs directly when you need to handle timeouts as errors.
+Because those standard-library method signatures do not return errors, the adapter panics if the wrapped regexp2 matcher returns an error such as a match timeout or `ErrBacktrackingStackLimit`. Use the main `regexp2` APIs directly when you need to handle match errors directly.
 
 ## Compile options
 
@@ -130,6 +146,7 @@ Performance tuning options override the default cache settings:
 ```go
 re := regexp2.MustCompile(`Your pattern`,
 	regexp2.IgnoreCase,
+	regexp2.OptionMaxBacktrackingStackSize(200000),
 	regexp2.OptionMaxCachedRuneBufferLength(64*1024),
 	regexp2.OptionMaxCachedReplacerDataEntries(8),
 )
@@ -148,18 +165,21 @@ The defaults are intentionally bounded:
 | `OptionMaintainCaptureOrder()` | false | Parser capture-slot assignment for mixed named and unnamed captures. | None at match time. This changes compile-time capture numbering only. | Keeps named and unnamed captures in pattern order instead of appending named captures after unnamed captures. This can change numeric backreference meaning, so it is caller-controlled rather than an inline regex option. |
 | `OptionDebug()` | false | Compile dumps and runner tracing. | Debug output volume only. | Useful for diagnostics, but it can produce noisy output and slower traced matching. |
 | `OptionIsCodeGen()` | false | Compile-time find-optimization analysis for [`regexp2cg`](https://github.com/dlclark/regexp2cg). | Per compiled regexp, during `Compile` or `MustCompile`. | Enables more expensive analysis intended for generated engines. Do not use it for normal interpreter execution; the interpreter defaults intentionally avoid this extra compile-time cost. |
+| `OptionMaxBacktrackingStackSize(n)` | 100,000 | The interpreter's per-match backtracking stack. | Per pooled runner. The initial allocation and subsequent growth are capped at the configured number of integer slots; the runner pool may retain stacks at their high-water size for reuse. | Lowering this bounds backtracking memory more tightly but may reject complex matches sooner with `ErrBacktrackingStackLimit`. Raising it permits deeper backtracking and increases possible memory use. A negative value disables the limit. |
 | `OptionMaxCachedRuneBufferLength(n)` | 256K runes | String APIs that run through pooled runners, such as `MatchString` and replacement-pattern `Replace`, when converting input strings to the engine's internal `[]rune` representation. | Process-wide shared `sync.Pool` retention by size class. This does not grow per compiled regexp or per input string; the practical working set follows recent and concurrent use across all regexps and can be dropped by GC. | Raising this lets calls use larger pooled rune buffers and can reduce allocations for repeated matches against large strings. Lowering it prevents larger buffers from being borrowed or returned, so large inputs allocate directly. |
 | `OptionMaxCachedReplaceBufferLength(n)` | 256 KB | Replacement-pattern `Replace` calls that build output through a shared byte buffer. | Process-wide shared `sync.Pool` retention by size class after replacement-pattern `Replace` runs. It does not grow from evaluator-based `ReplaceFunc` output and is shared across compiled regexps. | Raising this lets larger replacement outputs use pooled buffers and can reduce allocations. Lowering it prevents larger output buffers from being retained, so large replacements allocate directly. |
 | `OptionMaxCachedReplacerDataEntries(n)` | `16` | `Replace` with replacement pattern strings, after the replacement pattern is parsed into reusable replacement data. | Per compiled regexp. The cache grows as distinct cacheable replacement strings are used with `Replace`, up to this entry count. | Raising this helps when a single compiled regexp is used with many recurring replacement patterns. It increases per-regexp cache memory and lock-protected cache bookkeeping. Setting it to `0` disables this cache. |
 | `OptionMaxCachedReplacerDataBytes(n)` | 4 KB | The parsed replacement-pattern cache. Replacement strings longer than this are parsed for the call but not retained. | Per compiled regexp, combined with `OptionMaxCachedReplacerDataEntries`. Only replacement strings whose source text is at or below this size can add parsed data to the cache. | Raising this helps if large replacement patterns are reused. It can retain more memory per cached replacement. Lowering it avoids keeping unusual large replacement patterns around. |
 | `OptionDisableCharClassASCIIBitmap()` | false | Compile-time preparation of character classes and first-character prefix sets. By default, character classes with ASCII membership get a small bitmap used by `CharIn`. | Per compiled regexp, during `Compile` or `MustCompile`. Each eligible character class can hold one small bitmap; this does not scale with match concurrency or input size. | Leaving this false speeds up ASCII-heavy character class checks at the cost of a small amount of per-char-class memory and compile-time work. Setting to true can reduce memory for large numbers of compiled char classes in regexps, but ASCII character class matching may be slower. |
 
+For `OptionMaxBacktrackingStackSize`, set `n` to a negative value to allow unbounded stack growth. Setting it to `0` permits no backtracking stack entries, so most interpreted matches will return `ErrBacktrackingStackLimit`. 
+
 For pooled buffer cache options, set `n` to `0` to disable pooling, or `-1` to allow all built-in size classes. The rune buffer classes are 1K, 4K, 16K, 64K, and 256K runes. The replacement byte buffer classes are 4 KB, 16 KB, 64 KB, 256 KB, and 1 MB. By default the 1 MB pool is unused. For replacement data byte-size cache options, `-1` means unbounded. For entry-count cache options, set `n` to `0` to disable the cache.
 
 ## Compare `regexp` and `regexp2`
 | Category | regexp | regexp2 |
 | --- | --- | --- |
-| Catastrophic backtracking possible | no, constant execution time guarantees | yes, if your pattern is at risk you can use the `re.MatchTimeout` field |
+| Catastrophic backtracking possible | no, constant execution time guarantees | yes; backtracking stack growth is bounded by default, and `re.MatchTimeout` can also bound match duration |
 | Python-style capture groups `(?P<name>re)` | yes | no (yes in RE2 compat mode) |
 | .NET-style capture groups `(?<name>re)` or `(?'name're)` | yes | yes |
 | comments `(?#comment)` | no | yes |
@@ -196,7 +216,22 @@ This feature is a work in progress and I'm open to ideas for more things to put 
 ## Catastrophic Backtracking and Timeouts
 
 `regexp2` supports features that can lead to catastrophic backtracking.
-`Regexp.MatchTimeout` can be set to to limit the impact of such behavior; the
+Each compiled regexp limits its per-match backtracking stack to 100,000
+slots by default. If a match would exceed that limit, it stops and returns
+`ErrBacktrackingStackLimit`. Callers can identify it with
+`errors.Is(err, regexp2.ErrBacktrackingStackLimit)`. The limit can be changed at
+compile time; a negative value restores the previous unbounded behavior:
+
+```go
+re := regexp2.MustCompile(pattern, regexp2.OptionMaxBacktrackingStackSize(200000))
+// regexp2.OptionMaxBacktrackingStackSize(-1) disables the limit.
+```
+
+This limit bounds the interpreter's backtracking stack, not total match time or
+all memory used by a match. Literal empty expressions repeated any number of
+times are optimized away and do not consume backtracking stack space.
+
+`Regexp.MatchTimeout` can be set to limit the impact of such behavior; the
 match will fail with an error after approximately MatchTimeout. No timeout
 checks are done by default.
 

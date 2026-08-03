@@ -142,13 +142,19 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                    })
                    + step.withRun(|||
                      yarn install
-                     yarn exec -- release-please github-release \
+                     output=$(yarn exec -- release-please github-release \
                        --draft \
                        --release-type simple \
                        --repo-url "${{ env.RELEASE_REPO }}" \
                        --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
                        --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
-                       --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')"
+                       --shas-to-tag "$(echo $OUTPUTS_PR_NUMBER | tr -d '"'):$(echo ${SHA} | tr -d '"')" \
+                       --pull-request-title-pattern "chore\${scope}: Release\${component} \${version}")
+                     echo "$output"
+                     if [[ "$output" == "[]" || -z "$output" ]]; then
+                       echo "::error::release-please did not create a release"
+                       exit 1
+                     fi
                    |||),
 
                    releaseStep('upload artifacts')
@@ -169,12 +175,12 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
                        --project="grafanalabs-global" \
                        --repository="generic-${{ env.GAR_REPO_SLUG }}-prod" \
                        --location="us" \
-                       --source-directory=${{ env.path }}, \
+                       --source-directory=${{ env.path }} \
                        --package=binaries \
                        --version=${{ github.sha }}
                    |||)
                    + step.withEnv({
-                     path: 'release/dist',
+                     path: 'dist',
                    }),
                  ])
                  + job.withOutputs({
@@ -196,14 +202,15 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         common.fetchReleaseLib,
         step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
         step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
-        step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
-        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),  // v1.0.2
+        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+        + step.with({ registry: 'us-docker.pkg.dev' }),
         step.new('download images')
         + step.withEnv({
           SHA: '${{ needs.createRelease.outputs.sha }}',
         })
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
+          mkdir -p images
           gcloud artifacts generic download \
             --project="grafanalabs-dev" \
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
@@ -233,14 +240,15 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         common.fetchReleaseRepo,
         step.new('Set up QEMU', 'docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392'),  // v3
         step.new('set up docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  //v3
-        step.new('Login to DockerHub', 'grafana/shared-workflows/actions/dockerhub-login@ef3a62a3ca4c1a15505b4235a5a51493194da3c7'),  // v1.0.4
-        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136'),  // v1.0.2
+        step.new('Login to GAR', 'grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136')  // v1.0.2
+        + step.with({ registry: 'us-docker.pkg.dev' }),
         step.new('download and prepare plugins')
         + step.withEnv({
           SHA: '${{ needs.createRelease.outputs.sha }}',
         })
         + step.withRun(|||
           echo "downloading plugins to $(pwd)/plugins"
+          mkdir -p plugins
           gcloud artifacts generic download \
             --project="grafanalabs-dev" \
             --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
@@ -253,7 +261,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         step.new('publish docker driver', './lib/actions/push-images')
         + step.with({
           imageDir: 'plugins',
-          imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          imagePrefix: '${{ env.PLUGIN_IMAGE_PREFIX }}',
           isPlugin: true,
           buildDir: 'release/%s' % path,
           isLatest: '${{ needs.createRelease.outputs.isLatest }}',

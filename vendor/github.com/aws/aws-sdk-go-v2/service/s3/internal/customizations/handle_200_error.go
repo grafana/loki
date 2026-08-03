@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strings"
 
 	"github.com/aws/smithy-go"
@@ -61,7 +60,7 @@ func (m *processResponseFor200ErrorMiddleware) HandleDeserialize(
 	}
 
 	// rewind response body
-	response.Body = ioutil.NopCloser(io.MultiReader(&readBuff, response.Body))
+	response.Body = io.NopCloser(io.MultiReader(&readBuff, response.Body))
 
 	// if start tag is "Error", the response is consider error response.
 	if strings.EqualFold(t.Name.Local, "Error") {
