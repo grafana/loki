@@ -43,6 +43,13 @@ gcs:
 `
 )
 
+func TestDisableRetriesOCI(t *testing.T) {
+	cfg := Config{}
+	cfg.OCI.MaxRequestRetries = 3
+
+	require.NoError(t, cfg.disableRetries(OCI))
+	require.Equal(t, 1, cfg.OCI.MaxRequestRetries)
+}
 func TestNewClient(t *testing.T) {
 	t.Parallel()
 

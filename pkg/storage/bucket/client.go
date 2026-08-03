@@ -184,7 +184,9 @@ func (cfg *Config) disableRetries(backend string) error {
 		cfg.Azure.MaxRetries = 1
 	case Swift:
 		cfg.Swift.MaxRetries = 1
-	case Filesystem, Alibaba, BOS, OCI:
+	case OCI:
+		cfg.OCI.MaxRequestRetries = 1
+	case Filesystem, Alibaba, BOS:
 		// do nothing
 	default:
 		return fmt.Errorf("cannot disable retries for backend: %s", backend)
