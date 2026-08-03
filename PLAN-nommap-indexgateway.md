@@ -695,6 +695,35 @@ supporting profiling data lands):
   change; best as its own small PR. Would make future query-surface changes
   single-touch. Raised 2026-08-03 while trimming dead methods (`SymbolTableSize`,
   `Symbols`) off the reader interface.
+- **Stop *writing* the `LabelIndices` + `LabelIndicesTable` sections (space win).**
+  These two sections are written by `Creator` (`writeLabelIndices` at
+  `.../tsdb/index/index.go:731`, `writeLabelIndexesOffsetTable`, TOC offsets set
+  at index.go:358/373) but **never read** — no `Reader` method dereferences
+  `toc.LabelIndices` / `toc.LabelIndicesTable`; grep across `pkg/`, `cmd/`,
+  `tools/` finds only the TOC-parse fields and the writer. This mirrors upstream
+  Prometheus: its current `Reader` also only writes them and serves
+  `LabelValues`/`LabelNames` from the posting-offset table. They're a v1-format
+  vestige (in v1 the label-index section + label-offset table *were* how
+  `LabelValues` was served; v2 moved that to the posting-offset table but the
+  writer kept emitting the old sections for on-disk layout compatibility). Since
+  Loki only ever wrote V2+ (writer hardcoded FormatV2 from `1837c9e0b2` / PR
+  #5376 — see the #23730 entry), nothing has ever needed them.
+  Proposal: stop writing both sections (and drop the two TOC offsets, or zero
+  them for layout compat). The label-index section stores, per label name, the
+  sorted list of value symbol-refs (~4 bytes/value) plus the offset table — so
+  the on-disk saving scales with total (name,value) cardinality and could be
+  non-trivial for wide indexes; **measure on a real fixture before committing to
+  it.** Caveats to check first: (1) does any *external* consumer (bloom builder,
+  Prometheus-tooling, `promtool`-style readers) ever open a Loki TSDB index and
+  expect these sections? Audit before removing. (2) The `Creator`'s existing
+  tests (`builder_test.go` "sorts symbols before writing" etc.) may assert on
+  these being present. (3) Keep the read path tolerant of *old* indexes that
+  still carry the sections (it already ignores them, so this is free). Best as
+  its own small PR, independent of the streaming reader work — it's a
+  writer-side change. Third dead-section prune candidate alongside `Symbols`
+  and `PostingsRanges` (the "prune before you stream" theme). Raised 2026-08-03
+  while confirming `LabelNamesForMetricName`/`LabelValuesForMetricName` read the
+  posting-offset table, not the label-index table.
 
 ---
 
