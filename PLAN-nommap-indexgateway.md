@@ -624,6 +624,24 @@ supporting profiling data lands):
   We can implement it trivially with `os.Open` in the streaming path.
 - What's the interaction with the `PostingsCache` / `LabelValuesCache` layers
   above `Reader`? Assumed transparent — those caches sit above the interface.
+- **De-duplicate `index.Reader` and `tsdb.IndexReader` (follow-up refactor).**
+  Two interfaces currently declare the same 10-method query core: `index.Reader`
+  (`.../tsdb/index/reader.go`) and `tsdb.IndexReader` (`.../tsdb/querier.go`).
+  `index.Reader` is a strict superset — the shared query methods plus four
+  file-only ones (`Version`, `RawFileReader`, `PostingsRanges`, `Size`). The
+  duplication is real double-maintenance: removing `SymbolTableSize` and
+  `Symbols` each meant editing both interfaces (and, for `Symbols`,
+  `headIndexReader` too). Do NOT fully merge them — `tsdb.IndexReader` is the
+  polymorphic query interface over *both* on-disk files and the in-memory head
+  (`headIndexReader`, consumed by `querier.go`'s `PostingsForMatchers`), and the
+  head legitimately has none of the file-only methods. Instead, extract the
+  shared query core into a single interface in the `index` package (the `tsdb`
+  package imports `index`, not vice-versa, so it must live in `index`), have
+  `index.Reader` embed it plus the file-only methods, and make
+  `tsdb.IndexReader` a type alias for it. Pure interface refactor, no behaviour
+  change; best as its own small PR. Would make future query-surface changes
+  single-touch. Raised 2026-08-03 while trimming dead methods (`SymbolTableSize`,
+  `Symbols`) off the reader interface.
 
 ---
 
