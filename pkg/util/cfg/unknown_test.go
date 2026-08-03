@@ -119,6 +119,13 @@ func TestFilterUnknownFlags(t *testing.T) {
 			wantOut: []string{"-server.port", "9090"},
 			wantUnk: []string{"unknown"},
 		},
+		{
+			// -h/-help are handled by the flag package (ErrHelp) and must not be
+			// stripped or counted even though they are not registered.
+			name:    "help flags preserved",
+			args:    []string{"-help", "-h", "--help"},
+			wantOut: []string{"-help", "-h", "--help"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			u := &UnknownFields{}

@@ -61,6 +61,13 @@ func filterUnknownFlags(fs *flag.FlagSet, args []string, u *UnknownFields) []str
 			continue
 		}
 
+		// The flag package handles -h/-help itself (returning ErrHelp when they are
+		// not registered), so keep them to preserve usage output.
+		if name == "h" || name == "help" {
+			out = append(out, arg)
+			continue
+		}
+
 		hasValue := strings.ContainsRune(arg, '=')
 		if f := fs.Lookup(name); f != nil {
 			out = append(out, arg)
