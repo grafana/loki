@@ -38,6 +38,7 @@ type ConfigWrapper struct {
 	LogConfig       bool
 	ConfigFile      string
 	ConfigExpandEnv bool
+	Strict          bool
 }
 
 func PrintVersion(args []string) bool {
@@ -59,7 +60,13 @@ func (c *ConfigWrapper) RegisterFlags(f *flag.FlagSet) {
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.StringVar(&c.ConfigFile, "config.file", "config.yaml,config/config.yaml", "configuration file to load, can be a comma separated list of paths, first existing file will be used")
 	f.BoolVar(&c.ConfigExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
+	f.BoolVar(&c.Strict, "config.strict", true, "When true, unknown CLI flags and YAML config fields cause Loki to fail at startup. When false, they are logged at WARN, counted in loki_unknown_config_total, and ignored.")
 	c.Config.RegisterFlags(f)
+}
+
+// StrictConfig reports whether unknown configuration options are fatal.
+func (c *ConfigWrapper) StrictConfig() bool {
+	return c.Strict
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.

@@ -43,7 +43,8 @@ func dJSON(y []byte) Source {
 // YAML returns a Source that opens the supplied `.yaml` file and loads it.
 // When expandEnvVars is true, variables in the supplied '.yaml\ file are expanded
 // using https://pkg.go.dev/github.com/drone/envsubst?tab=overview
-func YAML(f string, expandEnvVars bool, strict bool) Source {
+// When u is non-nil, unknown fields are collected into it instead of failing.
+func YAML(f string, expandEnvVars bool, strict bool, u *UnknownFields) Source {
 	return func(dst Cloneable) error {
 		y, err := os.ReadFile(f)
 		if err != nil {
@@ -56,25 +57,34 @@ func YAML(f string, expandEnvVars bool, strict bool) Source {
 			}
 			y = []byte(s)
 		}
-		err = dYAML(y, strict)(dst)
+		err = dYAML(y, strict, u)(dst)
 		return errors.Wrap(err, f)
 	}
 }
 
-// dYAMLStrict returns a YAML source and allows dependency injection
-// argument `strict` defines whether unknown fields should be treated as error
-func dYAML(y []byte, strict bool) Source {
+// dYAML returns a YAML source and allows dependency injection.
+// argument `strict` defines whether unknown fields should be treated as error.
+// When u is non-nil, unknown fields are recorded for deferred reporting rather
+// than failing here; strictness is then enforced centrally after the full
+// config is resolved.
+func dYAML(y []byte, strict bool, u *UnknownFields) Source {
 	return func(dst Cloneable) error {
 		dec := yaml.NewDecoder(bytes.NewReader(y))
-		dec.KnownFields(strict)
-		if err := dec.Decode(dst); err != nil && err != io.EOF {
+		// Enable field checking whenever we enforce strictness or want to collect
+		// unknown fields for non-strict reporting.
+		dec.KnownFields(strict || u != nil)
+		err := dec.Decode(dst)
+		if err != nil && err != io.EOF {
+			if u != nil {
+				return u.collectYAML(err)
+			}
 			return err
 		}
 		return nil
 	}
 }
 
-func ConfigFileLoader(args []string, name string, strict bool) Source {
+func ConfigFileLoader(args []string, name string, strict bool, u *UnknownFields) Source {
 	return func(dst Cloneable) error {
 		freshFlags := flag.NewFlagSet("config-file-loader", flag.ContinueOnError)
 
@@ -109,7 +119,7 @@ func ConfigFileLoader(args []string, name string, strict bool) Source {
 				expandEnv, _ = strconv.ParseBool(expandEnvFlag.Value.String()) // Can ignore error as false returned
 			}
 			if _, err := os.Stat(val); err == nil {
-				err := YAML(val, expandEnv, strict)(dst)
+				err := YAML(val, expandEnv, strict, u)(dst)
 				if err != nil && !expandEnv {
 					err = fmt.Errorf("%w. Use `-config.expand-env=true` flag if you want to expand environment variables in your config file", err)
 				}

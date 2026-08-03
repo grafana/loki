@@ -135,7 +135,7 @@ func buildBucketFromLokiConfig(ctx context.Context, configFile string, expandEnv
 		args = append(args, "-config.expand-env=true")
 	}
 	var c loki.ConfigWrapper
-	if err := lokicfg.DynamicUnmarshal(&c, args, flag.NewFlagSet("loki-config", flag.ContinueOnError)); err != nil {
+	if _, err := lokicfg.DynamicUnmarshal(&c, args, flag.NewFlagSet("loki-config", flag.ContinueOnError)); err != nil {
 		return nil, metastore.Config{}, fmt.Errorf("loading loki config %s: %w", configFile, err)
 	}
 
