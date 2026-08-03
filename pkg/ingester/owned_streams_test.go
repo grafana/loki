@@ -20,7 +20,7 @@ func Test_OwnedStreamService(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(ring, 3), &TenantBasedStrategy{limits: limits})
 
 	service := newOwnedStreamService("test", limiter)
-	require.Equal(t, 0, service.getOwnedStreamCount())
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
 	require.Equal(t, 10, service.getFixedLimit(), "fixed limit must be initialised during the instantiation")
 
 	limits.DefaultLimits().MaxGlobalStreamsPerUser = 1000
@@ -32,13 +32,13 @@ func Test_OwnedStreamService(t *testing.T) {
 	service.trackStreamOwnership(model.Fingerprint(1), true, noPolicy)
 	service.trackStreamOwnership(model.Fingerprint(2), true, noPolicy)
 	service.trackStreamOwnership(model.Fingerprint(3), true, noPolicy)
-	require.Equal(t, 3, service.getOwnedStreamCount())
+	require.Equal(t, 3, service.getStreamCount(defaultStreamCountBucket))
 	require.Len(t, service.notOwnedStreams, 0)
 
 	service.resetStreamCounts()
 	service.trackStreamOwnership(model.Fingerprint(3), true, noPolicy)
 	service.trackStreamOwnership(model.Fingerprint(3), false, noPolicy)
-	require.Equal(t, 1, service.getOwnedStreamCount(),
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket),
 		"owned streams count must not be changed because not owned stream can be reported only by recalculate_owned_streams job that resets the counters before checking all the streams")
 	require.Len(t, service.notOwnedStreams, 1)
 	require.True(t, service.isStreamNotOwned(model.Fingerprint(3)))
@@ -49,11 +49,11 @@ func Test_OwnedStreamService(t *testing.T) {
 	service.trackStreamOwnership(model.Fingerprint(3), false, noPolicy)
 
 	service.trackRemovedStream(model.Fingerprint(3), noPolicy)
-	require.Equal(t, 2, service.getOwnedStreamCount(), "owned stream count must be decremented only when notOwnedStream does not contain this fingerprint")
+	require.Equal(t, 2, service.getStreamCount(defaultStreamCountBucket), "owned stream count must be decremented only when notOwnedStream does not contain this fingerprint")
 	require.Len(t, service.notOwnedStreams, 0)
 
 	service.trackRemovedStream(model.Fingerprint(2), noPolicy)
-	require.Equal(t, 1, service.getOwnedStreamCount())
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket))
 	require.Len(t, service.notOwnedStreams, 0)
 
 	group := sync.WaitGroup{}
@@ -75,7 +75,7 @@ func Test_OwnedStreamService(t *testing.T) {
 	}
 	group.Wait()
 
-	require.Equal(t, 1, service.getOwnedStreamCount(), "owned stream count must not be changed")
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket), "owned stream count must not be changed")
 
 	// simulate the effect from the recalculation job
 	service.trackStreamOwnership(model.Fingerprint(44), false, noPolicy)
@@ -83,7 +83,7 @@ func Test_OwnedStreamService(t *testing.T) {
 
 	service.resetStreamCounts()
 
-	require.Equal(t, 0, service.getOwnedStreamCount())
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
 	require.Len(t, service.notOwnedStreams, 0)
 }
 
@@ -99,21 +99,22 @@ func Test_OwnedStreamService_PolicyStreamCounting(t *testing.T) {
 	service := newOwnedStreamService("test", limiter)
 
 	// Initially no streams
-	require.Equal(t, 0, service.getOwnedStreamCount())
-	require.Equal(t, 0, service.getPolicyStreamCount("finance"))
-	require.Equal(t, 0, service.getPolicyStreamCount("ops"))
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 0, service.getStreamCount("finance"))
+	require.Equal(t, 0, service.getStreamCount("ops"))
 
-	// Track streams with different policies
+	// Track streams under different buckets. Each stream is counted in exactly one bucket:
+	// its policy bucket, or the tenant-wide count for the noPolicy bucket.
 	service.trackStreamOwnership(model.Fingerprint(1), true, "finance")
 	service.trackStreamOwnership(model.Fingerprint(2), true, "finance")
 	service.trackStreamOwnership(model.Fingerprint(3), true, "ops")
-	service.trackStreamOwnership(model.Fingerprint(4), true, noPolicy) // no policy
+	service.trackStreamOwnership(model.Fingerprint(4), true, noPolicy) // tenant-wide bucket
 
 	// Verify counts
-	require.Equal(t, 4, service.getOwnedStreamCount())               // total streams
-	require.Equal(t, 2, service.getPolicyStreamCount("finance"))     // finance policy streams
-	require.Equal(t, 1, service.getPolicyStreamCount("ops"))         // ops policy streams
-	require.Equal(t, 0, service.getPolicyStreamCount("nonexistent")) // non-existent policy
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket), "policy-bucketed streams must not count toward the tenant-wide bucket")
+	require.Equal(t, 2, service.getStreamCount("finance"))     // finance policy streams
+	require.Equal(t, 1, service.getStreamCount("ops"))         // ops policy streams
+	require.Equal(t, 0, service.getStreamCount("nonexistent")) // non-existent policy
 	require.Equal(t, 2, service.getActivePolicyCount())              // finance and ops policies
 
 	// Remove streams
@@ -121,16 +122,21 @@ func Test_OwnedStreamService_PolicyStreamCounting(t *testing.T) {
 	service.trackRemovedStream(model.Fingerprint(3), "ops")
 
 	// Verify updated counts
-	require.Equal(t, 2, service.getOwnedStreamCount())           // total streams
-	require.Equal(t, 1, service.getPolicyStreamCount("finance")) // finance policy streams
-	require.Equal(t, 0, service.getPolicyStreamCount("ops"))     // ops policy streams
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket), "removing policy-bucketed streams must not change the tenant-wide bucket")
+	require.Equal(t, 1, service.getStreamCount("finance")) // finance policy streams
+	require.Equal(t, 0, service.getStreamCount("ops"))     // ops policy streams
 	require.Equal(t, 1, service.getActivePolicyCount())          // only finance policy remains
+
+	// Remove the tenant-wide stream
+	service.trackRemovedStream(model.Fingerprint(4), noPolicy)
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 1, service.getStreamCount("finance"))
 
 	// Reset and verify
 	service.resetStreamCounts()
-	require.Equal(t, 0, service.getOwnedStreamCount())
-	require.Equal(t, 0, service.getPolicyStreamCount("finance"))
-	require.Equal(t, 0, service.getPolicyStreamCount("ops"))
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 0, service.getStreamCount("finance"))
+	require.Equal(t, 0, service.getStreamCount("ops"))
 }
 
 func Test_OwnedStreamService_PolicyCleanup(t *testing.T) {
@@ -155,9 +161,9 @@ func Test_OwnedStreamService_PolicyCleanup(t *testing.T) {
 
 	// Verify we have 3 active policies
 	require.Equal(t, 3, service.getActivePolicyCount())
-	require.Equal(t, 2, service.getPolicyStreamCount("finance"))
-	require.Equal(t, 1, service.getPolicyStreamCount("ops"))
-	require.Equal(t, 1, service.getPolicyStreamCount("dev"))
+	require.Equal(t, 2, service.getStreamCount("finance"))
+	require.Equal(t, 1, service.getStreamCount("ops"))
+	require.Equal(t, 1, service.getStreamCount("dev"))
 
 	// Remove all finance streams - should clean up the policy
 	service.trackRemovedStream(model.Fingerprint(1), "finance")
@@ -165,25 +171,25 @@ func Test_OwnedStreamService_PolicyCleanup(t *testing.T) {
 
 	// Verify finance policy is cleaned up
 	require.Equal(t, 2, service.getActivePolicyCount()) // finance removed, ops and dev remain
-	require.Equal(t, 0, service.getPolicyStreamCount("finance"))
-	require.Equal(t, 1, service.getPolicyStreamCount("ops"))
-	require.Equal(t, 1, service.getPolicyStreamCount("dev"))
+	require.Equal(t, 0, service.getStreamCount("finance"))
+	require.Equal(t, 1, service.getStreamCount("ops"))
+	require.Equal(t, 1, service.getStreamCount("dev"))
 
 	// Remove ops stream - should clean up the policy
 	service.trackRemovedStream(model.Fingerprint(3), "ops")
 
 	// Verify ops policy is cleaned up
 	require.Equal(t, 1, service.getActivePolicyCount()) // only dev remains
-	require.Equal(t, 0, service.getPolicyStreamCount("ops"))
-	require.Equal(t, 1, service.getPolicyStreamCount("dev"))
+	require.Equal(t, 0, service.getStreamCount("ops"))
+	require.Equal(t, 1, service.getStreamCount("dev"))
 
 	// Remove dev stream - should clean up the policy
 	service.trackRemovedStream(model.Fingerprint(4), "dev")
 
 	// Verify dev policy is cleaned up
 	require.Equal(t, 0, service.getActivePolicyCount()) // no policies left
-	require.Equal(t, 0, service.getPolicyStreamCount("dev"))
+	require.Equal(t, 0, service.getStreamCount("dev"))
 
 	// Verify total stream count is correct
-	require.Equal(t, 0, service.getOwnedStreamCount())
+	require.Equal(t, 0, service.getStreamCount(defaultStreamCountBucket))
 }

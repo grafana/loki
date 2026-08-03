@@ -385,6 +385,10 @@ func (o *PerPolicyConfigOverride) ApplyTo(base shardstreams.Config) shardstreams
 // pointer: a nil field means "not overridden" (the tenant value is inherited); a non-nil field
 // overrides the tenant value for streams resolved to the policy.
 type PolicyOverridableLimits struct {
+	// MaxLocalStreamsPerUser and MaxGlobalStreamsPerUser give the policy its own stream-count
+	// bucket, tracked and limited independently from the tenant-wide count. They are enforced
+	// only with `use_owned_stream_count: true` (classic ingester path) or the delegated
+	// ingest-limits service; otherwise they are ignored.
 	MaxLocalStreamsPerUser  *int                     `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"hidden"`
 	MaxGlobalStreamsPerUser *int                     `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"hidden"`
 	IngestionRateMB         *float64                 `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb" doc:"hidden"`

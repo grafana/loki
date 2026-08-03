@@ -1704,3 +1704,91 @@ func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ stri
 // ReceivedBytesAdd implements push.UsageTracker.
 func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64, _ string) {
 }
+
+// streamCountBucketsTestInstance builds an instance with a tenant stream limit of 5, a "replay"
+// policy with a stream-count override of 3, and a "mapped" policy with no stream-count override.
+func streamCountBucketsTestInstance(t *testing.T) (*instance, *validation.Overrides) {
+	l := defaultLimitsTestConfig()
+	l.MaxLocalStreamsPerUser = 0
+	l.MaxGlobalStreamsPerUser = 5
+	l.UseOwnedStreamCount = true
+	l.PolicyStreamMapping = validation.PolicyStreamMapping{
+		"replay": []*validation.PriorityStream{{Selector: `{job="replay"}`, Priority: 1}},
+		"mapped": []*validation.PriorityStream{{Selector: `{job="mapped"}`, Priority: 1}},
+	}
+	l.PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
+		"replay": {MaxGlobalStreamsPerUser: ptr(3)},
+	}
+	// Validate populates the stream-selector matchers used by PolicyFor (the real config-load
+	// path does this); without it an empty matcher set would match every stream.
+	require.NoError(t, l.Validate())
+
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	// Single ingester and RF 1: adjusted global limits == configured global limits.
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	tenantsRetention := retention.NewTenantsRetention(limits)
+
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+	require.NoError(t, err)
+	return inst, limits
+}
+
+func TestInstance_StreamCountPolicyBuckets(t *testing.T) {
+	push := func(inst *instance, ls string) error {
+		return inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
+			{Labels: ls, Entries: entries(1, time.Now().Add(-5*time.Minute))},
+		}})
+	}
+
+	t.Run("policy bucket is isolated from the default bucket", func(t *testing.T) {
+		inst, _ := streamCountBucketsTestInstance(t)
+
+		// Fill the replay bucket to its override limit.
+		for n := range 3 {
+			require.NoError(t, push(inst, fmt.Sprintf(`{job="replay", n="%d"}`, n)))
+		}
+		require.Error(t, push(inst, `{job="replay", n="3"}`), "replay bucket must reject at its override limit")
+
+		// The default bucket still has its full tenant budget of 5.
+		for n := range 5 {
+			require.NoError(t, push(inst, fmt.Sprintf(`{job="app", n="%d"}`, n)))
+		}
+		require.Error(t, push(inst, `{job="app", n="5"}`), "default bucket must reject at the tenant limit")
+
+		// A policy without a stream-count override shares the default bucket: no phantom budget.
+		require.Error(t, push(inst, `{job="mapped", n="0"}`))
+
+		require.Equal(t, 5, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 3, inst.ownedStreamsSvc.getStreamCount("replay"))
+	})
+
+	t.Run("totals are order-independent", func(t *testing.T) {
+		inst, _ := streamCountBucketsTestInstance(t)
+
+		// Reverse order from the subtest above; both buckets still get their full budget.
+		for n := range 5 {
+			require.NoError(t, push(inst, fmt.Sprintf(`{job="app", n="%d"}`, n)))
+		}
+		for n := range 3 {
+			require.NoError(t, push(inst, fmt.Sprintf(`{job="replay", n="%d"}`, n)))
+		}
+		require.Equal(t, 5, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 3, inst.ownedStreamsSvc.getStreamCount("replay"))
+	})
+
+	t.Run("recalculation re-buckets streams after an override change", func(t *testing.T) {
+		inst, limits := streamCountBucketsTestInstance(t)
+
+		require.NoError(t, push(inst, `{job="replay", n="0"}`))
+		require.NoError(t, push(inst, `{job="app", n="0"}`))
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+		// Drop the stream-count override: replay streams belong in the default bucket now.
+		limits.DefaultLimits().PolicyOverrideLimits = nil
+		require.NoError(t, inst.updateOwnedStreams(func(*stream) (bool, error) { return true, nil }))
+		require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 0, inst.ownedStreamsSvc.getStreamCount("replay"))
+	})
+}
