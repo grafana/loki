@@ -69,6 +69,10 @@ func wideLinesAt(base time.Time, count int) []push.Entry {
 // per-tenant streams and uploads it to the bucket. When sortSchema is non-empty
 // the object is written in SortSchemaASC order for that schema.
 func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream) {
+	buildSourceLogObjectWithSections(t, bucket, path, sortSchema, byTenant, false)
+}
+
+func buildSourceLogObjectWithSections(t *testing.T, bucket objstore.Bucket, path string, sortSchema []string, byTenant map[string][]testStream, splitSections bool) {
 	t.Helper()
 
 	cfg := logsobj.BuilderConfig{
@@ -84,6 +88,9 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 		DataobjSortOrder:     "timestamp-desc",
 		AppendOrderedEnabled: true,
 		DataobjUseSortSchema: len(sortSchema) > 0,
+	}
+	if splitSections {
+		cfg.TargetSectionSize = 1
 	}
 
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
@@ -106,7 +113,7 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
 }
 
-func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
+func TestCollectLogSources_ResolvesLabels(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 
@@ -132,15 +139,13 @@ func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
 		Tenant:     tenant,
 		SortSchema: sortSchema,
 		Runs: []*compactionv2pb.RunRef{
-			// objA is referenced twice (and by two runs) to exercise dedup.
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objA"}}},
-			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objB"}, {ObjectPath: "objA"}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
 		},
 	}
 
 	sources, err := c.collectLogSources(ctx, node)
 	require.NoError(t, err)
-	require.Len(t, sources, 2, "duplicate object paths must be collapsed to one source each")
+	require.Len(t, sources, 2)
 
 	byPath := make(map[string]*logSource, len(sources))
 	for _, s := range sources {
@@ -160,6 +165,85 @@ func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
 	}
 	require.Equal(t, map[string]bool{"a": true, "b": true}, appValues(byPath["objA"]))
 	require.Equal(t, map[string]bool{"b": true, "c": true}, appValues(byPath["objB"]))
+}
+
+func TestCollectLogSources_SelectsReferencedSection(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	buildSourceLogObjectWithSections(t, bucket, "obj", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="a"}`, entries: linesAt(base, 1)},
+			{labels: `{app="b"}`, entries: linesAt(base, 1)},
+		},
+	}, true)
+
+	c := newTestExecutorContext(t, bucket)
+	sources, err := c.collectLogSources(ctx, &physical.LogMerge{
+		Tenant: tenant,
+		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{
+			ObjectPath: "obj", SectionIndex: 1,
+		}}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, sources, 1)
+	require.Len(t, sources[0].logsSections, 1)
+
+	section, err := logs.Open(ctx, sources[0].logsSections[0])
+	require.NoError(t, err)
+	var apps []string
+	for result := range logs.IterSection(ctx, section) {
+		record, err := result.Value()
+		require.NoError(t, err)
+		apps = append(apps, sources[0].streams[record.StreamID].Labels.Get("app"))
+	}
+	require.Equal(t, []string{"b"}, apps)
+}
+
+func TestCollectLogSources_RejectsInvalidSectionReferences(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	buildSourceLogObject(t, bucket, "obj", []string{"label:app"}, map[string][]testStream{
+		"T": {{labels: `{app="a"}`, entries: linesAt(base, 1)}},
+	})
+	buildSourceLogObject(t, bucket, "other", []string{"label:app"}, map[string][]testStream{
+		"other": {{labels: `{app="a"}`, entries: linesAt(base, 1)}},
+	})
+
+	c := newTestExecutorContext(t, bucket)
+	tests := map[string]struct {
+		refs    []*compactionv2pb.SectionRef
+		wantErr string
+	}{
+		"duplicate": {
+			refs: []*compactionv2pb.SectionRef{
+				{ObjectPath: "obj", SectionIndex: 0},
+				{ObjectPath: "obj", SectionIndex: 0},
+			},
+			wantErr: "duplicate log section reference",
+		},
+		"out of range": {
+			refs:    []*compactionv2pb.SectionRef{{ObjectPath: "obj", SectionIndex: 1}},
+			wantErr: "out of range",
+		},
+		"wrong tenant": {
+			refs:    []*compactionv2pb.SectionRef{{ObjectPath: "other", SectionIndex: 0}},
+			wantErr: `belongs to tenant "other", expected "T"`,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := c.collectLogSources(ctx, &physical.LogMerge{
+				Tenant: "T",
+				Runs:   []*compactionv2pb.RunRef{{Sections: tc.refs}},
+			})
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {

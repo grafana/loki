@@ -267,11 +267,20 @@ type logSource struct {
 }
 
 // collectLogSources opens every unique source object referenced by node.Runs and
-// returns the tenant's logs sections plus its localStreamID->stream map. Objects are deduplicated by path
+// returns only the referenced logs sections plus the object's localStreamID->stream map.
 func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge) ([]*logSource, error) {
-	// Deduplicate object paths across all runs
-	seen := make(map[string]struct{})
-	var paths []string
+	type sourceRef struct {
+		path           string
+		sectionIndexes []int64
+	}
+	type sectionKey struct {
+		path  string
+		index int64
+	}
+
+	var refs []sourceRef
+	refsByPath := make(map[string]int)
+	seenSections := make(map[sectionKey]struct{})
 	for _, run := range node.Runs {
 		if run == nil {
 			continue
@@ -280,57 +289,72 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			if sec == nil {
 				continue
 			}
-			if _, ok := seen[sec.ObjectPath]; ok {
-				continue
+			key := sectionKey{path: sec.ObjectPath, index: sec.SectionIndex}
+			if _, ok := seenSections[key]; ok {
+				return nil, fmt.Errorf("duplicate log section reference %q section %d", sec.ObjectPath, sec.SectionIndex)
 			}
-			seen[sec.ObjectPath] = struct{}{}
-			paths = append(paths, sec.ObjectPath)
+			seenSections[key] = struct{}{}
+
+			refIdx, ok := refsByPath[sec.ObjectPath]
+			if !ok {
+				refIdx = len(refs)
+				refsByPath[sec.ObjectPath] = refIdx
+				refs = append(refs, sourceRef{path: sec.ObjectPath})
+			}
+			refs[refIdx].sectionIndexes = append(refs[refIdx].sectionIndexes, sec.SectionIndex)
 		}
 	}
 	srcBucket := c.dataObjectBucket()
 
 	// Gather log and streams sections
-	sources := make([]*logSource, 0, len(paths))
-	for _, path := range paths {
-		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 0)
+	sources := make([]*logSource, 0, len(refs))
+	for _, ref := range refs {
+		obj, err := dataobj.FromBucket(ctx, srcBucket, ref.path, 0)
 		if err != nil {
-			return nil, fmt.Errorf("opening object %q: %w", path, err)
+			return nil, fmt.Errorf("opening object %q: %w", ref.path, err)
 		}
 
-		var (
-			logsSections   []*dataobj.Section
-			streamSections []*dataobj.Section
-		)
+		var allLogs []*dataobj.Section
+		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+			allLogs = append(allLogs, sec)
+		}
+
+		logsSections := make([]*dataobj.Section, 0, len(ref.sectionIndexes))
+		for _, sectionIndex := range ref.sectionIndexes {
+			if sectionIndex < 0 || sectionIndex >= int64(len(allLogs)) {
+				return nil, fmt.Errorf("object %q log section index %d out of range [0,%d)", ref.path, sectionIndex, len(allLogs))
+			}
+			section := allLogs[sectionIndex]
+			if section.Tenant != node.Tenant {
+				return nil, fmt.Errorf("object %q log section %d belongs to tenant %q, expected %q", ref.path, sectionIndex, section.Tenant, node.Tenant)
+			}
+			logsSections = append(logsSections, section)
+		}
+
+		var streamSections []*dataobj.Section
 		for _, sec := range obj.Sections() {
 			if sec.Tenant != node.Tenant {
 				continue
 			}
-			switch {
-			case logs.CheckSection(sec):
-				logsSections = append(logsSections, sec)
-			case streams.CheckSection(sec):
+			if streams.CheckSection(sec) {
 				streamSections = append(streamSections, sec)
 			}
 		}
 
-		if len(logsSections) == 0 {
-			continue
-		}
-
 		if len(streamSections) == 0 {
-			return nil, fmt.Errorf("object %q has logs sections but no streams section for tenant %q", path, node.Tenant)
+			return nil, fmt.Errorf("object %q has logs sections but no streams section for tenant %q", ref.path, node.Tenant)
 		}
 		if len(streamSections) > 1 {
-			return nil, fmt.Errorf("object %q has %d streams sections for tenant %q, expected exactly one", path, len(streamSections), node.Tenant)
+			return nil, fmt.Errorf("object %q has %d streams sections for tenant %q, expected exactly one", ref.path, len(streamSections), node.Tenant)
 		}
 
 		srcStreams, err := resolveStreams(ctx, streamSections[0])
 		if err != nil {
-			return nil, fmt.Errorf("resolving streams for object %q: %w", path, err)
+			return nil, fmt.Errorf("resolving streams for object %q: %w", ref.path, err)
 		}
 
 		sources = append(sources, &logSource{
-			path:         path,
+			path:         ref.path,
 			logsSections: logsSections,
 			streams:      srcStreams,
 		})
