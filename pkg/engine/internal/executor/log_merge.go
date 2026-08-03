@@ -147,7 +147,10 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	}
 
 	// Consume the globally-sorted stream and build compacted object
-	w := c.newLogObjectWriter(node, table, calc)
+	w, err := c.newLogObjectWriter(node, table, calc)
+	if err != nil {
+		return nil, err
+	}
 	lastSortKey := "unknown"
 	for res := range merged {
 		if err := ctx.Err(); err != nil {
@@ -444,80 +447,70 @@ type logObjectWriter struct {
 	table *globalStreamTable
 	calc  *dataobjindex.Calculator
 
-	logsMetrics    *logs.Metrics
-	streamsMetrics *streams.Metrics
-	targetObject   int
-	targetSection  int
+	builder *logsobj.Builder
+	sorter  *logsobj.Builder
 
-	builder       *dataobj.Builder
-	lb            *logs.Builder
-	sb            *streams.Builder
-	objSize       int
-	objStreams    int
-	objRecords    int
-	curGlobalID   int64
-	curObjLocalID int64
+	objSize        int
+	objRecords     int
+	currentSortKey string
+	hasSortKey     bool
 
 	stats logMergeStats
 }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable, calc *dataobjindex.Calculator) *logObjectWriter {
-	w := &logObjectWriter{
-		c:              c,
-		node:           node,
-		table:          table,
-		calc:           calc,
-		logsMetrics:    logs.NewMetrics(),
-		streamsMetrics: streams.NewMetrics(),
-		targetObject:   int(c.indexobjCfg.TargetObjectSize),
-		targetSection:  int(c.indexobjCfg.TargetSectionSize),
-	}
-	w.startObject()
-	return w
-}
+type fixedSortSchema []string
 
-func (w *logObjectWriter) startObject() {
-	w.builder = dataobj.NewBuilder(w.c.scratchStore)
-	w.lb = logs.NewBuilder(w.logsMetrics, w.c.logsBuilderOptions(w.node.SortSchema))
-	w.lb.SetTenant(w.node.Tenant)
-	w.sb = streams.NewBuilder(w.streamsMetrics, int(w.c.indexobjCfg.TargetPageSize), w.c.indexobjCfg.MaxPageRows)
-	w.sb.SetTenant(w.node.Tenant)
-	w.objSize, w.objStreams, w.objRecords = 0, 0, 0
-	w.curGlobalID, w.curObjLocalID = 0, 0
+func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
+
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+	cfg := logsobj.BuilderConfig{
+		BuilderBaseConfig:    c.indexobjCfg,
+		DataobjSortOrder:     "stream-asc",
+		AppendOrderedEnabled: true,
+		DataobjUseSortSchema: true,
+	}
+	overrides := fixedSortSchema(node.SortSchema)
+	builder, err := logsobj.NewBuilder(cfg, c.scratchStore, logsobj.NewBuilderMetrics(), c.logger, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("creating compacted logs builder: %w", err)
+	}
+	sorter, err := logsobj.NewBuilder(cfg, c.scratchStore, logsobj.NewBuilderMetrics(), c.logger, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("creating compacted logs sorter: %w", err)
+	}
+	return &logObjectWriter{
+		c:       c,
+		node:    node,
+		table:   table,
+		calc:    calc,
+		builder: builder,
+		sorter:  sorter,
+	}, nil
 }
 
 // add appends one merged record (carrying a global stream ID), rolling to a new
-// output object at stream boundaries once the current object reaches its target
-// size, and re-basing stream IDs to 1..M within each object.
+// output object at sort-key boundaries once the logsobj builder reaches its
+// target size. Keeping a complete sort-key group together ensures duplicate
+// logical streams cannot be split across output objects.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
-	if rec.StreamID != w.curGlobalID {
-
-		if w.objRecords > 0 && w.targetObject > 0 && w.objSize >= w.targetObject {
-			if err := w.finalizeAndUpload(ctx); err != nil {
-				return err
-			}
-			w.startObject()
+	if w.objRecords > 0 && w.hasSortKey && rec.SortKey != w.currentSortKey && w.builder.IsFull() {
+		if err := w.finalizeAndUpload(ctx); err != nil {
+			return err
 		}
-		w.curGlobalID = rec.StreamID
-		w.curObjLocalID++
-		s := w.table.streams[rec.StreamID]
-		s.ID = w.curObjLocalID
-		w.sb.AppendValue(s)
-		w.objStreams++
 	}
 
-	rec.StreamID = w.curObjLocalID
-	w.lb.Append(rec)
+	if rec.StreamID <= 0 || rec.StreamID >= int64(len(w.table.streams)) {
+		return fmt.Errorf("merged record references invalid global stream ID %d", rec.StreamID)
+	}
+	stream := w.table.streams[rec.StreamID]
+	if err := w.builder.AppendRecord(w.node.Tenant, stream.Labels, rec, rec.Timestamp); err != nil {
+		return fmt.Errorf("appending compacted log record: %w", err)
+	}
+
+	w.currentSortKey = rec.SortKey
+	w.hasSortKey = true
 	w.objRecords++
 	w.objSize += logRecordSize(rec)
-
-	if w.lb.UncompressedSize() > w.targetSection {
-		if err := w.builder.Append(w.lb); err != nil {
-			return fmt.Errorf("appending logs section: %w", err)
-		}
-		w.lb.Reset()
-		w.lb.SetTenant(w.node.Tenant)
-	}
 	return nil
 }
 
@@ -532,21 +525,21 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 	return w.stats, nil
 }
 
-// finalizeAndUpload appends the pending sections, flushes them into one compacted
-// log object, computes its content-hash path, and uploads it to the data bucket.
+// finalizeAndUpload flushes the deduplicating logsobj builder, restores
+// object-wide ordering after stream ID reassignment, computes the content-hash
+// path, and uploads the compacted object to the data bucket.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
-	if w.lb.UncompressedSize() > 0 {
-		if err := w.builder.Append(w.lb); err != nil {
-			return fmt.Errorf("appending logs section: %w", err)
-		}
-	}
-	if err := w.builder.Append(w.sb); err != nil {
-		return fmt.Errorf("appending streams section: %w", err)
-	}
-
-	obj, closer, err := w.builder.Flush()
+	intermediate, intermediateCloser, err := w.builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing object: %w", err)
+	}
+
+	obj, closer, err := w.sorter.CopyAndSort(ctx, intermediate)
+	if err != nil {
+		return errors.Join(fmt.Errorf("sorting compacted object: %w", err), intermediateCloser.Close())
+	}
+	if err := intermediateCloser.Close(); err != nil {
+		return errors.Join(fmt.Errorf("closing unsorted compacted object: %w", err), closer.Close())
 	}
 
 	pathReader, err := obj.Reader(ctx)
@@ -559,6 +552,11 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 	}
 	if hashErr != nil {
 		return errors.Join(hashErr, closer.Close())
+	}
+
+	objStreams, err := countTenantStreams(ctx, obj, w.node.Tenant)
+	if err != nil {
+		return errors.Join(err, closer.Close())
 	}
 
 	size, upErr := w.c.uploadObject(ctx, w.c.dataObjectBucket(), path, obj)
@@ -580,31 +578,36 @@ func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
 		"tenant", w.node.Tenant,
 		"path", path,
 		"object_index", w.stats.OutputObjects,
-		"streams", w.objStreams,
+		"streams", objStreams,
 		"records", w.objRecords,
 		"bytes", size,
 	)
 	w.stats.OutputObjectPaths = append(w.stats.OutputObjectPaths, path)
 	w.stats.OutputObjects++
-	w.stats.OutputStreams += w.objStreams
+	w.stats.OutputStreams += objStreams
 	w.stats.OutputRecords += w.objRecords
 	w.stats.OutputBytesCompressed += size
 	w.stats.OutputBytesUncompressed += int64(w.objSize)
+	w.objSize = 0
+	w.objRecords = 0
+	w.currentSortKey = ""
+	w.hasSortKey = false
 	return nil
 }
 
-// logsBuilderOptions builds the logs section options for a schema-sorted output,
-// sized from the executor's shared builder config.
-func (c *Context) logsBuilderOptions(sortSchema []string) logs.BuilderOptions {
-	return logs.BuilderOptions{
-		PageSizeHint:     int(c.indexobjCfg.TargetPageSize),
-		PageMaxRowCount:  c.indexobjCfg.MaxPageRows,
-		BufferSize:       int(c.indexobjCfg.BufferSize),
-		StripeMergeLimit: c.indexobjCfg.SectionStripeMergeLimit,
-		AppendStrategy:   logs.AppendOrdered,
-		SortOrder:        logs.SortSchemaASC,
-		SchemaLabels:     sortSchema,
+func countTenantStreams(ctx context.Context, obj *dataobj.Object, tenant string) (int, error) {
+	var count int
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		streamSection, err := streams.Open(ctx, section)
+		if err != nil {
+			return 0, fmt.Errorf("opening compacted streams section: %w", err)
+		}
+		count += streamSection.NumRows()
 	}
+	return count, nil
 }
 
 // logRecordSize approximates a record's uncompressed footprint the same way the

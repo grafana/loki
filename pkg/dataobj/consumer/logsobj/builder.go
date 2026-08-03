@@ -333,23 +333,13 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		return err
 	}
 
-	b.initBuilder(tenant)
-	sb, lb := b.streams[tenant], b.logs[tenant]
-
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	var sortKey string
-	if b.cfg.DataobjUseSortSchema && b.overrides != nil {
-		schemaLabels := b.overrides.SortSchemaLabels(tenant)
-		if len(schemaLabels) > 0 {
-			var err error
-			sortKey, err = ComputeSortKey(ls, schemaLabels)
-			if err != nil {
-				return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
-			}
-		}
+	sortKey, err := b.computeSortKey(tenant, ls)
+	if err != nil {
+		return err
 	}
 
 	for _, entry := range stream.Entries {
@@ -358,33 +348,86 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 			sz += int64(len(md.Value))
 		}
 
-		streamID := sb.Record(ls, entry.Timestamp, sz)
-
-		lb.Append(logs.Record{
-			StreamID:  streamID,
+		if err := b.appendRecord(tenant, ls, logs.Record{
 			Timestamp: entry.Timestamp,
 			Metadata:  convertMetadata(entry.StructuredMetadata),
 			Line:      []byte(entry.Line),
-			SortKey:   sortKey,
-		})
-
-		// If our logs section has gotten big enough, we want to flush it to the
-		// encoder and start a new section.
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
-			if err := b.builder.Append(lb); err != nil {
-				return err
-			}
-			// We need to set the tenant again after flushing because the builder is reset.
-			lb.SetTenant(tenant)
+		}, sortKey, sz); err != nil {
+			return err
 		}
 	}
 
+	b.finishAppend(recTime)
+	return nil
+}
+
+// AppendRecord buffers an already-decoded log record for streamLabels. The
+// record's StreamID and SortKey are replaced with values assigned by the
+// builder, allowing streams with equal labels to be deduplicated.
+func (b *Builder) AppendRecord(tenant string, streamLabels labels.Labels, record logs.Record, recTime time.Time) error {
+	b.metrics.appends.Inc()
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	sortKey, err := b.computeSortKey(tenant, streamLabels)
+	if err != nil {
+		return err
+	}
+
+	var size int64
+	size += int64(len(record.Line))
+	record.Metadata.Range(func(metadata labels.Label) {
+		size += int64(len(metadata.Value))
+	})
+
+	if err := b.appendRecord(tenant, streamLabels, record, sortKey, size); err != nil {
+		return err
+	}
+	b.finishAppend(recTime)
+	return nil
+}
+
+func (b *Builder) computeSortKey(tenant string, streamLabels labels.Labels) (string, error) {
+	if !b.cfg.DataobjUseSortSchema || b.overrides == nil {
+		return "", nil
+	}
+	schemaLabels := b.overrides.SortSchemaLabels(tenant)
+	if len(schemaLabels) == 0 {
+		return "", nil
+	}
+	sortKey, err := ComputeSortKey(streamLabels, schemaLabels)
+	if err != nil {
+		return "", fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+	}
+	return sortKey, nil
+}
+
+func (b *Builder) appendRecord(tenant string, streamLabels labels.Labels, record logs.Record, sortKey string, size int64) error {
+	b.initBuilder(tenant)
+	sb, lb := b.streams[tenant], b.logs[tenant]
+
+	record.StreamID = sb.Record(streamLabels, record.Timestamp, size)
+	record.SortKey = sortKey
+	lb.Append(record)
+
+	// If our logs section has gotten big enough, flush it to the encoder and
+	// start a new section.
+	if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(lb); err != nil {
+			return err
+		}
+		// The logs builder is reset after flushing, including its tenant.
+		lb.SetTenant(tenant)
+	}
+	return nil
+}
+
+func (b *Builder) finishAppend(recTime time.Time) {
 	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
 		b.earliestRecordTime = recTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
-	return nil
 }
 
 func (b *Builder) parseLabels(labelString string) (labels.Labels, error) {

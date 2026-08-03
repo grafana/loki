@@ -93,6 +93,90 @@ func TestBuilder(t *testing.T) {
 	})
 }
 
+func TestBuilderAppendRecord(t *testing.T) {
+	cfg := testBuilderConfig
+	cfg.DataobjUseSortSchema = true
+	cfg.AppendOrderedEnabled = true
+	overrides := tenantOverrides{"tenant": {"label:app"}}
+
+	builder, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+	require.NoError(t, err)
+
+	appAInstance1 := labels.FromStrings("app", "a", "instance", "1")
+	appAInstance2 := labels.FromStrings("app", "a", "instance", "2")
+	require.NoError(t, builder.AppendRecord("tenant", appAInstance1, logs.Record{
+		StreamID:  99,
+		Timestamp: time.Unix(100, 0).UTC(),
+		Metadata:  labels.FromStrings("trace_id", "abc"),
+		Line:      []byte("hello"),
+	}, time.Unix(100, 0).UTC()))
+	require.NoError(t, builder.AppendRecord("tenant", appAInstance1, logs.Record{
+		StreamID:  42,
+		Timestamp: time.Unix(200, 0).UTC(),
+		Line:      []byte("goodbye"),
+	}, time.Unix(200, 0).UTC()))
+	require.NoError(t, builder.AppendRecord("tenant", appAInstance2, logs.Record{
+		StreamID:  99,
+		Timestamp: time.Unix(150, 0).UTC(),
+		Line:      []byte("other"),
+	}, time.Unix(150, 0).UTC()))
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	streamSections := obj.Sections().Filter(streams.CheckSection)
+	var streamSectionRef *dataobj.Section
+	var streamSectionCount int
+	for _, section := range streamSections {
+		streamSectionRef = section
+		streamSectionCount++
+	}
+	require.Equal(t, 1, streamSectionCount)
+	streamSection, err := streams.Open(t.Context(), streamSectionRef)
+	require.NoError(t, err)
+
+	var gotStreams []streams.Stream
+	for res := range streams.IterSection(t.Context(), streamSection) {
+		stream, err := res.Value()
+		require.NoError(t, err)
+		gotStreams = append(gotStreams, stream)
+	}
+	require.Len(t, gotStreams, 2, "equal full labels must share one stream")
+
+	byInstance := make(map[string]streams.Stream, len(gotStreams))
+	for _, stream := range gotStreams {
+		byInstance[stream.Labels.Get("instance")] = stream
+	}
+	merged := byInstance["1"]
+	require.Equal(t, 2, merged.Rows)
+	require.True(t, merged.MinTimestamp.Equal(time.Unix(100, 0).UTC()))
+	require.True(t, merged.MaxTimestamp.Equal(time.Unix(200, 0).UTC()))
+	require.Equal(t, int64(len("hello")+len("abc")+len("goodbye")), merged.UncompressedSize)
+
+	logSections := obj.Sections().Filter(logs.CheckSection)
+	var logSectionCount int
+	recordsByLine := make(map[string]logs.Record)
+	for _, section := range logSections {
+		logSectionCount++
+		logSection, err := logs.Open(t.Context(), section)
+		require.NoError(t, err)
+		schema, err := logSection.SchemaLabels()
+		require.NoError(t, err)
+		require.Equal(t, []string{"label:app"}, schema)
+		for res := range logs.IterSection(t.Context(), logSection) {
+			record, err := res.Value()
+			require.NoError(t, err)
+			recordsByLine[string(record.Line)] = record
+		}
+	}
+	require.Positive(t, logSectionCount)
+	require.Equal(t, "abc", recordsByLine["hello"].Metadata.Get("trace_id"))
+	require.Contains(t, []int64{1, 2}, recordsByLine["hello"].StreamID)
+	require.Contains(t, []int64{1, 2}, recordsByLine["goodbye"].StreamID)
+	require.Equal(t, recordsByLine["hello"].StreamID, recordsByLine["goodbye"].StreamID)
+}
+
 // TestBuilder_Append ensures that appending to the buffer eventually reports
 // that the buffer is full.
 func TestBuilder_Append(t *testing.T) {
