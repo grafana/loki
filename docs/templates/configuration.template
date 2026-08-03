@@ -37,6 +37,18 @@ format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
 Brackets indicate that a parameter is optional. For non-list parameters the
 value is set to the specified default.
 
+### Strict configuration parsing
+
+By default, Loki parses configuration strictly: an unknown command-line flag or
+an unknown YAML configuration field causes Loki to fail at startup. This helps
+catch typos and misconfiguration.
+
+Set `-config.strict=false` to relax this behavior. Unknown flags and fields are
+then logged at the `WARN` level and ignored instead of aborting startup, and the
+`loki_unknown_config_total` metric counts how many unknown options were seen.
+This is useful when sharing a single configuration set between Grafana
+Enterprise Logs and OSS Loki, where each recognizes options the other does not.
+
 ### Use environment variables in the configuration
 
 > **Note:** This feature is only available in Loki 2.1+.
