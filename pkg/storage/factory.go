@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -447,7 +448,16 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		if err != nil {
+			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
+			var blankConfig bucket.Config
+			blankConfig.RegisterFlags(&flag.FlagSet{}) // Get defaults
+			if reflect.DeepEqual(&cfg.ObjectStore.Config, &blankConfig) {
+				return nil, fmt.Errorf("when use_thanos_objstore is true, config must be specified in the object_store section: %w", err)
+			}
+		}
+		return c, err
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
