@@ -1103,8 +1103,3 @@ supporting profiling data lands):
   - Confirmed takeaway: **prune dead interface methods before streaming
     them**. `SymbolTableSize`, `Symbols` (done) and `PostingsRanges`
     (pending) are all callerless on `index.Reader`.
-  - Note: the `dahoppe/stream-symbols` branch pointer was repeatedly
-    reset to `4a10d6df11` mid-session by an external process (likely
-    another running `claude` session against this checkout); commits
-    survived as objects each time. Worth ruling out before the next
-    stacked PR.
