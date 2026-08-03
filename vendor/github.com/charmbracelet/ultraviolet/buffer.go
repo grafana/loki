@@ -187,6 +187,9 @@ func renderLine(buf io.StringWriter, l Line) {
 		_, _ = buf.WriteString(c.String())
 	}
 
+	if pending.Len() > 0 {
+		_, _ = buf.WriteString(pending.String())
+	}
 	if link.URL != "" {
 		_, _ = buf.WriteString(ansi.ResetHyperlink())
 	}
