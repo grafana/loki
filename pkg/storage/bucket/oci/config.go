@@ -25,7 +25,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		&cfg.Provider,
 		prefix+"oci.provider",
 		"",
-		"OCI authentication provider: default, instance-principal, raw, or oke-workload-identity.",
+		"OCI authentication provider: default, instance-principal, or oke-workload-identity.",
 	)
 
 	f.StringVar(
@@ -70,27 +70,24 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"OCI request retry interval.",
 	)
 }
-
 func (cfg *Config) Validate() error {
-	provider := strings.ToLower(cfg.Provider)
+	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
+	cfg.Provider = provider
 
 	switch provider {
-	case "default", "instance-principal", "raw", "oke-workload-identity":
+	case "default", "instance-principal", "oke-workload-identity":
 		// Supported.
 	case "":
 		return fmt.Errorf("OCI provider must be configured")
 	default:
 		return fmt.Errorf("unsupported OCI provider %q", cfg.Provider)
 	}
-	if cfg.Provider == "" {
-		return fmt.Errorf("OCI provider must be configured")
-	}
 
 	if cfg.Bucket == "" {
 		return fmt.Errorf("OCI bucket must be configured")
 	}
 
-	if cfg.Provider == "oke-workload-identity" && cfg.Region == "" {
+	if provider == "oke-workload-identity" && cfg.Region == "" {
 		return fmt.Errorf("OCI region must be configured when using OKE workload identity")
 	}
 
