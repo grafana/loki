@@ -154,8 +154,10 @@ func (cfg *Config) Validate() error {
 	if err := cfg.S3.Validate(); err != nil {
 		return err
 	}
-	if err := cfg.OCI.Validate(); err != nil && cfg.OCI.Provider != "" {
-		return err
+	if cfg.OCI.IsConfigured() {
+		if err := cfg.OCI.Validate(); err != nil {
+			return err
+		}
 	}
 
 	return nil

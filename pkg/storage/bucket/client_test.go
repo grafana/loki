@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
@@ -99,4 +100,9 @@ func TestNewClient(t *testing.T) {
 			}
 		})
 	}
+}
+func TestOCIIsConfigured(t *testing.T) {
+	require.False(t, oci.Config{}.IsConfigured())
+	require.True(t, oci.Config{Bucket: "loki-data"}.IsConfigured())
+	require.True(t, oci.Config{Region: "ap-tokyo-1"}.IsConfigured())
 }

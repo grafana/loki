@@ -94,3 +94,29 @@ func (cfg *Config) Validate() error {
 
 	return nil
 }
+func (cfg Config) IsConfigured() bool {
+	return cfg.Provider != "" ||
+		cfg.Bucket != "" ||
+		cfg.CompartmentOCID != "" ||
+		cfg.TenancyOCID != "" ||
+		cfg.UserOCID != "" ||
+		cfg.Region != "" ||
+		cfg.PartSize != 0 ||
+		cfg.MaxRequestRetries != 0 ||
+		cfg.RequestRetryInterval != 0 ||
+		httpConfigIsConfigured(cfg.HTTPConfig)
+}
+
+func httpConfigIsConfigured(cfg objstoreoci.HTTPConfig) bool {
+	return cfg.IdleConnTimeout != 0 ||
+		cfg.ResponseHeaderTimeout != 0 ||
+		cfg.InsecureSkipVerify ||
+		cfg.TLSHandshakeTimeout != 0 ||
+		cfg.ExpectContinueTimeout != 0 ||
+		cfg.MaxIdleConns != 0 ||
+		cfg.MaxIdleConnsPerHost != 0 ||
+		cfg.MaxConnsPerHost != 0 ||
+		cfg.DisableCompression ||
+		cfg.ClientTimeout != 0 ||
+		cfg.Transport != nil
+}
