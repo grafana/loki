@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 rm -rf dist/tmp && mkdir -p dist/tmp/packages
 unzip dist/\*.zip -d dist/tmp/packages
