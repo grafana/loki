@@ -1651,13 +1651,9 @@ func (r *ByteSliceReader) Checksum() uint32 {
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.
+// Only used in tests.
 func (r *ByteSliceReader) Symbols() StringIter {
 	return r.symbols.Iter()
-}
-
-// SymbolTableSize returns the symbol table size in bytes.
-func (r *ByteSliceReader) SymbolTableSize() uint64 {
-	return uint64(r.symbols.Size())
 }
 
 // LabelValues returns value tuples that exist for the given label name.
