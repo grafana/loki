@@ -65,3 +65,44 @@ func TestNewObjstoreConfigOverridesHTTPConfig(t *testing.T) {
 		got.HTTPConfig.ClientTimeout,
 	)
 }
+func TestNewObjstoreConfigUsesRetryDefaults(t *testing.T) {
+	cfg := Config{
+		Provider: "instance-principal",
+		Bucket:   "loki-data",
+	}
+
+	got := newObjstoreConfig(cfg)
+
+	require.Equal(t, defaultMaxRequestRetries, got.MaxRequestRetries)
+	require.Equal(
+		t,
+		defaultRequestRetryInterval,
+		got.RequestRetryInterval,
+	)
+}
+
+func TestNewObjstoreConfigPreservesExplicitRetryConfig(t *testing.T) {
+	cfg := Config{
+		Provider:             "instance-principal",
+		Bucket:               "loki-data",
+		MaxRequestRetries:    3,
+		RequestRetryInterval: 5,
+	}
+
+	got := newObjstoreConfig(cfg)
+
+	require.Equal(t, 3, got.MaxRequestRetries)
+	require.Equal(t, 5, got.RequestRetryInterval)
+}
+
+func TestNewObjstoreConfigCanDisableRetries(t *testing.T) {
+	cfg := Config{
+		Provider:          "instance-principal",
+		Bucket:            "loki-data",
+		MaxRequestRetries: 1,
+	}
+
+	got := newObjstoreConfig(cfg)
+
+	require.Equal(t, 1, got.MaxRequestRetries)
+}

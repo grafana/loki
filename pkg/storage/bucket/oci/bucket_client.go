@@ -38,7 +38,14 @@ func newObjstoreConfig(cfg Config) objstoreoci.Config {
 	objstoreConfig.Region = cfg.Region
 	objstoreConfig.PartSize = cfg.PartSize
 	objstoreConfig.MaxRequestRetries = cfg.MaxRequestRetries
+	if objstoreConfig.MaxRequestRetries == 0 {
+		objstoreConfig.MaxRequestRetries = defaultMaxRequestRetries
+	}
+
 	objstoreConfig.RequestRetryInterval = cfg.RequestRetryInterval
+	if objstoreConfig.RequestRetryInterval == 0 {
+		objstoreConfig.RequestRetryInterval = defaultRequestRetryInterval
+	}
 	objstoreConfig.HTTPConfig = mergeHTTPConfig(
 		objstoreConfig.HTTPConfig,
 		cfg.HTTPConfig,

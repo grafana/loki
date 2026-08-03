@@ -8,6 +8,11 @@ import (
 	objstoreoci "github.com/thanos-io/objstore/providers/oci"
 )
 
+const (
+	defaultMaxRequestRetries    = 10
+	defaultRequestRetryInterval = 1
+)
+
 type Config struct {
 	Provider             string                 `yaml:"provider"`
 	Bucket               string                 `yaml:"bucket"`
@@ -56,19 +61,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		0,
 		"OCI multipart upload part size.",
 	)
-
 	f.IntVar(
 		&cfg.MaxRequestRetries,
 		prefix+"oci.max-request-retries",
 		0,
-		"Maximum number of OCI request retries.",
+		"Maximum number of OCI request attempts. Zero uses the default of 10; set to 1 to disable retries.",
 	)
 
 	f.IntVar(
 		&cfg.RequestRetryInterval,
 		prefix+"oci.request-retry-interval",
 		0,
-		"OCI request retry interval.",
+		"OCI request retry interval in seconds. Zero uses the default of 1 second.",
 	)
 }
 func (cfg *Config) Validate() error {
