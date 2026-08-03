@@ -49,8 +49,6 @@ const (
 	// HeaderLen represents number of bytes reserved of index for header.
 	HeaderLen = 5
 
-	// FormatV1 represents 1 version of index.
-	FormatV1 = 1
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
 	// FormatV3 represents 3 version of index. It adds support for
@@ -721,7 +719,7 @@ func (w *Creator) finishSymbols() error {
 	// pre-checksummed bytes in memory so we can use this later,
 	// loading the symbol table efficiently for the rest of the index writing.
 	copy(symbolBytes[hashPos:], w.buf1.Get())
-	w.symbols, err = NewSymbols(RealByteSlice(symbolBytes), w.Version, int(w.toc.Symbols))
+	w.symbols, err = NewSymbols(RealByteSlice(symbolBytes), int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
@@ -1267,8 +1265,6 @@ type Reader struct {
 	// Map of LabelName to a list of some LabelValues's position in the offset table.
 	// The first and last values for each name are always present.
 	postings map[string][]postingOffset
-	// For the v1 format, labelname -> labelvalue -> offset.
-	postingsV1 map[string]map[string]uint64
 
 	symbols     *Symbols
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
@@ -1345,7 +1341,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
+	if r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -1355,62 +1351,46 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		return nil, errors.Wrap(err, "read TOC")
 	}
 
-	r.symbols, err = NewSymbols(r.b, r.version, int(r.toc.Symbols))
+	r.symbols, err = NewSymbols(r.b, int(r.toc.Symbols))
 	if err != nil {
 		return nil, errors.Wrap(err, "read symbols")
 	}
 
-	if r.version == FormatV1 {
-		// Earlier V1 formats don't have a sorted postings offset table, so
-		// load the whole offset table into memory.
-		r.postingsV1 = map[string]map[string]uint64{}
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
-			if _, ok := r.postingsV1[string(name)]; !ok {
-				r.postingsV1[string(name)] = map[string]uint64{}
-				r.postings[string(name)] = nil // Used to get a list of labelnames in places.
+	var lastName, lastValue []byte
+	lastOff := 0
+	valueCount := 0
+	// For the postings offset table we keep every label name but only every nth
+	// label value (plus the first and last one), to save memory.
+	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
+		if _, ok := r.postings[string(name)]; !ok {
+			// Next label name.
+			r.postings[string(name)] = []postingOffset{}
+			if lastName != nil {
+				// Always include last value for each label name.
+				r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 			}
-			r.postingsV1[string(name)][string(value)] = off
-			return nil
-		}); err != nil {
-			return nil, errors.Wrap(err, "read postings table")
+			valueCount = 0
 		}
-	} else {
-		var lastName, lastValue []byte
-		lastOff := 0
-		valueCount := 0
-		// For the postings offset table we keep every label name but only every nth
-		// label value (plus the first and last one), to save memory.
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
-			if _, ok := r.postings[string(name)]; !ok {
-				// Next label name.
-				r.postings[string(name)] = []postingOffset{}
-				if lastName != nil {
-					// Always include last value for each label name.
-					r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
-				}
-				valueCount = 0
-			}
-			if valueCount%symbolFactor == 0 {
-				r.postings[string(name)] = append(r.postings[string(name)], postingOffset{value: string(value), off: off})
-				lastName, lastValue = nil, nil
-			} else {
-				lastName, lastValue = name, value
-				lastOff = off
-			}
-			valueCount++
-			return nil
-		}); err != nil {
-			return nil, errors.Wrap(err, "read postings table")
+		if valueCount%symbolFactor == 0 {
+			r.postings[string(name)] = append(r.postings[string(name)], postingOffset{value: string(value), off: off})
+			lastName, lastValue = nil, nil
+		} else {
+			lastName, lastValue = name, value
+			lastOff = off
 		}
-		if lastName != nil {
-			r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
-		}
-		// Trim any extra space in the slices.
-		for k, v := range r.postings {
-			l := make([]postingOffset, len(v))
-			copy(l, v)
-			r.postings[k] = l
-		}
+		valueCount++
+		return nil
+	}); err != nil {
+		return nil, errors.Wrap(err, "read postings table")
+	}
+	if lastName != nil {
+		r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
+	}
+	// Trim any extra space in the slices.
+	for k, v := range r.postings {
+		l := make([]postingOffset, len(v))
+		copy(l, v)
+		r.postings[k] = l
 	}
 
 	r.nameSymbols = make(map[uint32]string, len(r.postings))
@@ -1470,9 +1450,8 @@ func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 }
 
 type Symbols struct {
-	bs      ByteSlice
-	version int
-	off     int
+	bs  ByteSlice
+	off int
 
 	offsets []int
 	seen    int
@@ -1481,11 +1460,10 @@ type Symbols struct {
 const symbolFactor = 32
 
 // NewSymbols returns a Symbols object for symbol lookups.
-func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
+func NewSymbols(bs ByteSlice, off int) (*Symbols, error) {
 	s := &Symbols{
-		bs:      bs,
-		version: version,
-		off:     off,
+		bs:  bs,
+		off: off,
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, off, castagnoliTable))
 	var (
@@ -1512,17 +1490,13 @@ func (s Symbols) Lookup(o uint32) (string, error) {
 		B: s.bs.Range(0, s.bs.Len()),
 	})
 
-	if s.version >= FormatV2 {
-		if int(o) >= s.seen {
-			return "", errors.Errorf("unknown symbol offset %d", o)
-		}
-		d.Skip(s.offsets[int(o/symbolFactor)])
-		// Walk until we find the one we want.
-		for i := o - (o / symbolFactor * symbolFactor); i > 0; i-- {
-			d.UvarintBytes()
-		}
-	} else {
-		d.Skip(int(o))
+	if int(o) >= s.seen {
+		return "", errors.Errorf("unknown symbol offset %d", o)
+	}
+	d.Skip(s.offsets[int(o/symbolFactor)])
+	// Walk until we find the one we want.
+	for i := o - (o / symbolFactor * symbolFactor); i > 0; i-- {
+		d.UvarintBytes()
 	}
 	sym := d.UvarintStr()
 	if d.Err() != nil {
@@ -1552,10 +1526,8 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	}
 	d.Skip(s.offsets[i])
 	res := i * symbolFactor
-	var lastLen int
 	var lastSymbol string
 	for d.Err() == nil && res <= s.seen {
-		lastLen = d.Len()
 		lastSymbol = yoloString(d.UvarintBytes())
 		if lastSymbol >= sym {
 			break
@@ -1568,10 +1540,7 @@ func (s Symbols) ReverseLookup(sym string) (uint32, error) {
 	if lastSymbol != sym {
 		return 0, errors.Errorf("unknown symbol %q", sym)
 	}
-	if s.version >= FormatV2 {
-		return uint32(res), nil
-	}
-	return uint32(s.bs.Len() - lastLen), nil
+	return uint32(res), nil
 }
 
 func (s Symbols) Size() int {
@@ -1689,18 +1658,6 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 		return nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
 
-	if r.version == FormatV1 {
-		e, ok := r.postingsV1[name]
-		if !ok {
-			return nil, nil
-		}
-		values := make([]string, 0, len(e))
-		for k := range e {
-			values = append(values, k)
-		}
-		return values, nil
-
-	}
 	e, ok := r.postings[name]
 	if !ok {
 		return nil, nil
@@ -1745,12 +1702,8 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 	// Gather offsetsMap the name offsetsMap in the symbol table first
 	offsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
-		offset := id
-		// In version 2+ series IDs are no longer exact references but series are 16-byte padded
-		// and the ID is the multiple of 16 of the actual position.
-		if r.version >= FormatV2 {
-			offset = id * 16
-		}
+		// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
+		offset := id * 16
 
 		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 		buf := d.Get()
@@ -1784,12 +1737,8 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
 func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
-	offset := id
-	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
-	// and the ID is the multiple of 16 of the actual position.
-	if r.version >= FormatV2 {
-		offset = id * 16
-	}
+	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
+	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	buf := d.Get()
 	if d.Err() != nil {
@@ -1810,12 +1759,8 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
 func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	offset := id
-	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
-	// and the ID is the multiple of 16 of the actual position.
-	if r.version >= FormatV2 {
-		offset = id * 16
-	}
+	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
+	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
 		return 0, d.Err()
@@ -1829,12 +1774,8 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 }
 
 func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	offset := id
-	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
-	// and the ID is the multiple of 16 of the actual position.
-	if r.version >= FormatV2 {
-		offset = id * 16
-	}
+	// Series IDs are 16-byte padded and ID is the multiple of 16 of the actual position
+	offset := id * 16
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
 		return 0, ChunkStats{}, d.Err()
@@ -1844,28 +1785,6 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 }
 
 func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
-	if r.version == FormatV1 {
-		e, ok := r.postingsV1[name]
-		if !ok {
-			return EmptyPostings(), nil
-		}
-		res := make([]Postings, 0, len(values))
-		for _, v := range values {
-			postingsOff, ok := e[v]
-			if !ok {
-				continue
-			}
-			// Read from the postings table.
-			d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(postingsOff), castagnoliTable))
-			_, p, err := r.dec.Postings(d.Get())
-			if err != nil {
-				return nil, errors.Wrap(err, "decode postings")
-			}
-			res = append(res, p)
-		}
-		return Merge(res...), nil
-	}
-
 	e, ok := r.postings[name]
 	if !ok {
 		return EmptyPostings(), nil
