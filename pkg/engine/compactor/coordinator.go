@@ -339,6 +339,7 @@ func logLogTaskDetails(logger log.Logger, tasks []*proto.TaskSpec) {
 
 // compactTenant performs one index-compaction pass for a tenant and window.
 func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
+	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
@@ -350,16 +351,15 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	converged := v2.IsConverged(sections, compareIndexSortKey)
 	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
 	if converged {
-		level.Debug(c.logger).Log("msg", "index-compaction: window converged, skipping",
-			"tenant", tenant, "window", window, "input_runs", inputRuns)
+		level.Debug(windowLogger).Log("msg", "index-compaction: window converged, skipping", "input_runs", inputRuns)
 		return compactionStats{}, nil
 	}
 
 	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	outputs := make([]string, len(tasks))
 
-	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
-	logIndexTaskDetails(c.logger, tasks)
+	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	logIndexTaskDetails(windowLogger, tasks)
 
 	// IndexMerge opens each referenced object whole. Until it reads individual
 	// sections, one object may be repeated across task outputs and deduplicated
@@ -429,13 +429,11 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(c.logger).Log("msg", "index-compaction ToC replace race-loss",
-			"tenant", tenant, "window", window)
+		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace race-loss")
 		return compactionStats{}, nil
 	}
 
-	level.Info(c.logger).Log("msg", "tenant cycle complete",
-		"tenant", tenant, "window", window,
+	level.Info(windowLogger).Log("msg", "tenant cycle complete",
 		"removed_indexes", len(oldPaths),
 		"added_indexes", len(newEntries),
 	)
