@@ -89,7 +89,6 @@ func NewChunkStoreWithRegisterer(dir, tenantID string, reg prometheus.Registerer
 				Period: time.Hour * 24,
 			},
 		},
-		RowShards: 16,
 	}
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{

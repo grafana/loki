@@ -1958,6 +1958,7 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	if t.Cfg.isTarget(IndexGateway) {
 		interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, interceptors.PerTenantStreamRequest)
 	}
 	return nil, nil
 }
@@ -2520,7 +2521,7 @@ func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	}
 
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger, nil)
 	if err != nil {
 		return nil, err
 	}

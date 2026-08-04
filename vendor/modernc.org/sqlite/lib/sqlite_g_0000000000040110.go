@@ -1014,7 +1014,8 @@ type TRtreeCursor = struct {
 	FpReadAux     uintptr
 	FsPoint       TRtreeSearchPoint
 	FaNode        [5]uintptr
-	FanQueue      [41]Tu32
+	FanQueue      [42]Tu32
+	F__ccgo_pad15 [4]byte
 }
 
 type TRtreeMatchArg = struct {
@@ -2040,6 +2041,7 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 	var ii int32
 	var pMod, pNext, pThis uintptr
 	_, _, _, _ = ii, pMod, pNext, pThis
+	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	pThis = (*THash)(unsafe.Pointer(db + 404)).Ffirst
 	for {
 		if !(pThis != 0) {
@@ -2068,6 +2070,7 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 		;
 		pThis = pNext
 	}
+	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	return SQLITE_OK
 }
 
@@ -2082,10 +2085,17 @@ func Xsqlite3_drop_modules(tls *libc.TLS, db uintptr, azNames uintptr) (r int32)
 //	** added or changed.
 //	*/
 func Xsqlite3_expired(tls *libc.TLS, pStmt uintptr) (r int32) {
+	var iRet int32
 	var p uintptr
-	_ = p
-	p = pStmt
-	return libc.BoolInt32(p == uintptr(0) || int32(Tbft(*(*uint16)(unsafe.Pointer(p + 152))&0x3>>0)) != 0)
+	_, _ = iRet, p
+	iRet = int32(1)
+	if pStmt != 0 {
+		p = pStmt
+		Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
+		iRet = int32(Tbft(*(*uint16)(unsafe.Pointer(p + 152)) & 0x3 >> 0))
+		Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer((*TVdbe)(unsafe.Pointer(p)).Fdb)).Fmutex)
+	}
+	return iRet
 }
 
 // C documentation
@@ -2130,6 +2140,7 @@ func Xsqlite3_limit(tls *libc.TLS, db uintptr, limitId int32, newLimit int32) (r
 	if limitId < 0 || limitId >= libc.Int32FromInt32(SQLITE_LIMIT_PARSER_DEPTH)+libc.Int32FromInt32(1) {
 		return -int32(1)
 	}
+	Xsqlite3_mutex_enter(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	oldLimit = **(**int32)(__ccgo_up(db + 120 + uintptr(limitId)*4))
 	if newLimit >= 0 { /* IMP: R-52476-28732 */
 		if newLimit > _aHardLimit[limitId] {
@@ -2141,6 +2152,7 @@ func Xsqlite3_limit(tls *libc.TLS, db uintptr, limitId int32, newLimit int32) (r
 		}
 		**(**int32)(__ccgo_up(db + 120 + uintptr(limitId)*4)) = newLimit
 	}
+	Xsqlite3_mutex_leave(tls, (*Tsqlite3)(unsafe.Pointer(db)).Fmutex)
 	return oldLimit /* IMP: R-53341-35419 */
 }
 
@@ -2433,7 +2445,7 @@ func Xsqlite3_vtab_rhs_value(tls *libc.TLS, pIdxInfo uintptr, iCons int32, ppVal
 	pVal = uintptr(0)
 	rc = SQLITE_OK
 	if iCons < 0 || iCons >= (*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FnConstraint {
-		rc = _sqlite3MisuseError(tls, int32(173284)) /* EV: R-30545-25046 */
+		rc = _sqlite3MisuseError(tls, int32(173448)) /* EV: R-30545-25046 */
 	} else {
 		if *(*uintptr)(unsafe.Pointer(pH + 20 + uintptr(iCons)*4)) == uintptr(0) {
 			pTerm = _termFromWhereClause(tls, (*THiddenIndexInfo)(unsafe.Pointer(pH)).FpWC, (**(**Tsqlite3_index_constraint)(__ccgo_up((*Tsqlite3_index_info)(unsafe.Pointer(pIdxInfo)).FaConstraint + uintptr(iCons)*12))).FiTermOffset)
@@ -5019,7 +5031,7 @@ func _resetCursor(tls *libc.TLS, pCsr uintptr) {
 	}
 	Xsqlite3_free(tls, (*TRtreeCursor)(unsafe.Pointer(pCsr)).FaPoint)
 	pStmt = (*TRtreeCursor)(unsafe.Pointer(pCsr)).FpReadAux
-	libc.Xmemset(tls, pCsr, 0, uint32(248))
+	libc.Xmemset(tls, pCsr, 0, uint32(256))
 	(*TRtreeCursor)(unsafe.Pointer(pCsr)).Fbase.FpVtab = pRtree
 	(*TRtreeCursor)(unsafe.Pointer(pCsr)).FpReadAux = pStmt
 	/* The following will only fail if the previous sqlite3_step() call failed,
@@ -5041,9 +5053,9 @@ func _rtreeOpen(tls *libc.TLS, pVTab uintptr, ppCursor uintptr) (r int32) {
 	_, _, _ = pCsr, pRtree, rc
 	rc = int32(SQLITE_NOMEM)
 	pRtree = pVTab
-	pCsr = Xsqlite3_malloc64(tls, uint64(248))
+	pCsr = Xsqlite3_malloc64(tls, uint64(256))
 	if pCsr != 0 {
-		libc.Xmemset(tls, pCsr, 0, uint32(248))
+		libc.Xmemset(tls, pCsr, 0, uint32(256))
 		(*TRtreeCursor)(unsafe.Pointer(pCsr)).Fbase.FpVtab = pVTab
 		rc = SQLITE_OK
 		(*TRtree)(unsafe.Pointer(pRtree)).FnCursor = (*TRtree)(unsafe.Pointer(pRtree)).FnCursor + 1
@@ -5635,7 +5647,7 @@ func _sqlite3ProgressCheck(tls *libc.TLS, p uintptr) {
 		if (*TParse)(unsafe.Pointer(p)).Frc == int32(SQLITE_INTERRUPT) {
 			(*TParse)(unsafe.Pointer(p)).FnProgressSteps = uint32(0)
 		} else {
-			v2 = p + 100
+			v2 = p + 104
 			*(*Tu32)(unsafe.Pointer(v2)) = *(*Tu32)(unsafe.Pointer(v2)) + 1
 			v1 = *(*Tu32)(unsafe.Pointer(v2))
 			if v1 >= (*Tsqlite3)(unsafe.Pointer(db)).FnProgressOps {

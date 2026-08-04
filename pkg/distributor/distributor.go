@@ -51,6 +51,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -104,6 +105,10 @@ type Config struct {
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
+	// OTLPAttributeLogging configures the sampled logging of OTLP attribute expansion
+	// which is enabled per tenant with the log_otlp_attribute_expansion runtime config.
+	OTLPAttributeLogging otlpattrs.Cfg `yaml:"otlp_attribute_logging" doc:"description=Customize the logging of OTLP attribute expansion."`
+
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
 	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
@@ -128,6 +133,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
@@ -317,6 +323,9 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
+	// Rate limited reporter for OTLP resource and scope attribute expansion.
+	otlpAttrReporter *otlpattrs.Reporter
+
 	RequestParserWrapper push.RequestParserWrapper
 
 	usageTracker   push.UsageTracker
@@ -483,6 +492,7 @@ func New(
 		ingesterTasks:         make(chan pushIngesterTask),
 		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		otlpAttrReporter:      otlpattrs.NewReporter(cfg.OTLPAttributeLogging, configs),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
@@ -797,9 +807,18 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			prevTs := stream.Entries[0].Timestamp
 			streamEntriesSize := 0
 
+			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
+			// label is reserved: the push parsers reject streams that already carry it, so it can
+			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
+			// validation. Entries too far in the future are still rejected.
+			entryValidationContext := validationContext
+			if lbs.Has(constants.BackfillLabel) {
+				entryValidationContext.rejectOldSample = false
+			}
+
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
+				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue

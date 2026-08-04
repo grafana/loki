@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader reads the set of logs from an [Object].
@@ -139,7 +138,7 @@ func unsafeString(data []byte) string {
 }
 
 func (r *RowReader) initReader(ctx context.Context) error {
-	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
+	dset, err := r.sec.makeDataset()
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}

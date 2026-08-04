@@ -12,6 +12,15 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
+// batchReader is the batch-level reader consumed by [RowReader]. [*Reader]
+// implements it; tests substitute a fake to exercise batch-boundary handling
+// (e.g. empty, non-EOF batches).
+type batchReader interface {
+	Open(ctx context.Context) error
+	Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error)
+	Close() error
+}
+
 // RowReader reads [Stat] records from a stats [Section] one row at a time, in
 // section order. It is a row-level cursor over the batch-level [Reader].
 // It implements [iter.CloseIterator] over [Stat].
@@ -19,7 +28,7 @@ import (
 // A RowReader is not safe for concurrent use.
 type RowReader struct {
 	ctx     context.Context
-	reader  *Reader
+	reader  batchReader
 	batch   arrow.RecordBatch
 	index   int
 	columns ColumnIndex
@@ -80,26 +89,33 @@ func (r *RowReader) next() (Stat, error) {
 			r.batch = nil
 		}
 
-		batch, err := r.reader.Read(r.ctx, 8192)
-		if errors.Is(err, io.EOF) && batch == nil {
-			return Stat{}, io.EOF
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return Stat{}, fmt.Errorf("reading batch: %w", err)
-		}
-
-		if batch != nil && batch.NumRows() > 0 {
-			r.batch = batch
-			r.index = 0
-			if r.columns == nil {
-				r.columns = BuildColumnIndex(batch.Schema())
+		// Read batches until one contains rows or the reader reaches EOF. The
+		// underlying reader may return an empty (0-row) batch without io.EOF
+		// when a read window is fully filtered out; that means "keep reading",
+		// not "end of section". Treating an empty non-EOF batch as EOF would
+		// silently drop every row after the first fully-filtered batch.
+		for r.batch == nil {
+			batch, err := r.reader.Read(r.ctx, 8192)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return Stat{}, fmt.Errorf("reading batch: %w", err)
 			}
-		} else if batch != nil {
-			batch.Release()
-			return Stat{}, io.EOF
-		} else {
-			// Nil batch with no error: treat as end of section.
-			return Stat{}, io.EOF
+
+			if batch != nil && batch.NumRows() > 0 {
+				r.batch = batch
+				r.index = 0
+				if r.columns == nil {
+					r.columns = BuildColumnIndex(batch.Schema())
+				}
+				break
+			}
+
+			// Empty or nil batch: release it (if any). Stop only on EOF.
+			if batch != nil {
+				batch.Release()
+			}
+			if errors.Is(err, io.EOF) {
+				return Stat{}, io.EOF
+			}
 		}
 	}
 

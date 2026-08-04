@@ -1,0 +1,125 @@
+clear
+load
+  {app="foo", namespace="a"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo", namespace="a"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar", namespace="b"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="bar", namespace="b"} "noise" @ 5s [repeat every 10s for 19]
+
+# vector(n) synthesizes a single {}-labelled sample (the loaded data is not queried).
+eval instant at 60s vector(2)
+  {} 2
+eval range from 60s to 180s step 30s vector(2)
+  {} 2 2 2 2 2
+
+# vector accepts a decimal literal.
+eval instant at 60s vector(3.14)
+  {} 3.14
+eval range from 60s to 180s step 30s vector(3.14)
+  {} 3.14 3.14 3.14 3.14 3.14
+
+# vector(n) doesn't accept a nested query.
+eval instant at 60s vector(count_over_time({app="a"}[1m]))
+  expect fail regex: expecting NUMBER
+
+# label_replace().
+clear
+load
+  {app="foo", tier="1"}    "xbar"  @ 0s [repeat every 10s for 13]
+  {app="foo", tier="1"}    "noise" @ 5s [repeat every 10s for 13]
+  {app="foobar", tier="2"} "xbar"  @ 0s [repeat every 10s for 13]
+  {app="foobar", tier="2"} "noise" @ 5s [repeat every 10s for 13]
+
+# Capture copy into a new label. The regex is anchored to the whole value, so "(fo)o" matches
+# "foo" (new="fo") but NOT "foobar" (left unchanged).
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "new", "$1", "app", "(fo)o")
+  {app="foo", tier="1", new="fo"} 6
+  {app="foobar", tier="2"} 6
+eval range from 60s to 120s step 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "new", "$1", "app", "(fo)o")
+  {app="foo", tier="1", new="fo"} 6 6
+  {app="foobar", tier="2"} 6 6
+
+# Overwrite an existing dst label.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "tier", "gold", "app", "foo")
+  {app="foo", tier="gold"} 6
+  {app="foobar", tier="2"} 6
+
+# Empty replacement – coming from empty dst value – deletes dst label.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "tier", "", "app", "foo")
+  {app="foo"} 6
+  {app="foobar", tier="2"} 6
+
+# Empty replacement – coming from regexp capture group – deletes dst label.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "app", "$1", "app", "foo(.*)")
+   {tier="1"} 6
+   {app="bar", tier="2"} 6
+
+# dst==src rewrites the label in place.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "app", "$1", "app", "f(.*)")
+  {app="oo", tier="1"} 6
+  {app="oobar", tier="2"} 6
+
+# An absent source label reads as "": a regex that matches the empty string still fires, so a
+# constant replacement adds the dst to every series (this is the idiomatic "add a label" use).
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "region", "eu", "missing", ".*")
+  {app="foo", tier="1", region="eu"} 6
+  {app="foobar", tier="2", region="eu"} 6
+
+# Invalid regex returns a parse error.
+eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "new", "$1", "app", "(")
+  expect fail
+
+# label_replace reads the final label set, the one left after structured metadata and parser
+# conflicts are resolved. The precedence order is: stream > structured metadata > parsed.
+# Each conflict loser keeps its value under a `<name>_extracted` label.
+# Structured metadata is present even without a parser stage.
+clear
+load
+  # Stream label conflicting with structured metadata.
+  {app="a", env="prod"} "msg" @ 20s [repeat every 20s for 3] [metadata region="eu" env="canary"]
+  {app="noise"} "noise" @ 30s
+
+# `region` exists only in structured metadata: label_replace copies it like any other label.
+eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "region", "(.*)")
+  {app="a", env="prod", env_extracted="canary", region="eu", out="eu"} 3
+
+# `env` is both a stream label and structured metadata.
+eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "env", "(.*)")
+  {app="a", env="prod", env_extracted="canary", region="eu", out="prod"} 3
+eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "env_extracted", "(.*)")
+  {app="a", env="prod", env_extracted="canary", region="eu", out="canary"} 3
+
+clear
+load
+  # Line fields conflict with stream labels or structured metadata.
+  {app="a", zone="s"} "svc=api zone=p tid=p" @ 20s [repeat every 20s for 3] [metadata tid="m"]
+  {app="noise"} "noise" @ 30s
+
+# `svc` has no conflict.
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "svc", "(.*)")
+  {app="a", zone="s", zone_extracted="p", tid="m", tid_extracted="p", svc="api", out="api"} 3
+
+# `zone` line field conflicts with stream label.
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "zone", "(.*)")
+  {app="a", zone="s", zone_extracted="p", tid="m", tid_extracted="p", svc="api", out="s"} 3
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "zone_extracted", "(.*)")
+  {app="a", zone="s", zone_extracted="p", tid="m", tid_extracted="p", svc="api", out="p"} 3
+
+# `tid` line field conflicts with structured metadata.
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "tid", "(.*)")
+  {app="a", zone="s", zone_extracted="p", tid="m", tid_extracted="p", svc="api", out="m"} 3
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "tid_extracted", "(.*)")
+  {app="a", zone="s", zone_extracted="p", tid="m", tid_extracted="p", svc="api", out="p"} 3
+
+clear
+load
+  # A line field conflicts both with stream labels and structured metadata.
+  {app="a", k="s"} "k=p" @ 20s [repeat every 20s for 3] [metadata k="m"]
+  {app="noise"} "noise" @ 30s
+
+# `k` line field conflicts both with stream labels and structured metadata.
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k", "(.*)")
+  {app="a", k="s", k_extracted="p", out="s"} 3
+eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k_extracted", "(.*)")
+  {app="a", k="s", k_extracted="p", out="p"} 3
+eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "k_extracted", "(.*)")
+  {app="a", k="s", k_extracted="m", out="m"} 3

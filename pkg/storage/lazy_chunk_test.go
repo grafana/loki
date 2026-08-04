@@ -21,19 +21,16 @@ import (
 func TestLazyChunkIterator(t *testing.T) {
 	periodConfigs := []config.PeriodConfig{
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v11",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v11",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v12",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v12",
 		},
 		{
-			From:      config.DayTime{Time: 0},
-			Schema:    "v13",
-			RowShards: 16,
+			From:   config.DayTime{Time: 0},
+			Schema: "v13",
 		},
 	}
 

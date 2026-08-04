@@ -1,0 +1,839 @@
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 61]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 61]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 31]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 31]
+
+eval instant at 60s rate({app="foo"} |~".+bar" [1m])
+  {app="foo"} 0.1
+eval range from 60s to 120s step 60s rate({app="foo"} |~".+bar" [1m])
+  {app="foo"} 0.1 0.1
+
+eval instant at 60s rate(({app=~"foo|bar"} |~".+bar")[1m])
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar")[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+# absent_over_time — empty when the selector matches data.
+eval instant at 300s absent_over_time(({app="foo"} |~".+bar")[5m])
+  expect empty
+eval range from 60s to 180s step 30s absent_over_time(({app="foo"} |~".+bar")[1m])
+  expect empty
+
+# absent_over_time — 1 when the selector+filter matches nothing.
+clear
+load
+  {app="foo"} "noise" @ 0s [repeat every 10s for 61]
+
+eval instant at 300s absent_over_time(({app="foo"} |~".+bar")[5m])
+  {app="foo"} 1
+eval range from 60s to 180s step 30s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 1 1 1
+
+# absent_over_time across present→absent boundaries: matching logs exist only in a center band
+# (130s–280s), so [1m] windows before and after it catch nothing.
+clear
+load
+  {app="foo"} "xbar"  @ 130s [repeat every 30s for 6]
+  {app="foo"} "noise" @ 0s   [repeat every 30s for 15]
+
+# Absent before and after the center.
+eval range from 60s to 420s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 _ _ _ 1 1
+# Absent only at the beginning (range ends while data is present).
+eval range from 60s to 240s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} 1 1 _ _
+# Absent only at the end (range starts while data is present).
+eval range from 180s to 420s step 60s absent_over_time(({app="foo"} |~".+bar")[1m])
+  {app="foo"} _ _ _ 1 1
+
+clear
+load
+  {app="foo"} "xbar" @ 0s [repeat every 10s for 13]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
+
+# The [30s] range is half-open: its lower bound is exclusive, upper bound inclusive.
+eval instant at 60s rate({app="foo"}[30s])
+  {app="foo"} 0.1
+eval range from 60s to 120s step 15s rate({app="foo"}[30s])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+
+eval instant at 60s bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12 12 12 12 12
+
+# bytes_over_time compared against a scalar (12 bytes per [30s] window).
+eval instant at 60s bytes_over_time({app="foo"}[30s]) > 1
+  {app="foo"} 12
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s]) > 1
+  {app="foo"} 12 12 12 12 12
+eval instant at 60s bytes_over_time({app="foo"}[30s]) > bool 1
+  {app="foo"} 1
+eval range from 60s to 120s step 15s bytes_over_time({app="foo"}[30s]) > bool 1
+  {app="foo"} 1 1 1 1 1
+# Should return the same result as `bytes_over_time({app="foo"}[30s]) > 1`.
+# https://grafana.com/docs/loki/latest/query/#comparison-operators
+# Between a vector and a scalar, the operator is applied to every sample's value in the vector.
+eval instant at 60s 1 < bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12
+eval range from 60s to 120s step 15s 1 < bytes_over_time({app="foo"}[30s])
+  {app="foo"} 12 12 12 12 12
+# Should return the same result as `bytes_over_time({app="foo"}[30s]) > bool 1` (bool form of the above).
+eval instant at 60s 1 < bool bytes_over_time({app="foo"}[30s])
+  {app="foo"} 1
+eval range from 60s to 120s step 15s 1 < bool bytes_over_time({app="foo"}[30s])
+  {app="foo"} 1 1 1 1 1
+
+# bytes_rate is computed as Σ(line bytes in window) / range seconds.
+clear
+load
+  {app="a"} "xbar"  @ 0s [repeat every 10s for 13]
+  {app="a"} "noise" @ 5s [repeat every 10s for 13]
+  {app="b"} "xxbar" @ 0s [repeat every 10s for 13]
+  {app="b"} "noise" @ 5s [repeat every 10s for 13]
+
+eval instant at 60s bytes_rate({app=~"a|b"} |~".+bar" [30s])
+  {app="a"} 0.4
+  {app="b"} 0.5
+
+# Overlapping range vector selectors (step < range).
+eval range from 60s to 120s step 15s bytes_rate({app=~"a|b"} |~".+bar" [30s])
+  {app="a"} 0.4 0.4 0.4 0.4 0.4
+  {app="b"} 0.5 0.5 0.5 0.5 0.5
+
+# Non-overlapping range vector selectors (step > range).
+eval range from 60s to 120s step 30s bytes_rate({app=~"a|b"} |~".+bar" [20s])
+  {app="a"} 0.4 0.4 0.4
+  {app="b"} 0.5 0.5 0.5
+
+# Output gap (past the last sample).
+eval range from 90s to 150s step 30s bytes_rate({app=~"a|b"} |~".+bar" [20s])
+  {app="a"} 0.4 0.4 _
+  {app="b"} 0.5 0.5 _
+
+# unwrap of a stream label `foo` (no parser stage).
+clear
+load
+  {app="foo", foo="2"} "xbar" @ 0s [repeat every 10s for 13]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 13]
+
+eval instant at 60s rate({app="foo"} | unwrap foo [30s])
+  {app="foo"} 0.2
+eval range from 60s to 120s step 15s rate({app="foo"} | unwrap foo [30s])
+  {app="foo"} 0.2 0.2 0.2 0.2 0.2
+
+# first_over_time / last_over_time over unwrapped values.
+clear
+load
+  {app="a"} "v=10"  @ 10s
+  {app="a"} "v=20"  @ 20s
+  {app="a"} "v=30"  @ 30s
+  {app="a"} "v=40"  @ 90s
+  {app="a"} "v=NaN" @ 100s
+  {app="a"} "noise" @ 15s
+
+# Range vector selector spanning multiple samples.
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 30
+
+# Range vector selector picking a single sample.
+eval instant at 40s first_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 30
+eval instant at 40s last_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 30
+
+# Overlapping range vector selectors (step < range).
+eval range from 20s to 40s step 10s first_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 10 20 30
+eval range from 20s to 40s step 10s last_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 20 30 30
+
+# Non-overlapping range vector selectors (step > range).
+eval range from 10s to 30s step 20s first_over_time({app="a"} | logfmt | unwrap v [10s])
+  {app="a"} 10 30
+eval range from 10s to 30s step 20s last_over_time({app="a"} | logfmt | unwrap v [10s])
+  {app="a"} 10 30
+
+# Output gaps.
+eval range from 30s to 90s step 30s first_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 20 _ 40
+eval range from 30s to 90s step 30s last_over_time({app="a"} | logfmt | unwrap v [20s])
+  {app="a"} 30 _ 40
+
+# first/last return the boundary sample verbatim, including NaN (they don't skip it).
+eval instant at 110s first_over_time({app="a"} | logfmt | unwrap v [30s])
+  {app="a"} 40
+eval instant at 110s last_over_time({app="a"} | logfmt | unwrap v [30s])
+  {app="a"} NaN
+eval instant at 125s first_over_time({app="a"} | logfmt | unwrap v [30s])
+  {app="a"} NaN
+
+# first_over_time() / last_over_time() with grouping.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 2
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 20
+
+# quantile_over_time.
+clear
+load
+  {app="a"} "v=1"   @ 10s
+  {app="a"} "v=2"   @ 20s
+  {app="a"} "v=3"   @ 30s
+  {app="a"} "v=4"   @ 40s
+  {app="a"} "v=5"   @ 50s
+  {app="a"} "v=6"   @ 110s
+  {app="a"} "noise" @ 25s
+
+# Linear interpolation between ranked samples.
+eval instant at 60s quantile_over_time(0, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 1
+eval instant at 60s quantile_over_time(0.25, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 2
+eval instant at 60s quantile_over_time(0.4, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 2.6     # (0.4 x 2) + (0.6 x 3) = 2.6
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 3
+eval instant at 60s quantile_over_time(1, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 5
+
+# When q is > 1 it returns +Inf.
+eval instant at 60s quantile_over_time(1.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} +Inf
+
+# A negative quantile literal is a parse error.
+eval instant at 60s quantile_over_time(-0.1, {app="a"} | logfmt | unwrap v [1m])
+  expect fail msg: unexpected -
+
+# quantile_over_time requires an unwrap.
+eval instant at 60s quantile_over_time(0.5, {app="a"}[1m])
+  expect fail msg: invalid aggregation quantile_over_time without unwrap
+
+# Single-sample window: any quantile returns that value.
+eval instant at 10s quantile_over_time(0, {app="a"} | logfmt | unwrap v [5s])
+  {app="a"} 1
+eval instant at 10s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [5s])
+  {app="a"} 1
+eval instant at 10s quantile_over_time(1, {app="a"} | logfmt | unwrap v [5s])
+  {app="a"} 1
+
+# Median interpolates midway between 2 values.
+eval instant at 50s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
+  {app="a"} 4.5     # (0.5 x 4) + (0.5 x 5) = 4.5
+
+# Overlapping range vector selectors (step < range).
+eval range from 30s to 60s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 2 3     # (−30s,30s]={1,2,3}→2, (0s,60s]={1,2,3,4,5}→3
+
+# Non-overlapping range vector selectors (step > range).
+eval range from 20s to 50s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
+  {app="a"} 1.5 4.5 # (5s,20s]={1,2}→1.5, (35s,50s]={4,5}→4.5
+
+# Output gap.
+eval range from 50s to 110s step 30s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [15s])
+  {app="a"} 4.5 _ 6
+
+# quantile_over_time() with grouping.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 15
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (app)
+  {app="a"} 7
+
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 7
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) without (app)
+  {pod="1"} 3
+  {pod="2"} 15
+
+# unwrap of a stream label `bar`.
+clear
+load
+  {app="foo", bar="3"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo", bar="3"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar", bar="6"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="bar", bar="6"} "noise" @ 5s [repeat every 10s for 19]
+
+eval instant at 120s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
+  {app="foo"} 0.3
+  {app="bar"} 0.6
+eval range from 60s to 180s step 30s rate(({app=~"foo|bar"} |~".+bar" | unwrap bar)[1m])
+  {app="foo"} 0.3 0.3 0.3 0.3 0.3
+  {app="bar"} 0.6 0.6 0.6 0.6 0.6
+
+# Combines a numeric label filter with unwrap: after logfmt, `bar > 0` drops the bar=0 lines
+# before unwrapping bazz.
+clear
+load
+  {job="foo"} "bar=1 bazz=10" @ 10s [repeat every 10s for 12]
+  {job="foo"} "bar=0 bazz=99" @ 15s [repeat every 10s for 12]
+
+eval instant at 120s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
+  {} 1
+eval range from 60s to 120s step 30s sum(rate({job="foo"} | logfmt | bar > 0 | unwrap bazz [30s]))
+  {} 1 1 1
+
+# Unwrapped-range aggregations: sum/avg/min/max/quantile/stddev/stdvar over_time (values 7 and 13).
+clear
+load
+  {app="a"} "v=7"  @ 10s  [repeat every 10s for 3]
+  {app="a"} "v=13" @ 40s  [repeat every 10s for 3]
+  {app="a"} "v=7"  @ 70s  [repeat every 10s for 3]
+  {app="a"} "v=13" @ 100s [repeat every 10s for 3]
+  {app="noise"} "noise" @ 10s [repeat every 10s for 12]
+
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 60
+eval range from 60s to 120s step 60s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 60 60
+
+eval instant at 120s avg_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10
+eval range from 60s to 120s step 60s avg_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10 10
+
+eval instant at 120s min_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 7
+eval range from 60s to 120s step 60s min_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 7 7
+
+eval instant at 120s max_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 13
+eval range from 60s to 120s step 60s max_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 13 13
+
+eval instant at 120s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10
+eval range from 60s to 120s step 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 10 10
+
+eval instant at 120s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 3
+eval range from 60s to 120s step 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 3 3
+
+eval instant at 120s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 9
+eval range from 60s to 120s step 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 9 9
+
+# unwrap conversions: duration() and bytes().
+clear
+load
+  {app="a"} "d=2s"  @ 70s [repeat every 10s for 6]
+  {app="a"} "b=1KB" @ 70s [repeat every 10s for 6]
+  {app="noise"} "noise" @ 70s [repeat every 10s for 6]
+
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
+  {app="a"} 12
+eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
+  {app="a"} 6 12
+eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
+  {app="a"} 6000
+eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
+  {app="a"} 3000 6000
+
+# rate_counter treats the unwrapped value as a counter: the per-second increase over the range with
+# counter resets added back, using Prometheus-style boundary extrapolation.
+#
+# The fixtures in this scenario contain:
+#   (0, 60]     c=<none>     empty
+#   (60, 120]   c=100, 130   increase 30
+#   (120, 180]  c=160, 250   increase 90
+#   (180, 240]  c=280, 340   increase 60
+#   (240, 300]  c=<none>     empty
+#   (300, 360]  c=400, 430   increase 30
+#   (360, 420]  c=460, 550   increase 90
+#   (420, 480]  c=580, 640   increase 60
+#   (480, 540]  c=<none>     empty
+clear
+load
+  {app="a"} "c=100" @ 90s
+  {app="a"} "c=130" @ 120s
+  {app="a"} "c=160" @ 150s
+  {app="a"} "c=250" @ 180s
+  {app="a"} "c=280" @ 210s
+  {app="a"} "c=340" @ 240s
+  {app="a"} "c=400" @ 330s
+  {app="a"} "c=430" @ 360s
+  {app="a"} "c=460" @ 390s
+  {app="a"} "c=550" @ 420s
+  {app="a"} "c=580" @ 450s
+  {app="a"} "c=640" @ 480s
+  {app="a"} "noise" @ 15s [repeat every 30s for 18]
+
+# Non-overlapping range vector selectors.
+#
+# In the fixtures we use, a [1m] window extrapolates the 30s to its lower edge, so:
+# rate = increase/30 (30->1, 60->2, 90->3).
+eval instant at 480s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2
+eval range from 60s to 540s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} _ 1 3 2 _ 1 3 2 _
+eval range from 60s to 180s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} _ 1 3
+eval range from 240s to 360s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2 _ 1
+eval range from 420s to 540s step 60s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 3 2 _
+
+# Overlapping range vector selectors (a sample falls in more than 1 step):
+#  (60,240]  sees +240 over 150s, extrapolated to 180s: 240 x (180/150) / 180s = 1.6
+#  (120,300] sees +180 over 90s,  extrapolated to 135s: 180 x (135/90)  / 180s = 1.5
+#  (180,360] sees +150 over 150s, extrapolated to 180s: 150 x (180/150) / 180s = 1
+eval instant at 360s rate_counter({app="a"} | logfmt | unwrap c [3m])
+  {app="a"} 1
+eval range from 240s to 360s step 60s rate_counter({app="a"} | logfmt | unwrap c [3m])
+  {app="a"} 1.6 1.5 1
+
+# Single sample in the window returns 0 (a rate needs at least 2 points).
+eval instant at 90s rate_counter({app="a"} | logfmt | unwrap c [10s])
+  {app="a"} 0
+
+# No samples in the window returns an empty result.
+eval instant at 300s rate_counter({app="a"} | logfmt | unwrap c [10s])
+  expect empty
+
+# rate_counter requires unwrap.
+eval instant at 60s rate_counter({app="a"}[1m])
+  expect fail msg: invalid aggregation rate_counter without unwrap
+
+# rate_counter treats any decrease as a counter reset and adds the pre-drop value back, so the rate
+# stays positive instead of going negative.:
+#  (30,150] sees +90 (60,90,30,60) over 90s, extrapolated to 120s: 90 x (120/90) / 120s = 1
+#  (60,120] sees +30 (90,30)       over 30s, extrapolated to 60s:  30 x (60/30) / 60s = 1
+clear
+load
+  {app="a"} "c=30" @ 30s
+  {app="a"} "c=60" @ 60s
+  {app="a"} "c=90" @ 90s
+  {app="a"} "c=30" @ 120s      # reset: 90 -> 30
+  {app="a"} "c=60" @ 150s
+  {app="a"} "noise" @ 15s [repeat every 30s for 6]
+eval instant at 150s rate_counter({app="a"} | logfmt | unwrap c [2m])
+  {app="a"} 1
+eval instant at 120s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 1
+
+# rate_counter never extrapolates a counter below zero. If extrapolating back to a window's lower
+# edge would cross the counter's zero point, back-extrapolation stops at the zero point instead.
+#
+# In this test fixtures, the zero point is at timestamp 60s (simulate a counter that is 0 at 60s
+# and then climbs by 60 every 30s), so:
+#  (45,105] sees +60 (30, 90)  over 30s, extrapolated to 45s (zero point is at 60s > range start at 45s): 60 x (45/30) / 60s = 1.5
+#  (75,135] sees +60 (90, 150) over 30s, extrapolated to 60s (zero point is at 60s < range start at 75s): 60 x (60/30) / 60s = 2
+clear
+load
+  {app="a"} "c=30"  @ 75s
+  {app="a"} "c=90"  @ 105s
+  {app="a"} "c=150" @ 135s
+  {app="a"} "noise" @ 60s [repeat every 30s for 4]
+eval instant at 105s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 1.5
+eval instant at 135s rate_counter({app="a"} | logfmt | unwrap c [1m])
+  {app="a"} 2
+
+# rate_counter extrapolates each side of the window to its edge, but caps that extrapolation at half
+# an average sampling interval when the nearest sample sits farther from the edge than ~1.1x the
+# average interval.
+#
+# In this test fixtures, the counter climbs by 60 every 30s (using large values so the zero point logic
+# never triggers), with samples only at 150s and 180s (average interval 30s, threshold ~33s), so:
+#  (90,180]  sees +60 (600, 660) over 30s, extrapolated to 45s (first sample 150s is 60s from range start 90s > 33s, so gets LEFT capped +15s): 60 x (45/30) / 90s = 1
+#  (120,210] sees +60 (600, 660) over 30s, extrapolated to 90s (both samples within 33s of the edges, no cap): 60 x (90/30) / 90s = 2
+#  (90,240]  sees +60 (600, 660) over 30s, extrapolated to 60s (first sample 150s is 60s from range start 90s AND last sample 180s is 60s from range end 240s, both > 33s, so BOTH sides capped +15s): 60 x (60/30) / 150s = 0.8
+clear
+load
+  {app="a"} "c=600" @ 150s
+  {app="a"} "c=660" @ 180s
+  {app="a"} "noise" @ 15s [repeat every 30s for 8]
+eval instant at 180s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1
+eval range from 180s to 210s step 30s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1 2
+eval instant at 240s rate_counter({app="a"} | logfmt | unwrap c [150s])
+  {app="a"} 0.8
+
+# rate_counter's order of the two caps matters (the threshold cap should be before the zero-point cap): a
+# far first sample is clamped to +half an interval first, and the zero point can then only shorten it
+# further — it cannot pull the extrapolation back past that clamp.
+clear
+load
+  {app="a"} "c=40"  @ 180s
+  {app="a"} "c=100" @ 210s
+  {app="a"} "noise" @ 150s
+
+# The counter is 0 at 160s and increases by 2/s. Window (120,210]: the first sample (180s) is 60s from
+# the lower edge (> the 33s threshold) → clamped to +15s (avg/2); the zero point 20s back sits between
+# avg/2 and the threshold, so it does NOT shorten the 15s: 60 x (30+15)/30 / 90s = 1.
+eval instant at 210s rate_counter({app="a"} | logfmt | unwrap c [90s])
+  {app="a"} 1
+
+# count_over_time()
+clear
+load
+  {app="a"} "keep"  @ 0s [repeat every 10s for 61]   # 0s..600s
+  {app="a"} "noise" @ 5s [repeat every 10s for 61]
+
+eval instant at 60s count_over_time({app="a"} |= "keep" [1m])
+  {app="a"} 6
+eval range from 60s to 120s step 30s count_over_time({app="a"} |= "keep" [1m]) # overlapping
+  {app="a"} 6 6 6
+eval range from 60s to 180s step 90s count_over_time({app="a"} |= "keep" [1m]) # non-overlapping
+  {app="a"} 6 6
+
+# The offset shifts the window back.
+eval instant at 90s count_over_time({app="a"} |= "keep" [1m] offset 30s)
+  {app="a"} 6
+eval range from 60s to 120s step 30s count_over_time({app="a"} |= "keep" [1m] offset 30s) # overlapping
+  {app="a"} 4 6 6
+
+# Longer range vector duration.
+eval instant at 300s count_over_time({app="a"} |= "keep" [5m])
+  {app="a"} 30
+eval range from 300s to 600s step 60s count_over_time({app="a"} |= "keep" [5m]) # overlapping
+  {app="a"} 30 30 30 30 30 30
+
+# count_over_time doesn't allow grouping.
+eval instant at 60s count_over_time({app="a"} |= "keep" [1m]) by (app)
+  expect fail msg: grouping not allowed for count_over_time aggregation
+
+# bytes_over_time()
+clear
+load
+  {app="a"} "a"   @ 20s   # 1 byte
+  {app="a"} "bb"  @ 30s   # 2 bytes
+  {app="a"} "ccc" @ 40s   # 3 bytes
+  {app="noise"} "noise" @ 20s [repeat every 10s for 3]
+
+eval instant at 60s bytes_over_time({app="a"}[1m])
+  {app="a"} 6
+eval range from 40s to 60s step 20s bytes_over_time({app="a"}[1m])  # overlapping
+  {app="a"} 6 6
+eval range from 60s to 130s step 70s bytes_over_time({app="a"}[1m]) # non-overlapping
+  {app="a"} 6 _
+
+# bytes_over_time doesn't allow grouping.
+eval instant at 60s bytes_over_time({app="a"}[1m]) by (app)
+  expect fail msg: grouping not allowed for bytes_over_time aggregation
+
+# rate()
+clear
+load
+  {app="a"} "keep"  @ 0s [repeat every 10s for 19]   # 0s..180s
+  {app="a"} "noise" @ 5s [repeat every 10s for 19]
+
+eval instant at 60s rate({app="a"} |= "keep" [1m])
+  {app="a"} 0.1
+eval range from 60s to 120s step 30s rate({app="a"} |= "keep" [1m]) # overlapping
+  {app="a"} 0.1 0.1 0.1
+eval range from 60s to 180s step 90s rate({app="a"} |= "keep" [1m]) # non-overlapping
+  {app="a"} 0.1 0.1
+
+eval instant at 90s rate({app="a"} |= "keep" [1m] offset 30s)
+  {app="a"} 0.1
+eval range from 90s to 150s step 30s rate({app="a"} |= "keep" [1m] offset 30s) # overlapping
+  {app="a"} 0.1 0.1 0.1
+eval range from 90s to 180s step 90s rate({app="a"} |= "keep" [1m] offset 30s) # non-overlapping
+  {app="a"} 0.1 0.1
+
+# rate doesn't allow grouping.
+eval instant at 60s rate({app="a"} |= "keep" [1m]) by (app)
+  expect fail msg: grouping not allowed for rate aggregation
+
+# rate over a sub-second [500ms] range divides the matching-line count by 0.5s.
+clear
+load
+  {app="b"} "keep"  @ 100ms [repeat every 200ms for 6]   # 100,300,500,700,900,1100 ms
+  {app="b"} "noise" @ 200ms [repeat every 200ms for 6]
+
+eval instant at 500ms rate({app="b"} |= "keep" [500ms])
+  {app="b"} 6
+eval range from 500ms to 900ms step 400ms rate({app="b"} |= "keep" [500ms])  # overlapping
+  {app="b"} 6 6
+eval range from 500ms to 1100ms step 600ms rate({app="b"} |= "keep" [500ms]) # non-overlapping
+  {app="b"} 6 6
+
+# avg_over_time edge cases:
+# - any NaN -> NaN
+# - +Inf absorbs a finite value
+# - +Inf with -Inf -> NaN
+clear
+load
+  {app="a", c="single"} "v=5"    @ 30s
+  {app="a", c="nan"}    "v=7"    @ 20s
+  {app="a", c="nan"}    "v=NaN"  @ 40s
+  {app="a", c="posinf"} "v=+Inf" @ 20s
+  {app="a", c="posinf"} "v=5"    @ 40s
+  {app="a", c="mixinf"} "v=+Inf" @ 20s
+  {app="a", c="mixinf"} "v=-Inf" @ 40s
+  {app="noise"} "noise" @ 20s [repeat every 10s for 3]
+
+eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="single"} 5
+  {app="a", c="nan"}    NaN
+  {app="a", c="posinf"} +Inf
+  {app="a", c="mixinf"} NaN
+eval range from 40s to 60s step 20s avg_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="single"} 5 5
+  {app="a", c="nan"}    NaN NaN
+  {app="a", c="posinf"} +Inf +Inf
+  {app="a", c="mixinf"} NaN NaN
+eval range from 60s to 130s step 70s avg_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="single"} 5 _
+  {app="a", c="nan"}    NaN _
+  {app="a", c="posinf"} +Inf _
+  {app="a", c="mixinf"} NaN _
+
+# avg_over_time with grouping: by/without combine the unwrapped samples ACROSS the streams in each
+# group and label the result with only the grouping keys. Two pods under app="a": pod=1 {2,4},
+# pod=2 {10,20}; by (app) folds all four into one group (mean 9), and without (pod) is equivalent.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s
+eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 3
+  {pod="2"} 15
+eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m]) by (app)
+  {app="a"} 9
+eval instant at 60s avg_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 9
+eval range from 60s to 70s step 10s avg_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 3 3
+  {pod="2"} 15 15
+
+# min/max_over_time edge cases:
+# - a leading NaN is ignored
+# - all NaN -> NaN
+clear
+load
+  {app="a", c="neg"}    "v=-5"  @ 20s
+  {app="a", c="neg"}    "v=-1"  @ 30s
+  {app="a", c="neg"}    "v=-10" @ 40s
+  {app="a", c="single"} "v=42"  @ 30s
+  {app="a", c="lead"}   "v=NaN" @ 20s
+  {app="a", c="lead"}   "v=7"   @ 30s
+  {app="a", c="lead"}   "v=13"  @ 40s
+  {app="a", c="allnan"} "v=NaN" @ 20s
+  {app="a", c="allnan"} "v=NaN" @ 40s
+  {app="noise"} "noise" @ 20s [repeat every 10s for 3]
+
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="neg"}    -10
+  {app="a", c="single"} 42
+  {app="a", c="lead"}   7
+  {app="a", c="allnan"} NaN
+eval range from 40s to 60s step 20s min_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="neg"}    -10 -10
+  {app="a", c="single"} 42 42
+  {app="a", c="lead"}   7 7
+  {app="a", c="allnan"} NaN NaN
+eval range from 60s to 130s step 70s min_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="neg"}    -10 _
+  {app="a", c="single"} 42 _
+  {app="a", c="lead"}   7 _
+  {app="a", c="allnan"} NaN _
+
+eval instant at 60s max_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="neg"}    -1
+  {app="a", c="single"} 42
+  {app="a", c="lead"}   13
+  {app="a", c="allnan"} NaN
+eval range from 40s to 60s step 20s max_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="neg"}    -1 -1
+  {app="a", c="single"} 42 42
+  {app="a", c="lead"}   13 13
+  {app="a", c="allnan"} NaN NaN
+eval range from 60s to 130s step 70s max_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="neg"}    -1 _
+  {app="a", c="single"} 42 _
+  {app="a", c="lead"}   13 _
+  {app="a", c="allnan"} NaN _
+
+# min_over_time() / max_over_time() with grouping.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 2
+  {pod="2"} 10
+eval instant at 60s max_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+eval instant at 60s min_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 2
+eval instant at 60s max_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 20
+
+# sum_over_time edge cases:
+# - mixed signs
+# - any NaN -> NaN
+# +Inf with -Inf -> NaN
+clear
+load
+  {app="a", c="mixed"} "v=-3"   @ 20s
+  {app="a", c="mixed"} "v=5"    @ 30s
+  {app="a", c="mixed"} "v=10"   @ 40s
+  {app="a", c="nan"}   "v=7"    @ 20s
+  {app="a", c="nan"}   "v=NaN"  @ 40s
+  {app="a", c="inf"}   "v=+Inf" @ 20s
+  {app="a", c="inf"}   "v=-Inf" @ 40s
+  {app="noise"} "noise" @ 20s [repeat every 10s for 3]
+
+eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="mixed"} 12
+  {app="a", c="nan"}   NaN
+  {app="a", c="inf"}   NaN
+eval range from 40s to 60s step 20s sum_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="mixed"} 12 12
+  {app="a", c="nan"}   NaN NaN
+  {app="a", c="inf"}   NaN NaN
+eval range from 60s to 130s step 70s sum_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="mixed"} 12 _
+  {app="a", c="nan"}   NaN _
+  {app="a", c="inf"}   NaN _
+
+# sum_over_time requires an unwrap.
+eval instant at 60s sum_over_time({app="a"}[1m])
+  expect fail msg: invalid aggregation sum_over_time without unwrap
+
+# sum_over_time doesn't allow grouping.
+eval instant at 60s sum_over_time({app="a"} | logfmt | unwrap v [1m]) by (app)
+  expect fail msg: grouping not allowed for sum_over_time aggregation
+
+# stddev_over_time() / stdvar_over_time()
+clear
+load
+  {app="a", c="single"}   "v=5" @ 30s
+  {app="a", c="constant"} "v=4" @ 20s
+  {app="a", c="constant"} "v=4" @ 30s
+  {app="a", c="constant"} "v=4" @ 40s
+  {app="a", c="vary"}     "v=2" @ 20s
+  {app="a", c="vary"}     "v=6" @ 40s
+  {app="a", c="nan"}      "v=5" @ 20s
+  {app="a", c="nan"}      "v=NaN" @ 40s
+  {app="noise"} "noise" @ 20s [repeat every 10s for 3]
+
+# A single sample and a constant window are both 0; any NaN in the window -> NaN.
+eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="single"}   0
+  {app="a", c="constant"} 0
+  {app="a", c="vary"}     4
+  {app="a", c="nan"}      NaN
+eval range from 40s to 60s step 20s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="single"}   0 0
+  {app="a", c="constant"} 0 0
+  {app="a", c="vary"}     4 4
+  {app="a", c="nan"}      NaN NaN
+eval range from 60s to 130s step 70s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="single"}   0 _
+  {app="a", c="constant"} 0 _
+  {app="a", c="vary"}     4 _
+  {app="a", c="nan"}      NaN _
+
+eval instant at 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a", c="single"}   0
+  {app="a", c="constant"} 0
+  {app="a", c="vary"}     2
+  {app="a", c="nan"}      NaN
+eval range from 40s to 60s step 20s stddev_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a", c="single"}   0 0
+  {app="a", c="constant"} 0 0
+  {app="a", c="vary"}     2 2
+  {app="a", c="nan"}      NaN NaN
+eval range from 60s to 130s step 70s stddev_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a", c="single"}   0 _
+  {app="a", c="constant"} 0 _
+  {app="a", c="vary"}     2 _
+  {app="a", c="nan"}      NaN _
+
+# stddev_over_time() / stdvar_over_time() with grouping.
+clear
+load
+  {app="a", pod="1"} "v=2"  @ 20s
+  {app="a", pod="1"} "v=4"  @ 30s
+  {app="a", pod="2"} "v=10" @ 40s
+  {app="a", pod="2"} "v=20" @ 50s
+  {app="a", pod="1"} "noise" @ 25s
+
+eval instant at 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 1
+  {pod="2"} 5
+eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 1
+  {pod="2"} 25
+eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) by (app)
+  {app="a"} 49
+eval instant at 60s stddev_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 7
+eval instant at 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 49
+
+# absent_over_time()
+clear
+load
+  {job="x", env="prod"} "present" @ 0s
+  {app="noise"} "noise" @ 20s [repeat every 10s for 12]
+
+eval instant at 60s absent_over_time({job="x", env=~".+"}[1m])
+  {job="x"} 1
+eval range from 60s to 120s step 60s absent_over_time({job="x", env=~".+"}[1m]) # overlapping
+  {job="x"} 1 1
+eval range from 60s to 180s step 120s absent_over_time({job="x", env=~".+"}[1m]) # non-overlapping
+  {job="x"} 1 1
+
+# absent_over_time doesn't allow grouping.
+eval instant at 60s absent_over_time({job="x"}[1m]) by (job)
+  expect fail msg: grouping not allowed for absent_over_time aggregation
+
+# absent_over_time() unwrapped.
+clear
+load
+  {app="a"} "msg=hello" @ 20s [repeat every 10s for 5]   # 20s..60s; no `v` field
+  {app="noise"} "noise" @ 20s [repeat every 10s for 5]
+
+# The lines carry no `v`, so unwrap drops every sample and the window is empty.
+eval instant at 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])
+  {app="a"} 1
+eval range from 60s to 120s step 60s absent_over_time({app="a"} | logfmt | unwrap v [1m])  # overlapping
+  {app="a"} 1 1
+eval range from 60s to 180s step 120s absent_over_time({app="a"} | logfmt | unwrap v [1m]) # non-overlapping
+  {app="a"} 1 1
