@@ -65,8 +65,9 @@ func YAML(f string, expandEnvVars bool, strict bool, u *UnknownFields) Source {
 // dYAML returns a YAML source and allows dependency injection.
 // argument `strict` defines whether unknown fields should be treated as error.
 // When u is non-nil, unknown fields are recorded for deferred reporting rather
-// than failing here; strictness is then enforced centrally after the full
-// config is resolved.
+// than failing here. Callers select the mode: strict parsing passes a nil
+// collector so unknown fields fail fast with the decoder's native error, while
+// non-strict parsing passes a collector to gather them instead.
 func dYAML(y []byte, strict bool, u *UnknownFields) Source {
 	return func(dst Cloneable) error {
 		dec := yaml.NewDecoder(bytes.NewReader(y))

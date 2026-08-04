@@ -3,6 +3,7 @@ package cfg
 import (
 	"flag"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -25,20 +26,42 @@ type StrictParser interface {
 // 3. Any config options specified directly in the config file
 // 4. Any config options specified on the command line.
 //
-// Unknown configuration options are always collected. When dst implements
-// StrictParser and requests strict parsing, their presence is a fatal error;
-// otherwise the returned UnknownFields lets the caller report them once the
-// logger and metrics registry are initialized.
+// Strictness is resolved up front from the CLI flags. In strict mode (the
+// default) an unknown YAML field fails fast with the decoder's native error,
+// which includes the config file path, line number, and parent type, and an
+// unknown CLI flag is reported after parsing. In non-strict mode unknown fields
+// and flags are collected into the returned UnknownFields so the caller can
+// report them once the logger and metrics registry are initialized.
 func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) (*UnknownFields, error) {
 	unknown := &UnknownFields{}
 
-	// Discover the defined flags on a throwaway flagset so unknown CLI flags can
-	// be filtered out before any parsing. This mirrors how ConfigFileLoader
-	// enumerates flags and prevents the flag package from aborting on unknown
-	// flags; strictness is enforced centrally once the config is resolved.
+	// Discover the defined flags on a throwaway config clone so unknown CLI
+	// flags can be filtered out before any parsing. This mirrors how
+	// ConfigFileLoader enumerates flags and prevents the flag package from
+	// aborting on unknown flags.
+	clone := dst.Clone()
 	known := flag.NewFlagSet("known-flags", flag.ContinueOnError)
-	dst.Clone().RegisterFlags(known)
+	known.SetOutput(io.Discard)
+	clone.RegisterFlags(known)
 	args = filterUnknownFlags(known, args, unknown)
+
+	// Resolve the effective strict setting from the (filtered) CLI flags before
+	// deciding how to parse the config file.
+	strict := true
+	if sp, ok := clone.(StrictParser); ok {
+		// args no longer contain unknown flags, so parsing only fails on
+		// -h/-help, which is handled later by ConfigFileLoader; ignore it here.
+		_ = known.Parse(args)
+		strict = sp.StrictConfig()
+	}
+
+	// In strict mode unknown YAML fields must fail fast with the decoder's
+	// native, fully contextual error, so no collector is passed to the YAML
+	// loader. In non-strict mode they are collected for deferred reporting.
+	var yamlUnknown *UnknownFields
+	if !strict {
+		yamlUnknown = unknown
+	}
 
 	err := Unmarshal(dst,
 		// First populate the config with defaults including flags from the command line
@@ -46,7 +69,7 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) (*U
 		// Next populate the config from the config file, we do this to populate the `common`
 		// section of the config file by taking advantage of the code in ConfigFileLoader which will load
 		// and process the config file.
-		ConfigFileLoader(args, "config.file", true, unknown),
+		ConfigFileLoader(args, "config.file", strict, yamlUnknown),
 		// Now load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),
 		// Apply any dynamic logic to set other defaults in the config. This function is called after parsing the
@@ -58,8 +81,7 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) (*U
 		// By loading the config file twice and unmarshaling it into the same object,
 		// using strict yaml unmarshal causes an `already set in map` error with the `Clients` config,
 		// because it's a map that already has the keys we are trying to unmarshal into it.
-		// That is why we don't use strict for the second marshaling. Unknown fields were already
-		// collected on the first pass, so we pass a nil collector here to avoid double counting.
+		// That is why we don't use strict for the second marshaling.
 		ConfigFileLoader(args, "config.file", false, nil),
 		// Load the flags again, this will supersede anything set from config file with flags from the command line.
 		Flags(args, fs),
@@ -68,10 +90,10 @@ func DynamicUnmarshal(dst DynamicCloneable, args []string, fs *flag.FlagSet) (*U
 		return unknown, err
 	}
 
-	// Enforce strictness only after the full config is resolved, since the
-	// strict toggle is itself a configuration option.
-	if sp, ok := dst.(StrictParser); ok && sp.StrictConfig() && unknown.Len() > 0 {
-		return unknown, fmt.Errorf("found %d unknown configuration option(s): %s", unknown.Len(), strings.Join(unknown.List(), ", "))
+	// Unknown YAML fields already failed fast above in strict mode. Unknown CLI
+	// flags are filtered before parsing, so their strictness is enforced here.
+	if strict && unknown.Len() > 0 {
+		return unknown, fmt.Errorf("found %d unknown CLI flag(s): %s", unknown.Len(), strings.Join(unknown.List(), ", "))
 	}
 	return unknown, nil
 }

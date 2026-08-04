@@ -187,15 +187,28 @@ bogus_field: 1
 		require.NoError(t, f.Close())
 		return f.Name()
 	}
+	writeConfigContent := func(t *testing.T, content string) string {
+		f, err := os.CreateTemp(t.TempDir(), "config.yaml")
+		require.NoError(t, err)
+		_, err = f.WriteString(content)
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		return f.Name()
+	}
 
 	t.Run("strict makes unknown fields fatal", func(t *testing.T) {
 		var d strictData
 		fs := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
-		args := []string{"-config.file", writeConfig(t), "-config.strict=true"}
+		configPath := writeConfig(t)
+		args := []string{"-config.file", configPath, "-config.strict=true"}
 		u, err := DynamicUnmarshal(&d, args, fs)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "bogus_field")
-		require.Equal(t, 1, u.Len())
+		// Strict mode fails fast with the decoder's native error, which preserves
+		// the config file path, line number, and parent type so nested typos can
+		// be located. Unknown fields are not collected in this path.
+		require.Contains(t, err.Error(), configPath)
+		require.Contains(t, err.Error(), "line 3: field bogus_field not found in type cfg.strictData")
+		require.Equal(t, 0, u.Len())
 	})
 
 	t.Run("non-strict collects unknown fields without error", func(t *testing.T) {
@@ -221,9 +234,13 @@ bogus_field: 1
 	t.Run("strict makes unknown CLI flag fatal", func(t *testing.T) {
 		var d strictData
 		fs := flag.NewFlagSet(t.Name(), flag.ContinueOnError)
-		args := []string{"-config.file", writeConfig(t), "-config.strict=true", "-made.up=1"}
-		_, err := DynamicUnmarshal(&d, args, fs)
+		// Use a config without unknown YAML fields so the unknown flag, rather
+		// than a fail-fast YAML error, is what makes parsing fatal.
+		cleanConfig := writeConfigContent(t, "verbose: true\n")
+		args := []string{"-config.file", cleanConfig, "-config.strict=true", "-made.up=1"}
+		u, err := DynamicUnmarshal(&d, args, fs)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "made.up")
+		require.Equal(t, []string{"made.up"}, u.List())
 	})
 }

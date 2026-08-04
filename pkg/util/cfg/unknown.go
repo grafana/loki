@@ -23,9 +23,10 @@ var unknownConfigTotal = promauto.NewCounter(prometheus.CounterOpts{
 })
 
 // UnknownFields collects configuration fields and CLI flags that are not
-// recognized during parsing. Reporting is deferred to the caller because the
-// logger and metrics registry are not yet initialized while the config is
-// parsed.
+// recognized during non-strict parsing. Reporting is deferred to the caller
+// because the logger and metrics registry are not yet initialized while the
+// config is parsed. In strict mode unknown fields fail fast with the decoder's
+// native error instead of being collected here.
 type UnknownFields struct {
 	fields []string
 }
