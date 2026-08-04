@@ -349,6 +349,10 @@ type Distributor struct {
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
 	circuitBreaker             circuitBreaker
+
+	// Tracks the number of consecutive requests per tenant rejected with a 429 by
+	// the ingestion rate limiter.
+	consecutive429s *consecutive429s
 }
 
 // New a distributor creates.
@@ -503,6 +507,7 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+		consecutive429s: newConsecutive429s(default429IdleTimeout),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
@@ -925,8 +930,12 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
-		return nil, err
+	rateLimitErr := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format)
+	// Observed here, rather than at any of the earlier returns, because only
+	// requests that actually reached the rate limiter extend or reset a streak.
+	d.consecutive429s.Observe(tenantID, rateLimitErr != nil)
+	if rateLimitErr != nil {
+		return nil, rateLimitErr
 	}
 
 	// These limits are checked after the ingestion rate limit as this
