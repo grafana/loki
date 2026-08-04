@@ -1777,6 +1777,22 @@ func TestInstance_StreamCountPolicyBuckets(t *testing.T) {
 		require.Equal(t, 3, inst.ownedStreamsSvc.getStreamCount("replay"))
 	})
 
+	t.Run("recalculation re-buckets streams after an override change", func(t *testing.T) {
+		inst, limits := streamCountBucketsTestInstance(t)
+
+		require.NoError(t, push(inst, `{job="replay", n="0"}`))
+		require.NoError(t, push(inst, `{job="app", n="0"}`))
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+		// Drop the stream-count override: replay streams belong in the default bucket after
+		// the next ownership recalculation (ring change).
+		limits.DefaultLimits().PolicyOverrideLimits = nil
+		require.NoError(t, inst.updateOwnedStreams(func(*stream) (bool, error) { return true, nil }))
+		require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 0, inst.ownedStreamsSvc.getStreamCount("replay"))
+	})
+
 	t.Run("re-bucketing converges after an override is removed", func(t *testing.T) {
 		inst, limits := streamCountBucketsTestInstance(t)
 
