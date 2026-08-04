@@ -536,7 +536,7 @@ func TestSymbols(t *testing.T) {
 	checksum := crc32.Checksum(buf.Get()[symbolsStart+4:], castagnoliTable)
 	buf.PutBE32(checksum) // Check sum at the end.
 
-	s, err := NewSymbols(RealByteSlice(buf.Get()), FormatV2, symbolsStart)
+	s, err := NewSymbols(RealByteSlice(buf.Get()), symbolsStart)
 	require.NoError(t, err)
 
 	// We store only 4 offsets to symbols.

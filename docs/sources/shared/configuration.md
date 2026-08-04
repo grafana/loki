@@ -2744,10 +2744,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
 [l2_chunk_cache_handoff: <duration> | default = 0s]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### common
@@ -3451,6 +3447,18 @@ write_failures_logging:
   # Whether a insight=true key should be logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+# Customize the logging of OTLP attribute expansion.
+otlp_attribute_logging:
+  # Number of attribute expansion reports to emit per second, per tenant. Each
+  # report is one summary line plus one line per attribute.
+  # CLI flag: -distributor.otlp-attribute-logging.rate
+  [rate: <float> | default = 1]
+
+  # Maximum number of attributes to log on their own line for a reported
+  # request. The remaining attributes are summarised on a single overflow line.
+  # CLI flag: -distributor.otlp-attribute-logging.max-attributes
+  [max_attributes: <int> | default = 20]
 
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
@@ -5473,6 +5481,12 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-duplicate-stream-info
 [log_duplicate_stream_info: <boolean> | default = false]
 
+# Log which OTLP resource and scope attributes are expanded into structured
+# metadata, for a rate limited subset of push requests. Only attribute names and
+# sizes are logged, never values.
+# CLI flag: -operation-config.log-otlp-attribute-expansion
+[log_otlp_attribute_expansion: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -5512,23 +5526,6 @@ index:
 
   # Table period.
   [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# Configured how the chunks are updated and stored.
-chunks:
-  # Table prefix for all period tables.
-  [prefix: <string> | default = ""]
-
-  # Table period.
-  [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int> | default = 16]
 ```
 
 ### profiling
@@ -6805,11 +6802,6 @@ congestion_control:
 # storage. Example: loki/
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
-
-# Disable broad index queries which results in reduced cache usage and faster
-# query performance at the expense of somewhat higher QPS on the index store.
-# CLI flag: -store.disable-broad-index-queries
-[disable_broad_index_queries: <boolean> | default = false]
 
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk

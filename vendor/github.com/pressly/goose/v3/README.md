@@ -16,8 +16,8 @@ Manage your **database schema** by creating incremental SQL changes or Go functi
 #### Features
 
 - Works against multiple databases:
-  - Postgres, MySQL, Spanner, SQLite, YDB, ClickHouse, MSSQL, Vertica, and
-    more.
+  - Postgres, MySQL, MariaDB, Spanner, SQLite,
+    YDB, ClickHouse, MSSQL, Vertica, and more.
 - Supports Go migrations written as plain functions.
 - Supports [embedded](https://pkg.go.dev/embed/) migrations.
 - Out-of-order migrations.
@@ -223,9 +223,9 @@ Print the status of all migrations:
     $   Sun Jan  6 11:25:03 2013 -- 002_next.sql
     $   Pending                  -- 003_and_again.go
 
-Note: for MySQL [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
+Note: for MySQL and MariaDB (use the `mysql` driver) [parseTime flag](https://github.com/go-sql-driver/mysql#parsetime) must be enabled.
 
-Note: for MySQL
+Note: for MySQL and MariaDB
 [`multiStatements`](https://github.com/go-sql-driver/mysql?tab=readme-ov-file#multistatements) must
 be enabled. This is required when writing multiple queries separated by ';' characters in a single
 sql file.

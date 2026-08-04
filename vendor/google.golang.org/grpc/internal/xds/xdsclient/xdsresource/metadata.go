@@ -21,14 +21,20 @@ import (
 	"fmt"
 	"net/netip"
 
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"google.golang.org/grpc/internal/envconfig"
+	"google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
+
+	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	v3gcpauthnpb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/gcp_authn/v3"
 )
 
 func init() {
 	if envconfig.XDSHTTPConnectEnabled {
-		registerMetadataConverter("type.googleapis.com/envoy.config.core.v3.Address", proxyAddressConvertor{})
+		registerMetadataConverter(version.V3AddressURL, proxyAddressConverter{})
+	}
+	if envconfig.GCPAuthenticationFilterEnabled {
+		registerMetadataConverter(version.V3AudienceURL, audienceConverter{})
 	}
 }
 
@@ -56,10 +62,41 @@ func metadataConverterForType(typeURL string) metadataConverter {
 	return metadataRegistry[typeURL]
 }
 
-// unregisterMetadataConverterForTesting removes a converter from the registry.
-// For testing only.
-func unregisterMetadataConverterForTesting(typeURL string) {
+// RegisterMetadataConverterForTesting registers the converter for testing
+// purposes and returns a cleanup function to restore the registry to its
+// previous state.
+func RegisterMetadataConverterForTesting(typeURL string) (func(), error) {
+	var conv metadataConverter
+	switch typeURL {
+	case version.V3AddressURL:
+		conv = proxyAddressConverter{}
+	case version.V3AudienceURL:
+		conv = audienceConverter{}
+	default:
+		return nil, fmt.Errorf("unknown typeURL for testing: %s", typeURL)
+	}
+	curConverter, found := metadataRegistry[typeURL]
+	registerMetadataConverter(typeURL, conv)
+	return func() {
+		if found {
+			metadataRegistry[typeURL] = curConverter
+			return
+		}
+		delete(metadataRegistry, typeURL)
+	}, nil
+}
+
+// UnregisterMetadataConverterForTesting unregisters the converter for testing
+// purposes and returns a cleanup function to restore the registry to its
+// previous state.
+func UnregisterMetadataConverterForTesting(typeURL string) func() {
+	curConverter, found := metadataRegistry[typeURL]
 	delete(metadataRegistry, typeURL)
+	return func() {
+		if found {
+			metadataRegistry[typeURL] = curConverter
+		}
+	}
 }
 
 // StructMetadataValue stores the values in a google.protobuf.Struct from
@@ -80,9 +117,9 @@ type ProxyAddressMetadataValue struct {
 // proxyAddressConvertor implements the metadataConverter interface to handle
 // the conversion of envoy.config.core.v3.Address protobuf messages into an
 // internal representation.
-type proxyAddressConvertor struct{}
+type proxyAddressConverter struct{}
 
-func (proxyAddressConvertor) convert(anyProto *anypb.Any) (any, error) {
+func (proxyAddressConverter) convert(anyProto *anypb.Any) (any, error) {
 	addressProto := &v3corepb.Address{}
 	if err := anyProto.UnmarshalTo(addressProto); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal resource from Any proto: %v", err)
@@ -99,4 +136,29 @@ func (proxyAddressConvertor) convert(anyProto *anypb.Any) (any, error) {
 		return nil, fmt.Errorf("port value not set in socket_address")
 	}
 	return ProxyAddressMetadataValue{Address: parseAddress(socketaddress)}, nil
+}
+
+// AudienceMetadataValue holds the audience parsed from the
+// envoy.extensions.filters.http.gcp_authn.v3.Audience proto message, as
+// specified in gRFC A83.
+type AudienceMetadataValue struct {
+	// Audience is the URL of the receiving service that performs token
+	// authentication.
+	Audience string
+}
+
+// audienceConverter implements the metadataConverter interface to
+// handle the conversion of envoy.extensions.filters.http.gcp_authn.v3.Audience
+// protobuf messages into an internal representation.
+type audienceConverter struct{}
+
+func (audienceConverter) convert(anyProto *anypb.Any) (any, error) {
+	audienceProto := &v3gcpauthnpb.Audience{}
+	if err := anyProto.UnmarshalTo(audienceProto); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal the envoy.extensions.filters.http.gcp_authn.v3.Audience resource from Any proto: %v", err)
+	}
+	if audienceProto.GetUrl() == "" {
+		return nil, fmt.Errorf("empty url field in audience metadata")
+	}
+	return AudienceMetadataValue{Audience: audienceProto.GetUrl()}, nil
 }

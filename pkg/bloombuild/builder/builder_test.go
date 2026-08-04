@@ -43,7 +43,6 @@ func setupBuilder(t *testing.T, plannerAddr string, limits Limits, logger log.Lo
 				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 			},
 		},
 	}

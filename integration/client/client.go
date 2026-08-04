@@ -25,6 +25,7 @@ import (
 
 	logcli "github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
@@ -508,6 +509,7 @@ type DataType struct {
 	Matrix        []MatrixValues
 	Vector        []VectorValues
 	EncodingFlags []string
+	Statistics    stats.Result
 }
 
 func (a *DataType) UnmarshalJSON(b []byte) error {
@@ -516,6 +518,7 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 		ResultType    string          `json:"resultType"`
 		EncodingFlags []string        `json:"encodingFlags"`
 		Result        json.RawMessage `json:"result"`
+		Statistics    stats.Result    `json:"stats"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -539,6 +542,7 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 	}
 	a.ResultType = s.ResultType
 	a.EncodingFlags = s.EncodingFlags
+	a.Statistics = s.Statistics
 	return nil
 }
 

@@ -439,6 +439,7 @@ func TestSerialIndexer_ResetsCalculatorOnCancel(t *testing.T) {
 
 	mockCalc := &blockingMockCalculator{
 		entered: make(chan struct{}),
+		reset:   make(chan struct{}),
 	}
 	indexStorageBucket := objstore.NewInMemBucket()
 
@@ -493,10 +494,12 @@ func TestSerialIndexer_ResetsCalculatorOnCancel(t *testing.T) {
 	}
 
 	// submitBuild may return on ctx.Done before the worker finishes unwinding;
-	// wait for the deferred Reset from the cancelled buildIndex.
-	require.Eventually(t, func() bool {
-		return mockCalc.resetCallCount >= 1
-	}, 5*time.Second, 10*time.Millisecond, "calculator should be reset after cancelled build")
+	// wait for Reset from the cancelled processBuildRequest.
+	select {
+	case <-mockCalc.reset:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for calculator Reset after cancelled build")
+	}
 	require.Equal(t, 0, mockCalc.flushCallCount, "cancelled build should not flush")
 }
 
@@ -504,6 +507,7 @@ func TestSerialIndexer_ResetsCalculatorOnCancel(t *testing.T) {
 type blockingMockCalculator struct {
 	mockCalculator
 	entered chan struct{}
+	reset   chan struct{}
 }
 
 func (c *blockingMockCalculator) Calculate(ctx context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
@@ -512,6 +516,11 @@ func (c *blockingMockCalculator) Calculate(ctx context.Context, _ log.Logger, ob
 	close(c.entered)
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func (c *blockingMockCalculator) Reset() {
+	c.mockCalculator.Reset()
+	close(c.reset)
 }
 
 func TestDownloadObject_Success(t *testing.T) {

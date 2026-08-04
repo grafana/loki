@@ -199,7 +199,6 @@ func getLocalStore(t *testing.T) storage.Store {
 				IndexType:  loki_types.IndexTypeTSDB,
 				ObjectType: loki_types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 				IndexTables: storage_config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: storage_config.PeriodicTableConfig{
 						Prefix: "index_",
