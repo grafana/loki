@@ -138,30 +138,6 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, bucket str
 	}
 }
 
-// moveStreamBucket moves an owned stream's count from one bucket to another, used when a
-// runtime config change re-assigns the stream's bucket (see instance.rebucketOwnedStreams).
-// Streams currently tracked as not-owned are not counted in any bucket, so there is nothing to
-// move for them.
-func (s *ownedStreamService) moveStreamBucket(fp model.Fingerprint, from, to string) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if _, notOwned := s.notOwnedStreams[fp]; notOwned {
-		return
-	}
-
-	if count, exists := s.streamCounts[from]; exists {
-		count.Dec()
-		if count.Load() == 0 {
-			delete(s.streamCounts, from)
-		}
-	}
-	if s.streamCounts[to] == nil {
-		s.streamCounts[to] = atomic.NewInt64(0)
-	}
-	s.streamCounts[to].Inc()
-}
-
 func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()

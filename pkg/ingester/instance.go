@@ -1200,31 +1200,6 @@ func minTs(stream *logproto.Stream) model.Time {
 	return model.TimeFromUnixNano(streamMinTs)
 }
 
-// rebucketOwnedStreams re-resolves every stream's stream-count bucket from its (creation-time)
-// policy and moves the counts of streams whose bucket changed. This converges bucket membership
-// after a runtime change to policy stream-count overrides without waiting for a ring change.
-// Policies themselves stay fixed at creation: label-mapping changes and header-assigned policies
-// are deliberately not re-resolved here (see Limiter.streamCountBucket).
-func (i *instance) rebucketOwnedStreams() {
-	// The tenant is fixed for the whole pass, so the bucket only depends on the policy;
-	// memoize it to avoid re-reading the overrides for every stream.
-	buckets := make(map[string]string)
-	i.streams.WithRLock(func() {
-		_ = i.streams.ForEach(func(s *stream) (bool, error) {
-			bucket, ok := buckets[s.policy]
-			if !ok {
-				bucket = i.limiter.streamCountBucket(i.instanceID, s.policy)
-				buckets[s.policy] = bucket
-			}
-			if bucket != s.streamCountBucket {
-				i.ownedStreamsSvc.moveStreamBucket(s.fp, s.streamCountBucket, bucket)
-				s.streamCountBucket = bucket
-			}
-			return true, nil
-		})
-	})
-}
-
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
 func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error)) error {
 	start := time.Now()
