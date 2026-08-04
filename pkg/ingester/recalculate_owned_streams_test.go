@@ -268,4 +268,3 @@ type mockPartitionRingReader struct {
 func (m mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 	return m.ring
 }
-

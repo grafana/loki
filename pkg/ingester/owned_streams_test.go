@@ -115,7 +115,7 @@ func Test_OwnedStreamService_PolicyStreamCounting(t *testing.T) {
 	require.Equal(t, 2, service.getStreamCount("finance"))     // finance policy streams
 	require.Equal(t, 1, service.getStreamCount("ops"))         // ops policy streams
 	require.Equal(t, 0, service.getStreamCount("nonexistent")) // non-existent policy
-	require.Equal(t, 2, service.getActivePolicyCount())              // finance and ops policies
+	require.Equal(t, 2, service.getActivePolicyCount())        // finance and ops policies
 
 	// Remove streams
 	service.trackRemovedStream(model.Fingerprint(1), "finance")
@@ -125,7 +125,7 @@ func Test_OwnedStreamService_PolicyStreamCounting(t *testing.T) {
 	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket), "removing policy-bucketed streams must not change the tenant-wide bucket")
 	require.Equal(t, 1, service.getStreamCount("finance")) // finance policy streams
 	require.Equal(t, 0, service.getStreamCount("ops"))     // ops policy streams
-	require.Equal(t, 1, service.getActivePolicyCount())          // only finance policy remains
+	require.Equal(t, 1, service.getActivePolicyCount())    // only finance policy remains
 
 	// Remove the tenant-wide stream
 	service.trackRemovedStream(model.Fingerprint(4), noPolicy)
