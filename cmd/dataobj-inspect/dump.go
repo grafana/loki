@@ -24,7 +24,7 @@ type dumpCommand struct {
 	streamID   *int
 }
 
-func (cmd *dumpCommand) run(c *kingpin.ParseContext) error {
+func (cmd *dumpCommand) run(_ *kingpin.ParseContext) error {
 	for _, f := range *cmd.files {
 		cmd.dumpFile(f)
 	}

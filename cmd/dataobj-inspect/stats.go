@@ -21,7 +21,7 @@ type statsCommand struct {
 	files *[]string
 }
 
-func (cmd *statsCommand) run(c *kingpin.ParseContext) error {
+func (cmd *statsCommand) run(_ *kingpin.ParseContext) error {
 	for _, f := range *cmd.files {
 		cmd.printStats(f)
 	}
