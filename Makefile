@@ -268,6 +268,15 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
+##################
+# chunks-inspect #
+##################
+.PHONY: cmd/chunks-inspect/chunks-inspect
+chunks-inspect: cmd/chunks-inspect/chunks-inspect ## build chunks-inspect executable
+
+cmd/chunks-inspect/chunks-inspect:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/chunks-inspect
+
 #########
 # Mixin #
 #########
@@ -342,6 +351,9 @@ LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
 lint: ## run linters
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
@@ -358,6 +370,7 @@ lint: ## run linters
 	faillint -paths \
 		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
 		./...
+endif
 
 ########
 # Test #
@@ -385,6 +398,7 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
+	rm -rf cmd/chunks-inspect/chunks-inspect
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
