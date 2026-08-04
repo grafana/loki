@@ -1177,3 +1177,46 @@ func TestDataObjCompaction_ValidateAcceptsValidCombinations(t *testing.T) {
 		})
 	}
 }
+
+func TestOverrides_PolicyConfigHash(t *testing.T) {
+	baseLimits := func() Limits {
+		return Limits{
+			UseOwnedStreamCount: true,
+			PolicyStreamMapping: PolicyStreamMapping{
+				"replay": []*PriorityStream{{Selector: `{job="replay"}`, Priority: 1}},
+			},
+			PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+				"replay": {MaxGlobalStreamsPerUser: func(v int) *int { return &v }(3)},
+			},
+		}
+	}
+
+	newOverrides := func(t *testing.T, l Limits) *Overrides {
+		o, err := NewOverrides(l, nil)
+		require.NoError(t, err)
+		return o
+	}
+
+	base := newOverrides(t, baseLimits()).PolicyConfigHash("test")
+
+	// Deterministic: an identical config hashes identically.
+	require.Equal(t, base, newOverrides(t, baseLimits()).PolicyConfigHash("test"))
+
+	// Validation populating the parsed matchers must not change the hash.
+	validated := baseLimits()
+	require.NoError(t, validated.PolicyStreamMapping.Validate())
+	require.Equal(t, base, newOverrides(t, validated).PolicyConfigHash("test"))
+
+	// Each component changing must change the hash.
+	mappingChanged := baseLimits()
+	mappingChanged.PolicyStreamMapping["replay"] = []*PriorityStream{{Selector: `{job="other"}`, Priority: 1}}
+	require.NotEqual(t, base, newOverrides(t, mappingChanged).PolicyConfigHash("test"))
+
+	overridesChanged := baseLimits()
+	overridesChanged.PolicyOverrideLimits["replay"] = PolicyOverridableLimits{MaxGlobalStreamsPerUser: func(v int) *int { return &v }(5)}
+	require.NotEqual(t, base, newOverrides(t, overridesChanged).PolicyConfigHash("test"))
+
+	ownedChanged := baseLimits()
+	ownedChanged.UseOwnedStreamCount = false
+	require.NotEqual(t, base, newOverrides(t, ownedChanged).PolicyConfigHash("test"))
+}

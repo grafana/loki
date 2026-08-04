@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -1327,6 +1328,36 @@ func (o *Overrides) PolicyEnforcedLabels(userID string, policy string) []string 
 
 func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
 	return o.getOverridesForUser(userID).PolicyStreamMapping
+}
+
+// PolicyConfigHash returns a hash of the tenant configuration that determines stream policy
+// assignment and per-policy stream-count bucketing: policy_stream_mapping,
+// policy_override_limits, and use_owned_stream_count. A change in this hash means live streams
+// may need their policy and stream-count bucket reconciled against the new configuration.
+//
+// The hash is computed over the YAML encoding, which is stable: map keys are marshaled in
+// sorted order, PolicyStreamMapping entries are sorted by priority during validation, and the
+// parsed matcher state (Matchers) is excluded via its `yaml:"-"` tag.
+func (o *Overrides) PolicyConfigHash(userID string) uint64 {
+	limits := o.getOverridesForUser(userID)
+	cfg := struct {
+		Mapping             PolicyStreamMapping                `yaml:"mapping"`
+		Overrides           map[string]PolicyOverridableLimits `yaml:"overrides"`
+		UseOwnedStreamCount bool                               `yaml:"use_owned_stream_count"`
+	}{
+		Mapping:             limits.PolicyStreamMapping,
+		Overrides:           limits.PolicyOverrideLimits,
+		UseOwnedStreamCount: limits.UseOwnedStreamCount,
+	}
+	b, err := yaml.Marshal(cfg)
+	if err != nil {
+		// Marshaling config structs that were themselves unmarshaled from YAML cannot
+		// realistically fail; a zero hash at worst triggers a spurious reconcile pass.
+		return 0
+	}
+	h := fnv.New64a()
+	_, _ = h.Write(b)
+	return h.Sum64()
 }
 
 func (o *Overrides) ShardAggregations(userID string) []string {

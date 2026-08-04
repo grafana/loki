@@ -27,13 +27,20 @@ type recalculateOwnedStreamsSvc struct {
 
 	ownershipStrategy ownershipStrategy
 	instancesSupplier func() []*instance
+
+	// policyConfigHashes remembers, per tenant, the last-seen hash of the policy
+	// configuration (mapping + stream-count overrides + use_owned_stream_count) so streams
+	// are reconciled only when that configuration actually changes. Accessed only from the
+	// timer-service goroutine; no locking needed.
+	policyConfigHashes map[string]uint64
 }
 
 func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownershipStrategy ownershipStrategy, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreamsSvc {
 	svc := &recalculateOwnedStreamsSvc{
-		instancesSupplier: instancesSupplier,
-		logger:            logger,
-		ownershipStrategy: ownershipStrategy,
+		instancesSupplier:  instancesSupplier,
+		logger:             logger,
+		ownershipStrategy:  ownershipStrategy,
+		policyConfigHashes: make(map[string]uint64),
 	}
 	svc.Service = services.NewTimerService(ringPollInterval, nil, svc.iteration, nil)
 	return svc
@@ -50,23 +57,20 @@ func (s *recalculateOwnedStreamsSvc) recalculate() {
 		s.updateFixedLimitForAll()
 		level.Info(s.logger).Log("msg", "completed recalculate owned streams job")
 	}()
+
+	// Reconcile stream policies and stream-count buckets for tenants whose policy
+	// configuration changed since the last tick. This runs regardless of ring changes: it
+	// converges what streams are assigned to (policy, rate limiter, bucket), while the ring
+	// path below converges who owns them.
+	s.reconcileChangedPolicyConfigs()
+
 	ringChanged, err := s.ownershipStrategy.checkRingForChanges()
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to check ring for changes", "err", err)
 		return
 	}
 	if !ringChanged {
-		level.Debug(s.logger).Log("msg", "ring is not changed, only re-checking stream count buckets")
-		// Ownership is unaffected, but a runtime change to policy stream-count overrides can
-		// re-assign streams' buckets; converge membership here. Ring changes converge it via
-		// updateOwnedStreams below.
-		// NOTE: this runs on every tick; the per-stream work is a memoized map lookup plus a
-		// string compare, so it should be cheap even for large stream counts. If it ever shows
-		// up in profiles, cache each tenant's effective stream-count override set (the
-		// policy -> local/global limit pairs plus use_owned_stream_count) and skip the pass
-		// when it is unchanged since the previous tick — bucket membership can only change
-		// when that config changes.
-		s.rebucketStreamCounts()
+		level.Debug(s.logger).Log("msg", "ring is not changed, skipping ownership re-evaluation")
 		return
 	}
 	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
@@ -84,12 +88,22 @@ func (s *recalculateOwnedStreamsSvc) recalculate() {
 	}
 }
 
-func (s *recalculateOwnedStreamsSvc) rebucketStreamCounts() {
+// reconcileChangedPolicyConfigs runs instance.reconcileStreamPolicies for every tenant whose
+// policy configuration hash changed since the previous tick. The first time a tenant is seen,
+// its hash is recorded without reconciling: its streams were all created with the
+// then-current configuration. It runs for all tenants, not only those with owned-stream
+// counting: policy re-resolution also drives per-stream rate limits and reporting.
+func (s *recalculateOwnedStreamsSvc) reconcileChangedPolicyConfigs() {
 	for _, instance := range s.instancesSupplier() {
-		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
+		hash := instance.limiter.limits.PolicyConfigHash(instance.instanceID)
+		lastHash, seen := s.policyConfigHashes[instance.instanceID]
+		s.policyConfigHashes[instance.instanceID] = hash
+		if !seen || lastHash == hash {
 			continue
 		}
-		instance.rebucketOwnedStreams()
+
+		level.Info(s.logger).Log("msg", "policy configuration changed, reconciling stream policies", "tenant", instance.instanceID)
+		instance.reconcileStreamPolicies()
 	}
 }
 

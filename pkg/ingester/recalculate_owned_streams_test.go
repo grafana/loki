@@ -290,16 +290,38 @@ func Test_recalculateOwnedStreams_rebucketsWithoutRingChange(t *testing.T) {
 	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
 	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
 
-	// Remove the override at runtime; the ring does NOT change, but the periodic job must
-	// still converge bucket membership.
-	limits.DefaultLimits().PolicyOverrideLimits = nil
-
 	service := newRecalculateOwnedStreamsSvc(
 		(&mockTenantsSuplier{tenants: []*instance{inst}}).get,
 		&mockOwnershipStrategy{ringChanged: false},
 		50*time.Millisecond,
 		log.NewNopLogger(),
 	)
+
+	// First tick records the tenant's policy config hash without reconciling.
+	service.recalculate()
+	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+	// A tick with unchanged config must not reconcile: perturb a stream's bucket assignment
+	// artificially and verify the pass is skipped.
+	var replayStream *stream
+	inst.streams.WithRLock(func() {
+		_ = inst.streams.ForEach(func(s *stream) (bool, error) {
+			if s.policy == "replay" {
+				replayStream = s
+			}
+			return true, nil
+		})
+	})
+	require.NotNil(t, replayStream)
+	replayStream.streamCountBucket = "bogus"
+	service.recalculate()
+	require.Equal(t, "bogus", replayStream.streamCountBucket, "unchanged config must skip reconciliation")
+	replayStream.streamCountBucket = "replay"
+
+	// Remove the override at runtime; the ring does NOT change, but the next tick must
+	// converge bucket membership.
+	limits.DefaultLimits().PolicyOverrideLimits = nil
 	service.recalculate()
 
 	require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))

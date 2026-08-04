@@ -270,7 +270,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
-	policy := i.resolvePolicyForStream(ctx, labels)
+	policy, policyFromHeader := i.resolvePolicyForStream(ctx, labels)
 	bucket := i.limiter.streamCountBucket(i.instanceID, policy)
 
 	if record != nil {
@@ -292,6 +292,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 	s.streamCountBucket = bucket
+	s.policyFromHeader = policyFromHeader
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -309,12 +310,19 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
-func (i *instance) resolvePolicyForStream(ctx context.Context, labels labels.Labels) string {
+// resolvePolicyForStream returns the stream's policy and whether it came from the
+// X-Loki-Ingestion-Policy header (via the request context) rather than from the
+// policy_stream_mapping. Header-assigned policies take precedence over the mapping and are
+// treated as sticky: they are never re-resolved when the mapping changes.
+func (i *instance) resolvePolicyForStream(ctx context.Context, labels labels.Labels) (policy string, fromHeader bool) {
+	if headerPolicy := validation.ExtractIngestionPolicyContext(ctx); headerPolicy != "" {
+		return headerPolicy, true
+	}
+
 	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
 	policies := mapping.PolicyFor(ctx, labels)
 	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
 	// As on distributors, we use the first policy by alphabetical order.
-	var policy string
 	if len(policies) > 0 {
 		policy = policies[0]
 		if len(policies) > 1 {
@@ -327,7 +335,7 @@ func (i *instance) resolvePolicyForStream(ctx context.Context, labels labels.Lab
 			)
 		}
 	}
-	return policy
+	return policy, false
 }
 
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
@@ -383,10 +391,11 @@ func (i *instance) createStreamByFP(ctx context.Context, ls labels.Labels, fp mo
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
-	policy := i.resolvePolicyForStream(ctx, ls)
+	policy, policyFromHeader := i.resolvePolicyForStream(ctx, ls)
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 	s.streamCountBucket = i.limiter.streamCountBucket(i.instanceID, policy)
+	s.policyFromHeader = policyFromHeader
 
 	i.onStreamCreated(s)
 
@@ -1200,21 +1209,39 @@ func minTs(stream *logproto.Stream) model.Time {
 	return model.TimeFromUnixNano(streamMinTs)
 }
 
-// rebucketOwnedStreams re-resolves every stream's stream-count bucket from its (creation-time)
-// policy and moves the counts of streams whose bucket changed. This converges bucket membership
-// after a runtime change to policy stream-count overrides without waiting for a ring change.
-// Policies themselves stay fixed at creation: label-mapping changes and header-assigned policies
-// are deliberately not re-resolved here (see Limiter.streamCountBucket).
-func (i *instance) rebucketOwnedStreams() {
+// reconcileStreamPolicies re-resolves every stream's policy against the current
+// policy_stream_mapping and its stream-count bucket against the current overrides, updating
+// streams whose assignment changed. It converges live streams after a runtime change to the
+// policy configuration without waiting for a ring change or restart.
+//
+// Header-assigned policies (s.policyFromHeader) are sticky and never re-resolved; their bucket
+// is still re-derived, since it depends on the overrides. Mutating s.policy and s.limiter
+// requires the stream's chunkMtx (the Push path reads them under that lock); mutating
+// s.streamCountBucket is safe under the streams read lock because its readers hold the streams
+// write lock.
+func (i *instance) reconcileStreamPolicies() {
 	// The tenant is fixed for the whole pass, so the bucket only depends on the policy;
 	// memoize it to avoid re-reading the overrides for every stream.
 	buckets := make(map[string]string)
 	i.streams.WithRLock(func() {
 		_ = i.streams.ForEach(func(s *stream) (bool, error) {
-			bucket, ok := buckets[s.policy]
+			policy := s.policy
+			if !s.policyFromHeader {
+				// Background context: there is no request header to consider here.
+				policy, _ = i.resolvePolicyForStream(context.Background(), s.labels)
+			}
+
+			if policy != s.policy {
+				s.chunkMtx.Lock()
+				s.policy = policy
+				s.limiter = NewStreamRateLimiter(i.limiter.rateLimitStrategy, i.instanceID, policy, streamRateLimiterRecheckPeriod)
+				s.chunkMtx.Unlock()
+			}
+
+			bucket, ok := buckets[policy]
 			if !ok {
-				bucket = i.limiter.streamCountBucket(i.instanceID, s.policy)
-				buckets[s.policy] = bucket
+				bucket = i.limiter.streamCountBucket(i.instanceID, policy)
+				buckets[policy] = bucket
 			}
 			if bucket != s.streamCountBucket {
 				i.ownedStreamsSvc.moveStreamBucket(s.fp, s.streamCountBucket, bucket)

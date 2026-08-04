@@ -581,7 +581,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
 	require.NoError(b, err)
 	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", lbs))
-	policy := inst.resolvePolicyForStream(context.Background(), lbs)
+	policy, _ := inst.resolvePolicyForStream(context.Background(), lbs)
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -1787,7 +1787,7 @@ func TestInstance_StreamCountPolicyBuckets(t *testing.T) {
 
 		// Drop the stream-count override: replay streams belong in the default bucket now.
 		limits.DefaultLimits().PolicyOverrideLimits = nil
-		inst.rebucketOwnedStreams()
+		inst.reconcileStreamPolicies()
 		require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
 		require.Equal(t, 0, inst.ownedStreamsSvc.getStreamCount("replay"))
 	})
@@ -1806,11 +1806,163 @@ func TestInstance_StreamCountPolicyBuckets(t *testing.T) {
 		limits.DefaultLimits().PolicyOverrideLimits = map[string]validation.PolicyOverridableLimits{
 			"mapped": {MaxGlobalStreamsPerUser: ptr(2)},
 		}
-		inst.rebucketOwnedStreams()
+		inst.reconcileStreamPolicies()
 		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
 		require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount("mapped"))
 
 		// The moved streams count against the new override immediately: bucket is full.
 		require.Error(t, push(inst, `{job="mapped", n="2"}`))
+	})
+}
+
+func TestInstance_ReconcileStreamPolicies(t *testing.T) {
+	pushCtx := func(ctx context.Context, inst *instance, ls string) error {
+		return inst.Push(ctx, &logproto.PushRequest{Streams: []logproto.Stream{
+			{Labels: ls, Entries: entries(1, time.Now().Add(-5*time.Minute))},
+		}})
+	}
+	push := func(inst *instance, ls string) error { return pushCtx(context.Background(), inst, ls) }
+
+	findStreamByPolicy := func(inst *instance, policy string) *stream {
+		var found *stream
+		inst.streams.WithRLock(func() {
+			_ = inst.streams.ForEach(func(s *stream) (bool, error) {
+				if s.policy == policy {
+					found = s
+				}
+				return true, nil
+			})
+		})
+		return found
+	}
+
+	setMapping := func(t *testing.T, limits *validation.Overrides, m validation.PolicyStreamMapping) {
+		require.NoError(t, m.Validate())
+		limits.DefaultLimits().PolicyStreamMapping = m
+	}
+
+	t.Run("mapping change re-resolves policy, rate limiter and bucket", func(t *testing.T) {
+		inst, limits := streamCountBucketsTestInstance(t)
+
+		require.NoError(t, push(inst, `{job="replay", n="0"}`))
+		require.NoError(t, push(inst, `{job="app", n="0"}`))
+		s := findStreamByPolicy(inst, "replay")
+		require.NotNil(t, s)
+		require.Equal(t, "replay", s.limiter.policy)
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+		// The replay selector no longer matches the stream: policy, rate limiter, and
+		// bucket must all converge to the unmapped state.
+		setMapping(t, limits, validation.PolicyStreamMapping{
+			"replay": []*validation.PriorityStream{{Selector: `{job="somethingelse"}`, Priority: 1}},
+		})
+		inst.reconcileStreamPolicies()
+
+		require.Equal(t, noPolicy, s.policy)
+		require.Equal(t, noPolicy, s.limiter.policy)
+		require.Equal(t, noPolicy, s.streamCountBucket)
+		require.Equal(t, 2, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 0, inst.ownedStreamsSvc.getStreamCount("replay"))
+
+		// And back: the stream matches replay again, which has a stream-count override.
+		setMapping(t, limits, validation.PolicyStreamMapping{
+			"replay": []*validation.PriorityStream{{Selector: `{job="replay"}`, Priority: 1}},
+		})
+		inst.reconcileStreamPolicies()
+
+		require.Equal(t, "replay", s.policy)
+		require.Equal(t, "replay", s.limiter.policy)
+		require.Equal(t, "replay", s.streamCountBucket)
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount(defaultStreamCountBucket))
+		require.Equal(t, 1, inst.ownedStreamsSvc.getStreamCount("replay"))
+	})
+
+	t.Run("header-assigned policies are sticky", func(t *testing.T) {
+		inst, limits := streamCountBucketsTestInstance(t)
+
+		hdrCtx := validation.InjectIngestionPolicyContext(context.Background(), "hdr")
+		require.NoError(t, pushCtx(hdrCtx, inst, `{job="replay", n="hdr"}`))
+		require.NoError(t, push(inst, `{job="replay", n="mapped"}`))
+
+		hdrStream := findStreamByPolicy(inst, "hdr")
+		require.NotNil(t, hdrStream)
+		require.True(t, hdrStream.policyFromHeader)
+		mappedStream := findStreamByPolicy(inst, "replay")
+		require.NotNil(t, mappedStream)
+		require.False(t, mappedStream.policyFromHeader)
+
+		// Remove the mapping entirely: the mapping-derived stream loses its policy, the
+		// header-assigned one keeps it.
+		setMapping(t, limits, validation.PolicyStreamMapping{})
+		inst.reconcileStreamPolicies()
+
+		require.Equal(t, "hdr", hdrStream.policy)
+		require.Equal(t, "hdr", hdrStream.limiter.policy)
+		require.Equal(t, noPolicy, mappedStream.policy)
+	})
+
+	t.Run("policy converges for tenants without owned stream counts", func(t *testing.T) {
+		l := defaultLimitsTestConfig()
+		l.UseOwnedStreamCount = false
+		l.PolicyStreamMapping = validation.PolicyStreamMapping{
+			"replay": []*validation.PriorityStream{{Selector: `{job="replay"}`, Priority: 1}},
+		}
+		require.NoError(t, l.Validate())
+		limits, err := validation.NewOverrides(l, nil)
+		require.NoError(t, err)
+		limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+		tenantsRetention := retention.NewTenantsRetention(limits)
+		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
+		require.NoError(t, err)
+
+		require.NoError(t, push(inst, `{job="replay", n="0"}`))
+		s := findStreamByPolicy(inst, "replay")
+		require.NotNil(t, s)
+		require.Equal(t, noPolicy, s.streamCountBucket, "no policy buckets without owned stream counts")
+
+		setMapping(t, limits, validation.PolicyStreamMapping{})
+		inst.reconcileStreamPolicies()
+
+		require.Equal(t, noPolicy, s.policy)
+		require.Equal(t, noPolicy, s.limiter.policy)
+	})
+
+	t.Run("no race with concurrent pushes", func(t *testing.T) {
+		inst, limits := streamCountBucketsTestInstance(t)
+		require.NoError(t, push(inst, `{job="replay", n="0"}`))
+
+		stop := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					// Errors (duplicate/out-of-order entries) are fine: they exercise the
+					// reportMetrics path that reads s.policy under chunkMtx.
+					_ = push(inst, `{job="replay", n="0"}`)
+				}
+			}
+		}()
+
+		withReplay := validation.PolicyStreamMapping{
+			"replay": []*validation.PriorityStream{{Selector: `{job="replay"}`, Priority: 1}},
+		}
+		withoutReplay := validation.PolicyStreamMapping{
+			"replay": []*validation.PriorityStream{{Selector: `{job="somethingelse"}`, Priority: 1}},
+		}
+		for n := range 50 {
+			if n%2 == 0 {
+				setMapping(t, limits, withoutReplay)
+			} else {
+				setMapping(t, limits, withReplay)
+			}
+			inst.reconcileStreamPolicies()
+		}
+		close(stop)
+		wg.Wait()
 	})
 }

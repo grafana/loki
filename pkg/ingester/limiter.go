@@ -16,6 +16,10 @@ import (
 
 const (
 	errMaxStreamsPerUserLimitExceeded = "tenant '%v' per-user streams limit exceeded, streams: %d exceeds calculated limit: %d (local limit: %d, global limit: %d, local share: %d)"
+
+	// streamRateLimiterRecheckPeriod is how often a stream's rate limiter re-reads its limit
+	// from the tenant/policy configuration.
+	streamRateLimiterRecheckPeriod = 10 * time.Second
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -33,6 +37,7 @@ type Limits interface {
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
+	PolicyConfigHash(userID string) uint64
 
 	validation.IngestionPolicyOverrideLimits
 	retention.Limits
