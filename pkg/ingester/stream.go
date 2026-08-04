@@ -88,6 +88,10 @@ type stream struct {
 
 	retentionHours string
 	policy         string
+	// policyFromHeader is true when policy was assigned via the X-Loki-Ingestion-Policy
+	// header rather than resolved from policy_stream_mapping. Header-assigned policies are
+	// sticky: reconcileStreamPolicies never re-resolves them when the mapping changes.
+	policyFromHeader bool
 	// streamCountBucket is the bucket this stream's count is tracked under for stream-count
 	// limits (see Limiter.streamCountBucket): the policy name when the policy has a
 	// stream-count override, defaultStreamCountBucket otherwise. Kept separate from policy,
@@ -128,7 +132,7 @@ func newStream(
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
-		limiter:              NewStreamRateLimiter(limits, tenant, policy, 10*time.Second),
+		limiter:              NewStreamRateLimiter(limits, tenant, policy, streamRateLimiterRecheckPeriod),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               ls,

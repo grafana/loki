@@ -139,6 +139,35 @@ func Test_OwnedStreamService_PolicyStreamCounting(t *testing.T) {
 	require.Equal(t, 0, service.getStreamCount("ops"))
 }
 
+func Test_OwnedStreamService_MoveStreamBucket(t *testing.T) {
+	limits, err := validation.NewOverrides(validation.Limits{
+		MaxGlobalStreamsPerUser: 100,
+	}, nil)
+	require.NoError(t, err)
+
+	ring := &ringCountMock{count: 30}
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(ring, 3), &TenantBasedStrategy{limits: limits})
+
+	service := newOwnedStreamService("test", limiter)
+
+	service.trackStreamOwnership(model.Fingerprint(1), true, "replay")
+	service.trackStreamOwnership(model.Fingerprint(2), true, "replay")
+	service.trackStreamOwnership(model.Fingerprint(3), false, "replay") // not owned
+
+	// Owned stream moves buckets; the not-owned stream is not counted anywhere so moving it
+	// must not change any counter.
+	service.moveStreamBucket(model.Fingerprint(1), "replay", defaultStreamCountBucket)
+	service.moveStreamBucket(model.Fingerprint(3), "replay", defaultStreamCountBucket)
+	require.Equal(t, 1, service.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 1, service.getStreamCount("replay"))
+
+	// Moving the last stream out of a bucket deletes the bucket (delete-at-zero).
+	service.moveStreamBucket(model.Fingerprint(2), "replay", defaultStreamCountBucket)
+	require.Equal(t, 2, service.getStreamCount(defaultStreamCountBucket))
+	require.Equal(t, 0, service.getStreamCount("replay"))
+	require.Equal(t, 0, service.getActivePolicyCount())
+}
+
 func Test_OwnedStreamService_PolicyCleanup(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{
 		MaxGlobalStreamsPerUser: 100,
