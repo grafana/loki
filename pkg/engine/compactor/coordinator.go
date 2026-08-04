@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -224,23 +225,7 @@ func (c *coordinator) compactTenantLogs(
 	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
 
 	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
-	tasksCnt := min(len(tasks), 20)
-	for _, task := range tasks[:taskCnt] {
-		totalTaskSize := int64(0)
-		sb := strings.Builder{}
-		sb.WriteString("[")
-		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
-			if i != len(task.Runs)-1 {
-				sb.WriteString(", ")
-			}
-			for j := 0; j < len(run.Sections); j++ {
-				totalTaskSize += run.Sections[j].UncompressedSize
-			}
-		}
-		sb.WriteString("]")
-		level.Debug(entryLogger).Log("msg", "log compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
-	}
+	logLogTaskDetails(entryLogger, tasks)
 
 	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
 	g, gctx := errgroup.WithContext(ctx)
@@ -331,6 +316,27 @@ func (c *coordinator) compactTenantLogs(
 	return stats, nil
 }
 
+func logLogTaskDetails(logger log.Logger, tasks []*proto.TaskSpec) {
+	// Only log the first 20 tasks
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:tasksCnt] {
+		totalTaskSize := int64(0)
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
+			for j := 0; j < len(run.Sections); j++ {
+				totalTaskSize += run.Sections[j].UncompressedSize
+			}
+		}
+		sb.WriteString("]")
+		level.Debug(logger).Log("msg", "log compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+	}
+}
+
 // compactTenant performs one index-compaction pass for a tenant and window.
 func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
 	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
@@ -353,23 +359,7 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	outputs := make([]string, len(tasks))
 
 	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
-	tasksCnt := min(len(tasks), 20)
-	for _, task := range tasks[:taskCnt] {
-		totalTaskSize := int64(0)
-		sb := strings.Builder{}
-		sb.WriteString("[")
-		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
-			if i != len(task.Runs)-1 {
-				sb.WriteString(", ")
-			}
-			for j := 0; j < len(run.Sections); j++ {
-				totalTaskSize += run.Sections[j].UncompressedSize
-			}
-		}
-		sb.WriteString("]")
-		level.Debug(c.logger).Log("msg", "index compaction task", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
-	}
+	logIndexTaskDetails(c.logger, tasks)
 
 	// IndexMerge opens each referenced object whole. Until it reads individual
 	// sections, one object may be repeated across task outputs and deduplicated
@@ -454,6 +444,23 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 		added:      len(newEntries),
 		dispatched: len(tasks),
 	}, nil
+}
+
+func logIndexTaskDetails(logger log.Logger, tasks []*proto.TaskSpec) {
+	// Only log the first 20 tasks
+	tasksCnt := min(len(tasks), 20)
+	for _, task := range tasks[:tasksCnt] {
+		sb := strings.Builder{}
+		sb.WriteString("[")
+		for i, run := range task.Runs {
+			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			if i != len(task.Runs)-1 {
+				sb.WriteString(", ")
+			}
+		}
+		sb.WriteString("]")
+		level.Debug(logger).Log("msg", "index compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String())
+	}
 }
 
 // taskBounds returns the min/max timestamp (unix nanos) across all sections
