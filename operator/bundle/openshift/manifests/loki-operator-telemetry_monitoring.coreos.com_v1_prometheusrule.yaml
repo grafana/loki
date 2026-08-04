@@ -80,7 +80,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
         /
@@ -104,7 +104,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
       record: openshift_logging:lokistack_cpu_utilization:ratio
@@ -129,7 +129,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
         /
@@ -153,7 +153,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
       record: openshift_logging:lokistack_memory_utilization:ratio
