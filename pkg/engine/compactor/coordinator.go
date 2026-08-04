@@ -16,7 +16,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
-	"github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -316,7 +315,7 @@ func (c *coordinator) compactTenantLogs(
 	return stats, nil
 }
 
-func logLogTaskDetails(logger log.Logger, tasks []*proto.TaskSpec) {
+func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	// Only log the first 20 tasks
 	tasksCnt := min(len(tasks), 20)
 	for _, task := range tasks[:tasksCnt] {
@@ -444,7 +443,7 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	}, nil
 }
 
-func logIndexTaskDetails(logger log.Logger, tasks []*proto.TaskSpec) {
+func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	// Only log the first 20 tasks
 	tasksCnt := min(len(tasks), 20)
 	for _, task := range tasks[:tasksCnt] {
