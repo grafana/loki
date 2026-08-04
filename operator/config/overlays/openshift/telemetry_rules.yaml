@@ -81,7 +81,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
         /
@@ -105,7 +105,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
     # Memory utilization ratio per component (usage / request)
@@ -131,7 +131,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
         /
@@ -155,7 +155,7 @@ spec:
             "namespace",
             "(.+)"
           )
-          * on (stack_namespace) group_left(size)
+          * on (stack_namespace, stack_name) group_left(size)
           lokistack_info
         )
     # Total bytes received by size (bytes/s)
