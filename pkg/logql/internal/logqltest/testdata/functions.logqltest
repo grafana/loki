@@ -58,10 +58,14 @@ eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m])
 eval instant at 60s label_replace(count_over_time({app=~"foo.*"} |~".+bar" [1m]), "new", "$1", "app", "(")
   expect fail
 
-# label_replace reads the final label set, the one left after structured metadata and parser
-# conflicts are resolved. The precedence order is: stream > structured metadata > parsed.
-# Each conflict loser keeps its value under a `<name>_extracted` label.
-# Structured metadata is present even without a parser stage.
+# label_replace reads the final label set, the one left after stream label, structured metadata, and
+# parser conflicts are resolved. Structured metadata is present even without a parser stage.
+#
+# A name can be a stream label, structured metadata, and a parsed field at once. Two separate rules
+# resolve conflicts:
+# - The base name goes to the highest-precedence source: stream > structured metadata > parsed.
+# - Each value that loses the base name spills to the single <name>_extracted key, where the precedence
+#   order is the opposite: parsed > structured metadata > stream.
 clear
 load
   # Stream label conflicting with structured metadata.
@@ -102,14 +106,16 @@ eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out
 
 clear
 load
-  # A line field conflicts both with stream labels and structured metadata.
+  # `k` is a stream label, structured metadata, and a parsed field at once.
   {app="a", k="s"} "k=p" @ 20s [repeat every 20s for 3] [metadata k="m"]
   {app="noise"} "noise" @ 30s
 
-# `k` line field conflicts both with stream labels and structured metadata.
+# With the parser, stream keeps the base `k` and parsed wins the single `k_extracted` slot, so the
+# structured metadata value "m" is dropped.
 eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k", "(.*)")
   {app="a", k="s", k_extracted="p", out="s"} 3
 eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out", "$1", "k_extracted", "(.*)")
   {app="a", k="s", k_extracted="p", out="p"} 3
+# Without the parser the metadata value is the only loser, so it keeps `k_extracted`.
 eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "k_extracted", "(.*)")
   {app="a", k="s", k_extracted="m", out="m"} 3
