@@ -487,9 +487,15 @@ type fixedSortSchema []string
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
 
 func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreamTable, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+	builderCfg := c.indexobjCfg
+	builderCfg.MaxPageRows = 10000
+	builderCfg.TargetPageSize = 1 * 1024 * 1024      // 1MB
+	builderCfg.TargetObjectSize = 512 * 1024 * 1024  // 512MB
+	builderCfg.TargetSectionSize = 512 * 1024 * 1024 // 512MB
+	builderCfg.BufferSize = 64 * 1024 * 1024         // 64MB
+
 	cfg := logsobj.BuilderConfig{
-		BuilderBaseConfig:    c.indexobjCfg,
-		DataobjSortOrder:     "stream-asc",
+		BuilderBaseConfig:    builderCfg,
 		AppendOrderedEnabled: true,
 		DataobjUseSortSchema: true,
 	}
