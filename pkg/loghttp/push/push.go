@@ -456,6 +456,12 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
 
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		if lbs.Has(constants.BackfillLabel) || lbs.Has(constants.BackfillShardLabel) {
+			return nil, nil, errReservedBackfillLabels()
+		}
+
 		// Check if this is an aggregated metric or pattern stream
 		isInternalStream := false
 		if lbs.Has(constants.AggregatedMetricLabel) || lbs.Has(constants.PatternLabel) {
