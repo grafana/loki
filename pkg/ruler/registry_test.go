@@ -375,14 +375,27 @@ func TestTenantMultiRemoteWriteConfigWithoutOverride(t *testing.T) {
 }
 
 func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
+	// sharedHeaders is the exact map instance stored in the tenant's limits
+	// override. getTenantConfig strips X-Scope-OrgId variations and injects the
+	// canonical OrgID header; it must operate on a clone so the override map is
+	// left untouched and can be reused safely for later lookups.
 	sharedHeaders := map[string]string{
-		"Additional": "Header",
+		"Additional":                                "Header",
+		user.OrgIDHeaderName:                        "should-be-stripped",
+		strings.ToLower(user.OrgIDHeaderName):       "should-be-stripped-lower",
+		fmt.Sprintf("  %s  ", user.OrgIDHeaderName): "should-be-stripped-padded",
 	}
 	snapshot := maps.Clone(sharedHeaders)
 
 	limits := fakeLimits{
 		limits: map[string]*validation.Limits{
-			additionalHeadersRWTenant: {},
+			additionalHeadersRWTenant: {
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+					"default": {
+						Headers: sharedHeaders,
+					},
+				},
+			},
 		},
 	}
 
@@ -392,9 +405,16 @@ func TestTenantRemoteWriteHeadersNotMutateOverrides(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tenantCfg.RemoteWrite, 1)
 
+	// The resolved config reflects the mutations: OrgID variations stripped, the
+	// canonical OrgID header injected, and unrelated override headers preserved.
+	resolved := tenantCfg.RemoteWrite[0].Headers
+	require.Equal(t, additionalHeadersRWTenant, resolved[user.OrgIDHeaderName], "canonical OrgID header must be injected into the resolved config")
+	require.Equal(t, "Header", resolved["Additional"], "unrelated override headers must be preserved in the resolved config")
+	require.NotContains(t, resolved, strings.ToLower(user.OrgIDHeaderName), "OrgID header variations must be stripped from the resolved config")
+
+	// The override map itself must be untouched by the mutations above.
 	require.Equal(t, snapshot, sharedHeaders, "getTenantConfig must not mutate the limits override headers map")
-	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", tenantCfg.RemoteWrite[0].Headers),
-		"remote write headers must be a copy of the override map, not the same map instance")
+	require.NotEqual(t, fmt.Sprintf("%p", sharedHeaders), fmt.Sprintf("%p", resolved), "remote write headers must be a copy of the override map, not the same map instance")
 
 	_, err = reg.getTenantConfig(additionalHeadersRWTenant)
 	require.NoError(t, err)
@@ -432,9 +452,26 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 		},
 	}
 
+	// sharedHeaders is the exact map instance stored in the tenant's limits
+	// override. getTenantConfig strips X-Scope-OrgId variations and injects the
+	// canonical OrgID header; it must operate on a clone so the override map is
+	// left untouched and can be reused safely for later lookups.
+	sharedHeaders := map[string]string{
+		"Additional":                          "Header",
+		user.OrgIDHeaderName:                  "should-be-stripped",
+		strings.ToLower(user.OrgIDHeaderName): "should-be-stripped-lower",
+	}
+	snapshot := maps.Clone(sharedHeaders)
+
 	limits := fakeLimits{
 		limits: map[string]*validation.Limits{
-			headersRaceTenant: {},
+			headersRaceTenant: {
+				RulerRemoteWriteConfig: map[string]rulerconfig.RemoteWriteConfig{
+					"default": {
+						Headers: sharedHeaders,
+					},
+				},
+			},
 		},
 	}
 
@@ -484,6 +521,11 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 	for range 10 {
 		reg.configureTenantStorage(headersRaceTenant)
 	}
+
+	// After all the concurrent config resolutions, the shared override map must be
+	// byte-for-byte identical to its initial state.
+	require.Equal(t, snapshot, sharedHeaders,
+		"concurrent getTenantConfig calls must not mutate the shared override headers map")
 }
 
 func TestWALRegistryCreation(t *testing.T) {
