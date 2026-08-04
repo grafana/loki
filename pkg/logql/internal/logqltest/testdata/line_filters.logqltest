@@ -24,7 +24,7 @@ eval instant at 60s count_over_time({app="a"} |= "" [1m])
 clear
 load
   {app="a"} "code=500 fail" @ 20s [repeat every 20s for 4]
-  {app="a"} "code=200 pass" @ 30s [repeat every 20s for 2]
+  {app="a"} "code=200 pass" @ 30s
   {app="a"} "CODE=503 down" @ 45s
 
 eval instant at 60s count_over_time({app="a"} |~ "code=5.." [1m])
@@ -35,7 +35,7 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |~ "code=5.." [1
   {app="a"} 3 _
 # !~ keeps the lines the regex does not match.
 eval instant at 60s count_over_time({app="a"} !~ "code=5.." [1m])
-  {app="a"} 3
+  {app="a"} 2
 # A regex is case-sensitive; (?i) makes it case-insensitive and also matches CODE=503.
 eval instant at 60s count_over_time({app="a"} |~ "(?i)code=5.." [1m])
   {app="a"} 4
@@ -69,7 +69,7 @@ eval instant at 60s count_over_time({app="a"} |> "<verb> /api 200" [1m])
 clear
 load
   {app="a"} "src 192.168.1.10 ok" @ 20s [repeat every 20s for 4]
-  {app="a"} "src 10.0.0.9 ok"     @ 30s [repeat every 20s for 2]
+  {app="a"} "src 10.0.0.9 ok"     @ 30s
   {app="a"} "no ip here"          @ 45s
 
 eval instant at 60s count_over_time({app="a"} |= ip("192.168.1.0/24") [1m])
@@ -80,10 +80,10 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} |= ip("192.168.1
   {app="a"} 3 _
 # != ip keeps lines with no IP in the range, including a line with no IP at all.
 eval instant at 60s count_over_time({app="a"} != ip("192.168.1.0/24") [1m])
-  {app="a"} 3
+  {app="a"} 2
 # A wider range matches the other subnet.
 eval instant at 60s count_over_time({app="a"} |= ip("10.0.0.0/8") [1m])
-  {app="a"} 2
+  {app="a"} 1
 # An invalid IP pattern fails at parse time.
 eval instant at 60s count_over_time({app="a"} |= ip("notanip") [1m])
   expect fail msg: ip: invalid pattern
