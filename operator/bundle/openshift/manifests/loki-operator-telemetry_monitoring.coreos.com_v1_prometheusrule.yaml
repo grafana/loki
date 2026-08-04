@@ -73,7 +73,7 @@ spec:
               "stack_name",
               "$1",
               "pod",
-              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+              "(.+?)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
             ),
             "stack_namespace",
             "$1",
@@ -97,7 +97,7 @@ spec:
               "stack_name",
               "$1",
               "pod",
-              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+              "(.+?)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
             ),
             "stack_namespace",
             "$1",
@@ -122,7 +122,7 @@ spec:
               "stack_name",
               "$1",
               "pod",
-              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+              "(.+?)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
             ),
             "stack_namespace",
             "$1",
@@ -146,7 +146,7 @@ spec:
               "stack_name",
               "$1",
               "pod",
-              "(.+)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
+              "(.+?)-(ingester|distributor|querier|query-frontend|compactor|index-gateway|ruler|gateway)-.+"
             ),
             "stack_namespace",
             "$1",
