@@ -64,6 +64,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	if d.consecutive429s != nil {
 		if d.consecutive429s.Get(tenantID) > 3 {
 			errorWriter(w, "Please try again later", http.StatusTooManyRequests, logger)
+			return
 		}
 	}
 
