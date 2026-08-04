@@ -989,7 +989,7 @@ github.com/grafana/dskit/test
 github.com/grafana/dskit/timeutil
 github.com/grafana/dskit/tracing
 github.com/grafana/dskit/user
-# github.com/grafana/gomemcache v0.0.0-20251127154401-74f93547077b
+# github.com/grafana/gomemcache v0.0.0-20260728143316-9448343bd654
 ## explicit; go 1.21
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34
