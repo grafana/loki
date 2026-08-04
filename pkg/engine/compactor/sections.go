@@ -410,8 +410,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						labels[i] = stat.Labels[name]
 					}
 				}
-				minKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
-				maxKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+				// Log records sort by timestamp descending after their schema
+				// labels, so the chronological maximum is the ordering minimum
+				// and the chronological minimum is the ordering maximum.
+				minKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
+				maxKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
@@ -422,8 +425,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 							SectionIndex:     stat.SectionIndex,
 							MinKey:           minKey.labels,
 							MaxKey:           maxKey.labels,
-							MinTimestamp:     minKey.timestamp,
-							MaxTimestamp:     maxKey.timestamp,
+							MinTimestamp:     stat.MinTimestamp,
+							MaxTimestamp:     stat.MaxTimestamp,
 							UncompressedSize: stat.UncompressedSize,
 						},
 						Min: minKey,

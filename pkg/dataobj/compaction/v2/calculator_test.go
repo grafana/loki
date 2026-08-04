@@ -63,16 +63,16 @@ func TestCalculateRuns(t *testing.T) {
 			want: [][]int64{{0, 1}},
 		},
 		{
-			name: "overlapping",
+			name: "overlapping objects",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("d", 0)),
-				testSection("o", 1, key("b", 0), key("e", 0)),
-				testSection("o", 2, key("c", 0), key("f", 0)),
+				testSection("o0", 0, key("a", 0), key("d", 0)),
+				testSection("o1", 1, key("b", 0), key("e", 0)),
+				testSection("o2", 2, key("c", 0), key("f", 0)),
 			},
 			want: [][]int64{{0}, {1}, {2}},
 		},
 		{
-			name: "timestamp breaks label tie",
+			name: "section order is trusted within an object",
 			sections: []Section[testKey]{
 				testSection("o", 1, key("api", 30), key("api", 40)),
 				testSection("o", 0, key("api", 10), key("api", 20)),
@@ -82,11 +82,19 @@ func TestCalculateRuns(t *testing.T) {
 		{
 			name: "best fit",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("00", 0), key("05", 0)),
-				testSection("o", 1, key("01", 0), key("10", 0)),
-				testSection("o", 2, key("12", 0), key("20", 0)),
+				testSection("o0", 0, key("00", 0), key("05", 0)),
+				testSection("o1", 1, key("01", 0), key("10", 0)),
+				testSection("o2", 2, key("12", 0), key("20", 0)),
 			},
 			want: [][]int64{{0}, {1, 2}},
+		},
+		{
+			name: "object paths do not determine global order",
+			sections: []Section[testKey]{
+				testSection("a-hash", 0, key("c", 0), key("d", 0)),
+				testSection("z-hash", 0, key("a", 0), key("b", 0)),
+			},
+			want: [][]int64{{0, 0}},
 		},
 	}
 
@@ -143,6 +151,19 @@ func TestCalculateRuns_TiedBoundsUseReferenceOrder(t *testing.T) {
 	require.Equal(t, [][]string{{"a#0"}, {"a#1"}, {"b#0"}}, runRefs(runs))
 }
 
+func TestCalculateObjectRuns(t *testing.T) {
+	sections := []Section[testKey]{
+		// Object z sorts before object a by key despite its path, and its
+		// internally overlapping/projected-backward sections remain one chain.
+		testSection("z-hash", 1, key("a", 1), key("b", 0)),
+		testSection("a-hash", 0, key("c", 0), key("d", 0)),
+		testSection("z-hash", 0, key("a", 3), key("a", 2)),
+	}
+
+	runs := CalculateObjectRuns(sections, compareTestKey)
+	require.Equal(t, [][]string{{"z-hash#0", "z-hash#1", "a-hash#0"}}, runRefs(runs))
+}
+
 func TestIsConverged(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -167,10 +188,17 @@ func TestIsConverged(t *testing.T) {
 			converged: true,
 		},
 		{
-			name: "true overlap",
+			name: "overlap within object",
 			sections: []Section[testKey]{
 				testSection("o", 0, key("a", 0), key("c", 0)),
 				testSection("o", 1, key("b", 0), key("d", 0)),
+			},
+		},
+		{
+			name: "cross-object overlap",
+			sections: []Section[testKey]{
+				testSection("o0", 0, key("a", 0), key("c", 0)),
+				testSection("o1", 0, key("b", 0), key("d", 0)),
 			},
 		},
 	}
@@ -182,6 +210,20 @@ func TestIsConverged(t *testing.T) {
 			require.Equal(t, original, test.sections)
 		})
 	}
+}
+
+func TestAreObjectsConverged(t *testing.T) {
+	internalOverlap := []Section[testKey]{
+		testSection("o", 0, key("a", 0), key("c", 0)),
+		testSection("o", 1, key("b", 0), key("d", 0)),
+	}
+	require.True(t, AreObjectsConverged(internalOverlap, compareTestKey))
+
+	crossObjectOverlap := []Section[testKey]{
+		testSection("z-hash", 0, key("a", 0), key("c", 0)),
+		testSection("a-hash", 0, key("b", 0), key("d", 0)),
+	}
+	require.False(t, AreObjectsConverged(crossObjectOverlap, compareTestKey))
 }
 
 func runRefs(runs []Run) [][]string {

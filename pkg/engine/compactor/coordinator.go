@@ -310,8 +310,8 @@ func (c *coordinator) compactTenantLogs(
 		return newCompactionStats(), fmt.Errorf("reading log section refs: %w", err)
 	}
 
-	runs := v2.CalculateRuns(sections, compareSortKey)
-	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+	runs := v2.CalculateObjectRuns(sections, compareSortKey)
+	if v2.AreObjectsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
 		return newCompactionStats(), nil
 	}

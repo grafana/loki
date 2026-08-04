@@ -305,6 +305,32 @@ func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "terminal window performs no swap")
 }
 
+func TestCompactTenantLogs_TrustsSectionOrderWithinObject(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	indexPath := "indexes/aa/converged"
+
+	// Stream IDs are absent from planner bounds, so timestamps from consecutive
+	// sections can appear to overlap even though the physical object is ordered.
+	buildIndexWithStats(ctx, t, bucket, "acme", indexPath, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 40, UncompressedSize: 100},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 30, UncompressedSize: 100},
+	})
+
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	stats, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
+	require.NoError(t, err)
+	require.Equal(t, newCompactionStats(), stats)
+	require.Empty(t, runner.snapshot())
+	require.Empty(t, replacer.snapshot())
+}
+
 func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()

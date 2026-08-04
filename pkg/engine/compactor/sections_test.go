@@ -210,8 +210,8 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 				MaxTimestamp:     1000,
 				UncompressedSize: 500,
 			},
-			Min: sortKey{labels: []string{"auth"}, timestamp: 500},
-			Max: sortKey{labels: []string{"billing"}, timestamp: 900},
+			Min: sortKey{labels: []string{"auth"}, timestamp: 1000},
+			Max: sortKey{labels: []string{"billing"}, timestamp: 100},
 		},
 	}, refs)
 }
@@ -239,8 +239,8 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 				MaxTimestamp:     20,
 				UncompressedSize: 100,
 			},
-			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
-			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
+			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
+			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
 		},
 	}, refs)
 }
@@ -259,8 +259,8 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
 	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{timestamp: 10}, refs[0].Min)
-	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
+	require.Equal(t, sortKey{timestamp: 20}, refs[0].Min)
+	require.Equal(t, sortKey{timestamp: 10}, refs[0].Max)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }

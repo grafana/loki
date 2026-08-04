@@ -33,10 +33,21 @@ func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 	return runs
 }
 
+// CalculateObjectRuns groups sections by physical object before calculating
+// runs. Sections within an object are kept in section-index order and treated
+// as an indivisible, already-ordered chain.
+func CalculateObjectRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
+	calculated := calculateObjectRuns(sections, compare)
+	runs := make([]Run, len(calculated))
+	for i, run := range calculated {
+		runs[i] = run
+	}
+	return runs
+}
+
 // IsConverged reports whether sections have no positive overlap. Touching
-// sections remain separate runs because their stable order is unknown, but
-// rewriting them cannot remove that ambiguity, so run count alone does not
-// prevent convergence. It does not mutate sections.
+// bounds are converged because rewriting cannot remove their ambiguity. It
+// does not mutate sections.
 func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
 	sections = append([]Section[K](nil), sections...)
 	sortSections(sections, compare)
@@ -51,6 +62,29 @@ func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
 		}
 		if compare(section.Max, maxKey) > 0 {
 			maxKey = section.Max
+		}
+	}
+	return true
+}
+
+// AreObjectsConverged reports whether physical objects have no positive overlap.
+// Sections within an object are trusted to be ordered by section index and are
+// compared as one object envelope. Touching object bounds are converged because
+// rewriting cannot remove their ambiguity. It does not mutate sections.
+func AreObjectsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
+	sections = append([]Section[K](nil), sections...)
+	chains := buildObjectChains(sections, compare)
+	if len(chains) <= 1 {
+		return true
+	}
+
+	maxKey := chains[0].max
+	for _, chain := range chains[1:] {
+		if compare(maxKey, chain.min) > 0 {
+			return false
+		}
+		if compare(chain.max, maxKey) > 0 {
+			maxKey = chain.max
 		}
 	}
 	return true
