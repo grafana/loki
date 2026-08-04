@@ -89,6 +89,14 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 
 The tenant has reached the maximum number of active streams. Active streams are held in memory on ingesters, and excessive streams can cause out-of-memory errors.
 
+{{< admonition type="note" >}}
+Under normal conditions, this limit only blocks the creation of genuinely new streams. Log lines for streams that are already active continue to be accepted.
+
+However, during ingester scaling (autoscaling, rollouts, or ring changes such as a partition-ingester migration), streams can be rebalanced to ingesters that were not previously handling them. The new ingester has no record of that stream in memory, so it treats the next write for that stream as a stream creation and checks it against its local share of the limit. If that share is already used up, for example because the same tenant is also adding new high-cardinality streams during the rebalance, writes to the already-active stream can be rejected with `stream_limit`, even though the tenant has not added new label cardinality for it.
+
+This effect is temporary. It is bounded by the number of ingesters added or restarted, and it typically resolves once the ring is stable and stream ownership is recalculated. If you see `stream_limit` errors that line up with ingester scaling or rollouts rather than with new label values, this is the likely cause.
+{{< /admonition >}}
+
 **Default configuration:**
 
 - `max_global_streams_per_user`: 5000 (globally)
@@ -117,6 +125,8 @@ The tenant has reached the maximum number of active streams. Active streams are 
 {{< admonition type="note" >}}
 Do not increase stream limits to accommodate high cardinality labels, this can result in Loki flushing extremely high numbers of small files which will make for extremely poor query performance.  As volume and the size of the infrastructure being monitored increase, it would be expected to increase the stream limit. However even for hundreds of TBs per day of logs you should avoid exceeding 300,000 max global streams per user.
 {{< /admonition >}}
+
+* **Check for a recent ingester rollout or scaling event** before increasing limits. If `stream_limit` errors started when ingesters were added, restarted, or migrated, the tenant may not have a real cardinality problem. Increasing the limit will not prevent this transient effect and can mask genuine cardinality growth.
 
 **Properties:**
 
