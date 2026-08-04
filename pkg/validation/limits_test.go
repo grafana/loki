@@ -191,7 +191,8 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 		},
 	}
 
-	// Set new defaults with non-nil values for non-scalar types
+	// Set new defaults with non-nil values for non-scalar types. The non-empty
+	// map default lets us verify that per-tenant overrides do not mutate it.
 	newDefaults := Limits{
 		StreamRetention: []StreamRetention{
 			{
@@ -199,9 +200,18 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 				Selector: `{a="b"}`,
 			},
 		},
+		PolicyEnforcedLabels: map[string][]string{
+			"default-policy": {"foo", "bar"},
+		},
 		OTLPConfig: &defaultOTLPConfig,
 	}
 	SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
+
+	// defaultPolicyEnforcedLabels is the expected default map value inherited by
+	// cases that do not override policy_enforced_labels.
+	defaultPolicyEnforcedLabels := map[string][]string{
+		"default-policy": {"foo", "bar"},
+	}
 
 	for _, tc := range []struct {
 		desc string
@@ -209,10 +219,14 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 		exp  Limits
 	}{
 		{
-			desc: "map",
+			// A per-tenant map override is merged into the default map. The merge
+			// must operate on a copy so the shared default map is left untouched
+			// (verified after each case).
+			desc: "map override merges into defaults",
 			yaml: `
-ruler_remote_write_headers:
-  foo: "bar"
+policy_enforced_labels:
+  tenant-policy:
+    - baz
 `,
 			exp: Limits{
 				DiscoverGenericFields: FieldDetectorConfig{},
@@ -226,21 +240,23 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                &defaultOTLPConfig,
-				EnforcedLabels:            []string{},
-				PolicyEnforcedLabels:      map[string][]string{},
+				OTLPConfig:     &defaultOTLPConfig,
+				EnforcedLabels: []string{},
+				PolicyEnforcedLabels: map[string][]string{
+					"default-policy": {"foo", "bar"},
+					"tenant-policy":  {"baz"},
+				},
 				PolicyStreamMapping:       PolicyStreamMapping{},
 				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
 		{
-			// In yaml.v4, null YAML values for struct-backed custom types do not
-			// invoke UnmarshalYAML; the existing value (from defaults) is preserved.
-			// Use `ruler_remote_write_headers: {}` to explicitly set an empty map.
-			desc: "null map preserves defaults (yaml.v4 behaviour)",
+			// An explicit empty map contributes no keys, so the default map is
+			// preserved unchanged.
+			desc: "empty map preserves defaults",
 			yaml: `
-ruler_remote_write_headers:
+policy_enforced_labels: {}
 `,
 			exp: Limits{
 				DiscoverGenericFields: FieldDetectorConfig{},
@@ -253,9 +269,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                &defaultOTLPConfig,
-				EnforcedLabels:            []string{},
-				PolicyEnforcedLabels:      map[string][]string{},
+				OTLPConfig:     &defaultOTLPConfig,
+				EnforcedLabels: []string{},
+				PolicyEnforcedLabels: map[string][]string{
+					"default-policy": {"foo", "bar"},
+				},
 				PolicyStreamMapping:       PolicyStreamMapping{},
 				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
@@ -282,7 +300,7 @@ retention_stream:
 				// Rest from new defaults
 				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
-				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyEnforcedLabels:      map[string][]string{"default-policy": {"foo", "bar"}},
 				PolicyStreamMapping:       PolicyStreamMapping{},
 				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
@@ -308,7 +326,7 @@ reject_old_samples: true
 				},
 				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
-				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyEnforcedLabels:      map[string][]string{"default-policy": {"foo", "bar"}},
 				PolicyStreamMapping:       PolicyStreamMapping{},
 				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
@@ -335,7 +353,7 @@ query_timeout: 5m
 				},
 				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
-				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyEnforcedLabels:      map[string][]string{"default-policy": {"foo", "bar"}},
 				PolicyStreamMapping:       PolicyStreamMapping{},
 				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
@@ -349,6 +367,11 @@ query_timeout: 5m
 			dec.KnownFields(true)
 			require.Nil(t, dec.Decode(&out))
 			require.Equal(t, tc.exp, out)
+
+			// Unmarshaling a per-tenant override must never mutate the shared
+			// global default map.
+			require.Equal(t, defaultPolicyEnforcedLabels, defaultLimits.Load().PolicyEnforcedLabels,
+				"unmarshaling must not mutate the shared default policy_enforced_labels map")
 		})
 	}
 }
