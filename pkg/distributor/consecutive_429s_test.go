@@ -9,7 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testIdleTimeout = 15 * time.Minute
+const (
+	testThreshold = 3
+	// testOpenPeriod must be shorter than testIdleTimeout, so that the open period,
+	// and not eviction, is what closes a circuit.
+	testOpenPeriod  = 5 * time.Minute
+	testIdleTimeout = 15 * time.Minute
+)
 
 // newTestConsecutive429s returns a tracker driven by a mock clock.
 func newTestConsecutive429s(t *testing.T) (*consecutive429s, *quartz.Mock) {
@@ -17,7 +23,7 @@ func newTestConsecutive429s(t *testing.T) (*consecutive429s, *quartz.Mock) {
 	clock := quartz.NewMock(t)
 	clock.Set(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 
-	c := newConsecutive429s(testIdleTimeout)
+	c := newConsecutive429s(testThreshold, testOpenPeriod, testIdleTimeout)
 	// quartz's Now is variadic, so it needs an adapter.
 	c.now = func() time.Time { return clock.Now() }
 	// Re-seed: newConsecutive429s stamped lastSweep from the real clock.
@@ -53,6 +59,83 @@ func TestConsecutive429s_ResetsOnAdmittedRequest(t *testing.T) {
 	// The next rejection starts a new streak at 1, not 3.
 	require.Equal(t, 1, c.Observe("tenant", true))
 	require.Equal(t, 1, c.Get("tenant"))
+}
+
+func TestConsecutive429s_OpensAboveThreshold(t *testing.T) {
+	c, _ := newTestConsecutive429s(t)
+
+	// A streak up to and including the threshold leaves the circuit closed.
+	for i := 1; i <= testThreshold; i++ {
+		require.Equal(t, i, c.Observe("tenant", true))
+		require.False(t, c.IsOpen("tenant"))
+	}
+
+	// Exceeding it opens the circuit.
+	require.Equal(t, testThreshold+1, c.Observe("tenant", true))
+	require.True(t, c.IsOpen("tenant"))
+}
+
+func TestConsecutive429s_LatchesWhileOpen(t *testing.T) {
+	c, _ := newTestConsecutive429s(t)
+
+	for i := 1; i <= testThreshold+1; i++ {
+		c.Observe("tenant", true)
+	}
+	require.True(t, c.IsOpen("tenant"))
+
+	// An admitted request no longer breaks the streak: once the circuit is open it
+	// stays open for the whole open period, whatever is still in flight.
+	require.Equal(t, 0, c.Observe("tenant", false))
+	require.True(t, c.IsOpen("tenant"))
+	require.Equal(t, testThreshold+1, c.Get("tenant"))
+}
+
+func TestConsecutive429s_ClosesAfterOpenPeriod(t *testing.T) {
+	c, clock := newTestConsecutive429s(t)
+
+	for i := 1; i <= testThreshold+1; i++ {
+		c.Observe("tenant", true)
+	}
+	require.True(t, c.IsOpen("tenant"))
+
+	// Still open just before the period elapses.
+	clock.Advance(testOpenPeriod - time.Second)
+	require.True(t, c.IsOpen("tenant"))
+
+	// And closed once it does, which also clears the streak.
+	clock.Advance(time.Second)
+	require.False(t, c.IsOpen("tenant"))
+	require.Equal(t, 0, c.Get("tenant"))
+
+	// A fresh streak reopens it, so the open period is stamped again rather than
+	// being left at the first trip.
+	for i := 1; i <= testThreshold+1; i++ {
+		c.Observe("tenant", true)
+	}
+	require.True(t, c.IsOpen("tenant"))
+	clock.Advance(testOpenPeriod)
+	require.False(t, c.IsOpen("tenant"))
+}
+
+func TestConsecutive429s_CircuitsAreIndependent(t *testing.T) {
+	c, _ := newTestConsecutive429s(t)
+
+	for i := 1; i <= testThreshold+1; i++ {
+		c.Observe("a", true)
+		c.Observe("b", false)
+	}
+
+	require.True(t, c.IsOpen("a"))
+	require.False(t, c.IsOpen("b"))
+}
+
+func TestConsecutive429s_IsOpenUnknownTenant(t *testing.T) {
+	c, _ := newTestConsecutive429s(t)
+
+	require.False(t, c.IsOpen("nobody"))
+	// As with Get, the gate reads this for every push, so it must not create a
+	// counter for tenants that are never rate limited.
+	require.Equal(t, 0, c.len())
 }
 
 func TestConsecutive429s_GetUnknownTenant(t *testing.T) {

@@ -42,6 +42,14 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	// Checked before the circuit breaker below, so that a request shed here neither
+	// consumes one of the circuit breaker's trial requests nor reports a success to
+	// it when its deferred doneFunc runs.
+	if d.consecutive429s != nil && d.consecutive429s.IsOpen(tenantID) {
+		errorWriter(w, "Please try again later", http.StatusTooManyRequests, logger)
+		return
+	}
+
 	// TODO: In future, we want to be able to compose this with the middleware pattern,
 	// but this requires refactor of this file to support next handlers. We will do
 	// this at a later time.
@@ -57,13 +65,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
 		if !circuitBreakerOk {
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
-			return
-		}
-	}
-
-	if d.consecutive429s != nil {
-		if d.consecutive429s.Get(tenantID) > 3 {
-			errorWriter(w, "Please try again later", http.StatusTooManyRequests, logger)
 			return
 		}
 	}

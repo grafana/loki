@@ -171,6 +171,55 @@ func TestRequestParserWrapping(t *testing.T) {
 	})
 }
 
+func TestPushHandlerConsecutive429s(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	c, clock := newTestConsecutive429s(t)
+	distributors[0].consecutive429s = c
+
+	// Whether the request got past the gate. A shed request must not be parsed, let
+	// alone pushed.
+	var parsed bool
+	parser := func(_ string, _ *http.Request, _ push.Limits, _ *runtime.TenantConfigs, _ int, _ int64,
+		_ push.UsageTracker, _ push.StreamResolver, _ log.Logger,
+	) (*logproto.PushRequest, *push.Stats, error) {
+		parsed = true
+		return &logproto.PushRequest{}, &push.Stats{}, nil
+	}
+
+	doPush := func(t *testing.T) *httptest.ResponseRecorder {
+		t.Helper()
+		parsed = false
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, parser, push.HTTPError, constants.Loki)
+		return rec
+	}
+
+	// A streak up to the threshold leaves the circuit closed. These pushes fail to
+	// parse and so return before the rate limiter, leaving the streak untouched.
+	for i := 1; i <= testThreshold; i++ {
+		c.Observe("test-user", true)
+	}
+	require.NotEqual(t, http.StatusTooManyRequests, doPush(t).Code)
+	require.True(t, parsed)
+
+	// Exceeding the threshold opens the circuit, and the request is shed.
+	c.Observe("test-user", true)
+	require.Equal(t, http.StatusTooManyRequests, doPush(t).Code)
+	require.False(t, parsed)
+
+	// The circuit closes once the open period elapses, and requests flow again.
+	clock.Advance(testOpenPeriod)
+	require.NotEqual(t, http.StatusTooManyRequests, doPush(t).Code)
+	require.True(t, parsed)
+}
+
 func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
 	const line = "the quick brown fox jumps over the lazy dog"
 

@@ -507,7 +507,7 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
-		consecutive429s: newConsecutive429s(default429IdleTimeout),
+		consecutive429s: newConsecutive429s(default429Threshold, default429OpenPeriod, default429IdleTimeout),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
