@@ -1222,46 +1222,46 @@ type isQueryResponse_Response interface {
 }
 
 type QueryResponse_Series struct {
-	Series *LokiSeriesResponse `protobuf:"bytes,2,opt,name=series,proto3,oneof" json:"series,omitempty"`
+	Series *LokiSeriesResponse `protobuf:"bytes,2,opt,name=series,proto3,oneof"`
 }
 type QueryResponse_Labels struct {
-	Labels *LokiLabelNamesResponse `protobuf:"bytes,3,opt,name=labels,proto3,oneof" json:"labels,omitempty"`
+	Labels *LokiLabelNamesResponse `protobuf:"bytes,3,opt,name=labels,proto3,oneof"`
 }
 type QueryResponse_Stats struct {
-	Stats *IndexStatsResponse `protobuf:"bytes,4,opt,name=stats,proto3,oneof" json:"stats,omitempty"`
+	Stats *IndexStatsResponse `protobuf:"bytes,4,opt,name=stats,proto3,oneof"`
 }
 type QueryResponse_Prom struct {
-	Prom *LokiPromResponse `protobuf:"bytes,5,opt,name=prom,proto3,oneof" json:"prom,omitempty"`
+	Prom *LokiPromResponse `protobuf:"bytes,5,opt,name=prom,proto3,oneof"`
 }
 type QueryResponse_Streams struct {
-	Streams *LokiResponse `protobuf:"bytes,6,opt,name=streams,proto3,oneof" json:"streams,omitempty"`
+	Streams *LokiResponse `protobuf:"bytes,6,opt,name=streams,proto3,oneof"`
 }
 type QueryResponse_Volume struct {
-	Volume *VolumeResponse `protobuf:"bytes,7,opt,name=volume,proto3,oneof" json:"volume,omitempty"`
+	Volume *VolumeResponse `protobuf:"bytes,7,opt,name=volume,proto3,oneof"`
 }
 type QueryResponse_TopkSketches struct {
-	TopkSketches *TopKSketchesResponse `protobuf:"bytes,8,opt,name=topkSketches,proto3,oneof" json:"topkSketches,omitempty"`
+	TopkSketches *TopKSketchesResponse `protobuf:"bytes,8,opt,name=topkSketches,proto3,oneof"`
 }
 type QueryResponse_QuantileSketches struct {
-	QuantileSketches *QuantileSketchResponse `protobuf:"bytes,9,opt,name=quantileSketches,proto3,oneof" json:"quantileSketches,omitempty"`
+	QuantileSketches *QuantileSketchResponse `protobuf:"bytes,9,opt,name=quantileSketches,proto3,oneof"`
 }
 type QueryResponse_ShardsResponse struct {
-	ShardsResponse *ShardsResponse `protobuf:"bytes,10,opt,name=shardsResponse,proto3,oneof" json:"shardsResponse,omitempty"`
+	ShardsResponse *ShardsResponse `protobuf:"bytes,10,opt,name=shardsResponse,proto3,oneof"`
 }
 type QueryResponse_DetectedFields struct {
-	DetectedFields *DetectedFieldsResponse `protobuf:"bytes,11,opt,name=detectedFields,proto3,oneof" json:"detectedFields,omitempty"`
+	DetectedFields *DetectedFieldsResponse `protobuf:"bytes,11,opt,name=detectedFields,proto3,oneof"`
 }
 type QueryResponse_PatternsResponse struct {
-	PatternsResponse *QueryPatternsResponse `protobuf:"bytes,12,opt,name=patternsResponse,proto3,oneof" json:"patternsResponse,omitempty"`
+	PatternsResponse *QueryPatternsResponse `protobuf:"bytes,12,opt,name=patternsResponse,proto3,oneof"`
 }
 type QueryResponse_DetectedLabels struct {
-	DetectedLabels *DetectedLabelsResponse `protobuf:"bytes,13,opt,name=detectedLabels,proto3,oneof" json:"detectedLabels,omitempty"`
+	DetectedLabels *DetectedLabelsResponse `protobuf:"bytes,13,opt,name=detectedLabels,proto3,oneof"`
 }
 type QueryResponse_CountMinSketches struct {
-	CountMinSketches *CountMinSketchResponse `protobuf:"bytes,14,opt,name=countMinSketches,proto3,oneof" json:"countMinSketches,omitempty"`
+	CountMinSketches *CountMinSketchResponse `protobuf:"bytes,14,opt,name=countMinSketches,proto3,oneof"`
 }
 type QueryResponse_CountDistinct struct {
-	CountDistinct *CountDistinctResponse `protobuf:"bytes,15,opt,name=countDistinct,proto3,oneof" json:"countDistinct,omitempty"`
+	CountDistinct *CountDistinctResponse `protobuf:"bytes,15,opt,name=countDistinct,proto3,oneof"`
 }
 
 func (*QueryResponse_Series) isQueryResponse_Response()           {}
@@ -1467,34 +1467,34 @@ type isQueryRequest_Request interface {
 }
 
 type QueryRequest_Series struct {
-	Series *LokiSeriesRequest `protobuf:"bytes,1,opt,name=series,proto3,oneof" json:"series,omitempty"`
+	Series *LokiSeriesRequest `protobuf:"bytes,1,opt,name=series,proto3,oneof"`
 }
 type QueryRequest_Labels struct {
-	Labels *logproto.LabelRequest `protobuf:"bytes,2,opt,name=labels,proto3,oneof" json:"labels,omitempty"`
+	Labels *logproto.LabelRequest `protobuf:"bytes,2,opt,name=labels,proto3,oneof"`
 }
 type QueryRequest_Stats struct {
-	Stats *logproto.IndexStatsRequest `protobuf:"bytes,3,opt,name=stats,proto3,oneof" json:"stats,omitempty"`
+	Stats *logproto.IndexStatsRequest `protobuf:"bytes,3,opt,name=stats,proto3,oneof"`
 }
 type QueryRequest_Instant struct {
-	Instant *LokiInstantRequest `protobuf:"bytes,4,opt,name=instant,proto3,oneof" json:"instant,omitempty"`
+	Instant *LokiInstantRequest `protobuf:"bytes,4,opt,name=instant,proto3,oneof"`
 }
 type QueryRequest_Streams struct {
-	Streams *LokiRequest `protobuf:"bytes,5,opt,name=streams,proto3,oneof" json:"streams,omitempty"`
+	Streams *LokiRequest `protobuf:"bytes,5,opt,name=streams,proto3,oneof"`
 }
 type QueryRequest_Volume struct {
-	Volume *logproto.VolumeRequest `protobuf:"bytes,6,opt,name=volume,proto3,oneof" json:"volume,omitempty"`
+	Volume *logproto.VolumeRequest `protobuf:"bytes,6,opt,name=volume,proto3,oneof"`
 }
 type QueryRequest_ShardsRequest struct {
-	ShardsRequest *logproto.ShardsRequest `protobuf:"bytes,8,opt,name=shardsRequest,proto3,oneof" json:"shardsRequest,omitempty"`
+	ShardsRequest *logproto.ShardsRequest `protobuf:"bytes,8,opt,name=shardsRequest,proto3,oneof"`
 }
 type QueryRequest_DetectedFields struct {
-	DetectedFields *logproto.DetectedFieldsRequest `protobuf:"bytes,9,opt,name=detectedFields,proto3,oneof" json:"detectedFields,omitempty"`
+	DetectedFields *logproto.DetectedFieldsRequest `protobuf:"bytes,9,opt,name=detectedFields,proto3,oneof"`
 }
 type QueryRequest_PatternsRequest struct {
-	PatternsRequest *logproto.QueryPatternsRequest `protobuf:"bytes,10,opt,name=patternsRequest,proto3,oneof" json:"patternsRequest,omitempty"`
+	PatternsRequest *logproto.QueryPatternsRequest `protobuf:"bytes,10,opt,name=patternsRequest,proto3,oneof"`
 }
 type QueryRequest_DetectedLabels struct {
-	DetectedLabels *logproto.DetectedLabelsRequest `protobuf:"bytes,11,opt,name=detectedLabels,proto3,oneof" json:"detectedLabels,omitempty"`
+	DetectedLabels *logproto.DetectedLabelsRequest `protobuf:"bytes,11,opt,name=detectedLabels,proto3,oneof"`
 }
 
 func (*QueryRequest_Series) isQueryRequest_Request()          {}
@@ -3319,9 +3319,9 @@ func (this *LokiSeriesResponse) GoString() string {
 	s = append(s, "&queryrange.LokiSeriesResponse{")
 	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
 	if this.Data != nil {
-		vs := make([]logproto.SeriesIdentifier, len(this.Data))
+		vs := make([]*logproto.SeriesIdentifier, len(this.Data))
 		for i := range vs {
-			vs[i] = this.Data[i]
+			vs[i] = &this.Data[i]
 		}
 		s = append(s, "Data: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
@@ -4978,8 +4978,7 @@ func (m *QueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 }
 
 func (m *QueryResponse_Series) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -4999,8 +4998,7 @@ func (m *QueryResponse_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_Labels) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5020,8 +5018,7 @@ func (m *QueryResponse_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_Stats) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5041,8 +5038,7 @@ func (m *QueryResponse_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_Prom) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Prom) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5062,8 +5058,7 @@ func (m *QueryResponse_Prom) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_Streams) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5083,8 +5078,7 @@ func (m *QueryResponse_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_Volume) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5104,8 +5098,7 @@ func (m *QueryResponse_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_TopkSketches) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_TopkSketches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5125,8 +5118,7 @@ func (m *QueryResponse_TopkSketches) MarshalToSizedBuffer(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_QuantileSketches) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_QuantileSketches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5146,8 +5138,7 @@ func (m *QueryResponse_QuantileSketches) MarshalToSizedBuffer(dAtA []byte) (int,
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_ShardsResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5167,8 +5158,7 @@ func (m *QueryResponse_ShardsResponse) MarshalToSizedBuffer(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_DetectedFields) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5188,8 +5178,7 @@ func (m *QueryResponse_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_PatternsResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_PatternsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5209,8 +5198,7 @@ func (m *QueryResponse_PatternsResponse) MarshalToSizedBuffer(dAtA []byte) (int,
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_DetectedLabels) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_DetectedLabels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5230,8 +5218,7 @@ func (m *QueryResponse_DetectedLabels) MarshalToSizedBuffer(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_CountMinSketches) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_CountMinSketches) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5251,8 +5238,7 @@ func (m *QueryResponse_CountMinSketches) MarshalToSizedBuffer(dAtA []byte) (int,
 	return len(dAtA) - i, nil
 }
 func (m *QueryResponse_CountDistinct) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryResponse_CountDistinct) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5323,8 +5309,7 @@ func (m *QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 }
 
 func (m *QueryRequest_Series) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5344,8 +5329,7 @@ func (m *QueryRequest_Series) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_Labels) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5365,8 +5349,7 @@ func (m *QueryRequest_Labels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_Stats) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5386,8 +5369,7 @@ func (m *QueryRequest_Stats) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_Instant) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Instant) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5407,8 +5389,7 @@ func (m *QueryRequest_Instant) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_Streams) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5428,8 +5409,7 @@ func (m *QueryRequest_Streams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_Volume) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5449,8 +5429,7 @@ func (m *QueryRequest_Volume) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_ShardsRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_ShardsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5470,8 +5449,7 @@ func (m *QueryRequest_ShardsRequest) MarshalToSizedBuffer(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_DetectedFields) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5491,8 +5469,7 @@ func (m *QueryRequest_DetectedFields) MarshalToSizedBuffer(dAtA []byte) (int, er
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_PatternsRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_PatternsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -5512,8 +5489,7 @@ func (m *QueryRequest_PatternsRequest) MarshalToSizedBuffer(dAtA []byte) (int, e
 	return len(dAtA) - i, nil
 }
 func (m *QueryRequest_DetectedLabels) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
+	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
 }
 
 func (m *QueryRequest_DetectedLabels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
@@ -7281,7 +7257,10 @@ func (m *LokiRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -7603,7 +7582,10 @@ func (m *LokiInstantRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -7687,7 +7669,10 @@ func (m *Plan) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8022,7 +8007,10 @@ func (m *LokiResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8234,7 +8222,10 @@ func (m *LokiSeriesRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8436,7 +8427,10 @@ func (m *LokiSeriesResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8636,7 +8630,10 @@ func (m *LokiLabelNamesResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8752,7 +8749,10 @@ func (m *LokiData) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8871,7 +8871,10 @@ func (m *LokiPromResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -8991,7 +8994,10 @@ func (m *IndexStatsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9111,7 +9117,10 @@ func (m *VolumeResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9296,7 +9305,10 @@ func (m *TopKSketchesResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9481,7 +9493,10 @@ func (m *QuantileSketchResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9666,7 +9681,10 @@ func (m *CountMinSketchResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9851,7 +9869,10 @@ func (m *CountDistinctResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -9971,7 +9992,10 @@ func (m *ShardsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -10091,7 +10115,10 @@ func (m *DetectedFieldsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -10211,7 +10238,10 @@ func (m *QueryPatternsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -10331,7 +10361,10 @@ func (m *DetectedLabelsResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -10907,7 +10940,10 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -11277,7 +11313,7 @@ func (m *QueryRequest) Unmarshal(dAtA []byte) error {
 					if err != nil {
 						return err
 					}
-					if (skippy < 0) || (iNdEx+skippy) < 0 {
+					if skippy < 0 {
 						return ErrInvalidLengthQueryrange
 					}
 					if (iNdEx + skippy) > postIndex {
@@ -11434,7 +11470,10 @@ func (m *QueryRequest) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthQueryrange
 			}
 			if (iNdEx + skippy) > l {
@@ -11452,7 +11491,6 @@ func (m *QueryRequest) Unmarshal(dAtA []byte) error {
 func skipQueryrange(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
-	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -11484,8 +11522,10 @@ func skipQueryrange(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
+			return iNdEx, nil
 		case 1:
 			iNdEx += 8
+			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -11506,30 +11546,55 @@ func skipQueryrange(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthQueryrange
 			}
 			iNdEx += length
-		case 3:
-			depth++
-		case 4:
-			if depth == 0 {
-				return 0, ErrUnexpectedEndOfGroupQueryrange
+			if iNdEx < 0 {
+				return 0, ErrInvalidLengthQueryrange
 			}
-			depth--
+			return iNdEx, nil
+		case 3:
+			for {
+				var innerWire uint64
+				var start int = iNdEx
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return 0, ErrIntOverflowQueryrange
+					}
+					if iNdEx >= l {
+						return 0, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					innerWire |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				innerWireType := int(innerWire & 0x7)
+				if innerWireType == 4 {
+					break
+				}
+				next, err := skipQueryrange(dAtA[start:])
+				if err != nil {
+					return 0, err
+				}
+				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthQueryrange
+				}
+			}
+			return iNdEx, nil
+		case 4:
+			return iNdEx, nil
 		case 5:
 			iNdEx += 4
+			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
-		if iNdEx < 0 {
-			return 0, ErrInvalidLengthQueryrange
-		}
-		if depth == 0 {
-			return iNdEx, nil
-		}
 	}
-	return 0, io.ErrUnexpectedEOF
+	panic("unreachable")
 }
 
 var (
-	ErrInvalidLengthQueryrange        = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowQueryrange          = fmt.Errorf("proto: integer overflow")
-	ErrUnexpectedEndOfGroupQueryrange = fmt.Errorf("proto: unexpected end of group")
+	ErrInvalidLengthQueryrange = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowQueryrange   = fmt.Errorf("proto: integer overflow")
 )
