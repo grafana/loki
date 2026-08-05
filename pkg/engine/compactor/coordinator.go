@@ -332,7 +332,7 @@ func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 			}
 		}
 		sb.WriteString("]")
-		level.Debug(logger).Log("msg", "log compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize, "estimated_completion_time_seconds", totalTaskSize/(80*1024*1024))
+		level.Debug(logger).Log("msg", "log compaction task snippet", "runs", len(task.Runs), "sections_per_run", sb.String(), "total_uncompressed_logs_size", totalTaskSize)
 	}
 }
 
