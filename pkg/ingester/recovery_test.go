@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -344,5 +347,64 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 			return nil
 		})
 		require.NoError(t, err)
+	}
+}
+
+// Backpressure must not be counted or logged as WAL corruption, whose message
+// tells the operator that no action is needed.
+func TestReportWALRecoveryErrSeparatesBackpressureFromCorruption(t *testing.T) {
+	const corruptionMsg = "Recovered from WAL segments with errors."
+
+	for _, tc := range []struct {
+		name               string
+		err                error
+		wantCorruptions    float64
+		wantBackpressure   float64
+		wantLogContains    string
+		wantLogNotContains string
+	}{
+		{
+			name:               "backpressure",
+			err:                &ReplayBackpressureError{InUse: 100, Ceiling: 90},
+			wantCorruptions:    0,
+			wantBackpressure:   1,
+			wantLogContains:    "Administrator action is needed",
+			wantLogNotContains: corruptionMsg,
+		},
+		{
+			name:               "wrapped backpressure",
+			err:                fmt.Errorf("recovering WAL: %w", &ReplayBackpressureError{InUse: 100, Ceiling: 90}),
+			wantCorruptions:    0,
+			wantBackpressure:   1,
+			wantLogContains:    "Administrator action is needed",
+			wantLogNotContains: corruptionMsg,
+		},
+		{
+			name:               "corruption",
+			err:                fmt.Errorf("unexpected checksum"),
+			wantCorruptions:    1,
+			wantBackpressure:   0,
+			wantLogContains:    corruptionMsg,
+			wantLogNotContains: "Administrator action is needed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+			var logs concurrency.SyncBuffer
+			i := &Ingester{
+				metrics: newIngesterMetrics(reg, constants.Loki),
+				logger:  log.NewLogfmtLogger(&logs),
+			}
+
+			i.reportWALRecoveryErr(walTypeSegment, tc.err, corruptionMsg, time.Now())
+
+			require.Equal(t, tc.wantCorruptions,
+				prom_testutil.ToFloat64(i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment)))
+			require.Equal(t, tc.wantBackpressure,
+				prom_testutil.ToFloat64(i.metrics.walReplayBackpressure.WithLabelValues(walTypeSegment)))
+
+			require.Contains(t, logs.String(), tc.wantLogContains)
+			require.NotContains(t, logs.String(), tc.wantLogNotContains)
+		})
 	}
 }

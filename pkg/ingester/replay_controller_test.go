@@ -315,3 +315,22 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 			"Singleflight should coalesce all flush requests into one")
 	})
 }
+
+// A no-progress flush must surface a *ReplayBackpressureError so that callers can
+// tell a memory backpressure failure apart from WAL corruption.
+func TestReplayControllerBackpressureErrorIsTyped(t *testing.T) {
+	flusher := newDumbFlusher(nil) // never calls rc.Sub, so bytes never decrease
+	rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+	rc.Add(95) // above the 90-byte ceiling
+
+	err := rc.WithBackPressure(func() error { return nil })
+	require.Error(t, err)
+
+	var backpressureErr *ReplayBackpressureError
+	require.ErrorAs(t, err, &backpressureErr)
+	require.Equal(t, int64(95), backpressureErr.InUse)
+	require.Equal(t, int64(90), backpressureErr.Ceiling)
+	// The operator-facing wording is unchanged.
+	require.Contains(t, err.Error(), "WAL replay flush made no progress")
+}

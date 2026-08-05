@@ -35,6 +35,10 @@ The Write Ahead Log in Loki takes a few particular tradeoffs compared to other W
 
 The WAL also includes a backpressure mechanism to allow a large WAL to be replayed within a smaller memory bound. This is helpful after bad scenarios (i.e. an outage) when a WAL has grown past the point it may be recovered in memory. In this case, the ingester will track the amount of data being replayed and once it's passed 90% of the `ingester.wal-replay-memory-ceiling` threshold, will flush to storage. When this happens, it's likely that the Loki attempt to deduplicate chunks via content addressable storage will suffer. We deemed this efficiency loss an acceptable tradeoff considering how it simplifies operation and that it should not occur during regular operation (rollouts, rescheduling) where the WAL can be replayed without triggering this threshold. Setting `ingester.wal-replay-memory-ceiling` to `0` disables backpressure entirely.
 
+If a replay-triggered flush cannot bring memory back below the ceiling, the ingester gives up on the rest of the replay and starts with an incomplete WAL. Unlike a corrupt WAL, this needs administrator action: raise `ingester.wal-replay-memory-ceiling`, or find out why flushing is not draining, for example object storage being slow or unavailable, or `chunk_retain_period` holding on to freshly flushed chunks.
+
+You can use the Prometheus metric `loki_ingester_wal_replay_backpressure_failures_total` to track and alert when this happens.
+
 ### Metrics
 
 The following metrics are available for monitoring the WAL:
@@ -45,6 +49,7 @@ The following metrics are available for monitoring the WAL:
 * `loki_ingester_wal_records_logged_total`: Counter for WAL records logged
 * `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
 * `loki_ingester_wal_replay_active`: Set to 1 while an ingester is replaying its WAL and checkpoint on startup, 0 otherwise
+* `loki_ingester_wal_replay_backpressure_failures_total`: Total number of WAL replays left incomplete because a replay-triggered flush could not bring memory back below the replay memory ceiling
 * `loki_ingester_wal_replay_duration_seconds`: Time taken to replay the checkpoint and the WAL
 
 ## Changes to deployment
