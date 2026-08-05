@@ -3,6 +3,7 @@ package compactor
 import (
 	"flag"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
@@ -23,6 +24,9 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"toc consolidate timeout zero", func(c *Config) { c.ToCConsolidateTimeout = 0 }, errInvalidToCConsolidateTimeout},
 		{"max runs zero", func(c *Config) { c.MaxRunsPerTask = 0 }, errInvalidMaxRunsPerTask},
 		{"max runs negative", func(c *Config) { c.MaxRunsPerTask = -1 }, errInvalidMaxRunsPerTask},
+		{"min backoff zero", func(c *Config) { c.MinBackoff = 0 }, errInvalidMinBackoff},
+		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
+		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
