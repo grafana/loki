@@ -579,11 +579,11 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
 		if checkpointRecoveryErr != nil {
-			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
-			level.Error(i.logger).Log(
-				"msg",
+			i.reportWALRecoveryErr(
+				walTypeCheckpoint,
+				checkpointRecoveryErr,
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
-				"elapsed", time.Since(start).String(),
+				start,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -601,11 +601,11 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 
 		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
 		if segmentRecoveryErr != nil {
-			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
-			level.Error(i.logger).Log(
-				"msg",
+			i.reportWALRecoveryErr(
+				walTypeSegment,
+				segmentRecoveryErr,
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
-				"elapsed", time.Since(start).String(),
+				start,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -673,6 +673,32 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	}
 
 	return nil
+}
+
+// reportWALRecoveryErr records and logs a WAL recovery failure for the given WAL
+// type. Memory backpressure and file corruption both leave the WAL partially
+// recovered, but they are different problems with different remedies, so they
+// must not share a metric or a message: a torn segment needs no administrator
+// action, whereas a backpressure failure does.
+func (i *Ingester) reportWALRecoveryErr(walType string, err error, corruptionMsg string, start time.Time) {
+	var backpressureErr *ReplayBackpressureError
+	if errors.As(err, &backpressureErr) {
+		i.metrics.walReplayBackpressure.WithLabelValues(walType).Inc()
+		level.Error(i.logger).Log(
+			"msg",
+			"WAL replay could not free enough memory to finish, so this ingester is starting with an incomplete WAL. Administrator action is needed: raise the replay memory ceiling, or find out why flushing is not draining (for example object storage being slow or unavailable, or chunk_retain_period holding on to freshly flushed chunks).",
+			"type", walType,
+			"err", err,
+			"elapsed", time.Since(start).String(),
+		)
+		return
+	}
+
+	i.metrics.walCorruptionsTotal.WithLabelValues(walType).Inc()
+	level.Error(i.logger).Log(
+		"msg", corruptionMsg,
+		"elapsed", time.Since(start).String(),
+	)
 }
 
 func (i *Ingester) running(ctx context.Context) error {
