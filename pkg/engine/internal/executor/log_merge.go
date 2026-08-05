@@ -392,6 +392,10 @@ type logObjectWriter struct {
 	curGlobalID   int64
 	curObjLocalID int64
 
+	// pending accumulates the current output stream's aggregate from the records
+	// actually written.
+	pending streams.Stream
+
 	stats logMergeStats
 }
 
@@ -425,6 +429,7 @@ func (w *logObjectWriter) startObject() {
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	if rec.StreamID != w.curGlobalID {
+		w.flushPendingStream()
 
 		if w.objRecords > 0 && w.targetObject > 0 && w.objSize >= w.targetObject {
 			if err := w.finalizeAndUpload(ctx); err != nil {
@@ -434,16 +439,16 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 		}
 		w.curGlobalID = rec.StreamID
 		w.curObjLocalID++
-		s := w.table.streams[rec.StreamID]
-		s.ID = w.curObjLocalID
-		w.sb.AppendValue(s)
+		w.pending = streams.Stream{ID: w.curObjLocalID, Labels: w.table.streams[rec.StreamID].Labels}
 		w.objStreams++
 	}
 
 	rec.StreamID = w.curObjLocalID
 	w.lb.Append(rec)
 	w.objRecords++
-	w.objSize += logRecordSize(rec)
+	size := logRecordSize(rec)
+	w.objSize += size
+	w.accumulatePending(rec, size)
 
 	if w.lb.UncompressedSize() > w.targetSection {
 		if err := w.builder.Append(w.lb); err != nil {
@@ -453,6 +458,28 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 		w.lb.SetTenant(w.node.Tenant)
 	}
 	return nil
+}
+
+// accumulatePending folds one written record into the current stream's aggregate.
+func (w *logObjectWriter) accumulatePending(rec logs.Record, size int) {
+	w.pending.Rows++
+	w.pending.UncompressedSize += int64(size)
+	if w.pending.MinTimestamp.IsZero() || rec.Timestamp.Before(w.pending.MinTimestamp) {
+		w.pending.MinTimestamp = rec.Timestamp
+	}
+	if rec.Timestamp.After(w.pending.MaxTimestamp) {
+		w.pending.MaxTimestamp = rec.Timestamp
+	}
+}
+
+// flushPendingStream appends the current stream's recomputed aggregate to the
+// streams builder. It is a no-op when no records were written for the stream.
+func (w *logObjectWriter) flushPendingStream() {
+	if w.pending.Rows == 0 {
+		return
+	}
+	w.sb.AppendValue(w.pending)
+	w.pending = streams.Stream{}
 }
 
 // finish flushes and uploads the last in-progress object (if any) and returns the
@@ -469,6 +496,8 @@ func (w *logObjectWriter) finish(ctx context.Context) (logMergeStats, error) {
 // finalizeAndUpload appends the pending sections, flushes them into one compacted
 // log object, computes its content-hash path, and uploads it to the data bucket.
 func (w *logObjectWriter) finalizeAndUpload(ctx context.Context) error {
+	w.flushPendingStream()
+
 	if w.lb.UncompressedSize() > 0 {
 		if err := w.builder.Append(w.lb); err != nil {
 			return fmt.Errorf("appending logs section: %w", err)
