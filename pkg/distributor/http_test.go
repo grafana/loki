@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -399,6 +400,84 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
+	})
+}
+
+func TestPushHandlerCircuitBreaker(t *testing.T) {
+	isAnyErr := func(err error) bool { return err != nil }
+
+	// Returns a distributor and a request for the tenant "test-user".
+	setup := func(t *testing.T) (*Distributor, *http.Request) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+		return distributors[0], req
+	}
+
+	// Opens a circuit breaker by failing a request.
+	open := func(t *testing.T, b *trialCircuitBreaker) {
+		ok, doneFunc := b.Allow()
+		require.True(t, ok)
+		doneFunc(errors.New("some error occurred"))
+		require.Equal(t, circuitBreakerOpen, b.state)
+	}
+
+	t.Run("returns 429 when the tenant circuit breaker is open", func(t *testing.T) {
+		d, req := setup(t)
+		d.tenantCircuitBreaker = newTenantCircuitBreaker(func() *trialCircuitBreaker {
+			return newTrialCircuitBreaker(time.Second, 1, 1, isAnyErr)
+		})
+		open(t, d.tenantCircuitBreaker.state("test-user").circuitBreaker)
+
+		rec := httptest.NewRecorder()
+		d.pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusTooManyRequests, rec.Code)
+		require.Contains(t, rec.Body.String(), "tenant circuit breaker open, request denied")
+	})
+
+	t.Run("returns 503 when the global circuit breaker is open", func(t *testing.T) {
+		d, req := setup(t)
+		circuitBreaker := newTrialCircuitBreaker(time.Second, 1, 1, isAnyErr)
+		open(t, circuitBreaker)
+		d.circuitBreaker = circuitBreaker
+
+		rec := httptest.NewRecorder()
+		d.pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Contains(t, rec.Body.String(), "circuit breaker open, request denied")
+	})
+
+	t.Run("the tenant circuit breaker takes precedence", func(t *testing.T) {
+		d, req := setup(t)
+		d.tenantCircuitBreaker = newTenantCircuitBreaker(func() *trialCircuitBreaker {
+			return newTrialCircuitBreaker(time.Second, 1, 1, isAnyErr)
+		})
+		open(t, d.tenantCircuitBreaker.state("test-user").circuitBreaker)
+
+		globalCircuitBreaker := newTrialCircuitBreaker(time.Second, 1, 1, isAnyErr)
+		d.circuitBreaker = globalCircuitBreaker
+		// Put the global circuit breaker in the half-open state, where a spurious
+		// success would close it early.
+		open(t, globalCircuitBreaker)
+		globalCircuitBreaker.halfOpen()
+		stateBefore, _, _ := globalCircuitBreaker.snapshot()
+
+		rec := httptest.NewRecorder()
+		d.pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusTooManyRequests, rec.Code)
+		// The request must be denied before the global circuit breaker is asked, so
+		// it must neither consume a trial request nor record a result.
+		stateAfter, _, _ := globalCircuitBreaker.snapshot()
+		require.Equal(t, stateBefore, stateAfter)
+		require.Zero(t, globalCircuitBreaker.trials)
+		require.Zero(t, globalCircuitBreaker.successes)
 	})
 }
 

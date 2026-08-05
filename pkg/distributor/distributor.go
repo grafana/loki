@@ -76,6 +76,12 @@ var (
 
 	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
 
+	// Returned when a single tenant exceeds its share of the max inflight bytes.
+	// Unlike errServiceUnavailableMaxLoad, which means the distributor as a whole
+	// is shedding load, this means just this tenant is over its share, so the
+	// tenant is asked to back off instead.
+	errTooManyRequestsMaxLoad = httpgrpc.Error(http.StatusTooManyRequests, "The server cannot accept more requests from this tenant at this time.")
+
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
 		if r == utf8.RuneError {
@@ -95,6 +101,9 @@ type Config struct {
 	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
 	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
 	MaxInflightBytes    int   `yaml:"max_inflight_bytes"`
+
+	// The share of MaxInflightBytes a single tenant is allowed to use.
+	MaxInflightBytesTenantFraction float64 `yaml:"max_inflight_bytes_tenant_fraction"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -137,6 +146,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
+	fs.Float64Var(&cfg.MaxInflightBytesTenantFraction, "distributor.max-inflight-bytes-tenant-fraction", 0.5, "The fraction of distributor.max-inflight-bytes that a single tenant can use before its requests are rejected with 429 Too Many Requests. This is also the threshold at which the per-tenant circuit breaker opens. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -160,6 +170,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxInflightBytes < 0 {
 		return errors.New("max inflight bytes cannot be less than zero")
+	}
+	if cfg.MaxInflightBytesTenantFraction < 0 || cfg.MaxInflightBytesTenantFraction > 1 {
+		return errors.New("max inflight bytes tenant fraction must be between 0 and 1")
 	}
 	return nil
 }
@@ -349,6 +362,10 @@ type Distributor struct {
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
 	circuitBreaker             circuitBreaker
+
+	// Tracks the inflight bytes and circuit breaker per tenant. Unlike
+	// circuitBreaker, this is always non-nil.
+	tenantCircuitBreaker *tenantCircuitBreaker
 }
 
 // New a distributor creates.
@@ -505,6 +522,11 @@ func New(
 		}),
 	}
 
+	// newTenantTrialCircuitBreaker builds the circuit breaker for a tenant. It
+	// stays nil when circuit breakers are disabled, in which case tenants get no
+	// circuit breaker and all their requests are permitted.
+	var newTenantTrialCircuitBreaker func() *trialCircuitBreaker
+
 	if cfg.CircuitBreaker.Enabled {
 		circuitBreaker := newTrialCircuitBreaker(
 			cfg.CircuitBreaker.OpenPeriod,
@@ -516,7 +538,30 @@ func New(
 		)
 		registerer.MustRegister(circuitBreaker)
 		d.circuitBreaker = circuitBreaker
+
+		newTenantTrialCircuitBreaker = func() *trialCircuitBreaker {
+			return newTrialCircuitBreaker(
+				cfg.CircuitBreaker.OpenPeriod,
+				cfg.CircuitBreaker.MinFailures,
+				cfg.CircuitBreaker.PermittedTrials,
+				// Just the per-tenant error: neither Kafka being overloaded nor
+				// the distributor as a whole exceeding its inflight bytes limit
+				// should open an individual tenant's circuit breaker.
+				func(err error) bool {
+					return errors.Is(err, errTooManyRequestsMaxLoad)
+				},
+			)
+		}
 	}
+
+	// The per-tenant circuit breaker is always created because it also counts
+	// the inflight bytes per tenant, which is enforced whether or not circuit
+	// breakers are enabled.
+	d.tenantCircuitBreaker = newTenantCircuitBreaker(newTenantTrialCircuitBreaker)
+	if newTenantTrialCircuitBreaker != nil {
+		registerer.MustRegister(d.tenantCircuitBreaker)
+	}
+	servs = append(servs, d.tenantCircuitBreaker)
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
 		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
@@ -664,23 +709,41 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
+// maxTenantInflightBytes returns the maximum number of inflight bytes for a
+// single tenant, or 0 if there is no limit. It is calculated per request rather
+// than once up front because both values it depends on can change at runtime.
+func (d *Distributor) maxTenantInflightBytes() int64 {
+	return int64(float64(d.cfg.MaxInflightBytes) * d.cfg.MaxInflightBytesTenantFraction)
+}
+
 // Push a set of streams.
 // Can modify the input req parameter.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	requestSize := int64(req.Size())
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
 
-	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
-	}
+	tenantState := d.tenantCircuitBreaker.state(tenantID)
+	newTenantInflightBytes := tenantState.inflightBytes.Add(requestSize)
+	defer tenantState.inflightBytes.Add(-requestSize)
 
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
+	if maxInflightBytes := int64(d.cfg.MaxInflightBytes); maxInflightBytes > 0 {
+		// The per-tenant limit is checked first so a single tenant driving the
+		// distributor into overload is shed with an attributable 429, instead of
+		// the 503 that opens the global circuit breaker and sheds every tenant.
+		if maxTenantInflightBytes := d.maxTenantInflightBytes(); maxTenantInflightBytes > 0 && newTenantInflightBytes > maxTenantInflightBytes {
+			return nil, errTooManyRequestsMaxLoad
+		}
+		if newInflightBytes > maxInflightBytes {
+			return nil, errServiceUnavailableMaxLoad
+		}
 	}
 
 	start := time.Now()

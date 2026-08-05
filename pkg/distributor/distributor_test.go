@@ -3119,6 +3119,30 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedError: "at least one of kafka and ingestor writes must be enabled",
 		},
+		{
+			name: "validates max inflight bytes is not negative",
+			cfg: Config{
+				IngesterEnabled:  true,
+				MaxInflightBytes: -1,
+			},
+			expectedError: "max inflight bytes cannot be less than zero",
+		},
+		{
+			name: "validates max inflight bytes tenant fraction is not negative",
+			cfg: Config{
+				IngesterEnabled:                true,
+				MaxInflightBytesTenantFraction: -0.1,
+			},
+			expectedError: "max inflight bytes tenant fraction must be between 0 and 1",
+		},
+		{
+			name: "validates max inflight bytes tenant fraction is not greater than one",
+			cfg: Config{
+				IngesterEnabled:                true,
+				MaxInflightBytesTenantFraction: 1.1,
+			},
+			expectedError: "max inflight bytes tenant fraction must be between 0 and 1",
+		},
 	}
 
 	for _, tt := range tests {
@@ -3136,26 +3160,88 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestDistributorMaxInflightBytesLimit(t *testing.T) {
-	validationLimits := &validation.Limits{}
-	flagext.DefaultValues(validationLimits)
-	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
-	d := distributors[0]
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{{
-			Labels: "{foo=\"bar\"}",
-			Entries: []logproto.Entry{{
-				Timestamp: time.Now(),
-				Line:      strings.Repeat("a", 1025),
+	// Returns a distributor and a push request slightly larger than 1KB.
+	setup := func(t *testing.T) (*Distributor, *logproto.PushRequest) {
+		validationLimits := &validation.Limits{}
+		flagext.DefaultValues(validationLimits)
+		distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+		return distributors[0], &logproto.PushRequest{
+			Streams: []logproto.Stream{{
+				Labels: "{foo=\"bar\"}",
+				Entries: []logproto.Entry{{
+					Timestamp: time.Now(),
+					Line:      strings.Repeat("a", 1025),
+				}},
 			}},
-		}},
+		}
 	}
-	_, err := d.Push(ctx, req)
-	require.NoError(t, err)
-	// Set the max inflight bytes to 1KB, the same request should be rejected.
-	d.cfg.MaxInflightBytes = 1024
-	_, err = d.Push(ctx, req)
-	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
 
+	t.Run("disabled by default", func(t *testing.T) {
+		d, req := setup(t)
+		_, err := d.Push(ctx, req)
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects requests over the global limit with 503", func(t *testing.T) {
+		d, req := setup(t)
+		// Set the max inflight bytes to 1KB, the same request should be rejected.
+		d.cfg.MaxInflightBytes = 1024
+		// The per-tenant limit must be disabled so the global limit is the one
+		// that rejects the request.
+		d.cfg.MaxInflightBytesTenantFraction = 0
+		_, err := d.Push(ctx, req)
+		require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
+
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok)
+		require.Equal(t, int32(http.StatusServiceUnavailable), resp.Code)
+	})
+
+	t.Run("rejects requests over the per-tenant limit with 429", func(t *testing.T) {
+		d, req := setup(t)
+		// The tenant limit is half of the global limit, so the request exceeds the
+		// tenant limit but not the global one.
+		d.cfg.MaxInflightBytes = 1024
+		d.cfg.MaxInflightBytesTenantFraction = 0.5
+		_, err := d.Push(ctx, req)
+		require.ErrorIs(t, err, errTooManyRequestsMaxLoad)
+
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok)
+		require.Equal(t, int32(http.StatusTooManyRequests), resp.Code)
+	})
+
+	t.Run("per-tenant limit does not affect other tenants", func(t *testing.T) {
+		d, req := setup(t)
+		// The limits are large enough that a single request is under both, so the
+		// only reason to reject is the bytes held for tenant-a below.
+		d.cfg.MaxInflightBytes = 8192
+		d.cfg.MaxInflightBytesTenantFraction = 0.5
+
+		// Hold inflight bytes for tenant-a so it is over its 4KB share.
+		d.tenantCircuitBreaker.state("tenant-a").inflightBytes.Add(4096)
+
+		_, err := d.Push(user.InjectOrgID(context.Background(), "tenant-a"), req)
+		require.ErrorIs(t, err, errTooManyRequestsMaxLoad)
+
+		// tenant-b must be unaffected.
+		_, err = d.Push(user.InjectOrgID(context.Background(), "tenant-b"), req)
+		require.NoError(t, err)
+	})
+
+	t.Run("releases inflight bytes when the request is done", func(t *testing.T) {
+		d, req := setup(t)
+		d.cfg.MaxInflightBytes = 1024
+		d.cfg.MaxInflightBytesTenantFraction = 0.5
+
+		_, err := d.Push(ctx, req)
+		require.ErrorIs(t, err, errTooManyRequestsMaxLoad)
+
+		// Both the global and per-tenant counters must be back to zero. The
+		// package-level ctx is for the tenant "test".
+		require.Zero(t, d.inflightBytes.Load())
+		require.Zero(t, d.tenantCircuitBreaker.state("test").inflightBytes.Load())
+	})
 }
 
 func ptr[T any](v T) *T { return &v }

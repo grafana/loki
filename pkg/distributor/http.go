@@ -45,17 +45,37 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// TODO: In future, we want to be able to compose this with the middleware pattern,
 	// but this requires refactor of this file to support next handlers. We will do
 	// this at a later time.
-	var (
-		circuitBreakerOk       bool
-		circuitBreakerDoneFunc func(err error)
-		circuitBreakerErr      error
-	)
-	if d.circuitBreaker != nil {
-		circuitBreakerOk, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+	//
+	// circuitBreakerErr is shared by both circuit breakers. It is set to the error
+	// returned from PushWithResolver below, and read when the deferred done
+	// callbacks run. The two circuit breakers open on disjoint errors, so both can
+	// be driven from the same error.
+	var circuitBreakerErr error
+
+	// The per-tenant circuit breaker is checked first. Were it checked second, a
+	// tenant denied by the global circuit breaker would keep releasing its trial
+	// requests as successes and could close prematurely.
+	if d.tenantCircuitBreaker != nil {
+		ok, done := d.tenantCircuitBreaker.Allow(tenantID)
 		// Must be wrapped in a closure so circuitBreakerErr is evaluated when the
 		// deferred function runs.
-		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
-		if !circuitBreakerOk {
+		defer func() { done(circuitBreakerErr) }()
+		if !ok {
+			errorWriter(w, "tenant circuit breaker open, request denied", http.StatusTooManyRequests, logger)
+			return
+		}
+	}
+
+	if d.circuitBreaker != nil {
+		ok, done := d.circuitBreaker.Allow()
+		defer func() { done(circuitBreakerErr) }()
+		if !ok {
+			// The per-tenant done callback deferred above runs with a nil error and
+			// so records a success for this tenant. That is deliberate: not calling
+			// it would consume a trial request without ever recording a result,
+			// which is the half-open deadlock described in handleOpenErr. It is
+			// harmless because the global circuit breaker is dropping all requests
+			// at this point, so nothing is left unprotected.
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
 			return
 		}

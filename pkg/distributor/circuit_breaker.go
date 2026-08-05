@@ -101,22 +101,26 @@ func (b *trialCircuitBreaker) Describe(descs chan<- *prometheus.Desc) {
 
 // Collect implements [prometheus.Collector].
 func (b *trialCircuitBreaker) Collect(metrics chan<- prometheus.Metric) {
-	b.mtx.Lock()
-	var (
-		state      = float64(b.state)
-		totalOpens = float64(b.totalOpens)
-	)
-	b.mtx.Unlock()
+	state, totalOpens, _ := b.snapshot()
 	metrics <- prometheus.MustNewConstMetric(
 		circuitBreakerStateDesc,
 		prometheus.GaugeValue,
-		state,
+		float64(state),
 	)
 	metrics <- prometheus.MustNewConstMetric(
 		circuitBreakerOpenDesc,
 		prometheus.CounterValue,
-		totalOpens,
+		float64(totalOpens),
 	)
+}
+
+// snapshot returns a consistent read of the current state, the total number of
+// times the circuit breaker has opened, and the number of successive failures
+// recorded so far.
+func (b *trialCircuitBreaker) snapshot() (state, totalOpens, failures int) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+	return b.state, b.totalOpens, b.failures
 }
 
 func (b *trialCircuitBreaker) handleAllow() bool {
