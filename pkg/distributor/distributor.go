@@ -213,6 +213,7 @@ type metrics struct {
 	zeroStreamCount                       *prometheus.CounterVec
 	pushStatsCount                        *prometheus.CounterVec
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
+	topTenantsLimitedRequests             *prometheus.CounterVec
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -258,6 +259,11 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 			Name:      "distributor_push_structured_metadata_sanitized_total",
 			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
 		}, []string{"tenant", "format"}),
+		topTenantsLimitedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_top_tenants_limited_requests_total",
+			Help:      "The total number of push requests rejected because the distributor was close to its max inflight bytes and the tenant was one of the top tenants by bytes received.",
+		}, []string{"tenant"}),
 
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -349,6 +355,10 @@ type Distributor struct {
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
 	circuitBreaker             circuitBreaker
+
+	// Track the bytes received per tenant in the last 1 minute, so the tenants
+	// sending the most data can be rejected when close to max inflight bytes.
+	tenantBytes *tenantBytesWindow
 }
 
 // New a distributor creates.
@@ -503,6 +513,7 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+		tenantBytes: newTenantBytesWindow(),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
@@ -668,19 +679,28 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // Can modify the input req parameter.
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	requestSize := int64(req.Size())
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
 
 	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
+	// Keep a rolling window of the bytes received per tenant, summed the same
+	// way as the inflight bytes counter above. pushHandler uses it to reject the
+	// tenants sending the most data once close to max inflight bytes. The bytes
+	// are counted even if the request is rejected below, as they were still
+	// received.
+	if maxInflightBytes > 0 {
+		d.tenantBytes.observe(tenantID, requestSize, time.Now())
 	}
 
-	tenantID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
+	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
+		return nil, errServiceUnavailableMaxLoad
 	}
 
 	start := time.Now()

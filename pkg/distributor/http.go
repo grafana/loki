@@ -61,6 +61,32 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
+	// Once the distributor is close to its max inflight bytes, reject the tenants
+	// that have sent the most data in the last rolling window. This sheds load
+	// from the largest senders before the hard max inflight bytes limit starts
+	// rejecting everyone. The window itself is updated in PushWithResolver.
+	//
+	// This check is done here, rather than in PushWithResolver, so that a
+	// rejected tenant does not first pay the cost of decompressing and decoding
+	// a payload we are about to throw away.
+	if d.cfg.MaxInflightBytes > 0 {
+		threshold := int64(float64(d.cfg.MaxInflightBytes) * topTenantsInflightRatio)
+		if d.inflightBytes.Load() >= threshold && d.tenantBytes.isTopTenant(tenantID) {
+			d.m.topTenantsLimitedRequests.WithLabelValues(tenantID).Inc()
+			if d.tenantConfigs.LogPushRequest(tenantID) {
+				level.Debug(logger).Log(
+					"msg", "push request failed",
+					"code", http.StatusTooManyRequests,
+					"err", topTenantsErrorMsg,
+				)
+			}
+			// circuitBreakerErr is deliberately left unset: this rejects a single
+			// tenant, and must not open the circuit breaker for all of them.
+			errorWriter(w, topTenantsErrorMsg, http.StatusTooManyRequests, logger)
+			return
+		}
+	}
+
 	if d.RequestParserWrapper != nil {
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
