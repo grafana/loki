@@ -31,7 +31,8 @@ load
 ```
 
 - `<stream-selector>` — a LogQL stream selector, e.g. `{app="foo", env="prod"}`.
-- `"<line>"` — the log line (double-quoted).
+- `"<line>"` — the log line. Use double quotes, or backticks (`` `<line>` ``) for a raw line that
+  itself contains `"`, e.g. a JSON object for the `json` / `unpack` parsers. Neither form unescapes.
 - `@ <start>` — **required** timestamp of the entry, as a Go duration offset from the script
   epoch (`t=0`), e.g. `@ 0s`, `@ 90s`, `@ 1m30s`. Repeat the selector on multiple lines to
   place entries at arbitrary different times.
@@ -80,6 +81,10 @@ Point syntax (from promqltest):
 Label sets are compared as sets (order-independent). Note that Loki promotes **structured
 metadata into the result label set**, so a stream loaded with `[metadata detected_level="info"]`
 produces series labelled `{…, detected_level="info"}`.
+
+An **empty-value label is significant**: `{app="a", age=""}` asserts that `age` is present with an
+empty value (e.g. from a `json` expression whose path is missing, or `logfmt --keep-empty`), which is
+distinct from omitting `age` entirely.
 
 Every `eval` must assert exactly one kind of result — series, a scalar, `expect empty`, or
 `expect fail`; otherwise the harness errors (a forgotten expected block would otherwise pass
