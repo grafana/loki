@@ -364,7 +364,7 @@ func (e *CountDistinctEvalStepEvaluator) Next() (bool, int64, StepResult) {
 	return NewCountDistinctVectorStepEvaluator(results.CountDistinctVec()).Next()
 }
 
-func (*CountDistinctEvalStepEvaluator) Close() error { return nil }
+func (*CountDistinctEvalStepEvaluator) Close() error   { return nil }
 func (e *CountDistinctEvalStepEvaluator) Error() error { return e.err }
 func (*CountDistinctEvalStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinctEval")

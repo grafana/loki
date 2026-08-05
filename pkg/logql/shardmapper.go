@@ -13,21 +13,21 @@ import (
 )
 
 const (
-	ShardLastOverTime           = "last_over_time"
-	ShardFirstOverTime          = "first_over_time"
-	ShardQuantileOverTime       = "quantile_over_time"
-	SupportApproxTopk           = "approx_topk"
-	SupportApproxCountDistinct  = "approx_count_distinct"
+	ShardLastOverTime          = "last_over_time"
+	ShardFirstOverTime         = "first_over_time"
+	ShardQuantileOverTime      = "quantile_over_time"
+	SupportApproxTopk          = "approx_topk"
+	SupportApproxCountDistinct = "approx_count_distinct"
 )
 
 type ShardMapper struct {
-	shards                      ShardingStrategy
-	metrics                     *MapperMetrics
-	quantileOverTimeSharding    bool
-	lastOverTimeSharding        bool
-	firstOverTimeSharding       bool
-	approxTopkSupport           bool
-	approxCountDistinctSupport  bool
+	shards                     ShardingStrategy
+	metrics                    *MapperMetrics
+	quantileOverTimeSharding   bool
+	lastOverTimeSharding       bool
+	firstOverTimeSharding      bool
+	approxTopkSupport          bool
+	approxCountDistinctSupport bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {

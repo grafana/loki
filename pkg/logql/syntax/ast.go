@@ -93,13 +93,13 @@ type SampleExpr interface {
 	isSampleExpr()
 }
 
-func (RangeAggregationExpr) isSampleExpr()  {}
-func (VectorAggregationExpr) isSampleExpr() {}
-func (LiteralExpr) isSampleExpr()           {}
-func (VectorExpr) isSampleExpr()            {}
-func (LabelReplaceExpr) isSampleExpr()       {}
+func (RangeAggregationExpr) isSampleExpr()    {}
+func (VectorAggregationExpr) isSampleExpr()   {}
+func (LiteralExpr) isSampleExpr()             {}
+func (VectorExpr) isSampleExpr()              {}
+func (LabelReplaceExpr) isSampleExpr()        {}
 func (ApproxCountDistinctExpr) isSampleExpr() {}
-func (MultiVariantExpr) isSampleExpr()       {}
+func (MultiVariantExpr) isSampleExpr()        {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -2336,7 +2336,6 @@ func (e *ApproxCountDistinctExpr) String() string {
 	sb.WriteString(")")
 	return sb.String()
 }
-
 
 // shardableOps lists the operations which may be sharded, but are not
 // guaranteed to be. See the `Shardable()` implementations
