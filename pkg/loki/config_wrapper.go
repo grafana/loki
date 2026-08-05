@@ -31,14 +31,14 @@ const versionFlag = "version"
 // on the logic in ApplyDynamicConfig, which receives values set in config file
 type ConfigWrapper struct {
 	Config          `yaml:",inline"`
-	printVersion    bool
-	VerifyConfig    bool
-	PrintConfig     bool
-	ListTargets     bool
-	LogConfig       bool
-	ConfigFile      string
-	ConfigExpandEnv bool
-	Strict          bool
+	printVersion    bool   `yaml:"-"`
+	VerifyConfig    bool   `yaml:"-"`
+	PrintConfig     bool   `yaml:"-"`
+	ListTargets     bool   `yaml:"-"`
+	LogConfig       bool   `yaml:"-"`
+	ConfigFile      string `yaml:"-"`
+	ConfigExpandEnv bool   `yaml:"-"`
+	Strict          bool   `yaml:"-"`
 }
 
 func PrintVersion(args []string) bool {
