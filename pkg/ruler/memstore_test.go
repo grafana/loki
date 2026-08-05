@@ -176,11 +176,12 @@ func TestMemstoreBlocks(t *testing.T) {
 	})
 
 	store := testStore(fn)
+	t.Cleanup(store.Stop)
 
 	done := make(chan struct{})
 	go func() {
 		_, _ = store.Querier(0, 1)
-		done <- struct{}{}
+		close(done)
 	}()
 
 	select {
