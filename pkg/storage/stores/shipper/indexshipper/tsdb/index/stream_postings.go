@@ -123,6 +123,7 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 		// Unchecked because we already checked CRC32 at startup
 		decbuf := p.factory.NewDecbufAtUnchecked(ctx, p.off)
 		if err := decbuf.Err(); err != nil {
+			_ = decbuf.Close()
 			return nil, err
 		}
 		decbuf.ResetAt(offsets[i].offset)
@@ -182,10 +183,10 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 // validates while opening).
 func (p *streamPostings) readPostingsList(postingsOffset uint64) (Postings, error) {
 	decbuf := p.factory.NewDecbufAtChecked(context.Background(), int(postingsOffset), castagnoliTable)
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	n := decbuf.Be32int()
 	if err := decbuf.Err(); err != nil {
@@ -214,10 +215,10 @@ func streamPostingsOffsetTable(
 	) error,
 ) error {
 	decbuf := factory.NewDecbufAtChecked(ctx, postingsOffsetTableOffset, castagnoliTable)
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	size := decbuf.Be32()
 	for i := uint32(0); decbuf.Err() == nil && i < size; i++ {

@@ -100,10 +100,10 @@ func (s StreamReader) readHeader() (int, error) {
 	}
 	// Construct decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return 0, fmt.Errorf("open header decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Extract and validate magic
 	magic := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
@@ -132,10 +132,10 @@ func (s StreamReader) readTOC() (*TOC, error) {
 	}
 	// Create decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return nil, fmt.Errorf("open toc decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Validate CRC32
 	tocStart := int(s.size) - indexTOCLen
 	if decbuf.ResetAt(tocStart); decbuf.Err() != nil {
@@ -176,10 +176,10 @@ func (s StreamReader) readTOC() (*TOC, error) {
 // which NewDecbufAtChecked validates while opening.
 func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
 	decbuf := s.factory.NewDecbufAtChecked(context.Background(), offset, castagnoliTable)
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	n := decbuf.Be32()
 	result := make(FingerprintOffsets, 0, int(n))
