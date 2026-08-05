@@ -69,7 +69,8 @@ scheme are recorded in Claude's local memory file `preprod_observability.md`
 so `git log <sha>` maps a running pod to a set of shipped proposals.
 
 **Where we are** (see "Current status" section at end for detail):
-- **Two PRs open on the incremental path**:
+- **Four PRs open on the incremental path, stacked in order**
+  (#23663 → #23696 → #23730 → #23767):
   - **PR #23663** (branch `dahoppe/introduce-nommap-config`, rebased on
     main 2026-07-31) — flag + Reader-interface extraction + StreamReader
     stub. Merges with no behaviour change.
@@ -81,6 +82,15 @@ so `git log <sha>` maps a running pod to a set of shipped proposals.
     back to baseline within one 5m bucket post-restart. Stream mode
     confirmed via CPU profile (metrics-side confirmation blocked
     until item 7 in the Next ordering lands).
+  - **PR #23730** (branch `dahoppe/stream-symbols`, stacked on #23696) —
+    removed dead `Symbols()`/`SymbolTableSize()` from the interface and
+    added the `streamSymbols` sparse-offset foundation.
+  - **PR #23767** (branch `dahoppe/stream-postings`, stacked on #23730) —
+    streaming `Postings` for the `fpFilter==nil` path + `Decbuf.ReadInto`.
+- **Next up (in progress)**: FingerprintOffsets + native shard-aware
+  `Postings` on branch `dahoppe/stream-fingerprint-offsets` (off
+  `dahoppe/stream-postings`) — item #3 in the Next list (pulled forward
+  from #5).
 - **Reference-branch history** (kept for measurements):
   - Phase 1 (buffered): shipped but not viable for production —
     OOMed pods in preprod (see 2026-07-29 entry).
@@ -593,6 +603,40 @@ supporting profiling data lands):
     already flags it callerless) are all dead on `index.Reader`. Audit the
     interface for dead methods before implementing a streaming version of each.
 
+- **PR #23767 — `chore: Implement streaming reading of postings offset table`**
+  (branch `dahoppe/stream-postings`, stacked on `dahoppe/stream-symbols` /
+  #23730, opened 2026-08-05, OPEN). Single commit `c299bbe4f6`. Streams the
+  `fpFilter==nil` `Postings` path natively; shard-aware queries still delegate
+  to mmap (finished by the next PR). Contents:
+  - **Removed `PostingsRanges()` + `Range` from the `index.Reader` interface**
+    (`reader.go`, `index.go`) — callerless, as the plan flagged. Dropped the
+    `requirePostingsRangesEqual` cross-check.
+  - **`streamPostings`** (`stream_postings.go`): `newStreamPostings` scans the
+    postings-offset table once at construction (CRC-validated), building a
+    sparse index (every `symbolFactor`-th value per name, plus first/last).
+    `postingsFor` binary-searches the sparse index then walks the offset table
+    forward to the target value(s) — a direct port of `ByteSliceReader.Postings`
+    minus the (already-removed) V1 branch.
+  - **`readPostingsList` materializes one list into memory** and wraps it in
+    `BigEndianPostings`. An earlier cut streamed refs lazily from a held-open
+    `Decbuf`; that leaks a pooled file handle + `bufio` buffer on early
+    iterator abandonment (`Intersect`/`Without` short-circuit; `Postings` has
+    no `Close`), so it was reverted to the reference's materialize-and-close
+    shape. See the #2 "Design note" in the Next list.
+  - **Added `Decbuf.ReadInto`** (`streamenc/encoding.go`) — pulled forward from
+    the deferred list in #23696 (see that entry's "Deliberately kept out").
+    Delegates to the existing `BufReader.ReadInto`, mirroring `CheckCrc32`'s
+    internal use. Loki-only: Mimir's `Decbuf` has none because Mimir reads
+    postings lists from object storage (`BucketBufReader`), not through the
+    index-header `Decbuf`.
+  - Tests: `TestStreamPostings_MatchesMmap` (single-value across every sparse
+    block, multi-value, scattered subset, unknown name, out-of-range, empty)
+    and `TestStreamingPostings_SeekMatchesMmap` (large gapped shared-label list,
+    fresh + lockstep `Seek`/`Next`) cross-check against mmap on V3 + V4.
+  - Deferred to later PRs: sync.Pool reuse of the postings-list buffer
+    (reference C1 / `1b9dbb75b6`, PR #9); native shard-aware `Postings` (next
+    PR, pulled-forward FingerprintOffsets).
+
 ### Next (from #23696; each is its own PR, ~200–800 lines diff)
 
 1. ~~**PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**~~
@@ -604,18 +648,46 @@ supporting profiling data lands):
    Lookup-parity test vs the mmap `Symbols`. `ReverseLookup`/`Iter` were
    dropped (no caller); `lookupSymbol` wiring comes with the Series/labels
    PRs below, which are `streamSymbols.Lookup`'s first real consumers.
-2. **PR: stream posting-offset table + `Postings`.** Ports Mimir's
-   `postings.go` (v1 + v2). Wires into `StreamReader.Postings`. Adds
-   fixtures with 10 / 1k / 100k series.
-3. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
+2. ~~**PR: stream posting-offset table + `Postings`.**~~ **LANDED as
+   PR #23767** (branch `dahoppe/stream-postings`, stacked on
+   `dahoppe/stream-symbols` / #23730) — see the #23767 entry under "In
+   flight". Ports the offset-table scan + sparse index + forward-walk from
+   `ByteSliceReader.Postings`; serves the `fpFilter==nil` path natively and
+   still delegates shard-aware (`fpFilter!=nil`) queries to mmap (finished
+   by the pulled-forward FingerprintOffsets PR below). **Scope note:** V1
+   was already removed from the reader (PR #23727), so this ports only the
+   V2 path, not Mimir's v1+v2. **Design note:** diverged from the reference
+   branch mid-review — an early cut streamed the postings-list refs lazily
+   from a held-open `Decbuf`, which leaks a pooled file handle + `bufio`
+   buffer whenever an iterator is abandoned early (the common
+   `Intersect`/`Without` short-circuit; the `Postings` interface has no
+   `Close`). Reverted to the reference's approach: `readPostingsList`
+   materializes the one list via `Decbuf.ReadInto` and closes the handle
+   immediately (`defer`), wrapping the bytes in `BigEndianPostings`. This
+   pulled `Decbuf.ReadInto` forward from PR #8 (it was deferred out of
+   #23696 as "not needed yet") — it's a Loki-only addition (Mimir's
+   `Decbuf` has none; Mimir reads postings lists from object storage via
+   `BucketBufReader`, not through the index-header `Decbuf`). The
+   sync.Pool buffer reuse (reference C1 / `1b9dbb75b6`) is still deferred
+   to PR #9.
+3. **PR (pulled forward — next): FingerprintOffsets + native
+   shard-aware `Postings`.** Was #5 below. Pulled ahead of Series/labels
+   because it has no dependency on them (`NewShardedPostings` needs only
+   the postings iterator + the offsets table; it bounds by series-ref
+   offset and never resolves individual series) and it *finishes* the
+   `Postings` surface by removing its last mmap fallback. Loads the
+   fingerprint-offsets section eagerly at open (a few 16-byte entries per
+   1024 series — small) via a streaming `readFingerprintOffsetsTable`,
+   then applies `NewShardedPostings` when `fpFilter!=nil`. Existing shard
+   tests should pass with `mode=stream`; add a section-parity cross-check
+   vs mmap.
+4. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
    decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
    `IngestedAt` field. V4 fixture included.
-4. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
+5. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
    `LabelNamesFor`.** Falls out mostly from postings-offset + series
    ports; small.
-5. **PR: FingerprintOffsets in the streaming reader.** Loaded eagerly at
-   open (they're small; 2 uint64 per 1024 series). Existing shard tests
-   pass with `mode=stream`.
+   *(FingerprintOffsets was #5 here — pulled forward to #3 above.)*
 6. **PR: drop `StreamReader.mmapReader` fallback + delete
    `ByteSliceReader` delegation dead code.** By this point every method
    has a native streaming implementation. This is the "no more mmap on
@@ -1103,3 +1175,35 @@ supporting profiling data lands):
   - Confirmed takeaway: **prune dead interface methods before streaming
     them**. `SymbolTableSize`, `Symbols` (done) and `PostingsRanges`
     (pending) are all callerless on `index.Reader`.
+
+- **2026-08-05**: PR #23767 opened
+  (`chore: Implement streaming reading of postings offset table`, branch
+  `dahoppe/stream-postings`, stacked on #23730, single commit
+  `c299bbe4f6`). Streams the `fpFilter==nil` `Postings` path natively;
+  shard-aware queries still delegate to mmap. Removed the callerless
+  `PostingsRanges()`/`Range` from the interface (the last of the three
+  dead methods the #23730 takeaway flagged). Full detail in the #23767
+  "In flight" entry and Next-list item #2. Two things worth carrying
+  forward:
+  - **Design correction found in review**: the first cut streamed
+    postings-list refs lazily from a held-open `Decbuf`. Because the
+    `Postings` interface has no `Close` and `Intersect`/`Without`
+    short-circuit (abandoning sibling iterators mid-stream), that leaks a
+    pooled file handle + `bufio` buffer per abandoned iterator until GC
+    finalizes the `*os.File`. Reverted to the reference's
+    materialize-one-list-and-close shape. Lesson: **a streaming iterator
+    can't own a file handle across an interface that has no `Close`** —
+    materialize and release, or add `Close` and plumb it (rejected as too
+    invasive for this series).
+  - **`Decbuf.ReadInto` pulled forward** from the #23696 deferred list to
+    back the materialization. Loki-only addition; Mimir never needed it on
+    `Decbuf` because its index-header reads only symbols + the offset
+    table, and the postings *lists* live in object storage (read via
+    `BucketBufReader`).
+- **2026-08-05**: started the next PR — **FingerprintOffsets + native
+  shard-aware `Postings`** — on branch `dahoppe/stream-fingerprint-offsets`
+  (off `dahoppe/stream-postings`). Pulled forward from Next #5 to #3: no
+  dependency on Series/labels (`NewShardedPostings` needs only the postings
+  iterator + offsets table), and it removes the last mmap fallback from
+  `Postings`. Mirrors the reference `readFingerprintOffsetsTable` (eager
+  load at open, `Be32` count + N×(`Be64`,`Be64`)) + `applyFingerprintFilter`.
