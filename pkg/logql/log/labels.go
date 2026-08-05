@@ -119,6 +119,8 @@ type BaseLabelsBuilder struct {
 	err string
 	// nolint:structcheck
 	errDetails string
+	// nolint:structcheck
+	preserveError bool
 
 	groups                       []string
 	baseMap                      map[string]string
@@ -199,6 +201,7 @@ func (b *BaseLabelsBuilder) Reset() {
 	}
 	b.err = ""
 	b.errDetails = ""
+	b.preserveError = false
 	b.baseMap = nil
 	b.parserKeyHints.Reset()
 }
@@ -248,6 +251,13 @@ func (b *LabelsBuilder) HasErr() bool {
 
 func (b *LabelsBuilder) SetErrorDetails(desc string) *LabelsBuilder {
 	b.errDetails = desc
+	return b
+}
+
+// SetPreserveError marks the current line so the metric evaluator preserves it (surfaced as the
+// reserved __preserve_error__ label) instead of failing the query when it also carries an error.
+func (b *LabelsBuilder) SetPreserveError() *LabelsBuilder {
+	b.preserveError = true
 	return b
 }
 
@@ -342,6 +352,16 @@ func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
 // The value `v` may not be set if a category with higher preference already contains `n`.
 // Category preference goes as Parsed > Structured Metadata > Stream.
 func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
+	// A parsed label must never become one of the reserved error labels (__error__,
+	// __error_details__, __preserve_error__): those are managed only through
+	// SetErr / SetErrorDetails / SetPreserveError. Without this guard a log field literally named
+	// __error__ (e.g. extracted by json or logfmt) is read as a pipeline error and fails the query,
+	// and a field named __preserve_error__ could suppress a genuine error.
+	if category == ParsedLabel &&
+		(n == logqlmodel.ErrorLabel || n == logqlmodel.ErrorDetailsLabel || n == logqlmodel.PreserveErrorLabel) {
+		return b
+	}
+
 	// Parsed takes precedence over Structured Metadata and Stream labels.
 	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
 	if category == ParsedLabel {
@@ -438,6 +458,12 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 		buf = append(buf, labels.Label{
 			Name:  logqlmodel.ErrorDetailsLabel,
 			Value: b.errDetails,
+		})
+	}
+	if b.preserveError {
+		buf = append(buf, labels.Label{
+			Name:  logqlmodel.PreserveErrorLabel,
+			Value: "true",
 		})
 	}
 	return buf
@@ -608,7 +634,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 
 	for _, l := range b.buf {
 		// Skip error labels for stream and meta categories
-		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel || l.Name == logqlmodel.PreserveErrorLabel {
 			parsed = append(parsed, l)
 			continue
 		}
