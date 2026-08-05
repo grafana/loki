@@ -22,6 +22,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// readerTargetCacheSize bounds the compressed page data each section reader
+// keeps resident at once. The k-way merge holds one open reader per input
+// section, and all of them advance roughly in lockstep, so without a bound a
+// merge over hundreds of sections downloads every section's pages up front
+// and holds the whole task's data in memory (the dataobj-compaction-worker
+// OOM mode). With the bound, each reader prefetches up to this many bytes,
+// and consumed pages are garbage collected as the merge advances.
+const readerTargetCacheSize = 8 << 20 // 8 MiB
+
 // Iterator returns an iterator that performs a k-way merge of records from
 // multiple logs sections. It requires that the input sections are sorted
 // according to sort.
@@ -102,6 +111,10 @@ func iterator(
 			Dataset:  ds,
 			Columns:  columns,
 			Prefetch: true,
+			// Bound each reader's resident page data: the merge keeps every
+			// section's reader open at once, so unbounded prefetch holds the
+			// entire task's data in memory.
+			TargetCacheSize: readerTargetCacheSize,
 		})
 		if err := r.Open(ctx); err != nil {
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)

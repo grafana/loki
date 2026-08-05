@@ -745,13 +745,60 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 	}
 }
 
+// Log-phase failure backoff. A failing LogMerge phase is usually failing for
+// a persistent reason (e.g. workers OOMing on an oversized merge), so after
+// each consecutive failure the phase is skipped for an exponentially growing
+// cooldown instead of re-dispatching the same doomed tasks.
+const (
+	logFailureBackoffBase = 5 * time.Minute
+	logFailureBackoffMax  = time.Hour
+)
+
+// logFailureBackoff returns the cooldown applied after n consecutive
+// log-phase failures (n >= 1), doubling from logFailureBackoffBase up to
+// logFailureBackoffMax.
+func logFailureBackoff(n int) time.Duration {
+	if n < 1 {
+		return 0
+	}
+	backoff := logFailureBackoffBase
+	for i := 1; i < n; i++ {
+		backoff *= 2
+		if backoff >= logFailureBackoffMax {
+			return logFailureBackoffMax
+		}
+	}
+	return backoff
+}
+
 // runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
-// is cancelled. It never returns an error and never sleeps: on error it retries
-// the same phase, otherwise it flips. It re-reads the per-tenant phase
-// enablement each iteration and skips the LogMerge phase when log compaction is
-// disabled, so an index-only tenant runs IndexMerge exclusively.
+// is cancelled. It never returns an error. It re-reads the per-tenant phase
+// enablement each iteration and skips the LogMerge phase when log compaction
+// is disabled, so an index-only tenant runs IndexMerge exclusively.
+//
+// The two phases are deliberately asymmetric:
+//
+//   - IndexMerge re-arms on error: it must converge, retries against
+//     already-merged inputs are cheap no-ops, and query performance depends
+//     on it staying current.
+//
+//   - LogMerge runs only after the window's index side has converged (an
+//     unconverged window means one LogMerge sub-pass per raw index — the
+//     work grows with exactly the backlog IndexMerge exists to remove), and
+//     on error it hands the turn back to IndexMerge instead of re-arming,
+//     with an exponential per-tenant backoff before the next attempt.
+//     LogMerge is a locality optimization; it must never starve IndexMerge.
+//
+// When a full revolution finds no work (index converged, nothing dispatched),
+// the loop sleeps for PollingInterval so converged tenants do not spin on ToC
+// reads.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	var (
+		indexConverged  bool      // last IndexMerge phase found nothing to merge
+		logFailures     int       // consecutive LogMerge phase failures
+		logBackoffUntil time.Time // LogMerge turns are skipped until this instant
+	)
 	for {
 		if ctx.Err() != nil {
 			return
@@ -760,9 +807,34 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		if !runIndex && !runLog {
 			return
 		}
-		if p == phaseLogMerge && !runLog {
-			p = p.flip()
-			continue
+		if p == phaseLogMerge {
+			var skipReason string
+			switch {
+			case !runLog:
+				// Disabled tenants skip silently: no metric series for
+				// tenants that never opted into log compaction.
+			case !indexConverged:
+				skipReason = "index_unconverged"
+			case c.clock().Before(logBackoffUntil):
+				skipReason = "backoff"
+			default:
+				skipReason = "-" // sentinel: run the phase
+			}
+			if skipReason != "-" {
+				if skipReason != "" {
+					c.metrics.observeLogPhaseSkip(tenant, skipReason)
+				}
+				// A skipped log turn on a converged window means the whole
+				// revolution had no work; pace the loop before the next
+				// IndexMerge pass so converged tenants do not spin.
+				if indexConverged {
+					if !sleepCtx(ctx, c.cfg.PollingInterval) {
+						return
+					}
+				}
+				p = p.flip()
+				continue
+			}
 		}
 
 		window := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
@@ -772,17 +844,53 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		switch p {
 		case phaseIndexMerge:
 			outcome = c.runIndexMergePhase(ctx, tenant, window)
+			indexConverged = outcome == phaseOutcomeNoWork
 		case phaseLogMerge:
 			outcome = c.runLogMergePhase(ctx, tenant, window)
+			if outcome == phaseOutcomeError {
+				logFailures++
+				cooldown := logFailureBackoff(logFailures)
+				logBackoffUntil = c.clock().Add(cooldown)
+				level.Warn(c.logger).Log("msg", "log-merge phase failed; backing off",
+					"tenant", tenant, "consecutive_failures", logFailures, "cooldown", cooldown)
+			} else {
+				logFailures = 0
+				logBackoffUntil = time.Time{}
+			}
+			// A no-work log turn on a converged window closes an idle
+			// revolution; pace the loop before the next IndexMerge pass.
+			if outcome == phaseOutcomeNoWork && indexConverged {
+				if !sleepCtx(ctx, c.cfg.PollingInterval) {
+					return
+				}
+			}
 		}
 		if ctx.Err() != nil {
 			return
 		}
 		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
 
-		if outcome != phaseOutcomeError {
+		// IndexMerge re-arms on error; LogMerge always hands the turn back
+		// (see the phase-policy comment above).
+		if outcome != phaseOutcomeError || p == phaseLogMerge {
 			p = p.flip()
 		}
+	}
+}
+
+// sleepCtx sleeps for d or until ctx is cancelled, returning false on
+// cancellation.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

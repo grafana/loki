@@ -38,6 +38,18 @@ type RowReaderOptions struct {
 	// the entire Dataset is already held in memory.
 	Prefetch bool
 
+	// TargetCacheSize is the target maximum bytes of compressed page data the
+	// bulk downloader keeps cached at once when Prefetch is enabled. Pages
+	// needed by the current read range are always downloaded regardless of the
+	// target; the target only bounds opportunistic lookahead, including the
+	// initial prefetch batch. 0 means no limit: all lookahead pages are
+	// downloaded eagerly.
+	//
+	// Set this for long sequential scans over datasets much larger than
+	// memory (e.g. compaction merges) so resident page data stays bounded
+	// while consumed pages are garbage collected as the read advances.
+	TargetCacheSize int
+
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker RowReaderStatsTracker
 }
@@ -588,6 +600,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	} else {
 		r.dl.Reset(r.opts.Dataset)
 	}
+	r.dl.targetCacheSize = r.opts.TargetCacheSize
 
 	mask := bitmask.New(len(r.opts.Columns))
 	r.fillPrimaryMask(mask)

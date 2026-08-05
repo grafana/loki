@@ -32,6 +32,10 @@ type coordinatorMetrics struct {
 	// tenantLogCyclesTotal counts per-tenant log-compaction cycle outcomes.
 	tenantLogCyclesTotal *prometheus.CounterVec // outcome=compacted|converged|failed, tenant
 
+	// logPhaseSkipsTotal counts log-phase turns the worker loop skipped
+	// without dispatching, by reason.
+	logPhaseSkipsTotal *prometheus.CounterVec // reason=index_unconverged|backoff, tenant
+
 	// indexesRemovedTotal counts source indexes removed by compaction
 	// (cumulative). Use with indexesAddedTotal to compute net reduction:
 	// removed - added = net_reduction.
@@ -88,6 +92,10 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_tenant_log_cycles_total",
 			Help: "Per-tenant log-compaction cycle outcomes. compacted = ToC swapped, converged = no worthwhile section overlap, failed = cycle returned error.",
 		}, []string{labelOutcome, labelTenant}),
+		logPhaseSkipsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_log_phase_skips_total",
+			Help: "Per-tenant count of log-compaction phase turns skipped without dispatching. reason=index_unconverged (window's index side has not converged yet) or backoff (cooling down after consecutive log-phase failures).",
+		}, []string{"reason", labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
 			Help: "Cumulative count of source index pointers removed from the ToC by successful tenant cycles.",
@@ -248,6 +256,15 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.tasksTotal.DeleteLabelValues(tenant)
 	m.tenantCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.tenantLogCyclesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.logPhaseSkipsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+}
+
+// observeLogPhaseSkip records one skipped log-phase turn for the tenant.
+func (m *coordinatorMetrics) observeLogPhaseSkip(tenant, reason string) {
+	if m == nil {
+		return
+	}
+	m.logPhaseSkipsTotal.WithLabelValues(reason, tenant).Inc()
 }
 
 // observeFileSizeStat records the latency of a single bucket.Attributes call.
