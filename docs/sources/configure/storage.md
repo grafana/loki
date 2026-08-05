@@ -145,12 +145,41 @@ storage_config:
     cache_location: /loki/index_cache
     cache_ttl: 24h # Can be increased for faster performance over longer query periods, uses more disk space
   gcs:
-    bucket_name: <bucket>
+    bucket_name: <BUCKET_NAME>
     service_account: |
       {
         "type": "service_account",
         ...
       }
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+Equivalent configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#gcs-example):
+
+```yaml
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    gcs:
+      bucket_name: <BUCKET_NAME>
+      service_account: |
+        {
+          "type": "service_account",
+          ...
+        }
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
 
 schema_config:
   configs:
@@ -180,8 +209,8 @@ storage_config:
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
   aws:
-    s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
-    bucketnames: <bucket1,bucket2>
+    s3: s3://<ACCESS_KEY>:<URI_ENCODED_SECRET_ACCESS_KEY>@<REGION>
+    bucketnames: <BUCKET_1>,<BUCKET_2>
 
 schema_config:
   configs:
@@ -194,14 +223,58 @@ schema_config:
         period: 24h
 ```
 
+Equivalent configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#s3-example):
+
+```yaml
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      endpoint: <REGION>.amazonaws.com
+      region: <REGION>
+      # You can either declare the access key and secret in the config or
+      # use environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY,
+      # which will be picked up by the AWS SDK.
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+Note that the Thanos-based client only supports a single bucket. If you previously used `bucketnames` with multiple buckets, consolidate to one bucket.
+
 If you don't wish to hard-code S3 credentials, you can also configure an EC2
 instance role by changing the `storage_config` section:
 
 ```yaml
 storage_config:
   aws:
-    s3: s3://region
-    bucketnames: <bucket1,bucket2>
+    s3: s3://<REGION>
+    bucketnames: <BUCKET_1>,<BUCKET_2>
+```
+
+The Thanos-based client picks up the same EC2 instance role automatically when `access_key_id` and `secret_access_key` are left unset:
+
+```yaml
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      region: <REGION>
 ```
 
 The role should have a policy with the following permissions attached.
@@ -215,7 +288,7 @@ The role should have a policy with the following permissions attached.
             "Effect": "Allow",
             "Principal": {
                 "AWS": [
-                    "arn:aws:iam::<account_ID>"
+                    "arn:aws:iam::<ACCOUNT_ID>"
                 ]
             },
             "Action": [
@@ -225,8 +298,8 @@ The role should have a policy with the following permissions attached.
                 "s3:DeleteObject"
             ],
             "Resource": [
-                "arn:aws:s3:::<bucket_name>",
-                "arn:aws:s3:::<bucket_name>/*"
+                "arn:aws:s3:::<BUCKET_NAME>",
+                "arn:aws:s3:::<BUCKET_NAME>/*"
             ]
         }
     ]
@@ -244,19 +317,19 @@ This guide assumes a provisioned EKS cluster.
 3. Export the AWS profile and region if not done so:
 
    ```bash
-   export AWS_PROFILE=<profile in ~/.aws/config>
-   export AWS_REGION=<region of EKS cluster>
+   export AWS_PROFILE=<AWS_PROFILE_NAME>
+   export AWS_REGION=<EKS_CLUSTER_REGION>
    ```
 
 4. Save the OIDC provider in an environment variable:
 
    ```bash
-   oidc_provider=$(aws eks describe-cluster --name <EKS cluster> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
+   oidc_provider=$(aws eks describe-cluster --name <EKS_CLUSTER_NAME> --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
    ```
 
    See the [IAM OIDC provider guide](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) for a guide for creating a provider.
 
-5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS cluster> -var oidc_id="$oidc_provider"`
+5. Apply the Terraform module `terraform -var region="$AWS_REGION" -var cluster_name=<EKS_CLUSTER_NAME> -var oidc_id="$oidc_provider"`
 
    Note, the bucket name defaults to `loki-data` but can be changed via the
    `bucket_name` variable.
@@ -278,25 +351,53 @@ schema_config:
 storage_config:
   azure:
     # Your Azure storage account name
-    account_name: <account-name>
+    account_name: <ACCOUNT_NAME>
     # For the account-key, see docs: https://docs.microsoft.com/en-us/azure/storage/common/storage-account-keys-manage?tabs=azure-portal
-    account_key: <account-key>
+    account_key: <ACCOUNT_KEY>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-    container_name: <container-name>
-    use_managed_identity: <true|false>
+    container_name: <CONTAINER_NAME>
+    use_managed_identity: <TRUE|FALSE>
     # Providing a user assigned ID will override use_managed_identity
-    user_assigned_id: <user-assigned-identity-id>
+    user_assigned_id: <USER_ASSIGNED_IDENTITY_ID>
     request_timeout: 0
     # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
-    endpoint_suffix: <endpoint-suffix>
+    endpoint_suffix: <ENDPOINT_SUFFIX>
     # If `connection_string` is set, the values of `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.
-    connection_string: <connection-string>
+    connection_string: <CONNECTION_STRING>
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h
   filesystem:
     directory: /loki/chunks
+```
+
+Equivalent configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#azure-example):
+
+```yaml
+schema_config:
+  configs:
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    azure:
+      account_name: <ACCOUNT_NAME>
+      account_key: <ACCOUNT_KEY>
+      container_name: <CONTAINER_NAME>
+      user_assigned_id: <USER_ASSIGNED_IDENTITY_ID>
+      endpoint_suffix: <ENDPOINT_SUFFIX>
+      connection_string: <CONNECTION_STRING>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
 ```
 
 #### Using a service principal
@@ -315,13 +416,13 @@ storage_config:
   azure:
     use_service_principal: true
     # Azure tenant ID used to authenticate through Azure OAuth
-    tenant_id : <tenant-id>
+    tenant_id : <TENANT_ID>
     # Azure Service Principal ID
-    client_id: <client-id>
+    client_id: <CLIENT_ID>
     # Azure Service Principal secret key
-    client_secret: <client-secret>
+    client_secret: <CLIENT_SECRET>
     # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
-    container_name: <container-name>
+    container_name: <CONTAINER_NAME>
     request_timeout: 0
   tsdb_shipper:
     active_index_directory: /loki/index
@@ -329,6 +430,31 @@ storage_config:
     cache_ttl: 24h
   filesystem:
     directory: /loki/chunks
+```
+
+Equivalent configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#azure-example):
+
+Loki's Azure Thanos client doesn't have a dedicated service principal option in `storage_config`. Instead, pass the necessary credentials using the standard [Azure Identity Client Module for Go](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity) environment variables (for example `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET`), then configure only the container name:
+
+```yaml
+schema_config:
+  configs:
+    - from: "2020-12-11"
+      index:
+        period: 24h
+        prefix: index_
+      object_store: azure
+      schema: v13
+      store: tsdb
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    azure:
+      container_name: <CONTAINER_NAME>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
 ```
 
 ### IBM Deployment (COS Single Store)
@@ -349,13 +475,17 @@ storage_config:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
   cos:
-    bucketnames: <bucket1, bucket2>
-    endpoint: <endpoint>
-    api_key: <api_key_to_authenticate_with_cos>
-    region: <region>
-    service_instance_id: <cos_service_instance_id>
-    auth_endpoint: <iam_endpoint_for_authentication>
+    bucketnames: <BUCKET_1>, <BUCKET_2>
+    endpoint: <ENDPOINT>
+    api_key: <API_KEY_TO_AUTHENTICATE_WITH_COS>
+    region: <REGION>
+    service_instance_id: <COS_SERVICE_INSTANCE_ID>
+    auth_endpoint: <IAM_ENDPOINT_FOR_AUTHENTICATION>
 ```
+
+{{< admonition type="note" >}}
+IBM COS is not yet supported by the Thanos-based object store client, so `storage_config.cos` (shown above) remains the only way to configure COS. Set `use_thanos_objstore: false` explicitly if the default changes in a future release. See the [Thanos storage configuration examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) for the backends that are currently supported.
+{{< /admonition >}}
 
 ### On premise deployment (MinIO Single Store)
 
@@ -366,12 +496,42 @@ storage_config:
   aws:
     # Note: use a fully qualified domain name (fqdn), like localhost.
     # full example: http://loki:supersecret@localhost.:9000
-    s3: http<s>://<username>:<secret>@<fqdn>:<port>
+    s3: http(s)://<USERNAME>:<SECRET>@<FQDN>:<PORT>
     s3forcepathstyle: true
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+```
+
+Equivalent configuration using the [Thanos-based object store client](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#minio-s3-compatible-example):
+
+```yaml
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # Use a fully qualified domain name (fqdn), like localhost, without a scheme.
+      endpoint: <FQDN>:<PORT>
+      access_key_id: <USERNAME>
+      secret_access_key: <SECRET>
+      insecure: true            # set to false if MinIO is served over https
+      bucket_lookup_type: path  # MinIO's equivalent of s3forcepathstyle
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h
 
 schema_config:
   configs:
