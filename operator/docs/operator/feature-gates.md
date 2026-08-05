@@ -1,12 +1,12 @@
 ---
-title: "API"
+title: "Feature Gates"
 description: "Generated API docs for the Loki Operator"
 lead: ""
 draft: false
 images: []
 menu:
-+docs:
-+parent: "operator"
+  docs:
+    parent: "operator"
 weight: 1000
 toc: true
 ---
@@ -17,6 +17,7 @@ This Document contains the types introduced by the Loki Operator to be consumed 
 <p>Package v1 contains API Schema definitions for the config v1 API group</p>
 </div>
 <b>Resource Types:</b>
+
 ## BuiltInCertManagement { #config-loki-grafana-com-v1-BuiltInCertManagement }
 <p>
 (<em>Appears on:</em><a href="#config-loki-grafana-com-v1-FeatureGates">FeatureGates</a>)
@@ -96,6 +97,7 @@ The refresh is applied to all LokiStack certificates at once.</p>
 </tr>
 </tbody>
 </table>
+
 ## FeatureGates { #config-loki-grafana-com-v1-FeatureGates }
 <div>
 <p>FeatureGates is the supported set of all operator feature gates.</p>
@@ -319,6 +321,7 @@ when using HTTPEncryption or GRPCEncryption.</p>
 </tr>
 </tbody>
 </table>
+
 ## OpenShiftFeatureGates { #config-loki-grafana-com-v1-OpenShiftFeatureGates }
 <p>
 (<em>Appears on:</em><a href="#config-loki-grafana-com-v1-FeatureGates">FeatureGates</a>)
@@ -420,6 +423,7 @@ that it is running with some kind of &ldquo;workload identity&rdquo; (AWS STS, A
 </tr>
 </tbody>
 </table>
+
 ## TLSProfileType { #config-loki-grafana-com-v1-TLSProfileType }
 (<code>string</code> alias)
 <div>
@@ -448,4 +452,5 @@ that it is running with some kind of &ldquo;workload identity&rdquo; (AWS STS, A
 </tr></tbody>
 </table>
 <hr/>
-+newline
+
+
