@@ -13,6 +13,7 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt [1m]) #
 
 # logfmt() edge cases:
 # - Keys sanitize non-word characters to `_`.
+# - A key that starts with a non-letter gets a leading `_` (9x becomes _9x).
 # - Empty values are kept only when --keep-empty is specified.
 # - A duplicate key keeps the first.
 # - A quoted value holds spaces.
@@ -213,7 +214,8 @@ eval range from 40s to 60s step 20s count_over_time({app="a"} | pattern `<method
 eval instant at 60s count_over_time({app="a"} | pattern `no captures here` [1m])
   expect fail msg: at least one capture is required
 
-# unpack() promotes to labels the string fields of a json line.
+# unpack() promotes the string fields of a json line to labels. It skips a non-string field (num) and
+# the reserved `_entry` key, whose value replaces the log line instead of becoming a label.
 clear
 load
   {app="a"} `{"lvl":"info","cluster":"eu","num":5,"_entry":"real message"}` @ 20s [repeat every 20s for 4]
