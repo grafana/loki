@@ -69,8 +69,10 @@ scheme are recorded in Claude's local memory file `preprod_observability.md`
 so `git log <sha>` maps a running pod to a set of shipped proposals.
 
 **Where we are** (see "Current status" section at end for detail):
-- **Five PRs open on the incremental path, stacked in order**
-  (#23663 → #23696 → #23730 → #23767 → #23768):
+- **Five PRs open on the incremental path, plus three branches waiting to
+  be pushed, stacked in order**
+  (#23663 → #23696 → #23730 → #23767 → #23768 → `dahoppe/stream-series`
+  → `dahoppe/stream-labels` → `dahoppe/stream-no-mmap`):
   - **PR #23663** (branch `dahoppe/introduce-nommap-config`, rebased on
     main 2026-07-31) — flag + Reader-interface extraction + StreamReader
     stub. Merges with no behaviour change.
@@ -91,7 +93,18 @@ so `git log <sha>` maps a running pod to a set of shipped proposals.
     #23767) — streams the fingerprint-offsets section and serves shard-aware
     (`fpFilter!=nil`) `Postings` natively via `NewShardedPostings`, removing
     the last mmap fallback from `Postings`.
-- **Next up**: stream `Series` + `ChunkStats` (item #4 in the Next list).
+  - **`dahoppe/stream-series`** (stacked on `dahoppe/stream-fingerprint-offsets`,
+    commit `24cbb79c09`, **not pushed**) — streaming `Series` + `ChunkStats`.
+    Next-list item #4.
+  - **`dahoppe/stream-labels`** (stacked on `dahoppe/stream-series`, commit
+    `cd56dca173`, **not pushed**) — streaming `LabelValues` / `LabelNames` /
+    `LabelValueFor` / `LabelNamesFor`. Next-list item #5.
+  - **`dahoppe/stream-no-mmap`** (stacked on `dahoppe/stream-labels`, commit
+    `779c74a269`, **not pushed**) — drops `StreamReader.mmapReader`. The
+    "no mmap on the stream path" milestone. Next-list item #6.
+- **Next up**: metrics wiring for the streaming path (item #7 in the Next
+  list) — needed before the perf-tuning PRs so their graphs mean anything.
+  Nothing above item #7 is blocking it.
 - **Reference-branch history** (kept for measurements):
   - Phase 1 (buffered): shipped but not viable for production —
     OOMed pods in preprod (see 2026-07-29 entry).
@@ -670,6 +683,102 @@ supporting profiling data lands):
     `mustPostingsAndDrain` helpers gained an `fpFilter` parameter rather than a
     separate sharded helper.
 
+- **`dahoppe/stream-series` — `Implement streaming reading of series records`**
+  (stacked on `dahoppe/stream-fingerprint-offsets` / #23768, single commit
+  `24cbb79c09`, created 2026-08-05, **not yet pushed**). Item #4 in the Next
+  list. Contents:
+  - **`readSeriesRecord`** (`stream_series.go`) — the streaming counterpart to
+    Prometheus's `encoding.NewDecbufUvarintAt`, which is what the mmap reader
+    uses for the same job. A series record is `[uvarint content_length]
+    [content][crc32 over content]`; the uvarint prefix is why it can't go
+    through the streamenc factory, whose `NewDecbufAtChecked` assumes a 4-byte
+    big-endian length. So we open a `NewRawDecbuf` over the whole file,
+    `ResetAt` the record, and decode it ourselves.
+  - **Bounds the claimed content length before allocating.** The reference
+    branch does `make([]byte, l)` straight off the uvarint, so a corrupt
+    length prefix can ask for an arbitrarily large buffer; the mmap reader is
+    protected by its up-front `bs.Len() < off+n+l+4` check. The streaming
+    version compares against `decbuf.Len()` in `uint64` space (overflow-safe)
+    and returns `ErrInvalidSize` instead.
+  - **`seriesOffset(id)`** replaces the bare `id * 16` with the "series refs
+    are the 16-byte-aligned file offset / 16" comment attached to it. Reused
+    by the label methods in the next branch.
+  - **One `*Decoder` built at open**, wired to `streamSymbols.Lookup`.
+    *Diverges from the reference branch*, which builds a fresh `Decoder` per
+    `Series` call out of caution about reuse. `ByteSliceReader` has always
+    stored one (`r.dec`) and shared it across concurrent calls; `Decoder`'s
+    only mutable state is the `chunksSample` map, which is `RWMutex`-guarded,
+    so sharing is safe and it avoids a map allocation per call. There's no
+    equivalent of `ByteSliceReader.nameSymbols` (the label-name symbol cache
+    warmed via `Symbols.ReverseLookup`) because `streamSymbols` has no
+    `ReverseLookup` — noted in-code as a perf candidate.
+  - Tests (`stream_series_test.go`): `TestStreamSeries_MatchesMmap` builds a
+    fixture whose per-series chunk counts are `{1, 2, 15, 16, 17, 63, 64, 65,
+    200}` — straddling `ChunkPageSize` (16) and
+    `DefaultMaxChunksToBypassMarkerLookup` (64) from both sides — so both the
+    linear chunk scan and the page-marker lookup run, including the
+    `forceMinTime` branch. It cross-checks `Series` (with and without labels),
+    and `ChunkStats` (with and without a `by` set) against mmap over seven
+    query windows selecting all / some / none of each series' chunks, on V3 +
+    V4, with `IngestedAt` stamped on alternating series.
+    `TestStreamSeries_RejectsCorruptSeriesRecord` and
+    `..._RejectsOutOfRangeRef` check rejection parity with mmap.
+  - Verified non-vacuous by mutation: perturbing `from`/`through` by one in the
+    streaming call fails both the new tests and `TestReaders_CrossCheck`, which
+    stops being trivially satisfied for `Series`/`ChunkStats` with this commit.
+
+- **`dahoppe/stream-labels` — `Implement streaming reading of label methods`**
+  (stacked on `dahoppe/stream-series`, single commit `cd56dca173`, created
+  2026-08-05, **not yet pushed**). Item #5 in the Next list. Contents:
+  - **`streamPostings.labelValuesFor` + `streamPostings.labelNames`**
+    (`stream_postings.go`) — the offset-table walk lives next to `postingsFor`
+    rather than in `stream_labels.go`, since all three decode the same table.
+    *Diverges from the reference branch*, which put the walk inline in
+    `StreamReader.LabelValues` and reached into the postings map from there.
+    `labelValuesFor` keeps the mmap reader's `skip` optimisation (key count +
+    label name are a fixed byte width within one name, so they're skipped
+    rather than re-parsed), which the reference version dropped.
+  - **`StreamReader.LabelValues` / `LabelNames`** (`stream_labels.go`) are thin
+    wrappers that reject the unimplemented `matchers` parameter and delegate.
+    **`LabelValueFor` / `LabelNamesFor`** read series records via
+    `readSeriesRecord` from the previous branch.
+  - No V1 branches anywhere — V1 read support went away in PR #23727, so the
+    reference branch's `streamPostingsV1` map has no counterpart.
+  - Tests (`stream_labels_test.go`): `TestStreamLabels_MatchesMmap` runs over
+    two fixtures — `writeManySymbolsFixture` (133 values for one name, so the
+    offset-table walk spans several sparse blocks) and `writeManyChunksFixture`
+    (five names of differing cardinality, so the walk has to stop at each
+    name's last value rather than run into the next name's entries) — on V3 +
+    V4. It cross-checks `LabelNames`, `LabelValues` for every name plus the
+    all-postings key and an unknown name, `LabelNamesFor` both per-ref and
+    over every ref at once (the de-duplicating path), and `LabelValueFor` for
+    every name including one the series doesn't carry (`storage.ErrNotFound`
+    parity). Plus `..._RejectsMatchers` and
+    `..._RejectsCorruptSeriesRecord`, both asserted against mmap.
+  - Verified non-vacuous by mutation: disabling the "stop at the name's last
+    value" break makes the walk bleed into the next name's entries and fails
+    both fixtures.
+
+- **`dahoppe/stream-no-mmap` — `Remove the mmap fallback from the streaming
+  reader`** (stacked on `dahoppe/stream-labels`, single commit `779c74a269`,
+  created 2026-08-05, **not yet pushed**). Item #6 in the Next list — the
+  "no mmap on the stream path" milestone. Contents:
+  - Drops `StreamReader.mmapReader`, its construction in
+    `NewStreamFileReader`, and its `Close`. `Close` is now just
+    `factory.Close()`, documented with what the filepool actually does to
+    handles that are checked out when it stops.
+  - Rewrites the `StreamReader` doc comment: it no longer needs to explain
+    what it delegates, so it describes why file I/O beats mmap here and which
+    sections are read eagerly / sparsely / on demand.
+  - Generalises `TestReaders_RejectsCorruptSymbolsChecksum` into
+    `TestReaders_RejectsCorruptSectionChecksum` over the symbols section, the
+    postings offset table and the fingerprint offsets. Constructing the mmap
+    reader used to validate all of these a second time, so this proves the
+    streaming constructor catches the corruption on its own now that the
+    second validator is gone.
+  - Ships without changing any default: `mode=mmap` is still the default and
+    still uses `ByteSliceReader`.
+
 ### Next (from #23696; each is its own PR, ~200–800 lines diff)
 
 1. ~~**PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**~~
@@ -711,18 +820,33 @@ supporting profiling data lands):
    needs only the postings iterator + the offsets table; it bounds by
    series-ref offset and never resolves individual series) and it
    *finishes* the `Postings` surface by removing its last mmap fallback.
-4. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
-   decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
-   `IngestedAt` field. V4 fixture included.
-5. **PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
-   `LabelNamesFor`.** Falls out mostly from postings-offset + series
-   ports; small.
+4. ~~**PR: stream `Series` + `ChunkStats`.**~~ **LANDED on branch
+   `dahoppe/stream-series`** (commit `24cbb79c09`, not yet pushed) — see that
+   entry under "In flight". Reimplements the series-record read via `Decbuf`;
+   the chunk-meta decode itself (V4 paging + `IngestedAt`) is untouched
+   because `Decoder.Series`/`ChunkStats` take the record's content bytes, so
+   both readers share it. **Two divergences from the reference branch**: the
+   claimed record length is bounded against the remaining file before
+   allocating (the reference allocates first, so a corrupt uvarint prefix can
+   request an arbitrary buffer), and the `*Decoder` is built once at open and
+   shared rather than per call (matching `ByteSliceReader`; `Decoder`'s only
+   mutable state is `RWMutex`-guarded).
+5. ~~**PR: stream `LabelValues` + `LabelNames` + `LabelValueFor` +
+   `LabelNamesFor`.**~~ **LANDED on branch `dahoppe/stream-labels`** (commit
+   `cd56dca173`, not yet pushed) — see that entry under "In flight". Did fall
+   out mostly from the postings-offset + series ports, as predicted. The
+   offset-table walk went onto `streamPostings` next to `postingsFor` rather
+   than inline in the reader, and kept the mmap reader's `skip` optimisation
+   that the reference version dropped.
    *(FingerprintOffsets was #5 here — pulled forward to #3 above.)*
-6. **PR: drop `StreamReader.mmapReader` fallback + delete
-   `ByteSliceReader` delegation dead code.** By this point every method
-   has a native streaming implementation. This is the "no more mmap on
-   the stream path" milestone. Ships without changing any default —
-   `mode=mmap` is still the default and still uses `ByteSliceReader`.
+6. ~~**PR: drop `StreamReader.mmapReader` fallback + delete
+   `ByteSliceReader` delegation dead code.**~~ **LANDED on branch
+   `dahoppe/stream-no-mmap`** (commit `779c74a269`, not yet pushed) — see that
+   entry under "In flight". Nothing of `ByteSliceReader` turned out to be dead
+   as a result: `Symbols()` was already retained deliberately for the builder
+   tests (#23730) and everything else still backs `mode=mmap`. The corrupt-
+   section open-time tests were widened to cover the sections the mmap
+   constructor used to validate a second time.
 7. **PR: metrics wiring for the streaming path.** Plumbs a real
    `prometheus.Registerer` from `store.NewStore` down through
    `OpenShippableTSDB` / `NewShippableTSDBFile` / `NewTSDBIndexFromFile`
@@ -1244,3 +1368,53 @@ supporting profiling data lands):
   Next-list item #3. `mmapReader` itself stays until Next #6 (still backs
   `Series`/`ChunkStats`/label methods). Next up: stream `Series` +
   `ChunkStats` (Next #4).
+
+- **2026-08-05 (later)**: Next items **#4, #5 and #6 all done**, as three
+  stacked branches off `dahoppe/stream-fingerprint-offsets`. **None are
+  pushed** — Dan pushes and opens the PRs.
+  - `dahoppe/stream-series` (`24cbb79c09`) — streaming `Series` + `ChunkStats`.
+  - `dahoppe/stream-labels` (`cd56dca173`) — streaming `LabelValues` /
+    `LabelNames` / `LabelValueFor` / `LabelNamesFor`.
+  - `dahoppe/stream-no-mmap` (`779c74a269`) — drops `StreamReader.mmapReader`.
+    **`mode=stream` no longer memory-maps the index file at all.** The default
+    is still `mmap`.
+
+  Full detail in the three "In flight" entries. Things worth carrying forward:
+  - **The series-record read is the one section the streamenc factory can't
+    open.** Every other section has a 4-byte big-endian length prefix, which
+    is what `NewDecbufAtChecked` assumes; series records use a uvarint. Hence
+    `readSeriesRecord` opening a `NewRawDecbuf` and decoding the frame by
+    hand. That also means it pays an `fstat` per call — `NewRawDecbuf` stats
+    the file to size its segment — which is exactly the redundancy Next #11
+    (cache the factory's file size) removes. `StreamReader.size` already holds
+    the answer.
+  - **Bound length prefixes before you allocate from them.** The reference
+    branch's `readUvarintSection` does `make([]byte, l)` directly off the
+    uvarint, and the read fails afterwards. The mmap reader never had this
+    exposure because `NewDecbufUvarintAt` bounds-checks against the byte slice
+    up front. Ported version compares against `decbuf.Len()` in `uint64`
+    space so a near-`MaxUint64` length can't wrap the comparison.
+  - **`Decoder` is safe to share and cheaper shared.** The reference branch
+    builds one per `Series` call with a comment about not having audited
+    reuse; the audit is short — the only mutable field is `chunksSample`, and
+    every access is behind `chunksSampleMtx`. `ByteSliceReader` has stored a
+    single `r.dec` since forever. Sharing also drops a map allocation per
+    call.
+  - **Removing the mmap fallback removed a second validator.** Constructing
+    the embedded `ByteSliceReader` was re-checking the symbols section, the
+    postings offset table and the fingerprint offsets on every open. The
+    corrupt-section test was widened to all three so we know the streaming
+    constructor rejects them on its own.
+  - **No end-to-end `mode=stream` coverage above `index.Reader` yet.** The
+    `tsdb` package's tests all build readers through `BuildIndex` /
+    `NewShippableTSDBFile` with `IndexReaderModeMmap` hardcoded, so nothing
+    exercises `TSDBIndex` (GetChunkRefs / Series / Stats / Volume) against
+    the streaming reader. Left alone deliberately: `index.Reader` is the whole
+    boundary and the cross-check tests assert method-by-method parity across
+    it, so an end-to-end test would mostly re-cover the same ground for a much
+    bigger diff. Worth its own PR if we want the belt-and-braces version —
+    parameterising `BuildIndex` on mode reaches into a helper shared across the
+    package.
+  - Next up: **metrics wiring (Next #7)**, still the priority it was on
+    2026-07-31 — without it we can't confirm mode selection from Prometheus,
+    and every perf-tuning PR after it wants the file-handle-pool counters.
