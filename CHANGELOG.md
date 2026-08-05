@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.5](https://github.com/grafana/loki/compare/v3.7.4...v3.7.5) (2026-08-05)
+
+
+### Bug Fixes
+
+* Build deb/rpm packages again in the release workflow ([#23598](https://github.com/grafana/loki/issues/23598)) ([6f49272](https://github.com/grafana/loki/commit/6f4927210024a9e5496fbc760837bf2fd7dbf5f1))
+* **ci:** Disable docker plugin publishing on release-3.7.x ([#23440](https://github.com/grafana/loki/issues/23440)) ([6095f71](https://github.com/grafana/loki/commit/6095f71eeba604627fbc08a4e87ed315c38d7b07))
+* **ingester:** Fix flush race in ingester [release-3.7.x] ([#23682](https://github.com/grafana/loki/issues/23682)) ([ff152dc](https://github.com/grafana/loki/commit/ff152dc114a5adad5fbc797e3c8af43b97c0b920))
+* **security/UNKNOWN/cmd/chunks-inspect:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.7.x) ([#23611](https://github.com/grafana/loki/issues/23611)) ([11c4b29](https://github.com/grafana/loki/commit/11c4b29fef7483c40649f65bccf01e1cca2b42bd))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.7.x) ([#23612](https://github.com/grafana/loki/issues/23612)) ([1e3108e](https://github.com/grafana/loki/commit/1e3108ecf15de374fb292f81a775b6812ffc46c3))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update module go.opentelemetry.io/otel to v1.42.0 [SECURITY] (release-3.7.x) ([#23518](https://github.com/grafana/loki/issues/23518)) ([28917d3](https://github.com/grafana/loki/commit/28917d3828aae7f3150c5c1a8965467521c6a70f))
+* **security/UNKNOWN/cmd/dataobj-inspect:** Update module golang.org/x/text to v0.39.0 [SECURITY] (release-3.7.x) ([#23419](https://github.com/grafana/loki/issues/23419)) ([5d2b9d4](https://github.com/grafana/loki/commit/5d2b9d4faa9b291101ee446156829932eae685c0))
+* **security/UNKNOWN/operator:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.7.x) ([#23613](https://github.com/grafana/loki/issues/23613)) ([8d71c59](https://github.com/grafana/loki/commit/8d71c59de908c1868cbffa2ceb5d26b7a8cb7f51))
+* **security/UNKNOWN/:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (release-3.7.x) ([#23610](https://github.com/grafana/loki/issues/23610)) ([941b557](https://github.com/grafana/loki/commit/941b5575c1b0e26626db924258ea3bbd8ccd47f6))
+* **security/UNKNOWN/:** Update module golang.org/x/text to v0.39.0 [SECURITY] (release-3.7.x) ([#23418](https://github.com/grafana/loki/issues/23418)) ([2347a9a](https://github.com/grafana/loki/commit/2347a9a50f8272f849af07f88d6269f9e8af9988))
+* **security/UNKNOWN/:** Update module google.golang.org/grpc to v1.82.1 [SECURITY] (release-3.7.x) ([#23405](https://github.com/grafana/loki/issues/23405)) ([f290af0](https://github.com/grafana/loki/commit/f290af0357a9162ab9bb8209ac4dd2426e17a36a))
+
 ## [3.7.4](https://github.com/grafana/loki/compare/v3.7.3...v3.7.4) (2026-07-22)
 
 
