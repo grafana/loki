@@ -106,7 +106,8 @@ storage_config:
   object_store:
     s3:
       bucket_name: <BUCKET_NAME>
-      endpoint: <ENDPOINT>
+      # The endpoint is required. For AWS, use the regional S3 endpoint.
+      endpoint: s3.<REGION>.amazonaws.com
       region: <REGION>
       # You can either declare the access key and secret in the config or
       # use environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY which will be picked up by the AWS SDK.
@@ -153,9 +154,9 @@ storage_config:
       container_name: <CONTAINER_NAME>
 ```
 
-## MinIO / S3-compatible example
+## MinIO (S3-compatible) example
 
-MinIO and other S3-compatible object stores use the same `object_store.s3` client as AWS S3. Set `bucket_lookup_type: path` (MinIO's equivalent of the legacy `s3forcepathstyle` option), and `insecure: true` if MinIO is served over plain HTTP:
+MinIO and other S3-compatible object stores use the same `object_store.s3` client as AWS S3. Set `bucket_lookup_type: path`, which is the equivalent of the deprecated `s3forcepathstyle` option. Set `insecure: true` if MinIO is served over plain HTTP.
 
 ```yaml
 auth_enabled: false
