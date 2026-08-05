@@ -11,6 +11,16 @@ eval instant at 60s vector(2)
 eval range from 60s to 180s step 30s vector(2)
   {} 2 2 2 2 2
 
+# vector accepts a decimal literal.
+eval instant at 60s vector(3.14)
+  {} 3.14
+eval range from 60s to 180s step 30s vector(3.14)
+  {} 3.14 3.14 3.14 3.14 3.14
+
+# vector(n) doesn't accept a nested query.
+eval instant at 60s vector(count_over_time({app="a"}[1m]))
+  expect fail regex: expecting NUMBER
+
 # label_replace().
 clear
 load
