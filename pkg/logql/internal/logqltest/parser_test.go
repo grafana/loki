@@ -44,6 +44,17 @@ func TestStreamsParser(t *testing.T) {
 		require.Equal(t, `{app="foo", env="prod"}`, streams[0].Labels)
 		require.Len(t, streams[0].Entries, 2)
 	})
+
+	t.Run("a backtick raw log line keeps its double quotes", func(t *testing.T) {
+		bt := "`"
+		s := newStreamsParser()
+		require.NoError(t, s.parse(`{app="foo"} `+bt+`{"level":"info","n":1}`+bt+` @ 0s`))
+
+		streams := s.get()
+		require.Len(t, streams, 1)
+		require.Len(t, streams[0].Entries, 1)
+		require.Equal(t, `{"level":"info","n":1}`, streams[0].Entries[0].Line)
+	})
 }
 
 func TestSplitStreamLabels(t *testing.T) {
@@ -60,16 +71,34 @@ func TestSplitStreamLabels(t *testing.T) {
 }
 
 func TestSplitQuoted(t *testing.T) {
-	text, rest, err := splitQuoted(` "hello world" @ 0s`)
-	require.NoError(t, err)
-	require.Equal(t, `hello world`, text)
-	require.Equal(t, ` @ 0s`, rest)
-
-	_, _, err = splitQuoted(` no quote here`)
-	require.Error(t, err)
-
-	_, _, err = splitQuoted(` "unterminated`)
-	require.Error(t, err)
+	bt := "`" // a backtick, awkward to embed in Go string literals
+	for name, tc := range map[string]struct {
+		in       string
+		wantText string
+		wantRest string
+		wantErr  bool
+	}{
+		"double quoted":                     {in: ` "hello world" @ 0s`, wantText: "hello world", wantRest: " @ 0s"},
+		"backtick raw":                      {in: " " + bt + "raw line" + bt + " @ 0s", wantText: "raw line", wantRest: " @ 0s"},
+		"backtick keeps double quotes":      {in: " " + bt + `{"a":"b"}` + bt + " @ 0s", wantText: `{"a":"b"}`, wantRest: " @ 0s"},
+		"double quotes stop at inner quote": {in: ` "a"b`, wantText: "a", wantRest: "b"},
+		"double quotes keep a backtick":     {in: ` "a` + bt + `b" @ 0s`, wantText: "a" + bt + "b", wantRest: " @ 0s"},
+		"first delimiter wins":              {in: ` "x" ` + bt + "y" + bt, wantText: "x", wantRest: " " + bt + "y" + bt},
+		"missing quote":                     {in: ` no quote here`, wantErr: true},
+		"unterminated double quote":         {in: ` "unterminated`, wantErr: true},
+		"unterminated backtick":             {in: " " + bt + "unterminated", wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			text, rest, err := splitQuoted(tc.in)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantText, text)
+			require.Equal(t, tc.wantRest, rest)
+		})
+	}
 }
 
 func TestParseMetadata(t *testing.T) {
@@ -235,6 +264,23 @@ func TestExpectationsValidate(t *testing.T) {
 	require.Error(t, expectations{ordered: true}.validate())
 	require.Error(t, expectations{ordered: true, scalar: &scalar}.validate()) // ordered needs series
 	require.Error(t, expectations{failKind: failMsg}.validate())              // qualifier without fail
+}
+
+func TestParseSeriesLabels(t *testing.T) {
+	// An empty-value label is preserved, so a test can assert a present-but-empty label distinctly
+	// from an absent one (unlike stream labels, which syntax.ParseLabels normalizes with WithoutEmpty).
+	present, err := parseSeriesLabels(`{app="a", age=""}`)
+	require.NoError(t, err)
+	require.Equal(t, `{age="", app="a"}`, present.String())
+
+	absent, err := parseSeriesLabels(`{app="a"}`)
+	require.NoError(t, err)
+	require.Equal(t, `{app="a"}`, absent.String())
+	require.NotEqual(t, present.String(), absent.String())
+
+	empty, err := parseSeriesLabels(`{}`)
+	require.NoError(t, err)
+	require.Equal(t, `{}`, empty.String())
 }
 
 func TestParseSeriesLine(t *testing.T) {
