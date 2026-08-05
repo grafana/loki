@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -503,4 +504,147 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 	tm.syncManager.Wait()
 	require.Equal(t, float64(1), testutil.ToFloat64(
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
+}
+
+func TestTableManager_loadLocalTables_QueryReadyNumDays(t *testing.T) {
+	tableRangeToHandle := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: indexTablePeriod,
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name                          string
+		queryReadyNumDays             int
+		queryReadyIndexNumDaysDefault int
+		queryReadyIndexNumDaysByUser  map[string]int
+		numTablesCreated              int
+		expectedLoadedTables          []string
+		expectedSkippedTables         []string
+	}{
+		{
+			name:              "loads tables within QueryReadyNumDays window and skips older tables",
+			queryReadyNumDays: 2,
+			numTablesCreated:  6,
+			expectedLoadedTables: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+			},
+			expectedSkippedTables: []string{
+				buildTableName(3),
+				buildTableName(4),
+				buildTableName(5),
+			},
+		},
+		{
+			name:                          "respects default limit override when default limits exceed global QueryReadyNumDays",
+			queryReadyNumDays:             1,
+			queryReadyIndexNumDaysDefault: 3,
+			numTablesCreated:              6,
+			expectedLoadedTables: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+				buildTableName(3),
+			},
+			expectedSkippedTables: []string{
+				buildTableName(4),
+				buildTableName(5),
+			},
+		},
+		{
+			name:              "respects per-user limit override when a tenant limit exceeds global QueryReadyNumDays",
+			queryReadyNumDays: 1,
+			queryReadyIndexNumDaysByUser: map[string]int{
+				"vip_user": 4,
+			},
+			numTablesCreated: 6,
+			expectedLoadedTables: []string{
+				buildTableName(0),
+				buildTableName(1),
+				buildTableName(2),
+				buildTableName(3),
+				buildTableName(4),
+			},
+			expectedSkippedTables: []string{
+				buildTableName(5),
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			cachePath := filepath.Join(tempDir, cacheDirName)
+			require.NoError(t, os.MkdirAll(cachePath, 0750))
+
+			for i := 0; i < tc.numTablesCreated; i++ {
+				tableName := buildTableName(i)
+				setupIndexesAtPath(t, "", filepath.Join(cachePath, tableName), 1, 3)
+				setupIndexesAtPath(t, "user1", filepath.Join(cachePath, tableName, "user1"), 1, 3)
+				for userID := range tc.queryReadyIndexNumDaysByUser {
+					setupIndexesAtPath(t, userID, filepath.Join(cachePath, tableName, userID), 1, 3)
+				}
+			}
+
+			// Add non-table directory clutter (lost+found, .ds_store) to verify clean skip handling
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, "lost+found"), 0750))
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, ".ds_store"), 0750))
+
+			baseStorageClient := buildTestStorageClient(t, tempDir)
+
+			limits := &mockLimits{
+				queryReadyIndexNumDaysDefault: tc.queryReadyIndexNumDaysDefault,
+				queryReadyIndexNumDaysByUser:  tc.queryReadyIndexNumDaysByUser,
+			}
+
+			cfg := Config{
+				CacheDir:          cachePath,
+				SyncInterval:      time.Hour,
+				CacheTTL:          time.Hour,
+				QueryReadyNumDays: tc.queryReadyNumDays,
+				DownloadTimeout:   5 * time.Minute,
+				Limits:            limits,
+			}
+
+			tm := &tableManager{
+				cfg: cfg,
+				openIndexFileFunc: func(s string) (index.Index, error) {
+					return openMockIndexFile(t, s), nil
+				},
+				indexStorageClient: baseStorageClient,
+				tableRangeToHandle: tableRangeToHandle,
+				tables:             make(map[string]Table),
+				metrics:            newMetrics(nil),
+				logger:             log.NewNopLogger(),
+				ctx:                context.Background(),
+				cancel:             func() {},
+			}
+
+			require.NoError(t, tm.loadLocalTables())
+			defer func() {
+				for _, tbl := range tm.tables {
+					tbl.Close()
+				}
+			}()
+
+			require.Len(t, tm.tables, len(tc.expectedLoadedTables))
+
+			for _, tableName := range tc.expectedLoadedTables {
+				require.Contains(t, tm.tables, tableName)
+			}
+
+			for _, tableName := range tc.expectedSkippedTables {
+				require.NotContains(t, tm.tables, tableName)
+			}
+		})
+	}
 }

@@ -361,17 +361,13 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	activeTableNumber := getActiveTableNumber()
 
 	// find the largest query readiness number
-	largestQueryReadinessNum := tm.cfg.QueryReadyNumDays
-	if defaultLimits := tm.cfg.Limits.DefaultLimits(); defaultLimits.QueryReadyIndexNumDays > largestQueryReadinessNum {
-		largestQueryReadinessNum = defaultLimits.QueryReadyIndexNumDays
-	}
+	largestQueryReadinessNum := tm.getLargestQueryReadinessNum()
 
 	queryReadinessNumByUserID := make(map[string]int)
-	for userID, limits := range tm.cfg.Limits.AllByUserID() {
-		if limits.QueryReadyIndexNumDays != 0 {
-			queryReadinessNumByUserID[userID] = limits.QueryReadyIndexNumDays
-			if limits.QueryReadyIndexNumDays > largestQueryReadinessNum {
-				largestQueryReadinessNum = limits.QueryReadyIndexNumDays
+	if tm.cfg.Limits != nil {
+		for userID, limits := range tm.cfg.Limits.AllByUserID() {
+			if limits != nil && limits.QueryReadyIndexNumDays != 0 {
+				queryReadinessNumByUserID[userID] = limits.QueryReadyIndexNumDays
 			}
 		}
 	}
@@ -462,6 +458,25 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	return nil
 }
 
+func (tm *tableManager) getLargestQueryReadinessNum() int {
+	largestQueryReadinessNum := tm.cfg.QueryReadyNumDays
+	if tm.cfg.Limits == nil {
+		return largestQueryReadinessNum
+	}
+
+	if defaultLimits := tm.cfg.Limits.DefaultLimits(); defaultLimits != nil && defaultLimits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+		largestQueryReadinessNum = defaultLimits.QueryReadyIndexNumDays
+	}
+
+	for _, limits := range tm.cfg.Limits.AllByUserID() {
+		if limits != nil && limits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+			largestQueryReadinessNum = limits.QueryReadyIndexNumDays
+		}
+	}
+
+	return largestQueryReadinessNum
+}
+
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
 func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
@@ -471,7 +486,7 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 	for _, userID := range usersWithIndexInTable {
 		// use the query readiness config for the user if it exists or use the default config
 		queryReadyNumDays, ok := queryReadinessNumByUserID[userID]
-		if !ok {
+		if !ok && tm.cfg.Limits != nil && tm.cfg.Limits.DefaultLimits() != nil {
 			queryReadyNumDays = tm.cfg.Limits.DefaultLimits().QueryReadyIndexNumDays
 		}
 
@@ -496,6 +511,9 @@ func (tm *tableManager) loadLocalTables() error {
 		return err
 	}
 
+	activeTableNumber := getActiveTableNumber()
+	largestQueryReadinessNum := tm.getLargestQueryReadinessNum()
+
 	for _, entry := range dirEntries {
 		if !entry.IsDir() {
 			continue
@@ -508,6 +526,16 @@ func (tm *tableManager) loadLocalTables() error {
 				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
 			}
 
+			continue
+		}
+
+		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
+		if err != nil {
+			return fmt.Errorf("cannot extract table number from %s: %w", entry.Name(), err)
+		}
+
+		if largestQueryReadinessNum > 0 && activeTableNumber-tableNumber > int64(largestQueryReadinessNum) {
+			level.Info(tm.logger).Log("msg", "skip loading table as it exceeds query ready num days", "table-name", entry.Name())
 			continue
 		}
 
