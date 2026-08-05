@@ -41,7 +41,6 @@ storage_config:
 
 ```
 
-
 ## 2-S3-Cluster-Example.yaml
 
 ```yaml
@@ -83,7 +82,6 @@ storage_config:
 
 ```
 
-
 ## 3-S3-Without-Credentials-Snippet.yaml
 
 ```yaml
@@ -97,7 +95,6 @@ storage_config:
       
 
 ```
-
 
 ## 4-GCS-Example.yaml
 
@@ -138,7 +135,6 @@ storage_config:
 
 ```
 
-
 ## 5-BOS-Example.yaml
 
 ```yaml
@@ -167,7 +163,6 @@ storage_config:
 
 ```
 
-
 ## 6-Compactor-Snippet.yaml
 
 ```yaml
@@ -180,7 +175,6 @@ compactor:
   compaction_interval: 5m
 
 ```
-
 
 ## 7-Schema-Migration-Snippet.yaml
 
@@ -213,7 +207,6 @@ schema_config:
         prefix: index_
 
 ```
-
 
 ## 8-alibaba-cloud-storage-Snippet.yaml
 
@@ -255,7 +248,6 @@ storage_config:
 
 ```
 
-
 ## 9-S3-With-SSE-KMS-Snippet.yaml
 
 ```yaml
@@ -270,7 +262,6 @@ storage_config:
       kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
 
 ```
-
 
 ## 10-Expanded-S3-Snippet.yaml
 
@@ -295,7 +286,6 @@ storage_config:
     
 
 ```
-
 
 ## 11-COS-HMAC-Example.yaml
 
@@ -326,7 +316,6 @@ storage_config:
 
 ```
 
-
 ## 12-COS-APIKey-Example.yaml
 
 ```yaml
@@ -356,7 +345,6 @@ storage_config:
     auth_endpoint: <iam_endpoint_for_authentication>
 
 ```
-
 
 ## 13-COS-Trusted-Profile-Example.yaml
 
@@ -394,7 +382,6 @@ storage_config:
 
 ```
 
-
 ## 15-Memberlist-Ring-Snippet.yaml
 
 ```yaml
@@ -414,7 +401,6 @@ memberlist:
     - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
 
 ```
-
 
 ## 16-Azure-Account-Name-Example.yaml
 
@@ -438,7 +424,6 @@ storage_config:
 
 ```
 
-
 ## 17-Azure-Service-Principal-Example.yaml
 
 ```yaml
@@ -459,3 +444,181 @@ storage_config:
 
 ```
 
+## 18-Thanos-GCS-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by GCS, using the
+# Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: gcs
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    gcs:
+      bucket_name: <BUCKET_NAME>
+
+```
+
+## 19-Thanos-S3-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by a s3-compatible API
+# like MinIO for storage, using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      endpoint: <CUSTOM_ENDPOINT>
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+      bucket_lookup_type: path
+
+```
+
+## 20-Thanos-Azure-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by Azure Blob Storage,
+# using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: azure
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    azure:
+      account_name: <ACCOUNT_NAME>
+      account_key: <ACCOUNT_KEY>
+      container_name: <CONTAINER_NAME>
+
+```
+
+## 21-Thanos-MinIO-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by a MinIO cluster,
+# using the Thanos-based object store client (storage_config.object_store).
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
+
+schema_config:
+  configs:
+    - from: 2020-05-15
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+storage_config:
+  use_thanos_objstore: true
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+  object_store:
+    s3:
+      bucket_name: <BUCKET_NAME>
+      # Use a fully qualified domain name (fqdn), like localhost, without a scheme.
+      endpoint: <FQDN>:<PORT>
+      access_key_id: <ACCESS_KEY_ID>
+      secret_access_key: <SECRET_ACCESS_KEY>
+      insecure: true
+      bucket_lookup_type: path
+```
