@@ -25,16 +25,16 @@ func drainPostings(t *testing.T, p Postings) []storage.SeriesRef {
 }
 
 // mustPostings runs Reader.Postings and asserts that doing so doesn't return an error.
-func mustPostings(t *testing.T, r Reader, name string, values ...string) Postings {
+func mustPostings(t *testing.T, r Reader, fpFilter FingerprintFilter, name string, values ...string) Postings {
 	t.Helper()
-	p, err := r.Postings(name, nil, values...)
+	p, err := r.Postings(name, fpFilter, values...)
 	require.NoError(t, err)
 	return p
 }
 
-func mustPostingsAndDrain(t *testing.T, r Reader, name string, values ...string) []storage.SeriesRef {
+func mustPostingsAndDrain(t *testing.T, r Reader, fpFilter FingerprintFilter, name string, values ...string) []storage.SeriesRef {
 	t.Helper()
-	return drainPostings(t, mustPostings(t, r, name, values...))
+	return drainPostings(t, mustPostings(t, r, fpFilter, name, values...))
 }
 
 // TestStreamPostings_MatchesMmap cross-checks the streaming Postings
@@ -65,16 +65,16 @@ func TestStreamPostings_MatchesMmap(t *testing.T) {
 			// block and the forward walk within a block.
 			for _, v := range values {
 				require.Equal(t,
-					mustPostingsAndDrain(t, mmap, "id", v),
-					mustPostingsAndDrain(t, stream, "id", v),
+					mustPostingsAndDrain(t, mmap, nil, "id", v),
+					mustPostingsAndDrain(t, stream, nil, "id", v),
 				)
 			}
 
 			// A multi-value query with every value at once exercises walking
 			// across sparse blocks in a single call.
 			require.Equal(t,
-				mustPostingsAndDrain(t, mmap, "id", values...),
-				mustPostingsAndDrain(t, stream, "id", values...),
+				mustPostingsAndDrain(t, mmap, nil, "id", values...),
+				mustPostingsAndDrain(t, stream, nil, "id", values...),
 			)
 
 			// A scattered subset (every 5th value) exercises seeking between
@@ -84,30 +84,30 @@ func TestStreamPostings_MatchesMmap(t *testing.T) {
 				subset = append(subset, values[i])
 			}
 			require.Equal(t,
-				mustPostingsAndDrain(t, mmap, "id", subset...),
-				mustPostingsAndDrain(t, stream, "id", subset...),
+				mustPostingsAndDrain(t, mmap, nil, "id", subset...),
+				mustPostingsAndDrain(t, stream, nil, "id", subset...),
 			)
 
 			// Unknown label name yields empty postings in both readers.
-			require.Empty(t, drainPostings(t, mustPostings(t, stream, "does-not-exist", "x")))
+			require.Empty(t, mustPostingsAndDrain(t, stream, nil, "does-not-exist", "x"))
 			require.Equal(t,
-				mustPostingsAndDrain(t, mmap, "does-not-exist", "x"),
-				mustPostingsAndDrain(t, stream, "does-not-exist", "x"),
+				mustPostingsAndDrain(t, mmap, nil, "does-not-exist", "x"),
+				mustPostingsAndDrain(t, stream, nil, "does-not-exist", "x"),
 			)
 
 			// Values outside the range of stored values (before the first and
 			// after the last) match mmap — both should be empty.
 			for _, v := range []string{"\x00", "zzzzzzzz"} {
 				require.Equal(t,
-					mustPostingsAndDrain(t, mmap, "id", v),
-					mustPostingsAndDrain(t, stream, "id", v),
+					mustPostingsAndDrain(t, mmap, nil, "id", v),
+					mustPostingsAndDrain(t, stream, nil, "id", v),
 				)
 			}
 
 			// No values requested yields empty postings in both readers.
 			require.Equal(t,
-				mustPostingsAndDrain(t, mmap, "id"),
-				mustPostingsAndDrain(t, stream, "id"),
+				mustPostingsAndDrain(t, mmap, nil, "id"),
+				mustPostingsAndDrain(t, stream, nil, "id"),
 			)
 		})
 	}
@@ -188,7 +188,7 @@ func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 			t.Cleanup(func() { require.NoError(t, stream.Close()) })
 
 			// Ground-truth ordered ref list for the shared postings.
-			allRefs := mustPostingsAndDrain(t, mmap, "shared", "all")
+			allRefs := mustPostingsAndDrain(t, mmap, nil, "shared", "all")
 			require.Greater(t, len(allRefs), 1000, "need a large postings list to exercise the binary search")
 
 			// A target that falls in a gap (absent, between two refs) so we
@@ -213,8 +213,8 @@ func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 				allRefs[len(allRefs)-1] + 1,
 			}
 			for _, target := range targets {
-				mmapPostings := mustPostings(t, mmap, "shared", "all")
-				streamPostings := mustPostings(t, stream, "shared", "all")
+				mmapPostings := mustPostings(t, mmap, nil, "shared", "all")
+				streamPostings := mustPostings(t, stream, nil, "shared", "all")
 				mmapOk, streamOk := mmapPostings.Seek(target), streamPostings.Seek(target)
 				require.Equal(t, mmapOk, streamOk)
 				if mmapOk {
@@ -229,8 +229,8 @@ func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 			// Part 2: one iterator pair driven in lockstep with interleaved Next
 			// and ascending Seek, exercising a binary search from a non-zero
 			// starting position.
-			mmapPostings := mustPostings(t, mmap, "shared", "all")
-			streamPostings := mustPostings(t, stream, "shared", "all")
+			mmapPostings := mustPostings(t, mmap, nil, "shared", "all")
+			streamPostings := mustPostings(t, stream, nil, "shared", "all")
 			n := len(allRefs)
 			type op struct {
 				seek   bool
@@ -260,6 +260,64 @@ func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 			}
 			require.NoError(t, mmapPostings.Err())
 			require.NoError(t, streamPostings.Err())
+		})
+	}
+}
+
+// TestStreamPostings_ShardedMatchesMmap cross-checks shard-aware Postings
+// (fpFilter != nil) against the mmap reader over the large shared-label
+// postings list, across several shard configurations.
+func TestStreamPostings_ShardedMatchesMmap(t *testing.T) {
+	for _, format := range []int{FormatV3, FormatV4} {
+		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+			path := writeSharedLabelFixture(t, format)
+
+			mmap, err := NewMmapFileReader(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
+
+			stream, err := NewStreamFileReader(path)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+
+			// Should both have the same fingerprintOffsets
+			require.NotEmpty(t, mmap.fingerprintOffsets)
+			require.Equal(t, mmap.fingerprintOffsets, stream.fingerprintOffsets)
+
+			// The unsharded ground truth.
+			allSeriesRefs := mustPostingsAndDrain(t, mmap, nil, "shared", "all")
+			require.Greater(t, len(allSeriesRefs), 1000, "need a large postings list to exercise sharding")
+
+			// Every shard, in every configuration, must return exactly what the
+			// mmap reader returns.
+			shards := []ShardAnnotation{
+				NewShard(0, 2), NewShard(1, 2), NewShard(2, 16), NewShard(13, 32),
+				NewShard(0, 4), NewShard(1, 4), NewShard(2, 4), NewShard(3, 4),
+			}
+			for _, shard := range shards {
+				require.Equal(t,
+					mustPostingsAndDrain(t, mmap, shard, "shared", "all"),
+					mustPostingsAndDrain(t, stream, shard, "shared", "all"),
+					"shard %d/%d", shard.Shard, shard.Of,
+				)
+			}
+
+			// A single shard covering the whole space is an identity filter:
+			// the fpFilter != nil path must still return the full list.
+			require.Equal(t, allSeriesRefs, mustPostingsAndDrain(t, stream, NewShard(0, 1), "shared", "all"))
+
+			// Series are written in fingerprint order, so a 2-way partition
+			// must cover every series (sharding may return a slight superset at
+			// the boundaries, never a subset of the union).
+			union := map[storage.SeriesRef]struct{}{}
+			for _, shard := range []ShardAnnotation{NewShard(0, 2), NewShard(1, 2)} {
+				for _, ref := range mustPostingsAndDrain(t, stream, shard, "shared", "all") {
+					union[ref] = struct{}{}
+				}
+			}
+			for _, ref := range allSeriesRefs {
+				require.Contains(t, union, ref, "series %d missing from the 2-way shard partition", ref)
+			}
 		})
 	}
 }
