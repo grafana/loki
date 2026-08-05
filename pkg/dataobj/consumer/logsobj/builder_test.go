@@ -541,7 +541,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		return order
 	}
 
-	timestampsDescWithinGroups := func(t *testing.T, obj *dataobj.Object, tenant string) {
+	timestampsAscWithinGroups := func(t *testing.T, obj *dataobj.Object, tenant string) {
 		t.Helper()
 		streamToApp := make(map[int64]string)
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
@@ -564,8 +564,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				require.NoError(t, err)
 				app := streamToApp[val.StreamID]
 				if prev, ok := prevTS[app]; ok {
-					require.LessOrEqual(t, val.Timestamp.UnixNano(), prev.UnixNano(),
-						"timestamps not DESC within app=%q", app)
+					require.GreaterOrEqual(t, val.Timestamp.UnixNano(), prev.UnixNano(),
+						"timestamps not ASC within app=%q", app)
 				}
 				prevTS[app] = val.Timestamp
 			}
@@ -597,7 +597,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 
 		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj2, "schema-tenant"))
-		timestampsDescWithinGroups(t, obj2, "schema-tenant")
+		timestampsAscWithinGroups(t, obj2, "schema-tenant")
 
 		var allTS []time.Time
 		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
@@ -632,7 +632,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		}
 
 		require.Equal(t, []string{"a", "b"}, appOrder(t, obj2, "t1"))
-		timestampsDescWithinGroups(t, obj2, "t1")
+		timestampsAscWithinGroups(t, obj2, "t1")
 	})
 
 	t.Run("initial flush emits schema-ordered logs sections", func(t *testing.T) {
@@ -679,7 +679,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 					case val.StreamID != prevStreamID:
 						require.GreaterOrEqual(t, val.StreamID, prevStreamID)
 					default:
-						require.LessOrEqual(t, val.Timestamp.UnixNano(), prevTS.UnixNano())
+						require.GreaterOrEqual(t, val.Timestamp.UnixNano(), prevTS.UnixNano())
 					}
 				}
 				prevApp = app
@@ -688,6 +688,28 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				firstRecord = false
 			}
 		}
+	})
+
+	t.Run("initial flush rewrites descending timestamps to ascending", func(t *testing.T) {
+		cfg := makeCfg(true)
+		overrides := tenantOverrides{"t1": {"label:app"}}
+		b, err := NewBuilder(cfg, nil, NewBuilderMetrics(), log.NewNopLogger(), overrides)
+		require.NoError(t, err)
+
+		require.NoError(t, b.Append("t1", logproto.Stream{
+			Labels: `{app="alpha"}`,
+			Entries: []push.Entry{
+				{Timestamp: now.Add(3 * time.Second), Line: "3"},
+				{Timestamp: now.Add(2 * time.Second), Line: "2"},
+				{Timestamp: now.Add(time.Second), Line: "1"},
+				{Timestamp: now, Line: "0"},
+			},
+		}, now))
+
+		obj, closer, err := b.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+		timestampsAscWithinGroups(t, obj, "t1")
 	})
 
 	t.Run("idempotent: second CopyAndSort reads schema from metadata, not overrides", func(t *testing.T) {
@@ -699,7 +721,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj3, "t1"),
 			"second CopyAndSort must preserve schema sort using persisted metadata")
-		timestampsDescWithinGroups(t, obj3, "t1")
+		timestampsAscWithinGroups(t, obj3, "t1")
 	})
 
 	t.Run("multi-label compound key", func(t *testing.T) {
@@ -920,7 +942,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			case prev.streamID != record.streamID:
 				require.LessOrEqual(t, prev.streamID, record.streamID)
 			default:
-				require.LessOrEqual(t, record.ts, prev.ts)
+				require.LessOrEqual(t, prev.ts, record.ts)
 			}
 		}
 	})

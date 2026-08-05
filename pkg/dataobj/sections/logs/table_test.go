@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -14,12 +15,27 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 var (
 	pageSize = 1024
 	pageRows = 0
 )
+
+type rowResultSequence struct {
+	rows []dataset.Row
+	next int
+}
+
+func (s *rowResultSequence) Next() bool {
+	s.next++
+	return s.next <= len(s.rows)
+}
+
+func (s *rowResultSequence) At() result.Result[dataset.Row] {
+	return result.Value(s.rows[s.next-1])
+}
 
 func Test_table_metadataCleanup(t *testing.T) {
 	var buf tableBuffer
@@ -164,7 +180,7 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			expectedLineOrder: []string{"A", "B", "C"},
 		},
 		{
-			// SortSchemaASC with equal sort keys falls back to timestamp DESC
+			// SortSchemaASC with equal sort keys falls back to timestamp ASC
 			name:      "SortSchemaASC_equalSortKeys",
 			sortOrder: SortSchemaASC,
 			input: []Record{
@@ -172,10 +188,10 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 				{Timestamp: t2, SortKey: "app-a", Line: []byte("B")},
 				{Timestamp: t3, SortKey: "app-a", Line: []byte("C")},
 			},
-			expectedLineOrder: []string{"C", "B", "A"},
+			expectedLineOrder: []string{"A", "B", "C"},
 		},
 		{
-			// SortSchemaASC with equal sort keys falls back to streamID ASC before timestamp DESC
+			// SortSchemaASC with equal sort keys falls back to streamID ASC before timestamp ASC
 			name:      "SortSchemaASC_equalSortKeysUsesStreamID",
 			sortOrder: SortSchemaASC,
 			input: []Record{
@@ -186,7 +202,7 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 				{StreamID: 20, Timestamp: t1, SortKey: "app-b", Line: []byte("E")},
 				{StreamID: 20, Timestamp: t1, SortKey: "app-a", Line: []byte("F")},
 			},
-			expectedLineOrder: []string{"D", "B", "C", "F", "A", "E"},
+			expectedLineOrder: []string{"D", "C", "B", "F", "A", "E"},
 		},
 		{
 			// SortSchemaASC with equal timestamps uses primary ordering
@@ -314,6 +330,57 @@ func TestSortRecords_SortSchemaASC(t *testing.T) {
 			require.Equal(t, testCase.expectedLineOrder, lines)
 		})
 	}
+}
+
+func TestSortInfo_SortSchemaASC(t *testing.T) {
+	info := sortInfo(SortSchemaASC, []string{"label:app"})
+
+	require.Equal(t, []string{"label:app"}, info.SchemaLabels)
+	require.Len(t, info.ColumnSorts, 2)
+	require.Equal(t, datasetmd.SORT_DIRECTION_ASCENDING, info.ColumnSorts[0].Direction)
+	require.Equal(t, datasetmd.SORT_DIRECTION_ASCENDING, info.ColumnSorts[1].Direction)
+}
+
+func TestCompareForSortSchemaPrefix_MixedTimestampDirections(t *testing.T) {
+	row := func(streamID, timestamp int64) dataset.Row {
+		return dataset.Row{Values: []dataset.Value{
+			dataset.Int64Value(streamID),
+			dataset.Int64Value(timestamp),
+		}}
+	}
+	sequences := []*rowResultSequence{
+		{rows: []dataset.Row{
+			row(1, 3), row(1, 2), row(1, 1), // timestamp DESC
+			row(2, 9), row(2, 8),
+		}},
+		{rows: []dataset.Row{
+			row(1, 1), row(1, 2), row(1, 3), // timestamp ASC
+			row(2, 7), row(2, 8),
+		}},
+	}
+	maxValue := result.Value(row(math.MaxInt64, math.MinInt64))
+	tree := loser.New(
+		sequences,
+		maxValue,
+		func(s *rowResultSequence) result.Result[dataset.Row] { return s.At() },
+		CompareForSortSchemaPrefix([]string{"", "app-a", "app-b"}),
+		func(*rowResultSequence) {},
+	)
+	defer tree.Close()
+
+	var (
+		count        int
+		prevStreamID int64
+	)
+	for tree.Next() {
+		got, err := tree.Winner().At().Value()
+		require.NoError(t, err)
+		streamID := got.Values[0].Int64()
+		require.GreaterOrEqual(t, streamID, prevStreamID)
+		prevStreamID = streamID
+		count++
+	}
+	require.Equal(t, 10, count)
 }
 
 func Test_table_backfillMetadata(t *testing.T) {

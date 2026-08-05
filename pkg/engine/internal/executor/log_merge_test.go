@@ -501,14 +501,14 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 			distinctApps[app] = true
 		}
 
-		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
+		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp ASC].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
 			require.LessOrEqual(t, prev.app, curr.app, "apps must be non-decreasing within object %d", objIdx)
 			if prev.app == curr.app {
 				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within an app")
 				if prev.streamID == curr.streamID {
-					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
+					require.False(t, curr.ts.Before(prev.ts), "timestamps must be non-decreasing within a stream")
 				}
 			}
 		}
@@ -577,7 +577,7 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		prev := objs[0].records[i-1]
 		require.LessOrEqual(t, prev.streamID, record.streamID)
 		if prev.streamID == record.streamID {
-			require.False(t, record.ts.After(prev.ts), "timestamps must be descending within the deduplicated stream")
+			require.False(t, record.ts.Before(prev.ts), "timestamps must be ascending within the deduplicated stream")
 		}
 	}
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)

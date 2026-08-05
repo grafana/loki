@@ -31,7 +31,7 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 
 // IteratorForSchema returns an iterator that performs a k-way merge of records
 // from multiple schema-sorted logs sections. The input sections must be sorted
-// by [schema sort key ASC, streamID ASC, timestamp DESC].
+// by [schema sort key ASC, streamID ASC, timestamp ASC].
 //
 // It expects sortKeys to contain a mapping from StreamID to schema sort key.
 func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
@@ -45,6 +45,19 @@ func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKey
 func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{
 		less:     logs.CompareForSortSchema(globalSortKeys),
+		remaps:   remaps,
+		sortKeys: globalSortKeys,
+		schema:   expectedSchema,
+	})
+}
+
+// IteratorWithStreamRemapForRewrite performs a k-way merge over schema-sorted
+// sections using only [schema sort key ASC, streamID ASC]. Ignoring timestamp
+// direction allows compaction to consume legacy DESC, current ASC, or mixed
+// inputs before rebuilding them in the current full sort order.
+func IteratorWithStreamRemapForRewrite(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, iteratorOptions{
+		less:     logs.CompareForSortSchemaPrefix(globalSortKeys),
 		remaps:   remaps,
 		sortKeys: globalSortKeys,
 		schema:   expectedSchema,

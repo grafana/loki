@@ -141,12 +141,13 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
+	merged, err := sortmerge.IteratorWithStreamRemapForRewrite(ctx, sections, remaps, table.sortKeys, node.SortSchema)
 	if err != nil {
 		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}
 
-	// Consume the globally-sorted stream and build compacted object
+	// Consume the globally schema-prefix-sorted stream and build compacted objects.
+	// The builder rewrites each intermediate section into the current full sort order.
 	w, err := c.newLogObjectWriter(node, table, calc)
 	if err != nil {
 		return nil, err

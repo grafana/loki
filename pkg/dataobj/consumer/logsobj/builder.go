@@ -576,6 +576,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			if b.overrides != nil {
 				schemaLabels = b.overrides.SortSchemaLabels(tenant)
 			}
+			if len(schemaLabels) == 0 {
+				persistedSchemaLabels, err := schemaLabelsFromSections(ctx, sections)
+				if err != nil {
+					return nil, nil, fmt.Errorf("reading sort schema for tenant %s: %w", tenant, err)
+				}
+				schemaLabels = persistedSchemaLabels
+			}
 
 			if len(schemaLabels) == 0 {
 				level.Warn(b.logger).Log("msg", "sort schema labels not configured, falling back to dataobj_sort_order", "tenant", tenant, "dataobj_sort_order", b.cfg.DataobjSortOrder)
@@ -646,6 +653,28 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 	}
 
 	return b.builder.Flush()
+}
+
+func schemaLabelsFromSections(ctx context.Context, sections []*dataobj.Section) ([]string, error) {
+	var schemaLabels []string
+	for i, section := range sections {
+		logsSection, err := logs.Open(ctx, section)
+		if err != nil {
+			return nil, err
+		}
+		labels, err := logsSection.SchemaLabels()
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 {
+			schemaLabels = slices.Clone(labels)
+			continue
+		}
+		if !slices.Equal(schemaLabels, labels) {
+			return nil, fmt.Errorf("logs sections have inconsistent sort schemas: %v and %v", schemaLabels, labels)
+		}
+	}
+	return schemaLabels, nil
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {

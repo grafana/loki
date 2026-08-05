@@ -239,7 +239,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 // TestIteratorWithStreamRemap_MergesAcrossObjects merges two schema-sorted
 // objects with independent stream-ID spaces and overlapping labels, and verifies
 // the output carries global stream IDs and is globally ordered by
-// [sortKey ASC, globalStreamID ASC, timestamp DESC].
+// [sortKey ASC, globalStreamID ASC, timestamp ASC].
 func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	ctx := context.Background()
 	sortSchema := []string{"label:app"}
@@ -286,7 +286,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 
 		if !first {
 			require.LessOrEqual(t, recOrder(prev, rec), 0,
-				"output must be globally sorted by [sortKey, globalStreamID, ts DESC]")
+				"output must be globally sorted by [sortKey, globalStreamID, ts ASC]")
 		}
 		prev, first = rec, false
 		count++
@@ -295,7 +295,52 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	require.Equal(t, 8, count)
 }
 
-// recOrder compares records by [sortKey ASC, streamID ASC, timestamp DESC].
+func TestIteratorWithStreamRemapForRewrite_OrdersSchemaPrefix(t *testing.T) {
+	ctx := context.Background()
+	sortSchema := []string{"label:app"}
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	objA, closeA := buildSchemaObject(t, sortSchema, map[string][]push.Entry{
+		`{app="b"}`: {
+			{Timestamp: t0.Add(2 * time.Second), Line: "b-2"},
+			{Timestamp: t0.Add(time.Second), Line: "b-1"},
+		},
+		`{app="a"}`: {
+			{Timestamp: t0.Add(2 * time.Second), Line: "a-2"},
+			{Timestamp: t0.Add(time.Second), Line: "a-1"},
+		},
+	})
+	defer closeA()
+	objB, closeB := buildSchemaObject(t, sortSchema, map[string][]push.Entry{
+		`{app="a"}`: {
+			{Timestamp: t0.Add(3 * time.Second), Line: "a-3"},
+			{Timestamp: t0, Line: "a-0"},
+		},
+	})
+	defer closeB()
+
+	sections, remaps, globalSortKeys := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
+	iter, err := sortmerge.IteratorWithStreamRemapForRewrite(ctx, sections, remaps, globalSortKeys, sortSchema)
+	require.NoError(t, err)
+
+	var (
+		count int
+		prev  logs.Record
+		first = true
+	)
+	for res := range iter {
+		rec, err := res.Value()
+		require.NoError(t, err)
+		if !first {
+			require.LessOrEqual(t, recOrderPrefix(prev, rec), 0)
+		}
+		prev, first = rec, false
+		count++
+	}
+	require.Equal(t, 6, count)
+}
+
+// recOrder compares records by [sortKey ASC, streamID ASC, timestamp ASC].
 func recOrder(a, b logs.Record) int {
 	if r := cmp.Compare(a.SortKey, b.SortKey); r != 0 {
 		return r
@@ -303,5 +348,12 @@ func recOrder(a, b logs.Record) int {
 	if r := cmp.Compare(a.StreamID, b.StreamID); r != 0 {
 		return r
 	}
-	return cmp.Compare(b.Timestamp.UnixNano(), a.Timestamp.UnixNano())
+	return cmp.Compare(a.Timestamp.UnixNano(), b.Timestamp.UnixNano())
+}
+
+func recOrderPrefix(a, b logs.Record) int {
+	if r := cmp.Compare(a.SortKey, b.SortKey); r != 0 {
+		return r
+	}
+	return cmp.Compare(a.StreamID, b.StreamID)
 }

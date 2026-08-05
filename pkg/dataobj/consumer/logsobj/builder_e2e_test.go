@@ -272,7 +272,7 @@ func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, sortOrder strin
 		if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
 			return res
 		}
-		return cmp.Compare(b.ts, a.ts)
+		return cmp.Compare(a.ts, b.ts)
 	} else if sortOrder == sortStreamASC {
 
 		if res := cmp.Compare(a.streamID, b.streamID); res != 0 {
