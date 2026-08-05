@@ -426,6 +426,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return JoinCountMinSketchVector(next, vec, stepEvaluator, q.params)
 		case HeapCountMinSketchVector:
 			return JoinCountMinSketchVector(next, vec.CountMinSketchVector, stepEvaluator, q.params)
+		case CountDistinctVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			if maxSeries > 0 && len(vec) > maxSeries {
+				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			}
+			return JoinCountDistinctVector(next, vec, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}

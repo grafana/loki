@@ -362,6 +362,10 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
 	case *CountMinSketchEvalExpr:
 		return NewCountMinSketchEvalStepEvaluator(ctx, nextEvFactory, e, q)
+	case *CountDistinctEvalExpr:
+		return NewCountDistinctEvalStepEvaluator(ctx, nextEvFactory, e, q)
+	case *syntax.ApproxCountDistinctExpr:
+		return newApproxCountDistinctStepEvaluator(ctx, ev.querier, e, q, ev.maxLookBackPeriod)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{

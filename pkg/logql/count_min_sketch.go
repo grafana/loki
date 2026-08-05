@@ -48,6 +48,10 @@ func (v CountMinSketchVector) CountMinSketchVec() CountMinSketchVector {
 	return v
 }
 
+func (CountMinSketchVector) CountDistinctVec() CountDistinctVector {
+	return CountDistinctVector{}
+}
+
 func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSketchVector, error) {
 	// The underlying CMS implementation already merges the HLL sketches that are part of that structure.
 	err := v.F.Merge(right.F)
