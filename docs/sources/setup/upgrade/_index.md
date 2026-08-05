@@ -588,7 +588,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 #### Write dedupe cache is deprecated
 
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
-If you are using a legacy index type, consider migrating to TSDB (recommended).
+If you are using a legacy index type, you must migrate to TSDB to use Loki 4.0.
 
 #### Embedded cache metric changes
 
