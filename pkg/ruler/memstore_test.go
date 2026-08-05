@@ -186,13 +186,13 @@ func TestMemstoreBlocks(t *testing.T) {
 	select {
 	case <-time.After(time.Millisecond):
 	case <-done:
-		t.FailNow()
+		t.Fatal("Querier returned before Start was called")
 	}
 
 	store.Start(MockRuleIter(ars))
 	select {
 	case <-done:
-	case <-time.After(time.Millisecond):
-		t.FailNow()
+	case <-time.After(time.Second):
+		t.Fatal("Querier did not return after Start was called")
 	}
 }
