@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/push/push.proto";
+
+option go_package = "github.com/grafana/loki/pkg/push";
+
+// LogsTree is a generic, arbitrarily-nested tree of attribute-bearing nodes.
+// It generalizes the resource -> scope -> entries hierarchy: the schema knows
+// nothing about "resource" or "scope", only about nodes. Any node may carry
+// its own attributes, child nodes, and log entries. An entry's effective
+// attributes are the precedence-ordered union of the `attributes` of every
+// node on the path from a root down to the node that holds the entry. The
+// merge/precedence rule itself is a consumer concern and is not encoded here.
+message LogsTree {
+  repeated TreeNode roots = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "roots"
+  ];
+}
+
+message TreeNode {
+  // Optional free-form label for this level (e.g. "resource", "scope"). The
+  // schema is agnostic; this is purely informational for producers/consumers.
+  string kind = 1 [(gogoproto.jsontag) = "kind,omitempty"];
+
+  // Attributes contributed by this node. Reuses the existing key/value pair.
+  repeated LabelPairAdapter attributes = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "attributes,omitempty"
+  ];
+
+  // Nested attribute-bearing contexts. Recursion is unbounded.
+  repeated TreeNode children = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "children,omitempty"
+  ];
+
+  // Log entries attached at this level. Reuses the existing entry message.
+  repeated EntryAdapter entries = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "entries,omitempty"
+  ];
+}
