@@ -69,8 +69,8 @@ scheme are recorded in Claude's local memory file `preprod_observability.md`
 so `git log <sha>` maps a running pod to a set of shipped proposals.
 
 **Where we are** (see "Current status" section at end for detail):
-- **Four PRs open on the incremental path, stacked in order**
-  (#23663 → #23696 → #23730 → #23767):
+- **Five PRs open on the incremental path, stacked in order**
+  (#23663 → #23696 → #23730 → #23767 → #23768):
   - **PR #23663** (branch `dahoppe/introduce-nommap-config`, rebased on
     main 2026-07-31) — flag + Reader-interface extraction + StreamReader
     stub. Merges with no behaviour change.
@@ -87,10 +87,11 @@ so `git log <sha>` maps a running pod to a set of shipped proposals.
     added the `streamSymbols` sparse-offset foundation.
   - **PR #23767** (branch `dahoppe/stream-postings`, stacked on #23730) —
     streaming `Postings` for the `fpFilter==nil` path + `Decbuf.ReadInto`.
-- **Next up (in progress)**: FingerprintOffsets + native shard-aware
-  `Postings` on branch `dahoppe/stream-fingerprint-offsets` (off
-  `dahoppe/stream-postings`) — item #3 in the Next list (pulled forward
-  from #5).
+  - **PR #23768** (branch `dahoppe/stream-fingerprint-offsets`, stacked on
+    #23767) — streams the fingerprint-offsets section and serves shard-aware
+    (`fpFilter!=nil`) `Postings` natively via `NewShardedPostings`, removing
+    the last mmap fallback from `Postings`.
+- **Next up**: stream `Series` + `ChunkStats` (item #4 in the Next list).
 - **Reference-branch history** (kept for measurements):
   - Phase 1 (buffered): shipped but not viable for production —
     OOMed pods in preprod (see 2026-07-29 entry).
@@ -637,6 +638,38 @@ supporting profiling data lands):
     (reference C1 / `1b9dbb75b6`, PR #9); native shard-aware `Postings` (next
     PR, pulled-forward FingerprintOffsets).
 
+- **PR #23768 — `fix: Implement streaming reading of fingerprint offsets
+  table`** (branch `dahoppe/stream-fingerprint-offsets`, stacked on
+  `dahoppe/stream-postings` / #23767, opened 2026-08-05, OPEN). Single commit
+  `f6a1cdc8ba`. Item #3 in the Next list (pulled forward from #5). Finishes the
+  `Postings` surface — after this, `StreamReader.Postings` has no mmap
+  fallback on any path. Contents:
+  - **`StreamReader.fingerprintOffsets`** field + `readFingerprintOffsetsTable`
+    (`stream_reader.go`), a direct streaming counterpart to the package-level
+    `readFingerprintOffsetsTable` in `index.go`: `NewDecbufAtChecked` →
+    `Be32` count → N×(`Be64`,`Be64`). Loaded eagerly at construction (the
+    section is tiny — one 16-byte sampled `(seriesRef, fingerprint)` entry per
+    1024 series). Placed as a value-receiver method next to `readTOC` for
+    locality; the reference branch had it as a `*StreamReader` method in the
+    same file — same end-state shape.
+  - **`Postings` serves shard-aware queries natively**: when `fpFilter!=nil`
+    it wraps the merged postings with `NewShardedPostings(postings, fpFilter,
+    s.fingerprintOffsets)`, mirroring the tail of `ByteSliceReader.Postings`.
+    The previous `fpFilter!=nil → mmapReader.Postings(...)` fallback is gone.
+    (`mmapReader` stays — still used by `Series`/`ChunkStats`/label methods
+    until their PRs land; it's deleted by Next #6.)
+  - **No dependency on Series**: verified `NewShardedPostings` bounds the
+    iterator purely by series-ref offset via `FingerprintOffsets.Range(fpFilter)`
+    and never resolves an individual series record — which is why this could be
+    pulled ahead of the Series/labels PRs.
+  - Tests (`stream_postings_test.go`): `TestStreamReader_FingerprintOffsetsMatchesMmap`
+    (section parity: `stream.fingerprintOffsets == mmap.fingerprintOffsets`)
+    and `TestStreamPostings_ShardedMatchesMmap` (shard-aware `Postings` parity
+    vs mmap across 2- and 4-way shards, an identity `NewShard(0,1)` check, and
+    a 2-way-partition coverage check), on V3 + V4. The shared `mustPostings`/
+    `mustPostingsAndDrain` helpers gained an `fpFilter` parameter rather than a
+    separate sharded helper.
+
 ### Next (from #23696; each is its own PR, ~200–800 lines diff)
 
 1. ~~**PR: stream `Symbols` + `lookupSymbol` + `SymbolTableSize`.**~~
@@ -670,17 +703,14 @@ supporting profiling data lands):
    `BucketBufReader`, not through the index-header `Decbuf`). The
    sync.Pool buffer reuse (reference C1 / `1b9dbb75b6`) is still deferred
    to PR #9.
-3. **PR (pulled forward — next): FingerprintOffsets + native
-   shard-aware `Postings`.** Was #5 below. Pulled ahead of Series/labels
-   because it has no dependency on them (`NewShardedPostings` needs only
-   the postings iterator + the offsets table; it bounds by series-ref
-   offset and never resolves individual series) and it *finishes* the
-   `Postings` surface by removing its last mmap fallback. Loads the
-   fingerprint-offsets section eagerly at open (a few 16-byte entries per
-   1024 series — small) via a streaming `readFingerprintOffsetsTable`,
-   then applies `NewShardedPostings` when `fpFilter!=nil`. Existing shard
-   tests should pass with `mode=stream`; add a section-parity cross-check
-   vs mmap.
+3. ~~**PR (pulled forward): FingerprintOffsets + native shard-aware
+   `Postings`.**~~ **LANDED as PR #23768** (branch
+   `dahoppe/stream-fingerprint-offsets`, stacked on #23767) — see the
+   #23768 entry under "In flight". Was #5 below; pulled ahead of
+   Series/labels because it has no dependency on them (`NewShardedPostings`
+   needs only the postings iterator + the offsets table; it bounds by
+   series-ref offset and never resolves individual series) and it
+   *finishes* the `Postings` surface by removing its last mmap fallback.
 4. **PR: stream `Series` + `ChunkStats`.** Reimplements series-record
    decoder via `Decbuf` — careful with Loki's V4 chunk-meta paging +
    `IngestedAt` field. V4 fixture included.
@@ -1200,10 +1230,17 @@ supporting profiling data lands):
     `Decbuf` because its index-header reads only symbols + the offset
     table, and the postings *lists* live in object storage (read via
     `BucketBufReader`).
-- **2026-08-05**: started the next PR — **FingerprintOffsets + native
-  shard-aware `Postings`** — on branch `dahoppe/stream-fingerprint-offsets`
-  (off `dahoppe/stream-postings`). Pulled forward from Next #5 to #3: no
-  dependency on Series/labels (`NewShardedPostings` needs only the postings
-  iterator + offsets table), and it removes the last mmap fallback from
-  `Postings`. Mirrors the reference `readFingerprintOffsetsTable` (eager
-  load at open, `Be32` count + N×(`Be64`,`Be64`)) + `applyFingerprintFilter`.
+- **2026-08-05**: PR #23768 opened
+  (`fix: Implement streaming reading of fingerprint offsets table`, branch
+  `dahoppe/stream-fingerprint-offsets`, stacked on #23767, single commit
+  `f6a1cdc8ba`). FingerprintOffsets + native shard-aware `Postings`, pulled
+  forward from Next #5 to #3. Streams the fingerprint-offsets section eagerly
+  at open (`Be32` count + N×(`Be64`,`Be64`)) and wraps merged postings in
+  `NewShardedPostings` when `fpFilter!=nil` — so `StreamReader.Postings` now
+  has **no mmap fallback on any path**. No dependency on Series/labels
+  (`NewShardedPostings` bounds purely by series-ref offset via
+  `FingerprintOffsets.Range`, never resolving a series record), which is why
+  it could jump the queue. Full detail in the #23768 "In flight" entry and
+  Next-list item #3. `mmapReader` itself stays until Next #6 (still backs
+  `Series`/`ChunkStats`/label methods). Next up: stream `Series` +
+  `ChunkStats` (Next #4).
