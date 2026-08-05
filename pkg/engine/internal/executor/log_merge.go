@@ -188,13 +188,6 @@ type logSource struct {
 // collectLogSources opens every unique source object referenced by node.Runs and
 // returns only the logs sections the task was assigned (by SectionIndex) plus the
 // tenant's localStreamID->stream map. Objects are deduplicated by path.
-//
-// The task's runs partition one converged index's sections across sibling tasks,
-// so honoring SectionIndex is what makes that partition real: without it every
-// task re-merges the whole object and produces identical outputs. SectionIndex is
-// the position of a logs section within obj.Sections().Filter(logs.CheckSection)
-// (assigned at index-build time in pkg/dataobj/index.Calculator.processLogsSection),
-// so the same enumeration here maps each SectionIndex back to its section.
 func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge) ([]*logSource, error) {
 	// Per object, the set of logs SectionIndex values this task must merge. The
 	// paths slice preserves first-seen order for deterministic output.
