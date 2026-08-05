@@ -1,0 +1,127 @@
+# line_format rewrites the line from a Go template over the label set; the label set is unchanged.
+clear
+load
+  {app="a", level="error"} "x" @ 20s [repeat every 20s for 4]
+  {app="a", level="warn"}  "x" @ 30s [repeat every 20s for 2]
+
+# The template injects an "L=" prefix from the level label; a filter on it keeps the error lines.
+eval instant at 60s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m])
+  {app="a", level="error"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m])   # overlapping
+  {app="a", level="error"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | line_format "L={{.level}}" |= "L=error" [1m]) # non-overlapping
+  {app="a", level="error"} 3 _
+# Without line_format the original line has no "L=" prefix.
+eval instant at 60s count_over_time({app="a"} |= "L=error" [1m])
+  expect empty
+# A template function transforms the value.
+eval instant at 60s count_over_time({app="a"} | line_format "{{.level | upper}}" |= "ERROR" [1m])
+  {app="a", level="error"} 3
+# bytes_over_time sees the new line length: "error" is 5 bytes, over 3 lines.
+eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "{{.level}}" [1m])
+  {app="a", level="error"} 15
+# A missing label renders empty, so the line is just "V=" (2 bytes).
+eval instant at 60s bytes_over_time({app="a", level="error"} | line_format "V={{.missing}}" [1m])
+  {app="a", level="error"} 6
+# An invalid template fails at parse time. count_over_time ignores the line, so it would elide
+# line_format; bytes_over_time reads the line and runs the stage.
+eval instant at 60s bytes_over_time({app="a"} | line_format "{{ nosuchfunc }}" [1m])
+  expect fail msg: not defined
+
+# label_format renames a label (dst=src) or sets one from a template (dst="...").
+clear
+load
+  {app="a", method="get"} "msg" @ 20s [repeat every 20s for 4]
+  {app="noise"}           "msg" @ 30s [repeat every 20s for 2]
+
+# Rename copies the source value to the new label and removes the source.
+eval instant at 60s count_over_time({app="a"} | label_format verb=method [1m])
+  {app="a", verb="get"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | label_format verb=method [1m])   # overlapping
+  {app="a", verb="get"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | label_format verb=method [1m]) # non-overlapping
+  {app="a", verb="get"} 3 _
+# Template sets a new label from another label and keeps the source.
+eval instant at 60s count_over_time({app="a"} | label_format route="{{.method}}-ok" [1m])
+  {app="a", method="get", route="get-ok"} 3
+# A template that targets an existing label overwrites it in place.
+eval instant at 60s count_over_time({app="a"} | label_format method="{{.method}}!" [1m])
+  {app="a", method="get!"} 3
+# An invalid template fails at parse time.
+eval instant at 60s count_over_time({app="a"} | label_format x="{{" [1m])
+  expect fail msg: unclosed action
+
+# decolorize removes ANSI color codes from the line.
+#
+# The DSL cannot embed an ESC byte, so line_format with printf generates the colored line first;
+# bytes_over_time then measures the effect.
+clear
+load
+  {app="a", msg="hello"} "plaintext" @ 20s [repeat every 20s for 4]
+  {app="noise"}          "plaintext" @ 30s [repeat every 20s for 2]
+
+# The raw line has no ANSI codes, so decolorize leaves its 9-byte length unchanged (9 x 3 = 27).
+eval instant at 60s bytes_over_time({app="a"} | decolorize [1m])
+  {app="a", msg="hello"} 27
+# line_format wraps msg in a 5-byte and a 4-byte escape around the 5-byte payload (14 x 3 = 42).
+eval instant at 60s bytes_over_time({app="a"} | line_format `{{ printf "\x1b[31m%s\x1b[0m" .msg }}` [1m])
+  {app="a", msg="hello"} 42
+# decolorize strips the codes, leaving the 5-byte payload (5 x 3 = 15).
+eval instant at 60s bytes_over_time({app="a"} | line_format `{{ printf "\x1b[31m%s\x1b[0m" .msg }}` | decolorize [1m])
+  {app="a", msg="hello"} 15
+eval range from 40s to 80s step 20s bytes_over_time({app="a"} | line_format `{{ printf "\x1b[31m%s\x1b[0m" .msg }}` | decolorize [1m])   # overlapping
+  {app="a", msg="hello"} 10 15 15
+eval range from 60s to 180s step 120s bytes_over_time({app="a"} | line_format `{{ printf "\x1b[31m%s\x1b[0m" .msg }}` | decolorize [1m]) # non-overlapping
+  {app="a", msg="hello"} 15 _
+
+# drop removes labels by name, or by name and value. A dropped stream label leaves the series.
+clear
+load
+  {app="a", code="500", zone="eu"} "msg" @ 20s [repeat every 20s for 4]
+  {app="a", code="200", zone="eu"} "msg" @ 30s [repeat every 20s for 2]
+  {app="noise"}                    "msg" @ 20s [repeat every 20s for 4]
+
+# Dropping both labels here merges the two streams into {app="a"}.
+eval instant at 60s count_over_time({app="a"} | drop code, zone [1m])
+  {app="a"} 5
+eval range from 40s to 80s step 20s count_over_time({app="a"} | drop code, zone [1m])   # overlapping
+  {app="a"} 3 5 5
+eval range from 60s to 180s step 120s count_over_time({app="a"} | drop code, zone [1m]) # non-overlapping
+  {app="a"} 5 _
+# Dropping one label keeps the streams distinct.
+eval instant at 60s count_over_time({app="a"} | drop zone [1m])
+  {app="a", code="500"} 3
+  {app="a", code="200"} 2
+# Name and value drops the label only from lines where it matches.
+eval instant at 60s count_over_time({app="a"} | drop code="500" [1m])
+  {app="a", zone="eu"} 3
+  {app="a", code="200", zone="eu"} 2
+# drop needs at least one label name; a bare drop is a parse error.
+eval instant at 60s count_over_time({app="a"} | drop [1m])
+  expect fail msg: expecting IDENTIFIER
+
+# keep removes every label not listed.
+clear
+load
+  {app="a", code="500", zone="eu"} "msg" @ 20s [repeat every 20s for 4]
+  {app="a", code="200", zone="eu"} "msg" @ 30s [repeat every 20s for 2]
+  {app="noise"}                    "msg" @ 20s [repeat every 20s for 4]
+
+# Keeping only zone drops app and code, so the two streams merge into {zone="eu"}.
+eval instant at 60s count_over_time({app="a"} | keep zone [1m])
+  {zone="eu"} 5
+eval range from 40s to 80s step 20s count_over_time({app="a"} | keep zone [1m])   # overlapping
+  {zone="eu"} 3 5 5
+eval range from 60s to 180s step 120s count_over_time({app="a"} | keep zone [1m]) # non-overlapping
+  {zone="eu"} 5 _
+# Keeping several labels leaves the streams distinct.
+eval instant at 60s count_over_time({app="a"} | keep code, zone [1m])
+  {code="500", zone="eu"} 3
+  {code="200", zone="eu"} 2
+# Name and value keeps the label only where it matches; the other lines lose every label.
+eval instant at 60s count_over_time({app="a"} | keep code="500" [1m])
+  {code="500"} 3
+  {} 2
+# keep needs at least one label name; a bare keep is a parse error.
+eval instant at 60s count_over_time({app="a"} | keep [1m])
+  expect fail msg: expecting IDENTIFIER
