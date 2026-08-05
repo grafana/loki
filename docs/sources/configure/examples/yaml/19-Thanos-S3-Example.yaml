@@ -1,5 +1,5 @@
-# This is a complete configuration to deploy Loki backed by a s3-compatible API
-# like MinIO for storage, using the Thanos-based object store client (storage_config.object_store).
+# This is a complete configuration to deploy Loki backed by AWS S3,
+# using the Thanos-based object store client (storage_config.object_store).
 # Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
@@ -33,7 +33,10 @@ storage_config:
   object_store:
     s3:
       bucket_name: <BUCKET_NAME>
-      endpoint: <CUSTOM_ENDPOINT>
+      # The endpoint is required. For AWS, use the regional S3 endpoint.
+      endpoint: s3.<REGION>.amazonaws.com
+      region: <REGION>
+      # Leave the access key and secret unset to use an EC2 instance role, or
+      # the AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.
       access_key_id: <ACCESS_KEY_ID>
       secret_access_key: <SECRET_ACCESS_KEY>
-      bucket_lookup_type: path

@@ -465,7 +465,7 @@ period_config:
 ```
 
 {{< admonition type="note" >}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on legacy indexes.
 {{< /admonition >}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -588,7 +588,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 #### Write dedupe cache is deprecated
 
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
-If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
+If you are using a legacy index type, consider migrating to TSDB (recommended).
 
 #### Embedded cache metric changes
 
