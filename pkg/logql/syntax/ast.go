@@ -48,6 +48,7 @@ func (VectorAggregationExpr) isExpr()      {}
 func (LiteralExpr) isExpr()                {}
 func (VectorExpr) isExpr()                 {}
 func (LabelReplaceExpr) isExpr()           {}
+func (ApproxCountDistinctExpr) isExpr()    {}
 func (LineParserExpr) isExpr()             {}
 func (LogfmtParserExpr) isExpr()           {}
 func (LineFilterExpr) isExpr()             {}
@@ -96,8 +97,9 @@ func (RangeAggregationExpr) isSampleExpr()  {}
 func (VectorAggregationExpr) isSampleExpr() {}
 func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
-func (LabelReplaceExpr) isSampleExpr()      {}
-func (MultiVariantExpr) isSampleExpr()      {}
+func (LabelReplaceExpr) isSampleExpr()       {}
+func (ApproxCountDistinctExpr) isSampleExpr() {}
+func (MultiVariantExpr) isSampleExpr()       {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -1312,7 +1314,8 @@ const (
 	OpTypeCountMinSketch = "__count_min_sketch__"
 
 	// probabilistic aggregations
-	OpTypeApproxTopK = "approx_topk"
+	OpTypeApproxTopK          = "approx_topk"
+	OpTypeApproxCountDistinct = "approx_count_distinct"
 
 	// variants
 	OpVariants = "variants"
@@ -2258,6 +2261,82 @@ func (e *LabelReplaceExpr) String() string {
 	sb.WriteString(")")
 	return sb.String()
 }
+
+// ApproxCountDistinctExpr approximates the number of distinct values of a label
+// per grouping, scanning the log selector without building series for the
+// distinct label. Instant queries only.
+type ApproxCountDistinctExpr struct {
+	DistinctLabel string
+	Grouping      *Grouping
+	Left          LogSelectorExpr
+	// SketchOnly requests the intermediate HLL sketch vector instead of
+	// cardinality estimates. Used by sharded evaluation so the frontend can merge.
+	SketchOnly bool
+	err        error
+}
+
+func newApproxCountDistinctExpr(distinctLabel string, gr *Grouping, left LogSelectorExpr) SampleExpr {
+	if gr == nil {
+		gr = &Grouping{}
+	}
+	if distinctLabel == "" {
+		return &ApproxCountDistinctExpr{err: logqlmodel.NewParseError("approx_count_distinct requires a label name", 0, 0)}
+	}
+	return &ApproxCountDistinctExpr{
+		DistinctLabel: distinctLabel,
+		Grouping:      gr,
+		Left:          left,
+	}
+}
+
+func (e *ApproxCountDistinctExpr) Selector() (LogSelectorExpr, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	return e.Left, nil
+}
+
+func (e *ApproxCountDistinctExpr) MatcherGroups() ([]MatcherRange, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	xs := e.Left.Matchers()
+	if len(xs) == 0 {
+		return nil, nil
+	}
+	return []MatcherRange{{Matchers: xs}}, nil
+}
+
+func (e *ApproxCountDistinctExpr) Shardable(_ bool) bool {
+	return true
+}
+
+func (e *ApproxCountDistinctExpr) Walk(f WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.Left != nil {
+		e.Left.Walk(f)
+	}
+}
+
+func (e *ApproxCountDistinctExpr) Accept(v RootVisitor) { v.VisitApproxCountDistinct(e) }
+
+func (e *ApproxCountDistinctExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpTypeApproxCountDistinct)
+	sb.WriteString("(")
+	sb.WriteString(e.DistinctLabel)
+	sb.WriteString(")")
+	if e.Grouping != nil && (len(e.Grouping.Groups) > 0 || e.Grouping.Without) {
+		sb.WriteString(e.Grouping.String())
+	}
+	sb.WriteString("(")
+	sb.WriteString(e.Left.String())
+	sb.WriteString(")")
+	return sb.String()
+}
+
 
 // shardableOps lists the operations which may be sharded, but are not
 // guaranteed to be. See the `Shardable()` implementations

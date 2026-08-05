@@ -87,6 +87,19 @@ func (v *cloneVisitor) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.cloned = mustNewLabelReplaceExpr(left, e.Dst, e.Replacement, e.Src, e.Regex)
 }
 
+func (v *cloneVisitor) VisitApproxCountDistinct(e *ApproxCountDistinctExpr) {
+	copied := &ApproxCountDistinctExpr{
+		DistinctLabel: e.DistinctLabel,
+		Left:          MustClone[LogSelectorExpr](e.Left),
+		SketchOnly:    e.SketchOnly,
+		err:           e.err,
+	}
+	if e.Grouping != nil {
+		copied.Grouping = cloneGrouping(e.Grouping)
+	}
+	v.cloned = copied
+}
+
 func (v *cloneVisitor) VisitLiteral(e *LiteralExpr) {
 	v.cloned = &LiteralExpr{Val: e.Val}
 }

@@ -304,6 +304,23 @@ func (e *LiteralExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
+// e.g: approx_count_distinct(device_id) by (version) ({job="status"} | logfmt)
+func (e *ApproxCountDistinctExpr) Pretty(level int) string {
+	s := Indent(level)
+	if !NeedSplit(e) {
+		return s + e.String()
+	}
+	s += OpTypeApproxCountDistinct
+	s += "(" + e.DistinctLabel + ")"
+	if e.Grouping != nil && (len(e.Grouping.Groups) > 0 || e.Grouping.Without) {
+		s += e.Grouping.Pretty(level)
+	}
+	s += "(\n"
+	s += e.Left.Pretty(level+1) + "\n"
+	s += Indent(level) + ")"
+	return s
+}
+
 // e.g: label_replace(rate({job="api-server",service="a:c"}[5m]), "foo", "$1", "service", "(.*):.*")
 func (e *LabelReplaceExpr) Pretty(level int) string {
 	s := Indent(level)

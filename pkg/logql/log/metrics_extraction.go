@@ -2,14 +2,15 @@ package log
 
 import (
 	"context"
+	"math"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/dustin/go-humanize"
 )
 
 const (
@@ -236,6 +237,82 @@ func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, struct
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
+
+// NewDistinctValueSampleExtractor creates a SampleExtractor that hashes a
+// distinct label value into Sample.Value (as float64 bits) while grouping by
+// the provided labels. The distinct label itself never becomes a series label.
+func NewDistinctValueSampleExtractor(
+	distinctLabel string,
+	stages []Stage,
+	groups []string, without, noLabels bool,
+) (SampleExtractor, error) {
+	if distinctLabel == "" {
+		return nil, errors.New("distinct label name is required")
+	}
+	preStage := ReduceStages(stages)
+	hints := NewParserHint(preStage.RequiredLabelNames(), groups, without, noLabels, distinctLabel, stages)
+	return &distinctValueSampleExtractor{
+		preStage:         preStage,
+		distinctLabel:    distinctLabel,
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
+		streamExtractors: make(map[uint64]StreamSampleExtractor),
+	}, nil
+}
+
+type distinctValueSampleExtractor struct {
+	preStage         Stage
+	distinctLabel    string
+	baseBuilder      *BaseLabelsBuilder
+	streamExtractors map[uint64]StreamSampleExtractor
+}
+
+type streamDistinctValueSampleExtractor struct {
+	*distinctValueSampleExtractor
+	builder *LabelsBuilder
+}
+
+func (d *distinctValueSampleExtractor) ReferencedStructuredMetadata() bool {
+	return d.baseBuilder.referencedStructuredMetadata
+}
+
+func (d *distinctValueSampleExtractor) ForStream(lbs labels.Labels) StreamSampleExtractor {
+	hash := d.baseBuilder.Hash(lbs)
+	if res, ok := d.streamExtractors[hash]; ok {
+		return res
+	}
+	res := &streamDistinctValueSampleExtractor{
+		distinctValueSampleExtractor: d,
+		builder:                      d.baseBuilder.ForLabels(lbs, hash),
+	}
+	d.streamExtractors[hash] = res
+	return res
+}
+
+func (d *streamDistinctValueSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+	d.builder.Reset()
+	d.builder.Add(StructuredMetadataLabel, structuredMetadata)
+	_, ok := d.preStage.Process(ts, line, d.builder)
+	if !ok {
+		return nil, false
+	}
+	stringValue, found := d.builder.Get(d.distinctLabel)
+	if !found || stringValue == "" {
+		return nil, false
+	}
+	h := xxhash.Sum64(unsafeGetBytes(stringValue))
+	return []ExtractedSample{{
+		Value:  math.Float64frombits(h),
+		Labels: d.builder.GroupedLabels(),
+	}}, true
+}
+
+func (d *streamDistinctValueSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+	return d.Process(ts, unsafeGetBytes(line), structuredMetadata)
+}
+
+func (d *streamDistinctValueSampleExtractor) BaseLabels() LabelsResult {
+	return d.builder.currentResult
+}
 
 // NewFilteringSampleExtractor creates a sample extractor where entries from
 // the underlying log stream are filtered by pipeline filters before being
