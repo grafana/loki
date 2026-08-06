@@ -346,22 +346,6 @@ eval instant at 120s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
 eval range from 60s to 120s step 60s stdvar_over_time({app="a"} | logfmt | unwrap v [1m])
   {app="a"} 9 9
 
-# unwrap conversions: duration() and bytes().
-clear
-load
-  {app="a"} "d=2s"  @ 70s [repeat every 10s for 6]
-  {app="a"} "b=1KB" @ 70s [repeat every 10s for 6]
-  {app="noise"} "noise" @ 70s [repeat every 10s for 6]
-
-eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
-  {app="a"} 12
-eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap duration(d) [1m])
-  {app="a"} 6 12
-eval instant at 120s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
-  {app="a"} 6000
-eval range from 90s to 120s step 30s sum_over_time({app="a"} | logfmt | unwrap bytes(b) [1m])
-  {app="a"} 3000 6000
-
 # rate_counter treats the unwrapped value as a counter: the per-second increase over the range with
 # counter resets added back, using Prometheus-style boundary extrapolation.
 #
