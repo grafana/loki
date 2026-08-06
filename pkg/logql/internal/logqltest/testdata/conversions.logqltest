@@ -11,6 +11,9 @@ load
   {unit="frac"}  "b=1.5B"  @ 10s [repeat every 10s for 18]
   {unit="noise"} "noise"   @ 10s [repeat every 10s for 18]
 
+# The noise line has no `b`, so `unwrap` drops it: no sample, no `__error__`, so it
+# never appears in the output. A value that is present but unconvertible is
+# different: it sets `__error__` and fails the query (see "bytes() parse failure").
 eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m]) by (unit)
   {unit="kb"}    1000
   {unit="kib"}   1024
