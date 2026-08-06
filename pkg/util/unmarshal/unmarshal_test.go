@@ -159,6 +159,34 @@ func Test_DecodePushRequest(t *testing.T) {
 			]
 		}`,
 		},
+
+		{
+			name:        "invalid top level field",
+			expected:    nil,
+			expectedErr: true,
+			actual: `{
+				"invalid": {}
+			}`,
+		},
+
+		{
+			name:        "invalid field",
+			expected:    nil,
+			expectedErr: true,
+			actual: `{
+				"streams": [
+				  {
+						"stream": {
+					    "job": "push-payload-test"
+						},
+						"values": [
+						  ["123456789012345", "super line"]
+						]
+						"invalid": []
+				  },
+				]
+			}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var actual logproto.PushRequest
