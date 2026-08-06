@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.6](https://github.com/grafana/loki/compare/v3.7.5...v3.7.6) (2026-08-05)
+
+
+### Bug Fixes
+
+* **queryrange:** Preserve sketch in MergeLabels [release-3.7.x] ([#23770](https://github.com/grafana/loki/issues/23770)) ([d48329d](https://github.com/grafana/loki/commit/d48329d090320f668cd8bd7ecd636d3dc0e664d2))
+
 ## [3.7.5](https://github.com/grafana/loki/compare/v3.7.4...v3.7.5) (2026-08-05)
 
 
