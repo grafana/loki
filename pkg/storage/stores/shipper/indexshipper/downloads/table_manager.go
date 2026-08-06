@@ -509,7 +509,7 @@ func (tm *tableManager) getLargestQueryReadinessNum() int {
 }
 
 // loadLocalTables loads tables present locally. Tables within query readiness are loaded synchronously,
-// while older tables outside query readiness are registered lazily to avoid blocking container startup on S3 calls.
+// while older tables outside query readiness are purged from disk to reclaim PVC space and prevent startup timeouts.
 func (tm *tableManager) loadLocalTables() error {
 	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
@@ -520,7 +520,7 @@ func (tm *tableManager) loadLocalTables() error {
 	largestQueryReadinessNum := tm.getLargestQueryReadinessNum()
 
 	for _, entry := range dirEntries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || entry.Name() == deletion.DeleteRequestsTableName {
 			continue
 		}
 
@@ -540,9 +540,10 @@ func (tm *tableManager) loadLocalTables() error {
 		}
 
 		if largestQueryReadinessNum > 0 && activeTableNumber-tableNumber > int64(largestQueryReadinessNum) {
-			level.Info(tm.logger).Log("msg", "lazy loading local table outside query ready num days", "table-name", entry.Name())
-			tm.tables[entry.Name()] = NewTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-				tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
+			level.Info(tm.logger).Log("msg", "purging expired local table directory", "table-name", entry.Name())
+			if err := os.RemoveAll(filepath.Join(tm.cfg.CacheDir, entry.Name())); err != nil {
+				level.Warn(tm.logger).Log("msg", "failed to purge expired local table directory", "table-name", entry.Name(), "err", err)
+			}
 			continue
 		}
 

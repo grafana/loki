@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -506,7 +507,7 @@ func TestTableManager_TriggerSyncRecordsManualMetric(t *testing.T) {
 		tm.metrics.tablesSyncOperationTotal.WithLabelValues(statusSuccess, syncTriggerManual)))
 }
 
-func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
+func TestTableManager_loadLocalTables_PurgeExpiredTables(t *testing.T) {
 	tableRangeToHandle := config.TableRange{
 		Start: 0,
 		End:   math.MaxInt64,
@@ -527,10 +528,10 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 		queryReadyIndexNumDaysByUser  map[string]int
 		numTablesCreated              int
 		expectedLoadedTableNames      []string
-		expectedLazyTableNames        []string
+		expectedPurgedTableNames      []string
 	}{
 		{
-			name:              "synchronously loads tables within QueryReadyNumDays and lazily registers older tables",
+			name:              "synchronously loads tables within QueryReadyNumDays and purges older tables from disk",
 			queryReadyNumDays: 2,
 			numTablesCreated:  6,
 			expectedLoadedTableNames: []string{
@@ -538,7 +539,7 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 				buildTableName(1),
 				buildTableName(2),
 			},
-			expectedLazyTableNames: []string{
+			expectedPurgedTableNames: []string{
 				buildTableName(3),
 				buildTableName(4),
 				buildTableName(5),
@@ -555,7 +556,7 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 				buildTableName(2),
 				buildTableName(3),
 			},
-			expectedLazyTableNames: []string{
+			expectedPurgedTableNames: []string{
 				buildTableName(4),
 				buildTableName(5),
 			},
@@ -574,7 +575,7 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 				buildTableName(3),
 				buildTableName(4),
 			},
-			expectedLazyTableNames: []string{
+			expectedPurgedTableNames: []string{
 				buildTableName(5),
 			},
 		},
@@ -594,6 +595,12 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 					setupIndexesAtPath(t, userID, filepath.Join(cachePath, tableName, userID), 1, 3)
 				}
 			}
+
+			// Add delete_requests and non-table directories to verify proper handling
+			deleteRequestsPath := filepath.Join(cachePath, deletion.DeleteRequestsTableName)
+			require.NoError(t, os.MkdirAll(deleteRequestsPath, 0750))
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, "lost+found"), 0750))
+			require.NoError(t, os.MkdirAll(filepath.Join(cachePath, ".ds_store"), 0750))
 
 			baseStorageClient := buildTestStorageClient(t, tempDir)
 
@@ -632,27 +639,23 @@ func TestTableManager_loadLocalTables_ProgressiveLazyLoading(t *testing.T) {
 				}
 			}()
 
-			// All tables must be tracked in tm.tables to avoid orphaned disk bloat
-			totalExpected := len(tc.expectedLoadedTableNames) + len(tc.expectedLazyTableNames)
-			require.Len(t, tm.tables, totalExpected)
+			require.Len(t, tm.tables, len(tc.expectedLoadedTableNames))
 
-			// Tables within readiness window are fully pre-warmed
+			// Tables within readiness window are loaded and retained on disk
 			for _, tableName := range tc.expectedLoadedTableNames {
-				tbl, exists := tm.tables[tableName]
-				require.True(t, exists)
-				tImpl, ok := tbl.(*table)
-				require.True(t, ok)
-				require.Greater(t, len(tImpl.indexSets), 0, "active table %s should be pre-warmed and loaded", tableName)
+				require.Contains(t, tm.tables, tableName)
+				require.DirExists(t, filepath.Join(cachePath, tableName))
 			}
 
-			// Historical tables are lazily registered without synchronous boot downloads
-			for _, tableName := range tc.expectedLazyTableNames {
-				tbl, exists := tm.tables[tableName]
-				require.True(t, exists)
-				tImpl, ok := tbl.(*table)
-				require.True(t, ok)
-				require.Equal(t, 0, len(tImpl.indexSets), "historical table %s should be lazily registered", tableName)
+			// Expired tables are purged from disk to reclaim PVC space
+			for _, tableName := range tc.expectedPurgedTableNames {
+				require.NotContains(t, tm.tables, tableName)
+				require.NoDirExists(t, filepath.Join(cachePath, tableName))
 			}
+
+			// delete_requests directory must not be deleted and not loaded
+			require.DirExists(t, deleteRequestsPath)
+			require.NotContains(t, tm.tables, deletion.DeleteRequestsTableName)
 		})
 	}
 }
