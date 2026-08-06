@@ -1682,7 +1682,7 @@ func TestMemChunk_Rewrite(t *testing.T) {
 	}
 }
 
-func TestMemChunk_Rewrite_with_filter(t *testing.T) {
+func TestMemChunk_Rewrite_WithFilter(t *testing.T) {
 	chkFrom := time.Unix(1, 0) // headBlock.Append treats Unix time 0 as not set so we have to use a later time
 	chkFromPlus5 := chkFrom.Add(5 * time.Second)
 	chkThrough := chkFrom.Add(10 * time.Second)
