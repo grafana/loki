@@ -457,17 +457,42 @@ func containsLower(line, substr []byte) bool {
 	firstByte := substr[0]
 	maxIndex := len(line) - len(substr)
 
+	// When substr's first rune is multi-byte, the matching rune in line may be
+	// an uppercase form whose UTF-8 lead byte differs from the lowercase one
+	// (e.g. Greek σ/Σ and ω/Ω live in different UTF-8 blocks: 0xCF vs 0xCE). A
+	// byte-wise comparison against firstByte would skip those positions, so for
+	// a multi-byte first rune we decode it once and case-fold runes from line
+	// during the candidate scan instead.
+	firstByteIsASCII := firstByte < utf8.RuneSelf
+	var firstRune rune
+	if !firstByteIsASCII {
+		firstRune, _ = utf8.DecodeRune(substr)
+	}
+
 	i := 0
 	for i <= maxIndex {
-		// Find potential first byte match
-		c := line[i]
-		// Fast path for ASCII - if c is uppercase letter, convert to lowercase
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		if c != firstByte {
-			i++
-			continue
+		// Find a candidate position whose first rune case-folds to substr's.
+		if firstByteIsASCII {
+			c := line[i]
+			// Fast path for ASCII - if c is uppercase letter, convert to lowercase
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != firstByte {
+				i++
+				continue
+			}
+		} else {
+			// An ASCII byte in line can never start the multi-byte firstRune.
+			if line[i] < utf8.RuneSelf {
+				i++
+				continue
+			}
+			lr, size := utf8.DecodeRune(line[i:])
+			if (lr == utf8.RuneError && size == 1) || unicode.ToLower(lr) != firstRune {
+				i++
+				continue
+			}
 		}
 
 		// Found potential match, check rest of substr
