@@ -2,11 +2,11 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -17,12 +17,18 @@ import (
 
 // StreamReader is the file-streaming counterpart to ByteSliceReader.
 //
-// Currently, StreamReader delegates some calls to a *ByteSliceReader.
-// Follow-up changes will progressively replace embedded calls with streaming implementations
-// backed by a file-handle pool.
+// It serves every read through a pool of file handles rather than a memory
+// mapping, so the Go scheduler can observe a blocking read and run other work
+// while it completes. A page fault on a memory mapping is invisible to the
+// runtime and blocks the whole OS thread instead.
+//
+// The sections that are small enough to hold in memory — the TOC and the
+// fingerprint offsets — are read once at construction.
+// The symbols section and the postings offset table are scanned once to
+// build a sparse offset table, so later lookups seek close to their target
+// and read only a bounded window.
+// Series records are read on demand, one per lookup.
 type StreamReader struct {
-	mmapReader *ByteSliceReader
-
 	factory *streamenc.FilePoolDecbufFactory
 	path    string
 	size    int64
@@ -81,14 +87,6 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 	}
 
 	reader.decoder = newDecoder(reader.symbols.Lookup, DefaultMaxChunksToBypassMarkerLookup)
-
-	// Fallback used by not-yet-ported methods
-	mmapReader, err := NewMmapFileReader(path)
-	if err != nil {
-		_ = factory.Close()
-		return nil, err
-	}
-	reader.mmapReader = mmapReader
 
 	return reader, nil
 }
@@ -266,19 +264,64 @@ func (s StreamReader) Checksum() uint32 {
 }
 
 func (s StreamReader) LabelValues(name string, matchers ...*labels.Matcher) ([]string, error) {
-	return s.mmapReader.LabelValues(name, matchers...)
+	if len(matchers) > 0 {
+		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
+	}
+	return s.postings.labelValuesFor(name)
 }
 
 func (s StreamReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
-	return s.mmapReader.LabelNames(matchers...)
+	if len(matchers) > 0 {
+		return nil, fmt.Errorf("matchers parameter is not implemented: %+v", matchers)
+	}
+	return s.postings.labelNames(), nil
 }
 
 func (s StreamReader) LabelValueFor(id storage.SeriesRef, label string) (string, error) {
-	return s.mmapReader.LabelValueFor(id, label)
+	content, err := s.readSeriesRecord(seriesOffset(id))
+	if err != nil {
+		return "", fmt.Errorf("label values for: %w", err)
+	}
+
+	value, err := s.decoder.LabelValueFor(content, label)
+	if err != nil {
+		return "", storage.ErrNotFound
+	}
+	if value == "" {
+		return "", storage.ErrNotFound
+	}
+	return value, nil
 }
 
 func (s StreamReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
-	return s.mmapReader.LabelNamesFor(ids...)
+	// Gather the name offsets in the symbol table first, so each distinct name
+	// is only resolved once no matter how many series carry it.
+	offsetsMap := make(map[uint32]struct{})
+	for _, id := range ids {
+		content, err := s.readSeriesRecord(seriesOffset(id))
+		if err != nil {
+			return nil, fmt.Errorf("get buffer for series: %w", err)
+		}
+
+		offsets, err := s.decoder.LabelNamesOffsetsFor(content)
+		if err != nil {
+			return nil, fmt.Errorf("get label name offsets: %w", err)
+		}
+		for _, offset := range offsets {
+			offsetsMap[offset] = struct{}{}
+		}
+	}
+
+	names := make([]string, 0, len(offsetsMap))
+	for offset := range offsetsMap {
+		name, err := s.symbols.Lookup(offset)
+		if err != nil {
+			return nil, fmt.Errorf("lookup symbol in LabelNamesFor: %w", err)
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 func (s StreamReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
@@ -324,7 +367,5 @@ func (s StreamReader) Size() int64 {
 }
 
 func (s StreamReader) Close() error {
-	mmapErr := s.mmapReader.Close()
-	factoryErr := s.factory.Close()
-	return errors.Join(mmapErr, factoryErr)
+	return s.factory.Close()
 }
