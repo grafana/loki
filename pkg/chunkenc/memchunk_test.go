@@ -1553,7 +1553,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 	}
 }
 
-func TestMemChunk_Rebound(t *testing.T) {
+func TestMemChunk_Rewrite(t *testing.T) {
 	for _, format := range allPossibleFormats {
 		chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 		chkFrom := time.Unix(0, 0)
@@ -1682,7 +1682,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 	}
 }
 
-func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
+func TestMemChunk_Rewrite_with_filter(t *testing.T) {
 	chkFrom := time.Unix(1, 0) // headBlock.Append treats Unix time 0 as not set so we have to use a later time
 	chkFromPlus5 := chkFrom.Add(5 * time.Second)
 	chkThrough := chkFrom.Add(10 * time.Second)
@@ -1762,7 +1762,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			originalChunk := tc.testMemChunk
-			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, tc.filterFunc)
+			newChunk, err := originalChunk.Rewrite(tc.filterFunc)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1791,7 +1791,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 }
 
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withStructuredMetadata bool) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
 	var structuredMetadata push.LabelsAdapter
@@ -1824,6 +1824,11 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 		}
 		from = from.Add(time.Second)
 	}
+
+	// Rewrite only reads cut blocks, so the head block has to be cut before the chunk is
+	// usable. This also matches what Rewrite sees in production, where chunks come from
+	// storage and never carry head block data.
+	require.NoError(t, chk.Close())
 
 	return chk
 }
