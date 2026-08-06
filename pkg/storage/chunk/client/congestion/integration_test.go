@@ -83,7 +83,8 @@ func newCongestionControlledS3(t *testing.T, handler http.HandlerFunc) congestio
 	t.Cleanup(srv.Close)
 
 	// disableRetries=true mirrors how the storage factory wires the client when
-	// congestion control is enabled: the inner (minio) client must not retry, so
+	// congestion control replaces the retries of the object-store client (see
+	// Config.ReplacesInnerRetries): the object-store client must not retry, so
 	// the AIMD controller is solely in charge of retries/back-off. This also keeps
 	// the observed request count == the controller's attempt count.
 	adapter, err := bucket.NewObjectClient(context.Background(), bucket.S3, bucket.ConfigWithNamedStores{

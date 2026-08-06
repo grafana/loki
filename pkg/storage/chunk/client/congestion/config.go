@@ -3,6 +3,7 @@ package congestion
 import (
 	"flag"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
@@ -13,6 +14,18 @@ type Config struct {
 	Controller ControllerConfig `yaml:"controller"`
 	Retry      RetrierConfig    `yaml:"retry"`
 	Hedge      HedgerConfig     `yaml:"hedging"`
+}
+
+// ReplacesInnerRetries reports whether congestion control will retry for the
+// object-store client.
+//
+// The storage factory disables the retries of that client when this is true. If you
+// remove a term, that client keeps no retrier at all.
+func (c *Config) ReplacesInnerRetries() bool {
+	return c.Enabled &&
+		strings.EqualFold(c.Controller.Strategy, StrategyAIMD) &&
+		strings.EqualFold(c.Retry.Strategy, RetryStrategyLimited) &&
+		c.Retry.Limit > 0
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
