@@ -246,7 +246,8 @@ func createDecbufFactoryWithBytes(t testing.TB, filePoolSize uint, length int, e
 	require.NoError(t, os.WriteFile(filePath, bytes, 0700))
 
 	reg := prometheus.NewPedanticRegistry()
-	diskFactory := NewFilePoolDecbufFactory(filePath, filePoolSize, filepool.NewFilePoolMetrics(reg))
+	diskFactory, err := NewFilePoolDecbufFactory(filePath, filePoolSize, filepool.NewFilePoolMetrics(reg))
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = diskFactory.Close()
 	})
