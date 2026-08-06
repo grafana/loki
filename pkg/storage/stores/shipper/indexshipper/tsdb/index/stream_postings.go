@@ -185,6 +185,72 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 	return Merge(results...), nil
 }
 
+// labelValuesFor returns every value stored for the given label name, in the
+// ascending order they appear in the offset table.
+// It mirrors ByteSliceReader.LabelValues.
+func (p *streamPostings) labelValuesFor(labelName string) ([]string, error) {
+	offsets, ok := p.postings[labelName]
+	if !ok || len(offsets) == 0 {
+		return nil, nil
+	}
+	labelValues := make([]string, 0, len(offsets)*symbolFactor)
+
+	// Unchecked because we already checked CRC32 at startup
+	decbuf := p.factory.NewDecbufAtUnchecked(context.Background(), p.off)
+	if err := decbuf.Err(); err != nil {
+		return nil, err
+	}
+	defer func() { _ = decbuf.Close() }()
+
+	// The sparse table always retains a name's first and last value, so walking
+	// forward from the first entry until the last value turns up covers every
+	// value of this name and stops before the next name's entries.
+	decbuf.ResetAt(offsets[0].offset)
+	lastLabelValue := offsets[len(offsets)-1].labelValue
+
+	skip := 0
+	for decbuf.Err() == nil {
+		if skip == 0 {
+			// These are always the same number of bytes,
+			// and it's faster to skip than parse.
+			skip = decbuf.Len()
+			decbuf.Uvarint()          // Key count
+			decbuf.SkipUvarintBytes() // Label name
+			skip -= decbuf.Len()
+		} else {
+			decbuf.Skip(skip)
+		}
+		currentLabelValue := decbuf.UvarintStr() // Label value
+		if err := decbuf.Err(); err != nil {
+			return nil, fmt.Errorf("get postings offset entry: %w", err)
+		}
+		labelValues = append(labelValues, currentLabelValue)
+		if currentLabelValue == lastLabelValue {
+			break
+		}
+		decbuf.Uvarint64() // Absolute file offset to postings entry
+	}
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("get postings offset entry: %w", err)
+	}
+	return labelValues, nil
+}
+
+// labelNames returns the sorted label names held in the offset table.
+// It mirrors ByteSliceReader.LabelNames.
+func (p *streamPostings) labelNames() []string {
+	labelNames := make([]string, 0, len(p.postings))
+	for name := range p.postings {
+		if name == allPostingsKey.Name {
+			// This isn't from any log.
+			continue
+		}
+		labelNames = append(labelNames, name)
+	}
+	sort.Strings(labelNames)
+	return labelNames
+}
+
 // readPostingsList reads the postings list stored at absolute file offset
 // postingsOffset into memory and wraps it in a BigEndianPostings.
 // On disk, the list is a 4-byte big-endian count N followed by N contiguous
