@@ -1,3 +1,7 @@
+# v1.106.4 (2026-08-03)
+
+* **Bug Fix**: Expand S3 operations that check for an error inside an HTTP 200 response
+
 # v1.106.3 (2026-07-31.2)
 
 * **Dependency Update**: Updated to the latest SDK module versions
