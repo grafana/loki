@@ -489,12 +489,35 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 	return usersToBeQueryReadyFor, nil
 }
 
-// loadLocalTables loads tables present locally.
+func (tm *tableManager) getLargestQueryReadinessNum() int {
+	largestQueryReadinessNum := tm.cfg.QueryReadyNumDays
+	if tm.cfg.Limits == nil {
+		return largestQueryReadinessNum
+	}
+
+	if defaultLimits := tm.cfg.Limits.DefaultLimits(); defaultLimits != nil && defaultLimits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+		largestQueryReadinessNum = defaultLimits.QueryReadyIndexNumDays
+	}
+
+	for _, limits := range tm.cfg.Limits.AllByUserID() {
+		if limits != nil && limits.QueryReadyIndexNumDays > largestQueryReadinessNum {
+			largestQueryReadinessNum = limits.QueryReadyIndexNumDays
+		}
+	}
+
+	return largestQueryReadinessNum
+}
+
+// loadLocalTables loads tables present locally. Tables within query readiness are loaded synchronously,
+// while older tables outside query readiness are registered lazily to avoid blocking container startup on S3 calls.
 func (tm *tableManager) loadLocalTables() error {
 	dirEntries, err := os.ReadDir(tm.cfg.CacheDir)
 	if err != nil {
 		return err
 	}
+
+	activeTableNumber := getActiveTableNumber()
+	largestQueryReadinessNum := tm.getLargestQueryReadinessNum()
 
 	for _, entry := range dirEntries {
 		if !entry.IsDir() {
@@ -508,6 +531,18 @@ func (tm *tableManager) loadLocalTables() error {
 				level.Debug(tm.logger).Log("msg", "skip loading table as it is not in range", "table-name", entry.Name())
 			}
 
+			continue
+		}
+
+		tableNumber, err := config.ExtractTableNumberFromName(entry.Name())
+		if err != nil {
+			return fmt.Errorf("cannot extract table number from %s: %w", entry.Name(), err)
+		}
+
+		if largestQueryReadinessNum > 0 && activeTableNumber-tableNumber > int64(largestQueryReadinessNum) {
+			level.Info(tm.logger).Log("msg", "lazy loading local table outside query ready num days", "table-name", entry.Name())
+			tm.tables[entry.Name()] = NewTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
+				tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.DownloadTimeout)
 			continue
 		}
 
