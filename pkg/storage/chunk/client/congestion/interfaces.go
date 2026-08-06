@@ -1,6 +1,7 @@
 package congestion
 
 import (
+	"context"
 	"io"
 	"net/http"
 
@@ -39,8 +40,9 @@ type Retrier interface {
 	// Do executes a given function which is expected to be a GetObject call, and its return signature matches that.
 	// Any failed requests will be retried.
 	//
+	// ctx bounds the whole operation, including any wait between attempts.
 	// count is the current request count; any positive number indicates retries, 0 indicates first attempt.
-	Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error)
+	Do(ctx context.Context, fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error)
 
 	withLogger(log.Logger) Retrier
 }

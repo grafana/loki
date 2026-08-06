@@ -2844,6 +2844,14 @@ storage:
       # CLI flag: -common.storage.congestion-control.retry.strategy.limited.limit
       [limit: <int> | default = 2]
 
+      # Minimum delay between retries performed by the 'limited' retry strategy.
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.backoff-min-period
+      [backoff_min_period: <duration> | default = 200ms]
+
+      # Maximum delay between retries performed by the 'limited' retry strategy.
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.backoff-max-period
+      [backoff_max_period: <duration> | default = 1s]
+
     hedging:
       config:
         [at: <duration>]
@@ -6714,6 +6722,14 @@ congestion_control:
     # Maximum number of retries allowed.
     # CLI flag: -store.congestion-control.retry.strategy.limited.limit
     [limit: <int> | default = 2]
+
+    # Minimum delay between retries performed by the 'limited' retry strategy.
+    # CLI flag: -store.congestion-control.retry.strategy.limited.backoff-min-period
+    [backoff_min_period: <duration> | default = 200ms]
+
+    # Maximum delay between retries performed by the 'limited' retry strategy.
+    # CLI flag: -store.congestion-control.retry.strategy.limited.backoff-max-period
+    [backoff_max_period: <duration> | default = 1s]
 
   hedging:
     config:
