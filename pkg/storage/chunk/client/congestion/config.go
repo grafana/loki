@@ -3,6 +3,7 @@ package congestion
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
@@ -49,6 +50,11 @@ func (c *ControllerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSe
 type RetrierConfig struct {
 	Strategy string `yaml:"strategy"`
 	Limit    int    `yaml:"limit"`
+
+	// These periods replace the backoff of the object-store client. The storage factory
+	// disables the retries of that client when Config.ReplacesInnerRetries is true.
+	BackoffMinPeriod time.Duration `yaml:"backoff_min_period"`
+	BackoffMaxPeriod time.Duration `yaml:"backoff_max_period"`
 }
 
 func (c *RetrierConfig) RegisterFlags(f *flag.FlagSet) {
@@ -58,6 +64,8 @@ func (c *RetrierConfig) RegisterFlags(f *flag.FlagSet) {
 func (c *RetrierConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control retry strategy to use (default: none, options: 'limited').")
 	f.IntVar(&c.Limit, prefix+"strategy.limited.limit", 2, "Maximum number of retries allowed.")
+	f.DurationVar(&c.BackoffMinPeriod, prefix+"strategy.limited.backoff-min-period", 200*time.Millisecond, "Minimum delay between retries performed by the 'limited' retry strategy.")
+	f.DurationVar(&c.BackoffMaxPeriod, prefix+"strategy.limited.backoff-max-period", time.Second, "Maximum delay between retries performed by the 'limited' retry strategy.")
 }
 
 type HedgerConfig struct {
