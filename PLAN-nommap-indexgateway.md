@@ -25,9 +25,16 @@ their `Decbuf` encoding layer and port Loki's `Reader` on top of it.
   holds the full end-state and this plan doc. Never lands directly.
 - `dahoppe/introduce-nommap-config` (off `main`) — PR #23663, the first
   reviewable slice: config flag + `Reader` interface + `StreamReader` stub
-  that delegates to mmap. Merging shortly (as of 2026-07-30).
-- Follow-up PR branches will be cut off `dahoppe/introduce-nommap-config`
-  (or off `main` once #23663 merges), one small step per PR.
+  that delegates to mmap. Still OPEN as of 2026-08-06.
+- The PR stack, each branch stacked on the previous one, all still OPEN:
+  #23663 → #23696 (header/TOC) → #23730 (symbols) → #23767 (postings offset
+  table) → #23768 (fingerprint offsets) → **#23790 (series + ChunkStats)**.
+  Nothing in the stack has merged, so review latency is the constraint on
+  progress, not implementation. (#23727, "Remove support for reading V1
+  indexes", was cut out of the stack and merged independently.)
+- `dahoppe/stream-labels` and `dahoppe/stream-no-mmap` exist locally but are
+  stacked on a superseded commit and need rebasing — see their "In flight"
+  entries.
 Do not push — Dan pushes and opens PRs.
 
 **Repository roles** (state on the reference branch — the merged surface
@@ -145,6 +152,67 @@ Tips learned the hard way (safe to keep in-repo):
 - `gcx metrics query --step 1m` matches the dashboard granularity.
 - Datasource UIDs are stable across sessions — recorded once in the
   memory file so we don't re-discover.
+- **Table numbers are day numbers**: table `N` covers the UTC day starting
+  at `N * 86400` epoch seconds, and the leading integer in a TSDB filename
+  is the creation time in epoch *nanoseconds*. Both are worth a five-second
+  sanity check before building any argument on when an index was written —
+  getting this wrong once sent the 2026-08-06 investigation down a blind
+  alley (see that entry).
+
+---
+
+## Example index corpus (local)
+
+Synthetic fixtures built by `writeIndexFixture` are fine for correctness
+tests but **misleading for open-cost work**: they carry far fewer distinct
+label names than a real compacted index, which under-rewards the
+`labelNameSymbols` cache and made a microbenchmark predict the wrong sign
+for `adb0af78e5` (2026-08-06 entry). Measure open cost against real files.
+
+Real indexes are too big to commit, so they live outside the repo:
+
+```
+~/Documents/example-indexes/<name>/
+```
+
+- **`big-dev-002-index-2026-07-27/`** — 4,657,229,761 B uncompressed
+  (3,159,915,032 B gzipped), `FormatV4`, single tenant, covering ~3.5h of one
+  compacted day-table. This is the file that blows the index-gateway's
+  per-index-set download timeout on every streaming-reader start, so it is the
+  realistic worst case for `NewStreamFileReader`. Both the `.tsdb` and the
+  original `.tsdb.gz` are kept.
+
+Naming: `<size-class>-<cell-shorthand>-index-<YYYY-MM-DD of the index's own
+day-table>` — the index's date, not the day it was downloaded or the day it
+broke something.
+
+### Fetching a real index file from object storage
+
+Bucket name, object key, AWS profile and tenant ID are in the
+`nommap-stream-open-cost` memory file, under the same redaction rule as the
+rest of this section. The reusable technique:
+
+1. **Get the coordinates from a log line.** `util.go:134 "downloaded and
+   extracted file"` prints `table-name`, `user-id`, `file-name` and the
+   uncompressed `size` — everything needed to construct the key.
+2. **Object layout is `index/<table-name>/<tenant-id>/<file-name>.gz`.**
+   Objects are gzipped at rest and extracted on download, so the size in the
+   store is roughly two-thirds of the size the log reports.
+3. **Bucket names are not in the pod config dump.** They live in
+   `deployment_tools` at
+   `ksonnet/environments/loki/<cluster>.<namespace>/spec.json`, under
+   `metadata.labels.chunksBucket`.
+4. **`aws` needs an explicit `--profile`.** The `default` profile has no
+   account or role bound and fails with `NoCredentials`; the named profiles are
+   AWS SSO. `aws sts get-caller-identity --profile <p>` is the quick check for
+   which ones are live.
+5. **Confirm before pulling multiple GB.** `aws s3api list-objects-v2 --bucket
+   <b> --prefix index/<table>/<tenant>/` returns `Size` and `LastModified`, and
+   `LastModified` is an independent check on the filename's embedded timestamp.
+6. **Verify after.** Compare the downloaded size to the `Size` from step 5,
+   then `xxd -l 8` the decompressed file: bytes `baaad700` are `MagicIndex`
+   and the next byte is the format version (`04` = `FormatV4`). A corrupt-CRC
+   copy in a gateway's cache is usually a truncated download, not a bad object.
 
 ---
 
@@ -683,11 +751,19 @@ supporting profiling data lands):
     `mustPostingsAndDrain` helpers gained an `fpFilter` parameter rather than a
     separate sharded helper.
 
-- **`dahoppe/stream-series` — `Implement streaming reading of series records`**
-  (stacked on `dahoppe/stream-fingerprint-offsets` / #23768, single commit
-  `24cbb79c09`, created 2026-08-05, **not yet pushed**). Item #4 in the Next
-  list. Contents:
-  - **`readSeriesRecord`** (`stream_series.go`) — the streaming counterpart to
+- **PR #23790 — `chore: Implement streaming reading of series`** (branch
+  `dahoppe/stream-series`, stacked on `dahoppe/stream-fingerprint-offsets` /
+  #23768, opened 2026-08-06, OPEN). Item #4 in the Next list. Two commits,
+  9 files, +432/−205:
+  - `adb0af78e5` Implement streaming reading of series
+  - `645e288f4b` Minor test refactor to make them a little more concise
+
+  This **supersedes the unpushed `24cbb79c09`** that earlier revisions of this
+  entry described. Three things changed between that commit and what shipped;
+  they are called out inline below as "revised from `24cbb79c09`".
+
+  Contents:
+  - **`readSeriesRecord`** (in `stream_reader.go`) — the streaming counterpart to
     Prometheus's `encoding.NewDecbufUvarintAt`, which is what the mmap reader
     uses for the same job. A series record is `[uvarint content_length]
     [content][crc32 over content]`; the uvarint prefix is why it can't go
@@ -703,16 +779,64 @@ supporting profiling data lands):
   - **`seriesOffset(id)`** replaces the bare `id * 16` with the "series refs
     are the 16-byte-aligned file offset / 16" comment attached to it. Reused
     by the label methods in the next branch.
+  - **No `stream_series.go`** — *revised from `24cbb79c09`*, which put these
+    four declarations in a new file. `Series`/`ChunkStats` already existed in
+    `stream_reader.go` as delegating stubs, so keeping them there makes the
+    diff a body-swap instead of a delete-plus-add; `seriesOffset` and
+    `readSeriesRecord` sit with `readTOC`/`readFingerprintOffsetsTable`. The
+    tests moved into `stream_reader_test.go` for the same reason, and the two
+    rejection tests joined the `TestReaders_Rejects*` family since they already
+    iterated `allReaderConstructors()`.
   - **One `*Decoder` built at open**, wired to `streamSymbols.Lookup`.
     *Diverges from the reference branch*, which builds a fresh `Decoder` per
     `Series` call out of caution about reuse. `ByteSliceReader` has always
     stored one (`r.dec`) and shared it across concurrent calls; `Decoder`'s
     only mutable state is the `chunksSample` map, which is `RWMutex`-guarded,
-    so sharing is safe and it avoids a map allocation per call. There's no
-    equivalent of `ByteSliceReader.nameSymbols` (the label-name symbol cache
-    warmed via `Symbols.ReverseLookup`) because `streamSymbols` has no
-    `ReverseLookup` — noted in-code as a perf candidate.
-  - Tests (`stream_series_test.go`): `TestStreamSeries_MatchesMmap` builds a
+    so sharing is safe and it avoids a map allocation per call.
+  - **`Decoder` needed no streaming counterpart.** It decodes from a
+    caller-supplied `[]byte` and its only outward dependency is the injected
+    `LookupSymbol`, so nothing in it is mmap-specific. It also *must* have the
+    whole record in memory: `readChunkStatsV3` seeks to a page offset with
+    `d.Skip(curMarker.Offset - (initialLn - d.Len()))` after reading the
+    markers, and the pre-V3 path re-seeks using offsets cached in
+    `chunkSamples`. A record is one series' labels plus chunk metas, and its
+    length is bounded before allocation, so the record is the right buffering
+    unit. Caveat carried forward: `Decoder.chunksSample` is an unbounded
+    map keyed by series ref (pre-V3 only), and `StreamReader` now owns a
+    `Decoder`, so it inherits that growth — same as `ByteSliceReader` always
+    has.
+  - **Label-name symbol cache** — *revised from `24cbb79c09`*, which noted the
+    absence of a `ByteSliceReader.nameSymbols` equivalent as a perf candidate.
+    It now exists: `streamSymbols.labelNameSymbols map[uint32]string`,
+    consulted at the top of `Lookup`. Warmed **inside the symbol scan that
+    already happens** rather than after it — `ByteSliceReader` warms its copy
+    with one `Symbols.ReverseLookup` per label name, which is cheap over a byte
+    slice but a binary search over the file here, so instead each symbol is
+    tested against a new `streamPostings.isLabelName` predicate as the scan
+    passes it. That needs the label-name set up front, so
+    `NewStreamFileReader` now builds `streamPostings` **before**
+    `streamSymbols` (documented at both sites). `ReverseLookup`, dropped in
+    #23730 for want of a caller, stays dropped — this route doesn't need it.
+    - Cost note: the scan changed from `SkipUvarintBytes()` to `UvarintStr()`,
+      so it now allocates a string per symbol, not just per label name. A
+      `[]byte` predicate signature avoids that (`m[string(b)]` is compiled
+      without a copy; `f(string(b))` is not) and was measured to compile to a
+      single `mapaccess2_faststr` with no `slicebytetostring`. The pushed
+      version takes a `string` for readability. See the 2026-08-06 open-cost
+      entry in Current status — this accounts for ~15% of the open-time
+      regression.
+  - **`FilePoolDecbufFactory` file-size cache** — pulled forward from Next #11
+    (reference `ce00b0eeb0`), because `readSeriesRecord` opens a `NewRawDecbuf`
+    per series and that stats the file to size its segment. The factory now
+    stats once in its constructor (which therefore returns
+    `(*FilePoolDecbufFactory, error)`) and exposes `FileSize()`;
+    `NewStreamFileReader` drops its own `os.Stat` and takes `size` from the
+    factory. Net: index open goes from two stats to one, and
+    `readSeriesRecord` from one fstat per call to zero. Safe to memoise
+    because a TSDB index path identifies fixed content — single-tenant
+    filenames embed the file's checksum (`identifier.go:92`) — which is
+    recorded in the field comment rather than left implicit.
+  - Tests: `TestStreamReader_SeriesMatchesMmap` builds a
     fixture whose per-series chunk counts are `{1, 2, 15, 16, 17, 63, 64, 65,
     200}` — straddling `ChunkPageSize` (16) and
     `DefaultMaxChunksToBypassMarkerLookup` (64) from both sides — so both the
@@ -721,15 +845,56 @@ supporting profiling data lands):
     and `ChunkStats` (with and without a `by` set) against mmap over seven
     query windows selecting all / some / none of each series' chunks, on V3 +
     V4, with `IngestedAt` stamped on alternating series.
-    `TestStreamSeries_RejectsCorruptSeriesRecord` and
-    `..._RejectsOutOfRangeRef` check rejection parity with mmap.
+    `TestReaders_RejectsCorruptSeriesRecord` and
+    `TestReaders_RejectsOutOfRangeSeriesRef` check rejection parity with mmap.
   - Verified non-vacuous by mutation: perturbing `from`/`through` by one in the
     streaming call fails both the new tests and `TestReaders_CrossCheck`, which
     stops being trivially satisfied for `Series`/`ChunkStats` with this commit.
+  - **Test-fixture consolidation** (`645e288f4b`) — the four `write*Fixture`
+    helpers had each grown the same eight steps (TempDir, `NewWriter`, collect
+    symbols, sort, `AddSymbol` loop, a local `type entry struct`, fingerprint
+    sort, `AddSeries` loop, `Close`), with `type entry struct` declared four
+    times. Replaced by one `seriesFixture{ls, chunks}` + `writeIndexFixture`;
+    each fixture now only builds its series list. Also added `openBothReaders`
+    (7 copies of the open-both-with-cleanup block) and deleted `getPostings` as
+    a behavioural duplicate of `mustPostingsAndDrain`. 1081 → 912 lines across
+    the three `stream_*_test.go` files. Correctness side-effect worth having:
+    `writeCrossCheckFixture` was the one fixture hand-maintaining its symbol
+    list, so adding a label to it and forgetting the symbol used to break the
+    fixture in a way that looks like a reader bug; symbols are now derived from
+    the labels.
+  - **Coverage gap, deliberate or not**: `TestStreamSymbols_CachesLabelNames`
+    — which asserted `mmap.nameSymbols == stream.symbols.labelNameSymbols`,
+    the only direct check that the new cache holds the right ordinals — is not
+    in the pushed branch (`stream_symbols_test.go` isn't in `adb0af78e5` at
+    all). The cache is currently covered only indirectly, via `Series` /
+    `ChunkStats` label parity. Cheap to restore if wanted.
+  - Verification run on the pushed tip: full-repo `go test ./...` 228 packages
+    ok / 0 fail; `tsdb/...` also green under `-race`; `go build ./...` clean;
+    `golangci-lint --fix=false` over the branch's packages reports one
+    pre-existing `goconst` in `tsdb/head.go` (byte-identical to `main`); no
+    faillint-banned imports.
+  - **Trap for whoever runs `make lint`**: `.golangci.yml` sets `fix: true`, so
+    a bare repo-wide `golangci-lint run` rewrites the working tree. It
+    modified four unrelated files during this PR's verification, and one of its
+    proposed fixes was actively wrong — rewriting `sha3.New256()` in
+    `pkg/ruler/base/mapper.go` as `hash.Hash(sha30.New256())` with an invented
+    import alias. Use `--fix=false` locally.
 
 - **`dahoppe/stream-labels` — `Implement streaming reading of label methods`**
-  (stacked on `dahoppe/stream-series`, single commit `cd56dca173`, created
-  2026-08-05, **not yet pushed**). Item #5 in the Next list. Contents:
+  (single commit `cd56dca173`, created 2026-08-05, **not yet pushed**). Item #5
+  in the Next list.
+
+  ⚠️ **Needs a rebase before it can be pushed.** It is stacked on the
+  superseded `24cbb79c09`, not on the `dahoppe/stream-series` tip that became
+  PR #23790. Rebasing it onto `645e288f4b` has to reconcile three things that
+  changed underneath it: `stream_series.go` no longer exists (`readSeriesRecord`
+  and `seriesOffset` moved into `stream_reader.go`), the test fixtures were
+  consolidated onto `writeIndexFixture`/`openBothReaders`, and
+  `newStreamSymbols` gained a parameter. `dahoppe/stream-no-mmap` sits on top of
+  this one and inherits the same problem.
+
+  Contents:
   - **`streamPostings.labelValuesFor` + `streamPostings.labelNames`**
     (`stream_postings.go`) — the offset-table walk lives next to `postingsFor`
     rather than in `stream_labels.go`, since all three decode the same table.
@@ -820,9 +985,10 @@ supporting profiling data lands):
    needs only the postings iterator + the offsets table; it bounds by
    series-ref offset and never resolves individual series) and it
    *finishes* the `Postings` surface by removing its last mmap fallback.
-4. ~~**PR: stream `Series` + `ChunkStats`.**~~ **LANDED on branch
-   `dahoppe/stream-series`** (commit `24cbb79c09`, not yet pushed) — see that
-   entry under "In flight". Reimplements the series-record read via `Decbuf`;
+4. ~~**PR: stream `Series` + `ChunkStats`.**~~ **LANDED as PR #23790** (branch
+   `dahoppe/stream-series`, commits `adb0af78e5` + `645e288f4b`, opened
+   2026-08-06) — see that entry under "In flight". Reimplements the
+   series-record read via `Decbuf`;
    the chunk-meta decode itself (V4 paging + `IngestedAt`) is untouched
    because `Decoder.Series`/`ChunkStats` take the record's content bytes, so
    both readers share it. **Two divergences from the reference branch**: the
@@ -864,8 +1030,11 @@ supporting profiling data lands):
    `1b9dbb75b6` on reference branch.
 10. **PR: `-shipper.streaming-index-max-idle-file-handles` config knob.**
     Commit `f17424eb09` on reference branch.
-11. **PR: cache `FilePoolDecbufFactory` file size.** Commit `ce00b0eeb0`
-    on reference branch. Small.
+11. ~~**PR: cache `FilePoolDecbufFactory` file size.**~~ **LANDED early, inside
+    PR #23790** (reference `ce00b0eeb0`). Pulled forward because
+    `readSeriesRecord` opens a `NewRawDecbuf` per series and each one stat'd the
+    file. Also removed the redundant `os.Stat` in `NewStreamFileReader`. See
+    the #23790 entry under "In flight".
 12. **PR: batch series reads through a single `Decbuf`.** Commit
     `2bf0b0201d` — introduces `ForPostingsSeries` on `StreamReader` and
     `batchSeriesReader` interface. This one is bigger; may split.
@@ -1132,7 +1301,8 @@ supporting profiling data lands):
     sets; treat as small-scale-only.
 
   - *preprod `--analyze-labels` incident (~13:33–14:17 UTC)*: user
-    ran `logcli series '{}' --analyze-labels --since=72h` on tenant <tenant-id>.
+    ran `logcli series '{}' --analyze-labels --since=72h` on the
+    large-index tenant (ID in the memory file).
     That tenant produces **4.7 GB compressed TSDB blobs per compaction
     slice**. Each attempted download took ~31 s network + ~60 s gzip
     decompress = 91 s, but `download_timeout` default is 1 min → every
@@ -1418,3 +1588,103 @@ supporting profiling data lands):
   - Next up: **metrics wiring (Next #7)**, still the priority it was on
     2026-07-31 — without it we can't confirm mode selection from Prometheus,
     and every perf-tuning PR after it wants the file-handle-pool counters.
+
+- **2026-08-06**: **PR #23790 opened** for Next #4 (streaming `Series` +
+  `ChunkStats`) — branch `dahoppe/stream-series`, commits `adb0af78e5` +
+  `645e288f4b`, 9 files, +432/−205. This replaces the unpushed `24cbb79c09`
+  that the 2026-08-05 entry described; full detail in the #23790 "In flight"
+  entry. What's different from that commit, in one line each:
+  - `stream_series.go` folded back into `stream_reader.go` so the diff is a
+    body-swap on the existing delegating stubs.
+  - `streamSymbols.labelNameSymbols` added — the `ByteSliceReader.nameSymbols`
+    equivalent that `24cbb79c09` recorded as missing. Warmed inside the symbol
+    scan via a new `streamPostings.isLabelName` predicate, which is why
+    `NewStreamFileReader` now reads the postings offset table **before** the
+    symbols section.
+  - `FilePoolDecbufFactory` file-size cache pulled forward from Next #11.
+  - Test fixtures consolidated (`writeIndexFixture`, `openBothReaders`);
+    1081 → 912 lines.
+
+  Verified: full-repo `go test ./...` 228 ok / 0 fail, `tsdb/...` green under
+  `-race`, branch-package lint clean apart from one pre-existing `goconst`.
+
+- **2026-08-06 preprod signal — this is the important entry on this date.**
+  A custom image of `adb0af78e5` (PR #23790's first commit) deployed to the
+  current preprod cell (cluster / namespace / tag in the memory file). Full
+  numbers and
+  the gcx cookbook live in the `nommap-stream-open-cost` memory file; the
+  summary that matters for this plan:
+
+  **`NewStreamFileReader`'s open path is now the dominant startup cost, and it
+  broke readiness.** index-gateway-0 startup went **52s (mmap) → 3m17s
+  (`f6a1cdc8ba`) → 2m14s (`adb0af78e5`)**. The large-index tenant has a
+  **4.7 GB** compacted index in day-table 20661, written **2026-07-27**. The
+  first start exceeded the per-index-set `-tsdb.shipper.download-timeout` (2m in
+  this cell), which fails `store` module init and exits the process. **Not an
+  OOM** — heap ~670 MB against a 2 GiB limit, terminated reason `Error`.
+
+  **This is not a regression introduced by PR #23790.** The 2026-08-05 rollout
+  of `f6a1cdc8ba` hit the identical crash loop on the same file — same
+  `table=…_20661 user-id=… context deadline exceeded`, same
+  cleanup-and-re-download cascade (the 4.7 GB blob pulled three times at
+  10:54:29 / 10:59:48 / 11:05:00), and a *worse* startup of 3m17s. That round
+  only looked healthy on first inspection because `up` was sampled at 5-minute
+  steps, which caught it after it had stabilised. If anything, #23790's
+  label-name cache is worth ~1 minute of startup. An earlier revision of this
+  entry claimed the 4.7 GB file post-dated the 2026-08-05 rollout; that was
+  wrong — table numbers are day numbers (see "Example index corpus" for the
+  arithmetic), and 20661 is 2026-07-27, nine days before.
+
+  Measured locally on a synthetic FormatV3 index (400k series, 66 MB): stream
+  open is **4.3× mmap** at `adb0af78e5` and **3.7×** at `f6a1cdc8ba`, and the
+  eagerly-read sections are **~42% of the file** — mmap reads none of them at
+  open. **Treat those two multipliers with suspicion**: they predict
+  `adb0af78e5` is the slower of the pair and production shows the opposite. The
+  fixture has far fewer distinct label names than a real index, so it
+  under-rewards the `labelNameSymbols` cache. Re-run against a real index — see
+  "Example index corpus" — before making a tuning decision on these numbers.
+
+  Cascade to watch for: `indexSet.Init`'s error path calls `cleanupDB` and
+  deletes the table's cached files, so the next start re-downloads the 4.7 GB
+  blob (31s download + 59s extract ≈ 90s of the 120s budget) — it does not
+  converge on its own. A kill mid-extract leaves a truncated `.tsdb` that then
+  fails `check toc crc: invalid checksum` at `stream_reader.go:146`.
+
+  Steady-state A/B on the same rollout (all 3 pods mmap 10:30–10:56 vs all 3
+  stream 11:20–11:38, ~12 rps each on GetChunkRef and GetStats): **latency
+  unchanged but unmeasurable** — `loki_request_duration_seconds`'s lowest
+  bucket is `le="0.005"` and p99 sits under it in both windows, so this cell
+  cannot resolve the difference at all. Zero non-success responses, CPU flat
+  (~0.04 cores across 3 pods), `container_fs_reads_bytes_total` zero in both
+  (fully page-cache resident at this traffic). The one real delta is **heap
+  ~230 MB/pod → ~350–450 MB/pod (~1.7×)**, while `container_memory_mapped_file`
+  stays ~4.3 GB because `StreamReader` still holds the `NewMmapFileReader`
+  fallback — **today you pay for both readers.**
+
+  **Implications for the plan** (Dan's call on ordering):
+  1. *Open cost has to be measured, not just listed.* Acceptance criterion #4
+     ("cold-start time not more than 2× mmap") already names this exactly — but
+     it's parenthesised "with sparse snapshots enabled", which don't exist yet,
+     and nothing has ever measured it. At 4.3× on a 66 MB synthetic index it is
+     currently failing by a wide margin, and on a 4.7 GB index it fails as a
+     readiness crash rather than a slow start. Criterion #4 should be promoted
+     to something checked on every preprod round, decoupled from snapshots, with
+     a stated measurement method.
+  2. This is an argument for **pulling Next #6 (drop `mmapReader`) forward** —
+     while the fallback exists, `mode=stream` pays mmap's mapped-file footprint
+     *and* the streaming reader's heap, which is exactly what the A/B shows.
+     Note #6's branch needs the rebase described in the `stream-labels` entry.
+  3. The structural fix is **Next #15, persisted sparse index-header snapshots**
+     (Buckets C2+C3) — Mimir's answer to precisely this problem. Loki rescans
+     ~42% of every index file on every open. Worth reconsidering whether that
+     stays "Later (post-parity)".
+  4. Independently actionable and already on the 2026-07-29 follow-up list:
+     raise `-shipper.download-timeout` (item 3) and make shipper downloads
+     resumable (item 4). Neither is streaming-reader work, but the 2m timeout is
+     what converted a slow open into a crash loop.
+
+- **2026-08-06 (housekeeping)**: `dahoppe/stream-labels` (`cd56dca173`) and
+  `dahoppe/stream-no-mmap` (`779c74a269`) are both still stacked on the
+  superseded `24cbb79c09` and need rebasing onto `645e288f4b` before they can be
+  pushed as PRs — see the ⚠️ note in the `stream-labels` "In flight" entry for
+  what has to be reconciled.
