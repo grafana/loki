@@ -142,6 +142,19 @@ type ClusterOptions struct {
 	// default: 32KiB (32768 bytes)
 	WriteBufferSize int
 
+	// PipelineReadBufferSize, PipelineWriteBufferSize and PipelinePoolSize
+	// configure an optional separate connection pool used for pipelining on
+	// each node, with its own (typically larger) buffers. See the same-named
+	// fields on Options for details. The pool is created only when PipelineReadBufferSize or PipelineWriteBufferSize is set (PipelinePoolSize alone does not enable it).
+	PipelineReadBufferSize  int
+	PipelineWriteBufferSize int
+	PipelinePoolSize        int
+
+	// AutoPipelineOptions is the default config for BOTH autopipeliner faces
+	// (AutoPipeline and AsyncAutoPipeline), applied when they are called
+	// without explicit options. See Options.AutoPipelineOptions.
+	AutoPipelineOptions *AutoPipelineOptions
+
 	TLSConfig *tls.Config
 
 	// DisableRoutingPolicies disables the request/response policy routing system.
@@ -190,7 +203,9 @@ type ClusterOptions struct {
 	ShardPicker routing.ShardPicker
 
 	// ClusterStateReloadInterval is the interval for reloading the cluster state.
-	// Default is 10 seconds.
+	// MOVED/ASK redirects still trigger an immediate reactive reload, so this
+	// only bounds how stale a topology can get without traffic errors.
+	// Default is 60 seconds.
 	ClusterStateReloadInterval time.Duration
 }
 
@@ -235,7 +250,7 @@ func (opt *ClusterOptions) init() {
 	case -1:
 		opt.ReadTimeout = 0
 	case 0:
-		opt.ReadTimeout = 3 * time.Second
+		opt.ReadTimeout = 5 * time.Second
 	}
 	switch opt.WriteTimeout {
 	case -1:
@@ -251,13 +266,13 @@ func (opt *ClusterOptions) init() {
 	case -1:
 		opt.MinRetryBackoff = 0
 	case 0:
-		opt.MinRetryBackoff = 8 * time.Millisecond
+		opt.MinRetryBackoff = 10 * time.Millisecond
 	}
 	switch opt.MaxRetryBackoff {
 	case -1:
 		opt.MaxRetryBackoff = 0
 	case 0:
-		opt.MaxRetryBackoff = 512 * time.Millisecond
+		opt.MaxRetryBackoff = time.Second
 	}
 
 	if opt.NewClient == nil {
@@ -273,7 +288,7 @@ func (opt *ClusterOptions) init() {
 	}
 
 	if opt.ClusterStateReloadInterval == 0 {
-		opt.ClusterStateReloadInterval = 10 * time.Second
+		opt.ClusterStateReloadInterval = 60 * time.Second
 	}
 }
 
@@ -455,11 +470,15 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		ConnMaxLifetimeJitter: opt.ConnMaxLifetimeJitter,
 		ReadBufferSize:        opt.ReadBufferSize,
 		WriteBufferSize:       opt.WriteBufferSize,
-		DisableIdentity:       opt.DisableIdentity,
-		DisableIndentity:      opt.DisableIdentity,
-		IdentitySuffix:        opt.IdentitySuffix,
-		FailingTimeoutSeconds: opt.FailingTimeoutSeconds,
-		TLSConfig:             opt.TLSConfig,
+
+		PipelineReadBufferSize:  opt.PipelineReadBufferSize,
+		PipelineWriteBufferSize: opt.PipelineWriteBufferSize,
+		PipelinePoolSize:        opt.PipelinePoolSize,
+		DisableIdentity:         opt.DisableIdentity,
+		DisableIndentity:        opt.DisableIndentity,
+		IdentitySuffix:          opt.IdentitySuffix,
+		FailingTimeoutSeconds:   opt.FailingTimeoutSeconds,
+		TLSConfig:               opt.TLSConfig,
 		// If ClusterSlots is populated, then we probably have an artificial
 		// cluster whose nodes are not in clustering mode (otherwise there isn't
 		// much use for ClusterSlots config).  This means we cannot execute the
@@ -477,13 +496,13 @@ func (opt *ClusterOptions) clientOptions() *Options {
 type clusterNode struct {
 	Client *Client
 
-	latency    uint32 // atomic
-	generation uint32 // atomic
-	failing    uint32 // atomic
-	loaded     uint32 // atomic
+	latency    atomic.Uint32
+	generation atomic.Uint32
+	failing    atomic.Uint32
+	loaded     atomic.Uint32
 
 	// last time the latency measurement was performed for the node, stored in nanoseconds from epoch
-	lastLatencyMeasurement int64 // atomic
+	lastLatencyMeasurement atomic.Int64
 }
 
 func newClusterNodeWithNodeAddress(clOpt *ClusterOptions, addr, nodeAddress string) *clusterNode {
@@ -494,7 +513,7 @@ func newClusterNodeWithNodeAddress(clOpt *ClusterOptions, addr, nodeAddress stri
 		Client: clOpt.NewClient(opt),
 	}
 
-	node.latency = math.MaxUint32
+	node.latency.Store(math.MaxUint32)
 	if clOpt.RouteByLatency {
 		go node.updateLatency()
 	}
@@ -536,46 +555,46 @@ func (n *clusterNode) updateLatency() {
 	} else {
 		latency = float64(dur) / float64(successes)
 	}
-	atomic.StoreUint32(&n.latency, uint32(latency+0.5))
+	n.latency.Store(uint32(latency + 0.5))
 	n.SetLastLatencyMeasurement(time.Now())
 }
 
 func (n *clusterNode) Latency() time.Duration {
-	latency := atomic.LoadUint32(&n.latency)
+	latency := n.latency.Load()
 	return time.Duration(latency) * time.Microsecond
 }
 
 func (n *clusterNode) MarkAsFailing() {
-	atomic.StoreUint32(&n.failing, uint32(time.Now().Unix()))
-	atomic.StoreUint32(&n.loaded, 0)
+	n.failing.Store(uint32(time.Now().Unix()))
+	n.loaded.Store(0)
 }
 
 func (n *clusterNode) Failing() bool {
 	timeout := int64(n.Client.opt.FailingTimeoutSeconds)
 
-	failing := atomic.LoadUint32(&n.failing)
+	failing := n.failing.Load()
 	if failing == 0 {
 		return false
 	}
 	if time.Now().Unix()-int64(failing) < timeout {
 		return true
 	}
-	atomic.StoreUint32(&n.failing, 0)
+	n.failing.Store(0)
 	return false
 }
 
 func (n *clusterNode) Generation() uint32 {
-	return atomic.LoadUint32(&n.generation)
+	return n.generation.Load()
 }
 
 func (n *clusterNode) LastLatencyMeasurement() int64 {
-	return atomic.LoadInt64(&n.lastLatencyMeasurement)
+	return n.lastLatencyMeasurement.Load()
 }
 
 func (n *clusterNode) SetGeneration(gen uint32) {
 	for {
-		v := atomic.LoadUint32(&n.generation)
-		if gen < v || atomic.CompareAndSwapUint32(&n.generation, v, gen) {
+		v := n.generation.Load()
+		if gen < v || n.generation.CompareAndSwap(v, gen) {
 			break
 		}
 	}
@@ -583,15 +602,15 @@ func (n *clusterNode) SetGeneration(gen uint32) {
 
 func (n *clusterNode) SetLastLatencyMeasurement(t time.Time) {
 	for {
-		v := atomic.LoadInt64(&n.lastLatencyMeasurement)
-		if t.UnixNano() < v || atomic.CompareAndSwapInt64(&n.lastLatencyMeasurement, v, t.UnixNano()) {
+		v := n.lastLatencyMeasurement.Load()
+		if t.UnixNano() < v || n.lastLatencyMeasurement.CompareAndSwap(v, t.UnixNano()) {
 			break
 		}
 	}
 }
 
 func (n *clusterNode) Loading() bool {
-	loaded := atomic.LoadUint32(&n.loaded)
+	loaded := n.loaded.Load()
 	if loaded == 1 {
 		return false
 	}
@@ -603,7 +622,7 @@ func (n *clusterNode) Loading() bool {
 	err := n.Client.Ping(ctx).Err()
 	loading := err != nil && isLoadingError(err)
 	if !loading {
-		atomic.StoreUint32(&n.loaded, 1)
+		n.loaded.Store(1)
 	}
 	return loading
 }
@@ -620,7 +639,7 @@ type clusterNodes struct {
 	closed      bool
 	onNewNode   []func(rdb *Client)
 
-	generation uint32 // atomic
+	generation atomic.Uint32
 }
 
 func newClusterNodes(opt *ClusterOptions) *clusterNodes {
@@ -685,7 +704,7 @@ func (c *clusterNodes) Addrs() ([]string, error) {
 }
 
 func (c *clusterNodes) NextGeneration() uint32 {
-	return atomic.AddUint32(&c.generation, 1)
+	return c.generation.Add(1)
 }
 
 // GC removes unused nodes.
@@ -1064,8 +1083,8 @@ type clusterStateHolder struct {
 
 	reloadInterval time.Duration
 	state          atomic.Value
-	reloading      uint32 // atomic
-	reloadPending  uint32 // atomic - set to 1 when reload is requested during active reload
+	reloading      atomic.Uint32
+	reloadPending  atomic.Uint32 // set to 1 when reload is requested during active reload
 }
 
 func newClusterStateHolder(load func(ctx context.Context) (*clusterState, error), reloadInterval time.Duration) *clusterStateHolder {
@@ -1086,8 +1105,8 @@ func (c *clusterStateHolder) Reload(ctx context.Context) (*clusterState, error) 
 
 func (c *clusterStateHolder) LazyReload() {
 	// If already reloading, mark that another reload is pending
-	if !atomic.CompareAndSwapUint32(&c.reloading, 0, 1) {
-		atomic.StoreUint32(&c.reloadPending, 1)
+	if !c.reloading.CompareAndSwap(0, 1) {
+		c.reloadPending.Store(1)
 		return
 	}
 
@@ -1095,22 +1114,22 @@ func (c *clusterStateHolder) LazyReload() {
 		for {
 			_, err := c.Reload(context.Background())
 			if err != nil {
-				atomic.StoreUint32(&c.reloadPending, 0)
-				atomic.StoreUint32(&c.reloading, 0)
+				c.reloadPending.Store(0)
+				c.reloading.Store(0)
 				return
 			}
 
 			// Clear pending flag after reload completes, before cooldown
 			// This captures notifications that arrived during the reload
-			atomic.StoreUint32(&c.reloadPending, 0)
+			c.reloadPending.Store(0)
 
 			// Wait cooldown period
 			time.Sleep(200 * time.Millisecond)
 
 			// Check if another reload was requested during cooldown
-			if atomic.LoadUint32(&c.reloadPending) == 0 {
+			if c.reloadPending.Load() == 0 {
 				// No pending reload, we're done
-				atomic.StoreUint32(&c.reloading, 0)
+				c.reloading.Store(0)
 				return
 			}
 
@@ -1153,6 +1172,17 @@ type ClusterClient struct {
 	cmdInfoResolver *commandInfoResolver
 	cmdable
 	hooksMixin
+
+	// himport is the cluster-wide HIMPORT fieldset registry, shared with
+	// every node client (masters and replicas alike — roles change with the
+	// topology) so any connection serving an HIMPORT SET can lazily replay
+	// the PREPARE (see himport.go, himport_cluster.go).
+	himport *himportRegistry
+
+	autopipelinerMu     *sync.Mutex    // guards the autopipeliner fields against concurrent first-call creation
+	autopipeliner       *AutoPipeliner // blocking face (ClusterClient.AutoPipeline)
+	asyncAutopipeliner  *AutoPipeliner // deferred face (ClusterClient.AsyncAutoPipeline)
+	autopipelinerClosed bool           // set by Close: refuse to resurrect a pipeliner on a closed client
 }
 
 // NewClusterClient returns a Redis Cluster client as described in
@@ -1165,9 +1195,18 @@ func NewClusterClient(opt *ClusterOptions) *ClusterClient {
 	opt.init()
 
 	c := &ClusterClient{
-		opt:   opt,
-		nodes: newClusterNodes(opt),
+		opt:             opt,
+		nodes:           newClusterNodes(opt),
+		himport:         newHImportRegistry(),
+		autopipelinerMu: &sync.Mutex{},
 	}
+
+	// Every node client shares the cluster-wide fieldset registry, replicas
+	// included: a promoted replica's connections carry no prepared flags, so
+	// the first HIMPORT SET routed to it replays the PREPARE lazily.
+	c.nodes.OnNewNode(func(nodeClient *Client) {
+		nodeClient.himport = c.himport
+	})
 
 	c.cmdsInfoCache = newCmdsInfoCache(c.cmdsInfo)
 
@@ -1223,7 +1262,26 @@ func (c *ClusterClient) ReloadState(ctx context.Context) {
 // It is rare to Close a ClusterClient, as the ClusterClient is meant
 // to be long-lived and shared between many goroutines.
 func (c *ClusterClient) Close() error {
-	return c.nodes.Close()
+	// Stop both cached autopipeliners (blocking and async faces) before
+	// closing nodes, so its background flusher goroutines don't outlive the
+	// client. AutoPipeliner.Close is idempotent and nil-safe here.
+	c.autopipelinerMu.Lock()
+	ap, async := c.autopipeliner, c.asyncAutopipeliner
+	c.autopipeliner, c.asyncAutopipeliner = nil, nil
+	c.autopipelinerClosed = true // getters refuse to resurrect on a closed client
+	c.autopipelinerMu.Unlock()
+	var firstErr error
+	for _, p := range []*AutoPipeliner{ap, async} {
+		if p != nil {
+			if err := p.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	if err := c.nodes.Close(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 func (c *ClusterClient) Process(ctx context.Context, cmd Cmder) error {
@@ -1555,6 +1613,155 @@ func (c *ClusterClient) Pipeline() Pipeliner {
 	return &pipe
 }
 
+// clusterAutoPipelineOptions applies the cluster shard-count default: commands
+// are routed to shards by slot (see installAutoPipelineSharding), so unlike a
+// standalone client — which defaults to a single deep queue — a cluster client
+// wants several shards to keep concurrent nodes' batches separate. The caller's
+// config is copied before the default is filled in, never mutated.
+func clusterAutoPipelineOptions(cfg *AutoPipelineOptions) *AutoPipelineOptions {
+	c2 := *cfg
+	if c2.NumShards == 0 {
+		c2.NumShards = numAutoPipelineShards()
+	}
+	// A cluster always routes by slot, so per-key order holds regardless of shard
+	// count; mark it so construction's NumShards ordering check (which targets
+	// round-robin sharding) does not reject the cluster default or an explicit
+	// NumShards on the deferred (async) face.
+	c2.contentSharded = true
+	return &c2
+}
+
+// AutoPipeline returns the blocking autopipeliner for this cluster client: each
+// command call blocks until executed (drop-in shape) while the engine batches
+// concurrent callers into pipelines. Commands keep per-goroutine order; across
+// nodes, ordering is per key (slot routing keeps a key on one shard and node
+// sub-pipelines execute concurrently). Use AutoPipelineWithOptions to override
+// DefaultBlockingAutoPipelineOptions. Cached/shared; first call's config wins.
+// Close it (or the client) to release its goroutines.
+//
+// It returns an error if the supplied config is invalid (e.g. MaxConcurrentBatches>1
+// without Unordered, or a negative size); on error no instance is cached.
+//
+// EXPERIMENTAL: this API is subject to change, use with caution.
+func (c *ClusterClient) AutoPipeline() (*AutoPipeliner, error) {
+	return c.AutoPipelineWithOptions(nil)
+}
+
+// AutoPipelineWithOptions is AutoPipeline with explicit options instead of
+// ClusterOptions.AutoPipelineOptions / the default. Cached/shared; first call wins.
+//
+// EXPERIMENTAL: this API is subject to change, use with caution.
+func (c *ClusterClient) AutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
+	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.autopipeliner, &c.autopipelinerClosed, nil, config,
+		func() *AutoPipelineOptions {
+			if c.opt.AutoPipelineOptions != nil {
+				return c.opt.AutoPipelineOptions
+			}
+			return DefaultBlockingAutoPipelineOptions()
+		},
+		func(cfg *AutoPipelineOptions) (*AutoPipeliner, error) {
+			ap, err := newAutoPipeliner(c, clusterAutoPipelineOptions(cfg), true)
+			if err != nil {
+				return nil, err
+			}
+			c.installAutoPipelineSharding(ap)
+			return ap, nil
+		})
+}
+
+// installAutoPipelineSharding routes commands to shards by cluster slot so each
+// shard's batch lands on a single master node, keeping per-node pipelines deep
+// instead of splitting every batch across all nodes at flush. Cluster slots are
+// contiguous per node, so bucketing by slot range (slot*shards/16384) keeps a
+// node's slots together. Keyless commands hash to slot -1 → bucket 0; multi-node
+// commands are already rejected from pipelines, so only single-node commands
+// reach here.
+func (c *ClusterClient) installAutoPipelineSharding(ap *AutoPipeliner) {
+	// Reject commands whose request policy cannot ride a pipeline (ReqAllNodes/
+	// ReqAllShards/ReqMultiShard) at submit, BEFORE they can join a merged
+	// batch: mapCmdsByNode fails a whole mapping on such a command (user
+	// pipelines are all-or-nothing), and one autopipeline caller must not be
+	// able to poison unrelated callers' batches. Rejecting here also keeps the
+	// lone-command fast path consistent with batched dispatch — the command is
+	// refused regardless of what it happens to coalesce with.
+	ap.setPreflight(func(ctx context.Context, cmd Cmder) error {
+		if c.cmdInfoResolver == nil {
+			return nil
+		}
+		if policy := c.cmdInfoResolver.GetCommandPolicy(ctx, cmd); policy != nil && !policy.CanBeUsedInPipeline() {
+			return fmt.Errorf(
+				"redis: cannot pipeline command %q with request policy ReqAllNodes/ReqAllShards/ReqMultiShard; Note: This behavior is subject to change in the future", cmd.Name(),
+			)
+		}
+		return nil
+	})
+	// Commands whose routing is not slot-derived must not be coalesced: a solo
+	// flush reaches ClusterClient.process and its special handling (FT.CURSOR
+	// READ/DEL are sticky to the node holding the cursor), but inside a batch
+	// mapCmdsByNode routes by slot and can hit the wrong shard — visible only
+	// under concurrent traffic, which is the worst way to find it. Divert them
+	// instead of rejecting: they work fine on their own connection (review
+	// finding by codex on #3942).
+	ap.setMustDivert(func(ctx context.Context, cmd Cmder) bool {
+		if c.cmdInfoResolver == nil {
+			return false
+		}
+		policy := c.cmdInfoResolver.GetCommandPolicy(ctx, cmd)
+		return policy != nil && policy.Request == routing.ReqSpecial
+	})
+
+	const slots = 16384
+	n := ap.numShards()
+	ap.setShardFn(func(cmd Cmder) int {
+		// Compute the exact slot once and cache it on the command; the flush
+		// router (mapCmdsByNode) reuses the cached value, so the slot is resolved
+		// once per command, not twice. Keyless (slot -1) buckets to shard 0.
+		slot := c.cmdSlot(cmd, -1)
+		if slot < 0 {
+			return 0
+		}
+		return slot * n / slots
+	})
+}
+
+// AsyncAutoPipeline returns the deferred autopipeliner: command calls return
+// immediately and the result accessors block. Submit a window then read results
+// for the highest throughput. By default,
+// ClusterOptions.AutoPipelineOptions is used if set, otherwise
+// DefaultAutoPipelineOptions. Ordering across nodes is per key: slot routing
+// keeps a key on one shard, and node sub-pipelines execute concurrently. Use
+// AsyncAutoPipelineWithOptions to override. Cached/shared; first call's config wins.
+//
+// It returns an error if the supplied config is invalid (e.g. MaxConcurrentBatches>1
+// without Unordered, or a negative size); on error no instance is cached.
+//
+// EXPERIMENTAL: this API is subject to change, use with caution.
+func (c *ClusterClient) AsyncAutoPipeline() (*AutoPipeliner, error) {
+	return c.AsyncAutoPipelineWithOptions(nil)
+}
+
+// AsyncAutoPipelineWithOptions is AsyncAutoPipeline with an explicit config
+// instead of ClusterOptions.AutoPipelineOptions / the default. Cached/shared.
+//
+// EXPERIMENTAL: this API is subject to change, use with caution.
+func (c *ClusterClient) AsyncAutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error) {
+	return getOrCreateAutoPipeliner(c.autopipelinerMu, &c.asyncAutopipeliner, &c.autopipelinerClosed, nil, config,
+		func() *AutoPipelineOptions {
+			if c.opt.AutoPipelineOptions != nil {
+				return c.opt.AutoPipelineOptions
+			}
+			return DefaultAutoPipelineOptions()
+		},
+		func(cfg *AutoPipelineOptions) (*AutoPipeliner, error) {
+			ap, err := newAutoPipeliner(c, clusterAutoPipelineOptions(cfg), false)
+			if err != nil {
+				return nil, err
+			}
+			c.installAutoPipelineSharding(ap)
+			return ap, nil
+		})
+}
+
 func (c *ClusterClient) Pipelined(ctx context.Context, fn func(Pipeliner) error) ([]Cmder, error) {
 	return c.Pipeline().Pipelined(ctx, fn)
 }
@@ -1638,9 +1845,18 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 				policy = c.cmdInfoResolver.GetCommandPolicy(ctx, cmd)
 			}
 			if policy != nil && !policy.CanBeUsedInPipeline() {
-				return fmt.Errorf(
+				// All-or-nothing: a user Pipeline() relies on the whole batch
+				// either dispatching or failing before anything executes, so a
+				// non-pipelineable command fails the entire mapping pre-dispatch.
+				// Autopipeline batches never reach here with such a command: the
+				// cluster face rejects them at submit (see the preflight installed
+				// by installAutoPipelineSharding), so one caller's bad command
+				// cannot poison a merged batch.
+				err := fmt.Errorf(
 					"redis: cannot pipeline command %q with request policy ReqAllNodes/ReqAllShards/ReqMultiShard; Note: This behavior is subject to change in the future", cmd.Name(),
 				)
+				setCmdsErr(cmds, err)
+				return err
 			}
 			slot := c.cmdSlot(cmd, -1)
 			var node *clusterNode
@@ -1649,10 +1865,15 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 				if len(state.Masters) == 0 {
 					return errClusterNoNodes
 				}
-				// For read-only keyless commands, pick from all nodes (masters + slaves)
-				allNodes := append(state.Masters, state.Slaves...)
-				idx := c.opt.ShardPicker.Next(len(allNodes))
-				node = allNodes[idx]
+				// For read-only keyless commands, pick from all nodes (masters + slaves).
+				// Index directly instead of building a combined slice, which would
+				// append into the shared snapshot's spare capacity and race.
+				idx := c.opt.ShardPicker.Next(len(state.Masters) + len(state.Slaves))
+				if idx < len(state.Masters) {
+					node = state.Masters[idx]
+				} else {
+					node = state.Slaves[idx-len(state.Masters)]
+				}
 			} else {
 				node, err = c.slotReadOnlyNode(state, slot)
 				if err != nil {
@@ -1670,9 +1891,18 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 			policy = c.cmdInfoResolver.GetCommandPolicy(ctx, cmd)
 		}
 		if policy != nil && !policy.CanBeUsedInPipeline() {
-			return fmt.Errorf(
+			// All-or-nothing: a user Pipeline() relies on the whole batch
+			// either dispatching or failing before anything executes, so a
+			// non-pipelineable command fails the entire mapping pre-dispatch.
+			// Autopipeline batches never reach here with such a command: the
+			// cluster face rejects them at submit (see the preflight installed
+			// by installAutoPipelineSharding), so one caller's bad command
+			// cannot poison a merged batch.
+			err := fmt.Errorf(
 				"redis: cannot pipeline command %q with request policy ReqAllNodes/ReqAllShards/ReqMultiShard; Note: This behavior is subject to change in the future", cmd.Name(),
 			)
+			setCmdsErr(cmds, err)
+			return err
 		}
 		slot := c.cmdSlot(cmd, -1)
 		var node *clusterNode
@@ -1707,31 +1937,76 @@ func (c *ClusterClient) cmdsAreReadOnly(ctx context.Context, cmds []Cmder) bool 
 func (c *ClusterClient) processPipelineNode(
 	ctx context.Context, node *clusterNode, cmds []Cmder, failedCmds *cmdsMap,
 ) {
-	_ = node.Client.withProcessPipelineHook(ctx, cmds, func(ctx context.Context, cmds []Cmder) error {
-		cn, err := node.Client.getConn(ctx)
-		if err != nil {
+	// This call runs on a per-node fan-out goroutine, so register it as an
+	// executor of every deferred-face batch among cmds: a NODE-level hook
+	// (OnNewNode — redisotel's tracing) reading a result before next() must
+	// get the not-yet-executed view from the accessor guards instead of
+	// blocking on a batch only this call chain completes (reproduced as a
+	// permanent wedge with a rediscmd-shaped Err() peek).
+	unregister := registerBatchExecutors(cmds)
+	defer unregister()
+
+	// executed guards against a node-level hook short-circuiting (returning
+	// without calling next): the inner callback then never runs, and without
+	// surfacing the chain's error the cluster pipeline would report success
+	// for commands that were never sent.
+	executed := false
+	err := node.Client.withProcessPipelineHook(ctx, cmds, func(ctx context.Context, cmds []Cmder) error {
+		executed = true
+		// Acquire through the node's dedicated pipeline pool when one is
+		// configured (Pipeline*BufferSize propagate to node clients via
+		// clientOptions); withPipelineConn falls back to the main pool
+		// otherwise, preserving the previous behavior. entered distinguishes
+		// an acquisition failure (fn never ran) from an execution error.
+		entered := false
+		err := node.Client.withPipelineConn(ctx, func(ctx context.Context, cn *pool.Conn) error {
+			entered = true
+			return c.processPipelineNodeConn(ctx, node, cn, cmds, failedCmds)
+		})
+		if err != nil && !entered {
 			if !isContextError(err) {
 				node.MarkAsFailing()
 			}
 			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 			setCmdsErr(cmds, err)
-			return err
 		}
-
-		var processErr error
-		defer func() {
-			node.Client.releaseConn(ctx, cn, processErr)
-		}()
-		processErr = c.processPipelineNodeConn(ctx, node, cn, cmds, failedCmds)
-
-		return processErr
+		return err
 	})
+	if !executed {
+		// A hook returned without calling next. If it supplied an error that is
+		// a deliberate abort: set it and do not remap for retry (a retry would
+		// re-run the same hook). If it returned nil it short-circuited
+		// SUCCESSFULLY, having served the batch itself — the same thing a plain
+		// Pipeline hook may do — so setCmdsErr(nil) leaves the values it set
+		// intact (review finding by codex on #3942).
+		setCmdsErr(cmds, err)
+		return
+	}
+	if err != nil && cmdsFirstErr(cmds) == nil {
+		// Post-next verdict from a node-level hook on an all-clean sub-batch:
+		// the exec fully succeeded, so the error can only be the hook's own —
+		// apply it, mirroring AutoPipeliner.dispatchCmds. On a mixed batch the
+		// exec-recorded outcomes win (hooks conventionally echo next's error,
+		// and stamping the echo would overwrite successful replies). No remap:
+		// retrying would re-run the same hook.
+		setCmdsErr(cmds, err)
+	}
 }
 
 func (c *ClusterClient) processPipelineNodeConn(
 	ctx context.Context, node *clusterNode, cn *pool.Conn, cmds []Cmder, failedCmds *cmdsMap,
 ) error {
+	// HIMPORT bookkeeping: pending discards for this session and PREPAREs
+	// for registered fieldsets the batch references get written ahead of
+	// the batch (see himport.go).
+	injected := node.Client.himportInjectedCmds(ctx, cn, cmds)
+
 	if err := cn.WithWriter(c.context(ctx), c.opt.WriteTimeout, func(wr *proto.Writer) error {
+		for _, ic := range injected {
+			if err := writeCmd(wr, ic); err != nil {
+				return err
+			}
+		}
 		return writeCmds(wr, cmds)
 	}); err != nil {
 		if isBadConn(err, false, node.Client.getAddr()) {
@@ -1745,18 +2020,56 @@ func (c *ClusterClient) processPipelineNodeConn(
 	}
 
 	return cn.WithReader(c.context(ctx), c.opt.ReadTimeout, func(rd *proto.Reader) error {
-		return c.pipelineReadCmds(ctx, node, rd, cmds, failedCmds)
+		if err := node.Client.himportReadInjectedReplies(ctx, cn, rd, injected); err != nil {
+			// Transport error with the batch replies unread: same handling
+			// as a write error — the batch may be retried on a fresh
+			// connection.
+			if isBadConn(err, false, node.Client.getAddr()) {
+				node.MarkAsFailing()
+			}
+			if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
+				_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
+			}
+			setCmdsErr(cmds, err)
+			return err
+		}
+		err := c.pipelineReadCmds(ctx, node, cn, rd, cmds, failedCmds)
+		if err == nil || isRedisError(err) {
+			node.Client.himportAfterBatch(cn, injected, cmds)
+			// SETs of registered fieldsets that lost their session state
+			// re-queue for the next attempt, which re-prepares lazily —
+			// the cluster equivalent of himportRetryFailedSets, bounded by
+			// the pipeline's attempt budget. A non-nil redis error here
+			// means pipelineReadCmds already re-queued the whole batch
+			// (retryable first-command error); adding the SETs again would
+			// duplicate them in the next attempt.
+			if err == nil {
+				c.himportRequeueFailedSets(ctx, cmds, failedCmds)
+			}
+		}
+		return err
 	})
 }
 
 func (c *ClusterClient) pipelineReadCmds(
 	ctx context.Context,
 	node *clusterNode,
+	cn *pool.Conn,
 	rd *proto.Reader,
 	cmds []Cmder,
 	failedCmds *cmdsMap,
 ) error {
 	for i, cmd := range cmds {
+		// Drain any buffered RESP3 push notifications before reading each
+		// reply — otherwise a push frame (e.g. a maintnotifications MOVING
+		// notification) is consumed AS the command's reply and every
+		// subsequent reply in the pipeline shifts by one command. The
+		// standalone pipeline and the cluster TxPipeline read loops already
+		// do this; this loop was the only push-blind reader, and the
+		// autopipeliner routes all cluster traffic through it.
+		if err := node.Client.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
+			internal.Logger.Printf(ctx, "push: error processing pending notifications before reading reply: %v", err)
+		}
 		err := cmd.readReply(rd)
 		cmd.SetErr(err)
 
@@ -1781,7 +2094,8 @@ func (c *ClusterClient) pipelineReadCmds(
 		}
 	}
 
-	if err := cmds[0].Err(); err != nil && shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
+	// rawErr: execution path; never await an async command's batch here.
+	if err := cmds[0].rawErr(); err != nil && shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
 		_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
 		return err
 	}
@@ -1832,18 +2146,108 @@ func (c *ClusterClient) TxPipelined(ctx context.Context, fn func(Pipeliner) erro
 	return c.TxPipeline().Pipelined(ctx, fn)
 }
 
-func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) error {
-	// Only call time.Now() if pipeline operation duration callback is set to avoid overhead
+// A cluster tx pipeline sends MULTI, c1..cN, EXEC — N+2 commands, or N+3 with a
+// leading ASKING — and always receives exactly that many replies, so every
+// redirect/abort path leaves the connection clean.
+//
+// Possible reply sequences:
+//	1. Slot owned here, no migration:
+//	     +OK,  +QUEUED x N,  *N (array of N results)   -> success
+//	2. Slot already migrated away:
+//	     +OK,  -MOVED x N,  -EXECABORT                 -> re-route whole tx
+//	3. Slot in migrating state (still owned here, keys draining out). Per
+//	   cmd, the queue reply is +QUEUED / -ASK / -TRYAGAIN (keys present /
+//	   all gone / some gone); any -ASK or -TRYAGAIN dirties the tx, so
+//	   EXEC is -EXECABORT. Still N+2 replies, like the cases above:
+//	     +OK,  (+QUEUED|-ASK|-TRYAGAIN) x N,  -EXECABORT  -> follow first redirect
+//	4. Narrow race (all +QUEUED, slot moves before EXEC):
+//	     +OK,  +QUEUED x N,  -MOVED <slot> <addr>         -> re-route whole tx
+//	5. Non-cluster command error (arity / ACL / unknown):
+//	     +OK,  +QUEUED..., -ERR...,  -EXECABORT           -> surface, not retryable
+//	6. Narrow race (all +QUEUED, slot still migrating, keys drain before EXEC):
+//	     +OK,  +QUEUED x N,  -ASK / -TRYAGAIN             -> re-route on -ASK, back off on -TRYAGAIN
+//
+// EXEC reply — the reply that decides the outcome:
+//
+//	*N                    success; read N per-command results
+//	-EXECABORT            a queue-stage command failed; follow the first queue
+//	                      redirect (MOVED/ASK/TRYAGAIN), else surface the trigger
+//	-MOVED <slot> <addr>  case 4; re-route whole tx to addr, reload topology
+//	-ASK <slot> <addr>    race: slot entered migrating state; re-route to addr
+//	                      with a top-level ASKING before MULTI
+//	-TRYAGAIN             race: migrating with split keys, or slot being trimmed
+//	                      (CLUSTER_REDIR_TRIMMING on a write); back off and retry
+//	                      the whole tx (same node still owns it)
+//	-CLUSTERDOWN          cluster degraded; back off and retry whole tx
+//
+// ASK retry: the ASKING flag is NOT cleared between commands inside a MULTI
+// so one top-level ASKING before MULTI covers the whole tx and lets the importing
+// slot serve at EXEC. ASKING placed inside the MULTI would be queued and leave
+// the flag unset during queueing, so the keyed commands would still get MOVED.
+//
+// Out of scope: WATCH's null-array EXEC and -CROSSSLOT;
+// cluster TxPipeline is not used with WATCH and cross-slot is rejected client-side.
+
+type txOutcomeKind int
+
+const (
+	txSuccess       txOutcomeKind = iota // transaction executed; per-command results are set
+	txRetryMoved                         // MOVED: reload topology and re-route the whole tx
+	txRetryAsk                           // ASK: re-route to the target with a top-level ASKING
+	txRetryTryAgain                      // TRYAGAIN: back off and re-route the whole tx
+	txRetryConn                          // connection/write/read failure: re-route the whole tx
+	txFatal                              // non-retryable error; surface to the caller
+)
+
+// txOutcome is the result of a single tx attempt. err is the error to report
+// when the redirect/retry loop is exhausted (or the fatal error to surface);
+// addr is the ASK target; execErr is the EXEC reply error used to mark
+// aborted commands; unreadReplies forces the connection to be discarded
+// when the read loop exited before consuming all N+2 replies, leaving bytes
+// on the wire.
+type txOutcome struct {
+	kind          txOutcomeKind
+	err           error
+	addr          string
+	execErr       error
+	unreadReplies bool
+}
+
+// txRedirect records the first queue-stage redirect (MOVED/ASK/TRYAGAIN) seen
+// while reading +QUEUED replies. Redis dirties and aborts the transaction on
+// any such reply, so the EXEC reply will be EXECABORT and the client must
+// follow the recorded redirect with the whole transaction.
+type txRedirect struct {
+	moved    bool
+	ask      bool
+	tryAgain bool
+	addr     string
+	err      error
+}
+
+// errTxDirtyConn forces releaseConn to discard a connection that may still have
+// unread transaction replies on it (an early exit before consuming all N+2).
+var errTxDirtyConn = errors.New("redis: connection has unread transaction replies")
+
+func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) (retErr error) {
 	var operationStart time.Time
 	pipelineOpDurationCallback := otel.GetPipelineOperationDurationCallback()
 	if pipelineOpDurationCallback != nil {
 		operationStart = time.Now()
 	}
 	totalAttempts := 0
+	var lastErr error
+
+	defer func() {
+		if pipelineOpDurationCallback == nil {
+			return
+		}
+		finalErr := cmp.Or(retErr, cmdsFirstErr(cmds), lastErr)
+		pipelineOpDurationCallback(ctx, time.Since(operationStart), "MULTI", len(cmds), totalAttempts, finalErr, nil, 0)
+	}()
 
 	// Trim multi .. exec.
 	cmds = cmds[1 : len(cmds)-1]
-
 	if len(cmds) == 0 {
 		return nil
 	}
@@ -1851,10 +2255,6 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 	state, err := c.state.Get(ctx)
 	if err != nil {
 		setCmdsErr(cmds, err)
-		if pipelineOpDurationCallback != nil {
-			operationDuration := time.Since(operationStart)
-			pipelineOpDurationCallback(ctx, operationDuration, "MULTI", len(cmds), 1, err, nil, 0)
-		}
 		return err
 	}
 
@@ -1866,77 +2266,85 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 	case 1:
 		for sl := range keyedCmdsBySlot {
 			slot = sl
-			break
 		}
 	default:
 		// TxPipeline does not support cross slot transaction.
 		setCmdsErr(cmds, ErrCrossSlot)
-		if pipelineOpDurationCallback != nil {
-			operationDuration := time.Since(operationStart)
-			pipelineOpDurationCallback(ctx, operationDuration, "MULTI", len(cmds), 1, ErrCrossSlot, nil, 0)
-		}
 		return ErrCrossSlot
 	}
 
 	node, err := state.slotMasterNode(slot)
 	if err != nil {
 		setCmdsErr(cmds, err)
-		if pipelineOpDurationCallback != nil {
-			operationDuration := time.Since(operationStart)
-			pipelineOpDurationCallback(ctx, operationDuration, "MULTI", len(cmds), 1, err, nil, 0)
-		}
 		return err
 	}
 
-	var lastErr error
-	cmdsMap := map[*clusterNode][]Cmder{node: cmds}
+	asking := false
+	// MOVED/ASK are routing changes, not transient failures: follow them immediately.
+	redirected := false
 	for attempt := 0; attempt <= c.opt.MaxRedirects; attempt++ {
 		totalAttempts++
-		if attempt > 0 {
+		if attempt > 0 && !redirected {
 			if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
 				setCmdsErr(cmds, err)
-				if pipelineOpDurationCallback != nil {
-					operationDuration := time.Since(operationStart)
-					pipelineOpDurationCallback(ctx, operationDuration, "MULTI", len(cmds), totalAttempts, err, nil, 0)
-				}
 				return err
 			}
 		}
 
-		failedCmds := newCmdsMap()
-		var wg sync.WaitGroup
-
-		for node, cmds := range cmdsMap {
-			wg.Add(1)
-			go func(node *clusterNode, cmds []Cmder) {
-				defer wg.Done()
-				c.processTxPipelineNode(ctx, node, cmds, failedCmds)
-			}(node, cmds)
+		outcome := c.processTxPipelineNode(ctx, node, cmds, asking)
+		lastErr = outcome.err
+		redirected = false
+		switch outcome.kind {
+		case txSuccess:
+			return cmdsFirstErr(cmds)
+		case txRetryMoved:
+			// Route directly to the authoritative addr from the MOVED; the
+			// cached slot state may be stale until LazyReload lands.
+			redirected = true
+			asking = false
+			c.state.LazyReload()
+			if node, err = c.nodes.GetOrCreate(outcome.addr); err != nil {
+				setCmdsErr(cmds, err)
+				return err
+			}
+		case txRetryAsk:
+			redirected = true
+			asking = true
+			if node, err = c.nodes.GetOrCreate(outcome.addr); err != nil {
+				setCmdsErr(cmds, err)
+				return err
+			}
+		case txRetryTryAgain, txRetryConn:
+			// Same node, fresh connection: TRYAGAIN comes from the migrating
+			// source (still the owner), and a conn failure only needs a new
+			// connection. Preserve a prior ASKING flag: if we followed an ASK
+			// to the importing target, the retry must still send ASKING (the
+			// slot is still importing). ASKING is harmless if the migration
+			// has since completed, since the flag is only consulted for
+			// importing slots.
+		case txFatal:
+			// Mark every queued-but-never-executed command with the abort
+			// error; the command that triggered EXECABORT already has its
+			// own error and keeps it, so callers can tell what went wrong.
+			abortErr := cmp.Or(outcome.execErr, outcome.err)
+			for _, cmd := range cmds {
+				if cmd.Err() == nil {
+					cmd.SetErr(abortErr)
+				}
+			}
+			return lastErr
 		}
-
-		wg.Wait()
-		if len(failedCmds.m) == 0 {
-			break
-		}
-		cmdsMap = failedCmds.m
-		lastErr = cmdsFirstErr(cmds)
 	}
 
-	if pipelineOpDurationCallback != nil {
-		operationDuration := time.Since(operationStart)
-		finalErr := cmdsFirstErr(cmds)
-		if finalErr == nil {
-			finalErr = lastErr
-		}
-		pipelineOpDurationCallback(ctx, operationDuration, "MULTI", len(cmds), totalAttempts, finalErr, nil, 0)
+	if lastErr != nil {
+		setCmdsErr(cmds, lastErr)
 	}
-
 	return cmdsFirstErr(cmds)
 }
 
 // slottedKeyedCommands returns a map of slot to commands taking into account
 // only commands that have keys.
-func (c *ClusterClient) slottedKeyedCommands(ctx context.Context, cmds []Cmder) map[int][]Cmder {
+func (c *ClusterClient) slottedKeyedCommands(_ context.Context, cmds []Cmder) map[int][]Cmder {
 	cmdsSlots := map[int][]Cmder{}
 
 	// Peek once outside the loop, one RLock for the whole batch instead of
@@ -1967,151 +2375,255 @@ func (c *ClusterClient) slottedKeyedCommands(ctx context.Context, cmds []Cmder) 
 }
 
 func (c *ClusterClient) processTxPipelineNode(
-	ctx context.Context, node *clusterNode, cmds []Cmder, failedCmds *cmdsMap,
-) {
-	cmds = wrapMultiExec(ctx, cmds)
-	_ = node.Client.withProcessPipelineHook(ctx, cmds, func(ctx context.Context, cmds []Cmder) error {
-		cn, err := node.Client.getConn(ctx)
-		if err != nil {
-			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
-			setCmdsErr(cmds, err)
-			return err
+	ctx context.Context, node *clusterNode, cmds []Cmder, asking bool,
+) *txOutcome {
+	wire := wrapMultiExec(ctx, cmds)
+	if asking {
+		// ASKING must precede MULTI so the flag stays set for the whole tx.
+		wire = append([]Cmder{NewCmd(ctx, "asking")}, wire...)
+	}
+
+	var outcome *txOutcome
+	// executed guards against a node-level hook short-circuiting (returning
+	// without calling next) — same treatment as processPipelineNode.
+	executed := false
+	chainErr := node.Client.withProcessPipelineHook(ctx, wire, func(ctx context.Context, wire []Cmder) error {
+		executed = true
+		// Acquire through the node's dedicated pipeline pool when configured
+		// (same routing as processPipelineNode); withPipelineConn falls back
+		// to the main pool otherwise. The inner fn's return value drives the
+		// connection release exactly like the explicit releaseConn did:
+		// redis errors keep the conn poolable, unread replies poison it.
+		entered := false
+		err := node.Client.withPipelineConn(ctx, func(ctx context.Context, cn *pool.Conn) error {
+			entered = true
+			outcome = c.processTxPipelineNodeConn(ctx, node, cn, wire, cmds, asking)
+			connErr := outcome.err
+			if isRedisError(outcome.err) {
+				connErr = nil
+			}
+			if outcome.unreadReplies {
+				connErr = errTxDirtyConn
+			}
+			return connErr
+		})
+		if !entered && err != nil {
+			// Connection acquisition failed — fn never ran.
+			if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
+				outcome = &txOutcome{kind: txRetryConn, err: err}
+			} else {
+				outcome = &txOutcome{kind: txFatal, err: err}
+			}
 		}
-
-		var processErr error
-		defer func() {
-			node.Client.releaseConn(ctx, cn, processErr)
-		}()
-		processErr = c.processTxPipelineNodeConn(ctx, node, cn, cmds, failedCmds)
-
-		return processErr
+		return err
 	})
+
+	if !executed && chainErr != nil {
+		// A node-level hook aborted with an error: surface its verdict. A hook
+		// that returned nil short-circuited successfully (it served the batch),
+		// which is legal for plain pipelines too, so it is not turned into a
+		// fatal outcome (review finding by codex on #3942).
+		outcome = &txOutcome{kind: txFatal, err: chainErr}
+	}
+	if outcome == nil {
+		outcome = &txOutcome{kind: txFatal, err: fmt.Errorf("redis: tx pipeline produced no outcome")}
+	}
+	return outcome
 }
 
 func (c *ClusterClient) processTxPipelineNodeConn(
-	ctx context.Context, node *clusterNode, cn *pool.Conn, cmds []Cmder, failedCmds *cmdsMap,
-) error {
+	ctx context.Context, node *clusterNode, cn *pool.Conn, wire []Cmder, cmds []Cmder, asking bool,
+) *txOutcome {
+	// HIMPORT bookkeeping: pending discards and PREPAREs for registered
+	// fieldsets the transaction references get written ahead of the wire
+	// batch (before ASKING/MULTI; the session state is visible at EXEC).
+	injected := node.Client.himportInjectedCmds(ctx, cn, cmds)
+
 	if err := cn.WithWriter(c.context(ctx), c.opt.WriteTimeout, func(wr *proto.Writer) error {
-		return writeCmds(wr, cmds)
-	}); err != nil {
-		if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
-			_ = c.mapCmdsByNode(ctx, failedCmds, cmds)
-		}
-		setCmdsErr(cmds, err)
-		return err
-	}
-
-	return cn.WithReader(c.context(ctx), c.opt.ReadTimeout, func(rd *proto.Reader) error {
-		statusCmd := cmds[0].(*StatusCmd)
-		// Trim multi and exec.
-		trimmedCmds := cmds[1 : len(cmds)-1]
-
-		if err := c.txPipelineReadQueued(
-			ctx, node, cn, rd, statusCmd, trimmedCmds, failedCmds,
-		); err != nil {
-			setCmdsErr(cmds, err)
-
-			moved, ask, addr := isMovedError(err)
-			if moved || ask {
-				return c.cmdsMoved(ctx, trimmedCmds, moved, ask, addr, failedCmds)
-			}
-
-			return err
-		}
-
-		return node.Client.pipelineReadCmds(ctx, cn, rd, trimmedCmds)
-	})
-}
-
-func (c *ClusterClient) txPipelineReadQueued(
-	ctx context.Context,
-	node *clusterNode,
-	cn *pool.Conn,
-	rd *proto.Reader,
-	statusCmd *StatusCmd,
-	cmds []Cmder,
-	failedCmds *cmdsMap,
-) error {
-	// Parse queued replies.
-	// To be sure there are no buffered push notifications, we process them before reading the reply
-	if err := node.Client.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
-		// Log the error but don't fail the command execution
-		// Push notification processing errors shouldn't break normal Redis operations
-		internal.Logger.Printf(ctx, "push: error processing pending notifications before reading reply: %v", err)
-	}
-	if err := statusCmd.readReply(rd); err != nil {
-		return err
-	}
-
-	for _, cmd := range cmds {
-		// To be sure there are no buffered push notifications, we process them before reading the reply
-		if err := node.Client.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
-			// Log the error but don't fail the command execution
-			// Push notification processing errors shouldn't break normal Redis operations
-			internal.Logger.Printf(ctx, "push: error processing pending notifications before reading reply: %v", err)
-		}
-		err := statusCmd.readReply(rd)
-		if err != nil {
-			if c.checkMovedErr(ctx, cmd, err, failedCmds) {
-				// will be processed later
-				continue
-			}
-			cmd.SetErr(err)
-			if !isRedisError(err) {
+		for _, ic := range injected {
+			if err := writeCmd(wr, ic); err != nil {
 				return err
 			}
 		}
+		return writeCmds(wr, wire)
+	}); err != nil {
+		// Write failure: re-route the whole tx on a fresh connection.
+		if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
+			return &txOutcome{kind: txRetryConn, err: err}
+		}
+		return &txOutcome{kind: txFatal, err: err}
 	}
 
-	// To be sure there are no buffered push notifications, we process them before reading the reply
-	if err := node.Client.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
-		// Log the error but don't fail the command execution
-		// Push notification processing errors shouldn't break normal Redis operations
-		internal.Logger.Printf(ctx, "push: error processing pending notifications before reading reply: %v", err)
+	var outcome *txOutcome
+	readErr := cn.WithReader(c.context(ctx), c.opt.ReadTimeout, func(rd *proto.Reader) error {
+		if err := node.Client.himportReadInjectedReplies(ctx, cn, rd, injected); err != nil {
+			// Transport error with the tx replies unread; the batch was
+			// written and may have committed — fatal, discard the conn.
+			outcome = c.txReadFatal(err)
+			return nil
+		}
+		outcome = c.readTxPipelineReplies(ctx, node, cn, rd, cmds, asking)
+		if outcome != nil && outcome.kind == txSuccess {
+			node.Client.himportAfterBatch(cn, injected, cmds)
+		}
+		return nil
+	})
+
+	if readErr != nil {
+		// Reader-level failure (deadline setup, nil conn) around the read loop.
+		// The batch was already written, so the server may have committed;
+		// surface the error as fatal and discard the suspect connection rather
+		// than re-executing the transaction.
+		return c.txReadFatal(readErr)
 	}
-	// Parse number of replies.
+	return outcome
+}
+
+// readTxPipelineReplies reads the replies of one MULTI..EXEC unit and
+// classifies the outcome. The reply count always matches the number of sent
+// commands, so success/redirect paths leave the connection clean; only an early
+// MULTI read failure can leave unread replies.
+func (c *ClusterClient) readTxPipelineReplies(
+	ctx context.Context, node *clusterNode, cn *pool.Conn, rd *proto.Reader, cmds []Cmder, asking bool,
+) *txOutcome {
+	scratch := NewStatusCmd(ctx)
+
+	readStatus := func() error {
+		c.txProcessPush(ctx, node, cn, rd)
+		return scratch.readReply(rd)
+	}
+
+	// Optional top-level ASKING reply (+OK, or a retryable error such as -LOADING).
+	if asking {
+		if err := readStatus(); err != nil {
+			return c.txPreQueueErrorOutcome(err, cmds)
+		}
+	}
+
+	// MULTI reply (+OK, or an error such as -LOADING during failover).
+	if err := readStatus(); err != nil {
+		return c.txPreQueueErrorOutcome(err, cmds)
+	}
+
+	// Queue replies: +QUEUED, or a redirect / command error that dirties the tx.
+	var firstRedirect *txRedirect
+	var firstFatal error
+	for _, cmd := range cmds {
+		err := readStatus()
+		if err == nil {
+			continue // +QUEUED
+		}
+		if !isRedisError(err) {
+			return c.txReadFatal(err) // IO error
+		}
+		if moved, ask, addr := isMovedError(err); moved || ask {
+			if firstRedirect == nil {
+				firstRedirect = &txRedirect{moved: moved, ask: ask, addr: addr, err: err}
+			}
+			continue
+		}
+		if proto.IsTryAgainError(err) {
+			if firstRedirect == nil {
+				firstRedirect = &txRedirect{tryAgain: true, err: err}
+			}
+			continue
+		}
+		// Non-redirect command error (e.g. wrong arity) dirties the tx.
+		cmd.SetErr(err)
+		if firstFatal == nil {
+			firstFatal = err
+		}
+	}
+
+	// EXEC reply. ReadLine parses error lines into typed errors, so a non-nil
+	// err means EXEC returned an error rather than the result array.
+	c.txProcessPush(ctx, node, cn, rd)
 	line, err := rd.ReadLine()
 	if err != nil {
-		if err == Nil {
-			err = TxFailedErr
+		if !isRedisError(err) {
+			return c.txReadFatal(err) // IO error
 		}
-		return err
+		return c.classifyExecError(err, firstRedirect, firstFatal)
 	}
 
 	if line[0] != proto.RespArray {
-		return fmt.Errorf("redis: expected '*', but got line %q", line)
+		err := fmt.Errorf("redis: unexpected EXEC reply %q", line)
+		setCmdsErr(cmds, err)
+		// A non-array aggregate reply may carry an unread payload.
+		return &txOutcome{kind: txFatal, err: err, unreadReplies: true}
 	}
 
-	return nil
+	// Success: read the N command results.
+	if err := node.Client.pipelineReadCmds(ctx, cn, rd, cmds); err != nil && !isRedisError(err) {
+		return c.txReadFatal(err) // IO error mid-results
+	}
+	return &txOutcome{kind: txSuccess}
 }
 
-func (c *ClusterClient) cmdsMoved(
-	ctx context.Context, cmds []Cmder,
-	moved, ask bool,
-	addr string,
-	failedCmds *cmdsMap,
-) error {
-	node, err := c.nodes.GetOrCreate(addr)
-	if err != nil {
-		return err
+func (c *ClusterClient) txProcessPush(ctx context.Context, node *clusterNode, cn *pool.Conn, rd *proto.Reader) {
+	if err := node.Client.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
+		internal.Logger.Printf(ctx, "push: error processing pending notifications before reading reply: %v", err)
 	}
+}
 
-	if moved {
-		c.state.LazyReload()
-		for _, cmd := range cmds {
-			failedCmds.Add(node, cmd)
+// txReadFatal classifies a read-phase IO error. The MULTI..EXEC batch was
+// already written, so the server may have committed the transaction; retrying
+// would re-execute it, double-applying non-idempotent commands (INCR/APPEND,
+// which are not NoRetry). Surface the error as fatal and discard the
+// connection, since replies may still be unread on the wire.
+func (c *ClusterClient) txReadFatal(err error) *txOutcome {
+	return &txOutcome{kind: txFatal, err: err, unreadReplies: true}
+}
+
+// txPreQueueErrorOutcome classifies a setup-phase reply error: the top-level
+// ASKING reply or the MULTI reply. The transaction body never executes (EXEC
+// returns -EXECABORT), so retryable errors such as -LOADING are safe to retry
+// on a fresh connection. A failed setup reply still leaves the remaining
+// replies on the wire -- the server replies to each following command and to
+// EXEC regardless -- so the connection is always discarded.
+func (c *ClusterClient) txPreQueueErrorOutcome(err error, cmds []Cmder) *txOutcome {
+	if !isRedisError(err) {
+		return c.txReadFatal(err)
+	}
+	if shouldRetry(err, true) && !cmdsContainNoRetry(cmds) {
+		return &txOutcome{kind: txRetryConn, err: err, unreadReplies: true}
+	}
+	return &txOutcome{kind: txFatal, err: err, unreadReplies: true}
+}
+
+// classifyExecError turns an EXEC reply error into a retry/fatal outcome.
+func (c *ClusterClient) classifyExecError(execErr error, firstRedirect *txRedirect, firstFatal error) *txOutcome {
+	if moved, ask, addr := isMovedError(execErr); moved || ask {
+		// Narrow race: the slot moved after every command was queued.
+		if ask {
+			return &txOutcome{kind: txRetryAsk, err: execErr, addr: addr}
 		}
-		return nil
+		return &txOutcome{kind: txRetryMoved, err: execErr, addr: addr}
 	}
-
-	if ask {
-		for _, cmd := range cmds {
-			failedCmds.Add(node, NewCmd(ctx, "asking"), cmd)
+	if proto.IsTryAgainError(execErr) {
+		return &txOutcome{kind: txRetryTryAgain, err: execErr}
+	}
+	if proto.IsClusterDownError(execErr) {
+		// Cluster degraded: back off and retry. Replies were fully consumed.
+		return &txOutcome{kind: txRetryConn, err: execErr}
+	}
+	if proto.IsExecAbortError(execErr) {
+		if firstFatal != nil {
+			return &txOutcome{kind: txFatal, err: firstFatal, execErr: execErr}
 		}
-		return nil
+		if firstRedirect != nil {
+			switch {
+			case firstRedirect.moved:
+				return &txOutcome{kind: txRetryMoved, err: firstRedirect.err, addr: firstRedirect.addr}
+			case firstRedirect.ask:
+				return &txOutcome{kind: txRetryAsk, err: firstRedirect.err, addr: firstRedirect.addr}
+			case firstRedirect.tryAgain:
+				return &txOutcome{kind: txRetryTryAgain, err: firstRedirect.err}
+			}
+		}
+		return &txOutcome{kind: txFatal, err: execErr, execErr: execErr}
 	}
-
-	return nil
+	return &txOutcome{kind: txFatal, err: execErr}
 }
 
 func (c *ClusterClient) Watch(ctx context.Context, fn func(*Tx) error, keys ...string) error {
@@ -2359,8 +2871,22 @@ func (c *ClusterClient) cmdInfoPeek(name string) *CommandInfo {
 }
 
 func (c *ClusterClient) cmdSlot(cmd Cmder, prefferedSlot int) int {
+	// Serve/populate the per-command slot cache only on the natural-slot path
+	// (prefferedSlot == -1). A forced prefferedSlot (retry re-routing) must not be
+	// cached or served from cache. The cache lets the autopipeline shard router
+	// and the pipeline-flush router (mapCmdsByNode) share one slot computation
+	// instead of each recomputing it.
+	if prefferedSlot == -1 {
+		if slot, ok := cmd.cachedSlot(); ok {
+			return slot
+		}
+	}
 	info := c.cmdInfoPeek(cmd.Name())
-	return c.cmdSlotWithPos(cmd, cmdFirstKeyPosWithInfo(cmd, info), prefferedSlot)
+	slot := c.cmdSlotWithPos(cmd, cmdFirstKeyPosWithInfo(cmd, info), prefferedSlot)
+	if prefferedSlot == -1 && slot >= 0 {
+		cmd.setCachedSlot(slot)
+	}
+	return slot
 }
 
 // cmdSlotWithPos computes the cluster slot for cmd given a pre-resolved first key
@@ -2520,10 +3046,8 @@ func (c *ClusterClient) NewDynamicResolver() *commandInfoResolver {
 }
 
 func appendIfNotExist[T comparable](vals []T, newVal T) []T {
-	for _, v := range vals {
-		if v == newVal {
-			return vals
-		}
+	if slices.Contains(vals, newVal) {
+		return vals
 	}
 	return append(vals, newVal)
 }
