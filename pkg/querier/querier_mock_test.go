@@ -122,6 +122,15 @@ func (c *querierClientMock) GetDetectedLabels(ctx context.Context, in *logproto.
 	return res.(*logproto.LabelToValuesResponse), args.Error(1)
 }
 
+func (c *querierClientMock) GetStats(ctx context.Context, in *logproto.IndexStatsRequest, opts ...grpc.CallOption) (*logproto.IndexStatsResponse, error) {
+	args := c.Called(ctx, in, opts)
+	res := args.Get(0)
+	if res == nil {
+		return (*logproto.IndexStatsResponse)(nil), args.Error(1)
+	}
+	return res.(*logproto.IndexStatsResponse), args.Error(1)
+}
+
 func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)
@@ -343,8 +352,13 @@ func (s *storeMock) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ..
 	panic("don't call me please")
 }
 
-func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
-	return nil, nil
+func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	args := s.Called(ctx, userID, from, through, matchers)
+	res := args.Get(0)
+	if res == nil {
+		return (*stats.Stats)(nil), args.Error(1)
+	}
+	return res.(*stats.Stats), args.Error(1)
 }
 
 func (s *storeMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {

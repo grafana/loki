@@ -547,13 +547,52 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	return q.store.Stats(
-		ctx,
-		userID,
-		model.TimeFromUnixNano(start.UnixNano()),
-		model.TimeFromUnixNano(end.UnixNano()),
-		matchers...,
-	)
+	// Data not yet shipped to object storage is only visible to the ingesters,
+	// so the store stats alone underestimate queries over recent data — badly
+	// enough that fresh-window queries resolve a shard factor of 0 and never
+	// shard. When the intervals overlap, chunks that were flushed but not yet
+	// evicted from the ingesters may be counted twice; stats are planning
+	// estimates, so overcounting is preferable to reporting 0.
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(start, end)
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	var ingesterStats *stats.Stats
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		g.Go(func() error {
+			var err error
+			ingesterStats, err = q.ingesterQuerier.Stats(
+				ctx,
+				userID,
+				model.TimeFromUnixNano(ingesterQueryInterval.start.UnixNano()),
+				model.TimeFromUnixNano(ingesterQueryInterval.end.UnixNano()),
+				matchers...,
+			)
+			return err
+		})
+	}
+
+	var storeStats *stats.Stats
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		g.Go(func() error {
+			var err error
+			storeStats, err = q.store.Stats(
+				ctx,
+				userID,
+				model.TimeFromUnixNano(storeQueryInterval.start.UnixNano()),
+				model.TimeFromUnixNano(storeQueryInterval.end.UnixNano()),
+				matchers...,
+			)
+			return err
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	merged := stats.MergeStats(ingesterStats, storeStats)
+	return &merged, nil
 }
 
 func (q *SingleTenantQuerier) IndexShards(
