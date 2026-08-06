@@ -1,0 +1,48 @@
+---
+# Happy path: CA reference points at a real ConfigMap/key that exists in the cluster.
+# Reuses the same ConfigMap the gateway TLS trust bundle already uses (created by
+# quickstart.sh's `certificates` step).
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-passthrough-happy
+spec:
+  size: 1x.demo
+  storage:
+    schemas:
+    - version: v13
+      effectiveDate: 2023-10-15
+    secret:
+      name: test
+      type: s3
+  storageClassName: standard
+  tenants:
+    mode: passthrough
+    passthrough:
+      ca:
+        configMapName: lokistack-dev-gateway-ca-bundle
+        key: service-ca.crt
+---
+# Error path: CA reference points at a ConfigMap that does not exist. This should
+# produce a Degraded condition from validatePassthroughCA -> validateValueRef ->
+# validateConfigRef (the exact path we added/tested).
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: lokistack-passthrough-bad-ca
+spec:
+  size: 1x.demo
+  storage:
+    schemas:
+    - version: v13
+      effectiveDate: 2023-10-15
+    secret:
+      name: test
+      type: s3
+  storageClassName: standard
+  tenants:
+    mode: passthrough
+    passthrough:
+      ca:
+        configMapName: does-not-exist-ca-bundle
+        key: service-ca.crt
