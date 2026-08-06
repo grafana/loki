@@ -524,6 +524,18 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 
 		case syntax.OpTypeAvg:
 			group.groupCount++
+			// The incremental mean below evaluates Inf + (s.F - Inf), which is
+			// NaN once the running mean is infinite. That makes the result
+			// depend on sample order. Guard the two cases where the mean must
+			// keep the infinity it already holds.
+			if math.IsInf(group.mean, 0) {
+				if math.IsInf(s.F, 0) && (group.mean > 0) == (s.F > 0) {
+					break // Same-sign infinity leaves the mean unchanged.
+				}
+				if !math.IsInf(s.F, 0) && !math.IsNaN(s.F) {
+					break // A finite sample cannot change an infinite mean.
+				}
+			}
 			group.mean += (s.F - group.mean) / float64(group.groupCount)
 
 		case syntax.OpTypeMax:
