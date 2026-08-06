@@ -30,47 +30,85 @@ func allReaderConstructors() []readerConstructor {
 	}
 }
 
-// writeCrossCheckFixture builds a small but non-trivial index used by
-// the cross-check tests: multiple label names, multiple values per
-// name, a couple of chunks per series.
-func writeCrossCheckFixture(t *testing.T, format int) string {
+type seriesFixture struct {
+	ls     labels.Labels
+	chunks []ChunkMeta
+}
+
+// writeIndexFixture writes series into a new index file and returns its path.
+//
+// It derives the symbol table from the series' labels, so no fixture has to
+// keep a symbol list in sync by hand, and it reorders series by fingerprint,
+// which is the order AddSeries requires. Refs are assigned in that order,
+// starting at 1.
+func writeIndexFixture(t *testing.T, format int, series []seriesFixture) string {
 	t.Helper()
-	dir := t.TempDir()
-	fileName := filepath.Join(dir, IndexFilename)
+	fileName := filepath.Join(t.TempDir(), IndexFilename)
 
 	creator, err := NewWriter(context.Background(), format, fileName)
 	require.NoError(t, err)
 
-	symbols := []string{"1", "2", "3", "a", "b", "c", "svcA", "svcB"}
+	symbolSet := map[string]struct{}{}
+	for _, s := range series {
+		s.ls.Range(func(l labels.Label) {
+			symbolSet[l.Name] = struct{}{}
+			symbolSet[l.Value] = struct{}{}
+		})
+	}
+	symbols := make([]string, 0, len(symbolSet))
+	for s := range symbolSet {
+		symbols = append(symbols, s)
+	}
+	sort.Strings(symbols)
 	for _, s := range symbols {
 		require.NoError(t, creator.AddSymbol(s))
 	}
 
-	type entry struct {
-		ls     labels.Labels
-		chunks []ChunkMeta
-	}
-	entries := []entry{
-		{ls: labels.FromStrings("a", "1", "b", "1", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}}},
-		{ls: labels.FromStrings("a", "1", "b", "2", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 2, MinTime: 10, MaxTime: 20, KB: 1, Entries: 1}}},
-		{ls: labels.FromStrings("a", "2", "b", "3", "c", "svcB"), chunks: []ChunkMeta{{Checksum: 3, MinTime: 20, MaxTime: 30, KB: 1, Entries: 1}}},
-	}
 	// AddSeries requires ascending fingerprint order.
-	sort.Slice(entries, func(i, j int) bool {
-		return labels.StableHash(entries[i].ls) < labels.StableHash(entries[j].ls)
+	sort.Slice(series, func(i, j int) bool {
+		return labels.StableHash(series[i].ls) < labels.StableHash(series[j].ls)
 	})
-	for i, e := range entries {
+	for i, s := range series {
 		require.NoError(t, creator.AddSeries(
 			storage.SeriesRef(i+1),
-			e.ls,
-			model.Fingerprint(labels.StableHash(e.ls)),
-			e.chunks...,
+			s.ls,
+			model.Fingerprint(labels.StableHash(s.ls)),
+			s.chunks...,
 		))
 	}
 
 	_, err = creator.Close(false)
 	require.NoError(t, err)
 	return fileName
+}
+
+// openBothReaders opens path with both reader implementations, registering
+// cleanups that close them. It returns the concrete reader types because
+// several tests compare their internals.
+func openBothReaders(t *testing.T, path string) (*ByteSliceReader, *StreamReader) {
+	t.Helper()
+
+	mmap, err := NewMmapFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, mmap.Close()) })
+
+	stream, err := NewStreamFileReader(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, stream.Close()) })
+
+	return mmap, stream
+}
+
+// writeCrossCheckFixture builds a small but non-trivial index used by
+// the cross-check tests: multiple label names, multiple values per
+// name, a couple of chunks per series.
+func writeCrossCheckFixture(t *testing.T, format int) string {
+	t.Helper()
+	return writeIndexFixture(t, format, []seriesFixture{
+		{ls: labels.FromStrings("a", "1", "b", "1", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}}},
+		{ls: labels.FromStrings("a", "1", "b", "2", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 2, MinTime: 10, MaxTime: 20, KB: 1, Entries: 1}}},
+		{ls: labels.FromStrings("a", "2", "b", "3", "c", "svcB"), chunks: []ChunkMeta{{Checksum: 3, MinTime: 20, MaxTime: 30, KB: 1, Entries: 1}}},
+	})
 }
 
 // chunkSpan is the millisecond width of every chunk written by
@@ -88,26 +126,15 @@ const chunkSpan = 100
 // It returns the file name and the exclusive end of the time range covered.
 func writeManyChunksFixture(t *testing.T, format int) (string, int64) {
 	t.Helper()
-	dir := t.TempDir()
-	fileName := filepath.Join(dir, IndexFilename)
-
-	creator, err := NewWriter(context.Background(), format, fileName)
-	require.NoError(t, err)
 
 	// Straddle the linear-scan/marker-lookup boundary (64) and the page size
 	// (16) from both sides, and include a series long enough to span many
 	// pages.
 	chunkCounts := []int{1, 2, 15, 16, 17, 63, 64, 65, 200}
 
-	type entry struct {
-		ls     labels.Labels
-		chunks []ChunkMeta
-	}
-
 	var (
-		symbolSet = map[string]struct{}{}
-		entries   = make([]entry, 0, len(chunkCounts))
-		through   int64
+		series  = make([]seriesFixture, 0, len(chunkCounts))
+		through int64
 	)
 	for i, chunkCount := range chunkCounts {
 		ls := labels.FromStrings(
@@ -117,10 +144,6 @@ func writeManyChunksFixture(t *testing.T, format int) (string, int64) {
 			"pod", fmt.Sprintf("pod%03d", (i*7)%len(chunkCounts)),
 			"tenant", "loki",
 		)
-		ls.Range(func(l labels.Label) {
-			symbolSet[l.Name] = struct{}{}
-			symbolSet[l.Value] = struct{}{}
-		})
 
 		chunks := make([]ChunkMeta, 0, chunkCount)
 		for c := range chunkCount {
@@ -143,34 +166,10 @@ func writeManyChunksFixture(t *testing.T, format int) (string, int64) {
 				through = maxTime + 1
 			}
 		}
-		entries = append(entries, entry{ls: ls, chunks: chunks})
+		series = append(series, seriesFixture{ls: ls, chunks: chunks})
 	}
 
-	symbols := make([]string, 0, len(symbolSet))
-	for s := range symbolSet {
-		symbols = append(symbols, s)
-	}
-	sort.Strings(symbols)
-	for _, s := range symbols {
-		require.NoError(t, creator.AddSymbol(s))
-	}
-
-	// AddSeries requires ascending fingerprint order.
-	sort.Slice(entries, func(i, j int) bool {
-		return labels.StableHash(entries[i].ls) < labels.StableHash(entries[j].ls)
-	})
-	for i, e := range entries {
-		require.NoError(t, creator.AddSeries(
-			storage.SeriesRef(i+1),
-			e.ls,
-			model.Fingerprint(labels.StableHash(e.ls)),
-			e.chunks...,
-		))
-	}
-
-	_, err = creator.Close(false)
-	require.NoError(t, err)
-	return fileName, through
+	return writeIndexFixture(t, format, series), through
 }
 
 // TestReaders_CrossCheck opens the same fixture with every Reader
@@ -181,15 +180,7 @@ func writeManyChunksFixture(t *testing.T, format int) (string, int64) {
 func TestReaders_CrossCheck(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			fn := writeCrossCheckFixture(t, format)
-
-			mmap, err := NewMmapFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
-
-			stream, err := NewStreamFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+			mmap, stream := openBothReaders(t, writeCrossCheckFixture(t, format))
 
 			require.Equal(t, mmap.Version(), stream.Version())
 			require.Equal(t, mmap.Checksum(), stream.Checksum())
@@ -215,14 +206,7 @@ func TestStreamReader_SeriesMatchesMmap(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
 			path, through := writeManyChunksFixture(t, format)
-
-			mmap, err := NewMmapFileReader(path)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
-
-			stream, err := NewStreamFileReader(path)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+			mmap, stream := openBothReaders(t, path)
 
 			refs := allSeriesRefs(t, mmap)
 			require.NotEmpty(t, refs)
@@ -549,8 +533,8 @@ func requirePostingsSeriesEqual(t *testing.T, mmap, stream Reader) {
 		labelValues, err := mmap.LabelValues(labelName)
 		require.NoError(t, err)
 		for _, labelValue := range labelValues {
-			mmapSeriesRefs := getPostings(t, mmap, labelName, labelValue)
-			streamSeriesRefs := getPostings(t, stream, labelName, labelValue)
+			mmapSeriesRefs := mustPostingsAndDrain(t, mmap, nil, labelName, labelValue)
+			streamSeriesRefs := mustPostingsAndDrain(t, stream, nil, labelName, labelValue)
 			require.Equal(t, mmapSeriesRefs, streamSeriesRefs)
 
 			for _, seriesRef := range mmapSeriesRefs {
@@ -558,18 +542,6 @@ func requirePostingsSeriesEqual(t *testing.T, mmap, stream Reader) {
 			}
 		}
 	}
-}
-
-func getPostings(t *testing.T, reader Reader, labelName, labelValue string) []storage.SeriesRef {
-	t.Helper()
-	p, err := reader.Postings(labelName, nil, labelValue)
-	require.NoError(t, err)
-	var refs []storage.SeriesRef
-	for p.Next() {
-		refs = append(refs, p.At())
-	}
-	require.NoError(t, p.Err())
-	return refs
 }
 
 func requireSeriesEqual(t *testing.T, mmap, stream Reader, seriesRef storage.SeriesRef, labelName string) {
