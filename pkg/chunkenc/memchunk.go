@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -1418,10 +1417,13 @@ func (hb *headBlock) SampleIterator(
 					series[lblStr] = s
 				}
 
+				// Several samples can come from one line. They share the timestamp and the
+				// stream hash, so the line alone does not tell them apart. Mix in the label
+				// string, as the other head block and the compressed blocks already do.
 				s.Samples = append(s.Samples, logproto.Sample{
 					Timestamp: e.t,
 					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+					Hash:      util.UniqueSampleHash(lblStr, unsafeGetBytes(e.s)),
 				})
 			}
 

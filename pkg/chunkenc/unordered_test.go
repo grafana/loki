@@ -358,6 +358,81 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 	}
 }
 
+// TestHeadBlockSampleHashesMatchAcrossFormats pins the sample hash to the same value in every
+// head block format.
+//
+// Replicas cut blocks at independent points, so at any moment one replica can serve a line from
+// its head block while another serves the same line from a compressed block. The merge iterator
+// recognises the duplicate only if both sides hashed the sample the same way. A divergence makes
+// it count the sample twice.
+//
+// The query is a variants() one because that is the case the hash has to disambiguate: a single
+// extractor emits one sample per variant, and all of them share a timestamp and a stream hash.
+func TestHeadBlockSampleHashesMatchAcrossFormats(t *testing.T) {
+	streamLabels := labels.FromStrings("app", "foo")
+
+	type sampleKey struct {
+		labels    string
+		timestamp int64
+	}
+
+	collect := func(t *testing.T, hb HeadBlock) map[sampleKey]uint64 {
+		t.Helper()
+
+		extractors, err := getMultiVariantExtractors(multiVariantQuery, streamLabels)
+		require.NoError(t, err)
+		require.Len(t, extractors, 1, "a variants() query consolidates into a single extractor")
+
+		it := hb.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
+		defer it.Close()
+
+		got := map[sampleKey]uint64{}
+		for it.Next() {
+			s := it.At()
+			got[sampleKey{labels: it.Labels(), timestamp: s.Timestamp}] = s.Hash
+		}
+		require.NoError(t, it.Err())
+		require.NotEmpty(t, got)
+
+		return got
+	}
+
+	blocks := map[HeadBlockFmt]HeadBlock{
+		OrderedHeadBlockFmt:                         &headBlock{},
+		UnorderedHeadBlockFmt:                       newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()),
+		UnorderedWithStructuredMetadataHeadBlockFmt: newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
+	}
+
+	for i := 0; i < 10; i++ {
+		for _, hb := range blocks {
+			dup, err := hb.Append(int64(i), fmt.Sprintf("line %d", i), labels.EmptyLabels())
+			require.False(t, dup)
+			require.NoError(t, err)
+		}
+	}
+
+	want := collect(t, blocks[UnorderedWithStructuredMetadataHeadBlockFmt])
+
+	// Every variant of a line must get its own hash, otherwise the merge iterator drops all but
+	// one of them as duplicates.
+	perTimestamp := map[int64]map[uint64]struct{}{}
+	for key, h := range want {
+		if perTimestamp[key.timestamp] == nil {
+			perTimestamp[key.timestamp] = map[uint64]struct{}{}
+		}
+		perTimestamp[key.timestamp][h] = struct{}{}
+	}
+	for ts, hashes := range perTimestamp {
+		require.Len(t, hashes, 2, "the two variants of the line at ts %d must hash differently", ts)
+	}
+
+	for format, hb := range blocks {
+		t.Run(format.String(), func(t *testing.T) {
+			require.Equal(t, want, collect(t, hb))
+		})
+	}
+}
+
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
