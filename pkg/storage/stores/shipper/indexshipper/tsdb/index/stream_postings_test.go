@@ -1,13 +1,9 @@
 package index
 
 import (
-	"context"
 	"fmt"
-	"path/filepath"
-	"sort"
 	"testing"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
@@ -45,15 +41,7 @@ func mustPostingsAndDrain(t *testing.T, r Reader, fpFilter FingerprintFilter, na
 func TestStreamPostings_MatchesMmap(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			fn := writeManySymbolsFixture(t, format)
-
-			mmap, err := NewMmapFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
-
-			stream, err := NewStreamFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+			mmap, stream := openBothReaders(t, writeManySymbolsFixture(t, format))
 
 			// LabelValues returns the values in ascending order, which is the
 			// order Postings requires. The fixture uses a single "id" label.
@@ -119,56 +107,25 @@ func TestStreamPostings_MatchesMmap(t *testing.T) {
 // several read buffers and exercise the streaming Seek's binary search.
 func writeSharedLabelFixture(t *testing.T, format int) string {
 	t.Helper()
-	dir := t.TempDir()
-	fileName := filepath.Join(dir, IndexFilename)
-
-	creator, err := NewWriter(context.Background(), format, fileName)
-	require.NoError(t, err)
 
 	const numSeries = 4000
 
-	type entry struct {
-		ls labels.Labels
-	}
-	symbolSet := map[string]struct{}{"id": {}, "shared": {}, "all": {}}
-	entries := make([]entry, 0, numSeries)
-	for j := range numSeries {
-		id := fmt.Sprintf("v%05d", j)
-		symbolSet[id] = struct{}{}
+	series := make([]seriesFixture, 0, numSeries)
+	for i := range numSeries {
+		id := fmt.Sprintf("v%05d", i)
+		ls := labels.FromStrings("id", id)
 		// Attach "shared"="all" to ~2/3 of the series so its postings list is
 		// large but leaves gaps in the ref sequence.
-		if j%3 == 0 {
-			entries = append(entries, entry{ls: labels.FromStrings("id", id)})
-		} else {
-			entries = append(entries, entry{ls: labels.FromStrings("id", id, "shared", "all")})
+		if i%3 != 0 {
+			ls = labels.FromStrings("id", id, "shared", "all")
 		}
+		series = append(series, seriesFixture{
+			ls:     ls,
+			chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}},
+		})
 	}
 
-	symbols := make([]string, 0, len(symbolSet))
-	for s := range symbolSet {
-		symbols = append(symbols, s)
-	}
-	sort.Strings(symbols)
-	for _, s := range symbols {
-		require.NoError(t, creator.AddSymbol(s))
-	}
-
-	// AddSeries requires ascending fingerprint order.
-	sort.Slice(entries, func(i, j int) bool {
-		return labels.StableHash(entries[i].ls) < labels.StableHash(entries[j].ls)
-	})
-	for i, e := range entries {
-		require.NoError(t, creator.AddSeries(
-			storage.SeriesRef(i+1),
-			e.ls,
-			model.Fingerprint(labels.StableHash(e.ls)),
-			ChunkMeta{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1},
-		))
-	}
-
-	_, err = creator.Close(false)
-	require.NoError(t, err)
-	return fileName
+	return writeIndexFixture(t, format, series)
 }
 
 // TestStreamingPostings_SeekMatchesMmap cross-checks the streaming postings
@@ -177,15 +134,7 @@ func writeSharedLabelFixture(t *testing.T, format int) string {
 func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			fn := writeSharedLabelFixture(t, format)
-
-			mmap, err := NewMmapFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
-
-			stream, err := NewStreamFileReader(fn)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+			mmap, stream := openBothReaders(t, writeSharedLabelFixture(t, format))
 
 			// Ground-truth ordered ref list for the shared postings.
 			allRefs := mustPostingsAndDrain(t, mmap, nil, "shared", "all")
@@ -270,15 +219,7 @@ func TestStreamingPostings_SeekMatchesMmap(t *testing.T) {
 func TestStreamPostings_ShardedMatchesMmap(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
-			path := writeSharedLabelFixture(t, format)
-
-			mmap, err := NewMmapFileReader(path)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, mmap.Close()) })
-
-			stream, err := NewStreamFileReader(path)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, stream.Close()) })
+			mmap, stream := openBothReaders(t, writeSharedLabelFixture(t, format))
 
 			// Should both have the same fingerprintOffsets
 			require.NotEmpty(t, mmap.fingerprintOffsets)
