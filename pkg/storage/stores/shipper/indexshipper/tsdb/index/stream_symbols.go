@@ -22,11 +22,16 @@ type streamSymbols struct {
 	offsets []int
 	// size is the total number of symbols in the section.
 	size int
+	// labelNameSymbols caches label name symbols by ordinal, mirroring
+	// ByteSliceReader.nameSymbols.
+	// There are not many label names compared to label values, and they
+	// make up half of all lookups, so holding them in memory is a good trade-off.
+	labelNameSymbols map[uint32]string
 }
 
-// newStreamSymbols scans the symbol section once, validating its CRC and
-// capturing the sparse offset table.
-func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int) (*streamSymbols, error) {
+// newStreamSymbols scans the symbol section once, validating its CRC,
+// capturing the sparse offset table, and building labelNameSymbols.
+func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int, isLabelName func(symbol string) bool) (*streamSymbols, error) {
 	decbuf := factory.NewDecbufAtChecked(ctx, off, castagnoliTable)
 	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
@@ -39,16 +44,20 @@ func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFact
 	}
 	// Construct the sparse offset table
 	s := &streamSymbols{
-		factory: factory,
-		off:     off,
-		size:    size,
-		offsets: make([]int, 0, 1+size/symbolFactor),
+		factory:          factory,
+		off:              off,
+		size:             size,
+		offsets:          make([]int, 0, 1+size/symbolFactor),
+		labelNameSymbols: map[uint32]string{},
 	}
 	for i := 0; decbuf.Err() == nil && i < size; i++ {
 		if i%symbolFactor == 0 {
 			s.offsets = append(s.offsets, decbuf.Offset())
 		}
-		decbuf.SkipUvarintBytes()
+		symbol := decbuf.UvarintStr()
+		if isLabelName(symbol) {
+			s.labelNameSymbols[uint32(i)] = symbol
+		}
 	}
 	if err := decbuf.Err(); err != nil {
 		return nil, err
@@ -57,6 +66,10 @@ func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFact
 }
 
 func (s *streamSymbols) Lookup(n uint32) (string, error) {
+	if symbol, ok := s.labelNameSymbols[n]; ok {
+		return symbol, nil
+	}
+
 	if int(n) >= s.size {
 		return "", fmt.Errorf("unknown symbol offset %d", n)
 	}
