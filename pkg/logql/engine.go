@@ -162,6 +162,10 @@ type EngineOpts struct {
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 }
 
+func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
+	opts.RegisterFlagsWithPrefix("", f)
+}
+
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
