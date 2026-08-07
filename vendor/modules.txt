@@ -1140,7 +1140,7 @@ github.com/kylelemons/godebug/pretty
 ## explicit; go 1.24.0
 github.com/leodido/go-urn
 github.com/leodido/go-urn/scim/schema
-# github.com/lucasb-eyer/go-colorful v1.4.0
+# github.com/lucasb-eyer/go-colorful v1.4.1
 ## explicit; go 1.12
 github.com/lucasb-eyer/go-colorful
 # github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5
