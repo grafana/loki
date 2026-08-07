@@ -106,6 +106,11 @@ type Config struct {
 	// estimation that is replacing the RateStore.
 	StreamRateTracker StreamRateTrackerConfig `yaml:"stream_rate_tracker"`
 
+	// ShardStreamsRateSource selects which of the two per-stream rate sources
+	// stream sharding derives its shard counts from. Both are always populated
+	// and compared, see [shardCountComparison].
+	ShardStreamsRateSource string `yaml:"shard_streams_rate_source"`
+
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
@@ -147,6 +152,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
+	fs.StringVar(&cfg.ShardStreamsRateSource, "distributor.shard-streams-rate-source", RateSourceRateStore, fmt.Sprintf("Which per-stream rate source stream sharding uses to calculate shard counts. %q polls the ingesters, %q uses the rates observed by this distributor. Both are always populated and compared.", RateSourceRateStore, RateSourceLocal))
 }
 
 func (cfg *Config) Validate() error {
@@ -161,6 +167,11 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.StreamRateTracker.Validate(); err != nil {
 		return err
+	}
+	switch cfg.ShardStreamsRateSource {
+	case RateSourceRateStore, RateSourceLocal:
+	default:
+		return fmt.Errorf("unsupported shard streams rate source: %q", cfg.ShardStreamsRateSource)
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
@@ -312,10 +323,12 @@ type Distributor struct {
 	tee              Tee
 
 	rateStore RateStore
-	// streamRateTracker is the distributor-local replacement for rateStore. It
-	// is populated but not yet consulted for shard counts.
+	// streamRateTracker is the distributor-local replacement for rateStore.
 	streamRateTracker *streamRateTracker
-	shardTracker      *ShardTracker
+	// shardRateComparison reports how far the two rate sources disagree while
+	// both of them exist.
+	shardRateComparison *shardCountComparison
+	shardTracker        *ShardTracker
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -572,6 +585,7 @@ func New(
 	// switched to.
 	srt := newStreamRateTracker(d.cfg.StreamRateTracker, d, registerer)
 	d.streamRateTracker = srt
+	d.shardRateComparison = newShardCountComparison(registerer)
 
 	servs = append(servs, d.ingesterClients, rs, srt)
 	d.subservices, err = services.NewManager(servs...)
@@ -1694,19 +1708,49 @@ func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validation
 
 // shardCountFor returns the right number of shards to be used by the given stream.
 //
-// It first checks if the number of shards is present in the shard store. If it isn't it will calculate it
-// based on the rate stored in the rate store and will store the new evaluated number of shards.
+// The shard count is derived from an estimate of the stream's rate. Two
+// independent estimates are maintained, the ingester-polling [rateStore] and
+// the distributor-local [streamRateTracker], and both are always evaluated so
+// that they can be compared in production. Which one is authoritative is
+// selected by [Config.ShardStreamsRateSource].
+//
+// stream must be the unsharded stream, so that stream.Hash is the hash both
+// rate sources are keyed by.
 //
 // desiredRate is expected to be given in bytes.
 func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
-	if streamShardcfg.DesiredRate.Val() <= 0 {
+	desiredRate := streamShardcfg.DesiredRate.Val()
+	if desiredRate <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
 		}
 		return 1
 	}
 
+	// Record the push before reading the estimate. The tracker only exposes
+	// rates that have been folded at the end of an interval, so this push is not
+	// part of the value read below, which matches how the rateStore reports a
+	// rate the ingesters measured in a previous interval.
+	d.streamRateTracker.Observe(tenantID, stream.Hash, pushSize)
+
 	rate, pushRate := d.rateStore.RateFor(tenantID, stream.Hash)
+	shards := shardCountFromRate(rate, pushRate, pushSize, desiredRate)
+
+	localRate, localPushRate := d.streamRateTracker.RateFor(tenantID, stream.Hash)
+	localShards := shardCountFromRate(localRate, localPushRate, pushSize, desiredRate)
+
+	d.shardRateComparison.observe(rate, localRate, shards, localShards)
+
+	if d.cfg.ShardStreamsRateSource == RateSourceLocal {
+		return localShards
+	}
+	return shards
+}
+
+// shardCountFromRate returns the number of shards a stream pushing pushSize
+// bytes should be split into, given an estimate of its current rate in bytes
+// per second and of how often it is pushed to.
+func shardCountFromRate(rate int64, pushRate float64, pushSize, desiredRate int) int {
 	if pushRate == 0 {
 		// first push, don't shard until the rate is understood
 		return 1
@@ -1719,7 +1763,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		pushRate = 1
 	}
 
-	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
+	shards := calculateShards(rate, int(float64(pushSize)*pushRate), desiredRate)
 	if shards == 0 {
 		// 1 shard is enough for the given stream.
 		return 1

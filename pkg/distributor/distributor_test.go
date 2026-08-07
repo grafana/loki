@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"math"
 	"math/rand"
@@ -933,12 +932,7 @@ func TestStreamShard(t *testing.T) {
 			validator, err := NewValidator(overrides, nil)
 			require.NoError(t, err)
 
-			d := Distributor{
-				rateStore:    &fakeRateStore{pushRate: 1},
-				validator:    validator,
-				m:            newMetrics(prometheus.NewPedanticRegistry()),
-				shardTracker: NewShardTracker(),
-			}
+			d := newShardingTestDistributor(t, &fakeRateStore{pushRate: 1}, validator, RateSourceRateStore)
 
 			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "", d.validator.ShardStreams("fake"))
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
@@ -978,12 +972,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
-		d := Distributor{
-			rateStore:    &fakeRateStore{pushRate: 1},
-			validator:    validator,
-			m:            newMetrics(prometheus.NewPedanticRegistry()),
-			shardTracker: NewShardTracker(),
-		}
+		d := newShardingTestDistributor(t, &fakeRateStore{pushRate: 1}, validator, RateSourceRateStore)
 
 		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "", d.validator.ShardStreams("fake"))
 		require.Len(t, derivedStreams, 2)
@@ -1646,13 +1635,180 @@ func TestShardCountFor(t *testing.T) {
 			flagext.DefaultValues(limits)
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
-			d := &Distributor{
-				rateStore: &fakeRateStore{tc.rate, tc.pushRate},
-			}
+			d := newShardingTestDistributor(t, &fakeRateStore{tc.rate, tc.pushRate}, nil, RateSourceRateStore)
 			got := d.shardCountFor(util_log.Logger, tc.stream, tc.pushSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
+}
+
+// Both rate sources are always evaluated, but only the configured one decides
+// the shard count.
+func TestShardCountFor_RateSource(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ShardStreams.DesiredRate = 100 // in bytes
+
+	stream := &logproto.Stream{Hash: 1, Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}}
+
+	// The rate store reports a rate that calls for two shards, the local tracker
+	// one that calls for four.
+	const (
+		rateStoreRate = 150
+		localRate     = 350
+		pushSize      = 10
+	)
+
+	for _, tc := range []struct {
+		rateSource string
+		wantShards int
+	}{
+		{rateSource: RateSourceRateStore, wantShards: 2},
+		{rateSource: RateSourceLocal, wantShards: 4},
+	} {
+		t.Run(tc.rateSource, func(t *testing.T) {
+			d := newShardingTestDistributor(t, &fakeRateStore{rateStoreRate, 1}, nil, tc.rateSource)
+
+			// Seed the local tracker and fold, so that it reports a rate.
+			d.streamRateTracker.Observe("fake", stream.Hash, localRate)
+			d.streamRateTracker.lastFold = time.Now().Add(-time.Second)
+			d.streamRateTracker.cfg.SmoothingFactor = 1 // no smoothing, the sample is the rate
+			d.streamRateTracker.fold(time.Now())
+
+			got := d.shardCountFor(util_log.Logger, stream, pushSize, "fake", limits.ShardStreams)
+			require.Equal(t, tc.wantShards, got)
+		})
+	}
+}
+
+// Every push must reach the local tracker, even while the rate store is still
+// the authoritative source, so that the tracker is warm when it is switched to.
+func TestShardCountFor_ObservesRegardlessOfRateSource(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ShardStreams.DesiredRate = 100
+
+	stream := &logproto.Stream{Hash: 1, Entries: []logproto.Entry{{Line: "a"}}}
+
+	for _, rateSource := range []string{RateSourceRateStore, RateSourceLocal} {
+		t.Run(rateSource, func(t *testing.T) {
+			d := newShardingTestDistributor(t, &fakeRateStore{0, 0}, nil, rateSource)
+			require.Zero(t, d.streamRateTracker.numStreams())
+
+			d.shardCountFor(util_log.Logger, stream, 10, "fake", limits.ShardStreams)
+
+			d.streamRateTracker.lastFold = time.Now().Add(-time.Second)
+			d.streamRateTracker.fold(time.Now())
+			require.Equal(t, 1, d.streamRateTracker.numStreams())
+
+			rate, _ := d.streamRateTracker.RateFor("fake", stream.Hash)
+			require.NotZero(t, rate)
+		})
+	}
+}
+
+// A misconfigured desired rate short-circuits before either rate source is
+// consulted.
+func TestShardCountFor_InvalidDesiredRate(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ShardStreams.DesiredRate = 0
+
+	d := newShardingTestDistributor(t, &fakeRateStore{1000, 10}, nil, RateSourceLocal)
+	stream := &logproto.Stream{Hash: 1, Entries: []logproto.Entry{{Line: "a"}}}
+
+	require.Equal(t, 1, d.shardCountFor(util_log.Logger, stream, 10, "fake", limits.ShardStreams))
+	require.Zero(t, d.streamRateTracker.numStreams())
+}
+
+func TestShardCountComparison(t *testing.T) {
+	tests := []struct {
+		name           string
+		rate           int64
+		localRate      int64
+		shards         int
+		localShards    int
+		expectedResult string
+		expectedRatio  float64 // negative means no observation is expected
+	}{{
+		name:           "agreement",
+		rate:           100,
+		localRate:      100,
+		shards:         2,
+		localShards:    2,
+		expectedResult: "equal",
+		expectedRatio:  1,
+	}, {
+		name:           "local over-estimates",
+		rate:           100,
+		localRate:      400,
+		shards:         1,
+		localShards:    4,
+		expectedResult: "local_higher",
+		expectedRatio:  4,
+	}, {
+		name:           "local under-estimates",
+		rate:           400,
+		localRate:      100,
+		shards:         4,
+		localShards:    1,
+		expectedResult: "local_lower",
+		expectedRatio:  0.25,
+	}, {
+		// Nothing to compare against, so only the shard counts are counted.
+		name:           "rate store reports no rate",
+		rate:           0,
+		localRate:      100,
+		shards:         1,
+		localShards:    2,
+		expectedResult: "local_higher",
+		expectedRatio:  -1,
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			reg := prometheus.NewPedanticRegistry()
+			c := newShardCountComparison(reg)
+			c.observe(test.rate, test.localRate, test.shards, test.localShards)
+
+			counters := map[string]prometheus.Counter{
+				"equal":        c.equal,
+				"local_higher": c.localHigher,
+				"local_lower":  c.localLower,
+			}
+			for result, counter := range counters {
+				want := float64(0)
+				if result == test.expectedResult {
+					want = 1
+				}
+				require.Equal(t, want, testutil.ToFloat64(counter), "result %q", result)
+			}
+
+			count, sum := histogramCountAndSum(t, reg, "loki_distributor_stream_rate_ratio")
+			if test.expectedRatio < 0 {
+				require.Zero(t, count)
+				return
+			}
+			require.Equal(t, uint64(1), count)
+			require.InDelta(t, test.expectedRatio, sum, 0.001)
+		})
+	}
+}
+
+func histogramCountAndSum(t *testing.T, g prometheus.Gatherer, name string) (uint64, float64) {
+	t.Helper()
+	families, err := g.Gather()
+	require.NoError(t, err)
+	for _, family := range families {
+		if family.GetName() != name {
+			continue
+		}
+		require.Len(t, family.GetMetric(), 1)
+		h := family.GetMetric()[0].GetHistogram()
+		return h.GetSampleCount(), h.GetSampleSum()
+	}
+	t.Fatalf("histogram %q not found", name)
+	return 0, 0
 }
 
 func Benchmark_PushWithLineTruncation(b *testing.B) {
@@ -2563,6 +2719,22 @@ func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 	return s.rate, s.pushRate
 }
 
+// newShardingTestDistributor returns a Distributor with the minimum wiring
+// needed to exercise stream sharding.
+func newShardingTestDistributor(t *testing.T, rateStore RateStore, validator *Validator, rateSource string) *Distributor {
+	t.Helper()
+	reg := prometheus.NewPedanticRegistry()
+	return &Distributor{
+		cfg:                 Config{ShardStreamsRateSource: rateSource},
+		rateStore:           rateStore,
+		validator:           validator,
+		m:                   newMetrics(reg),
+		shardTracker:        NewShardTracker(),
+		streamRateTracker:   newStreamRateTracker(defaultStreamRateTrackerConfig(), nil, reg),
+		shardRateComparison: newShardCountComparison(reg),
+	}
+}
+
 type mockTee struct {
 	mu         sync.Mutex
 	duplicated [][]KeyedStream
@@ -3128,66 +3300,82 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
+	// Each case starts from the defaults that flag registration produces and
+	// only changes what it exercises, so that adding a validated field does not
+	// require touching every case.
 	tests := []struct {
 		name                        string
-		cfg                         Config
+		mutate                      func(cfg *Config)
 		expectedMaxDecompressedSize int64
 		expectedError               string
 	}{
 		{
 			name: "sets default maxDecompressedSize when zero and maxRecvMsgSize is set",
-			cfg: Config{
-				MaxRecvMsgSize:      100 << 20, // 100 MB
-				MaxDecompressedSize: 0,
-				KafkaEnabled:        false,
-				IngesterEnabled:     true,
+			mutate: func(cfg *Config) {
+				cfg.MaxRecvMsgSize = 100 << 20 // 100 MB
+				cfg.MaxDecompressedSize = 0
+				cfg.KafkaEnabled = false
+				cfg.IngesterEnabled = true
 			},
 			expectedMaxDecompressedSize: 5000 << 20, // 5000 MB (50x)
 		},
 		{
 			name: "does not override explicit maxDecompressedSize",
-			cfg: Config{
-				MaxRecvMsgSize:      100 << 20, // 100 MB
-				MaxDecompressedSize: 500 << 20, // 500 MB
-				KafkaEnabled:        false,
-				IngesterEnabled:     true,
+			mutate: func(cfg *Config) {
+				cfg.MaxRecvMsgSize = 100 << 20      // 100 MB
+				cfg.MaxDecompressedSize = 500 << 20 // 500 MB
+				cfg.KafkaEnabled = false
+				cfg.IngesterEnabled = true
 			},
 			expectedMaxDecompressedSize: 500 << 20, // 500 MB (unchanged)
 		},
 		{
 			name: "does not set default when maxRecvMsgSize is zero",
-			cfg: Config{
-				MaxRecvMsgSize:      0,
-				MaxDecompressedSize: 0,
-				KafkaEnabled:        false,
-				IngesterEnabled:     true,
+			mutate: func(cfg *Config) {
+				cfg.MaxRecvMsgSize = 0
+				cfg.MaxDecompressedSize = 0
+				cfg.KafkaEnabled = false
+				cfg.IngesterEnabled = true
 			},
 			expectedMaxDecompressedSize: 0, // Should remain 0
 		},
 		{
 			name: "validates kafka and ingester enabled",
-			cfg: Config{
-				KafkaEnabled:    false,
-				IngesterEnabled: false,
+			mutate: func(cfg *Config) {
+				cfg.KafkaEnabled = false
+				cfg.IngesterEnabled = false
 			},
 			expectedError: "at least one of kafka and ingestor writes must be enabled",
+		},
+		{
+			name: "validates the shard streams rate source",
+			mutate: func(cfg *Config) {
+				cfg.ShardStreamsRateSource = "ingesters"
+			},
+			expectedError: `unsupported shard streams rate source: "ingesters"`,
+		},
+		{
+			name: "validates the stream rate tracker",
+			mutate: func(cfg *Config) {
+				cfg.StreamRateTracker.UpdateInterval = 0
+			},
+			expectedError: "stream rate tracker update interval must be greater than 0",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Nested config blocks are validated too, so they need the defaults
-			// that flag registration would otherwise write into them. The test
-			// cases only set the top-level fields they exercise.
-			tt.cfg.StreamRateTracker.RegisterFlagsWithPrefix("test", flag.NewFlagSet("test", flag.PanicOnError))
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			tt.mutate(&cfg)
 
-			err := tt.cfg.Validate()
+			err := cfg.Validate()
 			if tt.expectedError != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.expectedMaxDecompressedSize, tt.cfg.MaxDecompressedSize)
+				require.Equal(t, tt.expectedMaxDecompressedSize, cfg.MaxDecompressedSize)
 			}
 		})
 	}
@@ -3217,3 +3405,28 @@ func TestDistributorMaxInflightBytesLimit(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// shardCountFor runs once per stream per push, and while both rate sources
+// exist it evaluates and compares both of them.
+func BenchmarkShardCountFor(b *testing.B) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ShardStreams.DesiredRate = 1536 << 10
+
+	reg := prometheus.NewPedanticRegistry()
+	d := &Distributor{
+		cfg:                 Config{ShardStreamsRateSource: RateSourceLocal},
+		rateStore:           &fakeRateStore{rate: 1 << 20, pushRate: 2},
+		m:                   newMetrics(reg),
+		shardTracker:        NewShardTracker(),
+		streamRateTracker:   newStreamRateTracker(defaultStreamRateTrackerConfig(), nil, reg),
+		shardRateComparison: newShardCountComparison(reg),
+	}
+	stream := &logproto.Stream{Hash: 1}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		d.shardCountFor(util_log.Logger, stream, 1024, "fake", limits.ShardStreams)
+	}
+}

@@ -3447,6 +3447,12 @@ stream_rate_tracker:
   # CLI flag: -distributor.stream-rate-tracker.scaling-mode
   [scaling_mode: <string> | default = "healthy-distributors"]
 
+# Which per-stream rate source stream sharding uses to calculate shard counts.
+# "ratestore" polls the ingesters, "local" uses the rates observed by this
+# distributor. Both are always populated and compared.
+# CLI flag: -distributor.shard-streams-rate-source
+[shard_streams_rate_source: <string> | default = "ratestore"]
+
 # Customize the logging of write failures.
 write_failures_logging:
   # Log volume allowed (per second). Default: 1KB.

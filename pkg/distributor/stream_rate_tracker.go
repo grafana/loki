@@ -18,6 +18,14 @@ const (
 	// ScalingModeNone reports the locally observed rate as-is.
 	ScalingModeNone = "none"
 
+	// RateSourceRateStore derives shard counts from the [rateStore], which
+	// polls the ingesters.
+	RateSourceRateStore = "ratestore"
+
+	// RateSourceLocal derives shard counts from the [streamRateTracker], which
+	// measures the traffic this distributor admits.
+	RateSourceLocal = "local"
+
 	// ScalingModeHealthyDistributors extrapolates the locally observed rate to
 	// a fleet-wide estimate by multiplying it with the number of healthy
 	// distributors. It assumes pushes for a stream are spread evenly across
@@ -274,6 +282,59 @@ func (t *streamRateTracker) fold(now time.Time) {
 // https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
 func smoothRate(next, last, factor float64) float64 {
 	return (factor * next) + ((1 - factor) * last)
+}
+
+// shardCountComparison reports how the shard counts derived from the
+// distributor-local [streamRateTracker] differ from those derived from the
+// [rateStore].
+//
+// It exists so that the local estimates can be validated against the system
+// they replace while it is still running, and is removed together with the
+// rateStore.
+type shardCountComparison struct {
+	// The counter children are resolved once, this is on the hot write path.
+	equal       prometheus.Counter
+	localHigher prometheus.Counter
+	localLower  prometheus.Counter
+
+	rateRatio prometheus.Histogram
+}
+
+func newShardCountComparison(reg prometheus.Registerer) *shardCountComparison {
+	shardCounts := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "distributor_shard_count_comparison_total",
+		Help:      "How the shard count derived from the locally tracked stream rate compares to the one derived from the rate store.",
+	}, []string{"result"})
+	return &shardCountComparison{
+		equal:       shardCounts.WithLabelValues("equal"),
+		localHigher: shardCounts.WithLabelValues("local_higher"),
+		localLower:  shardCounts.WithLabelValues("local_lower"),
+		rateRatio: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_stream_rate_ratio",
+			Help:      "The ratio of the locally tracked stream rate to the rate reported by the rate store. Only observed for streams the rate store knows a non-zero rate for.",
+			Buckets:   prometheus.ExponentialBuckets(0.0625, 2, 9), // 0.0625 .. 16, centered on 1
+		}),
+	}
+}
+
+func (c *shardCountComparison) observe(rate, localRate int64, shards, localShards int) {
+	switch {
+	case localShards == shards:
+		c.equal.Inc()
+	case localShards > shards:
+		c.localHigher.Inc()
+	default:
+		c.localLower.Inc()
+	}
+	// A zero rate means the rate store has nothing to compare against, either
+	// because the stream is new or because the ingesters have not reported it
+	// yet. Those would all collapse into the same bucket and say nothing about
+	// the agreement of the two sources.
+	if rate > 0 {
+		c.rateRatio.Observe(float64(localRate) / float64(rate))
+	}
 }
 
 type streamRateTrackerMetrics struct {
