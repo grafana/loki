@@ -788,6 +788,10 @@ type groupedAggregation struct {
 	reverseHeap vectorByReverseValueHeap
 }
 
+// evalVariants has no caller: Eval rejects variants() queries before it reaches
+// here. It is deleted together with the rest of the variants execution path.
+//
+//nolint:unused
 func (q *query) evalVariants(
 	ctx context.Context,
 	expr syntax.VariantsExpr,
