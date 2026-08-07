@@ -77,3 +77,21 @@ storage_config:
     filesystem:
       dir: /var/loki/chunks
 ```
+
+## OCI example
+
+Loki can use OCI Object Storage through the Thanos storage client. This
+example uses an [OCI Instance Principal](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm),
+so OCI Customer Secret Keys and the S3-compatible API are not required.
+Ensure the instance or OKE node has IAM permission to manage objects in the
+target bucket.
+
+```yaml
+storage_config:
+  use_thanos_objstore: true
+  object_store:
+    oci:
+      provider: instance-principal
+      bucket: my-oci-bucket
+      region: ap-tokyo-1
+```
