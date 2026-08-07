@@ -30,6 +30,12 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 		expectedErr error
 	}{
 		{
+			name:        "edge case: slice contains nil value",
+			q:           defaultQuery,
+			blocked:     []*validation.BlockedQuery{nil},
+			expectedErr: nil,
+		},
+		{
 			"exact match all types",
 			defaultQuery, []*validation.BlockedQuery{
 				{
