@@ -349,3 +349,16 @@ func testPayload() (time.Time, string) {
 
 	return ts, payload
 }
+
+func TestPatternEntry_NormalizesNewlinesAndCarriageReturns(t *testing.T) {
+	ts := time.Now().UTC()
+	lbs := labels.FromStrings("job", "test")
+
+	entry := PatternEntry(ts, 1, "foo</script>\n+\nbar\r+\r\nbaz", lbs)
+	require.Contains(t, entry, "detected_pattern=")
+	require.NotContains(t, entry, "%0A")
+	require.NotContains(t, entry, "%0D")
+	require.Contains(t, entry, "+")
+	require.Contains(t, entry, "bar")
+	require.Contains(t, entry, "baz")
+}
