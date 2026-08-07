@@ -47,6 +47,35 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		putUserMetadata[awsStorageClassHeader] = cfg.StorageClass
 	}
 
+	httpCfg := s3.HTTPConfig{
+		IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
+		ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
+		InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
+		TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
+		ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
+		MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+		MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
+		Transport:             cfg.HTTP.Transport,
+		TLSConfig: exthttp.TLSConfig{
+			CAFile:     cfg.HTTP.TLSConfig.CAPath,
+			CertFile:   cfg.HTTP.TLSConfig.CertPath,
+			KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
+			ServerName: cfg.HTTP.TLSConfig.ServerName,
+		},
+	}
+
+	if httpCfg.Transport == nil {
+		transport, err := exthttp.DefaultTransport(httpCfg)
+		if err != nil {
+			return s3.Config{}, err
+		}
+		if cfg.ShuffleAddresses {
+			transport.DialContext = newShufflingDialer().DialContext
+		}
+		httpCfg.Transport = transport
+	}
+
 	return s3.Config{
 		Bucket:             cfg.BucketName,
 		Endpoint:           cfg.Endpoint,
@@ -63,23 +92,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		BucketLookupType:   cfg.BucketLookupType,
 		AWSSDKAuth:         cfg.NativeAWSAuthEnabled,
 		PartSize:           cfg.PartSize,
-		HTTPConfig: s3.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-			Transport:             cfg.HTTP.Transport,
-			TLSConfig: exthttp.TLSConfig{
-				CAFile:     cfg.HTTP.TLSConfig.CAPath,
-				CertFile:   cfg.HTTP.TLSConfig.CertPath,
-				KeyFile:    cfg.HTTP.TLSConfig.KeyPath,
-				ServerName: cfg.HTTP.TLSConfig.ServerName,
-			},
-		},
+		HTTPConfig:         httpCfg,
 		TraceConfig: s3.TraceConfig{
 			Enable: cfg.TraceConfig.Enabled,
 		},

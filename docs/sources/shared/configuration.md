@@ -7145,6 +7145,12 @@ s3:
   # CLI flag: -<prefix>.s3.max-retries
   [max_retries: <int> | default = 10]
 
+  # When enabled, pick a random address among those the S3 endpoint resolves to
+  # when opening a connection, instead of always preferring the first one
+  # returned by the resolver.
+  # CLI flag: -<prefix>.s3.shuffle-addresses
+  [shuffle_addresses: <boolean> | default = true]
+
   sse:
     # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
     # CLI flag: -<prefix>.s3.sse.type
