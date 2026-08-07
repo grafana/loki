@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
@@ -3175,6 +3176,11 @@ func TestConfig_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Nested config blocks are validated too, so they need the defaults
+			// that flag registration would otherwise write into them. The test
+			// cases only set the top-level fields they exercise.
+			tt.cfg.StreamRateTracker.RegisterFlagsWithPrefix("test", flag.NewFlagSet("test", flag.PanicOnError))
+
 			err := tt.cfg.Validate()
 			if tt.expectedError != "" {
 				require.Error(t, err)

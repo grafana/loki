@@ -102,6 +102,10 @@ type Config struct {
 	// RateStore customizes the rate storing used by stream sharding.
 	RateStore RateStoreConfig `yaml:"rate_store"`
 
+	// StreamRateTracker customizes the distributor-local per-stream rate
+	// estimation that is replacing the RateStore.
+	StreamRateTracker StreamRateTrackerConfig `yaml:"stream_rate_tracker"`
+
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
@@ -132,6 +136,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	cfg.StreamRateTracker.RegisterFlagsWithPrefix("distributor.stream-rate-tracker", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
@@ -152,6 +157,9 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.StreamRateTracker.Validate(); err != nil {
 		return err
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
@@ -303,8 +311,11 @@ type Distributor struct {
 	ingesterClients  *ring_client.Pool
 	tee              Tee
 
-	rateStore    RateStore
-	shardTracker *ShardTracker
+	rateStore RateStore
+	// streamRateTracker is the distributor-local replacement for rateStore. It
+	// is populated but not yet consulted for shard counts.
+	streamRateTracker *streamRateTracker
+	shardTracker      *ShardTracker
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
@@ -556,7 +567,13 @@ func New(
 	)
 	d.rateStore = rs
 
-	servs = append(servs, d.ingesterClients, rs)
+	// The stream rate tracker always runs, even while the rateStore is still the
+	// source of shard counts, because it has to be warm before it can be
+	// switched to.
+	srt := newStreamRateTracker(d.cfg.StreamRateTracker, d, registerer)
+	d.streamRateTracker = srt
+
+	servs = append(servs, d.ingesterClients, rs, srt)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")

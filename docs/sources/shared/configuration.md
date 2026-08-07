@@ -3426,6 +3426,27 @@ rate_store:
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
 
+stream_rate_tracker:
+  # The interval on which locally observed stream sizes are folded into the
+  # smoothed per-stream rates.
+  # CLI flag: -distributor.stream-rate-tracker.update-interval
+  [update_interval: <duration> | default = 1s]
+
+  # How long a stream is kept after the last push for it was observed.
+  # CLI flag: -distributor.stream-rate-tracker.keep-alive
+  [keep_alive: <duration> | default = 10m]
+
+  # The factor used to weight the exponential moving average of stream rates.
+  # Must be in the range (0, 1]. A larger factor weights recent samples more
+  # heavily.
+  # CLI flag: -distributor.stream-rate-tracker.smoothing-factor
+  [smoothing_factor: <float> | default = 0.4]
+
+  # How the locally observed rate is extrapolated to a fleet-wide rate.
+  # Supported values are "none" and "healthy-distributors".
+  # CLI flag: -distributor.stream-rate-tracker.scaling-mode
+  [scaling_mode: <string> | default = "healthy-distributors"]
+
 # Customize the logging of write failures.
 write_failures_logging:
   # Log volume allowed (per second). Default: 1KB.
