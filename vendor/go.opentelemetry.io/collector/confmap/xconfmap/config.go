@@ -8,19 +8,6 @@ import (
 	"go.opentelemetry.io/collector/confmap/internal"
 )
 
-// Validator defines an optional interface for configurations to implement to do validation.
-//
-// Deprecated [v0.152.0]: Use `confmap.Validator“ instead.
-type Validator = internal.Validator
-
-// Validate validates a config, by doing this:
-//   - Call Validate on the config itself if the config implements ConfigValidator.
-//
-// Deprecated [v0.152.0]: Use `confmap.Validate“ instead.
-func Validate(cfg any) error {
-	return internal.Validate(cfg)
-}
-
 // WithForceUnmarshaler sets an option to run a top-level Unmarshal method,
 // even if the Conf being unmarshaled is already a parameter from an Unmarshal method.
 // To avoid infinite recursion, this should only be used when unmarshaling into
