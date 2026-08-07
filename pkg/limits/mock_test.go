@@ -34,6 +34,17 @@ func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_ string, _ string) (int, boo
 	return 0, false
 }
 
+// mockUnlimitedLimits returns zero for the max global streams limit, which
+// means unlimited. It cannot be expressed with [mockLimits] as the zero value
+// there defaults to 1000.
+type mockUnlimitedLimits struct {
+	mockLimits
+}
+
+func (m *mockUnlimitedLimits) MaxGlobalStreamsPerUser(_ string) int {
+	return 0
+}
+
 // mockKafka mocks a [kgo.Client]. The zero value is usable.
 type mockKafka struct {
 	fetches  []kgo.Fetches

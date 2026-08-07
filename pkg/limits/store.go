@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"iter"
+	"math"
 	"sync"
 	"time"
 
@@ -36,18 +37,44 @@ var (
 	)
 )
 
-// getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
-// for a given tenant and policy. Returns the policy bucket name and the max streams limit.
-// The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.
+// getPolicyBucketAndStreamsLimit determines which policy bucket to use and the
+// per-partition max streams limit for a given tenant and policy. The policy
+// bucket will be the input policy name only if the max streams limit is
+// overridden for the policy.
 func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
-	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
-
 	if policy != noPolicy {
 		if policyMaxStreams, exists := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
-			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
+			// Use the policy-specific bucket.
+			return policy, s.perPartitionStreamsLimit(policyMaxStreams)
 		}
 	}
-	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
+	// Use the default bucket (noPolicy).
+	return noPolicy, s.perPartitionStreamsLimit(s.limits.MaxGlobalStreamsPerUser(tenant))
+}
+
+// perPartitionStreamsLimit returns the share of a global stream limit that a
+// single partition is allowed to use.
+//
+// The share is rounded up, not down. Truncating the division silently disables
+// enforcement for every tenant whose global limit is smaller than
+// [usageStore.numPartitions] (64 by default), because a per-partition limit of
+// zero is indistinguishable from "unlimited". Rounding up keeps the limit
+// enforced, at the cost of admitting at most numPartitions-1 streams more than
+// configured. Over-admitting is preferred over rejecting writes from a tenant
+// that is below its configured limit.
+//
+// A limit of zero or less means unlimited (see
+// -ingester.max-global-streams-per-user) and is reported as [math.MaxUint64] so
+// callers can compare against it without special-casing.
+func (s *usageStore) perPartitionStreamsLimit(globalLimit int) uint64 {
+	if globalLimit <= 0 {
+		return math.MaxUint64
+	}
+	if s.numPartitions <= 1 {
+		return uint64(globalLimit)
+	}
+	numPartitions := uint64(s.numPartitions)
+	return (uint64(globalLimit) + numPartitions - 1) / numPartitions
 }
 
 // usageStore stores per-tenant stream usage data.
@@ -237,20 +264,19 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 					delete(streams, m.StreamHash)
 				}
 
-				// If the configured max streams limit is _not_ unlimited, check if the stream would exceed the limit.
-				if maxStreams > 0 {
-					// Get the total number of streams, including expired
-					// streams. While we would like to count just the number of
-					// active streams, this would mean iterating all streams
-					// in the partition which is O(N) instead of O(1). Instead,
-					// we accept that expired streams will be counted towards the
-					// limit until evicted.
-					numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
-
-					if numStreams >= maxStreams {
-						rejected = append(rejected, m)
-						continue
-					}
+				// Get the total number of streams, including expired
+				// streams. While we would like to count just the number of
+				// active streams, this would mean iterating all streams
+				// in the partition which is O(N) instead of O(1). Instead,
+				// we accept that expired streams will be counted towards the
+				// limit until evicted.
+				//
+				// maxStreams is [math.MaxUint64] when the limit is unlimited,
+				// so no separate check is needed for that case.
+				numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
+				if numStreams >= maxStreams {
+					rejected = append(rejected, m)
+					continue
 				}
 			}
 			s.update(i, tenant, partition, policyBucket, m, seenAt)

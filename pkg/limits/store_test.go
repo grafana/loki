@@ -2,6 +2,7 @@ package limits
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -376,6 +377,51 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 		expectedRejected: []*proto.StreamMetadata{
 			{StreamHash: 0x4, TotalSize: 1000},
 		},
+	}, {
+		// Regression test: a global limit smaller than the number of partitions
+		// used to truncate to a per-partition limit of zero, which was
+		// indistinguishable from "unlimited" and disabled enforcement entirely.
+		name:             "global limit smaller than the number of partitions is enforced",
+		numPartitions:    4,
+		maxGlobalStreams: 2,
+		streams: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000}, // partition 0
+			{StreamHash: 0x4, TotalSize: 1000}, // partition 0, exceeds its share of 1
+			{StreamHash: 0x1, TotalSize: 1000}, // partition 1
+		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
+		},
+		expectedAccepted: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x1, TotalSize: 1000},
+		},
+		expectedRejected: []*proto.StreamMetadata{
+			{StreamHash: 0x4, TotalSize: 1000},
+		},
+	}, {
+		// The per-partition share is rounded up, so each partition gets
+		// ceil(5/4) = 2 streams.
+		name:             "global limit not divisible by the number of partitions rounds up",
+		numPartitions:    4,
+		maxGlobalStreams: 5,
+		streams: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000}, // partition 0
+			{StreamHash: 0x4, TotalSize: 1000}, // partition 0
+			{StreamHash: 0x8, TotalSize: 1000}, // partition 0, exceeds its share of 2
+		},
+		expectedToProduce: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x4, TotalSize: 1000},
+		},
+		expectedAccepted: []*proto.StreamMetadata{
+			{StreamHash: 0x0, TotalSize: 1000},
+			{StreamHash: 0x4, TotalSize: 1000},
+		},
+		expectedRejected: []*proto.StreamMetadata{
+			{StreamHash: 0x8, TotalSize: 1000},
+		},
 	}}
 
 	for _, test := range tests {
@@ -394,6 +440,78 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 			require.ElementsMatch(t, test.expectedRejected, rejected)
 		})
 	}
+}
+
+func TestUsageStore_PerPartitionStreamsLimit(t *testing.T) {
+	tests := []struct {
+		name          string
+		globalLimit   int
+		numPartitions int
+		expected      uint64
+	}{{
+		name:          "zero means unlimited",
+		globalLimit:   0,
+		numPartitions: 64,
+		expected:      math.MaxUint64,
+	}, {
+		name:          "negative means unlimited",
+		globalLimit:   -1,
+		numPartitions: 64,
+		expected:      math.MaxUint64,
+	}, {
+		name:          "one partition gets the whole limit",
+		globalLimit:   5000,
+		numPartitions: 1,
+		expected:      5000,
+	}, {
+		name:          "divisible limit",
+		globalLimit:   128,
+		numPartitions: 64,
+		expected:      2,
+	}, {
+		name:          "indivisible limit rounds up",
+		globalLimit:   5000,
+		numPartitions: 64,
+		expected:      79, // 78.125 rounded up
+	}, {
+		// This is the case that used to truncate to zero and disable
+		// enforcement for the tenant.
+		name:          "limit smaller than the number of partitions is at least one",
+		globalLimit:   10,
+		numPartitions: 64,
+		expected:      1,
+	}, {
+		name:          "limit of one",
+		globalLimit:   1,
+		numPartitions: 64,
+		expected:      1,
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, &mockLimits{}, prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.Equal(t, test.expected, s.perPartitionStreamsLimit(test.globalLimit))
+		})
+	}
+}
+
+// A global limit of zero means unlimited, and must not be confused with a
+// per-partition share of zero.
+func TestUsageStore_UpdateCond_UnlimitedStreams(t *testing.T) {
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockUnlimitedLimits{}, prometheus.NewRegistry())
+	require.NoError(t, err)
+	clock := quartz.NewMock(t)
+	s.clock = clock
+
+	streams := make([]*proto.StreamMetadata, 0, 100)
+	for i := 0; i < 100; i++ {
+		streams = append(streams, &proto.StreamMetadata{StreamHash: uint64(i), TotalSize: 1000})
+	}
+	_, accepted, rejected, err := s.UpdateCond("tenant", streams, clock.Now())
+	require.NoError(t, err)
+	require.Len(t, accepted, 100)
+	require.Empty(t, rejected)
 }
 
 func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
