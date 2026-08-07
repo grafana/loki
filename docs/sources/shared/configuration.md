@@ -7235,6 +7235,12 @@ s3:
     # CLI flag: -<prefix>.s3.trace.enabled
     [enabled: <boolean> | default = false]
 
+    # When enabled, pick a random address among those the S3 endpoint resolves
+    # to when opening a connection, instead of always preferring the first one
+    # returned by the resolver.
+    # CLI flag: -<prefix>.s3.connection-rebalancing.shuffle-addresses
+    [shuffle_addresses: <boolean> | default = true]
+
 gcs:
   # GCS bucket name
   # CLI flag: -<prefix>.gcs.bucket-name
