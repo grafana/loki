@@ -1765,7 +1765,7 @@ go.opentelemetry.io/collector/confmap/internal/third_party/composehook
 # go.opentelemetry.io/collector/confmap/xconfmap v0.157.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/confmap/xconfmap
-# go.opentelemetry.io/collector/consumer v1.63.0
+# go.opentelemetry.io/collector/consumer v1.64.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
