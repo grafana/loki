@@ -38,11 +38,6 @@ const (
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
 
-	// defaultBlockSize is used for target block size when cutting partially deleted chunks from a delete request.
-	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
-	// different block size in the new chunk which should be fine.
-	defaultBlockSize = 256 * 1024
-
 	chunkMetasSectionIdx              = 1
 	chunkStructuredMetadataSectionIdx = 2
 )
@@ -1201,47 +1196,6 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 			if err := newChunk.cut(); err != nil {
 				return nil, err
 			}
-		}
-	}
-
-	if newChunk.Size() == 0 {
-		return nil, chunk.ErrRewriteNoDataLeft
-	}
-
-	if err := newChunk.Close(); err != nil {
-		return nil, err
-	}
-
-	return newChunk, nil
-}
-
-// Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
-	if err != nil {
-		return nil, err
-	}
-
-	var newChunk *MemChunk
-	// as close as possible, respect the block/target sizes specified. However,
-	// if the blockSize is not set, use reasonable defaults.
-	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
-	} else {
-		// Using defaultBlockSize for target block size.
-		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-	}
-
-	for itr.Next() {
-		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
-			continue
-		}
-		if _, err := newChunk.Append(&entry); err != nil {
-			return nil, err
 		}
 	}
 
