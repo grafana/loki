@@ -96,6 +96,54 @@ func TestShufflingDialerFallsBackToNextAddress(t *testing.T) {
 	assert.Equal(t, "127.0.0.1", conn.RemoteAddr().(*net.TCPAddr).IP.String())
 }
 
+func TestOrderAddrsInterleavesFamilies(t *testing.T) {
+	d := newShufflingDialer()
+	// Keep the order within each family predictable so we can assert on it.
+	d.shuffle = func([]net.IPAddr) {}
+
+	for _, tc := range []struct {
+		name    string
+		network string
+		addrs   []net.IPAddr
+		want    []net.IPAddr
+	}{
+		{
+			name:    "v4 first stays first",
+			network: "tcp",
+			addrs:   ipAddrs("192.0.2.1", "192.0.2.2", "2001:db8::1", "2001:db8::2"),
+			want:    ipAddrs("192.0.2.1", "2001:db8::1", "192.0.2.2", "2001:db8::2"),
+		},
+		{
+			name:    "v6 first stays first",
+			network: "tcp",
+			addrs:   ipAddrs("2001:db8::1", "2001:db8::2", "192.0.2.1", "192.0.2.2"),
+			want:    ipAddrs("2001:db8::1", "192.0.2.1", "2001:db8::2", "192.0.2.2"),
+		},
+		{
+			name:    "uneven families keep the remainder",
+			network: "tcp",
+			addrs:   ipAddrs("192.0.2.1", "192.0.2.2", "192.0.2.3", "2001:db8::1"),
+			want:    ipAddrs("192.0.2.1", "2001:db8::1", "192.0.2.2", "192.0.2.3"),
+		},
+		{
+			name:    "tcp4 drops v6",
+			network: "tcp4",
+			addrs:   ipAddrs("2001:db8::1", "192.0.2.1"),
+			want:    ipAddrs("192.0.2.1"),
+		},
+		{
+			name:    "tcp6 drops v4",
+			network: "tcp6",
+			addrs:   ipAddrs("192.0.2.1", "2001:db8::1"),
+			want:    ipAddrs("2001:db8::1"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, d.orderAddrs(tc.network, tc.addrs))
+		})
+	}
+}
+
 func TestShufflingDialerReturnsLookupError(t *testing.T) {
 	d := newShufflingDialer()
 	d.lookupIPAddr = func(_ context.Context, _ string) ([]net.IPAddr, error) {
