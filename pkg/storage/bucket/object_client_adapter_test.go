@@ -3,6 +3,7 @@ package bucket
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -16,12 +17,15 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -225,4 +229,27 @@ func TestObjectClientAdapter_ClientReusesConnections(t *testing.T) {
 	require.Lessf(t, newConns.Load(), int64(concurrency*2),
 		"opened %d connections to serve %d requests: the client is not reusing connections",
 		newConns.Load(), concurrency*rounds)
+}
+
+// TestObjectClientAdapter_IsRetryableErr_S3Minio locks the wiring that an S3
+// backend recognises minio-go throttling errors. The thanos-objstore S3 client
+// is backed by minio-go and returns minio.ErrorResponse (not smithy.APIError);
+// if these are not treated as retryable, congestion control never backs off or
+// retries and S3 throttling surfaces immediately as failed downloads.
+func TestObjectClientAdapter_IsRetryableErr_S3Minio(t *testing.T) {
+	// A fake endpoint is fine: the client is only constructed here, never used to
+	// issue a request, so no network access occurs.
+	c, err := NewObjectClient(context.Background(), S3, ConfigWithNamedStores{
+		Config: Config{
+			S3: s3.Config{
+				Endpoint:   "localhost:9000",
+				BucketName: "test",
+			},
+		},
+	}, "test", hedging.Config{}, false, log.NewNopLogger())
+	require.NoError(t, err)
+
+	require.True(t, c.IsRetryableErr(minio.ErrorResponse{Code: aws.ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable}))
+	require.True(t, c.IsRetryableErr(fmt.Errorf("failed to load chunk: %w", minio.ErrorResponse{Code: aws.ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable})))
+	require.False(t, c.IsRetryableErr(minio.ErrorResponse{Code: minio.NoSuchKey, StatusCode: http.StatusNotFound}))
 }

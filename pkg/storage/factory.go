@@ -366,11 +366,11 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			storeType = st
 		}
 
-		var (
-			c   client.ObjectClient
-			err error
-		)
-		c, err = NewObjectClient(name, component, cfg, clientMetrics)
+		// The wrap decision below and the disable-retries argument must use this same
+		// value. If they diverge, the object-store client keeps no retrier.
+		congestionControlled := ccCfg.Enabled && storeType != bucket.Filesystem
+
+		c, err := newObjectClient(name, component, cfg, clientMetrics, congestionControlled && ccCfg.ReplacesInnerRetries())
 		if err != nil {
 			return nil, err
 		}
@@ -378,8 +378,8 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		var encoder client.KeyEncoder
 		if storeType == bucket.Filesystem {
 			encoder = client.FSEncoder
-		} else if cfg.CongestionControl.Enabled {
-			// Apply congestion control wrapper for non-filesystem storage
+		}
+		if congestionControlled {
 			c = cc.Wrap(c)
 		}
 
@@ -446,8 +446,17 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	return newObjectClient(name, component, cfg, clientMetrics, false)
+}
+
+// newObjectClient is NewObjectClient with control over the retries of the object-store
+// client.
+//
+// Set disableRetries only when a replacement retrier wraps the returned client. Only
+// NewChunkClient does this, so the exported NewObjectClient keeps the retries.
+func newObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics, disableRetries bool) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, disableRetries, util_log.Logger)
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
