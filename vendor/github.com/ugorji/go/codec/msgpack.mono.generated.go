@@ -1,4 +1,4 @@
-//go:build !notmono && !codec.notmono 
+//go:build !notmono && !codec.notmono
 
 // Copyright (c) 2012-2020 Ugorji Nwoke. All rights reserved.
 // Use of this source code is governed by a MIT license found in the LICENSE file.
@@ -919,6 +919,10 @@ func (e *encoderMsgpackBytes) MustEncode(v interface{}) {
 	defer panicValToErr(e, callRecoverSentinel, &e.err, nil, true)
 	e.mustEncode(v)
 	return
+}
+
+func (e *encoderMsgpackBytes) NumBytesWritten() int {
+	return e.e.NumBytesWritten()
 }
 
 func (e *encoderMsgpackBytes) mustEncode(v interface{}) {
@@ -2195,7 +2199,8 @@ func (d *decoderMsgpackBytes) kChan(f *decFnInfo, rv reflect.Value) {
 	}
 
 	rtelem := ti.elem
-	useTransient := decUseTransient && ti.elemkind != byte(reflect.Ptr) && ti.tielem.flagCanTransient
+	useTransient := decUseTransient && ti.tielem.flagCanTransient &&
+		ti.elemkind != byte(reflect.Slice) && ti.elemkind != byte(reflect.Ptr)
 
 	for k := reflect.Kind(ti.elemkind); k == reflect.Ptr; k = rtelem.Kind() {
 		rtelem = rtelem.Elem()
@@ -2286,7 +2291,7 @@ func (d *decoderMsgpackBytes) kMap(f *decFnInfo, rv reflect.Value) {
 	vtypePtr := vtypeKind == reflect.Ptr
 	ktypePtr := ktypeKind == reflect.Ptr
 
-	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient
+	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient && vtypeKind != reflect.Slice
 
 	kTransient := vTransient && !ktypePtr && ti.tikey.flagCanTransient
 
@@ -3352,9 +3357,11 @@ func (e *msgpackEncDriverBytes) writeContainerLen(ct msgpackContainerType, l int
 	} else if l < 65536 {
 		e.w.writen1(ct.b16)
 		e.w.writen2(bigen.PutUint16(uint16(l)))
-	} else {
+	} else if uint(l) <= mpMaxLen {
 		e.w.writen1(ct.b32)
 		e.w.writen4(bigen.PutUint32(uint32(l)))
+	} else {
+		halt.errorf("%s: %d", mpMaxLenOverflowErrorMsgPrefix, l)
 	}
 }
 
@@ -3986,6 +3993,7 @@ func (d *msgpackEncDriverBytes) init(hh Handle, shared *encoderBase, enc encoder
 	return
 }
 
+func (e *msgpackEncDriverBytes) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *msgpackEncDriverBytes) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 func (e *msgpackEncDriverBytes) writerEnd() { e.w.end() }
@@ -4021,7 +4029,7 @@ func (d *msgpackDecDriverBytes) resetInBytes(in []byte) {
 }
 
 func (d *msgpackDecDriverBytes) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 func (d *msgpackDecDriverBytes) descBd() string {
@@ -4932,6 +4940,10 @@ func (e *encoderMsgpackIO) MustEncode(v interface{}) {
 	defer panicValToErr(e, callRecoverSentinel, &e.err, nil, true)
 	e.mustEncode(v)
 	return
+}
+
+func (e *encoderMsgpackIO) NumBytesWritten() int {
+	return e.e.NumBytesWritten()
 }
 
 func (e *encoderMsgpackIO) mustEncode(v interface{}) {
@@ -6208,7 +6220,8 @@ func (d *decoderMsgpackIO) kChan(f *decFnInfo, rv reflect.Value) {
 	}
 
 	rtelem := ti.elem
-	useTransient := decUseTransient && ti.elemkind != byte(reflect.Ptr) && ti.tielem.flagCanTransient
+	useTransient := decUseTransient && ti.tielem.flagCanTransient &&
+		ti.elemkind != byte(reflect.Slice) && ti.elemkind != byte(reflect.Ptr)
 
 	for k := reflect.Kind(ti.elemkind); k == reflect.Ptr; k = rtelem.Kind() {
 		rtelem = rtelem.Elem()
@@ -6299,7 +6312,7 @@ func (d *decoderMsgpackIO) kMap(f *decFnInfo, rv reflect.Value) {
 	vtypePtr := vtypeKind == reflect.Ptr
 	ktypePtr := ktypeKind == reflect.Ptr
 
-	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient
+	vTransient := decUseTransient && !vtypePtr && ti.tielem.flagCanTransient && vtypeKind != reflect.Slice
 
 	kTransient := vTransient && !ktypePtr && ti.tikey.flagCanTransient
 
@@ -7365,9 +7378,11 @@ func (e *msgpackEncDriverIO) writeContainerLen(ct msgpackContainerType, l int) {
 	} else if l < 65536 {
 		e.w.writen1(ct.b16)
 		e.w.writen2(bigen.PutUint16(uint16(l)))
-	} else {
+	} else if uint(l) <= mpMaxLen {
 		e.w.writen1(ct.b32)
 		e.w.writen4(bigen.PutUint32(uint32(l)))
+	} else {
+		halt.errorf("%s: %d", mpMaxLenOverflowErrorMsgPrefix, l)
 	}
 }
 
@@ -7999,6 +8014,7 @@ func (d *msgpackEncDriverIO) init(hh Handle, shared *encoderBase, enc encoderI) 
 	return
 }
 
+func (e *msgpackEncDriverIO) NumBytesWritten() int    { return e.w.numWrite() }
 func (e *msgpackEncDriverIO) writeBytesAsis(b []byte) { e.w.writeb(b) }
 
 func (e *msgpackEncDriverIO) writerEnd() { e.w.end() }
@@ -8034,7 +8050,7 @@ func (d *msgpackDecDriverIO) resetInBytes(in []byte) {
 }
 
 func (d *msgpackDecDriverIO) resetInIO(r io.Reader) {
-	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.MaxInitLen, &d.d.blist)
+	d.r.resetIO(r, d.h.ReaderBufferSize, d.h.maxBytes2Read(), &d.d.blist)
 }
 
 func (d *msgpackDecDriverIO) descBd() string {
