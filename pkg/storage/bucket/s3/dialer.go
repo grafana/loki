@@ -28,10 +28,12 @@ type shufflingDialer struct {
 
 const (
 	// maxDialAttempts bounds how many of the resolved addresses a single dial
-	// will try. Trying all of them could cost dialTimeout * len(addrs) in the
-	// worst case - for example when the endpoint publishes AAAA records but the
-	// cluster has no working IPv6 route - so we cap it.
-	maxDialAttempts = 3
+	// will try. The total dialTimeout is divided across attempts, so if DNS
+	// returns a really large number this could shrink each attempt's share
+	// until a healthy-but-slow address gets timed out. orderAddrs interleaves
+	// the address families so this cap cannot spend every attempt on one of
+	// them.
+	maxDialAttempts = 10
 
 	// values coped from exthttp.DefaultTransport
 	dialTimeout   = 30 * time.Second
@@ -112,9 +114,11 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 }
 
 // orderAddrs drops addresses the network does not permit, then shuffles within
-// each address family while keeping the families in the order the resolver
-// returned them. LookupIPAddr applies RFC 6724 sorting, so the preferred family
-// stays first - we only randomise which address within it gets used.
+// each address family and interleaves the two, leading with the family the
+// resolver returned first. LookupIPAddr applies RFC 6724 sorting, so the
+// preferred family leads - we only randomise which address within it gets used.
+//
+// The families are interleaved because shufflingDialer does not try v4 and v6 in parallel.
 func (d *shufflingDialer) orderAddrs(network string, addrs []net.IPAddr) []net.IPAddr {
 	var v4, v6 []net.IPAddr
 	v6First := false
@@ -140,7 +144,22 @@ func (d *shufflingDialer) orderAddrs(network string, addrs []net.IPAddr) []net.I
 	d.shuffle(v6)
 
 	if v6First {
-		return append(v6, v4...)
+		return interleave(v6, v4)
 	}
-	return append(v4, v6...)
+	return interleave(v4, v6)
+}
+
+// interleave alternates between the two slices, starting with first, and takes
+// whatever is left once the shorter one runs out.
+func interleave(first, second []net.IPAddr) []net.IPAddr {
+	out := make([]net.IPAddr, 0, len(first)+len(second))
+	for i := range max(len(first), len(second)) {
+		if i < len(first) {
+			out = append(out, first[i])
+		}
+		if i < len(second) {
+			out = append(out, second[i])
+		}
+	}
+	return out
 }
