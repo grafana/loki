@@ -30,6 +30,11 @@ eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) withou
 eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (cluster, namespace)
   {app="foo"} 18
   {app="bar"} 6
+# sum() without() with no grouping labels keeps every label.
+eval instant at 60s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without ()
+  {app="foo", namespace="a", cluster="c1"} 6
+  {app="foo", namespace="a", cluster="c2"} 12
+  {app="bar", namespace="b", cluster="c2"} 6
 # offset shifts the window back
 eval instant at 90s sum(count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) by (namespace, app)
   {app="foo", namespace="a"} 18
@@ -86,6 +91,12 @@ eval instant at 60s avg without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
 eval instant at 60s avg without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 9
   {app="bar"} 21
+# avg() without() with no grouping labels keeps every label.
+eval instant at 60s avg without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 6
+  {app="foo", pod="b", zone="eu"} 12
+  {app="bar", pod="a", zone="us"} 12
+  {app="bar", pod="b", zone="us"} 30
 
 # avg() with special inputs.
 clear
@@ -138,6 +149,12 @@ eval instant at 60s min without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
 eval instant at 60s min without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 6
   {app="bar"} 12
+# min() without() with no grouping labels keeps every label.
+eval instant at 60s min without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 6
+  {app="foo", pod="b", zone="eu"} 12
+  {app="bar", pod="a", zone="us"} 12
+  {app="bar", pod="b", zone="us"} 30
 
 # min() with special inputs.
 clear
@@ -190,6 +207,12 @@ eval instant at 60s max without (pod) (count_over_time({app=~"foo|bar"} |~".+bar
 eval instant at 60s max without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 12
   {app="bar"} 30
+# max() without() with no grouping labels keeps every label.
+eval instant at 60s max without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 6
+  {app="foo", pod="b", zone="eu"} 12
+  {app="bar", pod="a", zone="us"} 12
+  {app="bar", pod="b", zone="us"} 30
 
 # max() with special inputs.
 clear
@@ -241,6 +264,11 @@ eval instant at 60s count without (pod) (count_over_time({app=~"foo|bar"} |~".+b
 eval instant at 60s count without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 2
   {app="bar"} 1
+# count() without() with no grouping labels keeps every label.
+eval instant at 60s count without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 1
+  {app="foo", pod="b", zone="eu"} 1
+  {app="bar", pod="a", zone="us"} 1
 
 # count() with special inputs.
 clear
@@ -292,6 +320,12 @@ eval instant at 60s stddev without (pod) (count_over_time({app=~"foo|bar"} |~".+
 eval instant at 60s stddev without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 3
   {app="bar"} 9
+# stddev() without() with no grouping labels keeps every label. Each series is its own group, so each deviates 0.
+eval instant at 60s stddev without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 0
+  {app="foo", pod="b", zone="eu"} 0
+  {app="bar", pod="a", zone="us"} 0
+  {app="bar", pod="b", zone="us"} 0
 
 # stddev() with special inputs.
 clear
@@ -345,6 +379,12 @@ eval instant at 60s stdvar without (pod) (count_over_time({app=~"foo|bar"} |~".+
 eval instant at 60s stdvar without (pod, zone) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
   {app="foo"} 9
   {app="bar"} 81
+# stdvar() without() with no grouping labels keeps every label. Each series is its own group, so each varies 0.
+eval instant at 60s stdvar without () (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo", pod="a", zone="eu"} 0
+  {app="foo", pod="b", zone="eu"} 0
+  {app="bar", pod="a", zone="us"} 0
+  {app="bar", pod="b", zone="us"} 0
 
 # stdvar() with special inputs.
 clear
@@ -397,6 +437,12 @@ eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) wi
   {app="bar", pod="b"} 30
 # topk() without() with multiple grouping labels leaves one group, so it selects globally.
 eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app, pod)
+  {app="bar", pod="b"} 30
+# topk() without() with no grouping labels keeps every label.
+eval instant at 60s topk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without ()
+  {app="foo", pod="a"} 6
+  {app="foo", pod="b"} 12
+  {app="bar", pod="a"} 15
   {app="bar", pod="b"} 30
 # topk() with an invalid or missing parameter.
 eval instant at 60s topk(1.5, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
@@ -456,6 +502,12 @@ eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m]))
 # bottomk() without() with multiple grouping labels leaves one group, so it selects globally.
 eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without (app, pod)
   {app="foo", pod="a"} 6
+# bottomk() without() with no grouping labels keeps every label.
+eval instant at 60s bottomk(1, count_over_time({app=~"foo|bar"} |~".+bar" [1m])) without ()
+  {app="foo", pod="a"} 6
+  {app="foo", pod="b"} 12
+  {app="bar", pod="a"} 15
+  {app="bar", pod="b"} 30
 
 # bottomk() with special inputs.
 clear
