@@ -15,7 +15,7 @@ func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
 	for _, d := range objs {
 		switch d.(type) {
 		case *corev1.ConfigMap:
-			require.Equal(t, d.GetNamespace(), managedConfigNamespace)
+			require.Equal(t, managedConfigNamespace, d.GetNamespace())
 			require.Contains(t, d.GetLabels(), labelConsoleDashboard)
 		}
 	}
@@ -26,7 +26,7 @@ func TestBuildDashboards_ReturnsPrometheusRules(t *testing.T) {
 	require.NoError(t, err)
 
 	rules := objs[len(objs)-1].(*monitoringv1.PrometheusRule)
-	require.Equal(t, rules.GetName(), dashboardPrometheusRulesName)
-	require.Equal(t, rules.GetNamespace(), "test")
+	require.Equal(t, dashboardPrometheusRulesName, rules.GetName())
+	require.Equal(t, "test", rules.GetNamespace())
 	require.NotNil(t, rules.Spec)
 }

@@ -189,12 +189,12 @@ func TestBuildDefaultDeny(t *testing.T) {
 	require.Equal(t, "test-default-deny", policy.Name)
 	require.Equal(t, "test-ns", policy.Namespace)
 
-	require.Equal(t, policy.Spec.PodSelector.MatchLabels, map[string]string{
+	require.Equal(t, map[string]string{
 		"app.kubernetes.io/name":       "lokistack",
 		"app.kubernetes.io/instance":   "test",
 		"app.kubernetes.io/managed-by": "lokistack-controller",
 		"app.kubernetes.io/created-by": "lokistack-controller",
-	})
+	}, policy.Spec.PodSelector.MatchLabels)
 	require.Contains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeIngress)
 	require.Contains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
 
@@ -275,7 +275,7 @@ func TestBuildLokiAllowMetrics(t *testing.T) {
 	require.Equal(t, "test-loki-allow-metrics", policy.Name)
 	require.Equal(t, "test-ns", policy.Namespace)
 
-	require.Len(t, policy.Spec.Egress, 0)
+	require.Empty(t, policy.Spec.Egress)
 	require.Len(t, policy.Spec.Ingress, 1)
 
 	ingressRule := policy.Spec.Ingress[0]
@@ -557,13 +557,13 @@ func TestBuildGatewayAllowMetrics(t *testing.T) {
 	require.Contains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeIngress)
 	require.NotContains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
 
-	require.Len(t, policy.Spec.Egress, 0)
+	require.Empty(t, policy.Spec.Egress)
 	require.Len(t, policy.Spec.Ingress, 1)
 
 	ingressRule := policy.Spec.Ingress[0]
-	require.Equal(t, networkPolicyPeerPrometheusPods, ingressRule.From[0])
+	require.Equal(t, ingressRule.From[0], networkPolicyPeerPrometheusPods)
 	require.Len(t, ingressRule.Ports, 2)
-	require.Equal(t, ingressRule.Ports, []networkingv1.NetworkPolicyPort{
+	require.Equal(t, []networkingv1.NetworkPolicyPort{
 		{
 			Protocol: ptr.To(corev1.ProtocolTCP),
 			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayInternalPort},
@@ -572,7 +572,7 @@ func TestBuildGatewayAllowMetrics(t *testing.T) {
 			Protocol: ptr.To(corev1.ProtocolTCP),
 			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayInternalOPAPort},
 		},
-	})
+	}, ingressRule.Ports)
 }
 
 func TestBuildRulerAllowEgressToAM(t *testing.T) {

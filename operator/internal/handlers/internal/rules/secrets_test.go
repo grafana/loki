@@ -79,7 +79,7 @@ func TestExtractRulerSecret(t *testing.T) {
 				require.Equal(t, tst.wantSecret, s)
 			}
 			if tst.wantErr {
-				require.NotNil(t, err)
+				require.Error(t, err)
 			}
 		})
 	}
