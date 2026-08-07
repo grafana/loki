@@ -1126,7 +1126,7 @@ github.com/klauspost/pgzip
 # github.com/knadh/koanf/maps v0.1.2
 ## explicit; go 1.18
 github.com/knadh/koanf/maps
-# github.com/knadh/koanf/providers/confmap v1.0.0
+# github.com/knadh/koanf/providers/confmap v1.0.1
 ## explicit; go 1.23.0
 github.com/knadh/koanf/providers/confmap
 # github.com/knadh/koanf/v2 v2.3.6
