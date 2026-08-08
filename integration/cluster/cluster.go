@@ -427,7 +427,7 @@ func (c *Component) run() error {
 
 	flagset := flag.NewFlagSet("test-flags", flag.ExitOnError)
 
-	if err := cfg.DynamicUnmarshal(&config, append(
+	if _, err := cfg.DynamicUnmarshal(&config, append(
 		c.flags,
 		"-config.file", c.configFile,
 		"-runtime-config.file", c.overridesFile,

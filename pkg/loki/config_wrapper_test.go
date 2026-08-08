@@ -61,7 +61,7 @@ func configWrapperFromYAML(t *testing.T, configFileString string, args []string)
 	} else {
 		args = append(args, configFileArgs...)
 	}
-	err = cfg.DynamicUnmarshal(&config, args, fs)
+	_, err = cfg.DynamicUnmarshal(&config, args, fs)
 	if err != nil {
 		return ConfigWrapper{}, ConfigWrapper{}, err
 	}
