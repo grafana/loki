@@ -114,6 +114,11 @@ func (c *Cluster) handleShareFetch(creq *clientReq, w *watchShareFetch) (kmsg.Re
 		sp := kmsg.NewShareFetchResponseTopicPartition()
 		sp.Partition = p
 		sp.ErrorCode = errCode
+		// Real brokers serialize the Java schema default -1/-1 when
+		// they do not populate a leader hint; the Go zero value 0/0
+		// would be read by clients as a valid hint to node 0.
+		sp.CurrentLeader.LeaderID = -1
+		sp.CurrentLeader.LeaderEpoch = -1
 		resp.Topics[idx].Partitions = append(resp.Topics[idx].Partitions, sp)
 		return &resp.Topics[idx].Partitions[len(resp.Topics[idx].Partitions)-1]
 	}
