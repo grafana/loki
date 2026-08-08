@@ -109,7 +109,7 @@ var carSeries = logproto.Series{
 
 func TestNewMergeSampleIterator(t *testing.T) {
 	t.Run("with labels", func(t *testing.T) {
-		it := NewMergeSampleIterator(context.Background(),
+		it := NewTimestampFirstMergeSampleIterator(context.Background(),
 			[]SampleIterator{
 				NewSeriesIterator(varSeries),
 				NewSeriesIterator(carSeries),
@@ -133,7 +133,7 @@ func TestNewMergeSampleIterator(t *testing.T) {
 		require.NoError(t, it.Close())
 	})
 	t.Run("no labels", func(t *testing.T) {
-		it := NewMergeSampleIterator(context.Background(),
+		it := NewTimestampFirstMergeSampleIterator(context.Background(),
 			[]SampleIterator{
 				NewSeriesIterator(logproto.Series{
 					Labels:     ``,
@@ -199,7 +199,7 @@ func (f *fakeSampleClient) Recv() (*logproto.SampleQueryResponse, error) {
 func (fakeSampleClient) Context() context.Context { return context.Background() }
 func (fakeSampleClient) CloseSend() error         { return nil }
 func TestNewSampleQueryClientIterator(t *testing.T) {
-	it := NewSampleQueryClientIterator(&fakeSampleClient{
+	it := NewTimestampFirstSampleQueryClientIterator(&fakeSampleClient{
 		series: [][]logproto.Series{
 			{varSeries},
 			{carSeries},
@@ -249,6 +249,72 @@ func TestReadSampleBatch(t *testing.T) {
 	require.ElementsMatch(t, []logproto.Series{carSeries, varSeries}, res.Series)
 	require.Equal(t, uint32(6), size)
 	require.NoError(t, err)
+}
+
+// TestReadSampleBatchOrdered_PreservesStreamFirstOrder verifies the encode side emits one Series per
+// contiguous run of a stream, in the exact order the streams appear in the input.
+func TestReadSampleBatchOrdered_PreservesStreamFirstOrder(t *testing.T) {
+	// The input is fed in a deliberately non-ascending order to prove ReadSampleBatchOrdered preserves
+	// the input order rather than sorting.
+	src := NewNonOverlappingSampleIterator([]SampleIterator{
+		NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 1))),
+		NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 2), mkSample(2, 3))),
+		NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4))),
+	})
+
+	resp, size, err := ReadSampleBatchOrdered(src, 100)
+	require.NoError(t, err)
+	require.Equal(t, uint32(4), size)
+
+	// Series preserved in input order (30, 10, 20) — not sorted — each stream's samples grouped.
+	want := []logproto.Series{
+		{Labels: `{s="c"}`, StreamHash: 30, Samples: []logproto.Sample{mkSample(1, 1)}},
+		{Labels: `{s="a"}`, StreamHash: 10, Samples: []logproto.Sample{mkSample(1, 2), mkSample(2, 3)}},
+		{Labels: `{s="b"}`, StreamHash: 20, Samples: []logproto.Sample{mkSample(1, 4)}},
+	}
+	require.Equal(t, want, resp.Series)
+}
+
+// TestStreamFirstWireRoundTrip verifies the order-preserving wire path (§1d): a stream-first
+// iterator encoded in small batches with ReadSampleBatchOrdered — cutting a stream across a batch
+// boundary — is reconstructed stream-first by NewStreamFirstSampleQueryClientIterator.
+func TestStreamFirstWireRoundTrip(t *testing.T) {
+	source := func() SampleIterator {
+		return NewNonOverlappingSampleIterator([]SampleIterator{
+			NewSeriesIterator(mkStreamSeries(`{s="a"}`, 10, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))),
+			NewSeriesIterator(mkStreamSeries(`{s="b"}`, 20, mkSample(1, 4), mkSample(2, 5))),
+			NewSeriesIterator(mkStreamSeries(`{s="c"}`, 30, mkSample(1, 6), mkSample(2, 7), mkSample(3, 8), mkSample(4, 9))),
+		})
+	}
+
+	// Encode in batches of 2 samples so streams straddle batch boundaries.
+	var batches [][]logproto.Series
+	enc := source()
+	for {
+		resp, size, err := ReadSampleBatchOrdered(enc, 2)
+		require.NoError(t, err)
+		if size == 0 {
+			break
+		}
+		batches = append(batches, resp.Series)
+	}
+	require.Greater(t, len(batches), 1, "batch size must split the stream to exercise the boundary")
+
+	// Decode through the stream-first client iterator.
+	got := collectSamplesWithLabels(t, NewStreamFirstSampleQueryClientIterator(&fakeSampleClient{series: batches}))
+
+	// Decoded output stays stream-first (streamHash non-decreasing).
+	for i := 1; i < len(got); i++ {
+		require.GreaterOrEqual(t, got[i].streamHash, got[i-1].streamHash, "decoded stream must be non-decreasing in streamHash")
+	}
+
+	// Every stream's samples (values included) survive the round-trip, in order.
+	want := []sampleWithLabels{
+		{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: 10}, {Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: 10}, {Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: 10},
+		{Sample: mkSample(1, 4), labels: `{s="b"}`, streamHash: 20}, {Sample: mkSample(2, 5), labels: `{s="b"}`, streamHash: 20},
+		{Sample: mkSample(1, 6), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(2, 7), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(3, 8), labels: `{s="c"}`, streamHash: 30}, {Sample: mkSample(4, 9), labels: `{s="c"}`, streamHash: 30},
+	}
+	require.Equal(t, want, got)
 }
 
 type CloseTestingSmplIterator struct {
@@ -350,7 +416,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 				itrs = append(itrs, NewSeriesIterator(series[i]))
 			}
 			b.StartTimer()
-			it := NewMergeSampleIterator(ctx, itrs)
+			it := NewTimestampFirstMergeSampleIterator(ctx, itrs)
 			for it.Next() {
 				it.At()
 			}
@@ -442,7 +508,7 @@ func Test_SampleSortIterator(t *testing.T) {
 }
 
 func TestDedupeMergeSampleIterator(t *testing.T) {
-	it := NewMergeSampleIterator(context.Background(),
+	it := NewTimestampFirstMergeSampleIterator(context.Background(),
 		[]SampleIterator{
 			NewSeriesIterator(logproto.Series{
 				Labels: ``,
@@ -513,7 +579,7 @@ func TestMergeSampleIteratorZeroHash(t *testing.T) {
 		},
 	}
 
-	it := NewMergeSampleIterator(context.Background(), []SampleIterator{
+	it := NewTimestampFirstMergeSampleIterator(context.Background(), []SampleIterator{
 		NewSeriesIterator(series1),
 		NewSeriesIterator(series2),
 	})
@@ -540,4 +606,33 @@ func TestMergeSampleIteratorZeroHash(t *testing.T) {
 	require.False(t, it.Next())
 	require.NoError(t, it.Err())
 	require.NoError(t, it.Close())
+}
+
+// TestNewTimestampFirstMergeSampleIterator_HashCollisionNotDeduped verifies that two distinct
+// streams sharing a streamHash are never deduplicated against each other, and the output stays
+// in global timestamp order.
+func TestNewTimestampFirstMergeSampleIterator_HashCollisionNotDeduped(t *testing.T) {
+	const collidingHash = 42
+	a := mkStreamSeries(`{s="a"}`, collidingHash, mkSample(1, 1), mkSample(2, 2), mkSample(3, 3))
+	b := mkStreamSeries(`{s="b"}`, collidingHash, mkSample(1, 4), mkSample(2, 5), mkSample(3, 6))
+
+	it := NewTimestampFirstMergeSampleIterator(context.Background(), []SampleIterator{
+		NewSeriesIterator(a), NewSeriesIterator(b),
+	})
+	got := collectSamplesWithLabels(t, it)
+
+	// No sample dropped despite the shared (streamHash, timestamp): distinct Sample.Hash keeps both.
+	require.ElementsMatch(t, []sampleWithLabels{
+		{Sample: mkSample(1, 1), labels: `{s="a"}`, streamHash: collidingHash},
+		{Sample: mkSample(2, 2), labels: `{s="a"}`, streamHash: collidingHash},
+		{Sample: mkSample(3, 3), labels: `{s="a"}`, streamHash: collidingHash},
+		{Sample: mkSample(1, 4), labels: `{s="b"}`, streamHash: collidingHash},
+		{Sample: mkSample(2, 5), labels: `{s="b"}`, streamHash: collidingHash},
+		{Sample: mkSample(3, 6), labels: `{s="b"}`, streamHash: collidingHash},
+	}, got)
+
+	// Output stays in global timestamp order.
+	for i := 1; i < len(got); i++ {
+		require.LessOrEqual(t, got[i-1].Timestamp, got[i].Timestamp, "timestamp-first output must be time-ordered")
+	}
 }

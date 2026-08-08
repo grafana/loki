@@ -1081,9 +1081,9 @@ func Test_DedupeIngester(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		var expectedLabels []string
 		for _, s := range streams {
 			expectedLabels = append(expectedLabels, labels.NewBuilder(s).Del("foo").Labels().String())
@@ -1119,9 +1119,9 @@ func Test_DedupeIngester(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 		for i := int64(0); i < requests; i++ {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
@@ -1239,9 +1239,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {
@@ -1267,9 +1267,9 @@ func Test_DedupeIngesterParser(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
-			iterators = append(iterators, iter.NewSampleQueryClientIterator(stream))
+			iterators = append(iterators, iter.NewTimestampFirstSampleQueryClientIterator(stream))
 		}
-		it := iter.NewMergeSampleIterator(ctx, iterators)
+		it := iter.NewTimestampFirstMergeSampleIterator(ctx, iterators)
 
 		for i := 0; i < requests; i++ {
 			for j := 0; j < streamCount; j++ {

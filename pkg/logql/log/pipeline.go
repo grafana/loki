@@ -61,12 +61,13 @@ type noopPipeline struct {
 	baseBuilder *BaseLabelsBuilder
 }
 
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := n.baseBuilder.Hash(labels)
-	if cached, ok := n.cache[h]; ok {
+func (n *noopPipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	h := n.baseBuilder.Hash(lbls)
+	// Verify the cached pipeline is for these exact labels (Hash can collide).
+	if cached, ok := n.cache[h]; ok && labels.Equal(cached.builder.base, lbls) {
 		return cached
 	}
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(lbls, h)}
 	n.cache[h] = sp
 	return sp
 }
@@ -178,12 +179,14 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 	return &streamPipeline{stages, labelsBuilder}
 }
 
-func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
-	hash := p.baseBuilder.Hash(labels)
-	if res, ok := p.streamPipelines[hash]; ok {
+func (p *pipeline) ForStream(lbls labels.Labels) StreamPipeline {
+	hash := p.baseBuilder.Hash(lbls)
+	// Verify the cached pipeline is for these exact labels: Hash can collide, and serving a
+	// colliding stream's pipeline would attribute its lines to the wrong labels.
+	if res, ok := p.streamPipelines[hash]; ok && labels.Equal(res.(*streamPipeline).builder.base, lbls) {
 		return res
 	}
-	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
+	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(lbls, hash))
 	p.streamPipelines[hash] = res
 	return res
 }

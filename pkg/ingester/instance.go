@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -544,8 +545,10 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		extractors[j] = extractor
 	}
 
+	// Collect one sample iterator per matching stream, tagged with the stable identity that
+	// stream-first ordering keys on (see sampleStream). This is shared by both orderings.
 	stats := stats.FromContext(ctx)
-	var iters []iter.SampleIterator
+	var streams []sampleStream
 
 	shard, err := parseShardFromRequest(req.Shards)
 	if err != nil {
@@ -566,7 +569,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 				streamExtractors = append(streamExtractors, extractor.ForStream(stream.labels))
 			}
 
-			iter, err := stream.SampleIterator(
+			it, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
@@ -576,7 +579,7 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 			if err != nil {
 				return err
 			}
-			iters = append(iters, iter)
+			streams = append(streams, sampleStream{it: it, hash: stream.labelHash, labels: stream.labels})
 			return nil
 		},
 	)
@@ -584,7 +587,53 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	return iter.NewSortSampleIterator(iters), nil
+	if req.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return combineByStreamFirst(streams), nil
+	}
+	return combineByTimestampFirst(streams), nil
+}
+
+// sampleStream is one matching stream's sample iterator plus the stable identity that stream-first
+// ordering keys on.
+type sampleStream struct {
+	it iter.SampleIterator
+	// hash must be the stream's stable label hash (labels.StableHash): a pure function of the raw
+	// labels, stable across ingester replicas (unlike stream.fp) and independent of any
+	// label-reducing pushdown in the extractor. It equals the fingerprint the TSDB index gives the
+	// store's chunks — both are the xxhash of the same raw labels — so the cross-source merge aligns
+	// and deduplicates this stream against its store counterpart and replicas. (The store fingerprint
+	// can diverge only under the fp mapper's collision remapping, a rare, known limitation.)
+	hash   uint64
+	labels labels.Labels
+}
+
+// combineByTimestampFirst merges the per-stream iterators into global timestamp order (the
+// default). Stream identity is irrelevant here, so the tags are unused.
+func combineByTimestampFirst(streams []sampleStream) iter.SampleIterator {
+	its := make([]iter.SampleIterator, len(streams))
+	for i, s := range streams {
+		its[i] = s.it
+	}
+	return iter.NewSortSampleIterator(its)
+}
+
+// combineByStreamFirst orders the streams by (hash, labels) and concatenates them, so the output is
+// stream-first (grouped by stream, hash ascending) with each stream exposing its stable hash — the
+// identity the cross-source merge aligns and deduplicates on. The labels tie-break keeps the order
+// total and deterministic even under a (64-bit) hash collision, since sort.Slice is not stable on
+// equal keys.
+func combineByStreamFirst(streams []sampleStream) iter.SampleIterator {
+	sort.Slice(streams, func(a, b int) bool {
+		if streams[a].hash != streams[b].hash {
+			return streams[a].hash < streams[b].hash
+		}
+		return labels.Compare(streams[a].labels, streams[b].labels) < 0
+	})
+	its := make([]iter.SampleIterator, len(streams))
+	for i, s := range streams {
+		its[i] = iter.NewSampleIteratorWithStreamHash(s.it, s.hash)
+	}
+	return iter.NewNonOverlappingSampleIterator(its)
 }
 
 // Label returns the label names or values depending on the given request
@@ -1113,13 +1162,22 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer, orderedByStream bool) error {
 	sp := trace.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
-		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		var (
+			batch *logproto.SampleQueryResponse
+			size  uint32
+			err   error
+		)
+		if orderedByStream {
+			batch, size, err = iter.ReadSampleBatchOrdered(it, queryBatchSampleSize)
+		} else {
+			batch, size, err = iter.ReadSampleBatch(it, queryBatchSampleSize)
+		}
 		if err != nil {
 			return err
 		}
