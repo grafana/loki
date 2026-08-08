@@ -14,8 +14,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 
 	// Build statistics map from proto statistics
 	statsIndex := make(map[uint32]Statistic, len(protoCapture.Statistics))
-	for i, protoStat := range protoCapture.Statistics {
-		stat, err := unmarshalStatistic(protoStat)
+	for i := range protoCapture.Statistics {
+		stat, err := unmarshalStatistic(&protoCapture.Statistics[i])
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal statistic: %w", err)
 		}
@@ -25,8 +25,8 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 	capture.regionByName = make(map[string][]*Region)
 
 	// Unmarshal regions
-	for _, protoRegion := range protoCapture.Regions {
-		region, err := fromProtoRegion(protoRegion, statsIndex)
+	for i := range protoCapture.Regions {
+		region, err := fromProtoRegion(&protoCapture.Regions[i], statsIndex)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal region: %w", err)
 		}
@@ -41,52 +41,26 @@ func fromProtoCapture(protoCapture *proto.Capture, capture *Capture) error {
 
 // fromProtoRegion converts a protobuf Region to its Go representation.
 func fromProtoRegion(protoRegion *proto.Region, statIndexToStat map[uint32]Statistic) (*Region, error) {
-	// Unmarshal observations
-	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.Observations))
-	for _, protoObs := range protoRegion.Observations {
+	observations := make(map[StatisticKey]*AggregatedObservation, len(protoRegion.ObservationsV2))
+	for i := range protoRegion.ObservationsV2 {
+		protoObs := &protoRegion.ObservationsV2[i]
 		stat, exists := statIndexToStat[protoObs.StatisticId]
 		if !exists {
-			return nil, fmt.Errorf("invalid statistic_id %d in observation", protoObs.StatisticId)
+			return nil, fmt.Errorf("invalid statistic_id %d in V2 observation", protoObs.StatisticId)
 		}
 
-		value, err := unmarshalObservationValue(protoObs.Value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal observation value: %w", err)
-		}
-
-		key := stat.Key()
-		observations[key] = &AggregatedObservation{
+		observations[stat.Key()] = &AggregatedObservation{
 			Statistic: stat,
-			Value:     value,
+			value:     valueFromBits(protoObs.ValueBits),
 			Count:     int(protoObs.Count),
 		}
 	}
 
-	region := &Region{
+	return &Region{
 		name:         protoRegion.Name,
 		observations: observations,
 		ended:        true, // Regions from proto are always ended
-	}
-
-	return region, nil
-}
-
-// unmarshalObservationValue converts a protobuf ObservationValue to a Go value.
-func unmarshalObservationValue(protoValue *proto.ObservationValue) (any, error) {
-	if protoValue == nil || protoValue.Kind == nil {
-		return nil, fmt.Errorf("invalid observation value")
-	}
-
-	switch v := protoValue.Kind.(type) {
-	case *proto.ObservationValue_IntValue:
-		return v.IntValue, nil
-	case *proto.ObservationValue_FloatValue:
-		return v.FloatValue, nil
-	case *proto.ObservationValue_BoolValue:
-		return v.BoolValue, nil
-	default:
-		return nil, fmt.Errorf("unsupported observation value type: %T", protoValue.Kind)
-	}
+	}, nil
 }
 
 // unmarshalStatistic converts a protobuf Statistic to a Go Statistic.

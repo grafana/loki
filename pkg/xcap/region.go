@@ -81,19 +81,19 @@ func (r *Region) Record(o Observation) {
 		return
 	}
 
-	key := o.statistic().Key()
-	if _, ok := r.observations[key]; !ok {
+	key := o.stat.Key()
+	agg, ok := r.observations[o.stat.Key()]
+	if !ok {
 		// First observation for this statistic.
 		r.observations[key] = &AggregatedObservation{
-			Statistic: o.statistic(),
-			Value:     o.value(),
+			Statistic: o.stat,
+			value:     o.val,
 			Count:     1,
 		}
 		return
 	}
 
 	// Aggregate with existing observations.
-	agg := r.observations[key]
 	agg.Record(o)
 }
 
@@ -156,7 +156,7 @@ func (r *Region) MergeObservations(src *Region) {
 		} else {
 			r.observations[key] = &AggregatedObservation{
 				Statistic: srcObs.Statistic,
-				Value:     srcObs.Value,
+				value:     srcObs.value,
 				Count:     srcObs.Count,
 			}
 		}
@@ -211,19 +211,17 @@ func observationToAttribute(key StatisticKey, obs *AggregatedObservation) attrib
 
 	switch key.DataType {
 	case DataTypeInt64:
-		if val, ok := obs.Value.(int64); ok {
+		if val, ok := obs.Int64(); ok {
 			return attrKey.Int64(val)
 		}
 	case DataTypeFloat64:
-		if val, ok := obs.Value.(float64); ok {
+		if val, ok := obs.Float64(); ok {
 			return attrKey.Float64(val)
 		}
 	case DataTypeBool:
-		if val, ok := obs.Value.(bool); ok {
-			return attrKey.Bool(val)
-		}
+		return attrKey.Bool(obs.Bool())
 	}
 
 	// Fallback: convert to string.
-	return attrKey.String(fmt.Sprintf("%v", obs.Value))
+	return attrKey.String(fmt.Sprintf("%v", obs.Value()))
 }

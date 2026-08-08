@@ -557,7 +557,7 @@ func readWithKindPredicate(t *testing.T, sec *Section, wantKind int64) (rows int
 
 	for _, obs := range region.Observations() {
 		if obs.Statistic.Name() == dataobj.StatDatasetPagesPruned.Name() {
-			pagesPruned = obs.Value.(int64)
+			pagesPruned = obs.Value().(int64)
 		}
 	}
 	return rows, pagesPruned
