@@ -21516,20 +21516,6 @@ func _fkTriggerDelete(tls *libc.TLS, dbMem uintptr, p uintptr) {
 
 var _flags = libc.Int32FromInt32(SQLITE_OPEN_READWRITE) | libc.Int32FromInt32(SQLITE_OPEN_CREATE) | libc.Int32FromInt32(SQLITE_OPEN_EXCLUSIVE) | libc.Int32FromInt32(SQLITE_OPEN_DELETEONCLOSE) | libc.Int32FromInt32(SQLITE_OPEN_TEMP_DB)
 
-func _freeCursorWithCache(tls *libc.TLS, p uintptr, pCx uintptr) {
-	var pCache uintptr
-	_ = pCache
-	pCache = (*TVdbeCursor)(unsafe.Pointer(pCx)).FpCache
-	libc.SetBitFieldPtr8Uint32(pCx+8, libc.Uint32FromInt32(0), 4, 0x10)
-	(*TVdbeCursor)(unsafe.Pointer(pCx)).FpCache = uintptr(0)
-	if (*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue != 0 {
-		_sqlite3RCStrUnref(tls, (*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue)
-		(*TVdbeTxtBlbCache)(unsafe.Pointer(pCache)).FpCValue = uintptr(0)
-	}
-	_sqlite3DbFree(tls, (*TVdbe)(unsafe.Pointer(p)).Fdb, pCache)
-	_sqlite3VdbeFreeCursorNN(tls, p, pCx)
-}
-
 // C documentation
 //
 //	/*
@@ -39058,28 +39044,6 @@ func _typeofFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uintptr) {
 	 ** V. The returned value is one of SQLITE_INTEGER, SQLITE_FLOAT,
 	 ** SQLITE_TEXT, SQLITE_BLOB, or SQLITE_NULL. */
 	Xsqlite3_result_text(tls, context, _azType2[i], -int32(1), libc.UintptrFromInt32(0))
-}
-
-// C documentation
-//
-//	/*
-//	**    unixepoch( TIMESTRING, MOD, MOD, ...)
-//	**
-//	** Return the number of seconds (including fractional seconds) since
-//	** the unix epoch of 1970-01-01 00:00:00 GMT.
-//	*/
-func _unixepochFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
-	bp := tls.Alloc(48)
-	defer tls.Free(48)
-	var _ /* x at bp+0 */ TDateTime
-	if _isDate(tls, context, argc, argv, bp) == 0 {
-		_computeJD(tls, bp)
-		if int32(uint32(*(*uint8)(unsafe.Pointer(bp + 44))&0x4>>2)) != 0 {
-			Xsqlite3_result_double(tls, context, float64((**(**TDateTime)(__ccgo_up(bp))).FiJD-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000000))/float64(1000))
-		} else {
-			Xsqlite3_result_int64(tls, context, (**(**TDateTime)(__ccgo_up(bp))).FiJD/int64(1000)-libc.Int64FromInt32(21086676)*libc.Int64FromInt32(10000))
-		}
-	}
 }
 
 // C documentation

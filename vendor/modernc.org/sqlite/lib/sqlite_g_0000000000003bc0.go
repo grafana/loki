@@ -3085,60 +3085,6 @@ func _ntileStepFunc(tls *libc.TLS, pCtx uintptr, nArg int32, apArg uintptr) {
 
 // C documentation
 //
-//	/*
-//	** Attempt to parse the given string into a julian day number.  Return
-//	** the number of errors.
-//	**
-//	** The following are acceptable forms for the input string:
-//	**
-//	**      YYYY-MM-DD HH:MM:SS.FFF  +/-HH:MM
-//	**      DDDD.DD
-//	**      now
-//	**
-//	** In the first form, the +/-HH:MM is always optional.  The fractional
-//	** seconds extension (the ".FFF") is optional.  The seconds portion
-//	** (":SS.FFF") is option.  The year and date can be omitted as long
-//	** as there is a time string.  The time string can be omitted as long
-//	** as there is a year and date.
-//	*/
-func _parseDateOrTime(tls *libc.TLS, context uintptr, zDate uintptr, p uintptr) (r int32) {
-	bp := tls.Alloc(16)
-	defer tls.Free(16)
-	var _ /* r at bp+0 */ float64
-	if _parseYyyyMmDd(tls, zDate, p) == 0 {
-		return 0
-	} else {
-		if _parseHhMmSs(tls, zDate, p) == 0 {
-			return 0
-		} else {
-			if _sqlite3StrICmp(tls, zDate, __ccgo_ts+1228) == 0 && _sqlite3NotPureFunc(tls, context) != 0 {
-				return _setDateTimeToCurrent(tls, context, p)
-			} else {
-				if _sqlite3AtoF(tls, zDate, bp) > 0 {
-					_setRawDateNumber(tls, p, **(**float64)(__ccgo_up(bp)))
-					return 0
-				} else {
-					if (_sqlite3StrICmp(tls, zDate, __ccgo_ts+1232) == 0 || _sqlite3StrICmp(tls, zDate, __ccgo_ts+1239) == 0) && _sqlite3NotPureFunc(tls, context) != 0 {
-						libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 2, 0x4)
-						return _setDateTimeToCurrent(tls, context, p)
-					}
-				}
-			}
-		}
-	}
-	return int32(1)
-}
-
-/* The julian day number for 9999-12-31 23:59:59.999 is 5373484.4999999.
-** Multiplying this by 86400000 gives 464269060799999 as the maximum value
-** for DateTime.iJD.
-**
-** But some older compilers (ex: gcc 4.2.1 on older Macs) cannot deal with
-** such a large integer literal, so we have to encode it.
- */
-
-// C documentation
-//
 //	/* Add a single new term to an ExprList that is used to store a
 //	  ** list of identifiers.  Report an error if the ID list contains
 //	  ** a COLLATE clause or an ASC or DESC keyword, except ignore the
