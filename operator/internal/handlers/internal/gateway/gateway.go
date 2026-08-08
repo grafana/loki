@@ -70,7 +70,7 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 			stack.Spec.Proxy = ocpProxy
 		}
 	case lokiv1.Passthrough:
-		if degradedErr := validatePassthroughCA(fg.HTTPEncryption, stack); degradedErr != nil {
+		if degradedErr := validatePassthroughCA(ctx, k, fg.HTTPEncryption, stack); degradedErr != nil {
 			return "", tenants, degradedErr
 		}
 	default:
@@ -94,7 +94,18 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	return baseDomain, tenants, nil
 }
 
-func validatePassthroughCA(httpEncryption bool, stack *lokiv1.LokiStack) *status.DegradedError {
+// passthroughCAValidationContext reuses ReasonInvalidPassthroughConfiguration for both
+// the missing and invalid cases: unlike gateway TLS, passthrough currently has only one
+// Reason for "something is wrong with the passthrough config", and reusing it keeps all
+// passthrough CA failures (nil field, missing ConfigMap/Secret, missing key) consistent
+// with each other and distinct from the gateway-TLS-specific Reasons.
+var passthroughCAValidationContext = valueRefValidationContext{
+	description:   "passthrough gateway configuration",
+	missingReason: lokiv1.ReasonInvalidPassthroughConfiguration,
+	invalidReason: lokiv1.ReasonInvalidPassthroughConfiguration,
+}
+
+func validatePassthroughCA(ctx context.Context, k k8s.Client, httpEncryption bool, stack *lokiv1.LokiStack) error {
 	if !httpEncryption {
 		// TODO(JoaoBraveCoding): Discuss with @xperimental if this makes sense or if we should always require
 		// mTLS with the client
@@ -108,8 +119,8 @@ func validatePassthroughCA(httpEncryption bool, stack *lokiv1.LokiStack) *status
 			Requeue: false,
 		}
 	}
-
-	// TODO(JoaoBraveCoding): Once we merge https://github.com/grafana/loki/pull/20325 we should rebase
-	// and add a call to validateConfigRef to validate that the CA actually exists in the cluster
+	if err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, passthroughCAValidationContext, stack.Spec.Tenants.Passthrough.CA); err != nil {
+		return err
+	}
 	return nil // CEL rules on ValueReference handle the rest
 }
