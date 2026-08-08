@@ -2172,8 +2172,8 @@ google.golang.org/api/storage/v1
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20260622175928-b703f567277d
-## explicit; go 1.25.8
+# google.golang.org/genproto v0.0.0-20260803160001-6ac0973c030d
+## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
