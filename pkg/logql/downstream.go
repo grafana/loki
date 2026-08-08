@@ -707,6 +707,33 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
 		}
 		return NewCountMinSketchVectorStepEvaluator(vector), nil
+	case *CountDistinctEvalExpr:
+		if e.mergeExpr != nil {
+			queries := make([]DownstreamQuery, len(e.mergeExpr.downstreams))
+			for i, d := range e.mergeExpr.downstreams {
+				qry := DownstreamQuery{
+					Params: ParamsWithExpressionOverride{
+						Params:             ParamOverridesFromShard(params, d.shard),
+						ExpressionOverride: d.SampleExpr,
+					},
+				}
+				queries[i] = qry
+			}
+			acc := newCountDistinctAccumulator()
+			results, err := ev.Downstream(ctx, queries, acc)
+			if err != nil {
+				return nil, err
+			}
+			if len(results) != 1 {
+				return nil, fmt.Errorf("unexpected results length for sharded approx_count_distinct: got (%d), want (1)", len(results))
+			}
+			vector, ok := results[0].Data.(CountDistinctVector)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type: got (%T), want (CountDistinctVector)", results[0].Data)
+			}
+			return NewCountDistinctVectorStepEvaluator(vector), nil
+		}
+		return NewCountDistinctEvalStepEvaluator(ctx, nextEvFactory, e, params)
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

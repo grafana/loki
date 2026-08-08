@@ -81,3 +81,13 @@ message TopKMatrix {
 
   repeated Vector values = 1;
 }
+
+message CountDistinctVector {
+  repeated CountDistinctSample samples = 1;
+}
+
+message CountDistinctSample {
+  bytes hyperloglog = 1;
+  int64 timestamp_ms = 2;
+  repeated LabelPair metric = 3;
+}

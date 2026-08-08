@@ -161,8 +161,10 @@ Examples:
 ## Probabilistic aggregation
 
 {{< admonition type="note" >}}
-Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use this feature, set `limits_config.shard_aggregations:approx_topk` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). To enable this feature in Grafana Cloud, contact Grafana Support.
+Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use these features, set `limits_config.shard_aggregations` to include `approx_topk` and/or `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). To enable this feature in Grafana Cloud, contact Grafana Support.
 {{< /admonition >}}
+
+### approx_topk
 
 LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
 
@@ -188,6 +190,26 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
+
+### approx_count_distinct
+
+LogQL's `approx_count_distinct` function approximates the number of distinct values of a label (or extracted field) per grouping, without building a time series for each distinct value. Use it when the label you want to count has cardinality far above `max_query_series`, but the grouping labels stay within that limit.
+
+The function is of the form:
+
+```logql
+approx_count_distinct(<label>) by (<grouping labels>) (<log selector>)
+```
+
+For example:
+
+```logql
+approx_count_distinct(device_id) by (version) ({job="status"} |= "System Status Report" | logfmt)
+```
+
+`approx_count_distinct` is only supported for instant queries. The query window is the instant query time range (including querier lookback). Output series cardinality is bounded by the grouping labels and subject to `max_query_series`.
+
+Enable it with `limits_config.shard_aggregations: [approx_count_distinct]` (or alongside `approx_topk`). Under the hood, each shard builds a [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per group; the query frontend merges sketches and returns cardinality estimates.
 
 ## Result ordering
 

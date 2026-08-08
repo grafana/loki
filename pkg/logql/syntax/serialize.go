@@ -31,54 +31,57 @@ func EncodeJSON(e Expr, w io.Writer) error {
 
 // Field names
 const (
-	Bin                 = "bin"
-	Binary              = "binary"
-	Bytes               = "bytes"
-	And                 = "and"
-	Card                = "cardinality"
-	Dst                 = "dst"
-	Duration            = "duration"
-	Groups              = "groups"
-	GroupingField       = "grouping"
-	Include             = "include"
-	Identifier          = "identifier"
-	Inner               = "inner"
-	IntervalNanos       = "interval_nanos"
-	IPField             = "ip"
-	Label               = "label"
-	LabelReplace        = "label_replace"
-	LHS                 = "lhs"
-	Literal             = "literal"
-	LogSelector         = "log_selector"
-	Name                = "name"
-	Numeric             = "numeric"
-	MatchingLabels      = "matching_labels"
-	On                  = "on"
-	Op                  = "operation"
-	Options             = "options"
-	OffsetNanos         = "offset_nanos"
-	Params              = "params"
-	Pattern             = "pattern"
-	PostFilterers       = "post_filterers"
-	Range               = "range"
-	RangeAgg            = "range_agg"
-	Raw                 = "raw"
-	RegexField          = "regex"
-	Replacement         = "replacement"
-	ReturnBool          = "return_bool"
-	RHS                 = "rhs"
-	Src                 = "src"
-	StringField         = "string"
-	NoopField           = "noop"
-	Type                = "type"
-	Unwrap              = "unwrap"
-	Value               = "value"
-	Vector              = "vector"
-	VectorAgg           = "vector_agg"
-	VectorMatchingField = "vector_matching"
-	Without             = "without"
-	Variants            = "variants"
-	Of                  = "of"
+	Bin                    = "bin"
+	Binary                 = "binary"
+	Bytes                  = "bytes"
+	And                    = "and"
+	Card                   = "cardinality"
+	Dst                    = "dst"
+	Duration               = "duration"
+	Groups                 = "groups"
+	GroupingField          = "grouping"
+	Include                = "include"
+	Identifier             = "identifier"
+	Inner                  = "inner"
+	IntervalNanos          = "interval_nanos"
+	IPField                = "ip"
+	Label                  = "label"
+	LabelReplace           = "label_replace"
+	LHS                    = "lhs"
+	Literal                = "literal"
+	LogSelector            = "log_selector"
+	Name                   = "name"
+	Numeric                = "numeric"
+	MatchingLabels         = "matching_labels"
+	On                     = "on"
+	Op                     = "operation"
+	Options                = "options"
+	OffsetNanos            = "offset_nanos"
+	Params                 = "params"
+	Pattern                = "pattern"
+	PostFilterers          = "post_filterers"
+	Range                  = "range"
+	RangeAgg               = "range_agg"
+	Raw                    = "raw"
+	RegexField             = "regex"
+	Replacement            = "replacement"
+	ReturnBool             = "return_bool"
+	RHS                    = "rhs"
+	Src                    = "src"
+	StringField            = "string"
+	NoopField              = "noop"
+	Type                   = "type"
+	Unwrap                 = "unwrap"
+	Value                  = "value"
+	Vector                 = "vector"
+	VectorAgg              = "vector_agg"
+	VectorMatchingField    = "vector_matching"
+	Without                = "without"
+	Variants               = "variants"
+	Of                     = "of"
+	ApproxCountDistinctKey = "approx_count_distinct"
+	DistinctLabelField     = "distinct_label"
+	SketchOnlyField        = "sketch_only"
 )
 
 func DecodeJSON(raw string) (Expr, error) {
@@ -98,6 +101,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeVector(iter)
 	case LabelReplace:
 		return decodeLabelReplace(iter)
+	case ApproxCountDistinctKey:
+		return decodeApproxCountDistinct(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
 	case Variants:
@@ -256,6 +261,36 @@ func (v *JSONSerializer) VisitLabelReplace(e *LabelReplaceExpr) {
 	v.WriteMore()
 	v.WriteObjectField(RegexField)
 	v.WriteString(e.Regex)
+
+	v.WriteObjectEnd()
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitApproxCountDistinct(e *ApproxCountDistinctExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(ApproxCountDistinctKey)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(DistinctLabelField)
+	v.WriteString(e.DistinctLabel)
+
+	if e.Grouping != nil {
+		v.WriteMore()
+		v.WriteObjectField(GroupingField)
+		encodeGrouping(v.Stream, e.Grouping)
+	}
+
+	if e.SketchOnly {
+		v.WriteMore()
+		v.WriteObjectField(SketchOnlyField)
+		v.WriteBool(true)
+	}
+
+	v.WriteMore()
+	v.WriteObjectField(Inner)
+	e.Left.Accept(v)
 
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
@@ -748,6 +783,8 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 			expr, err = decodeVector(iter)
 		case LabelReplace:
 			expr, err = decodeLabelReplace(iter)
+		case ApproxCountDistinctKey:
+			expr, err = decodeApproxCountDistinct(iter)
 		default:
 			return nil, fmt.Errorf("unknown sample expression type: %s", key)
 		}
@@ -907,6 +944,31 @@ func decodeLogRange(iter *jsoniter.Iterator) (*LogRangeExpr, error) {
 	}
 
 	return expr, err
+}
+
+func decodeApproxCountDistinct(iter *jsoniter.Iterator) (*ApproxCountDistinctExpr, error) {
+	expr := &ApproxCountDistinctExpr{}
+	var err error
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case DistinctLabelField:
+			expr.DistinctLabel = iter.ReadString()
+		case GroupingField:
+			expr.Grouping, err = decodeGrouping(iter)
+		case SketchOnlyField:
+			expr.SketchOnly = iter.ReadBool()
+		case Inner:
+			expr.Left, err = decodeLogSelector(iter)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if expr.Grouping == nil {
+		expr.Grouping = &Grouping{}
+	}
+	return expr, nil
 }
 
 func decodeLabelReplace(iter *jsoniter.Iterator) (*LabelReplaceExpr, error) {

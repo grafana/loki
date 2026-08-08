@@ -18,6 +18,7 @@ type SampleExprVisitor interface {
 	VisitVectorAggregation(*VectorAggregationExpr)
 	VisitRangeAggregation(*RangeAggregationExpr)
 	VisitLabelReplace(*LabelReplaceExpr)
+	VisitApproxCountDistinct(*ApproxCountDistinctExpr)
 	VisitLiteral(*LiteralExpr)
 	VisitVector(*VectorExpr)
 }
@@ -59,6 +60,7 @@ type DepthFirstTraversal struct {
 	VisitLabelFmtFn               func(v RootVisitor, e *LabelFmtExpr)
 	VisitLabelParserFn            func(v RootVisitor, e *LineParserExpr)
 	VisitLabelReplaceFn           func(v RootVisitor, e *LabelReplaceExpr)
+	VisitApproxCountDistinctFn    func(v RootVisitor, e *ApproxCountDistinctExpr)
 	VisitLineFilterFn             func(v RootVisitor, e *LineFilterExpr)
 	VisitLineFmtFn                func(v RootVisitor, e *LineFmtExpr)
 	VisitLiteralFn                func(v RootVisitor, e *LiteralExpr)
@@ -163,6 +165,18 @@ func (v *DepthFirstTraversal) VisitLabelReplace(e *LabelReplaceExpr) {
 	}
 	if v.VisitLabelReplaceFn != nil {
 		v.VisitLabelReplaceFn(v, e)
+	}
+}
+
+// VisitApproxCountDistinct implements RootVisitor.
+func (v *DepthFirstTraversal) VisitApproxCountDistinct(e *ApproxCountDistinctExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitApproxCountDistinctFn != nil {
+		v.VisitApproxCountDistinctFn(v, e)
+	} else if e.Left != nil {
+		e.Left.Accept(v)
 	}
 }
 

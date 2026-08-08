@@ -731,6 +731,10 @@ func (s *storeSampleResult) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
+func (s *storeSampleResult) CountDistinctVec() CountDistinctVector {
+	return CountDistinctVector{}
+}
+
 func TestEngine_Variants_RangeQuery(t *testing.T) {
 	t.Parallel()
 

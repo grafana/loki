@@ -49,7 +49,7 @@ import (
 
 %type <expr> expr
 %type <logExpr> logExpr
-%type <metricExpr> metricExpr rangeAggregationExpr vectorAggregationExpr binOpExpr labelReplaceExpr vectorExpr
+%type <metricExpr> metricExpr rangeAggregationExpr vectorAggregationExpr binOpExpr labelReplaceExpr vectorExpr approxCountDistinctExpr
 %type <variantsExpr> variantsExpr
 %type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
 %type <stages> pipelineExpr
@@ -80,7 +80,7 @@ import (
 %token <dur> DURATION RANGE
 %token <val> MATCHERS LABELS EQ RE NRE NPA OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT PIPE_PATTERN
              OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG
-             MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK APPROX_TOPK
+             MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK APPROX_TOPK APPROX_COUNT_DISTINCT
              BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
              MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
              FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
@@ -114,11 +114,23 @@ logExpr:
 metricExpr:
       rangeAggregationExpr                          { $$ = $1 }
     | vectorAggregationExpr                         { $$ = $1 }
+    | approxCountDistinctExpr                       { $$ = $1 }
     | binOpExpr                                     { $$ = $1 }
     | literalExpr                                   { $$ = $1 }
     | labelReplaceExpr                              { $$ = $1 }
     | vectorExpr                                    { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
+    ;
+
+approxCountDistinctExpr:
+      APPROX_COUNT_DISTINCT OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS grouping OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS
+        { $$ = newApproxCountDistinctExpr($3, $5, $7) }
+    | APPROX_COUNT_DISTINCT OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS grouping
+        { $$ = newApproxCountDistinctExpr($3, $8, $6) }
+    | APPROX_COUNT_DISTINCT grouping OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS
+        { $$ = newApproxCountDistinctExpr($4, $2, $7) }
+    | APPROX_COUNT_DISTINCT OPEN_PARENTHESIS IDENTIFIER CLOSE_PARENTHESIS OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS
+        { $$ = newApproxCountDistinctExpr($3, nil, $6) }
     ;
 
 variantsExpr:

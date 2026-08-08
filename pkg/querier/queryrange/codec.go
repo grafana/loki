@@ -1282,6 +1282,10 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 			return concrete.TopkSketches.WithHeaders(headers), nil
 		case *QueryResponse_QuantileSketches:
 			return concrete.QuantileSketches.WithHeaders(headers), nil
+		case *QueryResponse_CountMinSketches:
+			return concrete.CountMinSketches.WithHeaders(headers), nil
+		case *QueryResponse_CountDistinct:
+			return concrete.CountDistinct.WithHeaders(headers), nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.Response)
 		}

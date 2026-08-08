@@ -9,6 +9,35 @@ import (
 
 const UnsupportedErr = "unsupported range vector aggregation operation: %s"
 
+func (e *ApproxCountDistinctExpr) Extractors() ([]log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	var groups []string
+	var without bool
+	var noLabels bool
+	if e.Grouping != nil {
+		groups = e.Grouping.Groups
+		without = e.Grouping.Without
+		noLabels = e.Grouping.Singleton()
+	}
+	sort.Strings(groups)
+
+	var stages []log.Stage
+	if p, ok := e.Left.(*PipelineExpr); ok {
+		st, err := p.MultiStages.stages()
+		if err != nil {
+			return nil, err
+		}
+		stages = st
+	}
+	ext, err := log.NewDistinctValueSampleExtractor(e.DistinctLabel, stages, groups, without, noLabels)
+	if err != nil {
+		return nil, err
+	}
+	return []log.SampleExtractor{ext}, nil
+}
+
 func (r RangeAggregationExpr) Extractors() ([]log.SampleExtractor, error) {
 	ext, err := r.extractor(nil)
 	if err != nil {
