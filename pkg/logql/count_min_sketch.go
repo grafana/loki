@@ -339,6 +339,11 @@ func (e *countMinSketchVectorAggEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
+// SetMaxOutputSeries does not enforce this limit. Count-min-sketch aggregations
+// are joined via JoinCountMinSketchVector rather than JoinSampleVector and are
+// not covered by max_query_series enforcement here.
+func (*countMinSketchVectorAggEvaluator) SetMaxOutputSeries(int) {}
+
 // CountMinSketchVectorStepEvaluator evaluates a count min sketch into a promql.Vector.
 type CountMinSketchVectorStepEvaluator struct {
 	exhausted bool
@@ -386,6 +391,10 @@ func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
 
+// SetMaxOutputSeries does not enforce this limit (count-min-sketch path, see
+// countMinSketchVectorAggEvaluator).
+func (*CountMinSketchVectorStepEvaluator) SetMaxOutputSeries(int) {}
+
 var _ StepEvaluator = (*CountMinSketchEvalStepEvaluator)(nil)
 
 // CountMinSketchEvalStepEvaluator transforms a CountMinSketchEvalExpr into a CountMinSketchVector.
@@ -425,5 +434,9 @@ func (e *CountMinSketchEvalStepEvaluator) Next() (bool, int64, StepResult) {
 func (*CountMinSketchEvalStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchEvalStepEvaluator) Error() error { return nil }
+
+// SetMaxOutputSeries does not enforce this limit (count-min-sketch path, see
+// countMinSketchVectorAggEvaluator).
+func (*CountMinSketchEvalStepEvaluator) SetMaxOutputSeries(int) {}
 
 func (e *CountMinSketchEvalStepEvaluator) Explain(_ Node) {}

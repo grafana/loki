@@ -94,3 +94,7 @@ func (e *VectorStepEvaluator) Close() error {
 func (e *VectorStepEvaluator) Error() error {
 	return nil
 }
+
+// SetMaxOutputSeries does not enforce the limit. It replays a materialized
+// vector produced downstream; the limit is enforced above it.
+func (*VectorStepEvaluator) SetMaxOutputSeries(int) {}

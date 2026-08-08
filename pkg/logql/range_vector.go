@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // BatchRangeVectorAggregator aggregates the samples within a range window. It
@@ -36,6 +37,9 @@ type RangeVectorIterator interface {
 	At() (int64, StepResult)
 	Close() error
 	Error() error
+	// SetMaxSeries bounds the number of distinct series the iterator will hold in
+	// a single range window. Zero means no limit.
+	SetMaxSeries(n int)
 }
 
 func newRangeVectorIterator(
@@ -96,7 +100,14 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+
+	// maxSeries bounds the distinct series held in window (0 == no limit); err
+	// latches a series-limit error once a window exceeds it. See SetMaxSeries.
+	maxSeries int
+	err       error
 }
+
+func (r *batchRangeVectorIterator) SetMaxSeries(n int) { r.maxSeries = n }
 
 func (r *batchRangeVectorIterator) Next() bool {
 	// slides the range window to the next position
@@ -117,6 +128,9 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -162,6 +176,10 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		var ok bool
 		series, ok = r.window[lbs]
 		if !ok {
+			if r.maxSeries > 0 && len(r.window) >= r.maxSeries {
+				r.err = logqlmodel.NewSeriesLimitError(r.maxSeries)
+				return
+			}
 			var metric labels.Labels
 			if metric, ok = r.metrics[lbs]; !ok {
 				var err error
@@ -504,7 +522,14 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+
+	// maxSeries bounds the distinct series held per window (0 == no limit); err
+	// latches a series-limit error once a window exceeds it. See SetMaxSeries.
+	maxSeries int
+	err       error
 }
+
+func (r *streamRangeVectorIterator) SetMaxSeries(n int) { r.maxSeries = n }
 
 func (r *streamRangeVectorIterator) Next() bool {
 	// slides the range window to the next position
@@ -527,6 +552,9 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
 	return r.iter.Err()
 }
 
@@ -547,6 +575,10 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 		var ok bool
 		rangeAgg, ok = r.windowRangeAgg[lbs]
 		if !ok {
+			if r.maxSeries > 0 && len(r.windowRangeAgg) >= r.maxSeries {
+				r.err = logqlmodel.NewSeriesLimitError(r.maxSeries)
+				return
+			}
 			var metric labels.Labels
 			if _, ok = r.metrics[lbs]; !ok {
 				var err error
