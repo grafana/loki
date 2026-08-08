@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -50,6 +52,36 @@ const (
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
+
+type contextConn struct {
+	net.Conn
+	done     chan struct{}
+	once     sync.Once
+	closeErr error
+}
+
+func newContextConn(ctx context.Context, conn net.Conn) *contextConn {
+	c := &contextConn{
+		Conn: conn,
+		done: make(chan struct{}),
+	}
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = c.Close()
+		case <-c.done:
+		}
+	}()
+	return c
+}
+
+func (c *contextConn) Close() error {
+	c.once.Do(func() {
+		close(c.done)
+		c.closeErr = c.Conn.Close()
+	})
+	return c.closeErr
+}
 
 // Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
 type Client interface {
@@ -175,6 +207,18 @@ func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bo
 
 // LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
 func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+	return c.LiveTailQueryConnContext(context.Background(), queryStr, delayFor, limit, start, quiet)
+}
+
+// LiveTailQueryConnContext uses /api/prom/tail to set up a websocket connection and returns it.
+func (c *DefaultClient) LiveTailQueryConnContext(
+	ctx context.Context,
+	queryStr string,
+	delayFor time.Duration,
+	limit int,
+	start time.Time,
+	quiet bool,
+) (*websocket.Conn, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	if delayFor != 0 {
@@ -183,7 +227,7 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duratio
 	params.SetInt("limit", int64(limit))
 	params.SetInt("start", start.UnixNano())
 
-	return c.wsConnect(tailPath, params.Encode(), quiet)
+	return c.wsConnect(ctx, tailPath, params.Encode(), quiet)
 }
 
 func (c *DefaultClient) GetOrgID() string {
@@ -699,7 +743,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	return h, nil
 }
 
-func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet bool) (*websocket.Conn, error) {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return nil, err
@@ -725,6 +769,13 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 
 	ws := websocket.Dialer{
 		TLSClientConfig: tlsConfig,
+		NetDialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+			if err != nil {
+				return nil, err
+			}
+			return newContextConn(ctx, conn), nil
+		},
 	}
 
 	if c.ProxyURL != "" {
@@ -733,8 +784,11 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		}
 	}
 
-	conn, resp, err := ws.Dial(us, h)
+	conn, resp, err := ws.DialContext(ctx, us, h)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if resp == nil {
 			return nil, err
 		}

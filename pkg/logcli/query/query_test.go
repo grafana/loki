@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -393,7 +394,7 @@ func Test_batch(t *testing.T) {
 				FixedLabelsLen:  0,
 				LocalConfig:     "",
 			}
-			q.DoQuery(tc, out, false)
+			require.NoError(t, q.DoQuery(tc, out, false))
 			split := strings.Split(writer.String(), "\n")
 			// Remove the last entry because there is always a newline after the last line which
 			// leaves an entry element in the list of lines.
@@ -409,6 +410,52 @@ func Test_batch(t *testing.T) {
 type testQueryClient struct {
 	engine          *logql.QueryEngine
 	queryRangeCalls int
+	queryErr        error
+}
+
+func TestQueryDoQueryPropagatesClientError(t *testing.T) {
+	expectedErr := errors.New("client query failed")
+	q := &Query{}
+	q.SetInstant(time.Now())
+
+	err := q.DoQuery(&testQueryClient{queryErr: expectedErr}, nil, false)
+	require.ErrorIs(t, err, expectedErr)
+	require.ErrorContains(t, err, "query failed")
+}
+
+type testParallelQueryClient struct {
+	logcli_client.Client
+	err error
+}
+
+func (c *testParallelQueryClient) QueryRange(
+	_ string,
+	_ int,
+	_, _ time.Time,
+	_ logproto.Direction,
+	_, _ time.Duration,
+	_ bool,
+) (*loghttp.QueryResponse, error) {
+	return nil, c.err
+}
+
+func TestDoQueryParallelReturnsJobErrorBeforeMergeError(t *testing.T) {
+	expectedErr := errors.New("parallel query failed")
+	start := time.Now()
+	q := &Query{
+		Start:              start,
+		End:                start.Add(time.Hour),
+		BatchSize:          100,
+		ParallelDuration:   time.Hour,
+		ParallelMaxWorkers: 1,
+		PartPathPrefix:     filepath.Join(t.TempDir(), "part"),
+		MergeParts:         true,
+	}
+
+	out := output.NewRaw(io.Discard, nil)
+	err := q.DoQueryParallel(&testParallelQueryClient{err: expectedErr}, out, false)
+	require.ErrorIs(t, err, expectedErr)
+	require.NotErrorIs(t, err, os.ErrNotExist)
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
@@ -421,7 +468,10 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 }
 
 func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
-	panic("implement me")
+	if t.queryErr == nil {
+		panic("implement me")
+	}
+	return nil, t.queryErr
 }
 
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
