@@ -140,6 +140,11 @@ func NewMiddleware(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 ) (base.Middleware, Stopper, error) {
+	if cfg.EnableV2EngineRouter {
+		level.Warn(log).Log("msg", "v2 engine router is not available; using the standard query path")
+		cfg.EnableV2EngineRouter = false
+	}
+
 	metrics := NewMetrics(registerer, metricsNamespace)
 
 	var (

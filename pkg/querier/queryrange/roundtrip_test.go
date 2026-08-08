@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
@@ -178,6 +180,55 @@ func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handl
 
 		return nil, fmt.Errorf("Request not supported: %T", r)
 	})
+}
+
+func TestNewMiddlewareWithUnavailableV2EngineRouter(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		engineEnabled bool
+	}{
+		{name: "engine enabled", engineEnabled: true},
+		{name: "engine disabled", engineEnabled: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := log.NewLogfmtLogger(&logs)
+
+			cfg := testConfig
+			cfg.CacheResults = false
+			cfg.CacheIndexStatsResults = false
+			cfg.CacheInstantMetricResults = false
+			cfg.CacheSeriesResults = false
+			cfg.CacheLabelResults = false
+			cfg.EnableV2EngineRouter = true
+
+			require.NotPanics(t, func() {
+				middleware, stopper, err := NewMiddleware(
+					cfg,
+					testEngineOpts,
+					engine.Config{Enable: tt.engineEnabled},
+					nil,
+					logger,
+					fakeLimits{maxQueryParallelism: 1},
+					config.SchemaConfig{Configs: testSchemasTSDB},
+					nil,
+					false,
+					nil,
+					constants.Loki,
+				)
+				require.NoError(t, err)
+				if stopper != nil {
+					t.Cleanup(stopper.Stop)
+				}
+
+				handler := middleware.Wrap(base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+					return nil, nil
+				}))
+				require.NotNil(t, handler)
+			})
+			require.Contains(t, logs.String(), "v2 engine router is not available; using the standard query path")
+		})
+	}
 }
 
 // those tests are mostly for testing the glue between all component and make sure they activate correctly.
