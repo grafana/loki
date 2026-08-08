@@ -542,8 +542,13 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// Create a map of every renamed label and its original name
 	// in order to retrieve it later in the extraction phase
 	keys := make(map[string]string, len(l.expressions))
+	// sources holds the original logfmt keys read from the line so they can be
+	// remapped to their expression identifiers below.
+	sources := make(map[string]struct{}, len(l.expressions))
 	for id, paths := range l.expressions {
-		keys[id] = fmt.Sprintf("%v", paths...)
+		orig := fmt.Sprintf("%v", paths...)
+		keys[id] = orig
+		sources[orig] = struct{}{}
 		if !lbs.BaseHas(id) && !lbs.HasInCategory(id, StructuredMetadataLabel) {
 			lbs.Set(ParsedLabel, id, "")
 		}
@@ -552,8 +557,9 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
 	alwaysExtract := func(key string) bool {
-		// Any key in the expression list should always be extracted.
-		_, ok := keys[key]
+		// Keys read from the line are expression sources; they must always be
+		// extracted so renamed labels survive the parser hint gate.
+		_, ok := sources[key]
 		return ok
 	}
 
