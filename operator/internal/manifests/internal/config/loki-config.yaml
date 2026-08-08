@@ -203,13 +203,20 @@ limits_config:
   discover_log_levels: {{ .DiscoverLogLevels }}
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
+{{- if .Stack.Limits.Global.QueryLimits.MaxQueryLength }}
+  max_query_length: {{ .Stack.Limits.Global.QueryLimits.MaxQueryLength }}
+{{- else }}
   max_query_length: 721h
+{{- end }}
   max_query_parallelism: 32
   tsdb_max_query_parallelism: 512
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
   cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
   query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
+{{- if .Stack.Limits.Global.QueryLimits.MaxQueryLookback }}
+  max_query_lookback: {{ .Stack.Limits.Global.QueryLimits.MaxQueryLookback }}
+{{- end }}
   volume_enabled: true
   volume_max_series: {{ .Stack.Limits.Global.QueryLimits.MaxVolumeSeries }}
   enable_multi_variant_queries: true
