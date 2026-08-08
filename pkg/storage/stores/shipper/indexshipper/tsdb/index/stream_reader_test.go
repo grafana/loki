@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"testing"
 
@@ -173,10 +174,8 @@ func writeManyChunksFixture(t *testing.T, format int) (string, int64) {
 }
 
 // TestReaders_CrossCheck opens the same fixture with every Reader
-// implementation and asserts each method returns identical results to
-// the ByteSliceReader baseline. Today StreamReader delegates to
-// ByteSliceReader so this passes trivially; the check exists to catch
-// regressions as StreamReader gains real, standalone implementations.
+// implementation and asserts each method returns identical results to the
+// ByteSliceReader baseline.
 func TestReaders_CrossCheck(t *testing.T) {
 	for _, format := range []int{FormatV3, FormatV4} {
 		t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
@@ -364,26 +363,39 @@ func TestReaders_RejectsCorruptTOCChecksum(t *testing.T) {
 	}
 }
 
-func TestReaders_RejectsCorruptSymbolsChecksum(t *testing.T) {
-	for _, rc := range allReaderConstructors() {
-		t.Run(rc.name, func(t *testing.T) {
-			path := writeCrossCheckFixture(t, FormatV3)
+// TestReaders_RejectsCorruptSectionChecksum asserts that every section a reader
+// validates while opening is checked, for each of the sections the readers scan
+// up front.
+func TestReaders_RejectsCorruptSectionChecksum(t *testing.T) {
+	sections := map[string]func(toc *TOC) int{
+		"symbols":             func(toc *TOC) int { return int(toc.Symbols) },
+		"postings table":      func(toc *TOC) int { return int(toc.PostingsTable) },
+		"fingerprint offsets": func(toc *TOC) int { return int(toc.FingerprintOffsets) },
+	}
 
-			// Locate the symbols section from the TOC
-			reader, err := NewStreamFileReader(path)
-			require.NoError(t, err)
-			symbolsOffset := int(reader.toc.Symbols)
-			require.NoError(t, reader.Close())
+	for name, sectionOffset := range sections {
+		t.Run(name, func(t *testing.T) {
+			for _, rc := range allReaderConstructors() {
+				t.Run(rc.name, func(t *testing.T) {
+					path := writeCrossCheckFixture(t, FormatV3)
 
-			corruptFileBytes(t, path, func(b []byte) {
-				// Flip the first byte of the section's content (skipping the first 4 bytes,
-				// which is the size of the section).
-				b[symbolsOffset+4] ^= 0x01
-			})
+					// Locate the section from the TOC
+					reader, err := NewStreamFileReader(path)
+					require.NoError(t, err)
+					offset := sectionOffset(reader.toc)
+					require.NoError(t, reader.Close())
 
-			_, err = rc.open(path)
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "invalid checksum")
+					corruptFileBytes(t, path, func(b []byte) {
+						// Flip the first byte of the section's content (skipping the first 4 bytes,
+						// which is the size of the section).
+						b[offset+4] ^= 0x01
+					})
+
+					_, err = rc.open(path)
+					require.Error(t, err)
+					require.Contains(t, err.Error(), "invalid checksum")
+				})
+			}
 		})
 	}
 }
@@ -401,13 +413,7 @@ func TestReaders_RejectsCorruptSeriesRecord(t *testing.T) {
 			ref := allSeriesRefs(t, mmap)[0]
 			require.NoError(t, mmap.Close())
 
-			// Flip a bit in the record's content, leaving its length prefix and CRC intact.
-			corruptFileBytes(t, path, func(b []byte) {
-				offset := seriesOffset(ref)
-				_, lenBytes := binary.Uvarint(b[offset:])
-				require.Positive(t, lenBytes)
-				b[offset+lenBytes] ^= 0x01
-			})
+			corruptSeriesRecord(t, path, ref)
 
 			for _, rc := range allReaderConstructors() {
 				t.Run(rc.name, func(t *testing.T) {
@@ -426,6 +432,19 @@ func TestReaders_RejectsCorruptSeriesRecord(t *testing.T) {
 			}
 		})
 	}
+}
+
+// corruptSeriesRecord flips a bit in the content of the series record for ref,
+// leaving its uvarint length prefix and its trailing CRC32 intact so the record
+// still parses but no longer matches its checksum.
+func corruptSeriesRecord(t *testing.T, path string, ref storage.SeriesRef) {
+	t.Helper()
+	corruptFileBytes(t, path, func(b []byte) {
+		offset := seriesOffset(ref)
+		_, lenBytes := binary.Uvarint(b[offset:])
+		require.Positive(t, lenBytes)
+		b[offset+lenBytes] ^= 0x01
+	})
 }
 
 // TestReaders_RejectsOutOfRangeSeriesRef asserts that a series ref pointing
@@ -495,6 +514,121 @@ func TestReaders_RawFileReaderIndependence(t *testing.T) {
 			require.Equal(t, FormatV3, r.Version())
 		})
 	}
+}
+
+// TestStreamLabels_MatchesMmap cross-checks the streaming LabelNames,
+// LabelValues, LabelValueFor and LabelNamesFor against the mmap reader.
+func TestStreamLabels_MatchesMmap(t *testing.T) {
+	fixtures := map[string]func(t *testing.T, format int) string{
+		"many values for one name": writeManySymbolsFixture,
+		"several names": func(t *testing.T, format int) string {
+			path, _ := writeManyChunksFixture(t, format)
+			return path
+		},
+	}
+
+	for name, writeFixture := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			for _, format := range []int{FormatV3, FormatV4} {
+				t.Run(fmt.Sprintf("format=%d", format), func(t *testing.T) {
+					mmap, stream := openBothReaders(t, writeFixture(t, format))
+
+					mmapNames, err := mmap.LabelNames()
+					require.NoError(t, err)
+					streamNames, err := stream.LabelNames()
+					require.NoError(t, err)
+					require.Equal(t, mmapNames, streamNames)
+					require.NotEmpty(t, streamNames)
+
+					// Every name the index holds, plus the all-postings key
+					// (which LabelNames omits but LabelValues still answers for)
+					// and a name that doesn't exist.
+					for _, labelName := range slices.Concat(mmapNames, []string{"", "does-not-exist"}) {
+						mmapValues, err := mmap.LabelValues(labelName)
+						require.NoError(t, err)
+						streamValues, err := stream.LabelValues(labelName)
+						require.NoError(t, err)
+						require.Equal(t, mmapValues, streamValues)
+					}
+
+					refs := allSeriesRefs(t, mmap)
+					require.NotEmpty(t, refs)
+
+					// LabelNamesFor over every ref at once
+					mmapNamesFor, err := mmap.LabelNamesFor(refs...)
+					require.NoError(t, err)
+					streamNamesFor, err := stream.LabelNamesFor(refs...)
+					require.NoError(t, err)
+					require.Equal(t, mmapNamesFor, streamNamesFor)
+
+					for _, ref := range refs {
+						// LabelNamesFor over every ref at once
+						mmapNamesFor, err := mmap.LabelNamesFor(ref)
+						require.NoError(t, err)
+						streamNamesFor, err := stream.LabelNamesFor(ref)
+						require.NoError(t, err)
+						require.Equal(t, mmapNamesFor, streamNamesFor)
+
+						// Both a label the series carries and one it doesn't,
+						// the latter being reported as storage.ErrNotFound.
+						for _, labelName := range slices.Concat(mmapNames, []string{"does-not-exist"}) {
+							mmapValue, mmapErr := mmap.LabelValueFor(ref, labelName)
+							streamValue, streamErr := stream.LabelValueFor(ref, labelName)
+							require.Equal(t, mmapErr, streamErr)
+							require.Equal(t, mmapValue, streamValue)
+						}
+					}
+
+					// LabelNamesFor rejects a ref past the end of the file the
+					// same way in both readers.
+					_, err = stream.LabelNamesFor(refs[len(refs)-1] + 1<<20)
+					require.Error(t, err)
+					_, err = mmap.LabelNamesFor(refs[len(refs)-1] + 1<<20)
+					require.Error(t, err)
+				})
+			}
+		})
+	}
+}
+
+func TestStreamLabels_RejectsMatchers(t *testing.T) { // Neither implementation supports matchers
+	mmap, stream := openBothReaders(t, writeManySymbolsFixture(t, FormatV4))
+
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "id", "v0000")
+
+	_, mmapErr := mmap.LabelValues("id", matcher)
+	_, streamErr := stream.LabelValues("id", matcher)
+	require.Error(t, streamErr)
+	require.Equal(t, mmapErr.Error(), streamErr.Error())
+
+	_, mmapErr = mmap.LabelNames(matcher)
+	_, streamErr = stream.LabelNames(matcher)
+	require.Error(t, streamErr)
+	require.Equal(t, mmapErr.Error(), streamErr.Error())
+}
+
+func TestStreamLabels_RejectsCorruptSeriesRecord(t *testing.T) {
+	path := writeManySymbolsFixture(t, FormatV4)
+
+	// Pick a ref from the intact file, then corrupt it before opening the
+	// readers under test.
+	reader, err := NewMmapFileReader(path)
+	require.NoError(t, err)
+	ref := allSeriesRefs(t, reader)[0]
+	require.NoError(t, reader.Close())
+	corruptSeriesRecord(t, path, ref)
+
+	mmap, stream := openBothReaders(t, path)
+
+	_, mmapErr := mmap.LabelNamesFor(ref)
+	_, streamErr := stream.LabelNamesFor(ref)
+	require.ErrorContains(t, mmapErr, "invalid checksum")
+	require.ErrorContains(t, streamErr, "invalid checksum")
+	_, mmapErr = mmap.LabelValueFor(ref, "id")
+	_, streamErr = stream.LabelValueFor(ref, "id")
+	require.ErrorContains(t, mmapErr, "invalid checksum")
+	require.ErrorContains(t, streamErr, "invalid checksum")
+
 }
 
 // corruptFileBytes reads the whole file, hands the bytes to mutate, and
