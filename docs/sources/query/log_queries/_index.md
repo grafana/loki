@@ -244,7 +244,7 @@ Using Duration, Number and Bytes will convert the label value prior to compariso
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filter those errors, use a [label filter expression](#label-filter-expression) such as `| __error__=""`, or remove the label with a [drop expression](#drop-labels-expression) such as `| drop __error__`.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
