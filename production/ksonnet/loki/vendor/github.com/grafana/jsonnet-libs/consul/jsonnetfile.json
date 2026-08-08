@@ -1,0 +1,14 @@
+{
+    "dependencies": [
+        {
+            "name": "ksonnet-util",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/jsonnet-libs",
+                    "subdir": "ksonnet-util"
+                }
+            },
+            "version": "master"
+        }
+    ]
+}
