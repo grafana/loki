@@ -14,8 +14,8 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#157](https://github.com/thanos-io/objstore/pull/157) Azure: Add `az_tenant_id`, `client_id` and `client_secret` configs.
 
 ### Fixed
-- [#196](https://github.com/thanos-io/objstore/pull/196) GCS: fix error check in Exists method when object does not exist.
 - [#153](https://github.com/thanos-io/objstore/pull/153) Metrics: Fix `objstore_bucket_operation_duration_seconds_*` for `get` and `get_range` operations.
+- [#141](https://github.com/thanos-io/objstore/pull/142) S3: Fix missing encryption configuration for `Bucket.Exists()` and `Bucket.Attributes()` calls.
 - [#117](https://github.com/thanos-io/objstore/pull/117) Metrics: Fix `objstore_bucket_operation_failures_total` incorrectly incremented if context is cancelled while reading object contents.
 - [#115](https://github.com/thanos-io/objstore/pull/115) GCS: Fix creation of bucket with GRPC connections. Also update storage client to `v1.40.0`.
 - [#102](https://github.com/thanos-io/objstore/pull/102) Azure: bump azblob sdk to get concurrency fixes.
@@ -59,6 +59,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#150](https://github.com/thanos-io/objstore/pull/150) Add support for roundtripper wrapper.
 - [#63](https://github.com/thanos-io/objstore/pull/63) Implement a `IterWithAttributes` method on the bucket client.
 - [#155](https://github.com/thanos-io/objstore/pull/155) Add a `Provider` method on `objstore.Client`.
+- [#163](https://github.com/thanos-io/objstore/pull/145) Add a `NewBucketFromConfig` constructor method for creating a client from an existing `BucketConfig` object.
 
 
 ### Changed

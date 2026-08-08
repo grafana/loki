@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 
 	"github.com/efficientgo/core/errcapture"
-	"github.com/gofrs/flock"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
@@ -268,54 +267,6 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 		return errors.Wrapf(err, "copy to %s", file)
 	}
 	return nil
-}
-
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-
-	file := filepath.Join(b.rootDir, name)
-	if err := os.MkdirAll(filepath.Dir(file), os.ModePerm); err != nil {
-		return err
-	}
-
-	// Acquire a file lock before modifiying as file-systems don't support conditional writes like cloud providers.
-	fileLock := flock.New(file + ".lock")
-	locked, err := fileLock.TryLock()
-	if err != nil {
-		return err
-	}
-	if !locked {
-		return errors.New("file is locked by another process")
-	}
-	defer fileLock.Unlock()
-
-	// We use rc for our callback instead of passing openedFile directly, since
-	// passing a concrete type directly will always be detected as non-nil,
-	// due to the way Go converts concrete types to interfaces.
-	var rc io.ReadCloser
-
-	openedFile, err := os.Open(file)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	} else if openedFile != nil {
-		rc = openedFile
-	}
-
-	newContent, err := f(rc)
-	if err != nil {
-		return err
-	} else if newContent != nil {
-		defer newContent.Close()
-	}
-
-	content, err := io.ReadAll(newContent)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(file, content, 0600)
 }
 
 func isDirEmpty(name string) (ok bool, err error) {

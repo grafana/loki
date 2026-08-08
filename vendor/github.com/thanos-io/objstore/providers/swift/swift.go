@@ -375,10 +375,6 @@ func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err err
 	return nil
 }
 
-func (b *Container) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
-	panic("unimplemented: Swift.GetAndReplace")
-}
-
 // Delete removes the object with the given name.
 func (c *Container) Delete(_ context.Context, name string) error {
 	return errors.Wrap(c.connection.LargeObjectDelete(c.name, name), "delete object")
