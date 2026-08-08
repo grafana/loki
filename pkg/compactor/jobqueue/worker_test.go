@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
