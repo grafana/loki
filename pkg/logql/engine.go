@@ -320,21 +320,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	switch e := q.params.GetExpression().(type) {
 	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
 	case syntax.VariantsExpr:
-		tenants, _ := tenant.TenantIDs(ctx)
-		multiVariantEnabled := false
-		for _, t := range tenants {
-			if q.limits.EnableMultiVariantQueries(t) {
-				multiVariantEnabled = true
-				break
-			}
-		}
-
-		if !multiVariantEnabled {
-			return nil, logqlmodel.ErrVariantsDisabled
-		}
-
-		value, err := q.evalVariants(ctx, e)
-		return value, err
+		return nil, logqlmodel.ErrVariantsUnsupported
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -802,6 +788,10 @@ type groupedAggregation struct {
 	reverseHeap vectorByReverseValueHeap
 }
 
+// evalVariants has no caller: Eval rejects variants() queries before it reaches
+// here. It is deleted together with the rest of the variants execution path.
+//
+//nolint:unused
 func (q *query) evalVariants(
 	ctx context.Context,
 	expr syntax.VariantsExpr,
