@@ -59,6 +59,10 @@ You can authenticate Blob Storage access by using a storage account name and key
 
 [OSS](https://www.alibabacloud.com/product/object-storage-service) is the Alibaba Cloud hosted object storage.
 
+#### Tigris
+
+[Tigris](https://www.tigrisdata.com/) is a globally distributed S3-compatible object storage service with no egress fees. It serves data from the region nearest to the requester through a single global endpoint, so it is a good candidate when Loki queriers or clients run in more than one region.
+
 #### Other notable mentions
 
 You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
@@ -355,6 +359,34 @@ storage_config:
     region: <region>
     service_instance_id: <cos_service_instance_id>
     auth_endpoint: <iam_endpoint_for_authentication>
+```
+
+### Tigris deployment (S3-compatible Single Store)
+
+You configure Tigris by using the AWS config because Tigris implements the S3 API. Set `region` to `auto` and use the global endpoint:
+
+```yaml
+storage_config:
+  aws:
+    endpoint: https://t3.storage.dev
+    region: auto
+    access_key_id: <tigris_access_key_id>
+    secret_access_key: <tigris_secret_access_key>
+    bucketnames: <bucket>
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
 ```
 
 ### On premise deployment (MinIO Single Store)
