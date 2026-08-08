@@ -54,6 +54,11 @@ Marker files should be stored on a persistent disk to ensure that the chunks pen
 Grafana Labs recommends running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
 {{< /admonition >}}
 
+Alternatively, set `-compactor.deletion-marker-object-store-prefix` to store the marker files under the
+given prefix in object storage instead of on the local disk. Marker files in object storage are visible
+to every Compactor instance, so the instance that deletes the chunks does not have to be the one that
+marked them. Any marker files found on the local disk are copied to object storage on startup.
+
 ### Retention Configuration
 
 This Compactor configuration example activates retention.
