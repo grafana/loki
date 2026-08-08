@@ -14,6 +14,12 @@ import (
 const (
 	// noPolicy represents the absence of a policy
 	noPolicy = ""
+
+	// defaultStreamCountBucket is the stream-count bucket for streams whose policy has no
+	// stream-count override, including streams with no policy at all (see
+	// Limiter.streamCountBucket). Named buckets exist only for policies with an override;
+	// every stream is counted in exactly one bucket.
+	defaultStreamCountBucket = noPolicy
 )
 
 var notOwnedStreamsMetric = promauto.NewGauge(prometheus.GaugeOpts{
@@ -23,59 +29,56 @@ var notOwnedStreamsMetric = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 type ownedStreamService struct {
-	tenantID         string
-	limiter          *Limiter
-	fixedLimit       *atomic.Int32
-	ownedStreamCount *atomic.Int64
-	lock             sync.RWMutex
-	notOwnedStreams  map[model.Fingerprint]any
+	tenantID   string
+	limiter    *Limiter
+	fixedLimit *atomic.Int32
 
-	// Track streams by policy for policy-specific limit enforcement
-	policyStreamCounts map[string]*atomic.Int64
-	policyLock         sync.RWMutex
+	lock            sync.RWMutex
+	notOwnedStreams map[model.Fingerprint]any
+	// streamCounts tracks owned streams per stream-count bucket. Buckets are created lazily
+	// and removed when their count reaches zero. The map is guarded by lock; the counters are
+	// atomics so existing buckets can be incremented under the read lock.
+	streamCounts map[string]*atomic.Int64
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {
 	svc := &ownedStreamService{
-		tenantID:           tenantID,
-		limiter:            limiter,
-		fixedLimit:         atomic.NewInt32(0),
-		ownedStreamCount:   atomic.NewInt64(0),
-		notOwnedStreams:    make(map[model.Fingerprint]any),
-		policyStreamCounts: make(map[string]*atomic.Int64),
+		tenantID:        tenantID,
+		limiter:         limiter,
+		fixedLimit:      atomic.NewInt32(0),
+		notOwnedStreams: make(map[model.Fingerprint]any),
+		streamCounts:    make(map[string]*atomic.Int64),
 	}
 
 	svc.updateFixedLimit()
 	return svc
 }
 
-func (s *ownedStreamService) getOwnedStreamCount() int {
-	return int(s.ownedStreamCount.Load())
-}
+// getStreamCount returns the number of owned streams tracked in the given bucket.
+func (s *ownedStreamService) getStreamCount(bucket string) int {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 
-func (s *ownedStreamService) getPolicyStreamCount(policy string) int {
-	if policy == noPolicy {
-		return 0
-	}
-
-	s.policyLock.RLock()
-	defer s.policyLock.RUnlock()
-
-	if policyCount, exists := s.policyStreamCounts[policy]; exists {
-		return int(policyCount.Load())
+	if count, exists := s.streamCounts[bucket]; exists {
+		return int(count.Load())
 	}
 	return 0
 }
 
-// getActivePolicyCount returns the number of policies that currently have active streams
+// getActivePolicyCount returns the number of policy buckets that currently have active streams
 func (s *ownedStreamService) getActivePolicyCount() int {
-	s.policyLock.RLock()
-	defer s.policyLock.RUnlock()
-	return len(s.policyStreamCounts)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	n := len(s.streamCounts)
+	if _, exists := s.streamCounts[defaultStreamCountBucket]; exists {
+		n--
+	}
+	return n
 }
 
 func (s *ownedStreamService) updateFixedLimit() (old, newVal int32) {
-	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID, noPolicy)
+	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID, defaultStreamCountBucket)
 	return s.fixedLimit.Swap(int32(newLimit)), int32(newLimit)
 }
 
@@ -83,20 +86,29 @@ func (s *ownedStreamService) getFixedLimit() int {
 	return int(s.fixedLimit.Load())
 }
 
-func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bool, policy string) {
-	// only need to inc the owned count; can use sync atomics.
+// trackStreamOwnership counts an owned stream in exactly one bucket. The bucket must be the
+// stream's streamCountBucket so that the later trackRemovedStream call decrements the same
+// bucket.
+func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bool, bucket string) {
 	if owned {
-		s.ownedStreamCount.Inc()
-
-		// Track policy-specific stream count if policy is specified
-		if policy != noPolicy {
-			s.policyLock.Lock()
-			if s.policyStreamCounts[policy] == nil {
-				s.policyStreamCounts[policy] = atomic.NewInt64(0)
-			}
-			s.policyStreamCounts[policy].Inc()
-			s.policyLock.Unlock()
+		// Fast path: the bucket usually exists already and its atomic counter can be
+		// incremented under the read lock.
+		s.lock.RLock()
+		count, exists := s.streamCounts[bucket]
+		if exists {
+			count.Inc()
 		}
+		s.lock.RUnlock()
+		if exists {
+			return
+		}
+
+		s.lock.Lock()
+		if s.streamCounts[bucket] == nil {
+			s.streamCounts[bucket] = atomic.NewInt64(0)
+		}
+		s.streamCounts[bucket].Inc()
+		s.lock.Unlock()
 		return
 	}
 
@@ -107,7 +119,7 @@ func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bo
 	s.notOwnedStreams[fp] = nil
 }
 
-func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, policy string) {
+func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, bucket string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -116,33 +128,22 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, policy str
 		delete(s.notOwnedStreams, fp)
 		return
 	}
-	s.ownedStreamCount.Dec()
 
-	// Decrement policy-specific stream count if policy is specified
-	if policy != noPolicy {
-		s.policyLock.Lock()
-		if policyCount, exists := s.policyStreamCounts[policy]; exists {
-			policyCount.Dec()
-			// Clean up policy if count reaches zero to prevent unbounded map growth
-			if policyCount.Load() == 0 {
-				delete(s.policyStreamCounts, policy)
-			}
+	if count, exists := s.streamCounts[bucket]; exists {
+		count.Dec()
+		// Clean up the bucket if count reaches zero to prevent unbounded map growth
+		if count.Load() == 0 {
+			delete(s.streamCounts, bucket)
 		}
-		s.policyLock.Unlock()
 	}
 }
 
 func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.ownedStreamCount.Store(0)
 	notOwnedStreamsMetric.Sub(float64(len(s.notOwnedStreams)))
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
-
-	// Reset policy-specific stream counts and clean up the map
-	s.policyLock.Lock()
-	s.policyStreamCounts = make(map[string]*atomic.Int64)
-	s.policyLock.Unlock()
+	s.streamCounts = make(map[string]*atomic.Int64)
 }
 
 func (s *ownedStreamService) isStreamNotOwned(fp model.Fingerprint) bool {

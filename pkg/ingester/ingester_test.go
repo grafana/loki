@@ -1785,7 +1785,7 @@ func TestUpdateOwnedStreams(t *testing.T) {
 	require.NoError(t, err)
 
 	// streams are pushed, let's check owned stream counts
-	ownedStreams := i.instances["test"].ownedStreamsSvc.getOwnedStreamCount()
+	ownedStreams := i.instances["test"].ownedStreamsSvc.getStreamCount(defaultStreamCountBucket)
 	require.Equal(t, 8, ownedStreams)
 }
 
