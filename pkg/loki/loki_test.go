@@ -406,3 +406,55 @@ func TestNoAuthTenantValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestLBACValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		lbacEnabled bool
+		authEnabled bool
+		wantErr     bool
+	}{
+		{
+			name:        "lbac enabled with auth enabled",
+			lbacEnabled: true,
+			authEnabled: true,
+			wantErr:     false,
+		},
+		{
+			name:        "lbac enabled with auth disabled",
+			lbacEnabled: true,
+			authEnabled: false,
+			wantErr:     true,
+		},
+		{
+			name:        "lbac disabled with auth enabled",
+			lbacEnabled: false,
+			authEnabled: true,
+			wantErr:     false,
+		},
+		{
+			name:        "lbac disabled with auth disabled",
+			lbacEnabled: false,
+			authEnabled: false,
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Config{}
+			f := flag.NewFlagSet("test", flag.PanicOnError)
+			cfg.RegisterFlags(f)
+			cfg.LBAC.Enabled = tt.lbacEnabled
+			cfg.AuthEnabled = tt.authEnabled
+
+			err := cfg.validateLBAC()
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "lbac.enabled")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
