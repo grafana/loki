@@ -342,16 +342,15 @@ copyMatchTry4:
 	BEQ     copyMatchDone
 
 copyMatchLoop1:
-	// For offset == 1 or 2 and len >= 8, splat the 1- or 2-byte pattern
-	// into tmp3 and store 8 bytes at a time. The remaining 1..7 bytes,
-	// plus offset == 3 and the len < 8 cases, fall through to the
-	// byte-by-byte loop below. match is not advanced during the splat;
-	// the byte loop's post-index read correctly observes the pattern
-	// because match[k] for k >= offset sees the bytes we just splatted.
+	// For offset <= 2 and len >= 8, splat the 1- or 2-byte pattern
+	// and store 8-16 bytes at a time. Offsets 3..7 with enough length
+	// go to their own splat/tile paths (reachable only with offset < 8:
+	// len >= 8 at this point implies the offset >= 8 cases went through
+	// copyMatchTry8Narrow). Everything else falls to the byte loop.
 	CMP $8, len
 	BLO copyMatchByteLoop         // len < 8: byte loop is shorter.
 	CMP $2, offset
-	BHI copyMatchByteLoop         // offset == 3: period doesn't tile 8B.
+	BHI copyMatchMidPeriod        // offsets 3..7.
 	BEQ copyMatchSplat2           // offset == 2
 
 	// offset == 1: splat a single byte to all 8 bytes of tmp3.
@@ -359,6 +358,60 @@ copyMatchLoop1:
 	ORR   tmp3<<8, tmp3, tmp3
 	ORR   tmp3<<16, tmp3, tmp3
 	B     copyMatchSplatTile32
+
+copyMatchMidPeriod:
+	// offsets 3..7 with len >= 8.
+	CMP  $4, offset
+	BEQ  copyMatchSplat4
+	CMP  $16, len
+	BHS  copyMatchTile
+	B    copyMatchByteLoop
+
+copyMatchSplat4:
+	// offset == 4: splat a word to all 8 bytes of tmp3, then reuse the
+	// 16-byte splat store loop below.
+	MOVWU (match), tmp3
+	B     copyMatchSplatTile32
+
+copyMatchTile:
+	// offsets 3, 5, 6, 7 with len >= 16. The output is periodic with
+	// period == offset. Prefill step = (16/offset)*offset bytes (12..15,
+	// the largest multiple of offset <= 16) byte-by-byte, which makes
+	// [match0, dst) hold >= 16 pattern bytes and leaves dst phase-aligned
+	// to the pattern start. Then load one 16-byte tile from match0 and
+	// store it repeatedly, advancing dst by step so the phase is
+	// preserved. The loop has no loads, so unlike an overlapped-copy
+	// loop it incurs no store-to-load-forwarding stalls.
+	MOVD $16, tmp1
+	UDIV offset, tmp1, tmp2
+	MUL  offset, tmp2, tmp4        // tmp4 = step
+	MOVD match, lenRem             // lenRem = match0, the tile source.
+	MOVD tmp4, tmp1                // tmp1 = prefill byte count.
+
+copyMatchTilePrefill:
+	MOVBU.P 1(match), tmp3
+	MOVB.P  tmp3, 1(dst)
+	SUBS    $1, tmp1
+	BNE     copyMatchTilePrefill
+
+	SUB tmp4, len
+	LDP (lenRem), (tmp1, tmp2)     // 16-byte pattern tile.
+
+copyMatchTileLoop:
+	// Store 16 bytes while at least 16 remain, consuming step bytes per
+	// iteration; the 16-step overlap is rewritten by the next store (or
+	// the tail loop) with identical values.
+	CMP $16, len
+	BLO copyMatchTileTail
+	STP (tmp1, tmp2), (dst)
+	ADD tmp4, dst
+	SUB tmp4, len
+	B   copyMatchTileLoop
+
+copyMatchTileTail:
+	CBZ len, copyMatchDone
+	SUB offset, dst, match         // Re-derive match for the byte loop.
+	B   copyMatchByteLoop
 
 copyMatchSplat2:
 	// offset == 2: splat a halfword.
