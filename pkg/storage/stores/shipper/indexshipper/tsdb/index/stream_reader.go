@@ -26,10 +26,11 @@ type StreamReader struct {
 	path    string
 	size    int64
 	version int
-	toc     *TOC
 
-	symbols  *streamSymbols
-	postings *streamPostings
+	toc                *TOC
+	symbols            *streamSymbols
+	postings           *streamPostings
+	fingerprintOffsets FingerprintOffsets
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
@@ -74,6 +75,12 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 		return nil, err
 	}
 
+	reader.fingerprintOffsets, err = reader.readFingerprintOffsetsTable(int(toc.FingerprintOffsets))
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+
 	// Fallback used by not-yet-ported methods
 	mmapReader, err := NewMmapFileReader(path)
 	if err != nil {
@@ -93,10 +100,10 @@ func (s StreamReader) readHeader() (int, error) {
 	}
 	// Construct decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return 0, fmt.Errorf("open header decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Extract and validate magic
 	magic := decbuf.Be32()
 	if err := decbuf.Err(); err != nil {
@@ -125,10 +132,10 @@ func (s StreamReader) readTOC() (*TOC, error) {
 	}
 	// Create decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return nil, fmt.Errorf("open toc decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 	// Validate CRC32
 	tocStart := int(s.size) - indexTOCLen
 	if decbuf.ResetAt(tocStart); decbuf.Err() != nil {
@@ -159,6 +166,28 @@ func (s StreamReader) readTOC() (*TOC, error) {
 		return nil, fmt.Errorf("read toc: %w", err)
 	}
 	return toc, nil
+}
+
+// readFingerprintOffsetsTable reads the fingerprint-offsets section at the
+// given absolute file offset into memory.
+// It is the StreamReader's counterpart to readFingerprintOffsetsTable in index.go.
+// On disk the section is a 4-byte big-endian count N, followed by N
+// (seriesRef, fingerprint) pairs of 8-byte big-endian values, then the section CRC,
+// which NewDecbufAtChecked validates while opening.
+func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
+	decbuf := s.factory.NewDecbufAtChecked(context.Background(), offset, castagnoliTable)
+	defer func() { _ = decbuf.Close() }()
+	if err := decbuf.Err(); err != nil {
+		return nil, err
+	}
+
+	n := decbuf.Be32()
+	result := make(FingerprintOffsets, 0, int(n))
+	for decbuf.Err() == nil && n > 0 {
+		result = append(result, [2]uint64{decbuf.Be64(), decbuf.Be64()})
+		n--
+	}
+	return result, decbuf.Err()
 }
 
 func (s StreamReader) Version() int {
@@ -206,17 +235,17 @@ func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls
 // Postings returns a postings iterator for the given label name and values.
 // Values must be provided in ascending order.
 //
-// A non-nil FingerprintFilter (shard-aware queries) still falls through to the
-// mmap reader: the streaming reader does not yet load the fingerprint-offsets
-// table needed to shard postings — that is a later step. The common
-// fpFilter==nil path is served natively by streamPostings.
+// A non-nil FingerprintFilter restricts the result to the requested shard by
+// bounding the merged postings with the fingerprint offsets table.
 func (s StreamReader) Postings(labelName string, fpFilter FingerprintFilter, labelValues ...string) (Postings, error) {
-	if fpFilter != nil {
-		// Serve shard-aware queries from mmap reader until we've implemented
-		// reading the fingerprint offsets table needed to serve these properly.
-		return s.mmapReader.Postings(labelName, fpFilter, labelValues...)
+	postings, err := s.postings.postingsFor(labelName, labelValues...)
+	if err != nil {
+		return nil, err
 	}
-	return s.postings.postingsFor(labelName, labelValues...)
+	if fpFilter != nil {
+		return NewShardedPostings(postings, fpFilter, s.fingerprintOffsets), nil
+	}
+	return postings, nil
 }
 
 func (s StreamReader) Size() int64 {
