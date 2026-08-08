@@ -253,8 +253,33 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 		return tok
 	}
 
+	if !validIdentifier(tokenText) {
+		l.Error("invalid identifier \"" + tokenText + "\"")
+		return 0
+	}
+
 	lval.str = tokenText
 	return IDENTIFIER
+}
+
+// validIdentifier checks if s is a valid LogQL identifier.
+// Valid identifiers follow Prometheus label naming rules: [a-zA-Z_][a-zA-Z0-9_]*.
+func validIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return false
+			}
+		} else {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (l *lexer) Error(msg string) {
