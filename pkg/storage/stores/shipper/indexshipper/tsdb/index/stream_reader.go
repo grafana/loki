@@ -1,36 +1,159 @@
 package index
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
+	"os"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc/filepool"
 )
 
 // StreamReader is the file-streaming counterpart to ByteSliceReader.
 //
-// Currently, this is just scaffolding: StreamReader delegates all calls to a *ByteSliceReader.
+// Currently, StreamReader delegates some calls to a *ByteSliceReader.
 // Follow-up changes will progressively replace embedded calls with streaming implementations
 // backed by a file-handle pool.
 type StreamReader struct {
 	mmapReader *ByteSliceReader
+
+	factory *streamenc.FilePoolDecbufFactory
+	path    string
+	size    int64
+	version int
+	toc     *TOC
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
 func NewStreamFileReader(path string) (*StreamReader, error) {
-	mmapReader, err := NewMmapFileReader(path)
+	fileInfo, err := os.Stat(path)
 	if err != nil {
+		return nil, fmt.Errorf("stat index file: %w", err)
+	}
+	size := fileInfo.Size()
+
+	factory := streamenc.NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
+
+	reader := &StreamReader{
+		factory: factory,
+		path:    path,
+		size:    size,
+	}
+
+	version, err := reader.readHeader()
+	if err != nil {
+		_ = factory.Close()
 		return nil, err
 	}
-	return &StreamReader{mmapReader: mmapReader}, nil
+	reader.version = version
+
+	toc, err := reader.readTOC()
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+	reader.toc = toc
+
+	// Fallback used by not-yet-ported methods
+	mmapReader, err := NewMmapFileReader(path)
+	if err != nil {
+		_ = factory.Close()
+		return nil, err
+	}
+	reader.mmapReader = mmapReader
+
+	return reader, nil
+}
+
+// readHeader validates the magic bytes and returns the on-disk format version.
+func (s StreamReader) readHeader() (int, error) {
+	// Validate header size
+	if s.size < int64(HeaderLen) {
+		return 0, fmt.Errorf("index header: %w", streamenc.ErrInvalidSize)
+	}
+	// Construct decbuf
+	decbuf := s.factory.NewRawDecbuf(context.Background())
+	if err := decbuf.Err(); err != nil {
+		return 0, fmt.Errorf("open header decbuf: %w", err)
+	}
+	defer func() { _ = decbuf.Close() }()
+	// Extract and validate magic
+	magic := decbuf.Be32()
+	if err := decbuf.Err(); err != nil {
+		return 0, fmt.Errorf("read header magic: %w", err)
+	}
+	if magic != MagicIndex {
+		return 0, fmt.Errorf("invalid magic number %x", magic)
+	}
+	// Extract and validate version
+	version := int(decbuf.Byte())
+	if err := decbuf.Err(); err != nil {
+		return 0, fmt.Errorf("read header version: %w", err)
+	}
+	if version != FormatV2 && version != FormatV3 && version != FormatV4 {
+		return 0, fmt.Errorf("unknown index file version %d", version)
+	}
+	return version, nil
+}
+
+// readTOC reads the fixed-size TOC record from the tail of
+// the file and validates its CRC32.
+func (s StreamReader) readTOC() (*TOC, error) {
+	// Validate size
+	if s.size < int64(indexTOCLen) {
+		return nil, fmt.Errorf("index toc: %w", streamenc.ErrInvalidSize)
+	}
+	// Create decbuf
+	decbuf := s.factory.NewRawDecbuf(context.Background())
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("open toc decbuf: %w", err)
+	}
+	defer func() { _ = decbuf.Close() }()
+	// Validate CRC32
+	tocStart := int(s.size) - indexTOCLen
+	if decbuf.ResetAt(tocStart); decbuf.Err() != nil {
+		return nil, fmt.Errorf("go to start of toc for crc: %w", decbuf.Err())
+	}
+	if decbuf.CheckCrc32(castagnoliTable); decbuf.Err() != nil {
+		return nil, fmt.Errorf("check toc crc: %w", decbuf.Err())
+	}
+	// Read TOC
+	if decbuf.ResetAt(tocStart); decbuf.Err() != nil {
+		return nil, fmt.Errorf("go to start of toc to read it: %w", decbuf.Err())
+	}
+	toc := &TOC{
+		Symbols:            decbuf.Be64(),
+		Series:             decbuf.Be64(),
+		LabelIndices:       decbuf.Be64(),
+		LabelIndicesTable:  decbuf.Be64(),
+		Postings:           decbuf.Be64(),
+		PostingsTable:      decbuf.Be64(),
+		FingerprintOffsets: decbuf.Be64(),
+		Metadata: Metadata{
+			From:     int64(decbuf.Be64()),
+			Through:  int64(decbuf.Be64()),
+			Checksum: decbuf.Be32(),
+		},
+	}
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("read toc: %w", err)
+	}
+	return toc, nil
 }
 
 func (s StreamReader) Version() int {
-	return s.mmapReader.Version()
+	return s.version
 }
 
-func (s StreamReader) RawFileReader() (io.ReadSeeker, error) {
-	return s.mmapReader.RawFileReader()
+// RawFileReader opens a fresh file handle over the index file.
+// The caller owns closing it.
+func (s StreamReader) RawFileReader() (io.ReadSeekCloser, error) {
+	return os.Open(s.path)
 }
 
 func (s StreamReader) PostingsRanges() (map[labels.Label]Range, error) {
@@ -38,11 +161,11 @@ func (s StreamReader) PostingsRanges() (map[labels.Label]Range, error) {
 }
 
 func (s StreamReader) Bounds() (int64, int64) {
-	return s.mmapReader.Bounds()
+	return s.toc.Metadata.From, s.toc.Metadata.Through
 }
 
 func (s StreamReader) Checksum() uint32 {
-	return s.mmapReader.Checksum()
+	return s.toc.Metadata.Checksum
 }
 
 func (s StreamReader) Symbols() StringIter {
@@ -82,9 +205,11 @@ func (s StreamReader) Postings(name string, fpFilter FingerprintFilter, values .
 }
 
 func (s StreamReader) Size() int64 {
-	return s.mmapReader.Size()
+	return s.size
 }
 
 func (s StreamReader) Close() error {
-	return s.mmapReader.Close()
+	mmapErr := s.mmapReader.Close()
+	factoryErr := s.factory.Close()
+	return errors.Join(mmapErr, factoryErr)
 }
