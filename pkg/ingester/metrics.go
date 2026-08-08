@@ -24,6 +24,7 @@ type ingesterMetrics struct {
 	walReplaySamplesDropped *prometheus.CounterVec
 	walReplayBytesDropped   *prometheus.CounterVec
 	walCorruptionsTotal     *prometheus.CounterVec
+	walReplayBackpressure   *prometheus.CounterVec
 	walLoggedBytesTotal     prometheus.Counter
 	walRecordsLogged        prometheus.Counter
 
@@ -119,6 +120,10 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		walCorruptionsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_ingester_wal_corruptions_total",
 			Help: "Total number of WAL corruptions encountered.",
+		}, []string{"type"}),
+		walReplayBackpressure: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_ingester_wal_replay_backpressure_failures_total",
+			Help: "Total number of WAL replays left incomplete because a replay-triggered flush could not bring memory back below the replay memory ceiling.",
 		}, []string{"type"}),
 		checkpointDeleteFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingester_checkpoint_deletions_failed_total",
