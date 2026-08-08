@@ -467,27 +467,6 @@ func _computeFloor(tls *libc.TLS, p uintptr) {
 	}
 }
 
-// C documentation
-//
-//	/*
-//	** Compute the Hour, Minute, and Seconds from the julian day number.
-//	*/
-func _computeHMS(tls *libc.TLS, p uintptr) {
-	var day_min, day_ms int32
-	_, _ = day_min, day_ms /* milliseconds, minutes into the day */
-	if (*TDateTime)(unsafe.Pointer(p)).FvalidHMS != 0 {
-		return
-	}
-	_computeJD(tls, p)
-	day_ms = int32(((*TDateTime)(unsafe.Pointer(p)).FiJD + libc.Int64FromInt32(43200000)) % libc.Int64FromInt32(86400000))
-	(*TDateTime)(unsafe.Pointer(p)).Fs = float64(day_ms%libc.Int32FromInt32(60000)) / float64(1000)
-	day_min = day_ms / int32(60000)
-	(*TDateTime)(unsafe.Pointer(p)).Fm = day_min % int32(60)
-	(*TDateTime)(unsafe.Pointer(p)).Fh = day_min / int32(60)
-	libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 0, 0x1)
-	(*TDateTime)(unsafe.Pointer(p)).FvalidHMS = uint8(1)
-}
-
 var _cume_distName = [10]uint8{'c', 'u', 'm', 'e', '_', 'd', 'i', 's', 't'}
 
 // C documentation
@@ -2770,27 +2749,6 @@ func _rbuObjIterGetBindlist(tls *libc.TLS, p uintptr, nBind int32) (r uintptr) {
 //	**       if( pFuncDef->zName==row_valueName ){ ... }
 //	*/
 var _row_numberName = [11]uint8{'r', 'o', 'w', '_', 'n', 'u', 'm', 'b', 'e', 'r'}
-
-// C documentation
-//
-//	/*
-//	** Set the time to the current time reported by the VFS.
-//	**
-//	** Return the number of errors.
-//	*/
-func _setDateTimeToCurrent(tls *libc.TLS, context uintptr, p uintptr) (r int32) {
-	(*TDateTime)(unsafe.Pointer(p)).FiJD = _sqlite3StmtCurrentTime(tls, context)
-	if (*TDateTime)(unsafe.Pointer(p)).FiJD > 0 {
-		(*TDateTime)(unsafe.Pointer(p)).FvalidJD = uint8(1)
-		libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 3, 0x8)
-		libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 4, 0x10)
-		_clearYMD_HMS_TZ(tls, p)
-		return 0
-	} else {
-		return int32(1)
-	}
-	return r
-}
 
 // C documentation
 //
