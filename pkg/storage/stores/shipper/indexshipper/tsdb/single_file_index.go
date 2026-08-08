@@ -107,6 +107,18 @@ func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
 	}, err
 }
 
+// withChunkFilterer binds the filterer to the underlying index. A TSDBFile always
+// wraps a TSDBIndex, so failing to bind means the wrapped index would answer
+// queries unfiltered, which for LBAC would leak data; report it rather than
+// silently skipping the filter.
+func (f *TSDBFile) withChunkFilterer(chunkFilter chunk.RequestChunkFilterer) (Index, error) {
+	binder, ok := f.Index.(chunkFiltererBinder)
+	if !ok {
+		return nil, fmt.Errorf("index %T wrapped by TSDBFile cannot apply a chunk filterer", f.Index)
+	}
+	return binder.withChunkFilterer(chunkFilter)
+}
+
 func (f *TSDBFile) Close() error {
 	return f.Index.Close()
 }
@@ -132,15 +144,27 @@ func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, er
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader, nil), func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func NewTSDBIndex(reader IndexReader) *TSDBIndex {
+// NewTSDBIndex builds an index over reader. chunkFilter may be nil, in which case
+// no filtering is applied.
+func NewTSDBIndex(reader IndexReader, chunkFilter chunk.RequestChunkFilterer) *TSDBIndex {
 	return &TSDBIndex{
-		reader: reader,
+		reader:      reader,
+		chunkFilter: chunkFilter,
 	}
+}
+
+// withChunkFilterer returns a copy of the index bound to chunkFilter, sharing the
+// same reader. Indices are cached and shared between concurrent queries, so a
+// filterer is bound by copying rather than by mutating the shared index.
+func (i *TSDBIndex) withChunkFilterer(chunkFilter chunk.RequestChunkFilterer) (Index, error) {
+	cpy := *i
+	cpy.chunkFilter = chunkFilter
+	return &cpy, nil
 }
 
 func (i *TSDBIndex) Close() error {
@@ -152,8 +176,13 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
-func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.chunkFilter = chunkFilter
+// filtererForRequest resolves the index's filterer for this request, or nil if
+// there is nothing to filter by.
+func (i *TSDBIndex) filtererForRequest(ctx context.Context) chunk.Filterer {
+	if i.chunkFilter == nil {
+		return nil
+	}
+	return i.chunkFilter.ForRequest(ctx)
 }
 
 // fn must NOT capture it's arguments. They're reused across series iterations and returned to
@@ -162,10 +191,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	return i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, fn, matchers...)
 }
 
@@ -263,10 +289,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 		return false
 	}
 
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	var err error
 	if filterer != nil {
 		// We need to fetch labels to pass to the filterer, even though we don't look at them in the callback.
@@ -341,14 +364,11 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
-		var filterer chunk.Filterer
 		by := make(map[string]struct{})
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-			if filterer != nil {
-				for _, k := range filterer.RequiredLabelNames() {
-					by[k] = struct{}{}
-				}
+		filterer := i.filtererForRequest(ctx)
+		if filterer != nil {
+			for _, k := range filterer.RequiredLabelNames() {
+				by[k] = struct{}{}
 			}
 		}
 
@@ -418,10 +438,7 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
-	var filterer chunk.Filterer
-	if i.chunkFilter != nil {
-		filterer = i.chunkFilter.ForRequest(ctx)
-	}
+	filterer := i.filtererForRequest(ctx)
 	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
 		by = make(map[string]struct{}, len(labelsToMatch))
 		for k := range labelsToMatch {

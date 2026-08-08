@@ -18,11 +18,6 @@ import (
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
-type Filterable interface {
-	// SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
-}
-
 type BaseReader interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
@@ -53,7 +48,6 @@ type StatsReader interface {
 type Reader interface {
 	BaseReader
 	StatsReader
-	Filterable
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error)
 }
 
@@ -270,10 +264,6 @@ func (m MonitoredReaderWriter) GetShards(
 		return nil, err
 	}
 	return shards, nil
-}
-
-func (m MonitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	m.rw.SetChunkFilterer(chunkFilter)
 }
 
 func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {

@@ -107,10 +107,6 @@ func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through
 	return c.indexReader.GetSeries(ctx, userID, from, through, matchers...)
 }
 
-func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	c.indexReader.SetChunkFilterer(chunkFilter)
-}
-
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	ctx, sp := tracer.Start(ctx, "SeriesStore.LabelNamesForMetricName", trace.WithAttributes(

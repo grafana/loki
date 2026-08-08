@@ -44,6 +44,7 @@ func NewStore(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
+	chunkFilter chunk.RequestChunkFilterer,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (
@@ -56,7 +57,7 @@ func NewStore(
 		logger: logger,
 	}
 
-	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg); err != nil {
+	if err := storeInstance.init(name, prefix, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, chunkFilter, reg); err != nil {
 		return nil, nil, err
 	}
 
@@ -64,7 +65,7 @@ func NewStore(
 }
 
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
+	limits downloads.Limits, tableRange config.TableRange, chunkFilter chunk.RequestChunkFilterer, reg prometheus.Registerer) error {
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
@@ -122,6 +123,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 
 		headManager := NewHeadManager(
 			name,
+			chunkFilter,
 			s.logger,
 			indexShipperCfg.ActiveIndexDirectory,
 			tsdbMetrics,
@@ -137,7 +139,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange, chunkFilter))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
 	s.Reader = NewIndexClient(multiIndex, opts, limits)

@@ -24,12 +24,19 @@ type indexShipperIterator interface {
 // indexShipperQuerier is used for querying index from the shipper.
 type indexShipperQuerier struct {
 	shipper     indexShipperIterator
-	chunkFilter chunk.RequestChunkFilterer
 	tableRange  config.TableRange
+	chunkFilter chunk.RequestChunkFilterer
 }
 
-func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
-	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange}
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange, chunkFilter chunk.RequestChunkFilterer) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange, chunkFilter: chunkFilter}
+}
+
+// chunkFiltererBinder is an Index that can return a copy of itself bound to a chunk
+// filterer. Binding returns a copy rather than mutating the receiver because the
+// indices the shipper hands out are cached and shared between concurrent queries.
+type chunkFiltererBinder interface {
+	withChunkFilterer(chunk.RequestChunkFilterer) (Index, error)
 }
 
 type indexIterFunc func(func(context.Context, Index) error) error
@@ -48,6 +55,21 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
 				}
+
+				// Bind the filterer here rather than where each index is built: this
+				// is the single point where indices the shipper owns enter the read path.
+				if i.chunkFilter != nil {
+					binder, ok := impl.(chunkFiltererBinder)
+					if !ok {
+						return fmt.Errorf("shipper index %T cannot apply a chunk filterer", idx)
+					}
+					filtered, err := binder.withChunkFilterer(i.chunkFilter)
+					if err != nil {
+						return err
+					}
+					impl = filtered
+				}
+
 				if multitenant {
 					impl = NewMultiTenantIndex(impl)
 				}
@@ -60,12 +82,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 		return nil
 	})
 
-	idx := NewMultiIndex(itr)
-
-	if i.chunkFilter != nil {
-		idx.SetChunkFilterer(i.chunkFilter)
-	}
-	return idx, nil
+	return NewMultiIndex(itr), nil
 }
 
 // TODO(owen-d): how to better implement this?
@@ -73,10 +90,6 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 // underlying tsdbs, which is safe, but can we optimize this?
 func (i *indexShipperQuerier) Bounds() (model.Time, model.Time) {
 	return 0, math.MaxInt64
-}
-
-func (i *indexShipperQuerier) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	i.chunkFilter = chunkFilter
 }
 
 // Close implements Index.Close, but we offload this responsibility
