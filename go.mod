@@ -103,7 +103,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.14.1
 	github.com/aliyun/credentials-go v1.4.12
 	github.com/apache/arrow-go/v18 v18.7.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.4
 	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/bits-and-blooms/bloom/v3 v3.7.1
 	github.com/buger/jsonparser v1.6.1
