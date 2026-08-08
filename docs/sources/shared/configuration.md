@@ -1,4 +1,4 @@
----
+﻿---
 description: Configuration reference for the parameters used to configure Grafana Loki.
 title: Grafana Loki configuration parameters
 ---
@@ -67,8 +67,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ### Generic placeholders
 
 - `<boolean>` : a boolean that can take the values `true` or `false`
-- `<int>` : A plain integer (for example, `0`, `1024`, `5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
-- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', 'µs', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
+- `<int>` : A┬áplain integer (for example, `0`,┬á`1024`,┬á`5000`) or a size in bytes with optional unit suffix (for example, `1024`, `256KB`, `64MB`, `4GB`). Supported units: `B`, `KB`, `MB`, `GB`, `TB`, `PB`, `EB`. 
+- `<duration>` : a duration with required unit suffix. Supported units depend on the field type. Prometheus duration fields support: 'ms', 's', 'm', 'h', 'd', 'w', 'y' (for example, '30s', '1m', '1h', '1d', '1w'). Go native duration fields support: 'ns', 'us', '┬╡s', 'ms', 's', 'm', 'h' but not 'd', 'w', 'y'. Note: '0' is allowed without a unit.
 - `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
 - `<labelvalue>` : a string of unicode characters
 - `<filename>` : a valid path relative to current working directory or an absolute path.
@@ -2375,6 +2375,28 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+
+http_config:
+  # Skip TLS certificate verification for Azure blob storage connections.
+  # CLI flag: -<prefix>.azure.http.insecure-skip-verify
+  [insecure_skip_verify: <boolean> | default = false]
+
+  # Path to a CA certificate file to trust for Azure blob storage TLS
+  # connections.
+  # CLI flag: -<prefix>.azure.http.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Path to the client certificate for mutual TLS with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the client key for mutual TLS with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Override the server name used in the TLS handshake with Azure blob storage.
+  # CLI flag: -<prefix>.azure.http.tls-server-name
+  [tls_server_name: <string> | default = ""]
 ```
 
 ### bloom_build
@@ -3612,7 +3634,7 @@ The `frontend` block configures the Loki query-frontend.
 # In the event a tenant is repeatedly sending queries that lead the querier to
 # crash or be killed due to an out-of-memory error, the crashed querier will be
 # disconnected from the query frontend and a new querier will be immediately
-# assigned to the tenant’s shard. This invalidates the assumption that shuffle
+# assigned to the tenantΓÇÖs shard. This invalidates the assumption that shuffle
 # sharding can be used to reduce the impact on tenants. This option mitigates
 # the impact by configuring a delay between when a querier disconnects because
 # of a crash and when the crashed querier is actually removed from the tenant's
@@ -7303,6 +7325,63 @@ azure:
   # Delimiter used to replace ':' in chunk IDs when storing chunks
   # CLI flag: -<prefix>.azure.chunk-delimiter
   [chunk_delimiter: <string> | default = "-"]
+
+  http_config:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -<prefix>.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -<prefix>.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -<prefix>.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -<prefix>.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -<prefix>.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -<prefix>.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -<prefix>.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -<prefix>.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -<prefix>.azure.http.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -<prefix>.azure.http.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -<prefix>.azure.http.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -<prefix>.azure.http.tls-server-name
+    [tls_server_name: <string> | default = ""]
 
 swift:
   # OpenStack Swift application credential id
