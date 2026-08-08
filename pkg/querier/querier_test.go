@@ -22,11 +22,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -1030,6 +1032,95 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	}
 
 	return ingesterClient, store, querier, nil
+}
+
+func TestQuerier_IndexStats(t *testing.T) {
+	ingesterStats := &stats.Stats{Streams: 10, Chunks: 100, Bytes: 1 << 30, Entries: 5000}
+	storeStats := &stats.Stats{Streams: 2, Chunks: 20, Bytes: 1 << 20, Entries: 100}
+
+	newIndexStatsQuerier := func(t *testing.T, ingesterClient *querierClientMock, store *storeMock) *SingleTenantQuerier {
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+		return querier
+	}
+
+	t.Run("it returns stats from the store for queries older than the ingester lookback", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		store := newStoreMock()
+		store.On("Stats", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(storeStats, nil)
+
+		querier := newIndexStatsQuerier(t, ingesterClient, store)
+
+		now := time.Now()
+		req := &loghttp.RangeQuery{
+			Start: now.Add(-1 * time.Hour),
+			End:   now.Add(-35 * time.Minute),
+			Query: `{foo="bar"}`,
+		}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.IndexStats(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, *storeStats, *resp)
+	})
+
+	t.Run("it returns stats from the ingesters for queries within the ingester lookback", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetStats", mock.Anything, mock.Anything, mock.Anything).Return(ingesterStats, nil)
+
+		store := newStoreMock()
+
+		querier := newIndexStatsQuerier(t, ingesterClient, store)
+
+		now := time.Now()
+		req := &loghttp.RangeQuery{
+			Start: now.Add(-15 * time.Minute),
+			End:   now,
+			Query: `{foo="bar"}`,
+		}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.IndexStats(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, *ingesterStats, *resp)
+	})
+
+	t.Run("it merges stats from the store and the ingesters", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetStats", mock.Anything, mock.Anything, mock.Anything).Return(ingesterStats, nil)
+
+		store := newStoreMock()
+		store.On("Stats", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(storeStats, nil)
+
+		querier := newIndexStatsQuerier(t, ingesterClient, store)
+
+		now := time.Now()
+		req := &loghttp.RangeQuery{
+			Start: now.Add(-1 * time.Hour),
+			End:   now,
+			Query: `{foo="bar"}`,
+		}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.IndexStats(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, stats.Stats{
+			Streams: ingesterStats.Streams + storeStats.Streams,
+			Chunks:  ingesterStats.Chunks + storeStats.Chunks,
+			Bytes:   ingesterStats.Bytes + storeStats.Bytes,
+			Entries: ingesterStats.Entries + storeStats.Entries,
+		}, *resp)
+	})
 }
 
 func TestQuerier_SelectLogWithDeletes(t *testing.T) {
