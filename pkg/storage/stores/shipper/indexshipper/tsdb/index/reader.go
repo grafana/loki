@@ -27,12 +27,6 @@ type Reader interface {
 	// Checksum returns the CRC32 checksum recorded in the index TOC.
 	Checksum() uint32
 
-	// Symbols returns an iterator over the symbol table.
-	Symbols() StringIter
-
-	// SymbolTableSize returns the symbol table size in bytes.
-	SymbolTableSize() uint64
-
 	// LabelValues returns the possible label values for the given label name.
 	LabelValues(name string, matchers ...*labels.Matcher) ([]string, error)
 
