@@ -118,9 +118,7 @@ func (v *streamsView) Open(ctx context.Context) error {
 	}
 
 	r := streams.NewReader(readerOptions)
-	if err := r.Open(ctx); err != nil {
-		return fmt.Errorf("opening streams reader: %w", err)
-	}
+	defer r.Close()
 
 	v.reader = r
 	v.initialized = true
