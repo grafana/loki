@@ -519,6 +519,8 @@ Literals can be any sequence of UTF-8 characters, including whitespace character
 
 By default, a pattern expression is anchored at the start of the log line. If the expression starts with literals, then the log line must also start with the same set of literals. Use `<_>` at the beginning of the expression if you don't want to anchor the expression at the start.
 
+You do not need to capture every part of the log line in your pattern. You can write a pattern that only captures the fields you need, using `<_>` to skip over any parts you want to ignore.
+
 Consider the log line
 
 ```log
