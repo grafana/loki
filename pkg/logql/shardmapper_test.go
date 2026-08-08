@@ -1,16 +1,20 @@
 package logql
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 func TestShardedStringer(t *testing.T) {
@@ -559,9 +563,11 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			// ignoring () doesn't mutate labels and therefore can be shardable
-			// as long as the operation is shardable
+			// as long as the operation is shardable. Even so, each leg of the
+			// binary operation must be sharded and dispatched to the index
+			// separately, since they are distinct matcher groups.
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
-			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
 		},
 		{
 			// shard the count since there is no label reduction in children
@@ -2021,4 +2027,87 @@ func TestShardTopk(t *testing.T) {
   )
 )`
 	require.Equal(t, expected, mappedExpr.Pretty(0))
+}
+
+// singleMatcherGroupResolver is a ShardResolver that mimics the invariant
+// enforced by the index gateway in ExtractShardRequestMatchersAndAST: any
+// expression dispatched to the index (via Shards/ShardingRanges/GetStats) must
+// contain at most one matcher group. Binary operations between two sharded
+// sub-expressions must be dispatched separately per leg during planning, so a
+// single index call should never see more than one matcher group.
+type singleMatcherGroupResolver struct {
+	shards int
+}
+
+func (r singleMatcherGroupResolver) assertSingleMatcherGroup(e syntax.Expr) error {
+	grps, err := syntax.MatcherGroups(e)
+	if err != nil {
+		return err
+	}
+	if len(grps) > 1 {
+		return fmt.Errorf(
+			"multiple matcher groups are not supported in GetShards. This is likely an internal bug as binary operations should be dispatched separately in planning",
+		)
+	}
+	return nil
+}
+
+func (r singleMatcherGroupResolver) Shards(e syntax.Expr) (int, uint64, error) {
+	if err := r.assertSingleMatcherGroup(e); err != nil {
+		return 0, 0, err
+	}
+	return r.shards, 0, nil
+}
+
+func (r singleMatcherGroupResolver) ShardingRanges(e syntax.Expr, _ uint64) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
+	if err := r.assertSingleMatcherGroup(e); err != nil {
+		return nil, nil, err
+	}
+	return sharding.LinearShards(r.shards, 0), nil, nil
+}
+
+func (r singleMatcherGroupResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
+	if err := r.assertSingleMatcherGroup(e); err != nil {
+		return stats.Stats{}, err
+	}
+	return stats.Stats{}, nil
+}
+
+// TestShardBinOpDispatchedSeparately reproduces a bug where a binary operation
+// between two sharded sub-expressions (with different line filters / matcher
+// groups) was sharded as a single unit, causing both matcher groups to be
+// dispatched to the index in one GetShards call and producing the error
+// "multiple matcher groups are not supported in GetShards".
+//
+// The planner must instead dispatch each leg of the binary operation
+// separately so the index only ever sees one matcher group at a time.
+func TestShardBinOpDispatchedSeparately(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+	}{
+		{
+			name: "sum over add of two filtered rates",
+			in:   `sum by (cluster,namespace)(rate({app="backend"} |= "A"[1s]) + rate({app="backend"} |= "B"[1s]))`,
+		},
+		{
+			name: "shardable binop inside sum",
+			in:   `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
+		},
+		{
+			name: "top level add of two sums",
+			in:   `sum(rate({app="backend"} |= "A"[1s])) + sum(rate({app="backend"} |= "B"[1s]))`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			strategy := NewDynamicBoundsStrategy(singleMatcherGroupResolver{shards: 2}, 0)
+			m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+
+			ast, err := syntax.ParseExpr(tc.in)
+			require.NoError(t, err)
+
+			_, _, _, err = m.Parse(ast)
+			require.NoError(t, err, "binary operations must be dispatched separately so the index never sees multiple matcher groups")
+		})
+	}
 }

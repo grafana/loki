@@ -238,6 +238,30 @@ func (m ShardMapper) wrappedShardedVectorAggr(expr *syntax.VectorAggregationExpr
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
+	// If the aggregation wraps a binary operation, it cannot be sharded as a
+	// single unit: each leg of the binary op has its own matcher group and must
+	// be dispatched to the index separately during planning. Sharding the
+	// aggregation as a whole would pass both matcher groups to a single
+	// GetShards call, which the index gateway rejects with
+	// "multiple matcher groups are not supported in GetShards".
+	// Instead, push sharding below the aggregation by recursing into the binary
+	// operation (which dispatches each leg separately) and re-wrap the result.
+	//
+	// approx_topk is excluded as it has its own dedicated mapping (via a
+	// count-min sketch) which already operates on the whole expression.
+	if binOp, ok := expr.Left.(*syntax.BinOpExpr); ok && expr.Operation != syntax.OpTypeApproxTopK {
+		mapped, bytesPerShard, err := m.mapBinOpExpr(binOp, r, false)
+		if err != nil {
+			return nil, 0, err
+		}
+		return &syntax.VectorAggregationExpr{
+			Left:      mapped,
+			Grouping:  expr.Grouping,
+			Params:    expr.Params,
+			Operation: expr.Operation,
+		}, bytesPerShard, nil
+	}
+
 	if expr.Shardable(topLevel) {
 		switch expr.Operation {
 
