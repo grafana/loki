@@ -51,6 +51,49 @@ var (
 	}
 )
 
+// stageRenames tracks the final label names that the current parser stage
+// produced by renaming a key that collided with a stream label or structured
+// metadata (see duplicateSuffix). It resolves ties between a renamed key and a
+// literal key targeting the same final name (e.g. a line containing both "foo"
+// and "foo_extracted" while "foo" is a stream label) without relying on the
+// order of keys in the line — JSON does not define key order, so the result
+// must not depend on it. Within a stage the literal key always wins; keys
+// extracted by earlier parser stages take precedence over both.
+type stageRenames struct {
+	m map[string]struct{}
+}
+
+func (s *stageRenames) reset() { clear(s.m) }
+
+// shouldSet reports whether an extracted key may be written, given whether the
+// key was renamed due to a collision. It is checked in addition to
+// ShouldExtract and replaces the plain hints.Extracted(key) bypass.
+func (s *stageRenames) shouldSet(hints ParserHint, key string, renamed bool) bool {
+	if !hints.Extracted(key) {
+		return true
+	}
+	if renamed {
+		// A renamed key never overwrites an already extracted value.
+		return false
+	}
+	// A literal key overwrites a value that this same stage created by
+	// renaming a colliding key, but nothing extracted by earlier stages.
+	_, renamedHere := s.m[key]
+	return renamedHere
+}
+
+// record remembers whether the value stored under key came from a renamed key.
+func (s *stageRenames) record(key string, renamed bool) {
+	if renamed {
+		if s.m == nil {
+			s.m = make(map[string]struct{})
+		}
+		s.m[key] = struct{}{}
+	} else if s.m != nil {
+		delete(s.m, key)
+	}
+}
+
 type JSONParser struct {
 	prefixBuffer    [][]byte // buffer used to build json keys
 	lbs             *LabelsBuilder
@@ -59,6 +102,7 @@ type JSONParser struct {
 	keys                  internedStringSet
 	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
+	renames               stageRenames
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -81,6 +125,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	j.prefixBuffer = j.prefixBuffer[:0]
 	j.lbs = lbs
 	j.parserHints = parserHints
+	j.renames.reset()
 
 	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
 		if errors.Is(err, errFoundAllLabels) {
@@ -149,15 +194,18 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 			return nil
 		}
 
+		renamed := false
 		if j.lbs.BaseHas(sanitizedKey) || j.lbs.HasInCategory(sanitizedKey, StructuredMetadataLabel) {
 			sanitizedKey = sanitizedKey + duplicateSuffix
+			renamed = true
 		}
 
-		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
+		if !j.lbs.ParserLabelHints().ShouldExtract(sanitizedKey) || !j.renames.shouldSet(j.lbs.ParserLabelHints(), sanitizedKey, renamed) {
 			return nil
 		}
 
 		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
+		j.renames.record(sanitizedKey, renamed)
 		if j.captureJSONPath {
 			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
 		}
@@ -179,15 +227,17 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return string(sanitized), true
 	})
 
+	renamed := false
 	if j.lbs.BaseHas(keyString) || j.lbs.HasInCategory(keyString, StructuredMetadataLabel) {
 		j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
 		j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
 
 		keyString = string(j.buildSanitizedPrefixFromBuffer())
+		renamed = true
 	}
 
-	if !j.parserHints.ShouldExtract(keyString) || j.parserHints.Extracted(keyString) {
+	if !j.parserHints.ShouldExtract(keyString) || !j.renames.shouldSet(j.parserHints, keyString, renamed) {
 		// reset the prefix position
 		j.prefixBuffer = j.prefixBuffer[:prefixLen]
 		return nil
@@ -203,6 +253,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	j.prefixBuffer = j.prefixBuffer[:prefixLen]
 
 	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
+	j.renames.record(keyString, renamed)
 
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
@@ -286,7 +337,8 @@ type RegexpParser struct {
 	regex     *regexp.Regexp
 	nameIndex map[int]string
 
-	keys internedStringSet
+	keys    internedStringSet
+	renames stageRenames
 }
 
 // NewRegexpParser creates a new log stage that can extract labels from a log line using a regex expression.
@@ -325,6 +377,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 
 func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
 	parserHints := lbs.ParserLabelHints()
+	r.renames.reset()
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, ok := r.keys.Get(unsafeGetBytes(name), func() (string, bool) {
@@ -339,15 +392,18 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
+			renamed := false
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = fmt.Sprintf("%s%s", key, duplicateSuffix)
+				renamed = true
 			}
 
-			if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
+			if !parserHints.ShouldExtract(key) || !r.renames.shouldSet(parserHints, key, renamed) {
 				continue
 			}
 
 			lbs.Set(ParsedLabel, key, string(value))
+			r.renames.record(key, renamed)
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -363,6 +419,7 @@ type LogfmtParser struct {
 	keepEmpty bool
 	dec       *logfmt.Decoder
 	keys      internedStringSet
+	renames   stageRenames
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
@@ -383,6 +440,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	l.dec.Reset(line)
+	l.renames.reset()
 	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
 		if !ok {
@@ -406,11 +464,13 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
+		renamed := false
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + duplicateSuffix
+			renamed = true
 		}
 
-		if !parserHints.ShouldExtract(key) || parserHints.Extracted(key) {
+		if !parserHints.ShouldExtract(key) || !l.renames.shouldSet(parserHints, key, renamed) {
 			continue
 		}
 
@@ -425,6 +485,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		lbs.Set(ParsedLabel, key, string(val))
+		l.renames.record(key, renamed)
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -451,6 +512,7 @@ func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 type PatternParser struct {
 	matcher *pattern.Matcher
 	names   []string
+	renames stageRenames
 }
 
 func NewPatternParser(pn string) (*PatternParser, error) {
@@ -476,17 +538,21 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	}
 	matches := l.matcher.Matches(line)
 	names := l.names[:len(matches)]
+	l.renames.reset()
 	for i, m := range matches {
 		name := names[i]
+		renamed := false
 		if lbs.BaseHas(name) || lbs.HasInCategory(name, StructuredMetadataLabel) {
 			name = name + duplicateSuffix
+			renamed = true
 		}
 
-		if parserHints.Extracted(name) || !parserHints.ShouldExtract(name) {
+		if !parserHints.ShouldExtract(name) || !l.renames.shouldSet(parserHints, name, renamed) {
 			continue
 		}
 
 		lbs.Set(ParsedLabel, name, string(m))
+		l.renames.record(name, renamed)
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -695,6 +761,12 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + duplicateSuffix
+			// A renamed key must not overwrite a label that is already
+			// extracted under the final name, e.g. by another expression
+			// requesting the literal key (mirrors LogfmtExpressionParser).
+			if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+				return
+			}
 		}
 
 		switch typ {
@@ -734,7 +806,11 @@ func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{}
 
 type UnpackParser struct {
 	lbsBuffer []string
-	keys      internedStringSet
+	// renamedBuffer holds, for each key/value pair in lbsBuffer, whether the
+	// key was renamed with duplicateSuffix due to a collision.
+	renamedBuffer []bool
+	keys          internedStringSet
+	renames       stageRenames
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -762,6 +838,8 @@ func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	u.lbsBuffer = u.lbsBuffer[:0]
+	u.renamedBuffer = u.renamedBuffer[:0]
+	u.renames.reset()
 	entry, err := u.unpack(line, lbs)
 	if err != nil {
 		if errors.Is(err, errLabelDoesNotMatch) {
@@ -808,8 +886,10 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return string(key), true
 			})
 
+			renamed := false
 			if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 				key = key + duplicateSuffix
+				renamed = true
 			}
 
 			if !lbs.ParserLabelHints().ShouldExtract(key) || lbs.ParserLabelHints().Extracted(key) {
@@ -818,6 +898,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 
 			// append to the buffer of labels
 			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
+			u.renamedBuffer = append(u.renamedBuffer, renamed)
 		default:
 			return nil
 		}
@@ -829,11 +910,18 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 		return nil, err
 	}
 
-	// flush the buffer if we found a packed entry.
+	// flush the buffer if we found a packed entry. Ties between a renamed key
+	// and a literal key with the same final name are resolved here, once the
+	// full line has been read, so the outcome does not depend on key order.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
-			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
-			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
+			key, renamed := u.lbsBuffer[i], u.renamedBuffer[i/2]
+			if !u.renames.shouldSet(lbs.ParserLabelHints(), key, renamed) {
+				continue
+			}
+			lbs.Set(ParsedLabel, key, u.lbsBuffer[i+1])
+			u.renames.record(key, renamed)
+			if !lbs.ParserLabelHints().ShouldContinueParsingLine(key, lbs) {
 				return entry, errLabelDoesNotMatch
 			}
 		}

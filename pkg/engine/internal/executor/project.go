@@ -125,6 +125,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	identCache := semconv.NewIdentifierCache()
 	labelFmtRemovedNames := labelFmtRemovedColumnNames(expr)
+	preferExisting := parserPrefersExistingValues(expr)
 
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
@@ -191,7 +192,7 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 				if idx := slices.IndexFunc(outputFields, func(f arrow.Field) bool {
 					return f.Name == newField.Name
 				}); idx != -1 {
-					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i))
+					outputCols[idx] = mergeColumns(outputCols[idx], arrCasted.Field(i), preferExisting)
 					outputFields[idx] = newField
 				} else {
 					outputCols = append(outputCols, arrCasted.Field(i))
@@ -259,19 +260,41 @@ func labelFmtRemovedColumnNames(expr physical.Expression) map[string]struct{} {
 	return removed
 }
 
-// mergeColumns merges two columns by preferring values from the new column (b),
-// falling back to the old column (a) only where b is null. An explicit empty
-// string in b is treated as a real value and overwrites a.
+// parserPrefersExistingValues reports whether the expand expression is a line
+// parser (json / logfmt / regexp) whose re-extracted keys must NOT overwrite
+// values parsed by an earlier stage. v1 is first-writer-wins for these: every
+// Set(ParsedLabel, ...) records the key in the parser hints and later parser
+// stages skip keys where hints.Extracted(key) is true. line_format rewrites
+// the message and label_format explicitly overwrites its targets (v1 calls
+// Set without the Extracted check), so those keep new-value-wins.
+func parserPrefersExistingValues(expr physical.Expression) bool {
+	parseExpr, ok := expr.(*physical.VariadicExpr)
+	if !ok {
+		return false
+	}
+	switch parseExpr.Op {
+	case types.VariadicOpParseJSON, types.VariadicOpParseLogfmt, types.VariadicOpParseRegexp:
+		return true
+	default:
+		return false
+	}
+}
+
+// mergeColumns merges two columns. With preferExisting=false, values from the
+// new column (b) win and the old column (a) is used only where b is null. With
+// preferExisting=true it is the reverse: an existing (a) value survives and b
+// only fills rows where a is null — v1's first-writer-wins for parsed labels.
+// An explicit empty string is treated as a real value in both directions.
 //
 // The null-vs-empty distinction matters: producers (line_format / label_format
 // / logfmt / json / regexp) emit null only when this row didn't contribute a
-// value for the key (so the old column's value should survive), and emit ""
+// value for the key (so the other column's value should survive), and emit ""
 // when the value is genuinely empty (template rendered "", rename source was
 // "", parsed key extracted an empty value). Treating "" as a missing value
 // silently turned every "rendered to empty" into "keep original", which
 // diverges from v1 — most visibly for `line_format` whose output column always
 // collides with the builtin `message` column.
-func mergeColumns(a, b arrow.Array) arrow.Array {
+func mergeColumns(a, b arrow.Array, preferExisting bool) arrow.Array {
 	// Only handle string arrays for now (which is what parsers produce)
 	aStr, aOk := a.(*array.String)
 	bStr, bOk := b.(*array.String)
@@ -281,19 +304,23 @@ func mergeColumns(a, b arrow.Array) arrow.Array {
 		return b
 	}
 
+	winner, fallback := bStr, aStr
+	if preferExisting {
+		winner, fallback = aStr, bStr
+	}
+
 	builder := array.NewStringBuilder(memory.DefaultAllocator)
 	builder.Reserve(aStr.Len())
 
 	for i := range aStr.Len() {
-		if bStr.IsNull(i) {
-			// New column has no value for this row, keep the old one.
-			if aStr.IsNull(i) {
+		if winner.IsNull(i) {
+			if fallback.IsNull(i) {
 				builder.AppendNull()
 			} else {
-				builder.Append(aStr.Value(i))
+				builder.Append(fallback.Value(i))
 			}
 		} else {
-			builder.Append(bStr.Value(i))
+			builder.Append(winner.Value(i))
 		}
 	}
 	return builder.NewStringArray()
