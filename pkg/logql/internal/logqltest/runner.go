@@ -121,43 +121,59 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 		label = "range: " + label
 	}
 
+	// Every scenario runs under both execution paths: the default per-timestamp order and the
+	// opt-in per-stream order. Both must produce the expected result. Queries that are ineligible
+	// for stream-first execution transparently fall back to the default path, so running them with
+	// the flag on is still valid and must match.
+	modes := []struct {
+		name          string
+		streamOrdered bool
+	}{
+		{"timestamp-first", false},
+		{"stream-first", true},
+	}
+
 	t.Run(label, func(t *testing.T) {
-		engine := logql.NewEngine(logql.EngineOpts{}, querier, logql.NoLimits, log.NewNopLogger())
+		for _, mode := range modes {
+			t.Run(mode.name, func(t *testing.T) {
+				engine := logql.NewEngine(logql.EngineOpts{StreamOrderedExecutionEnabled: mode.streamOrdered}, querier, logql.NoLimits, log.NewNopLogger())
 
-		var start, end, step time.Duration
-		if cmd.instant {
-			start, end, step = cmd.ts, cmd.ts, 0
-		} else {
-			start, end, step = cmd.start, cmd.end, cmd.step
+				var start, end, step time.Duration
+				if cmd.instant {
+					start, end, step = cmd.ts, cmd.ts, 0
+				} else {
+					start, end, step = cmd.start, cmd.end, cmd.step
+				}
+
+				ctx := user.InjectOrgID(context.Background(), tenant)
+
+				// Build the params and execute. A failure can surface at either step (parse-time
+				// errors come from NewLiteralParams, evaluation errors from Exec).
+				var res logqlmodel.Result
+				params, err := logql.NewLiteralParams(
+					cmd.query,
+					epoch.Add(start), epoch.Add(end), step, 0,
+					logproto.FORWARD, 1000, nil, nil,
+				)
+				if err == nil {
+					res, err = engine.Query(params).Exec(ctx)
+				}
+
+				if exp.fail {
+					require.Errorf(t, err, "%s: expected query %q to fail", name, cmd.query)
+					switch exp.failKind {
+					case failMsg:
+						require.Contains(t, err.Error(), exp.failText, "%s: failure message", name)
+					case failRegex:
+						require.Regexp(t, exp.failText, err.Error(), "%s: failure regex", name)
+					}
+					return
+				}
+
+				require.NoError(t, err, "%s: query %q", name, cmd.query)
+				require.NoError(t, compareResult(name, cmd, exp, res.Data))
+			})
 		}
-
-		ctx := user.InjectOrgID(context.Background(), tenant)
-
-		// Build the params and execute. A failure can surface at either step (parse-time
-		// errors come from NewLiteralParams, evaluation errors from Exec).
-		var res logqlmodel.Result
-		params, err := logql.NewLiteralParams(
-			cmd.query,
-			epoch.Add(start), epoch.Add(end), step, 0,
-			logproto.FORWARD, 1000, nil, nil,
-		)
-		if err == nil {
-			res, err = engine.Query(params).Exec(ctx)
-		}
-
-		if exp.fail {
-			require.Errorf(t, err, "%s: expected query %q to fail", name, cmd.query)
-			switch exp.failKind {
-			case failMsg:
-				require.Contains(t, err.Error(), exp.failText, "%s: failure message", name)
-			case failRegex:
-				require.Regexp(t, exp.failText, err.Error(), "%s: failure regex", name)
-			}
-			return
-		}
-
-		require.NoError(t, err, "%s: query %q", name, cmd.query)
-		require.NoError(t, compareResult(name, cmd, exp, res.Data))
 	})
 }
 

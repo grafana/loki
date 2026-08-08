@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -33,6 +34,10 @@ type ChunkMetrics struct {
 	series       *prometheus.CounterVec
 	chunks       *prometheus.CounterVec
 	batches      *prometheus.HistogramVec
+	// Stream-ordered reader prefetch observability: time spent fetching a batch (producer) vs. time
+	// the consumer waited on a preloaded batch. A consumer-wait near zero means prefetch keeps up.
+	streamOrderedBatchLoad    prometheus.Histogram
+	streamOrderedConsumerWait prometheus.Histogram
 }
 
 const (
@@ -80,6 +85,26 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			// split buckets evenly across 0->maxBatchSize
 			Buckets: prometheus.LinearBuckets(0, float64(maxBatchSize/buckets), buckets+1), // increment buckets by one to ensure upper bound bucket exists.
 		}, []string{"status"}),
+		streamOrderedBatchLoad: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Subsystem:                       "store",
+			Name:                            "stream_ordered_batch_load_seconds",
+			Help:                            "Time to fetch one chunk batch in the stream-ordered sample reader's prefetcher.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		streamOrderedConsumerWait: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Subsystem:                       "store",
+			Name:                            "stream_ordered_consumer_wait_seconds",
+			Help:                            "Time the stream-ordered sample reader's consumer waited for a prefetched chunk batch.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+			Buckets:                         prometheus.DefBuckets,
+		}),
 	}
 }
 
@@ -469,7 +494,7 @@ type sampleBatchIterator struct {
 	extractors []syntax.SampleExtractor
 }
 
-func newSampleBatchIterator(
+func newTimestampFirstSampleBatchIterator(
 	ctx context.Context,
 	schemas config.SchemaConfig,
 	metrics *ChunkMetrics,
@@ -624,19 +649,19 @@ func (it *sampleBatchIterator) buildHeapIterator(
 		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
 	}
 
-	return iter.NewMergeSampleIterator(it.ctx, result), nil
+	return iter.NewTimestampFirstMergeSampleIterator(it.ctx, result), nil
 }
 
+// removeMatchersByName returns the matchers with every matcher whose name is in names removed. It
+// does not modify the input slice.
 func removeMatchersByName(matchers []*labels.Matcher, names ...string) []*labels.Matcher {
-	for _, omit := range names {
-		for i := range matchers {
-			if matchers[i].Name == omit {
-				matchers = append(matchers[:i], matchers[i+1:]...)
-				break
-			}
+	out := make([]*labels.Matcher, 0, len(matchers))
+	for _, m := range matchers {
+		if !slices.Contains(names, m.Name) {
+			out = append(out, m)
 		}
 	}
-	return matchers
+	return out
 }
 
 func fetchChunkBySeries(

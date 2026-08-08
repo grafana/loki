@@ -12,6 +12,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logql/vector"
 )
@@ -38,10 +39,10 @@ type RangeVectorIterator interface {
 	Error() error
 }
 
-func newRangeVectorIterator(
-	it iter.PeekingSampleIterator,
-	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+// newRangeVectorIterator normalizes the step/offset and dispatches to the range-vector iterator
+// matching the requested sample order: the default per-timestamp iterator for
+// SAMPLE_ORDER_BY_TIMESTAMP, or the stream-first iterator for SAMPLE_ORDER_BY_STREAM.
+func newRangeVectorIterator(it iter.PeekingSampleIterator, expr *syntax.RangeAggregationExpr, selRange int64, step int64, start int64, end int64, offset int64, sampleOrder logproto.SampleOrder) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -50,6 +51,26 @@ func newRangeVectorIterator(
 		start = start - offset
 		end = end - offset
 	}
+
+	switch sampleOrder {
+	case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+		return newTimestampFirstRangeVectorIterator(it, expr, selRange, step, start, end, offset)
+	case logproto.SAMPLE_ORDER_BY_STREAM:
+		return newStreamFirstRangeVectorIterator(it, expr, selRange, step, start, end, offset)
+	default:
+		return nil, fmt.Errorf("unknown sample order %v", sampleOrder)
+	}
+}
+
+// newTimestampFirstRangeVectorIterator builds the default range-vector iterator, which consumes
+// samples in global timestamp order. It picks the streaming iterator for non-overlapping windows
+// and the batch iterator for overlapping ones. start/end are expected to be already offset-adjusted
+// and step already normalized by newRangeVectorIterator.
+func newTimestampFirstRangeVectorIterator(
+	it iter.PeekingSampleIterator,
+	expr *syntax.RangeAggregationExpr,
+	selRange, step, start, end, offset int64,
+) (RangeVectorIterator, error) {
 	var overlap bool
 	if selRange >= step && start != end {
 		overlap = true

@@ -123,7 +123,11 @@ func (sc *StoreCombiner) SelectSamples(ctx context.Context, req logql.SelectSamp
 		iters = append(iters, iter)
 	}
 
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+	// Preserve the requested sample order across stores.
+	if req.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	}
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
 }
 
 // SelectLogs implements Store

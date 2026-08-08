@@ -248,3 +248,20 @@ func TestHasMatchEqualLabelFilterBeforeParser(t *testing.T) {
 		})
 	}
 }
+
+func TestSampleOrderLabel(t *testing.T) {
+	for name, c := range map[string]struct {
+		streamFirst    int64
+		timestampFirst int64
+		want           string
+	}{
+		"only stream-first":      {3, 0, "stream-first"},
+		"only timestamp-first":   {0, 2, "timestamp-first"},
+		"both -> mixed":          {1, 1, "mixed"},
+		"neither -> empty (N/A)": {0, 0, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, c.want, sampleOrderLabel(c.streamFirst, c.timestampFirst))
+		})
+	}
+}

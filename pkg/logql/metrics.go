@@ -105,6 +105,11 @@ var (
 		Name:      "logql_querystats_ingester_sent_lines_total",
 		Help:      "Total count of lines sent from ingesters while executing LogQL queries.",
 	})
+	querySampleOrder = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "logql_querystats_sample_order_total",
+		Help:      "Total number of metric queries by resolved sample execution order (stream-first vs timestamp-first).",
+	}, []string{"order", "range"})
 
 	bytePerSecondMetricUsage = analytics.NewStatistics("query_metric_bytes_per_second")
 	bytePerSecondLogUsage    = analytics.NewStatistics("query_log_bytes_per_second")
@@ -303,6 +308,15 @@ func RecordRangeAndInstantQueryMetrics(
 		}
 	}
 
+	// sampleOrder is the query's resolved sample execution order (empty when the query has no
+	// decomposable range aggregation); "none" keeps the log field present and greppable.
+	sampleOrder := sampleOrderLabel(stats.Summary.StreamFirstSubqueries, stats.Summary.TimestampFirstSubqueries)
+	orderLogValue := sampleOrder
+	if orderLogValue == "" {
+		orderLogValue = "none"
+	}
+	logValues = append(logValues, "sample_order", orderLogValue)
+
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -332,8 +346,27 @@ func RecordRangeAndInstantQueryMetrics(
 	chunkDownloadedTotal.WithLabelValues(status, queryType, rt).
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+	if sampleOrder != "" {
+		querySampleOrder.WithLabelValues(sampleOrder, rt).Inc()
+	}
 
 	recordUsageStats(queryType, stats)
+}
+
+// sampleOrderLabel derives the query's sample-execution ordering from the per-order sub-evaluation
+// counts. It returns "" when the query had no decomposable range aggregation (ordering N/A), so the
+// caller emits nothing.
+func sampleOrderLabel(streamFirst, timestampFirst int64) string {
+	switch {
+	case streamFirst > 0 && timestampFirst == 0:
+		return "stream-first"
+	case streamFirst == 0 && timestampFirst > 0:
+		return "timestamp-first"
+	case streamFirst > 0 && timestampFirst > 0:
+		return "mixed"
+	default:
+		return ""
+	}
 }
 
 func hasMatchEqualLabelFilterBeforeParser(p Params) bool {

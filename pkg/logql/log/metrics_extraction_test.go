@@ -540,3 +540,36 @@ func (p *stubStreamExtractor) ProcessString(
 func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
 }
+
+// TestForStream_HashCollisionKeepsStreamsDistinct guards against two streams whose labels collide on
+// the builder's hash being conflated: each must get its own extractor/pipeline reporting its own
+// labels, never the other stream's cached one.
+func TestForStream_HashCollisionKeepsStreamsDistinct(t *testing.T) {
+	a, b := collidingLabelPair(t)
+
+	t.Run("line sample extractor", func(t *testing.T) {
+		ex, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+		require.NoError(t, err)
+
+		sa := ex.ForStream(a)
+		sb := ex.ForStream(b)
+		require.True(t, labels.Equal(a, sa.BaseLabels().Stream()), "stream A must expose A's labels")
+		require.True(t, labels.Equal(b, sb.BaseLabels().Stream()), "stream B must expose B's labels (not A's)")
+		// Re-fetching A after B must still return A's identity, not the colliding B entry.
+		require.True(t, labels.Equal(a, ex.ForStream(a).BaseLabels().Stream()))
+	})
+
+	t.Run("label sample extractor", func(t *testing.T) {
+		ex, err := LabelExtractorWithStages("pod", ConvertFloat, nil, false, false, nil, NoopStage)
+		require.NoError(t, err)
+
+		require.True(t, labels.Equal(a, ex.ForStream(a).BaseLabels().Stream()))
+		require.True(t, labels.Equal(b, ex.ForStream(b).BaseLabels().Stream()))
+	})
+
+	t.Run("pipeline", func(t *testing.T) {
+		p := NewNoopPipeline()
+		require.True(t, labels.Equal(a, p.ForStream(a).BaseLabels().Stream()))
+		require.True(t, labels.Equal(b, p.ForStream(b).BaseLabels().Stream()))
+	})
+}
