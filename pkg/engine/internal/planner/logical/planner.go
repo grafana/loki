@@ -433,6 +433,9 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, wc *walkContext) (Va
 		Table:     left,
 		Grouping:  convertGrouping(e.Grouping),
 		Operation: vecAggType,
+		Start:     wc.params.Start(),
+		End:       wc.params.End(),
+		Step:      wc.params.Step(),
 	}, nil
 }
 
