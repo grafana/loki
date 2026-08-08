@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -371,6 +373,82 @@ func Test_engineRouter_Do(t *testing.T) {
 			require.Equal(t, tt.want, res)
 		})
 	}
+}
+
+func Test_engineRouter_Do_ForceV1(t *testing.T) {
+	var mtx sync.Mutex
+	var v1Reqs, v2Reqs []queryrangebase.Request
+
+	record := func(reqs *[]queryrangebase.Request) queryrangebase.HandlerFunc {
+		return func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			mtx.Lock()
+			defer mtx.Unlock()
+			*reqs = append(*reqs, r)
+			return &LokiResponse{
+				Status:    loghttp.QueryStatusSuccess,
+				Direction: r.(*LokiRequest).Direction,
+				Limit:     r.(*LokiRequest).Limit,
+				Version:   uint32(loghttp.VersionV1),
+				Data:      LokiData{ResultType: loghttp.ResultTypeStream},
+			}, nil
+		}
+	}
+
+	now := time.Now().Truncate(time.Second)
+	router := NewEngineRouterMiddleware(
+		RouterConfig{
+			V2Range: func() (time.Time, time.Time) {
+				return now.Add(-24 * time.Hour), now.Add(-time.Hour)
+			},
+			Validate: func(_ logql.Params) bool { return true },
+			ForceV1: func(params logql.Params) bool {
+				return strings.Contains(params.QueryString(), `app="foo"`)
+			},
+			Handler: record(&v2Reqs),
+		},
+		nil,
+		DefaultCodec,
+		false,
+		log.NewNopLogger(),
+	).Wrap(record(&v1Reqs))
+
+	buildReq := func(query string) *LokiRequest {
+		return &LokiRequest{
+			StartTs:   now.Add(-30 * time.Hour),
+			EndTs:     now,
+			Query:     query,
+			Limit:     1000,
+			Step:      1000,
+			Direction: logproto.BACKWARD,
+			Path:      "/api/prom/query_range",
+			Plan: &plan.QueryPlan{
+				AST: syntax.MustParseExpr(query),
+			},
+		}
+	}
+
+	t.Run("matching query goes entirely to v1 without splitting", func(t *testing.T) {
+		v1Reqs, v2Reqs = nil, nil
+
+		req := buildReq(`{app="foo"}`)
+		_, err := router.Do(context.Background(), req)
+		require.NoError(t, err)
+
+		require.Empty(t, v2Reqs)
+		require.Len(t, v1Reqs, 1)
+		require.Equal(t, req.GetStart(), v1Reqs[0].GetStart())
+		require.Equal(t, req.GetEnd(), v1Reqs[0].GetEnd())
+	})
+
+	t.Run("non-matching query is split between v1 and v2", func(t *testing.T) {
+		v1Reqs, v2Reqs = nil, nil
+
+		_, err := router.Do(context.Background(), buildReq(`{foo="bar"}`))
+		require.NoError(t, err)
+
+		require.Len(t, v2Reqs, 1)
+		require.Len(t, v1Reqs, 2)
+	})
 }
 
 func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
