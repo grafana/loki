@@ -2154,7 +2154,7 @@ golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
 golang.org/x/tools/txtar
-# google.golang.org/api v0.291.0
+# google.golang.org/api v0.292.0
 ## explicit; go 1.25.0
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport
@@ -2188,7 +2188,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20260729162451-8efbd57d26e0
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
