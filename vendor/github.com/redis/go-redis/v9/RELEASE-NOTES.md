@@ -1,5 +1,244 @@
 # Release Notes
 
+# 9.22.0 (2026-08-03)
+
+This is a minor release introducing two flagship (experimental) features — **client-side caching** and **automatic pipelining** — alongside support for Redis 8.10, new commands, and a large batch of stability and parser-robustness fixes. It consolidates everything shipped in 9.22.0-beta.1, so the notes below cover the full 9.21.0 → 9.22.0 upgrade.
+
+⚠️ Two changes to be aware of when upgrading from 9.21.0:
+
+- **Default configuration values changed** ([#3918](https://github.com/redis/go-redis/pull/3918)): read/write timeouts, retry backoff, cluster state reload interval, and TCP keep-alive defaults are now aligned with the cross-SDK configuration proposal (see the highlight below). Explicitly configured values are unaffected.
+- **`WaitAOF` return type corrected** ([#3888](https://github.com/redis/go-redis/pull/3888)): `WaitAOF` now returns `*IntSliceCmd`, matching the two-integer reply of `WAITAOF` (previously `*IntCmd`, which failed to parse the reply at runtime). Code referencing the old return type needs a one-line update.
+
+## 🚀 Highlights
+
+### Client-Side Caching (Experimental)
+
+The standalone `Client` gains server-assisted client-side caching built on RESP3 `CLIENT TRACKING`. Enable it by setting `ClientSideCacheConfig` in `Options` (or supply your own cache via `ClientSideCache` — e.g. to share one cache across clients). Cacheable read results are served from a local in-process cache and invalidated automatically when the server reports a change, cutting round trips for read-heavy workloads.
+
+The invalidation architecture is selected by `ClientSideCacheStrategy`; the default (and currently only) strategy is `CSCStrategySharedTracking`: one shared cache, every pool connection runs plain `CLIENT TRACKING ON`, and a background drainer applies buffered invalidations — portable (no BCAST) and consistent with the other Redis client libraries. Requirements and guardrails: RESP3 (`Protocol: 3`), standalone client, DB 0 only; commands that would change the connection identity (`SELECT`, `AUTH`, ...) are rejected while caching is enabled, and CSC is disabled when a credentials provider is set (fixed `Username`/`Password` work and are namespaced). See the README's [client-side caching section](README.md#client-side-caching) and the runnable [example](example/client-side-caching).
+
+**Experimental:** the API may change in a minor release.
+
+([#3941](https://github.com/redis/go-redis/pull/3941)) by [@ofekshenawa](https://github.com/ofekshenawa)
+
+### Automatic Pipelining (Experimental)
+
+`AutoPipeliner` is a background batcher that coalesces commands from many concurrent goroutines into Redis pipelines, multiplying throughput without any manual pipeline management. It comes in two faces, available on `Client` and `ClusterClient` (and configurable via `Options.AutoPipelineOptions` / `UniversalOptions.AutoPipelineOptions`):
+
+- **`AutoPipeline()`** — the blocking face: a drop-in `Cmdable` where each call blocks until executed, exactly like a plain client, while concurrent callers' commands batch together under the hood (measured locally over loopback: ~1M+ SET/sec vs ~100k unpipelined; indicative, not a guarantee). Per-goroutine command order is preserved.
+- **`AsyncAutoPipeline()`** — the deferred face: command calls return immediately and every typed result accessor (`Val`/`Result`/`Err`/...) blocks until the command has executed. Submit a window of commands, then read the results, to keep pipelines deep (~2–3M SET/sec locally; indicative).
+
+`AutoPipelineOptions` controls batching: `MaxBatchSize` (soft target, default 200; the blocking face's preset uses 300), `MaxBatchBytes` (approximate payload cap so huge values flush as several bounded writes), `MaxFlushDelay` with optional `AdaptiveDelay` (delay scales down as the queue fills), and `MaxConcurrentBatches` (default 1 = a single ordered batch stream; raising it requires `Unordered: true`, so ordering is never lost by accident — `Validate()` rejects the combination otherwise). A usage tour and throughput comparison live in [`example/autopipeline`](example/autopipeline).
+
+**Experimental:** the API may change in a future release — pin your go-redis version if you adopt it.
+
+([#3942](https://github.com/redis/go-redis/pull/3942)) by [@ndyakov](https://github.com/ndyakov), with help from [@cxljs](https://github.com/cxljs)
+
+### Redis 8.10 Support
+
+This release adds support for **Redis 8.10**. The README's supported-versions list now includes Redis 8.10, and CI runs the full suite against the `redislabs/client-libs-test:8.10.0` image by default ([#3920](https://github.com/redis/go-redis/pull/3920), [#3940](https://github.com/redis/go-redis/pull/3940)).
+
+Coverage for the new commands and options that ship with Redis 8.10:
+
+- **`HIMPORT`** ([#3919](https://github.com/redis/go-redis/pull/3919)) — bulk hash import via server-side fieldsets, exposed as `HImportPrepare`, `HImportSet`, `HImportDiscard`, and `HImportDiscardAll`. Fieldsets are session state scoped to a single physical connection, which does not mix well with connection pooling — so the client keeps a versioned fieldset registry and lazily replays the `PREPARE` on whichever pooled connection executes a `SET` that needs it, at most once per connection, with no extra round trip (the `PREPARE` is injected into the same write as the `SET`).
+- **`LMOVEM` / `BLMOVEM`** ([#3913](https://github.com/redis/go-redis/pull/3913)) — move multiple elements between lists in one call.
+- **`SUNIONCARD` / `SDIFFCARD`** ([#3897](https://github.com/redis/go-redis/pull/3897)) — cardinality of set union/difference without materializing the result.
+- **`XREAD` / `XREADGROUP` `MAXCOUNT` and `MAXSIZE`** ([#3898](https://github.com/redis/go-redis/pull/3898)) — bound how much data a stream read returns.
+- **`TS.READ`** ([#3896](https://github.com/redis/go-redis/pull/3896)), **`TS.QUERYLABELS`** ([#3926](https://github.com/redis/go-redis/pull/3926)), **`TS.NRANGE` / `TS.NREVRANGE`** ([#3870](https://github.com/redis/go-redis/pull/3870)) with multiple aggregators per key ([#3937](https://github.com/redis/go-redis/pull/3937)), and **`EXCLUDEEMPTY`** on `TS.MRANGE` / `TS.MREVRANGE` ([#3912](https://github.com/redis/go-redis/pull/3912)) — new time-series query surface.
+- **`FT.ALIASLIST`** ([#3925](https://github.com/redis/go-redis/pull/3925)), **`COLLECT` reducer for `FT.AGGREGATE`** ([#3886](https://github.com/redis/go-redis/pull/3886)), **`RERANK` on HNSW vector fields in `FT.CREATE`** ([#3927](https://github.com/redis/go-redis/pull/3927)), and **`FT.HYBRID` timeout warnings** ([#3911](https://github.com/redis/go-redis/pull/3911)) — search coverage.
+
+### Cross-SDK Aligned Defaults
+
+Default configuration values now follow the cross-SDK configuration proposal shared by all Redis client libraries ([#3918](https://github.com/redis/go-redis/pull/3918)):
+
+| Setting | Old default | New default |
+|---|---|---|
+| `ReadTimeout` / `WriteTimeout` | 3s | 5s |
+| Retry backoff (min/max) | 8ms / 512ms | 10ms / 1s |
+| Cluster state reload interval | 10s | 60s |
+| TCP keep-alive | 5min period | 30s idle / 5s interval / 3 probes (`net.KeepAliveConfig`) |
+
+Applications that set these values explicitly are unaffected; applications relying on the old defaults inherit the new ones.
+
+### Data-Race and Parser Hardening Sweep
+
+A systematic audit fixed data races across the client — hooks (`AddHook`, [#3868](https://github.com/redis/go-redis/pull/3868)), `Ring.SetAddrs` ([#3862](https://github.com/redis/go-redis/pull/3862)), cluster node slices ([#3861](https://github.com/redis/go-redis/pull/3861)), pub/sub reconnect ([#3906](https://github.com/redis/go-redis/pull/3906)), maintenance notifications ([#3894](https://github.com/redis/go-redis/pull/3894), [#3872](https://github.com/redis/go-redis/pull/3872)), pool handoff ([#3876](https://github.com/redis/go-redis/pull/3876)), and `redisotel` ([#3881](https://github.com/redis/go-redis/pull/3881)) — and hardened the RESP parsers against malformed or unexpected replies: over-reads on nil replies ([#3874](https://github.com/redis/go-redis/pull/3874)), integer overflow when skipping map/attribute bodies ([#3877](https://github.com/redis/go-redis/pull/3877)), unhashable RESP3 map keys ([#3873](https://github.com/redis/go-redis/pull/3873)), odd-length flat replies ([#3900](https://github.com/redis/go-redis/pull/3900)), mismatched declared array lengths ([#3907](https://github.com/redis/go-redis/pull/3907)), unexpected extra reply frames ([#3884](https://github.com/redis/go-redis/pull/3884)), and nil elements in numeric/bool slice replies ([#3922](https://github.com/redis/go-redis/pull/3922)).
+
+### PubSub `Receive` Hang Fix
+
+`PeekPushNotificationName` blocked until 36 bytes were buffered, so a short subscribe confirmation (channel name of six or fewer characters) on an otherwise idle connection hung `PubSub.Receive` forever — a regression introduced in 9.20.1 by [#3842](https://github.com/redis/go-redis/pull/3842). The peek now parses whatever is already buffered and only waits for one more byte when the frame prefix is valid but incomplete. Fixes [#3935](https://github.com/redis/go-redis/issues/3935).
+
+([#3936](https://github.com/redis/go-redis/pull/3936)) by [@ndyakov](https://github.com/ndyakov)
+
+### Correct Cluster Transaction Retries
+
+The cluster transaction pipeline treated a `MULTI`...`EXEC` block as independently retryable commands, which could scatter a transaction across nodes or send malformed transactions on retry. Redirects (`MOVED`/`ASK`/`TRYAGAIN`) and aborts are now handled at the whole-transaction level, matching Redis transaction semantics: the transaction is re-routed and retried as a unit, never partially ([#3909](https://github.com/redis/go-redis/pull/3909)) by [@cxljs](https://github.com/cxljs).
+
+### Credential Redaction in Command Tracing
+
+`rediscmd.AppendCmd` — used by `redisotel` and `rediscensus` to render commands into span attributes — now redacts credential arguments as `<redacted>`: `AUTH`, `HELLO ... AUTH`, `CONFIG SET` of `requirepass` / `masterauth` / TLS key passphrases, `ACL SETUSER` password rules, and `MIGRATE ... AUTH`/`AUTH2`. The client sends `HELLO ... AUTH` on every handshake and `AUTH` on every streaming-credentials rotation through the regular hook chain, so tracing hooks previously captured credentials even when the application never issued an auth command itself ([#3939](https://github.com/redis/go-redis/pull/3939)) by [@saddamr3e](https://github.com/saddamr3e).
+
+## ✨ New Features
+
+- **Client-side caching**: server-assisted caching for the standalone client via `ClientSideCacheConfig` / `ClientSideCache`, with the `CSCStrategySharedTracking` invalidation strategy ([#3941](https://github.com/redis/go-redis/pull/3941)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **Automatic pipelining**: `AutoPipeline()` (blocking) and `AsyncAutoPipeline()` (deferred results) on `Client` and `ClusterClient`, configured via `AutoPipelineOptions` ([#3942](https://github.com/redis/go-redis/pull/3942)) by [@ndyakov](https://github.com/ndyakov), with help from [@cxljs](https://github.com/cxljs)
+- **`HIMPORT` command family**: `HImportPrepare` / `HImportSet` / `HImportDiscard` / `HImportDiscardAll` with lazy per-connection fieldset prepare replay ([#3919](https://github.com/redis/go-redis/pull/3919)) by [@ndyakov](https://github.com/ndyakov)
+- **`LMOVEM` / `BLMOVEM`**: move multiple list elements in one call, with `COUNT` (up to N) or `EXACTLY` (all-or-nothing) semantics via `LMoveMArgs` ([#3913](https://github.com/redis/go-redis/pull/3913)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`SUnionCard` / `SDiffCard`**: cardinality of set union/difference ([#3897](https://github.com/redis/go-redis/pull/3897)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`XRead` / `XReadGroup` `MAXCOUNT` / `MAXSIZE`**: bound stream read responses by entry count or payload size ([#3898](https://github.com/redis/go-redis/pull/3898)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`TS.READ`**: read samples from a series starting at a given timestamp, with `TSReadEarliest` (`-`), `TSReadLatest` (`+`), and `TSReadNew` (`$`) sentinels ([#3896](https://github.com/redis/go-redis/pull/3896)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`TS.QUERYLABELS`**: query label names/values across time series ([#3926](https://github.com/redis/go-redis/pull/3926)) by [@ndyakov](https://github.com/ndyakov)
+- **`TS.NRANGE` / `TS.NREVRANGE`**: range queries across multiple series ([#3870](https://github.com/redis/go-redis/pull/3870)) by [@ofekshenawa](https://github.com/ofekshenawa), with multiple aggregators per key ([#3937](https://github.com/redis/go-redis/pull/3937)) by [@ndyakov](https://github.com/ndyakov)
+- **`TS.MRANGE` / `TS.MREVRANGE` `EXCLUDEEMPTY`**: skip series with no samples in the result ([#3912](https://github.com/redis/go-redis/pull/3912)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.ALIASLIST`**: list all index aliases ([#3925](https://github.com/redis/go-redis/pull/3925)) by [@ndyakov](https://github.com/ndyakov)
+- **`FT.AGGREGATE` `COLLECT` reducer**: collect grouped values into an array ([#3886](https://github.com/redis/go-redis/pull/3886)) by [@ndyakov](https://github.com/ndyakov)
+- **`FT.CREATE` `RERANK`**: `RERANK` parameter on HNSW vector field definitions ([#3927](https://github.com/redis/go-redis/pull/3927)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.HYBRID` timeout warnings**: timeout warnings are now populated in hybrid search results ([#3911](https://github.com/redis/go-redis/pull/3911)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.HYBRID` KNN `SHARD_K_RATIO`** (Redis 8.8+): per-shard K ratio for KNN clauses ([#3841](https://github.com/redis/go-redis/pull/3841)) by [@ndyakov](https://github.com/ndyakov)
+
+## 🐛 Bug Fixes
+
+- **PubSub `Receive` hang**: peek push-notification names without demanding 36 buffered bytes, fixing a hang on short subscribe confirmations (fixes [#3935](https://github.com/redis/go-redis/issues/3935), regression from 9.20.1) ([#3936](https://github.com/redis/go-redis/pull/3936)) by [@ndyakov](https://github.com/ndyakov)
+- **Cluster transactions**: re-route the whole tx pipeline on redirect/abort instead of per-command ([#3909](https://github.com/redis/go-redis/pull/3909)) by [@cxljs](https://github.com/cxljs)
+- **Credential leak in traces**: `rediscmd.AppendCmd` redacts credential arguments (`AUTH`, `HELLO ... AUTH`, `CONFIG SET` secret params, `ACL SETUSER` password rules, `MIGRATE AUTH`/`AUTH2`), so `redisotel` / `rediscensus` span attributes no longer contain passwords ([#3939](https://github.com/redis/go-redis/pull/3939)) by [@saddamr3e](https://github.com/saddamr3e)
+- **`WaitAOF` return type**: returns `*IntSliceCmd` matching the two-integer `WAITAOF` reply ([#3888](https://github.com/redis/go-redis/pull/3888)) by [@CipherN9](https://github.com/CipherN9)
+- **`Ring.Publish` routing**: publish to the shard that owns the topic instead of a round-robined one ([#3893](https://github.com/redis/go-redis/pull/3893)) by [@dkindel](https://github.com/dkindel)
+- **Pool `OnRemove` hooks**: fire `OnRemove` on `putConn` eviction paths so removal hooks see every evicted connection ([#3932](https://github.com/redis/go-redis/pull/3932)) by [@cxljs](https://github.com/cxljs)
+- **`UniversalClient` `InfoMap`**: added `InfoMap` to the `Cmdable` interface ([#3904](https://github.com/redis/go-redis/pull/3904)) by [@nazarli-shabnam](https://github.com/nazarli-shabnam)
+- **`SlowLogGet` context**: pass the caller's context instead of a background one ([#3915](https://github.com/redis/go-redis/pull/3915)) by [@sonnemusk](https://github.com/sonnemusk)
+- **`ModuleLoadex` nil config**: return an error instead of panicking on nil config ([#3916](https://github.com/redis/go-redis/pull/3916)) by [@sonnemusk](https://github.com/sonnemusk)
+- **`ParseURL` IPv6 hosts**: keep single brackets for IPv6 hosts without a port ([#3882](https://github.com/redis/go-redis/pull/3882)) by [@sueun-dev](https://github.com/sueun-dev)
+- **`ParseURL` durations**: treat unit durations `<= 0` as disabled ([#3866](https://github.com/redis/go-redis/pull/3866)) by [@sueun-dev](https://github.com/sueun-dev)
+- **Nil `*uint8` encoding**: encode nil `*uint8` as `"0"` like other numeric pointers ([#3869](https://github.com/redis/go-redis/pull/3869)) by [@sueun-dev](https://github.com/sueun-dev)
+- **`JSONSliceCmd` read errors**: return the read error from `readReply` instead of swallowing it ([#3903](https://github.com/redis/go-redis/pull/3903)) by [@saddamr3e](https://github.com/saddamr3e)
+- **RESP parser hardening**: reconcile declared entry-array lengths ([#3907](https://github.com/redis/go-redis/pull/3907)), handle nil elements in int/uint/bool slice parsers ([#3922](https://github.com/redis/go-redis/pull/3922)), drain unexpected reply frames ([#3884](https://github.com/redis/go-redis/pull/3884)), reject odd-length flat replies in Z/KeyValue parsers ([#3900](https://github.com/redis/go-redis/pull/3900)), avoid int overflow when skipping map/attr bodies ([#3877](https://github.com/redis/go-redis/pull/3877)), don't over-read nil replies in `Reader.Discard` ([#3874](https://github.com/redis/go-redis/pull/3874)) by [@saddamr3e](https://github.com/saddamr3e); reject unhashable keys in RESP3 map parsing ([#3873](https://github.com/redis/go-redis/pull/3873)) by [@iabdullah215](https://github.com/iabdullah215)
+- **Data races**: hook state during `AddHook` ([#3868](https://github.com/redis/go-redis/pull/3868)), `onNewNode` during `Ring.SetAddrs` ([#3862](https://github.com/redis/go-redis/pull/3862)), shared masters/slaves slices in cluster ([#3861](https://github.com/redis/go-redis/pull/3861)), shared `opt.Addr` during pub/sub reconnect ([#3906](https://github.com/redis/go-redis/pull/3906)), `clusterStateReloadCallback` in maintnotifications ([#3894](https://github.com/redis/go-redis/pull/3894)), conn reader in `isHealthyConn` during handoff ([#3876](https://github.com/redis/go-redis/pull/3876)) by [@saddamr3e](https://github.com/saddamr3e); handoff race window in maintnotifications ([#3872](https://github.com/redis/go-redis/pull/3872)) by [@ndyakov](https://github.com/ndyakov)
+- **`redisotel`**: use `ObservableCounter` for cumulative pool stats ([#3914](https://github.com/redis/go-redis/pull/3914)) by [@Solaris-star](https://github.com/Solaris-star); avoid a data race on shared attributes during `MinIdleConns` warmup ([#3881](https://github.com/redis/go-redis/pull/3881)) by [@ndyakov](https://github.com/ndyakov)
+
+## 🧰 Maintenance
+
+- **Cross-SDK default alignment**: new defaults for timeouts, retry backoff, cluster state reload, and TCP keep-alive ([#3918](https://github.com/redis/go-redis/pull/3918)) by [@ndyakov](https://github.com/ndyakov)
+- **CI on Redis 8.10**: 8.10 made the default test version ([#3920](https://github.com/redis/go-redis/pull/3920)) with version gating by major.minor ([#3908](https://github.com/redis/go-redis/pull/3908)) by [@ofekshenawa](https://github.com/ofekshenawa); the test stack now runs the GA `redislabs/client-libs-test:8.10.0` image and 8.8 was dropped from the CI matrix ([#3940](https://github.com/redis/go-redis/pull/3940))
+- **Type-safe atomics**: use typed `sync/atomic` value types ([#3860](https://github.com/redis/go-redis/pull/3860)) and remove the dead `assertUnstableCommand` RESP3 path ([#3928](https://github.com/redis/go-redis/pull/3928)) by [@cxljs](https://github.com/cxljs)
+- **Docs**: clarify that `ExpireTime` / `PExpireTime` return Unix timestamps ([#3917](https://github.com/redis/go-redis/pull/3917)) by [@sonnemusk](https://github.com/sonnemusk); remove a duplicate example step ([#3875](https://github.com/redis/go-redis/pull/3875)) by [@andy-stark-redis](https://github.com/andy-stark-redis)
+
+## 👥 Contributors
+
+We'd like to thank all the contributors who worked on this release!
+
+[@andy-stark-redis](https://github.com/andy-stark-redis), [@CipherN9](https://github.com/CipherN9), [@cxljs](https://github.com/cxljs), [@dkindel](https://github.com/dkindel), [@iabdullah215](https://github.com/iabdullah215), [@nazarli-shabnam](https://github.com/nazarli-shabnam), [@ndyakov](https://github.com/ndyakov), [@ofekshenawa](https://github.com/ofekshenawa), [@saddamr3e](https://github.com/saddamr3e), [@Solaris-star](https://github.com/Solaris-star), [@sonnemusk](https://github.com/sonnemusk), [@sueun-dev](https://github.com/sueun-dev)
+
+---
+
+**Full Changelog**: https://github.com/redis/go-redis/compare/v9.21.0...v9.22.0
+
+# 9.22.0-beta.1 (2026-07-29)
+
+This is a **beta** release adding support for Redis 8.10, new commands, and a large batch of stability and parser-robustness fixes. The 9.22.0 GA release will follow once client-side caching and auto-pipelining are merged.
+
+⚠️ Two changes to be aware of when upgrading from 9.21.0:
+
+- **Default configuration values changed** ([#3918](https://github.com/redis/go-redis/pull/3918)): read/write timeouts, retry backoff, cluster state reload interval, and TCP keep-alive defaults are now aligned with the cross-SDK configuration proposal (see the highlight below). Explicitly configured values are unaffected.
+- **`WaitAOF` return type corrected** ([#3888](https://github.com/redis/go-redis/pull/3888)): `WaitAOF` now returns `*IntSliceCmd`, matching the two-integer reply of `WAITAOF` (previously `*IntCmd`, which failed to parse the reply at runtime). Code referencing the old return type needs a one-line update.
+
+## 🚀 Highlights
+
+### Redis 8.10 Support
+
+This release adds support for **Redis 8.10**. The README's supported-versions list now includes Redis 8.10, and CI runs the full suite against the `redislabs/client-libs-test:8.10.0` image by default ([#3920](https://github.com/redis/go-redis/pull/3920), [#3940](https://github.com/redis/go-redis/pull/3940)).
+
+Coverage for the new commands and options that ship with Redis 8.10:
+
+- **`HIMPORT`** ([#3919](https://github.com/redis/go-redis/pull/3919)) — bulk hash import via server-side fieldsets, exposed as `HImportPrepare`, `HImportSet`, `HImportDiscard`, and `HImportDiscardAll`. Fieldsets are session state scoped to a single physical connection, which does not mix well with connection pooling — so the client keeps a versioned fieldset registry and lazily replays the `PREPARE` on whichever pooled connection executes a `SET` that needs it, at most once per connection, with no extra round trip (the `PREPARE` is injected into the same write as the `SET`).
+- **`LMOVEM` / `BLMOVEM`** ([#3913](https://github.com/redis/go-redis/pull/3913)) — move multiple elements between lists in one call.
+- **`SUNIONCARD` / `SDIFFCARD`** ([#3897](https://github.com/redis/go-redis/pull/3897)) — cardinality of set union/difference without materializing the result.
+- **`XREAD` / `XREADGROUP` `MAXCOUNT` and `MAXSIZE`** ([#3898](https://github.com/redis/go-redis/pull/3898)) — bound how much data a stream read returns.
+- **`TS.READ`** ([#3896](https://github.com/redis/go-redis/pull/3896)), **`TS.QUERYLABELS`** ([#3926](https://github.com/redis/go-redis/pull/3926)), **`TS.NRANGE` / `TS.NREVRANGE`** ([#3870](https://github.com/redis/go-redis/pull/3870)) with multiple aggregators per key ([#3937](https://github.com/redis/go-redis/pull/3937)), and **`EXCLUDEEMPTY`** on `TS.MRANGE` / `TS.MREVRANGE` ([#3912](https://github.com/redis/go-redis/pull/3912)) — new time-series query surface.
+- **`FT.ALIASLIST`** ([#3925](https://github.com/redis/go-redis/pull/3925)), **`COLLECT` reducer for `FT.AGGREGATE`** ([#3886](https://github.com/redis/go-redis/pull/3886)), **`RERANK` on HNSW vector fields in `FT.CREATE`** ([#3927](https://github.com/redis/go-redis/pull/3927)), and **`FT.HYBRID` timeout warnings** ([#3911](https://github.com/redis/go-redis/pull/3911)) — search coverage.
+
+### Cross-SDK Aligned Defaults
+
+Default configuration values now follow the cross-SDK configuration proposal shared by all Redis client libraries ([#3918](https://github.com/redis/go-redis/pull/3918)):
+
+| Setting | Old default | New default |
+|---|---|---|
+| `ReadTimeout` / `WriteTimeout` | 3s | 5s |
+| Retry backoff (min/max) | 8ms / 512ms | 10ms / 1s |
+| Cluster state reload interval | 10s | 60s |
+| TCP keep-alive | 5min period | 30s idle / 5s interval / 3 probes (`net.KeepAliveConfig`) |
+
+Applications that set these values explicitly are unaffected; applications relying on the old defaults inherit the new ones.
+
+### Data-Race and Parser Hardening Sweep
+
+A systematic audit fixed data races across the client — hooks (`AddHook`, [#3868](https://github.com/redis/go-redis/pull/3868)), `Ring.SetAddrs` ([#3862](https://github.com/redis/go-redis/pull/3862)), cluster node slices ([#3861](https://github.com/redis/go-redis/pull/3861)), pub/sub reconnect ([#3906](https://github.com/redis/go-redis/pull/3906)), maintenance notifications ([#3894](https://github.com/redis/go-redis/pull/3894), [#3872](https://github.com/redis/go-redis/pull/3872)), pool handoff ([#3876](https://github.com/redis/go-redis/pull/3876)), and `redisotel` ([#3881](https://github.com/redis/go-redis/pull/3881)) — and hardened the RESP parsers against malformed or unexpected replies: over-reads on nil replies ([#3874](https://github.com/redis/go-redis/pull/3874)), integer overflow when skipping map/attribute bodies ([#3877](https://github.com/redis/go-redis/pull/3877)), unhashable RESP3 map keys ([#3873](https://github.com/redis/go-redis/pull/3873)), odd-length flat replies ([#3900](https://github.com/redis/go-redis/pull/3900)), mismatched declared array lengths ([#3907](https://github.com/redis/go-redis/pull/3907)), unexpected extra reply frames ([#3884](https://github.com/redis/go-redis/pull/3884)), and nil elements in numeric/bool slice replies ([#3922](https://github.com/redis/go-redis/pull/3922)).
+
+### PubSub `Receive` Hang Fix
+
+`PeekPushNotificationName` blocked until 36 bytes were buffered, so a short subscribe confirmation (channel name of six or fewer characters) on an otherwise idle connection hung `PubSub.Receive` forever — a regression introduced in 9.20.1 by [#3842](https://github.com/redis/go-redis/pull/3842). The peek now parses whatever is already buffered and only waits for one more byte when the frame prefix is valid but incomplete. Fixes [#3935](https://github.com/redis/go-redis/issues/3935).
+
+([#3936](https://github.com/redis/go-redis/pull/3936)) by [@ndyakov](https://github.com/ndyakov)
+
+### Correct Cluster Transaction Retries
+
+The cluster transaction pipeline treated a `MULTI`...`EXEC` block as independently retryable commands, which could scatter a transaction across nodes or send malformed transactions on retry. Redirects (`MOVED`/`ASK`/`TRYAGAIN`) and aborts are now handled at the whole-transaction level, matching Redis transaction semantics: the transaction is re-routed and retried as a unit, never partially ([#3909](https://github.com/redis/go-redis/pull/3909)) by [@cxljs](https://github.com/cxljs).
+
+### Credential Redaction in Command Tracing
+
+`rediscmd.AppendCmd` — used by `redisotel` and `rediscensus` to render commands into span attributes — now redacts credential arguments as `<redacted>`: `AUTH`, `HELLO ... AUTH`, `CONFIG SET` of `requirepass` / `masterauth` / TLS key passphrases, `ACL SETUSER` password rules, and `MIGRATE ... AUTH`/`AUTH2`. The client sends `HELLO ... AUTH` on every handshake and `AUTH` on every streaming-credentials rotation through the regular hook chain, so tracing hooks previously captured credentials even when the application never issued an auth command itself ([#3939](https://github.com/redis/go-redis/pull/3939)) by [@saddamr3e](https://github.com/saddamr3e).
+
+## ✨ New Features
+
+- **`HIMPORT` command family**: `HImportPrepare` / `HImportSet` / `HImportDiscard` / `HImportDiscardAll` with lazy per-connection fieldset prepare replay ([#3919](https://github.com/redis/go-redis/pull/3919)) by [@ndyakov](https://github.com/ndyakov)
+- **`LMOVEM` / `BLMOVEM`**: move multiple list elements in one call, with `COUNT` (up to N) or `EXACTLY` (all-or-nothing) semantics via `LMoveMArgs` ([#3913](https://github.com/redis/go-redis/pull/3913)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`SUnionCard` / `SDiffCard`**: cardinality of set union/difference ([#3897](https://github.com/redis/go-redis/pull/3897)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`XRead` / `XReadGroup` `MAXCOUNT` / `MAXSIZE`**: bound stream read responses by entry count or payload size ([#3898](https://github.com/redis/go-redis/pull/3898)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`TS.READ`**: read samples from a series starting at a given timestamp, with `TSReadEarliest` (`-`), `TSReadLatest` (`+`), and `TSReadNew` (`$`) sentinels ([#3896](https://github.com/redis/go-redis/pull/3896)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`TS.QUERYLABELS`**: query label names/values across time series ([#3926](https://github.com/redis/go-redis/pull/3926)) by [@ndyakov](https://github.com/ndyakov)
+- **`TS.NRANGE` / `TS.NREVRANGE`**: range queries across multiple series ([#3870](https://github.com/redis/go-redis/pull/3870)) by [@ofekshenawa](https://github.com/ofekshenawa), with multiple aggregators per key ([#3937](https://github.com/redis/go-redis/pull/3937)) by [@ndyakov](https://github.com/ndyakov)
+- **`TS.MRANGE` / `TS.MREVRANGE` `EXCLUDEEMPTY`**: skip series with no samples in the result ([#3912](https://github.com/redis/go-redis/pull/3912)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.ALIASLIST`**: list all index aliases ([#3925](https://github.com/redis/go-redis/pull/3925)) by [@ndyakov](https://github.com/ndyakov)
+- **`FT.AGGREGATE` `COLLECT` reducer**: collect grouped values into an array ([#3886](https://github.com/redis/go-redis/pull/3886)) by [@ndyakov](https://github.com/ndyakov)
+- **`FT.CREATE` `RERANK`**: `RERANK` parameter on HNSW vector field definitions ([#3927](https://github.com/redis/go-redis/pull/3927)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.HYBRID` timeout warnings**: timeout warnings are now populated in hybrid search results ([#3911](https://github.com/redis/go-redis/pull/3911)) by [@ofekshenawa](https://github.com/ofekshenawa)
+- **`FT.HYBRID` KNN `SHARD_K_RATIO`** (Redis 8.8+): per-shard K ratio for KNN clauses ([#3841](https://github.com/redis/go-redis/pull/3841)) by [@ndyakov](https://github.com/ndyakov)
+
+## 🐛 Bug Fixes
+
+- **PubSub `Receive` hang**: peek push-notification names without demanding 36 buffered bytes, fixing a hang on short subscribe confirmations (fixes [#3935](https://github.com/redis/go-redis/issues/3935), regression from 9.20.1) ([#3936](https://github.com/redis/go-redis/pull/3936)) by [@ndyakov](https://github.com/ndyakov)
+- **Cluster transactions**: re-route the whole tx pipeline on redirect/abort instead of per-command ([#3909](https://github.com/redis/go-redis/pull/3909)) by [@cxljs](https://github.com/cxljs)
+- **Credential leak in traces**: `rediscmd.AppendCmd` redacts credential arguments (`AUTH`, `HELLO ... AUTH`, `CONFIG SET` secret params, `ACL SETUSER` password rules, `MIGRATE AUTH`/`AUTH2`), so `redisotel` / `rediscensus` span attributes no longer contain passwords ([#3939](https://github.com/redis/go-redis/pull/3939)) by [@saddamr3e](https://github.com/saddamr3e)
+- **`WaitAOF` return type**: returns `*IntSliceCmd` matching the two-integer `WAITAOF` reply ([#3888](https://github.com/redis/go-redis/pull/3888)) by [@CipherN9](https://github.com/CipherN9)
+- **`Ring.Publish` routing**: publish to the shard that owns the topic instead of a round-robined one ([#3893](https://github.com/redis/go-redis/pull/3893)) by [@dkindel](https://github.com/dkindel)
+- **Pool `OnRemove` hooks**: fire `OnRemove` on `putConn` eviction paths so removal hooks see every evicted connection ([#3932](https://github.com/redis/go-redis/pull/3932)) by [@cxljs](https://github.com/cxljs)
+- **`UniversalClient` `InfoMap`**: added `InfoMap` to the `Cmdable` interface ([#3904](https://github.com/redis/go-redis/pull/3904)) by [@nazarli-shabnam](https://github.com/nazarli-shabnam)
+- **`SlowLogGet` context**: pass the caller's context instead of a background one ([#3915](https://github.com/redis/go-redis/pull/3915)) by [@sonnemusk](https://github.com/sonnemusk)
+- **`ModuleLoadex` nil config**: return an error instead of panicking on nil config ([#3916](https://github.com/redis/go-redis/pull/3916)) by [@sonnemusk](https://github.com/sonnemusk)
+- **`ParseURL` IPv6 hosts**: keep single brackets for IPv6 hosts without a port ([#3882](https://github.com/redis/go-redis/pull/3882)) by [@sueun-dev](https://github.com/sueun-dev)
+- **`ParseURL` durations**: treat unit durations `<= 0` as disabled ([#3866](https://github.com/redis/go-redis/pull/3866)) by [@sueun-dev](https://github.com/sueun-dev)
+- **Nil `*uint8` encoding**: encode nil `*uint8` as `"0"` like other numeric pointers ([#3869](https://github.com/redis/go-redis/pull/3869)) by [@sueun-dev](https://github.com/sueun-dev)
+- **`JSONSliceCmd` read errors**: return the read error from `readReply` instead of swallowing it ([#3903](https://github.com/redis/go-redis/pull/3903)) by [@saddamr3e](https://github.com/saddamr3e)
+- **RESP parser hardening**: reconcile declared entry-array lengths ([#3907](https://github.com/redis/go-redis/pull/3907)), handle nil elements in int/uint/bool slice parsers ([#3922](https://github.com/redis/go-redis/pull/3922)), drain unexpected reply frames ([#3884](https://github.com/redis/go-redis/pull/3884)), reject odd-length flat replies in Z/KeyValue parsers ([#3900](https://github.com/redis/go-redis/pull/3900)), avoid int overflow when skipping map/attr bodies ([#3877](https://github.com/redis/go-redis/pull/3877)), don't over-read nil replies in `Reader.Discard` ([#3874](https://github.com/redis/go-redis/pull/3874)) by [@saddamr3e](https://github.com/saddamr3e); reject unhashable keys in RESP3 map parsing ([#3873](https://github.com/redis/go-redis/pull/3873)) by [@iabdullah215](https://github.com/iabdullah215)
+- **Data races**: hook state during `AddHook` ([#3868](https://github.com/redis/go-redis/pull/3868)), `onNewNode` during `Ring.SetAddrs` ([#3862](https://github.com/redis/go-redis/pull/3862)), shared masters/slaves slices in cluster ([#3861](https://github.com/redis/go-redis/pull/3861)), shared `opt.Addr` during pub/sub reconnect ([#3906](https://github.com/redis/go-redis/pull/3906)), `clusterStateReloadCallback` in maintnotifications ([#3894](https://github.com/redis/go-redis/pull/3894)), conn reader in `isHealthyConn` during handoff ([#3876](https://github.com/redis/go-redis/pull/3876)) by [@saddamr3e](https://github.com/saddamr3e); handoff race window in maintnotifications ([#3872](https://github.com/redis/go-redis/pull/3872)) by [@ndyakov](https://github.com/ndyakov)
+- **`redisotel`**: use `ObservableCounter` for cumulative pool stats ([#3914](https://github.com/redis/go-redis/pull/3914)) by [@Solaris-star](https://github.com/Solaris-star); avoid a data race on shared attributes during `MinIdleConns` warmup ([#3881](https://github.com/redis/go-redis/pull/3881)) by [@ndyakov](https://github.com/ndyakov)
+
+## 🧰 Maintenance
+
+- **Cross-SDK default alignment**: new defaults for timeouts, retry backoff, cluster state reload, and TCP keep-alive ([#3918](https://github.com/redis/go-redis/pull/3918)) by [@ndyakov](https://github.com/ndyakov)
+- **CI on Redis 8.10**: 8.10 made the default test version ([#3920](https://github.com/redis/go-redis/pull/3920)) with version gating by major.minor ([#3908](https://github.com/redis/go-redis/pull/3908)) by [@ofekshenawa](https://github.com/ofekshenawa); the test stack now runs the GA `redislabs/client-libs-test:8.10.0` image and 8.8 was dropped from the CI matrix ([#3940](https://github.com/redis/go-redis/pull/3940))
+- **Type-safe atomics**: use typed `sync/atomic` value types ([#3860](https://github.com/redis/go-redis/pull/3860)) and remove the dead `assertUnstableCommand` RESP3 path ([#3928](https://github.com/redis/go-redis/pull/3928)) by [@cxljs](https://github.com/cxljs)
+- **Docs**: clarify that `ExpireTime` / `PExpireTime` return Unix timestamps ([#3917](https://github.com/redis/go-redis/pull/3917)) by [@sonnemusk](https://github.com/sonnemusk); remove a duplicate example step ([#3875](https://github.com/redis/go-redis/pull/3875)) by [@andy-stark-redis](https://github.com/andy-stark-redis)
+
+## 👥 Contributors
+
+We'd like to thank all the contributors who worked on this release!
+
+[@andy-stark-redis](https://github.com/andy-stark-redis), [@CipherN9](https://github.com/CipherN9), [@cxljs](https://github.com/cxljs), [@dkindel](https://github.com/dkindel), [@iabdullah215](https://github.com/iabdullah215), [@nazarli-shabnam](https://github.com/nazarli-shabnam), [@ndyakov](https://github.com/ndyakov), [@ofekshenawa](https://github.com/ofekshenawa), [@saddamr3e](https://github.com/saddamr3e), [@Solaris-star](https://github.com/Solaris-star), [@sonnemusk](https://github.com/sonnemusk), [@sueun-dev](https://github.com/sueun-dev)
+
+---
+
+**Full Changelog**: https://github.com/redis/go-redis/compare/v9.21.0...v9.22.0-beta.1
+
 # 9.21.0 (2026-06-18)
 
 This is a minor release adding new features and bug fixes. There are no breaking changes; upgrading from 9.20.x is a drop-in replacement.
