@@ -263,6 +263,14 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			if syntax.ReducesLabels(expr.Left) && syntax.HasNonAdditiveAggr(expr.Left) {
 				break
 			}
+			// A binary operation contributes one matcher group per leg (even
+			// when both legs share a selector), so it cannot be pushed down as a
+			// single sharded leaf: shard resolution (GetShards) only supports a
+			// single matcher group. Fall through to child mapping so mapBinOpExpr
+			// dispatches each leg separately.
+			if spansMultipleMatcherGroups(expr.Left) {
+				break
+			}
 			return m.wrappedShardedVectorAggr(expr, r)
 
 		case syntax.OpTypeMin, syntax.OpTypeMax:
@@ -298,6 +306,12 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				// skip sharding optimizations at this level. If labels are reduced,
 				// the same series may exist on multiple shards and must be aggregated
 				// together before a count is applied
+				break
+			}
+			// see the OpTypeSum case: a binary operation spans multiple matcher
+			// groups and cannot be pushed down as a single sharded leaf. Fall
+			// through so mapBinOpExpr dispatches each leg separately.
+			if spansMultipleMatcherGroups(expr.Left) {
 				break
 			}
 
@@ -693,4 +707,15 @@ func isLiteralOrVector(e syntax.Expr) bool {
 
 func badASTMapping(got syntax.Expr) error {
 	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
+}
+
+// spansMultipleMatcherGroups reports whether e selects more than one stream
+// matcher group. Any binary operation does, since MatcherGroups counts one group
+// per leg. Returns false on parse errors, deferring them to downstream handling.
+func spansMultipleMatcherGroups(e syntax.Expr) bool {
+	groups, err := syntax.MatcherGroups(e)
+	if err != nil {
+		return false
+	}
+	return len(groups) > 1
 }
