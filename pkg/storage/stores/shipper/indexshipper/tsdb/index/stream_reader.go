@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 
@@ -31,22 +32,20 @@ type StreamReader struct {
 	symbols            *streamSymbols
 	postings           *streamPostings
 	fingerprintOffsets FingerprintOffsets
+	decoder            *Decoder
 }
 
 // NewStreamFileReader constructs a StreamReader against the given index file.
 func NewStreamFileReader(path string) (*StreamReader, error) {
-	fileInfo, err := os.Stat(path)
+	factory, err := streamenc.NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
 	if err != nil {
-		return nil, fmt.Errorf("stat index file: %w", err)
+		return nil, fmt.Errorf("index file decbuf factory: %w", err)
 	}
-	size := fileInfo.Size()
-
-	factory := streamenc.NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
 
 	reader := &StreamReader{
 		factory: factory,
 		path:    path,
-		size:    size,
+		size:    factory.FileSize(),
 	}
 
 	version, err := reader.readHeader()
@@ -63,13 +62,13 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 	}
 	reader.toc = toc
 
-	reader.symbols, err = newStreamSymbols(context.Background(), factory, int(toc.Symbols))
+	reader.postings, err = newStreamPostings(context.Background(), factory, int(toc.PostingsTable))
 	if err != nil {
 		_ = factory.Close()
 		return nil, err
 	}
 
-	reader.postings, err = newStreamPostings(context.Background(), factory, int(toc.PostingsTable))
+	reader.symbols, err = newStreamSymbols(context.Background(), factory, int(toc.Symbols), reader.postings.isLabelName)
 	if err != nil {
 		_ = factory.Close()
 		return nil, err
@@ -80,6 +79,8 @@ func NewStreamFileReader(path string) (*StreamReader, error) {
 		_ = factory.Close()
 		return nil, err
 	}
+
+	reader.decoder = newDecoder(reader.symbols.Lookup, DefaultMaxChunksToBypassMarkerLookup)
 
 	// Fallback used by not-yet-ported methods
 	mmapReader, err := NewMmapFileReader(path)
@@ -190,6 +191,62 @@ func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffset
 	return result, decbuf.Err()
 }
 
+// seriesOffset returns the absolute file offset of the series record for the
+// given series ref.
+// Series records are padded to a 16-byte alignment and a ref is the record's
+// file offset divided by 16, which is what lets a 4-byte ref address a much
+// larger file.
+// See Creator.AddSeries.
+func seriesOffset(id storage.SeriesRef) int {
+	return int(id) * 16
+}
+
+// readSeriesRecord reads the series record at the given absolute file offset
+// and returns its content bytes, having validated the record's CRC32.
+//
+// On disk a series record is a uvarint content length, the content, then
+// a CRC32 over the content alone.
+// The uvarint length prefix is why this can't go through the streamenc
+// factory: NewDecbufAtChecked assumes a 4-byte big-endian length, so we open
+// a raw Decbuf over the whole file and decode the record ourselves.
+func (s StreamReader) readSeriesRecord(offset int) ([]byte, error) {
+	decbuf := s.factory.NewRawDecbuf(context.Background())
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("open series decbuf: %w", err)
+	}
+	defer func() { _ = decbuf.Close() }()
+
+	if decbuf.ResetAt(offset); decbuf.Err() != nil {
+		return nil, fmt.Errorf("go to start of series record: %w", decbuf.Err())
+	}
+
+	contentLen := decbuf.Uvarint64()
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("read series record length: %w", err)
+	}
+	// Bound the claimed length against what is left in the file before
+	// allocating, so a corrupt length prefix can't ask for an arbitrarily
+	// large buffer.
+	remaining := decbuf.Len()
+	if remaining < crc32.Size || contentLen > uint64(remaining-crc32.Size) {
+		return nil, fmt.Errorf(
+			"series record at %d claims %d content bytes but only %d remain: %w",
+			offset, contentLen, remaining, streamenc.ErrInvalidSize,
+		)
+	}
+
+	content := make([]byte, contentLen)
+	decbuf.ReadInto(content)
+	expectedCRC := decbuf.Be32()
+	if err := decbuf.Err(); err != nil {
+		return nil, fmt.Errorf("read series record: %w", err)
+	}
+	if crc32.Checksum(content, castagnoliTable) != expectedCRC {
+		return nil, fmt.Errorf("series record at %d: %w", offset, streamenc.ErrInvalidChecksum)
+	}
+	return content, nil
+}
+
 func (s StreamReader) Version() int {
 	return s.version
 }
@@ -225,11 +282,25 @@ func (s StreamReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) 
 }
 
 func (s StreamReader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	return s.mmapReader.Series(id, from, through, lbls, chks)
+	content, err := s.readSeriesRecord(seriesOffset(id))
+	if err != nil {
+		return 0, err
+	}
+
+	fingerprint, err := s.decoder.Series(s.version, content, id, from, through, lbls, chks)
+	if err != nil {
+		return 0, fmt.Errorf("decode series: %w", err)
+	}
+	return fingerprint, nil
 }
 
 func (s StreamReader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	return s.mmapReader.ChunkStats(id, from, through, lbls, by)
+	content, err := s.readSeriesRecord(seriesOffset(id))
+	if err != nil {
+		return 0, ChunkStats{}, err
+	}
+
+	return s.decoder.ChunkStats(s.version, content, id, from, through, lbls, by)
 }
 
 // Postings returns a postings iterator for the given label name and values.
