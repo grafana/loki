@@ -40,6 +40,12 @@ func (c *Cluster) handleDescribeACLs(creq *clientReq) (kmsg.Response, error) {
 		host:         req.Host,
 	}
 
+	if !filter.validate() {
+		resp.ErrorCode = kerr.InvalidRequest.Code
+		resp.ErrorMessage = kmsg.StringPtr("DescribeAclsRequest contains UNKNOWN elements")
+		return resp, nil
+	}
+
 	matching := c.acls.describe(filter)
 
 	// Group by resource type + name + pattern
