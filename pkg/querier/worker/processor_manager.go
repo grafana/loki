@@ -4,10 +4,10 @@ import (
 	"context"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 )
 
@@ -29,16 +29,15 @@ type processorManager struct {
 	cancelsMu sync.Mutex
 	cancels   []context.CancelFunc
 
-	currentProcessors *atomic.Int32
+	currentProcessors atomic.Int32
 }
 
 func newProcessorManager(ctx context.Context, p processor, conn *grpc.ClientConn, address string) *processorManager {
 	return &processorManager{
-		p:                 p,
-		ctx:               ctx,
-		conn:              conn,
-		address:           address,
-		currentProcessors: atomic.NewInt32(0),
+		p:       p,
+		ctx:     ctx,
+		conn:    conn,
+		address: address,
 	}
 }
 
@@ -75,8 +74,8 @@ func (pm *processorManager) concurrency(n int) {
 		go func(workerID int) {
 			defer pm.wg.Done()
 
-			pm.currentProcessors.Inc()
-			defer pm.currentProcessors.Dec()
+			pm.currentProcessors.Add(1)
+			defer pm.currentProcessors.Add(-1)
 
 			pm.p.processQueriesOnSingleStream(ctx, pm.conn, pm.address, strconv.Itoa(workerID))
 		}(workerID)
