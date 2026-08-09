@@ -61,10 +61,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	if d.RequestParserWrapper != nil {
-		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
-	}
-
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
