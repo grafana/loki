@@ -2,7 +2,8 @@ package s3
 
 import (
 	"context"
-	"math/rand/v2"
+	// We're shuffling addresses; not security-sensitive.
+	"math/rand/v2" // nosemgrep: math-random-used
 	"net"
 	"time"
 )
