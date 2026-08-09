@@ -17,7 +17,7 @@ const (
 
 // NewBucketClient creates a new S3 bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
-	s3Cfg, err := newS3Config(cfg)
+	s3Cfg, err := newS3Config(cfg, name)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger, wrapRT func(htt
 
 // NewBucketReaderClient creates a new S3 bucket client
 func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.BucketReader, error) {
-	s3Cfg, err := newS3Config(cfg)
+	s3Cfg, err := newS3Config(cfg, name)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger, wrapRT fu
 	return s3.NewBucketWithConfig(logger, s3Cfg, name, wrapRT)
 }
 
-func newS3Config(cfg Config) (s3.Config, error) {
+func newS3Config(cfg Config, name string) (s3.Config, error) {
 	sseCfg, err := cfg.SSE.BuildThanosConfig()
 	if err != nil {
 		return s3.Config{}, err
@@ -70,9 +70,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		if err != nil {
 			return s3.Config{}, err
 		}
-		if cfg.ShuffleAddresses {
-			transport.DialContext = newShufflingDialer().DialContext
-		}
+		transport.DialContext = instrumentedDialContext(transport.DialContext, name, cfg.ShuffleAddresses)
 		httpCfg.Transport = transport
 	}
 
