@@ -6,7 +6,43 @@ import (
 	"math/rand/v2" // nosemgrep: math-random-used
 	"net"
 	"time"
+
+	conntrack "github.com/mwitkow/go-conntrack"
 )
+
+type dialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
+
+// instrumentedDialContext adds metrics to dial:
+//
+//   - go-conntrack counts every connection attempted, established, failed and
+//     closed, under net_conntrack_dialer_conn_*_total{dialer_name="s3-<name>"}.
+//   - addressTracker counts how many distinct remote addresses those
+//     connections reached, under loki_s3_dialer_*_addresses{dialer_name=...}.
+//
+// Both sit underneath the shuffling dialer rather than above it, so a dial that
+// walks several addresses is measured per address rather than once for the
+// hostname.
+func instrumentedDialContext(dial dialContextFunc, name string, shuffleAddresses bool) dialContextFunc {
+	dialerName := "s3-" + name
+
+	tracked := newAddressTracker(dialerName).wrap(dial)
+	dial = conntrack.NewDialContextFunc(
+		conntrack.DialWithName(dialerName),
+		// Passed as an unnamed func type because go-conntrack takes its own
+		// named one, which dialContextFunc is not assignable to.
+		conntrack.DialWithDialContextFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
+			return tracked(ctx, network, address)
+		}),
+	)
+
+	if shuffleAddresses {
+		d := newShufflingDialer()
+		d.dialContext = dial
+		dial = d.DialContext
+	}
+
+	return dial
+}
 
 // shufflingDialer spreads connections across all addresses returned from DNS.
 // Without this, every connection tends to land on the same IP.
@@ -20,6 +56,10 @@ import (
 // nettrace, so Connect events will fire for DNS lookups.
 type shufflingDialer struct {
 	dialer *net.Dialer
+
+	// dialContext makes the individual connection attempts. It defaults to
+	// dialer.DialContext and is swapped out to count attempts.
+	dialContext dialContextFunc
 
 	// lookupIPAddr and shuffle are hooks for tests. shuffle must permute addrs
 	// in place.
@@ -42,7 +82,7 @@ const (
 )
 
 func newShufflingDialer() *shufflingDialer {
-	return &shufflingDialer{
+	d := &shufflingDialer{
 		dialer: &net.Dialer{
 			Timeout:   dialTimeout,
 			KeepAlive: dialKeepAlive,
@@ -52,17 +92,19 @@ func newShufflingDialer() *shufflingDialer {
 			rand.Shuffle(len(addrs), func(i, j int) { addrs[i], addrs[j] = addrs[j], addrs[i] })
 		},
 	}
+	d.dialContext = d.dialer.DialContext
+	return d
 }
 
 func (d *shufflingDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return d.dialer.DialContext(ctx, network, address)
+		return d.dialContext(ctx, network, address)
 	}
 
 	// A literal IP has nothing to resolve or spread across.
 	if net.ParseIP(host) != nil {
-		return d.dialer.DialContext(ctx, network, address)
+		return d.dialContext(ctx, network, address)
 	}
 
 	addrs, err := d.lookupIPAddr(ctx, host)
@@ -72,7 +114,7 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 
 	addrs = d.orderAddrs(network, addrs)
 	if len(addrs) == 0 {
-		return d.dialer.DialContext(ctx, network, address)
+		return d.dialContext(ctx, network, address)
 	}
 
 	// Bound the total time the same way net.Dialer would have, then split what
@@ -96,7 +138,7 @@ func (d *shufflingDialer) DialContext(ctx context.Context, network, address stri
 		}
 
 		attemptCtx, cancel := context.WithTimeout(ctx, remaining/time.Duration(attempts-i))
-		conn, err := d.dialer.DialContext(attemptCtx, network, net.JoinHostPort(addrs[i].String(), port))
+		conn, err := d.dialContext(attemptCtx, network, net.JoinHostPort(addrs[i].String(), port))
 		cancel()
 
 		if err == nil {
