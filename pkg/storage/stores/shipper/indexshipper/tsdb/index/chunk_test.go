@@ -519,6 +519,51 @@ func TestChunkEncodingIngestedAtDayDelta(t *testing.T) {
 	}
 }
 
+func TestIngestedAtFieldSize(t *testing.T) {
+	// IngestedAtFieldSize must report exactly the bytes encodeChunkMeta adds
+	// for the IngestedAt field: the size of a FormatV4 encoding minus a
+	// FormatV3 encoding of the same chunk.
+	baseDay := 20_000 * ingestedAtDayMilliseconds
+	for _, tc := range []struct {
+		desc string
+		chk  ChunkMeta
+	}{
+		{
+			desc: "zero sentinel",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + 200, IngestedAt: 0, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "small positive delta",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + 200, IngestedAt: baseDay + 2*ingestedAtDayMilliseconds, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "negative delta",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + ingestedAtDayMilliseconds, IngestedAt: baseDay - 3*ingestedAtDayMilliseconds, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "large backfill delta",
+			chk:  ChunkMeta{MinTime: 100, MaxTime: 200, IngestedAt: 1_700_000_000_000, KB: 1, Entries: 1, Checksum: 1},
+		},
+		{
+			desc: "sub-day value rounds up like the writer",
+			chk:  ChunkMeta{MinTime: baseDay, MaxTime: baseDay + 200, IngestedAt: baseDay + 5200, KB: 1, Entries: 1, Checksum: 1},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var w3, w4 Creator
+			w3.Version = FormatV3
+			w4.Version = FormatV4
+
+			b3 := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			b4 := encoding.EncWrap(tsdb_enc.Encbuf{B: make([]byte, 0)})
+			w3.encodeChunkMeta(&b3, tc.chk, 0)
+			w4.encodeChunkMeta(&b4, tc.chk, 0)
+
+			require.Equal(t, b4.Len()-b3.Len(), IngestedAtFieldSize(tc.chk))
+		})
+	}
+}
+
 func TestEncodeIngestedAtDayDelta(t *testing.T) {
 	baseDay := 20_000 * ingestedAtDayMilliseconds
 	for _, tc := range []struct {

@@ -615,6 +615,15 @@ func encodeIngestedAtDayDelta(ingestedAt, maxTime int64) uint64 {
 	return encodeSignedDayDelta(deltaDays) + 1
 }
 
+// IngestedAtFieldSize returns the number of bytes the IngestedAt field of chk
+// occupies on disk in a FormatV4 (or later) index. Decoded IngestedAt values
+// are already day-aligned, so re-encoding them is byte-stable: calling this on
+// a ChunkMeta read back from an index reports the exact on-disk size.
+func IngestedAtFieldSize(chk ChunkMeta) int {
+	var buf [binary.MaxVarintLen64]byte
+	return binary.PutUvarint(buf[:], encodeIngestedAtDayDelta(chk.IngestedAt, chk.MaxTime))
+}
+
 func decodeIngestedAtDayDelta(encoded uint64, maxTime int64) int64 {
 	if encoded == 0 {
 		return 0
