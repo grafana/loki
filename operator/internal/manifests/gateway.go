@@ -636,7 +636,7 @@ func configureGatewayServerPKI(
 		if stack.Tenants.Passthrough == nil || stack.Tenants.Passthrough.CA == nil {
 			return kverrors.New("client CA not provided")
 		}
-		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serviceName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers)
+		return configurePassGatewayServerPKI(podSpec, stack.Tenants.Passthrough.CA, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
 	}
 	return configureObsGatewayServerPKI(podSpec, namespace, serviceName, serverCAName, upstreamCAName, upstreamClientName, minTLSVersion, ciphers, tlsOptions)
 }
@@ -765,9 +765,10 @@ func configureObsGatewayServerPKI(
 func configurePassGatewayServerPKI(
 	podSpec *corev1.PodSpec,
 	clientCAs *lokiv1.ValueReference,
-	serviceName string,
+	serverCAName string,
 	upstreamCAName, upstreamClientName string,
 	minTLSVersion, ciphers string,
+	tlsOptions *lokiv1.TLSSpec,
 ) error {
 	var gwIndex int
 	for i, c := range podSpec.Containers {
@@ -808,14 +809,6 @@ func configurePassGatewayServerPKI(
 
 	gwVolumes = append(gwVolumes,
 		corev1.Volume{
-			Name: tlsSecretVolume,
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: serviceName,
-				},
-			},
-		},
-		corev1.Volume{
 			Name: upstreamCAName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -836,6 +829,7 @@ func configurePassGatewayServerPKI(
 		},
 	)
 
+	// Client CA
 	var clientCAVolumeSource corev1.VolumeSource
 	if clientCAs.ConfigMapName != "" {
 		clientCAVolumeSource = corev1.VolumeSource{
@@ -857,6 +851,10 @@ func configurePassGatewayServerPKI(
 		Name:         clientCAVolume,
 		VolumeSource: clientCAVolumeSource,
 	})
+
+	// Server TLS (cert/key from tenants.gateway.tls, or default OpenShift service cert)
+	serverTLSVolumes := buildCustomTLSVolumes(tlsOptions, serverCAName)
+	gwVolumes = append(gwVolumes, serverTLSVolumes...)
 
 	// Add volume mounts
 	gwContainer.VolumeMounts = append(gwContainer.VolumeMounts,
@@ -881,6 +879,14 @@ func configurePassGatewayServerPKI(
 			MountPath: clientCADir,
 		},
 	)
+
+	if tlsOptions.CA != nil {
+		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      serverCAName,
+			ReadOnly:  true,
+			MountPath: gatewaySigningCADir(),
+		})
+	}
 
 	p := corev1.PodSpec{
 		Containers: []corev1.Container{
