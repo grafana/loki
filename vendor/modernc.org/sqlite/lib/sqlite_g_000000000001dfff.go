@@ -604,6 +604,69 @@ func _sqlite3Get4byte(tls *libc.TLS, p uintptr) (r Tu32) {
 	return uint32(**(**Tu8)(__ccgo_up(p)))<<int32(24) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 1)))<<libc.Int32FromInt32(16)) | libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(p + 2)))<<libc.Int32FromInt32(8)) | uint32(**(**Tu8)(__ccgo_up(p + 3)))
 }
 
+// C documentation
+//
+//	/*
+//	** Clear the WhereLoop.u union.  Leave WhereLoop.pLTerm intact.
+//	*/
+func _whereLoopClearUnion(tls *libc.TLS, db uintptr, p uintptr) {
+	if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&libc.Uint32FromInt32(libc.Int32FromInt32(WHERE_VIRTUALTABLE)|libc.Int32FromInt32(WHERE_AUTO_INDEX)) != 0 {
+		if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_VIRTUALTABLE) != uint32(0) && int32(Tu32(*(*uint8)(unsafe.Pointer(p + 24 + 4))&0x1>>0)) != 0 {
+			Xsqlite3_free(tls, (*(*struct {
+				FidxNum    int32
+				F__ccgo4   uint8
+				FisOrdered Ti8
+				FomitMask  Tu16
+				FidxStr    uintptr
+				FmHandleIn Tu32
+			})(unsafe.Pointer(p + 24))).FidxStr)
+			libc.SetBitFieldPtr8Uint32(p+24+4, libc.Uint32FromInt32(0), 0, 0x1)
+			(*(*struct {
+				FidxNum    int32
+				F__ccgo4   uint8
+				FisOrdered Ti8
+				FomitMask  Tu16
+				FidxStr    uintptr
+				FmHandleIn Tu32
+			})(unsafe.Pointer(p + 24))).FidxStr = uintptr(0)
+		} else {
+			if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_AUTO_INDEX) != uint32(0) && (*(*struct {
+				FnEq          Tu16
+				FnBtm         Tu16
+				FnTop         Tu16
+				FnDistinctCol Tu16
+				FpIndex       uintptr
+				FpOrderBy     uintptr
+			})(unsafe.Pointer(p + 24))).FpIndex != uintptr(0) {
+				_sqlite3DbFree(tls, db, (*TIndex)(unsafe.Pointer((*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex)).FzColAff)
+				_sqlite3DbFreeNN(tls, db, (*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex)
+				(*(*struct {
+					FnEq          Tu16
+					FnBtm         Tu16
+					FnTop         Tu16
+					FnDistinctCol Tu16
+					FpIndex       uintptr
+					FpOrderBy     uintptr
+				})(unsafe.Pointer(p + 24))).FpIndex = uintptr(0)
+			}
+		}
+	}
+}
+
 func _writeInt64(tls *libc.TLS, p uintptr, i Ti64) (r int32) {
 	**(**Tu8)(__ccgo_up(p)) = libc.Uint8FromInt64(i >> libc.Int32FromInt32(56) & int64(0xFF))
 	**(**Tu8)(__ccgo_up(p + 1)) = libc.Uint8FromInt64(i >> libc.Int32FromInt32(48) & int64(0xFF))
