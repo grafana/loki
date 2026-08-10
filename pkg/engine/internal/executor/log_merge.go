@@ -431,6 +431,7 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 			return err
 		}
 	}
+	w.lastSortKey = rec.SortKey
 	stream := w.table.streams[rec.StreamID]
 
 	err := w.logsBuilder.AppendRecord(w.node.Tenant, stream.Labels, rec)

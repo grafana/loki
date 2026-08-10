@@ -276,7 +276,6 @@ type workerMetrics struct {
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
 	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
-	countBuckets := prometheus.ExponentialBuckets(1, 2, 16)
 	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
@@ -298,24 +297,9 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Help:    "Wall-clock duration of a LogMerge task on the worker.",
 			Buckets: durationBuckets,
 		}, []string{labelTenant}),
-		logMergeOutputRecords: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_records",
-			Help:    "Number of log records written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputStreams: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_streams",
-			Help:    "Number of output streams written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
 		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
-			Buckets: byteBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_bytes_uncompressed",
-			Help:    "Estimated uncompressed bytes of log records written by a successful LogMerge task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 	}
@@ -350,16 +334,7 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	if stats.Outcome != "success" {
 		return
 	}
-	if stats.OutputRecords > 0 {
-		m.logMergeOutputRecords.WithLabelValues(tenant).Observe(float64(stats.OutputRecords))
-	}
-	if stats.OutputStreams > 0 {
-		m.logMergeOutputStreams.WithLabelValues(tenant).Observe(float64(stats.OutputStreams))
-	}
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
-	}
-	if stats.OutputBytesUncompressed > 0 {
-		m.logMergeOutputBytesUncompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesUncompressed))
 	}
 }
