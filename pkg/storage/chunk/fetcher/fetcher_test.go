@@ -1,16 +1,20 @@
 package fetcher
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -20,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func Test(t *testing.T) {
@@ -225,6 +230,63 @@ func Test(t *testing.T) {
 			assertChunks(t, test.l2End, l2actual)
 		})
 	}
+}
+
+func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
+	sc := testutils.SchemaConfig("inmemory", "v11", model.Now().Add(-100*24*time.Hour))
+	chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour})
+
+	l1 := cache.NewMockCache()
+	l2 := cache.NewMockCache()
+	chunkClient := client.NewClientWithMaxParallel(testutils.NewInMemoryObjectClient(), nil, 1, sc)
+	require.NoError(t, chunkClient.PutChunks(context.Background(), chunks))
+
+	// Every chunk is a cache hit that cannot be decoded, so storage is never asked.
+	storeInCache(t, sc, l1, nil, chunks)
+
+	f, err := New(l1, l2, false, sc, chunkClient, 0, 0)
+	require.NoError(t, err)
+	t.Cleanup(f.Stop)
+
+	logs := captureLogs(t)
+
+	got, err := f.FetchChunks(context.Background(), chunks)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	require.Equal(t, 1, strings.Count(logs.String(), `msg="error process response from cache"`))
+	require.Equal(t, 0, strings.Count(logs.String(), `msg="failed downloading chunks"`))
+}
+
+// captureLogs redirects the logger the fetcher falls back to when the context
+// carries none. The logger is a global, so callers must not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	previous := util_log.Logger
+	util_log.Logger = log.NewLogfmtLogger(log.NewSyncWriter(buf))
+	t.Cleanup(func() { util_log.Logger = previous })
+
+	return buf
+}
+
+func storeInCache(t *testing.T, sc config.SchemaConfig, c cache.Cache, valid, corrupt []chunk.Chunk) {
+	t.Helper()
+
+	keys := make([]string, 0, len(valid)+len(corrupt))
+	bufs := make([][]byte, 0, len(valid)+len(corrupt))
+	for _, chk := range valid {
+		encoded, err := chk.Encoded()
+		require.NoError(t, err)
+		keys = append(keys, sc.ExternalKey(chk.ChunkRef))
+		bufs = append(bufs, encoded)
+	}
+	for _, chk := range corrupt {
+		keys = append(keys, sc.ExternalKey(chk.ChunkRef))
+		bufs = append(bufs, []byte("not a chunk"))
+	}
+	require.NoError(t, c.Store(context.Background(), keys, bufs))
 }
 
 func BenchmarkFetch(b *testing.B) {

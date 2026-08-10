@@ -157,9 +157,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	// Fetch from L1 chunk cache
-	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
-	if err != nil {
-		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+	cacheHits, cacheBufs, _, l1CacheErr := c.cache.Fetch(ctx, keys)
+	if l1CacheErr != nil {
+		level.Warn(log).Log("msg", "error fetching from cache", "err", l1CacheErr)
 	}
 
 	for _, buf := range cacheBufs {
@@ -193,15 +193,20 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
-	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
-	if err != nil {
-		level.Warn(log).Log("msg", "error process response from cache", "err", err)
+	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	if cacheDecodeErr != nil {
+		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing from storage
-	var fromStorage []chunk.Chunk
+	// Fetch missing from storage. Keep this error apart from the cache errors above.
+	// A later change that returns an error must return only this one. A cache decode
+	// failure is not fatal, because storage still holds the chunk.
+	var (
+		fromStorage []chunk.Chunk
+		storageErr  error
+	)
 	if len(missing) > 0 {
-		fromStorage, err = c.storage.GetChunks(ctx, missing)
+		fromStorage, storageErr = c.storage.GetChunks(ctx, missing)
 	}
 
 	// normally these stats would be collected by the cache.statsCollector wrapper, but chunks are written back
@@ -224,8 +229,8 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	if err != nil {
-		level.Error(log).Log("msg", "failed downloading chunks", "err", err)
+	if storageErr != nil {
+		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 	}
 
 	allChunks := append(fromCache, fromStorage...)
