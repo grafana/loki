@@ -340,15 +340,15 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySize := util.NewSizeReader(r.Body)
+	bodySizeReader := util.NewSizeReader(r.Body)
 	// decompressedSize reflects the decompressed size of the request body. It stays
 	// nil when the body is not decompressed here, either because it is uncompressed
 	// or because ParseProtoReaderWithLimits does the snappy-decoding (and its own
 	// decompressed size check) below.
-	var decompressedSize util.SizeReader
+	var decompressedSizeReader util.SizeReader
 
 	// Apply compressed size limit
-	body = bodySize
+	body = bodySizeReader
 	if maxRecvMsgSize > 0 {
 		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
 	}
@@ -368,8 +368,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(gzipReader *gzip.Reader) {
 			_ = gzipReader.Close()
 		}(gzipReader)
-		decompressedSize = util.NewSizeReader(gzipReader)
-		body = decompressedSize
+		decompressedSizeReader = util.NewSizeReader(gzipReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -378,8 +378,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(flateReader io.ReadCloser) {
 			_ = flateReader.Close()
 		}(flateReader)
-		decompressedSize = util.NewSizeReader(flateReader)
-		body = decompressedSize
+		decompressedSizeReader = util.NewSizeReader(flateReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -414,7 +414,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 			// The readers above are limited to max+1 bytes, so an oversized body is
 			// truncated and fails to decode. Report that as a size error rather than
 			// as a malformed request.
-			if sizeErr := checkSizeLimits(bodySize, decompressedSize, maxRecvMsgSize, maxDecompressedSize); sizeErr != nil {
+			if sizeErr := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); sizeErr != nil {
 				return nil, sizeErr
 			}
 			return nil, err
@@ -428,11 +428,11 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 	}
 
-	pushStats.BodySize = bodySize.Size()
+	pushStats.BodySize = bodySizeReader.Size()
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
-	if err := checkSizeLimits(bodySize, decompressedSize, maxRecvMsgSize, maxDecompressedSize); err != nil {
+	if err := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); err != nil {
 		return nil, err
 	}
 	return &req, nil
