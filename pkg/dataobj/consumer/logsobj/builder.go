@@ -391,10 +391,7 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 	})
 
 	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
-		ok := yield(record, sz)
-		if !ok {
-			return
-		}
+		_ = yield(record, sz)
 	}
 
 	return b.appendAll(tenant, ls, time.Time{}, singleRecordIter)

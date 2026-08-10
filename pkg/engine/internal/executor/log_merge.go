@@ -141,10 +141,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		"source_objects", stats.SourceObjects,
 		"input_sections", stats.InputSections,
 		"output_objects", stats.OutputObjects,
-		"output_streams", stats.OutputStreams,
-		"output_records", stats.OutputRecords,
 		"output_bytes", stats.OutputBytesCompressed,
-		"output_bytes_uncompressed", stats.OutputBytesUncompressed,
 		"sort_schema", strings.Join(node.SortSchema, ","),
 		"duration", time.Since(start),
 	)
@@ -161,14 +158,11 @@ const (
 // LogMergeObservedStats is the per-task compaction summary reported to
 // LogMergeObserver and xcap statistics.
 type LogMergeObservedStats struct {
-	Outcome                 string
-	SourceObjects           int
-	InputSections           int
-	OutputObjects           int
-	OutputStreams           int
-	OutputRecords           int
-	OutputBytesCompressed   int64
-	OutputBytesUncompressed int64
+	Outcome               string
+	SourceObjects         int
+	InputSections         int
+	OutputObjects         int
+	OutputBytesCompressed int64
 }
 
 // logMergeObservedStats is the internal alias used while assembling stats.
