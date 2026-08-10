@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -354,6 +355,77 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 					iterEq(t, expected, itr)
 				})
 			}
+		})
+	}
+}
+
+// TestHeadBlockSampleHashesMatchAcrossFormats ensures we generate the sample hash for the same
+// exact samples in every head block format.
+func TestHeadBlockSampleHashesMatchAcrossFormats(t *testing.T) {
+	streamLabels := labels.FromStrings("app", "foo")
+
+	collect := func(t *testing.T, hb HeadBlock) []logproto.Sample {
+		t.Helper()
+
+		extractors, err := getMultiVariantExtractors(multiVariantQuery, streamLabels)
+		require.NoError(t, err)
+		require.Len(t, extractors, 1, "a variants() query consolidates into a single extractor")
+
+		it := hb.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
+		defer it.Close()
+
+		var got []logproto.Sample
+		for it.Next() {
+			got = append(got, it.At())
+		}
+		require.NoError(t, it.Err())
+
+		// Samples sharing a timestamp also share a stream hash here, so the sort iterator
+		// treats them as tied and their order follows map iteration. Sort to compare.
+		sort.Slice(got, func(i, j int) bool {
+			if got[i].Timestamp != got[j].Timestamp {
+				return got[i].Timestamp < got[j].Timestamp
+			}
+			if got[i].Hash != got[j].Hash {
+				return got[i].Hash < got[j].Hash
+			}
+			return got[i].Value < got[j].Value
+		})
+
+		return got
+	}
+
+	// Build one block per format Loki can create, so a format added later is covered without
+	// touching this test.
+	require.NotEmpty(t, HeadBlockFmts)
+	blocks := make(map[HeadBlockFmt]HeadBlock, len(HeadBlockFmts))
+	for _, format := range HeadBlockFmts {
+		blocks[format] = format.NewBlock(newSymbolizer())
+	}
+
+	for i := 0; i < 10; i++ {
+		for _, hb := range blocks {
+			dup, err := hb.Append(int64(i), fmt.Sprintf("line %d", i), labels.EmptyLabels())
+			require.False(t, dup)
+			require.NoError(t, err)
+		}
+	}
+
+	// The newest format is the reference every other one has to match.
+	want := collect(t, blocks[HeadBlockFmts[len(HeadBlockFmts)-1]])
+
+	// Pre-condition check: every sample must hash differently.
+	require.Len(t, want, 20)
+	hashes := map[uint64]struct{}{}
+	for _, s := range want {
+		hashes[s.Hash] = struct{}{}
+	}
+	require.Len(t, hashes, len(want))
+
+	// Ensure all other formats return the same exact hashes.
+	for _, format := range HeadBlockFmts {
+		t.Run(format.String(), func(t *testing.T) {
+			require.Equal(t, want, collect(t, blocks[format]))
 		})
 	}
 }
