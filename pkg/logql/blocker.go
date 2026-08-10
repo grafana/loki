@@ -64,6 +64,7 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 
 		if isEmptyPattern {
 			// if no pattern is given, assume we want to match all queries
+			pattern = ".*"
 			logMessage = "query blocker matched with empty pattern policy"
 			logOnlyIfBlocked = true
 		} else if isRegex {
@@ -87,10 +88,10 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 		// if we get here, the query matches the pattern
 		typesMatched, tagsMatched, blocked := qb.block(ctx, b, typ, logger)
 		if !logOnlyIfBlocked || blocked {
-			level.Warn(logger).Log("msg", logMessage, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
+			level.Warn(logger).Log("msg", logMessage, "pattern", pattern, "query", query, "typesMatched", typesMatched, "tagsMatched", tagsMatched, "blocked", blocked)
 		}
 
-		// the documentation says "The order of patterns is preserved, so the first matching pattern will be used." So we return after the first 
+		// the documentation says "The order of patterns is preserved, so the first matching pattern will be used." So we return after the first
 		// matching pattern even if the block is not triggered
 		return blocked
 	}
