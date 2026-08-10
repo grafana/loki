@@ -173,7 +173,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
+	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
