@@ -366,11 +366,9 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			storeType = st
 		}
 
-		// The wrap decision below and the disable-retries argument must use this same
-		// value. If they diverge, the object-store client keeps no retrier.
 		congestionControlled := ccCfg.Enabled && storeType != bucket.Filesystem
 
-		c, err := newObjectClient(name, component, cfg, clientMetrics, congestionControlled && ccCfg.ReplacesInnerRetries())
+		c, err := newObjectClient(name, component, cfg, clientMetrics, ccCfg.ReplacesInnerRetries(storeType))
 		if err != nil {
 			return nil, err
 		}

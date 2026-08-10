@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -16,12 +17,13 @@ type Config struct {
 	Hedge      HedgerConfig     `yaml:"hedging"`
 }
 
-// ReplacesInnerRetries reports whether congestion control will retry for the
-// object-store client.
-//
-// The storage factory disables the retries of that client when this is true. If you
-// remove a term, that client keeps no retrier at all.
-func (c *Config) ReplacesInnerRetries() bool {
+// ReplacesInnerRetries reports whether the storage factory should disable the
+// object-store client's retries for storeType because congestion control retries in
+// their place. Limited to backends whose ObjectClientAdapter implements IsRetryableErr.
+func (c *Config) ReplacesInnerRetries(storeType string) bool {
+	if storeType != bucket.S3 && storeType != bucket.GCS {
+		return false
+	}
 	return c.Enabled &&
 		strings.EqualFold(c.Controller.Strategy, StrategyAIMD) &&
 		strings.EqualFold(c.Retry.Strategy, RetryStrategyLimited) &&
