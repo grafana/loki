@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/errclass"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -37,7 +38,30 @@ var (
 		// TODO: consider adding `chunk_target_size` to this list in case users set very large chunk sizes
 		Buckets: []float64{128, 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 1.5 * 1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024},
 	}, []string{"source"})
+	chunkFetchFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Subsystem: "chunk_fetcher",
+		Name:      "failures_total",
+		Help: "Chunks that could not be returned to the caller, by source and failure reason. " +
+			"Counted once per lost chunk",
+	}, []string{"source", "reason"})
 )
+
+const (
+	sourceStore   = "store"
+	sourceCacheL1 = "cache_l1"
+	sourceCacheL2 = "cache_l2"
+)
+
+func init() {
+	// A cache can only lose a chunk by failing to decode it. A cache fetch error
+	// produces a miss, and the chunk then goes to storage.
+	for _, reason := range errclass.Reasons() {
+		chunkFetchFailures.WithLabelValues(sourceStore, reason)
+	}
+	chunkFetchFailures.WithLabelValues(sourceCacheL1, errclass.Decode)
+	chunkFetchFailures.WithLabelValues(sourceCacheL2, errclass.Decode)
+}
 
 const chunkDecodeParallelism = 16
 
@@ -139,6 +163,10 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	// and the l1 cache may be oversized enough to allow for some extra chunks
 	extendedHandoff := c.l2CacheHandoff + (c.l2CacheHandoff / 10)
 
+	// Read the clock once. A chunk on the handoff boundary must get the same cache
+	// tier in the metric as it gets in the lookup below.
+	l2Cutoff := time.Now().UTC().Add(-extendedHandoff)
+
 	keys := make([]string, 0, len(chunks))
 	l2OnlyChunks := make([]chunk.Chunk, 0, len(chunks))
 
@@ -193,7 +221,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
-	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	fromCache, missing, cacheDecodeErr := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs, l2Cutoff)
 	if cacheDecodeErr != nil {
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
@@ -229,8 +257,13 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	if storageErr != nil {
-		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+	// This over-reports. Query iterators prefetch one batch ahead and do not join it
+	// on close, so failures can be counted for chunks no query consumed.
+	storeLost := len(missing) - len(fromStorage)
+	if storeLost > 0 {
+		reason := c.failureReason(storageErr)
+		chunkFetchFailures.WithLabelValues(sourceStore, reason).Add(float64(storeLost))
+		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr, "reason", reason, "failed_chunks", storeLost)
 	}
 
 	allChunks := append(fromCache, fromStorage...)
@@ -283,8 +316,12 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 }
 
 // ProcessCacheResponse decodes the chunks coming back from the cache, separating
-// hits and misses.
-func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte) ([]chunk.Chunk, []chunk.Chunk, error) {
+// hits and misses. A chunk that fails to decode is in neither result, so the
+// caller never sees it and never asks storage for it.
+//
+// l2Cutoff is the instant that separates the two cache tiers, and only sets the
+// source label of the failure metric.
+func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk, keys []string, bufs [][]byte, l2Cutoff time.Time) ([]chunk.Chunk, []chunk.Chunk, error) {
 	var (
 		requests  = make([]decodeRequest, 0, len(keys))
 		responses = make(chan decodeResponse)
@@ -325,11 +362,32 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		// Don't exit early, as we don't want to block the workers.
 		if response.err != nil {
 			err = response.err
+
+			source := sourceCacheL1
+			if c.l2CacheHandoff > 0 && response.chunk.From.Time().Before(l2Cutoff) {
+				source = sourceCacheL2
+			}
+			chunkFetchFailures.WithLabelValues(source, errclass.Decode).Inc()
 		} else {
 			found = append(found, response.chunk)
 		}
 	}
 	return found, missing, err
+}
+
+// failureReason names the cause of a lost chunk for the failure metric. The
+// storage client is authoritative for a missing object, because it knows
+// backends that errclass has no error shape for.
+func (c *Fetcher) failureReason(err error) string {
+	if err == nil {
+		return errclass.Unknown
+	}
+
+	reason := errclass.Reason(err)
+	if reason == errclass.Other && c.storage.IsChunkNotFoundErr(err) {
+		return errclass.NotFound
+	}
+	return reason
 }
 
 func (c *Fetcher) IsChunkNotFoundErr(err error) bool {
