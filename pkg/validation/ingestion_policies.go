@@ -387,7 +387,7 @@ func (o *PerPolicyConfigOverride) ApplyTo(base shardstreams.Config) shardstreams
 type PolicyOverridableLimits struct {
 	// MaxLocalStreamsPerUser and MaxGlobalStreamsPerUser give the policy its own stream-count
 	// bucket, tracked and limited independently from the tenant-wide count. They are enforced
-	// only with `use_owned_stream_count: true` (classic ingester path) or the delegated
+	// only with `use_owned_stream_count: true` (classic ingester path) or with the delegated
 	// ingest-limits service; otherwise they are ignored. An explicit 0 follows the same
 	// convention as the tenant-level limits: 0 disables that limit (it does NOT block new
 	// streams), so a policy with both set to 0 is unlimited.
