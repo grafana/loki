@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -306,9 +307,17 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, lim
 	for _, x := range inputs {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			// Report the cancellation cause so a real failure wins over a generic cancellation.
+			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
+				// Keep the usage of the splits that completed before the failure.
+				for _, r := range responses {
+					if s, ok := statisticsFromResponse(r); ok {
+						stats.JoinPartial(ctx, s)
+					}
+				}
+				cancel(data.err)
 				return nil, data.err
 			}
 

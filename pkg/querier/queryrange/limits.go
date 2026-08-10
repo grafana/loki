@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -44,7 +45,7 @@ import (
 
 const (
 	limitErrTmpl                             = "maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()"
-	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
+	maxSeriesErrTmpl                         = validation.ErrMaxEntriesLimit
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
 	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
@@ -53,7 +54,46 @@ const (
 	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 )
 
-var ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
+// querySizeLimitSpec describes one byte-limit enforcement point.
+type querySizeLimitSpec struct {
+	// limitName is the configuration name of the limit, for operator-facing logs.
+	limitName string
+	// sentinel makes the rejection classifiable with errors.Is, independently of
+	// the message wording.
+	sentinel error
+	// errorTmpl is the client-facing message template. It takes two strings: the
+	// bytes the query would read and the configured limit.
+	errorTmpl string
+}
+
+var (
+	maxQueryBytesReadSpec = querySizeLimitSpec{
+		limitName: "MaxQueryBytesRead",
+		sentinel:  logqlmodel.ErrMaxQueryBytesRead,
+		errorTmpl: limErrQueryTooManyBytesTmpl,
+	}
+	maxQuerierBytesReadSpec = querySizeLimitSpec{
+		limitName: "MaxQuerierBytesRead",
+		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl: limErrQuerierTooManyBytesTmpl,
+	}
+	maxQuerierBytesReadShardableSpec = querySizeLimitSpec{
+		limitName: "MaxQuerierBytesRead",
+		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl: limErrQuerierTooManyBytesShardableTmpl,
+	}
+	maxQuerierBytesReadUnshardableSpec = querySizeLimitSpec{
+		limitName: "MaxQuerierBytesRead",
+		sentinel:  logqlmodel.ErrQuerierTooManyBytes,
+		errorTmpl: limErrQuerierTooManyBytesUnshardableTmpl,
+	}
+)
+
+// exceededErr wraps the client-facing httpgrpc error in the spec's sentinel,
+// which only makes the rejection classifiable with errors.Is.
+func (s querySizeLimitSpec) exceededErr(statsBytesStr, maxBytesReadStr string) error {
+	return fmt.Errorf("%w: %w", s.sentinel, httpgrpc.Errorf(http.StatusBadRequest, s.errorTmpl, statsBytesStr, maxBytesReadStr))
+}
 
 type Limits queryrange_limits.Limits
 
@@ -195,7 +235,8 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd().UnixMilli()).Sub(timestamp.Time(r.GetStart().UnixMilli()))
 		if queryLen > maxQueryLength {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
+			return nil, fmt.Errorf("%w: %w", logqlmodel.ErrMaxQueryLength,
+				httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength)))
 		}
 	}
 
@@ -209,7 +250,7 @@ type querySizeLimiter struct {
 	cfg               []config.PeriodConfig
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
-	limitErrorTmpl    string
+	spec              querySizeLimitSpec
 }
 
 func newQuerySizeLimiter(
@@ -218,7 +259,7 @@ func newQuerySizeLimiter(
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limitFunc func(context.Context, string) int,
-	limitErrorTmpl string,
+	spec querySizeLimitSpec,
 	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
@@ -227,7 +268,7 @@ func newQuerySizeLimiter(
 		cfg:               cfg,
 		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
 		limitFunc:         limitFunc,
-		limitErrorTmpl:    limitErrorTmpl,
+		spec:              spec,
 	}
 
 	q.statsHandler = next
@@ -239,7 +280,6 @@ func newQuerySizeLimiter(
 }
 
 // NewQuerierSizeLimiterMiddleware creates a new Middleware that enforces query size limits after sharding and splitting.
-// The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerierSizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
@@ -248,12 +288,11 @@ func NewQuerierSizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, maxQuerierBytesReadSpec, statsHandler...)
 	})
 }
 
 // NewQuerySizeLimiterMiddleware creates a new Middleware that enforces query size limits.
-// The errorTemplate should format two strings: the bytes that would be read and the bytes limit.
 func NewQuerySizeLimiterMiddleware(
 	cfg []config.PeriodConfig,
 	engineOpts logql.EngineOpts,
@@ -262,7 +301,7 @@ func NewQuerySizeLimiterMiddleware(
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, maxQueryBytesReadSpec, statsHandler...)
 	})
 }
 
@@ -360,18 +399,6 @@ func (q *querySizeLimiter) getSchemaCfg(r queryrangebase.Request) (config.Period
 	return ShardingConfigs(q.cfg).ValidRange(adjustedStart, adjustedEnd)
 }
 
-func (q *querySizeLimiter) guessLimitName() string {
-	if q.limitErrorTmpl == limErrQueryTooManyBytesTmpl {
-		return "MaxQueryBytesRead"
-	}
-	if q.limitErrorTmpl == limErrQuerierTooManyBytesTmpl ||
-		q.limitErrorTmpl == limErrQuerierTooManyBytesShardableTmpl ||
-		q.limitErrorTmpl == limErrQuerierTooManyBytesUnshardableTmpl {
-		return "MaxQuerierBytesRead"
-	}
-	return "unknown"
-}
-
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	log := spanlogger.FromContext(ctx, q.logger)
 
@@ -401,8 +428,8 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		maxBytesReadStr := humanize.IBytes(uint64(maxBytesRead))
 
 		if bytesRead > uint64(maxBytesRead) {
-			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
+			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.spec.limitName, "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
+			return nil, q.spec.exceededErr(statsBytesStr, maxBytesReadStr)
 		}
 	}
 
@@ -595,7 +622,10 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 	)
 
 	if parallelism < 1 {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", ErrMaxQueryParalellism.Error())
+		return nil, fmt.Errorf("%w: %w",
+			logqlmodel.ErrMaxQueryParallelism,
+			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlmodel.ErrMaxQueryParallelism.Error()),
+		)
 	}
 
 	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
@@ -773,7 +803,8 @@ func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limit
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
-		return fmt.Errorf(maxSeriesErrTmpl, reqLimit, maxEntriesLimit)
+		return fmt.Errorf("%w: %w", logqlmodel.ErrMaxEntriesLimit,
+			httpgrpc.Errorf(http.StatusBadRequest, maxSeriesErrTmpl, reqLimit, maxEntriesLimit))
 	}
 	return nil
 }

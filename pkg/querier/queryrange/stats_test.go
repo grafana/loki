@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -66,17 +65,20 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
 
-	// Do not collect stats if the `next` handler returns error.
-	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
+	// Do not collect stats if the `next` handler returns an error: the returned
+	// `response` is nil, so there are no `response.statistics` to collect. A
+	// failed query gets the dedicated usage line instead (see stats_partial_test.go).
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return nil, errors.New("request timedout")
+	_, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, context.DeadlineExceeded
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
+	require.ErrorIs(t, err, context.DeadlineExceeded) // original error is still returned
 	require.Equal(t, false, data.recorded)
+	require.Nil(t, data.statistics)
 }
 
 func Test_StatsHTTP(t *testing.T) {

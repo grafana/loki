@@ -436,7 +436,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		switch e := op.Plan.AST.(type) {
 		case syntax.VariantsExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+				return nil, err
 			}
 
 			matchers := e.Matchers()
@@ -474,7 +474,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+				return nil, err
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {

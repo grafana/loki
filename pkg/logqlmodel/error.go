@@ -22,9 +22,14 @@ var (
 	ErrVariantsDisabled = errors.New(
 		"multi variant queries are disabled for this instance",
 	)
-	ErrorLabel         = "__error__"
-	PreserveErrorLabel = "__preserve_error__"
-	ErrorDetailsLabel  = "__error_details__"
+	ErrMaxQueryBytesRead   = errors.New("query would read too many bytes")
+	ErrQuerierTooManyBytes = errors.New("query too large to execute on a single querier")
+	ErrMaxQueryParallelism = errors.New("querying is disabled, please contact your Loki operator")
+	ErrMaxQueryLength      = errors.New("query time range exceeds the limit")
+	ErrMaxEntriesLimit     = errors.New("max entries limit per query exceeded")
+	ErrorLabel             = "__error__"
+	PreserveErrorLabel     = "__preserve_error__"
+	ErrorDetailsLabel      = "__error_details__"
 )
 
 // ParseError is what is returned when we failed to parse.
