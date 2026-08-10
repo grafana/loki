@@ -65,8 +65,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// across all parsers for this HTTP request.
 	streamResolver := newRequestScopedStreamResolver(tenantID, d.validator.Limits, logger)
 
-	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
-	filterPushRequestStreamsIPs := d.tenantConfigs.FilterPushRequestStreamsIPs(tenantID)
 	presumedAgentIP := extractPresumedAgentIP(r)
 	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, d.cfg.MaxDecompressedSize, r, d.validator.Limits, d.tenantConfigs,
 		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
@@ -131,41 +129,32 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
 	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
 
-	if logPushRequestStreams {
-		shouldLog := true
-		if len(filterPushRequestStreamsIPs) > 0 {
-			// if there are filter IP's set, we only want to log if the presumed agent IP is in the list
-			// this would also then exclude any requests that don't have a presumed agent IP
-			shouldLog = slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP)
-		}
-
-		if shouldLog {
-			for _, s := range req.Streams {
-				lbs, err := syntax.ParseLabels(s.Labels)
-				if err != nil {
-					// We just log the error and continue, we need the parsed labels to log the policy.
-					// In this case, the lbs will be empty and the policy will be empty.
-					level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
-				}
-
-				logValues := []interface{}{
-					"msg", "push request streams",
-					"stream", s.Labels,
-					"streamLabelsHash", util.HashedQuery(s.Labels), // this is to make it easier to do searching and grouping
-					"streamSizeBytes", humanize.Bytes(uint64(pushStats.StreamSizeBytes[s.Labels])),
-					"policy", streamResolver.PolicyFor(r.Context(), lbs),
-				}
-				if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
-					logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())
-				}
-				if presumedAgentIP != "" {
-					logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
-				}
-				if pushStats.HashOfAllStreams != 0 {
-					logValues = append(logValues, "hashOfAllStreams", pushStats.HashOfAllStreams)
-				}
-				level.Debug(logger).Log(logValues...)
+	if d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
+		for _, s := range req.Streams {
+			lbs, err := syntax.ParseLabels(s.Labels)
+			if err != nil {
+				// We just log the error and continue, we need the parsed labels to log the policy.
+				// In this case, the lbs will be empty and the policy will be empty.
+				level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
 			}
+
+			logValues := []interface{}{
+				"msg", "push request streams",
+				"stream", s.Labels,
+				"streamLabelsHash", util.HashedQuery(s.Labels), // this is to make it easier to do searching and grouping
+				"streamSizeBytes", humanize.Bytes(uint64(pushStats.StreamSizeBytes[s.Labels])),
+				"policy", streamResolver.PolicyFor(r.Context(), lbs),
+			}
+			if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
+				logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())
+			}
+			if presumedAgentIP != "" {
+				logValues = append(logValues, "presumedAgentIp", presumedAgentIP)
+			}
+			if pushStats.HashOfAllStreams != 0 {
+				logValues = append(logValues, "hashOfAllStreams", pushStats.HashOfAllStreams)
+			}
+			level.Debug(logger).Log(logValues...)
 		}
 	}
 
@@ -202,6 +191,23 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 		errorWriter(w, err.Error(), http.StatusInternalServerError, logger)
 	}
+}
+
+// shouldLogPushRequestStreams returns true if streams from the request should
+// be logged, otherwise false.
+func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP string) bool {
+	if !d.tenantConfigs.LogPushRequestStreams(tenantID) {
+		return false
+	}
+	filterPushRequestStreamsIPs := d.tenantConfigs.FilterPushRequestStreamsIPs(tenantID)
+	if len(filterPushRequestStreamsIPs) > 0 {
+		// If there are filter IPs, we want to log if the presumed agent IP is in the list,
+		// this would also then exclude any requests that don't have a presumed agent IP.
+		if !slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP) {
+			return false
+		}
+	}
+	return true
 }
 
 // ServeHTTP implements the distributor ring status page.
