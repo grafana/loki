@@ -7,6 +7,12 @@ import (
 // sampleHashBufferSize is the largest labels+line pair that SampleHasher copies into its inline
 // buffer. Below it, hashing one contiguous slice beats feeding xxhash in three writes. Above it
 // the copy costs more than it saves and the streaming path is faster.
+//
+// BenchmarkSampleHashThreshold measures the two against each other, so the value can be checked
+// again on other hardware. The crossover moves with the CPU, so this is one machine's answer
+// rather than a universal one: it sat near 800 bytes on an Apple M3 Pro. Being off by a little
+// only picks the slower of two paths that are within a few percent of each other there, so the
+// value does not need to be exact.
 const sampleHashBufferSize = 768
 
 // SampleHasher computes sample deduplication hashes without allocating.
