@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 	valid "github.com/grafana/loki/v3/pkg/validation"
 )
@@ -1027,7 +1028,10 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)"), err)
+	// Raised in-process, so it carries the sentinel and is classified by errors.Is.
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxEntriesLimit,
+		server.FailureLimit, "max_entries",
+		http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)")
 	require.False(t, called)
 }
 

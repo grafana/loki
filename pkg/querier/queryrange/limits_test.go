@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"regexp"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 func TestLimits(t *testing.T) {
@@ -649,6 +651,68 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 		}),
 	).Do(ctx, &LokiRequest{})
 	require.Error(t, err)
+}
+
+// requireSentinelClassification asserts the contract every in-process rejection
+// keeps: the sentinel survives to the classifier, and wrapping it in changed
+// neither the status nor the message the client is served.
+func requireSentinelClassification(t *testing.T, err error, sentinel error, wantCategory, wantReason string, wantStatus int, wantMessage string) {
+	t.Helper()
+
+	require.ErrorIs(t, err, sentinel)
+
+	category, reason := server.ClassifyFailure(err)
+	require.Equal(t, wantCategory, category)
+	require.Equal(t, wantReason, reason)
+
+	status, clientErr := server.ClientHTTPStatusAndError(err)
+	require.Equal(t, wantStatus, status)
+	require.Equal(t, wantMessage, clientErr.Error())
+}
+
+// Test_MaxQueryParallelismDisableClassification pins the classification of the
+// 429 the frontend returns when a tenant has no query parallelism left.
+func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	ctx := user.InjectOrgID(context.Background(), "foo")
+
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiRequest{})
+	require.Error(t, err)
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+}
+
+// Test_MaxQueryLengthClassification drives the real limitsMiddleware, where
+// max_query_length is enforced, and pins the classification of its rejection.
+func Test_MaxQueryLengthClassification(t *testing.T) {
+	called := false
+	h := queryrangebase.HandlerFunc(func(context.Context, queryrangebase.Request) (queryrangebase.Response, error) {
+		called = true
+		return nil, nil
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	_, err := NewLimitsMiddleware(fakeLimits{maxQueryLength: 24 * time.Hour}).Wrap(h).Do(ctx, &LokiRequest{
+		Query:   `{app="foo"}`,
+		StartTs: testTime.Add(-48 * time.Hour),
+		EndTs:   testTime,
+		Path:    "/loki/api/v1/query_range",
+	})
+	require.Error(t, err)
+	require.False(t, called)
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryLength,
+		server.FailureLimit, "max_query_length",
+		http.StatusBadRequest, "the query time range exceeds the limit (query length: 48h0m0s, limit: 1d)")
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {

@@ -36,7 +36,8 @@ type (
 )
 
 const (
-	statsKey ctxKeyType = "stats"
+	statsKey        ctxKeyType = "stats"
+	partialStatsKey ctxKeyType = "partial-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -100,8 +101,48 @@ func FromContext(ctx context.Context) *Context {
 	return v
 }
 
+// PartialContext accumulates statistics from sub-queries that completed before
+// the overall query failed. It has its own context key so that the nested stats
+// Contexts opened deeper in the query path do not shadow it.
+type PartialContext struct {
+	mtx    sync.Mutex
+	result Result
+}
+
+func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
+	pc := &PartialContext{}
+	ctx = context.WithValue(ctx, partialStatsKey, pc)
+	return pc, ctx
+}
+
+func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
+	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+	return v, ok
+}
+
+// JoinPartial merges res into the PartialContext installed in ctx, and is a
+// no-op if there is none, so fan-out sites can call it unconditionally.
+func JoinPartial(ctx context.Context, res Result) {
+	pc, ok := PartialFromContext(ctx)
+	if !ok {
+		return
+	}
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	pc.result.Merge(res)
+}
+
+func (pc *PartialContext) Result() Result {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	return pc.result
+}
+
 // Ingester returns the ingester statistics accumulated so far.
 func (c *Context) Ingester() Ingester {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	return Ingester{
 		TotalReached:       c.ingester.TotalReached,
 		TotalChunksMatched: c.ingester.TotalChunksMatched,
@@ -114,11 +155,17 @@ func (c *Context) Ingester() Ingester {
 
 // Store returns the store statistics accumulated so far.
 func (c *Context) Store() Store {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	return c.store
 }
 
 // Index returns the index statistics accumulated so far.
 func (c *Context) Index() Index {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	return c.index
 }
 
@@ -131,6 +178,9 @@ func (c *Context) MergeIndex(i Index) {
 
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	return Caches{
 		Chunk:               c.caches.Chunk,
 		Index:               c.caches.Index,
@@ -162,6 +212,9 @@ func (c *Context) Reset() {
 
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	r := c.result
 
 	r.Merge(Result{
