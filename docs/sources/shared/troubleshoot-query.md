@@ -954,34 +954,28 @@ Query parallelism is set to 0, effectively disabling queries for the tenant.
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-### Error: Multi variant queries disabled
+### Error: Multi variant queries no longer supported
 
-Multi variant queries are an experimental feature that enables support for running multiple query variants over the same underlying data. For example, running both a `rate()` and `count_over_time()` query over the same range selector.
+Multi variant queries were an experimental feature that ran multiple query variants over the same underlying data. For example, running both a `rate()` and a `count_over_time()` query over the same range selector. The feature was removed.
 
 **Error message:**
 
-`multi variant queries are disabled for this instance`
+`multi variant queries are no longer supported`
 
 **Cause:**
 
-The query uses the variants feature, but it's disabled for the tenant or instance.
+The query uses a `variants()` expression.
 
 **Resolution:**
 
-* **Remove variant expressions** from the query.
-* **Enable the feature** if needed:
-
-   ```yaml
-   limits_config:
-     enable_multi_variant_queries: true  #default is false
-   ```
+**Rewrite the query** as separate queries, one per variant. For example, replace `variants(rate({app="foo"}[5m]), count_over_time({app="foo"}[5m])) of ({app="foo"}[5m])` with a `rate({app="foo"}[5m])` query and a `count_over_time({app="foo"}[5m])` query.
 
 **Properties:**
 
 - Enforced by: Query Engine
-- Retryable: No (until feature is enabled)
+- Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: Yes
+- Configurable per tenant: No
 
 ## Pipeline processing errors
 
