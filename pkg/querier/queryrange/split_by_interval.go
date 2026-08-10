@@ -33,6 +33,16 @@ type packedResp struct {
 	err  error
 }
 
+// joinPartialFromResponses keeps the usage of already-completed responses when
+// a fan-out exits on a failure or a cancellation.
+func joinPartialFromResponses(ctx context.Context, responses []queryrangebase.Response) {
+	for _, r := range responses {
+		if s, ok := statisticsFromResponse(r); ok {
+			stats.JoinPartial(ctx, s)
+		}
+	}
+}
+
 func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
 	switch r := resp.(type) {
 	case *LokiResponse:
@@ -143,16 +153,15 @@ func (h *splitByInterval) Process(
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
-			// Report the cancellation cause so a real failure wins over a generic cancellation.
+			// Keep the usage of the intervals that completed before the
+			// cancellation, and report the cause so a real failure wins over a
+			// generic cancellation.
+			joinPartialFromResponses(ctx, responses)
 			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
 				// Keep the usage of the intervals that completed before the failure.
-				for _, r := range responses {
-					if s, ok := statisticsFromResponse(r); ok {
-						stats.JoinPartial(ctx, s)
-					}
-				}
+				joinPartialFromResponses(ctx, responses)
 				// Cancel the siblings with this failure as the cause, so it is not
 				// lost behind a generic cancellation.
 				cancel(data.err)
