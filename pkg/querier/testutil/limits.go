@@ -19,15 +19,10 @@ type MockLimits struct {
 	MaxStreamsMatchersPerQueryVal int
 	RequiredLabelsVal             []string
 	RequiredNumberLabelsVal       int
-	EnableMultiVariantQueriesVal  bool
 	MetricAggregationEnabledVal   bool
 	PatternPersistenceEnabledVal  bool
 	PatternRateThresholdVal       float64
 	PersistenceGranularityVal     time.Duration
-}
-
-func (m *MockLimits) EnableMultiVariantQueries(_ string) bool {
-	return m.EnableMultiVariantQueriesVal
 }
 
 func (m *MockLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
