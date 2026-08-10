@@ -291,6 +291,56 @@ func TestSplitByInterval_PartialStatsOnError(t *testing.T) {
 	require.Equal(t, int64(1000), partial.Result().Querier.Store.Chunk.DecompressedBytes)
 }
 
+func TestSplitByInterval_PartialStatsOnCancellation(t *testing.T) {
+	cause := fmt.Errorf("query rejected by an outer layer")
+	parent, cancel := context.WithCancelCause(user.InjectOrgID(context.Background(), "1"))
+	t.Cleanup(func() { cancel(nil) })
+	partial, ctx := stats.NewPartialContext(parent)
+
+	// Holds the second interval open so Process can only exit through ctx.Done().
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+
+	var calls atomic.Int64
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		if calls.Add(1) == 2 {
+			// The whole request is canceled from above while this interval is
+			// still running; the first interval already completed.
+			cancel(cause)
+			<-release
+			return nil, context.Canceled
+		}
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Statistics: stats.Result{
+				Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: 1000}}},
+			},
+			Data: LokiData{ResultType: loghttp.ResultTypeStream},
+		}, nil
+	})
+
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	split := SplitByIntervalMiddleware(testSchemas, l, DefaultCodec, newDefaultSplitter(fakeLimits{}, nil), nilMetrics).Wrap(next)
+
+	_, err := split.Do(ctx, &LokiRequest{
+		StartTs:   time.Unix(0, 0),
+		EndTs:     time.Unix(0, (2 * time.Hour).Nanoseconds()),
+		Query:     `{app="foo"}`,
+		Limit:     1000,
+		Step:      1,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query_range",
+	})
+
+	// The cancellation cause is reported, and the interval that completed
+	// before the cancellation still contributed its usage.
+	require.ErrorIs(t, err, cause)
+	require.Equal(t, int64(1000), partial.Result().Querier.Store.Chunk.DecompressedBytes)
+}
+
 func TestStatisticsFromResponse(t *testing.T) {
 	s := stats.Result{Ingester: stats.Ingester{TotalReached: 7}}
 
