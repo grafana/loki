@@ -265,12 +265,9 @@ type workerMetrics struct {
 	outputBytesCompressed   *prometheus.HistogramVec // tenant
 	outputBytesUncompressed *prometheus.HistogramVec // tenant
 
-	logMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
-	logMergeDurationSeconds         *prometheus.HistogramVec // tenant
-	logMergeOutputRecords           *prometheus.HistogramVec // tenant
-	logMergeOutputStreams           *prometheus.HistogramVec // tenant
-	logMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
-	logMergeOutputBytesUncompressed *prometheus.HistogramVec // tenant
+	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
+	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
+	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
