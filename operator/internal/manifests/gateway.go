@@ -880,14 +880,6 @@ func configurePassGatewayServerPKI(
 		},
 	)
 
-	if tlsOptions.CA != nil {
-		gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      serverCAName,
-			ReadOnly:  true,
-			MountPath: gatewaySigningCADir(),
-		})
-	}
-
 	p := corev1.PodSpec{
 		Containers: []corev1.Container{
 			*gwContainer,

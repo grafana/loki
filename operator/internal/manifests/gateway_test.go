@@ -2020,11 +2020,6 @@ func TestBuildGateway_PassthroughMode_WithHTTPEncryption_WithCustomTLS(t *testin
 					ReadOnly:  true,
 					MountPath: "/var/run/ca/client",
 				},
-				{
-					Name:      "abcd-gateway-ca-bundle",
-					ReadOnly:  true,
-					MountPath: "/var/run/ca/server",
-				},
 			},
 			expectedVolumes: []corev1.Volume{
 				{
