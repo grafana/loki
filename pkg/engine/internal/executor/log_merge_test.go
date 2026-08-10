@@ -363,9 +363,9 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	tb := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
 	tc := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
 
-	// Overlapping label sets across objects (a,b,c / b,c,d / c,d,e). With the
-	// k-way merge (no cross-object stream dedup) every source stream becomes its
-	// own output stream: 9 source streams -> 9 output streams.
+	// Overlapping label sets across objects (a,b,c / b,c,d / c,d,e). The
+	// logsobj output builder deduplicates the 9 source stream occurrences into
+	// 5 logical streams.
 	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="a"}`, entries: wideLinesAt(ta, 4)},
@@ -407,11 +407,9 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, indexPath, tenant)
 	require.GreaterOrEqual(t, len(objs), 2, "output must be split into multiple objects")
 
-	totalStreams := 0
 	totalRecords := 0
 	distinctApps := make(map[string]bool)
 	for objIdx, o := range objs {
-		totalStreams += len(o.streamApp)
 		totalRecords += len(o.records)
 		for _, app := range o.streamApp {
 			distinctApps[app] = true
@@ -430,12 +428,73 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 		}
 	}
 
-	// No cross-object dedup: 9 source streams => 9 output streams.
-	require.Equal(t, 9, totalStreams)
+	// Cross-object dedup: 9 source stream occurrences => 5 logical streams.
+	require.Equal(t, 5, len(distinctApps))
 	// The 5 distinct label sets are all present.
 	require.Equal(t, map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}, distinctApps)
 	// 9 stream-appends x 4 entries = 36 records.
 	require.Equal(t, 36, totalRecords)
+}
+
+func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	late := early.Add(time.Hour)
+
+	// Both streams have the same schema key, but their local stream ID ordering is
+	// different between objects. The loser tree preserves those source-local
+	// orders; the output CopyAndSort pass must restore ordering after logsobj
+	// deduplicates the repeated full-label streams.
+	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="a",instance="1"}`, entries: linesAt(early, 1)},
+			{labels: `{app="a",instance="2"}`, entries: linesAt(early.Add(time.Second), 1)},
+		},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="a",instance="2"}`, entries: linesAt(late, 1)},
+			{labels: `{app="a",instance="1"}`, entries: linesAt(late.Add(time.Second), 1)},
+		},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: sortSchema,
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Len(t, arts, 1)
+
+	objs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, arts[0].Path, tenant)
+	require.Len(t, objs, 1)
+	require.Len(t, objs[0].streamApp, 2, "two full-label streams must remain after cross-object deduplication")
+	require.Len(t, objs[0].records, 4)
+
+	counts := make(map[int64]int)
+	for i, record := range objs[0].records {
+		counts[record.streamID]++
+		if i == 0 {
+			continue
+		}
+		prev := objs[0].records[i-1]
+		require.LessOrEqual(t, prev.streamID, record.streamID)
+		if prev.streamID == record.streamID {
+			require.False(t, record.ts.After(prev.ts), "timestamps must be descending within the deduplicated stream")
+		}
+	}
+	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
