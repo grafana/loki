@@ -109,9 +109,6 @@ type Limits struct {
 	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
 
-	// LogQL engine options
-	EnableMultiVariantQueries bool `yaml:"enable_multi_variant_queries" json:"enable_multi_variant_queries"`
-
 	// Metadata field extraction
 	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
 	DiscoverServiceName      []string            `yaml:"discover_service_name" json:"discover_service_name"`
@@ -561,13 +558,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
-
-	f.BoolVar(
-		&l.EnableMultiVariantQueries,
-		"limits.enable-multi-variant-queries",
-		false,
-		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
-	)
 
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
@@ -1382,10 +1372,6 @@ func (o *Overrides) PersistenceGranularity(userID string) time.Duration {
 
 func (o *Overrides) PatternRateThreshold(userID string) float64 {
 	return o.getOverridesForUser(userID).PatternRateThreshold
-}
-
-func (o *Overrides) EnableMultiVariantQueries(userID string) bool {
-	return o.getOverridesForUser(userID).EnableMultiVariantQueries
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.

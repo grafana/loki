@@ -13293,7 +13293,7 @@ func _readSuperJournal(tls *libc.TLS, pJrnl uintptr, nSuper Tu64, pzSuper uintpt
 				u = u + 1
 			}
 		}
-		if rc != SQLITE_OK || **(**Tu32)(__ccgo_up(bp + 16)) != 0 {
+		if rc != SQLITE_OK || **(**Tu32)(__ccgo_up(bp + 16)) != 0 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(zOut))) == 0 {
 			/* If the checksum doesn't add up, then one or more of the disk sectors
 			 ** containing the super-journal filename is corrupted. This means
 			 ** definitely roll back, so just return SQLITE_OK and report a (nul)

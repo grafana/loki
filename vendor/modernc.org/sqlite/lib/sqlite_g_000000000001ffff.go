@@ -13379,69 +13379,6 @@ func _whereLoopAdjustCost(tls *libc.TLS, p uintptr, pTemplate uintptr) {
 // C documentation
 //
 //	/*
-//	** Clear the WhereLoop.u union.  Leave WhereLoop.pLTerm intact.
-//	*/
-func _whereLoopClearUnion(tls *libc.TLS, db uintptr, p uintptr) {
-	if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&libc.Uint32FromInt32(libc.Int32FromInt32(WHERE_VIRTUALTABLE)|libc.Int32FromInt32(WHERE_AUTO_INDEX)) != 0 {
-		if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_VIRTUALTABLE) != uint32(0) && int32(Tu32(*(*uint8)(unsafe.Pointer(p + 24 + 4))&0x1>>0)) != 0 {
-			Xsqlite3_free(tls, (*(*struct {
-				FidxNum    int32
-				F__ccgo4   uint8
-				FisOrdered Ti8
-				FomitMask  Tu16
-				FidxStr    uintptr
-				FmHandleIn Tu32
-			})(unsafe.Pointer(p + 24))).FidxStr)
-			libc.SetBitFieldPtr8Uint32(p+24+4, libc.Uint32FromInt32(0), 0, 0x1)
-			(*(*struct {
-				FidxNum    int32
-				F__ccgo4   uint8
-				FisOrdered Ti8
-				FomitMask  Tu16
-				FidxStr    uintptr
-				FmHandleIn Tu32
-			})(unsafe.Pointer(p + 24))).FidxStr = uintptr(0)
-		} else {
-			if (*TWhereLoop)(unsafe.Pointer(p)).FwsFlags&uint32(WHERE_AUTO_INDEX) != uint32(0) && (*(*struct {
-				FnEq          Tu16
-				FnBtm         Tu16
-				FnTop         Tu16
-				FnDistinctCol Tu16
-				FpIndex       uintptr
-				FpOrderBy     uintptr
-			})(unsafe.Pointer(p + 24))).FpIndex != uintptr(0) {
-				_sqlite3DbFree(tls, db, (*TIndex)(unsafe.Pointer((*(*struct {
-					FnEq          Tu16
-					FnBtm         Tu16
-					FnTop         Tu16
-					FnDistinctCol Tu16
-					FpIndex       uintptr
-					FpOrderBy     uintptr
-				})(unsafe.Pointer(p + 24))).FpIndex)).FzColAff)
-				_sqlite3DbFreeNN(tls, db, (*(*struct {
-					FnEq          Tu16
-					FnBtm         Tu16
-					FnTop         Tu16
-					FnDistinctCol Tu16
-					FpIndex       uintptr
-					FpOrderBy     uintptr
-				})(unsafe.Pointer(p + 24))).FpIndex)
-				(*(*struct {
-					FnEq          Tu16
-					FnBtm         Tu16
-					FnTop         Tu16
-					FnDistinctCol Tu16
-					FpIndex       uintptr
-					FpOrderBy     uintptr
-				})(unsafe.Pointer(p + 24))).FpIndex = uintptr(0)
-			}
-		}
-	}
-}
-
-// C documentation
-//
-//	/*
 //	** If it is not NULL, pTerm is a term that provides an upper or lower
 //	** bound on a range scan. Without considering pTerm, it is estimated
 //	** that the scan will visit nNew rows. This function returns the number

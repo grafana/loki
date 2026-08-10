@@ -15,15 +15,11 @@ SHELL = /usr/bin/env bash -o pipefail
 # want to speed up development you can run make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable.
 BUILD_IN_CONTAINER ?= true
+# Unless NONINTERACTIVE is set, docker will be run interactive if it has a TTY
+# attached at launch time.
 NONINTERACTIVE     ?= false
+TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
-
-# Docker flags for container interaction
-ifeq ($(NONINTERACTIVE),true)
-DOCKER_INTERACTIVE_FLAGS :=
-else
-DOCKER_INTERACTIVE_FLAGS := --tty --interactive
-endif
 
 # Ensure you run `make update-go-version` after changing this
 GO_VERSION         := 1.26.5
@@ -118,7 +114,8 @@ define run_in_container
 		-t $(MAKEFILE_IMAGE) \
 		.
 
-	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
+	@if $(TTY_TEST); then INTERACTIVE_FLAGS='--tty --interactive'; else INTERACTIVE_FLAGS=''; fi; \
+	docker run --rm $$INTERACTIVE_FLAGS \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \

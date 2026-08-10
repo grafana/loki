@@ -329,6 +329,8 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	setQueryReferencedStructuredMetadata := false
 	labelsBuilder := labelpool.Get()
 
+	var hasher util.SampleHasher
+
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
@@ -368,7 +370,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 					s.Samples = append(s.Samples, logproto.Sample{
 						Timestamp: ts,
 						Value:     value,
-						Hash:      util.UniqueSampleHash(lblStr, unsafeGetBytes(line)),
+						Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
 					})
 				}
 				if extractor.ReferencedStructuredMetadata() {

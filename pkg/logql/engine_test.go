@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -183,9 +182,13 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
 			},
-			// there are 15 samples (from 47 to 61) matched from the generated series
-			// (61 - 47) / 30 = 0.4666
-			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.46666766666666665, Metric: labels.FromStrings("app", "foo")}},
+			// 15 samples match the window (30s, 60s]: t=46..60 with values 47..61, so the
+			// counter increases by 14 over a 14s sampled interval (avg 1s between samples).
+			// The first sample is 16s past the window start (>> the sample spacing), so the
+			// counter start is extrapolated by half an average interval (0.5s); the last
+			// sample sits at the window end, so there is no extrapolation there.
+			// rate = 14 * (14 + 0.5) / 14 / 30 = 14.5 / 30 = 0.4833
+			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.4833333333333334, Metric: labels.FromStrings("app", "foo")}},
 		},
 	} {
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -290,176 +293,6 @@ func TestEngine_RangeQuery(t *testing.T) {
 				t.Fatal(err)
 			}
 			assert.Equal(t, test.expected, res.Data)
-		})
-	}
-}
-
-func TestEngine_Variants_InstantQuery(t *testing.T) {
-	t.Parallel()
-
-	// Create a custom fakeLimits to enable multi-variant queries
-	customLimits := &fakeLimits{
-		maxSeries:               math.MaxInt32,
-		timeout:                 time.Hour,
-		multiVariantQueryEnable: true,
-	}
-
-	for _, test := range []struct {
-		qs        string
-		ts        time.Time
-		direction logproto.Direction
-		limit     uint32
-
-		// an array of data per params will be returned by the querier.
-		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
-
-		expected interface{}
-	}{
-		{
-			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0),
-			logproto.BACKWARD,
-			0,
-			[][]logproto.Series{
-				{newSeries(testSize, identity, `{app="foo"}`)},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Vector{
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-			},
-		},
-		{
-			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-			time.Unix(60, 0),
-			logproto.BACKWARD,
-			0,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Vector{
-				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-			},
-		},
-		{
-			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0),
-			logproto.BACKWARD,
-			0,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Vector{
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo", "foo", "bar")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo", "foo", "baz")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "bar")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "baz")},
-			},
-		},
-		{
-			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0),
-			logproto.BACKWARD,
-			0,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Vector{
-				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "bar")},
-				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "baz")},
-			},
-		},
-	} {
-		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
-			eng := NewEngine(
-				EngineOpts{},
-				newQuerierRecorder(t, test.data, test.params),
-				customLimits,
-				log.NewNopLogger(),
-			)
-
-			params, err := NewLiteralParams(
-				test.qs,
-				test.ts,
-				test.ts,
-				0,
-				0,
-				test.direction,
-				test.limit,
-				nil,
-				nil,
-			)
-			require.NoError(t, err)
-			q := eng.Query(params)
-			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
-			if expectedError, ok := test.expected.(error); ok {
-				assert.Equal(t, expectedError.Error(), err.Error())
-			} else {
-				if err != nil {
-					t.Fatal(err)
-				}
-				assert.Equal(t, test.expected, res.Data)
-			}
 		})
 	}
 }
@@ -727,202 +560,6 @@ func (s *storeSampleResult) CountMinSketchVec() CountMinSketchVector {
 	return CountMinSketchVector{}
 }
 
-func TestEngine_Variants_RangeQuery(t *testing.T) {
-	t.Parallel()
-
-	// Create a custom fakeLimits to enable multi-variant queries
-	customLimits := &fakeLimits{
-		maxSeries:               math.MaxInt32,
-		timeout:                 time.Hour,
-		multiVariantQueryEnable: true,
-	}
-
-	for _, test := range []struct {
-		qs        string
-		start     time.Time
-		end       time.Time
-		step      time.Duration
-		interval  time.Duration
-		direction logproto.Direction
-		limit     uint32
-
-		// an array of streams per SelectParams will be returned by the querier.
-		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
-
-		expected promql_parser.Value
-	}{
-		{
-			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.FORWARD, 10,
-			[][]logproto.Series{
-				{newSeries(testSize, identity, `{app="foo"}`)},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(120, 0),
-					},
-				},
-			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-			},
-		},
-		{
-			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 120}, {T: 120 * 1000, F: 120}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 120}, {T: 120 * 1000, F: 120}},
-				},
-			},
-		},
-		{
-			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo", "foo", "bar"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo", "foo", "baz"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "bar"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "baz"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-			},
-		},
-		{
-			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-			time.Unix(60, 0), time.Unix(120, 0), time.Minute, 0, logproto.BACKWARD, 10,
-			[][]logproto.Series{
-				{
-					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
-					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
-				},
-			},
-			[]SelectSampleParams{
-				{
-					&logproto.SampleQueryRequest{
-						Selector: `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-						Plan: &plan.QueryPlan{
-							AST: syntax.MustParseExpr(`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`),
-						},
-						Start: time.Unix(0, 0),
-						End:   time.Unix(60, 0),
-					},
-				},
-			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 120}, {T: 120 * 1000, F: 120}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "bar"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo", "foo", "baz"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 60}, {T: 120 * 1000, F: 60}},
-				},
-			},
-		},
-	} {
-		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
-			t.Parallel()
-
-			eng := NewEngine(
-				EngineOpts{},
-				newQuerierRecorder(t, test.data, test.params),
-				customLimits,
-				log.NewNopLogger(),
-			)
-
-			params, err := NewLiteralParams(
-				test.qs,
-				test.start,
-				test.end,
-				test.step,
-				test.interval,
-				test.direction,
-				test.limit,
-				nil,
-				nil,
-			)
-			require.NoError(t, err)
-			q := eng.Query(params)
-			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			assert.Equal(t, test.expected, res.Data)
-		})
-	}
-}
-
 type statsQuerier struct{}
 
 func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
@@ -1028,90 +665,27 @@ func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSamplePar
 	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
-func TestMultiVariantQueries_Limits(t *testing.T) {
+func TestMultiVariantQueries_Unsupported(t *testing.T) {
 	variantQuery := `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`
 	testTime := time.Unix(60, 0)
 
-	t.Run("disabled", func(t *testing.T) {
-		// Create limits with multi-variant queries disabled
-		limitsDisabled := &fakeLimits{
-			maxSeries:               math.MaxInt32,
-			timeout:                 time.Hour,
-			multiVariantQueryEnable: false,
-		}
+	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
+	params, err := NewLiteralParams(
+		variantQuery,
+		testTime,
+		testTime,
+		0,
+		0,
+		logproto.BACKWARD,
+		0,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
 
-		eng := NewEngine(EngineOpts{}, &statsQuerier{}, limitsDisabled, log.NewNopLogger())
-		params, err := NewLiteralParams(
-			variantQuery,
-			testTime,
-			testTime,
-			0,
-			0,
-			logproto.BACKWARD,
-			0,
-			nil,
-			nil,
-		)
-		require.NoError(t, err)
-
-		// Query should fail with variants disabled error
-		q := eng.Query(params)
-		_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
-		require.ErrorIs(t, err, logqlmodel.ErrVariantsDisabled)
-	})
-
-	t.Run("enabled", func(t *testing.T) {
-		// Create limits with multi-variant queries enabled
-		limitsEnabled := &fakeLimits{
-			maxSeries:               math.MaxInt32,
-			timeout:                 time.Hour,
-			multiVariantQueryEnable: true,
-		}
-
-		// Use a fake series for the query
-		series := []logproto.Series{
-			{
-				Labels: `{app="foo"}`,
-				Samples: []logproto.Sample{
-					{Timestamp: testTime.UnixNano(), Hash: 1, Value: 5},
-				},
-			},
-		}
-
-		plan := &plan.QueryPlan{
-			AST: syntax.MustParseExpr(variantQuery),
-		}
-
-		sampleReq := &logproto.SampleQueryRequest{
-			Start:    time.Unix(0, 0),
-			End:      testTime,
-			Selector: variantQuery,
-			Plan:     plan,
-		}
-
-		data := [][]logproto.Series{series}
-		params := []SelectSampleParams{{sampleReq}}
-
-		eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, data, params), limitsEnabled, log.NewNopLogger())
-		queryParams, err := NewLiteralParams(
-			variantQuery,
-			testTime,
-			testTime,
-			0,
-			0,
-			logproto.BACKWARD,
-			0,
-			nil,
-			nil,
-		)
-		require.NoError(t, err)
-
-		// Query should succeed with multi-variant enabled
-		q := eng.Query(queryParams)
-		result, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
-		require.NoError(t, err)
-		require.NotNil(t, result.Data)
-	})
+	q := eng.Query(params)
+	_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
+	require.ErrorIs(t, err, logqlmodel.ErrVariantsUnsupported)
 }
 
 func TestStepEvaluator_Error(t *testing.T) {

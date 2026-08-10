@@ -121,7 +121,7 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 }
 
 // StreamResolver is a request-scoped interface that provides retention period and policy for a given stream.
-// The values returned by the resolver will not chance thought the handling of the request
+// The values returned by the resolver do not change during the lifetime of the request.
 type StreamResolver interface {
 	RetentionPeriodFor(lbs labels.Labels) time.Duration
 	RetentionHoursFor(lbs labels.Labels) string
@@ -454,6 +454,12 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
 			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
+		}
+
+		// The backfill labels are reserved for Loki: they may only be added below, from the
+		// X-Loki-Backfill-Shard header, so clients cannot spoof them to bypass validation.
+		if lbs.Has(constants.BackfillLabel) || lbs.Has(constants.BackfillShardLabel) {
+			return nil, nil, errReservedBackfillLabels()
 		}
 
 		// Check if this is an aggregated metric or pattern stream

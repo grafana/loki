@@ -238,7 +238,7 @@ func isClientError(err error, queryErr *storage_errors.QueryError, userErr *User
 		errors.Is(err, logqlmodel.ErrBlocked) ||
 		errors.Is(err, logqlmodel.ErrParseMatchers) ||
 		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
-		errors.Is(err, logqlmodel.ErrVariantsDisabled) ||
+		errors.Is(err, logqlmodel.ErrVariantsUnsupported) ||
 		errors.Is(err, user.ErrNoOrgID)
 }
 

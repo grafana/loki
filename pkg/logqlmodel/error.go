@@ -19,8 +19,8 @@ var (
 	ErrUnsupportedSyntaxForInstantQuery = errors.New(
 		"log queries are not supported as an instant query type, please change your query to a range query type",
 	)
-	ErrVariantsDisabled = errors.New(
-		"multi variant queries are disabled for this instance",
+	ErrVariantsUnsupported = errors.New(
+		"multi variant queries are no longer supported",
 	)
 	ErrMaxQueryBytesRead   = errors.New("query would read too many bytes")
 	ErrQuerierTooManyBytes = errors.New("query too large to execute on a single querier")

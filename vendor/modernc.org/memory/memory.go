@@ -18,6 +18,14 @@
 //
 // 2017-10-03 Added alternative, unsafe.Pointer-based API.
 //
+// # Page retention
+//
+// Memory is acquired from the OS in 64 KiB units. An Allocator retains at most
+// one empty page per size class instead of unmapping it as soon as its last
+// slot is freed, so an allocation pattern that repeatedly drains a size class
+// no longer pays a mmap/munmap round trip per turnover. Use Allocator.Trim to
+// hand the retained pages back.
+//
 // # Benchmarks
 //
 //	jnml@3900x:~/src/modernc.org/memory$ date ; go version ; go test -run @ -bench . -benchmem |& tee log
@@ -93,6 +101,8 @@ type page struct {
 // Allocator allocates and frees memory. Its zero value is ready for use.  The
 // exported counters are updated only when build tag memory.counters is
 // present.
+//
+// An Allocator retains at most one empty page per size class, see Trim.
 type Allocator struct {
 	Allocs int // # of allocs.
 	Bytes  int // Asked from OS.
@@ -155,10 +165,12 @@ func (a *Allocator) newSharedPage(log uint) (uintptr /* *page */, error) {
 
 func (a *Allocator) unmap(p uintptr /* *page */) error {
 	delete(a.regs, p)
+	size := (*page)(unsafe.Pointer(p)).size
 	if counters {
 		a.Mmaps--
+		a.Bytes -= size
 	}
-	return unmap(p, (*page)(unsafe.Pointer(p)).size)
+	return unmap(p, size)
 }
 
 // UintptrCalloc is like Calloc except it returns an uintptr.
@@ -196,9 +208,6 @@ func (a *Allocator) UintptrFree(p uintptr) (err error) {
 	pg := p &^ uintptr(pageMask)
 	log := (*page)(unsafe.Pointer(pg)).log
 	if log == 0 {
-		if counters {
-			a.Bytes -= (*page)(unsafe.Pointer(pg)).size
-		}
 		return a.unmap(pg)
 	}
 
@@ -231,12 +240,16 @@ func (a *Allocator) UintptrFree(p uintptr) (err error) {
 		}
 	}
 
-	if a.pages[log] == pg {
-		a.pages[log] = 0
+	// The page is now empty. Retain it as the carve target of its size class
+	// rather than returning it to the OS, unless the class already has one.
+	// Otherwise a pattern that repeatedly drains the class pays a mmap/munmap
+	// round trip per turnover. Trim releases the pages retained this way.
+	if a.pages[log] == 0 || a.pages[log] == pg {
+		(*page)(unsafe.Pointer(pg)).brk = 0
+		a.pages[log] = pg
+		return nil
 	}
-	if counters {
-		a.Bytes -= (*page)(unsafe.Pointer(pg)).size
-	}
+
 	return a.unmap(pg)
 }
 
@@ -419,6 +432,32 @@ func (a *Allocator) Realloc(b []byte, size int) (r []byte, err error) {
 	}
 
 	return (*rawmem)(unsafe.Pointer(p))[:size:usableSize(p)], nil
+}
+
+// Trim returns to the OS the empty pages a retains for reuse, at most one per
+// size class. Pages still having live allocations are not affected and a stays
+// ready for use.
+//
+// Trim is never necessary for correctness. It trades a smaller resident set
+// now for the cost of mapping those pages again later.
+func (a *Allocator) Trim() (err error) {
+	if trace {
+		defer func() {
+			fmt.Fprintf(os.Stderr, "Trim() %v\n", err)
+		}()
+	}
+	for log := range a.pages {
+		pg := a.pages[log]
+		if pg == 0 || (*page)(unsafe.Pointer(pg)).used != 0 {
+			continue
+		}
+
+		a.pages[log] = 0
+		if e := a.unmap(pg); e != nil && err == nil {
+			err = e
+		}
+	}
+	return err
 }
 
 // UsableSize reports the size of the memory block allocated at p, which must
