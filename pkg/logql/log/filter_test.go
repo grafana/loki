@@ -118,6 +118,79 @@ func Test_SimplifiedRegex(t *testing.T) {
 	}
 }
 
+
+func Test_SimplifiedRegex_LabelFilter(t *testing.T) {
+	// Label filter regexes (isLabel=true) should be anchored to the whole value.
+	// Test the one-sided patterns that were previously broken.
+	for _, test := range []struct {
+		re string
+		expected Filterer
+		match    bool
+	}{
+		// Plain literal → equalFilter (exact match)
+		{"foo", newEqualFilter([]byte("foo"), false), true},
+		// foo.* → prefixFilter (starts with "foo")
+		{"foo.*", newPrefixFilter([]byte("foo"), false), true},
+		// .*foo → suffixFilter (ends with "foo")
+		{".*foo", newSuffixFilter([]byte("foo"), false), true},
+		// .*foo.* → containsFilter (substring - already correct)
+		{".*foo.*", newContainsFilter([]byte("foo"), false), true},
+		// foo|bar → or of equalFilters
+		{"foo|bar", newOrFilter(newEqualFilter([]byte("foo"), false), newEqualFilter([]byte("bar"), false)), true},
+		// (?i)foo.* → case-insensitive prefixFilter
+		{"(?i)foo.*", newPrefixFilter([]byte("FOO"), true), true},
+		// (?i).*foo → case-insensitive suffixFilter
+		{"(?i).*foo", newSuffixFilter([]byte("FOO"), true), true},
+		// .* → TrueFilter (matches everything)
+		{".*", TrueFilter, true},
+	} {
+		t.Run(test.re, func(t *testing.T) {
+			f, err := parseRegexpFilter(test.re, test.match, true)
+			require.NoError(t, err, "invalid regex")
+			require.Equal(t, test.expected, f, "regexp %s", test.re)
+		})
+	}
+}
+
+func Test_LabelFilter_Fixtures(t *testing.T) {
+	// Verify that the label filter regexes produce the same results as
+	// the full regexp filter for a set of label values.
+	fixtures := []string{
+		"foo", "foobar", "bar", "foobuzz", "buzz", "f", "  ", "fba",
+		"foofoofoo", "b", "foob", "bfoo", "FoO", "prefoo", "fooprefoo",
+		"foo, 世界", "fooÏbar",
+	}
+	for _, test := range []struct {
+		re string
+	}{
+		{"foo"},
+		{"foo.*"},
+		{".*foo"},
+		{".*foo.*"},
+		{"foo|bar"},
+		{"(?i)foo.*"},
+		{"(?i).*foo"},
+		{"al.*"},
+		{".*al"},
+	} {
+		t.Run(test.re, func(t *testing.T) {
+			d, err := newRegexpFilter(test.re, test.re, true)
+			require.NoError(t, err, "invalid regex")
+			
+			f, err := parseRegexpFilter(test.re, true, true)
+			require.NoError(t, err)
+			
+			for _, line := range fixtures {
+				l := []byte(line)
+				require.Equal(t, d.Filter(l), f.Filter(l),
+					"regexp %s failed line: %s re:%v simplified:%v",
+					test.re, line, d.Filter(l), f.Filter(l))
+			}
+		})
+	}
+}
+
+
 func allunicode() string {
 	var b []byte
 	for i := 0x00; i < 0x10FFFF; i++ {
