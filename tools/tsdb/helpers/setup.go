@@ -24,7 +24,7 @@ import (
 
 func Setup() (loki.Config, services.Service, string, error) {
 	var c loki.ConfigWrapper
-	if err := cfg.DynamicUnmarshal(&c, os.Args[1:], flag.CommandLine); err != nil {
+	if _, err := cfg.DynamicUnmarshal(&c, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}

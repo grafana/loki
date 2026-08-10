@@ -56,7 +56,8 @@ func main() {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
-	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
+	unknownFields, err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
@@ -81,6 +82,11 @@ func main() {
 	}
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
+
+	// Report unknown configuration options now that the logger is initialized.
+	// Strict parsing already failed above, so any entries here mean non-strict
+	// parsing was requested.
+	unknownFields.Report(util_log.Logger)
 
 	if config.InternalServer.Enable {
 		config.InternalServer.Log = serverCfg.Log

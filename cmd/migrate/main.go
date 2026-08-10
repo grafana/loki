@@ -64,14 +64,14 @@ func main() {
 
 	var sourceConfig loki.ConfigWrapper
 	srcArgs := []string{"-config.file=" + *sf}
-	if err := cfg.DynamicUnmarshal(&sourceConfig, srcArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
+	if _, err := cfg.DynamicUnmarshal(&sourceConfig, srcArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
 
 	var destConfig loki.ConfigWrapper
 	destArgs := []string{"-config.file=" + *df}
-	if err := cfg.DynamicUnmarshal(&destConfig, destArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
+	if _, err := cfg.DynamicUnmarshal(&destConfig, destArgs, flag.NewFlagSet("config-file-loader", flag.ContinueOnError)); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 		os.Exit(1)
 	}
