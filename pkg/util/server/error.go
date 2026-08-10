@@ -65,8 +65,6 @@ func ClassifyFailure(err error) (category, reason string) {
 		return FailureSyntax, "pipeline"
 	case errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
 		return FailureSyntax, "unsupported_instant_query"
-	case errors.Is(err, logqlmodel.ErrVariantsDisabled):
-		return FailureSyntax, "variants_disabled"
 	case errors.Is(err, logqlmodel.ErrMaxQueryParallelism):
 		return FailureThrottled, "max_query_parallelism"
 	// The two limits below are also matched by message in reasonForBadRequest,
