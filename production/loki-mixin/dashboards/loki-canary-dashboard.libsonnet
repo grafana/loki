@@ -70,15 +70,15 @@ local grafana = import 'grafonnet/grafana.libsonnet';
           { gridPos: { h: 4, w: 3, x: 0, y: 4 } },
 
           dashboard.panel('Metric Test Error %') +
-          dashboard.newStatPanel('((sum(loki_canary_metric_test_expected{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}) - sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}))/(sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}))) * 100') +
+          dashboard.newStatPanel('((sum(loki_canary_metric_test_expected{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}) - sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}))/(sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"})))') +
           { gridPos: { h: 4, w: 3, x: 3, y: 4 } },
 
           dashboard.panel('Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range])))*100') +
+          dashboard.newStatPanel('(sum(increase(loki_canary_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range])))') +
           { gridPos: { h: 4, w: 3, x: 6, y: 4 } },
 
           dashboard.panel('Spotcheck Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_spot_check_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_spot_check_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))) * 100') +
+          dashboard.newStatPanel('(sum(increase(loki_canary_spot_check_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_spot_check_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range])))') +
           { gridPos: { h: 4, w: 3, x: 9, y: 4 } },
 
           // grid row 3
@@ -95,7 +95,7 @@ local grafana = import 'grafonnet/grafana.libsonnet';
           { gridPos: { h: 4, w: 3, x: 6, y: 8 } },
 
           dashboard.panel('Websocket Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_websocket_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range])))*100') +
+          dashboard.newStatPanel('(sum(increase(loki_canary_websocket_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",' + $._config.per_namespace_label + '=~"$namespace"}[$__range])))') +
           { gridPos: { h: 4, w: 3, x: 9, y: 8 } },
           // end of grid
 
