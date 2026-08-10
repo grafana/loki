@@ -15,6 +15,9 @@ import (
 
 func (l *Loki) setupLBAC() error {
 	l.Codec = labelaccess.NewCodec(l.Codec)
+	if l.CodecWrapper != nil {
+		l.Codec = l.CodecWrapper(l.Codec)
+	}
 
 	l.ModuleManager.RegisterModule(AuthMiddleware, l.initAuthMiddleware, modules.UserInvisibleModule)
 	l.ModuleManager.RegisterModule(LabelAccess, l.initStoreChunkFilterer)
@@ -60,6 +63,12 @@ func (l *Loki) initAuthMiddleware() (services.Service, error) {
 			log.With(util_log.Logger, "component", "label_access_middleware"),
 		),
 	)
+
+	if l.AuthMiddlewareSetupFn != nil {
+		if err := l.AuthMiddlewareSetupFn(); err != nil {
+			return nil, err
+		}
+	}
 
 	return nil, nil
 }

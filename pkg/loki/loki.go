@@ -366,6 +366,9 @@ func (c *Config) Validate() error {
 	if err := c.validateNoAuthTenant(); err != nil {
 		errs = append(errs, err)
 	}
+	if err := c.validateLBAC(); err != nil {
+		errs = append(errs, err)
+	}
 
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
@@ -390,6 +393,13 @@ func (c *Config) isTarget(m string) bool {
 func (c *Config) validateNoAuthTenant() error {
 	if !c.AuthEnabled && strings.TrimSpace(c.NoAuthTenant) == "" {
 		return errors.New("CONFIG ERROR: no_auth_tenant cannot be empty when auth_enabled is false")
+	}
+	return nil
+}
+
+func (c *Config) validateLBAC() error {
+	if c.LBAC.Enabled && !c.AuthEnabled {
+		return errors.New("CONFIG ERROR: auth_enabled must be true when lbac.enabled is true")
 	}
 	return nil
 }
@@ -464,12 +474,14 @@ type Loki struct {
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
 
-	Tee                distributor.Tee
-	PushParserWrapper  push.RequestParserWrapper
-	HTTPAuthMiddleware middleware.Interface
+	Tee                   distributor.Tee
+	PushParserWrapper     push.RequestParserWrapper
+	HTTPAuthMiddleware    middleware.Interface
+	AuthMiddlewareSetupFn func() error
 
-	Codec   codec.Codec
-	Metrics *server.Metrics
+	Codec        codec.Codec
+	CodecWrapper func(codec.Codec) codec.Codec
+	Metrics      *server.Metrics
 
 	UsageTracker push.UsageTracker
 
