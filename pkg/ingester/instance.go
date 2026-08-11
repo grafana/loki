@@ -55,7 +55,7 @@ import (
 const (
 	// ShardLbName is the internal label to be used by Loki when dividing a stream into smaller pieces.
 	// Possible values are only increasing integers starting from 0.
-	ShardLbName        = "__stream_shard__"
+	ShardLbName        = constants.StreamShardLabel
 	ShardLbPlaceholder = "__placeholder__"
 
 	queryBatchSize       = 128

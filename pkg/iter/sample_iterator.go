@@ -165,8 +165,7 @@ type mergeSampleIterator struct {
 }
 
 // NewMergeSampleIterator returns a new iterator which uses a heap to merge together samples for multiple iterators and deduplicate if any.
-// The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
-// This means using this iterator with a single iterator will result in the same result as the input iterator.
+// Samples that share a timestamp, stream hash and sample hash are dropped, including within a single iterator, such as lines that automatic stream sharding sent to more than one shard.
 // If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
 func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
 	h := SampleIteratorHeap{
@@ -229,14 +228,46 @@ func (i *mergeSampleIterator) Next() bool {
 		return false
 	}
 
-	// shortcut for the last iterator.
+	// Shortcut for the last iterator: no heap operations are needed, but
+	// duplicates that share a timestamp, stream hash and sample hash, such as
+	// lines that automatic stream sharding sent to more than one shard, must
+	// still be dropped.
 	if i.heap.Len() == 1 {
-		i.curr.Sample = i.heap.Peek().At()
-		i.curr.labels = i.heap.Peek().Labels()
-		i.curr.streamHash = i.heap.Peek().StreamHash()
-		if !i.heap.Peek().Next() {
-			i.heap.Pop()
+		it := i.heap.Peek()
+		i.buffer = append(i.buffer, sampleWithLabels{
+			Sample:     it.At(),
+			labels:     it.Labels(),
+			streamHash: it.StreamHash(),
+		})
+		for {
+			if !it.Next() {
+				i.heap.Pop()
+				break
+			}
+			sample := it.At()
+			if it.StreamHash() != i.buffer[0].streamHash ||
+				sample.Timestamp != i.buffer[0].Timestamp {
+				break
+			}
+			var dupe bool
+			if sample.Hash != 0 {
+				for _, t := range i.buffer {
+					if t.Hash == sample.Hash {
+						i.stats.AddDuplicates(1)
+						dupe = true
+						break
+					}
+				}
+			}
+			if !dupe {
+				i.buffer = append(i.buffer, sampleWithLabels{
+					Sample:     sample,
+					labels:     it.Labels(),
+					streamHash: it.StreamHash(),
+				})
+			}
 		}
+		i.nextFromBuffer()
 		return true
 	}
 
@@ -252,10 +283,9 @@ Outer:
 			break
 		}
 		heap.Pop(i.heap)
-		previous := i.buffer
 		var dupe bool
 		if sample.Hash != 0 {
-			for _, t := range previous {
+			for _, t := range i.buffer {
 				if t.Hash == sample.Hash {
 					i.stats.AddDuplicates(1)
 					dupe = true
@@ -280,8 +310,11 @@ Outer:
 				sample.Timestamp != i.buffer[0].Timestamp {
 				break
 			}
+			// Scan the whole buffer, not only the samples collected from the
+			// other iterators: shards of one stream arrive sort-merged within a
+			// single iterator, so a duplicate can follow its original here.
 			if sample.Hash != 0 {
-				for _, t := range previous {
+				for _, t := range i.buffer {
 					if t.Hash == sample.Hash {
 						i.stats.AddDuplicates(1)
 						continue inner

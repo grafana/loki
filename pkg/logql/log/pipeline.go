@@ -2,10 +2,11 @@ package log
 
 import (
 	"context"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"unsafe"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // NoopStage is a stage that doesn't process a log line.
@@ -62,6 +63,10 @@ type noopPipeline struct {
 }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	// Drop the labels that automatic stream sharding added, so that shards of
+	// one stream share a single query-time identity (hash and base labels) and
+	// their duplicate lines can be deduplicated.
+	labels = util.LabelsWithoutStreamShards(labels)
 	h := n.baseBuilder.Hash(labels)
 	if cached, ok := n.cache[h]; ok {
 		return cached
@@ -179,6 +184,8 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
+	// See noopPipeline.ForStream: shards of one stream share one identity.
+	labels = util.LabelsWithoutStreamShards(labels)
 	hash := p.baseBuilder.Hash(labels)
 	if res, ok := p.streamPipelines[hash]; ok {
 		return res

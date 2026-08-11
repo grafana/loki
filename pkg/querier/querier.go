@@ -210,9 +210,10 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 		iters = append(iters, storeIter)
 	}
-	if len(iters) == 1 {
-		return iters[0], nil
-	}
+	// Always merge, even for a single source: the merge iterator also
+	// deduplicates identical lines that automatic stream sharding sent to more
+	// than one shard, which arrive within one iterator when only the store or
+	// only the ingesters are queried.
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 

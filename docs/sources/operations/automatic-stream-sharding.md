@@ -70,6 +70,10 @@ Because automatic stream sharding is reactive and relies on successive calls to 
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
 In practice, this is still sufficient to keep log producers from being rate limited by per-stream rate limits.
 
+At query time the shards of a stream are treated as a single stream again: the `__stream_shard__` and `__time_shard__`
+labels are not part of a stream's query-time identity and do not appear in query results, and identical log lines that a
+client retry sent to more than one shard are deduplicated.
+
 ## Automatic stream sharding metrics
 
 Use these metrics to help tune Loki so that it is sharding streams aggressively enough to avoid the per-stream rate

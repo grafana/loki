@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/dustin/go-humanize"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -75,6 +77,8 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 }
 
 func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	// See noopPipeline.ForStream: shards of one stream share one identity.
+	labels = util.LabelsWithoutStreamShards(labels)
 	hash := l.baseBuilder.Hash(labels)
 	if res, ok := l.streamExtractors[hash]; ok {
 		return res
@@ -186,6 +190,8 @@ func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
 }
 
 func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+	// See noopPipeline.ForStream: shards of one stream share one identity.
+	labels = util.LabelsWithoutStreamShards(labels)
 	hash := l.baseBuilder.Hash(labels)
 	if res, ok := l.streamExtractors[hash]; ok {
 		return res

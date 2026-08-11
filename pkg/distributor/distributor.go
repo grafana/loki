@@ -67,7 +67,7 @@ const (
 
 	ringAutoForgetUnhealthyPeriods = 2
 
-	timeShardLabel = "__time_shard__"
+	timeShardLabel = constants.TimeShardLabel
 )
 
 var (

@@ -75,9 +75,8 @@ type mergeEntryIterator struct {
 	errs      []error
 }
 
-// NewMergeEntryIterator returns a new iterator which uses a looser tree to merge together entries for multiple iterators and deduplicate entries if any.
-// The iterator only order and merge entries across given `is` iterators, it does not merge entries within individual iterator.
-// This means using this iterator with a single iterator will result in the same result as the input iterator.
+// NewMergeEntryIterator returns a new iterator which uses a loser tree to merge together entries for multiple iterators and deduplicate entries if any.
+// Equal entries that share a timestamp and stream hash are dropped, including within a single iterator, such as lines that automatic stream sharding sent to more than one shard.
 // If you don't need to deduplicate entries, use `NewSortEntryIterator` instead.
 func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction logproto.Direction) MergeEntryIterator {
 	maxVal, less := treeLess(direction)

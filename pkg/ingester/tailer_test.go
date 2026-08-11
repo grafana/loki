@@ -312,7 +312,8 @@ func Test_StructuredMetadata(t *testing.T) {
 			expectedResponses: []logproto.TailResponse{
 				{
 					Stream: &logproto.Stream{
-						Labels: labels.NewBuilder(lbs).Set("foo", "1").Labels().String(),
+						// The pipeline drops the shard label from a stream's query-time identity.
+						Labels: labels.NewBuilder(lbs).Del(ShardLbName).Set("foo", "1").Labels().String(),
 						Entries: []logproto.Entry{
 							{
 								Timestamp:          time.Unix(0, 1),
@@ -326,7 +327,7 @@ func Test_StructuredMetadata(t *testing.T) {
 				},
 				{
 					Stream: &logproto.Stream{
-						Labels: labels.NewBuilder(lbs).Set("traceID", "123").Set("foo", "2").Labels().String(),
+						Labels: labels.NewBuilder(lbs).Del(ShardLbName).Set("traceID", "123").Set("foo", "2").Labels().String(),
 						Entries: []logproto.Entry{
 							{
 								Timestamp:          time.Unix(0, 2),
