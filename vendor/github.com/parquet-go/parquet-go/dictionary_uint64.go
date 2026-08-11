@@ -15,7 +15,7 @@ type uint64Dictionary struct {
 	table *hashprobe.Uint64Table
 }
 
-func newUint64Dictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *uint64Dictionary {
+func newUint64Dictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *uint64Dictionary {
 	return &uint64Dictionary{
 		uint64Page: uint64Page{
 			typ:         typ,

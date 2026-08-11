@@ -8,22 +8,19 @@ The smithy-go runtime requires a minimum version of Go 1.24.
 
 **WARNING: All interfaces are subject to change.**
 
-## :no_entry_sign: DO NOT use the code generators in this repository
+## :warning: Client codegen is unstable
 
-**The code generators in this repository do not generate working clients at
-this time.**
+The client code generator in this repository powers the aws-sdk-go-v2.
+Arbitrary client generation, while possible, is in an early stage of
+development:
 
-In order to generate a usable smithy client you must provide a [protocol definition](https://github.com/aws/smithy-go/blob/main/codegen/smithy-go-codegen/src/main/java/software/amazon/smithy/go/codegen/integration/ProtocolGenerator.java),
-such as [AWS restJson1](https://smithy.io/2.0/aws/protocols/aws-restjson1-protocol.html),
-in order to generate transport mechanisms and serialization/deserialization
-code ("serde") accordingly.
+* Generated clients are missing certain features that were originally
+  implemented SDK-side (e.g. retries)
+* There may be bugs
+* The public APIs of generated clients may be unstable
 
-The code generator does not currently support any protocols out of the box.
-Support for all [AWS protocols](https://smithy.io/2.0/aws/protocols/index.html)
-exists in [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2). We are
-tracking the movement of those out of the SDK into smithy-go in
-[#458](https://github.com/aws/smithy-go/issues/458), but there's currently no
-timeline for doing so.
+If you are interested in using the client code generators, we encourage you to
+experiment and share any feedback with us in an issue.
 
 ## Plugins
 
@@ -34,8 +31,6 @@ This repository implements the following Smithy build plugins:
 | `go-codegen`        | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go client code generation for Smithy models. |
 | `go-server-codegen` | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go server code generation for Smithy models. |
 | `go-shape-codegen` | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go shape code generation (types only) for Smithy models. |
-
-**NOTE: Build plugins are not currently published to mavenCentral. You must publish to mavenLocal to make the build plugins visible to the Smithy CLI. The artifact version is currently fixed at 0.1.0.**
 
 ## `go-codegen`
 
@@ -55,9 +50,19 @@ methods and types. The up-to-date list of top-level properties enabled for
 
 ### Supported protocols
 
+The protocol a client uses is configured by the `Protocol` field on a client's
+`Options`. The SDK will configure a default based on the protocol traits
+applied to the modeled service.
+
 | Protocol | Notes |
 |----------|-------|
-| [`smithy.protocols#rpcv2Cbor`](https://smithy.io/2.0/additional-specs/protocols/smithy-rpc-v2.html) | Event streaming not yet implemented. |
+| [`smithy.protocols#rpcv2Cbor`](https://smithy.io/2.0/additional-specs/protocols/smithy-rpc-v2.html) | |
+| [`aws.protocols#restJson1`](https://smithy.io/2.0/aws/protocols/aws-restjson1-protocol.html) | |
+| [`aws.protocols#restXml`](https://smithy.io/2.0/aws/protocols/aws-restxml-protocol.html) | |
+| [`aws.protocols#awsJson1_0`](https://smithy.io/2.0/aws/protocols/aws-json-1_0-protocol.html) | |
+| [`aws.protocols#awsJson1_1`](https://smithy.io/2.0/aws/protocols/aws-json-1_1-protocol.html) | |
+| [`aws.protocols#awsQuery`](https://smithy.io/2.0/aws/protocols/aws-query-protocol.html) | |
+| [`aws.protocols#ec2Query`](https://smithy.io/2.0/aws/protocols/aws-ec2-query-protocol.html) | |
 
 ### Example
 
@@ -72,7 +77,7 @@ example created from `smithy init`:
   ],
   "maven": {
     "dependencies": [
-      "software.amazon.smithy.go:smithy-go-codegen:0.1.0"
+      "software.amazon.smithy.go:smithy-go-codegen:[0.1.0,2.0)"
     ]
   },
   "plugins": {

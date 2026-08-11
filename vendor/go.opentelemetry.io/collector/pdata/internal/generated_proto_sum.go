@@ -169,7 +169,7 @@ func (orig *Sum) UnmarshalJSON(iter *json.Iterator) {
 		case "isMonotonic", "is_monotonic":
 			orig.IsMonotonic = iter.ReadBool()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -208,6 +209,7 @@ func (t *Terminal) Start() error {
 	sendEvents := func(buf []byte, expired bool) int {
 		n, events := evs.scanEvents(buf, expired)
 		for _, ev := range events {
+			t.handleEvent(ev)
 			t.SendEvent(ev)
 		}
 		return n
@@ -290,11 +292,35 @@ func (t *Terminal) Start() error {
 
 	// Restore any previous screen state.
 	t.scr.Restore()
+	// Query whether the terminal supports Unicode core mode (DEC mode 2027) so
+	// we can negotiate grapheme-cluster width. The response is handled in the
+	// event loop.
+	t.scr.requestGraphemeWidth()
 	if err := t.scr.Flush(); err != nil {
 		return fmt.Errorf("failed to flush terminal screen: %w", err)
 	}
 
 	return nil
+}
+
+// handleEvent reacts to internal events before they are forwarded to the
+// application. It negotiates Unicode core mode (DEC mode 2027): when the
+// terminal reports the mode is in a settable or active state, it enables
+// grapheme-cluster width so wide-glyph measurement matches the terminal. The
+// event is still forwarded to the application.
+//
+// The mode is only enabled for settable/active states (mode set, reset but
+// settable, or permanently set). It is explicitly not enabled when the mode is
+// not recognized or permanently reset, since those terminals cannot honor it.
+// Enabling goes through the screen's locked write path so it cannot race with
+// the application's Render/Flush.
+func (t *Terminal) handleEvent(ev Event) {
+	if mr, ok := ev.(ModeReportEvent); ok {
+		if mr.Mode == ansi.ModeUnicodeCore &&
+			(mr.Value.IsSet() || mr.Value == ansi.ModeReset) {
+			t.scr.enableGraphemeWidth()
+		}
+	}
 }
 
 // Wait waits for the terminal event loop to exit and returns any error that

@@ -23,7 +23,7 @@ type booleanDictionary struct {
 	table [2]int32
 }
 
-func newBooleanDictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *booleanDictionary {
+func newBooleanDictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *booleanDictionary {
 	indexOfFalse, indexOfTrue, values := int32(-1), int32(-1), data.Boolean()
 
 	for i := int32(0); i < numValues && indexOfFalse < 0 && indexOfTrue < 0; i += 8 {

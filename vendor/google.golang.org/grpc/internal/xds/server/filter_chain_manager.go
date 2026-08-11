@@ -18,9 +18,12 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
+	"slices"
+	"strings"
 	"sync/atomic"
 
 	"google.golang.org/grpc/codes"
@@ -64,7 +67,7 @@ func newFilterChainManager(filterChainConfigs *xdsresource.NetworkFilterChainMap
 
 	if filterChainConfigs != nil {
 		for _, entry := range filterChainConfigs.DstPrefixes {
-			dstEntry := &destPrefixEntry{net: entry.Prefix}
+			dstEntry := &destPrefixEntry{prefix: entry.Prefix}
 
 			for i, srcPrefixes := range entry.SourceTypeArr {
 				if len(srcPrefixes.Entries) == 0 {
@@ -74,7 +77,7 @@ func newFilterChainManager(filterChainConfigs *xdsresource.NetworkFilterChainMap
 				dstEntry.srcTypeArr[i] = stDest
 				for _, srcEntryConfig := range srcPrefixes.Entries {
 					srcEntry := &sourcePrefixEntry{
-						net:        srcEntryConfig.Prefix,
+						prefix:     srcEntryConfig.Prefix,
 						srcPortMap: make(map[int]*filterChain, len(srcEntryConfig.PortMap)),
 					}
 					stDest.srcPrefixes = append(stDest.srcPrefixes, srcEntry)
@@ -117,10 +120,17 @@ func (fcm *filterChainManager) filterChainFromConfig(config *xdsresource.Network
 	return fc
 }
 
+func (fcm *filterChainManager) stop() {
+	for _, fc := range fcm.filterChains {
+		fc.usableRouteConfiguration.Load().stop()
+		fc.stop()
+	}
+}
+
 // destPrefixEntry contains a destination prefix entry and associated source
 // type matchers.
 type destPrefixEntry struct {
-	net        *net.IPNet
+	prefix     netip.Prefix
 	srcTypeArr sourceTypesArray
 }
 
@@ -144,7 +154,7 @@ type sourcePrefixes struct {
 // sourcePrefixEntry contains a source prefix entry and associated source port
 // matchers.
 type sourcePrefixEntry struct {
-	net        *net.IPNet
+	prefix     netip.Prefix
 	srcPortMap map[int]*filterChain
 }
 
@@ -152,10 +162,20 @@ type sourcePrefixEntry struct {
 // Listener resource. This struct contains the active state of a filter chain,
 // which includes the usable route configuration.
 type filterChain struct {
-	securityCfg              *xdsresource.SecurityConfig
-	httpFilters              []xdsresource.HTTPFilter
-	routeConfigName          string
-	inlineRouteConfig        *xdsresource.RouteConfigUpdate
+	// The following fields are set at initialization time, and are not
+	// updated afterwards.
+	securityCfg       *xdsresource.SecurityConfig
+	httpFilters       []xdsresource.HTTPFilter
+	routeConfigName   string
+	inlineRouteConfig *xdsresource.RouteConfigUpdate
+
+	// Server filters with reference counts. Is updated when a usable route
+	// configuration is set, and when the filter chain is stopped. Both these
+	// operations always happen with the listener wrapper's lock held.
+	serverFilters []httpfilter.ServerFilter
+
+	// The usable route configuration, is passed to the connWrapper, and is used
+	// to route incoming RPCs. Therefore, this needs to be accessed atomically.
 	usableRouteConfiguration *atomic.Pointer[usableRouteConfiguration]
 }
 
@@ -165,6 +185,16 @@ type usableRouteConfiguration struct {
 	vhs    []virtualHostWithInterceptors
 	err    error
 	nodeID string // For logging purposes. Populated by the listener wrapper.
+}
+
+func (rc *usableRouteConfiguration) stop() {
+	for _, vh := range rc.vhs {
+		for _, r := range vh.routes {
+			if r.interceptor != nil {
+				r.interceptor.Close()
+			}
+		}
+	}
 }
 
 // virtualHostWithInterceptors captures information present in a VirtualHost
@@ -177,16 +207,16 @@ type virtualHostWithInterceptors struct {
 // routeWithInterceptors captures information in a Route, and contains
 // a usable matcher and also instantiated HTTP Filters.
 type routeWithInterceptors struct {
-	matcher      *xdsresource.CompositeMatcher
-	actionType   xdsresource.RouteActionType
-	interceptors []resolver.ServerInterceptor
+	matcher     *xdsresource.CompositeMatcher
+	actionType  xdsresource.RouteActionType
+	interceptor resolver.ServerInterceptor
 }
 
 type lookupParams struct {
-	isUnspecifiedListener bool   // Whether the server is listening on a wildcard address.
-	dstAddr               net.IP // dstAddr is the local address of an incoming connection.
-	srcAddr               net.IP // srcAddr is the remote address of an incoming connection.
-	srcPort               int    // srcPort is the remote port of an incoming connection.
+	isUnspecifiedListener bool       // Whether the server is listening on a wildcard address.
+	dstAddr               netip.Addr // dstAddr is the local address of an incoming connection.
+	srcAddr               netip.Addr // srcAddr is the remote address of an incoming connection.
+	srcPort               int        // srcPort is the remote port of an incoming connection.
 }
 
 // lookup returns the most specific matching filter chain to be used for an
@@ -202,7 +232,7 @@ func (fcm *filterChainManager) lookup(params lookupParams) (*filterChain, error)
 	}
 
 	srcType := sourceTypeExternal
-	if params.srcAddr.Equal(params.dstAddr) || params.srcAddr.IsLoopback() {
+	if params.srcAddr == params.dstAddr || params.srcAddr.IsLoopback() {
 		srcType = sourceTypeSameOrLoopback
 	}
 	srcPrefixes := filterBySourceType(dstPrefixes, srcType)
@@ -229,7 +259,7 @@ func (fcm *filterChainManager) lookup(params lookupParams) (*filterChain, error)
 // matching algorithm. It takes the complete set of configured filter chain
 // matchers and returns the most specific matchers based on the destination
 // prefix match criteria (the prefixes which match the most number of bits).
-func filterByDestinationPrefixes(dstPrefixes []*destPrefixEntry, isUnspecified bool, dstAddr net.IP) []*destPrefixEntry {
+func filterByDestinationPrefixes(dstPrefixes []*destPrefixEntry, isUnspecified bool, dstAddr netip.Addr) []*destPrefixEntry {
 	if !isUnspecified {
 		// Destination prefix matchers are considered only when the listener is
 		// bound to the wildcard address.
@@ -238,18 +268,18 @@ func filterByDestinationPrefixes(dstPrefixes []*destPrefixEntry, isUnspecified b
 
 	var matchingDstPrefixes []*destPrefixEntry
 	maxSubnetMatch := noPrefixMatch
-	for _, prefix := range dstPrefixes {
-		if prefix.net != nil && !prefix.net.Contains(dstAddr) {
+	for _, entry := range dstPrefixes {
+		if entry.prefix.IsValid() && !entry.prefix.Contains(dstAddr) {
 			// Skip prefixes which don't match.
 			continue
 		}
-		// For unspecified prefixes, since we do not store a real net.IPNet
+		// For unspecified prefixes, since we do not store a real netip.Prefix
 		// inside prefix, we do not perform a match. Instead we simply set
 		// the matchSize to -1, which is less than the matchSize (0) for a
 		// wildcard prefix.
 		matchSize := unspecifiedPrefixMatch
-		if prefix.net != nil {
-			matchSize, _ = prefix.net.Mask.Size()
+		if entry.prefix.IsValid() {
+			matchSize = entry.prefix.Bits()
 		}
 		if matchSize < maxSubnetMatch {
 			continue
@@ -258,7 +288,7 @@ func filterByDestinationPrefixes(dstPrefixes []*destPrefixEntry, isUnspecified b
 			maxSubnetMatch = matchSize
 			matchingDstPrefixes = make([]*destPrefixEntry, 0, 1)
 		}
-		matchingDstPrefixes = append(matchingDstPrefixes, prefix)
+		matchingDstPrefixes = append(matchingDstPrefixes, entry)
 	}
 	return matchingDstPrefixes
 }
@@ -272,12 +302,12 @@ func filterBySourceType(dstPrefixes []*destPrefixEntry, srcType sourceType) []*s
 		srcPrefixes      []*sourcePrefixes
 		bestSrcTypeMatch sourceType
 	)
-	for _, prefix := range dstPrefixes {
+	for _, entry := range dstPrefixes {
 		match := srcType
-		srcPrefix := prefix.srcTypeArr[srcType]
+		srcPrefix := entry.srcTypeArr[srcType]
 		if srcPrefix == nil {
 			match = sourceTypeAny
-			srcPrefix = prefix.srcTypeArr[sourceTypeAny]
+			srcPrefix = entry.srcTypeArr[sourceTypeAny]
 		}
 		if match < bestSrcTypeMatch {
 			continue
@@ -298,22 +328,22 @@ func filterBySourceType(dstPrefixes []*destPrefixEntry, srcType sourceType) []*s
 // filterBySourcePrefixes is the third stage of the filter chain matching
 // algorithm. It trims the filter chains based on the source prefix. At most one
 // filter chain with the most specific match progress to the next stage.
-func filterBySourcePrefixes(srcPrefixes []*sourcePrefixes, srcAddr net.IP) (*sourcePrefixEntry, error) {
+func filterBySourcePrefixes(srcPrefixes []*sourcePrefixes, srcAddr netip.Addr) (*sourcePrefixEntry, error) {
 	var matchingSrcPrefixes []*sourcePrefixEntry
 	maxSubnetMatch := noPrefixMatch
 	for _, sp := range srcPrefixes {
-		for _, prefix := range sp.srcPrefixes {
-			if prefix.net != nil && !prefix.net.Contains(srcAddr) {
+		for _, entry := range sp.srcPrefixes {
+			if entry.prefix.IsValid() && !entry.prefix.Contains(srcAddr) {
 				// Skip prefixes which don't match.
 				continue
 			}
-			// For unspecified prefixes, since we do not store a real net.IPNet
+			// For unspecified prefixes, since we do not store a real netip.Prefix
 			// inside prefix, we do not perform a match. Instead we simply set
 			// the matchSize to -1, which is less than the matchSize (0) for a
 			// wildcard prefix.
 			matchSize := unspecifiedPrefixMatch
-			if prefix.net != nil {
-				matchSize, _ = prefix.net.Mask.Size()
+			if entry.prefix.IsValid() {
+				matchSize = entry.prefix.Bits()
 			}
 			if matchSize < maxSubnetMatch {
 				continue
@@ -322,7 +352,7 @@ func filterBySourcePrefixes(srcPrefixes []*sourcePrefixes, srcAddr net.IP) (*sou
 				maxSubnetMatch = matchSize
 				matchingSrcPrefixes = make([]*sourcePrefixEntry, 0, 1)
 			}
-			matchingSrcPrefixes = append(matchingSrcPrefixes, prefix)
+			matchingSrcPrefixes = append(matchingSrcPrefixes, entry)
 		}
 	}
 	if len(matchingSrcPrefixes) == 0 {
@@ -361,54 +391,216 @@ func filterBySourcePorts(spe *sourcePrefixEntry, srcPort int) *filterChain {
 	return nil
 }
 
-// constructUsableRouteConfiguration takes Route Configuration and converts it
-// into matchable route configuration, with instantiated HTTP Filters per route.
-func (fc *filterChain) constructUsableRouteConfiguration(config xdsresource.RouteConfigUpdate) *usableRouteConfiguration {
-	vhs := make([]virtualHostWithInterceptors, 0, len(config.VirtualHosts))
-	for _, vh := range config.VirtualHosts {
-		vhwi, err := fc.convertVirtualHost(vh)
-		if err != nil {
-			// Non nil if (lds + rds) fails, shouldn't happen since validated by
-			// xDS Client, treat as L7 error but shouldn't happen.
-			return &usableRouteConfiguration{err: fmt.Errorf("virtual host construction: %v", err)}
-		}
-		vhs = append(vhs, vhwi)
+func (fc *filterChain) stop() {
+	for _, sf := range fc.serverFilters {
+		sf.Close()
 	}
-	return &usableRouteConfiguration{vhs: vhs}
 }
 
-func (fc *filterChain) convertVirtualHost(virtualHost *xdsresource.VirtualHost) (virtualHostWithInterceptors, error) {
+// serverFilterProvider is used to get a ServerFilter.
+//
+// This functionality is provided by the listener wrapper, which maintains a map
+// of reference counted ServerFilters keyed by {filter_name + type_urls} for all
+// filters across all filter chains, and ensures that the same filter instance
+// is reused across resource updates. This allows filter instances to retain
+// state across resource updates.
+type serverFilterProvider func(filter xdsresource.HTTPFilter) (httpfilter.ServerFilter, error)
+
+// updateUsableRouteConfiguration takes Route Configuration and converts it
+// into matchable route configuration, with instantiated HTTP Filters per route.
+func (fc *filterChain) updateUsableRouteConfiguration(config *xdsresource.RouteConfigUpdate, updateErr error, provider serverFilterProvider, nodeID string) {
+	if updateErr != nil {
+		urc := &usableRouteConfiguration{err: updateErr, nodeID: nodeID}
+		fc.applyConfiguration(urc, nil)
+		return
+	}
+
+	var serverFilters []httpfilter.ServerFilter
+	vhs := make([]virtualHostWithInterceptors, 0, len(config.VirtualHosts))
+	for _, vh := range config.VirtualHosts {
+		vhwi, sfs, err := fc.convertVirtualHost(vh, provider)
+		if err != nil {
+			for _, sf := range serverFilters {
+				sf.Close()
+			}
+			// Close interceptors from successfully converted virtual hosts.
+			for _, v := range vhs {
+				for _, r := range v.routes {
+					if r.interceptor != nil {
+						r.interceptor.Close()
+						r.interceptor = nil
+					}
+				}
+			}
+			// Non nil if (lds + rds) fails, shouldn't happen since validated by
+			// xDS Client, treat as L7 error but shouldn't happen.
+			urc := &usableRouteConfiguration{err: fmt.Errorf("virtual host construction: %v", err), nodeID: nodeID}
+			fc.applyConfiguration(urc, nil)
+			return
+		}
+		vhs = append(vhs, vhwi)
+		serverFilters = append(serverFilters, sfs...)
+	}
+
+	urc := &usableRouteConfiguration{vhs: vhs, nodeID: nodeID}
+	fc.applyConfiguration(urc, serverFilters)
+}
+
+func (fc *filterChain) applyConfiguration(urc *usableRouteConfiguration, serverFilters []httpfilter.ServerFilter) {
+	// Swap in the new configuration first so new RPCs use it immediately.
+	oldURC := fc.usableRouteConfiguration.Swap(urc)
+	oldFilters := fc.serverFilters
+	fc.serverFilters = serverFilters
+
+	// Stop the old interceptors before releasing the filters they might depend on.
+	if oldURC != nil {
+		oldURC.stop()
+	}
+
+	// Release references to old server filters.
+	for _, sf := range oldFilters {
+		sf.Close()
+	}
+}
+
+func (fc *filterChain) convertVirtualHost(virtualHost *xdsresource.VirtualHost, provider serverFilterProvider) (_ virtualHostWithInterceptors, _ []httpfilter.ServerFilter, err error) {
+	var serverFilters []httpfilter.ServerFilter
+	defer func() {
+		if err != nil {
+			for _, sf := range serverFilters {
+				sf.Close()
+			}
+		}
+	}()
+
 	rs := make([]routeWithInterceptors, len(virtualHost.Routes))
 	for i, r := range virtualHost.Routes {
 		rs[i].actionType = r.ActionType
 		rs[i].matcher = xdsresource.RouteToMatcher(r)
-		for _, filter := range fc.httpFilters {
-			// Route is highest priority on server side, as there is no concept
-			// of an upstream cluster on server side.
-			override := r.HTTPFilterConfigOverride[filter.Name]
-			if override == nil {
-				// Virtual Host is second priority.
-				override = virtualHost.HTTPFilterConfigOverride[filter.Name]
+		interceptor, sfs, err := fc.newInterceptor(r.HTTPFilterConfigOverride, virtualHost.HTTPFilterConfigOverride, provider)
+		if err != nil {
+			// Close interceptors from successfully converted routes.
+			for _, route := range rs {
+				if route.interceptor != nil {
+					route.interceptor.Close()
+					route.interceptor = nil
+				}
 			}
-			sb, ok := filter.Filter.(httpfilter.ServerInterceptorBuilder)
-			if !ok {
-				// Should not happen if it passed xdsClient validation.
-				return virtualHostWithInterceptors{}, fmt.Errorf("filter does not support use in server")
-			}
-			si, err := sb.BuildServerInterceptor(filter.Config, override)
-			if err != nil {
-				return virtualHostWithInterceptors{}, fmt.Errorf("filter construction: %v", err)
-			}
-			if si != nil {
-				rs[i].interceptors = append(rs[i].interceptors, si)
-			}
+			return virtualHostWithInterceptors{}, nil, err
 		}
+		serverFilters = append(serverFilters, sfs...)
+		rs[i].interceptor = interceptor
 	}
-	return virtualHostWithInterceptors{domains: virtualHost.Domains, routes: rs}, nil
+	return virtualHostWithInterceptors{domains: virtualHost.Domains, routes: rs}, serverFilters, nil
 }
 
 // statusErrWithNodeID returns an error produced by the status package with the
 // specified code and message, and includes the xDS node ID.
 func (rc *usableRouteConfiguration) statusErrWithNodeID(c codes.Code, msg string, args ...any) error {
 	return status.Error(c, fmt.Sprintf("[xDS node id: %v]: %s", rc.nodeID, fmt.Sprintf(msg, args...)))
+}
+
+func (fc *filterChain) newInterceptor(routeOverride, virtualHostOverride map[string]httpfilter.FilterConfig, provider serverFilterProvider) (_ resolver.ServerInterceptor, _ []httpfilter.ServerFilter, err error) {
+	serverFilters := []httpfilter.ServerFilter{}
+	interceptors := make([]resolver.ServerInterceptor, 0, len(fc.httpFilters))
+	defer func() {
+		if err != nil {
+			for _, sf := range serverFilters {
+				sf.Close()
+			}
+			for _, i := range interceptors {
+				i.Close()
+			}
+		}
+	}()
+
+	for _, filter := range fc.httpFilters {
+		// Route is highest priority on server side, as there is no concept
+		// of an upstream cluster on server side.
+		override := routeOverride[filter.Name]
+		if override == nil {
+			// Virtual Host is second priority.
+			override = virtualHostOverride[filter.Name]
+		}
+
+		disabled := filter.Disabled
+		if override != nil {
+			_, disabled = override.(httpfilter.DisabledFilterConfig)
+		}
+		if disabled {
+			continue
+		}
+
+		serverFilter, err := provider(filter)
+		if err != nil {
+			return nil, nil, err
+		}
+		serverFilters = append(serverFilters, serverFilter)
+		i, err := serverFilter.BuildServerInterceptor(filter.Config, override)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error constructing filter: %v", err)
+		}
+		if i != nil {
+			interceptors = append(interceptors, i)
+		}
+	}
+
+	return &interceptorList{interceptors: interceptors}, serverFilters, nil
+}
+
+type interceptorList struct {
+	interceptors []resolver.ServerInterceptor
+}
+
+func (il *interceptorList) AllowRPC(ctx context.Context) error {
+	for _, i := range il.interceptors {
+		if err := i.AllowRPC(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (il *interceptorList) Close() {
+	for _, i := range il.interceptors {
+		i.Close()
+	}
+}
+
+// refCountedServerFilter wraps a ServerFilter along with a reference count.
+// This is used to manage server filters that are shared across filter chains
+// within a filter chain manager.
+type refCountedServerFilter struct {
+	httpfilter.ServerFilter
+	refCnt atomic.Int32
+}
+
+func (rsf *refCountedServerFilter) incRef() {
+	rsf.refCnt.Add(1)
+}
+
+func (rsf *refCountedServerFilter) Close() {
+	if rsf.refCnt.Add(-1) == 0 {
+		rsf.ServerFilter.Close()
+	}
+}
+
+// newServerFilterKey generates a key for the given filter using the filter name
+// and type URLs. This is used for storing ServerFilters in a map.
+func newServerFilterKey(f *xdsresource.HTTPFilter) serverFilterKey {
+	typeURLs := slices.Clone(f.Filter.TypeURLs())
+	slices.Sort(typeURLs)
+	return serverFilterKey{
+		name:     f.Name,
+		typeURLs: strings.Join(typeURLs, ":"),
+	}
+}
+
+type serverFilterKey struct {
+	name     string
+	typeURLs string
+}
+
+func (f *serverFilterKey) String() string {
+	return f.name + ":" + f.typeURLs
 }

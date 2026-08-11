@@ -217,8 +217,8 @@ func (h *cacheHandler) Do(ctx context.Context, req queryrangebase.Request) (quer
 	// Merge cache stats from the stats context into the response statistics.
 	//
 	// The v2 engine uses two separate stat-tracking mechanisms that must be reconciled:
-	//   - executor.Execute() translates xcap observations into logql stats via
-	//     capture.ToStatsSummary(), which covers execution stats (dataobj rows/bytes, etc.)
+	//   - Engine.Execute translates xcap observations into logql stats via
+	//     statsSummary(), which covers execution stats (dataobj rows/bytes, etc.)
 	//     but not the query results cache stats.
 	//   - The cache implementations, which is reused from the old engine,
 	//     write cache hit/miss/byte metrics directly into the logql stats.Context via

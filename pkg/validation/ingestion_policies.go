@@ -2,18 +2,24 @@ package validation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/middleware"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
@@ -338,4 +344,148 @@ func IngestionPoliciesKafkaHeadersToContext(ctx context.Context, headers []kgo.R
 		}
 	}
 	return ctx
+}
+
+// PerPolicyConfigOverride holds optional per-policy overrides for the stream-sharding Config.
+// Each field is a pointer so that a nil field inherits the value from the base (tenant) Config —
+// this lets a policy change just one setting (e.g. toggle time sharding) without restating the rest.
+type PerPolicyConfigOverride struct {
+	Enabled                  *bool             `yaml:"enabled" json:"enabled" doc:"description=Override shard_streams.enabled for a specific policy."`
+	DesiredRate              *flagext.ByteSize `yaml:"desired_rate" json:"desired_rate" doc:"description=Override shard_streams.desired_rate for a specific policy."`
+	TimeShardingEnabled      *bool             `yaml:"time_sharding_enabled" json:"time_sharding_enabled" doc:"description=Override shard_streams.time_sharding_enabled for a specific policy."`
+	TimeShardingIgnoreRecent *model.Duration   `yaml:"time_sharding_ignore_recent" json:"time_sharding_ignore_recent" doc:"description=Override shard_streams.time_sharding_ignore_recent for a specific policy."`
+	LoggingEnabled           *bool             `yaml:"logging_enabled" json:"logging_enabled" doc:"description=Override shard_streams.logging_enabled for a specific policy."`
+}
+
+// ApplyTo returns base with only the override's non-nil fields replaced. A nil override (or one
+// with all-nil fields) returns base unchanged.
+func (o *PerPolicyConfigOverride) ApplyTo(base shardstreams.Config) shardstreams.Config {
+	if o == nil {
+		return base
+	}
+	if o.Enabled != nil {
+		base.Enabled = *o.Enabled
+	}
+	if o.DesiredRate != nil {
+		base.DesiredRate = *o.DesiredRate
+	}
+	if o.TimeShardingEnabled != nil {
+		base.TimeShardingEnabled = *o.TimeShardingEnabled
+	}
+	if o.TimeShardingIgnoreRecent != nil {
+		base.TimeShardingIgnoreRecent = time.Duration(*o.TimeShardingIgnoreRecent)
+	}
+	if o.LoggingEnabled != nil {
+		base.LoggingEnabled = *o.LoggingEnabled
+	}
+	return base
+}
+
+// PolicyOverridableLimits holds the per-policy overrides for a single policy. Every field is a
+// pointer: a nil field means "not overridden" (the tenant value is inherited); a non-nil field
+// overrides the tenant value for streams resolved to the policy.
+type PolicyOverridableLimits struct {
+	MaxLocalStreamsPerUser  *int                     `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"hidden"`
+	MaxGlobalStreamsPerUser *int                     `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"hidden"`
+	IngestionRateMB         *float64                 `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb" doc:"hidden"`
+	IngestionBurstSizeMB    *float64                 `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb" doc:"hidden"`
+	PerStreamRateLimit      *flagext.ByteSize        `yaml:"per_stream_rate_limit" json:"per_stream_rate_limit" doc:"hidden"`
+	PerStreamRateLimitBurst *flagext.ByteSize        `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst" doc:"hidden"`
+	ShardStreams            *PerPolicyConfigOverride `yaml:"shard_streams" json:"shard_streams" doc:"hidden"`
+}
+
+// Validate checks that the overridden values are non-negative. Returned errors are field-scoped;
+// callers add the policy context.
+func (p PolicyOverridableLimits) Validate() error {
+	if (p.IngestionRateMB != nil && *p.IngestionRateMB < 0) || (p.IngestionBurstSizeMB != nil && *p.IngestionBurstSizeMB < 0) {
+		return errors.New("ingestion_rate_mb and ingestion_burst_size_mb must be >= 0")
+	}
+	if (p.PerStreamRateLimit != nil && p.PerStreamRateLimit.Val() < 0) || (p.PerStreamRateLimitBurst != nil && p.PerStreamRateLimitBurst.Val() < 0) {
+		return errors.New("per_stream_rate_limit and per_stream_rate_limit_burst must be >= 0")
+	}
+	if p.ShardStreams != nil && p.ShardStreams.DesiredRate != nil && p.ShardStreams.DesiredRate.Val() < 0 {
+		return errors.New("shard_streams.desired_rate must be >= 0")
+	}
+	return nil
+}
+
+// IngestionPolicyOverrideLimits exposes the per-policy limit overrides. Each scalar accessor
+// returns (value, overridden) where overridden reports whether the policy explicitly set that
+// limit; when false the caller should fall back to the tenant-level limit.
+type IngestionPolicyOverrideLimits interface {
+	PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bool)
+	PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool)
+	PolicyIngestionRateBytes(userID, policy string) (float64, bool)
+	PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool)
+	PolicyPerStreamRateLimit(userID, policy string) (RateLimit, bool)
+	PolicyShardStreams(userID, policy string) (shardstreams.Config, bool)
+}
+
+// policyOverride returns the override entry for the given policy, or (zero, false) when the policy
+// is empty or has no entry.
+func (o *Overrides) policyOverride(userID, policy string) (PolicyOverridableLimits, bool) {
+	if policy == "" {
+		return PolicyOverridableLimits{}, false
+	}
+	pl, ok := o.getOverridesForUser(userID).PolicyOverrideLimits[policy]
+	return pl, ok
+}
+
+func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) (int, bool) {
+	if pl, ok := o.policyOverride(userID, policy); ok && pl.MaxLocalStreamsPerUser != nil {
+		return *pl.MaxLocalStreamsPerUser, true
+	}
+	return 0, false
+}
+
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
+	if pl, ok := o.policyOverride(userID, policy); ok && pl.MaxGlobalStreamsPerUser != nil {
+		return *pl.MaxGlobalStreamsPerUser, true
+	}
+	return 0, false
+}
+
+func (o *Overrides) PolicyIngestionRateBytes(userID, policy string) (float64, bool) {
+	if pl, ok := o.policyOverride(userID, policy); ok && pl.IngestionRateMB != nil {
+		return *pl.IngestionRateMB * bytesInMB, true
+	}
+	return 0, false
+}
+
+// PolicyIngestionBurstSizeBytes returns the per-policy ingestion burst and whether it was
+// overridden. overridden is true whenever the policy explicitly sets the burst, including an
+// explicit 0 (which blocks ingestion); callers must gate on the bool, not on a non-zero value.
+func (o *Overrides) PolicyIngestionBurstSizeBytes(userID, policy string) (int, bool) {
+	if pl, ok := o.policyOverride(userID, policy); ok && pl.IngestionBurstSizeMB != nil {
+		return int(*pl.IngestionBurstSizeMB * bytesInMB), true
+	}
+	return 0, false
+}
+
+// PolicyPerStreamRateLimit is overridden iff either the rate or the burst is set; the unset half
+// inherits the tenant per-stream limit so the returned RateLimit is always complete.
+func (o *Overrides) PolicyPerStreamRateLimit(userID, policy string) (RateLimit, bool) {
+	pl, ok := o.policyOverride(userID, policy)
+	if !ok || (pl.PerStreamRateLimit == nil && pl.PerStreamRateLimitBurst == nil) {
+		return RateLimit{}, false
+	}
+	rl := o.PerStreamRateLimit(userID)
+	if pl.PerStreamRateLimit != nil {
+		rl.Limit = rate.Limit(float64(pl.PerStreamRateLimit.Val()))
+	}
+	if pl.PerStreamRateLimitBurst != nil {
+		rl.Burst = pl.PerStreamRateLimitBurst.Val()
+	}
+	return rl, true
+}
+
+// PolicyShardStreams returns the effective shard_streams config for the policy (the tenant config
+// with the policy's overrides applied) and whether the policy overrides shard_streams. The
+// returned config is always usable (it is the tenant config when not overridden).
+func (o *Overrides) PolicyShardStreams(userID, policy string) (shardstreams.Config, bool) {
+	base := o.getOverridesForUser(userID).ShardStreams
+	if pl, ok := o.policyOverride(userID, policy); ok && pl.ShardStreams != nil {
+		return pl.ShardStreams.ApplyTo(base), true
+	}
+	return base, false
 }

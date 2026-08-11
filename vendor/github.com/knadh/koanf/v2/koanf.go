@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -334,13 +335,13 @@ func (ko *Koanf) Get(path string) any {
 
 	// Does the path exist?
 	ko.mu.RLock()
+	defer ko.mu.RUnlock()
+
 	p, ok := ko.keyMap[path]
 	if !ok {
-		ko.mu.RUnlock()
 		return nil
 	}
 	res := maps.Search(ko.confMap, p)
-	ko.mu.RUnlock()
 
 	// Non-reference types are okay to return directly.
 	// Other types are "copied" with maps.Copy or json.Marshal
@@ -355,7 +356,7 @@ func (ko *Koanf) Get(path string) any {
 		return nil
 	}
 
-	// Skil nil pointers before copying.
+	// Skip nil pointers before copying.
 	if rv := reflect.ValueOf(res); rv.Kind() == reflect.Ptr && rv.IsNil() {
 		return res
 	}
@@ -483,15 +484,51 @@ func toInt64(v any) (int64, error) {
 		return int64(i), nil
 	case int64:
 		return i, nil
+	case uint8:
+		return int64(i), nil
+	case uint16:
+		return int64(i), nil
+	case uint32:
+		return int64(i), nil
+	case uint:
+		return uintToInt64(uint64(i))
+	case uint64:
+		return uintToInt64(i)
 	}
 
 	// Force it to a string and try to convert.
-	f, err := strconv.ParseFloat(fmt.Sprintf("%v", v), 64)
+	s := fmt.Sprintf("%v", v)
+
+	// Try parsing as int64 first, and on failure, attempt float64 parsing.
+	// Parsing directly as float64, when the number is beyond its upper limit (2^53)
+	// causes unnecessary precision loss when the value is actually an int.
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return i, nil
+	}
+
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return 0, err
 	}
 
+	// int64(f) is undefined for numbers that are out of range and returns different
+	// results on different architectures. float64 cannot exactly represent MaxInt64,
+	// so check against the ACTUAL upper limit of 2^63.
+	// If neither match, return an error instead of the undefined result.
+	if math.IsNaN(f) || f < math.MinInt64 || f >= 1<<63 {
+		return 0, fmt.Errorf("value %v overflows int64", v)
+	}
+
 	return int64(f), nil
+}
+
+// uintToInt64 converts an unsigned integer to int64 and throw an error on overflow.
+func uintToInt64(v uint64) (int64, error) {
+	if v > math.MaxInt64 {
+		return 0, fmt.Errorf("value %d overflows int64", v)
+	}
+
+	return int64(v), nil
 }
 
 // toInt64 takes a `v any` value and if it is a float type,

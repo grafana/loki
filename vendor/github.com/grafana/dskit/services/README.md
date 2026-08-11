@@ -38,14 +38,24 @@ flowchart LR
   starting[Starting]
   running[Running]
   stopping[Stopping]
-  terminated[Terminated]
+
+  %% Terminal states
+  terminated[Terminated]   
   failed[Failed]
+
+  %% Successful state transition of service:
   new --> starting --> running --> stopping --> terminated
+  
+  %% If service is stopped before starting:
   new --> terminated
+  
+  %% If Starting fails, it goes straight to Failed (skips Stopping):
   starting --> failed
-  running --> failed
+  
+  %% If Running or Stopping fail, service will end up in Failed state.
   stopping --> failed
-	
+  
+  %% There is no direct Running --> Failed transition (goes via Stopping).
 ```
 
 The API, states, and semantics are implemented to correspond to the [Service class](https://guava.dev/releases/snapshot/api/docs/com/google/common/util/concurrent/Service.html) in the Guava library.

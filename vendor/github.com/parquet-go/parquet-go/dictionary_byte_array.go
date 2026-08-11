@@ -17,7 +17,7 @@ type byteArrayDictionary struct {
 	alloc allocator
 }
 
-func newByteArrayDictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *byteArrayDictionary {
+func newByteArrayDictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *byteArrayDictionary {
 	values, offsets := data.ByteArray()
 	// The first offset must always be zero, and the last offset is the length
 	// of the values in bytes.

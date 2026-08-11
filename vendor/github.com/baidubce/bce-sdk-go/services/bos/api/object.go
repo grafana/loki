@@ -60,6 +60,8 @@ func PutObject(cli bce.Client, bucket, object string, body *bce.Body, args *PutO
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if body == nil {
 		return "", nil, bce.NewBceClientError("PutObject body should not be emtpy")
 	}
@@ -194,6 +196,8 @@ func OptionsObject(cli bce.Client, bucket, object string, args *OptionsObjectArg
 	req.SetMethod(http.OPTIONS)
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -250,6 +254,8 @@ func PostObject(cli bce.Client, bucket, object string, content *bytes.Buffer, ar
 	req.SetMethod(http.POST)
 	req.SetUri(getBucketUri(bucket))
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -361,10 +367,12 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.PUT)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("copy source should not be null")
 	}
-	if len(args.SrcVersionId) > 0 {
+	if args != nil && len(args.SrcVersionId) > 0 {
 		source = source + "?versionId=" + args.SrcVersionId
 	}
 	req.SetHeader(http.BCE_COPY_SOURCE, util.UriEncode(source, false))
@@ -497,6 +505,8 @@ func GetObject(cli bce.Client, bucket, object string, ctx *BosContext, args map[
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	// Optional arguments settings
 	for k, v := range args {
 		if _, ok := GET_OBJECT_ALLOWED_RESPONSE_HEADERS[k]; ok {
@@ -548,6 +558,8 @@ func GetObjectWithArgs(cli bce.Client, bucket, object string, ctx *BosContext, a
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.GET)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	// Optional arguments settings
 	if args != nil {
 		for k, v := range args.Params {
@@ -611,6 +623,8 @@ func GetObjectMeta(cli bce.Client, bucket, object string, ctx *BosContext, optio
 	req.SetUri(getObjectUri(bucket, object))
 	req.SetMethod(http.HEAD)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -655,6 +669,8 @@ func SelectObject(cli bce.Client, bucket, object string, args *SelectObjectArgs,
 	req.SetParam("select", "")
 	req.SetParam("type", args.SelectType)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -705,6 +721,8 @@ func FetchObject(cli bce.Client, bucket, object, source string, args *FetchObjec
 	req.SetMethod(http.POST)
 	req.SetParam("fetch", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if len(source) == 0 {
 		return nil, bce.NewBceClientError("invalid fetch source value: " + source)
 	}
@@ -778,6 +796,8 @@ func AppendObject(cli bce.Client, bucket, object string, content *bce.Body, args
 	req.SetMethod(http.POST)
 	req.SetParam("append", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if content == nil {
 		return nil, bce.NewBceClientError("AppendObject body should not be emtpy")
 	}
@@ -892,6 +912,8 @@ func DeleteObject(cli bce.Client, bucket, object, versionId string, ctx *BosCont
 		ctx = newDefaultBosContext()
 	}
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	// handle options to set the header/params of request
 	if err := handleOptions(req, options); err != nil {
 		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
@@ -988,15 +1010,16 @@ func GeneratePresignedUrlInternal(conf *bce.BceClientConfiguration, signer auth.
 	if len(method) == 0 {
 		method = http.GET
 	}
-	objectTrimSlash := strings.Trim(object, "/")
-	if method == http.GET && objectTrimSlash == "" {
-		log.Warnf("objectKey is empty, cannot generate presigned url.")
+	if bucket != "" && !isValidBucketName(bucket) {
+		log.Warnf("invalid bucket name: %s", bucket)
 		return ""
 	}
-	if !path_style && method == http.GET && objectTrimSlash == "v1" {
-		log.Warnf("objectKey '%s' is invalid, cannot generate presigned url.", object)
+	err := validateObjectKey(object)
+	if err != nil {
+		fmt.Printf("cannot generate presigned url: %v", err)
 		return ""
 	}
+
 	req.SetMethod(method)
 	req.SetEndpoint(conf.Endpoint)
 	if req.Protocol() == "" {
@@ -1069,6 +1092,8 @@ func PutObjectAcl(cli bce.Client, bucket, object, cannedAcl string, grantRead, g
 	req.SetMethod(http.PUT)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1129,6 +1154,8 @@ func GetObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1165,6 +1192,8 @@ func DeleteObjectAcl(cli bce.Client, bucket, object string, ctx *BosContext, opt
 	req.SetMethod(http.DELETE)
 	req.SetParam("acl", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1202,6 +1231,8 @@ func RestoreObject(cli bce.Client, bucket string, object string, args ArchiveRes
 	req.SetHeader(http.BCE_RESTORE_DAYS, strconv.Itoa(args.RestoreDays))
 	req.SetHeader(http.BCE_RESTORE_TIER, args.RestoreTier)
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1238,6 +1269,8 @@ func PutObjectSymlink(cli bce.Client, bucket string, object string, symlinkKey s
 	req.SetParam("symlink", "")
 	req.SetMethod(http.PUT)
 	req.SetBucket(bucket)
+	req.SetObject(symlinkKey)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1301,6 +1334,8 @@ func GetObjectSymlink(cli bce.Client, bucket string, symlinkKey string,
 	req.SetParam("symlink", "")
 	req.SetMethod(http.GET)
 	req.SetBucket(bucket)
+	req.SetObject(symlinkKey)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1340,6 +1375,8 @@ func PutObjectTag(cli bce.Client, bucket, object string, putObjectTagArgs *PutOb
 	req.SetMethod(http.PUT)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	reqByte, _ := json.Marshal(putObjectTagArgs)
 	body, err := bce.NewBodyFromString(string(reqByte))
 	if err != nil {
@@ -1371,6 +1408,8 @@ func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext,
 	req.SetMethod(http.GET)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}
@@ -1391,11 +1430,18 @@ func GetObjectTag(cli bce.Client, bucket, object string, ctx *BosContext,
 		return nil, err
 	}
 
-	result, err := ParseObjectTagResult(bodyBytes)
-	if err != nil {
-		return nil, err
+	result := &GetObjectTagResult{}
+	if len(bodyBytes) > 0 {
+		err := json.Unmarshal(bodyBytes, result)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return result, nil
+	if len(result.TagSet) == 0 {
+		return map[string]interface{}{}, nil
+	}
+
+	return result.TagSet[0].TagInfo, err
 }
 
 func DeleteObjectTag(cli bce.Client, bucket, object string, ctx *BosContext, options ...Option) error {
@@ -1404,6 +1450,8 @@ func DeleteObjectTag(cli bce.Client, bucket, object string, ctx *BosContext, opt
 	req.SetMethod(http.DELETE)
 	req.SetParam("tagging", "")
 	req.SetBucket(bucket)
+	req.SetObject(object)
+	req.SetIsObjectReq(true)
 	if ctx == nil {
 		ctx = newDefaultBosContext()
 	}

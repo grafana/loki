@@ -16,7 +16,7 @@ import (
 type PipelineStages = []interface{}
 
 // PipelineStage contains configuration for a single pipeline stage
-type PipelineStage = map[interface{}]interface{}
+type PipelineStage = map[string]interface{}
 
 var rateLimiter *rate.Limiter
 var rateLimiterDrop bool
@@ -49,11 +49,7 @@ func NewPipeline(logger log.Logger, stgs PipelineStages, jobName *string, regist
 		if len(stage) > 1 {
 			return nil, errors.New("pipeline stage must contain only one key")
 		}
-		for key, config := range stage {
-			name, ok := key.(string)
-			if !ok {
-				return nil, errors.New("pipeline stage key must be a string")
-			}
+		for name, config := range stage {
 			newStage, err := New(logger, jobName, name, config, registerer)
 			if err != nil {
 				return nil, errors.Wrapf(err, "invalid %s stage config", name)

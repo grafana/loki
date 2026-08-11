@@ -17,8 +17,4 @@ feature_gates:
     stage: alpha
     from_version: 'v0.120.0'
     reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/issues/8754'
-  - id: confmap.newExpandedValueSanitizer
-    description: 'Fixes some types of decoding errors where environment variables are parsed as non-string types but assigned to string fields.'
-    stage: beta
-    from_version: 'v0.144.0'
-    reference_url: 'https://github.com/open-telemetry/opentelemetry-collector/pull/14413'
+    skip_strict_validation: true

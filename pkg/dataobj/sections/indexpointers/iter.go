@@ -39,8 +39,7 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[TenantIndexPointe
 
 func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer] {
 	return result.Iter(func(yield func(IndexPointer) bool) error {
-		columnarSection := section.inner
-		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
+		dset, err := section.makeDataset()
 		if err != nil {
 			return fmt.Errorf("creating columns dataset: %w", err)
 		}
@@ -86,6 +85,17 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 	})
 }
 
+// makeDataset builds a dataset from only the recognized columns, so rows stay
+// aligned with Columns() and columns from a newer Loki are skipped, not decoded.
+func (s *Section) makeDataset() (*columnar.Dataset, error) {
+	recognized := s.Columns()
+	inner := make([]*columnar.Column, len(recognized))
+	for i, col := range recognized {
+		inner[i] = col.inner
+	}
+	return columnar.MakeDataset(s.inner, inner)
+}
+
 // decodeRow decodes an indexpointer from a [dataset.Row], using the provided columns to
 // determine the column type. The list of columns must match the columns used
 // to create the row.
@@ -93,6 +103,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[IndexPointer]
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
 func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *symbolizer.Symbolizer) error {
+	*pointer = IndexPointer{}
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 		switch column.Type {
@@ -132,6 +143,20 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer, sym *s
 			}
 
 			pointer.EndTs = time.Unix(0, columnValue.Int64())
+
+		case ColumnTypeFileSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+
+			pointer.FileSize = uint64(columnValue.Int64())
+
+		case ColumnTypeUncompressedLogsSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+
+			pointer.UncompressedLogsSize = uint64(columnValue.Int64())
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected

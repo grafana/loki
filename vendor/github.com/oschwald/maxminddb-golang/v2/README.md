@@ -26,8 +26,6 @@ Version 2.0 includes significant improvements:
 - **Network Iteration**: Iterate over all networks in a database with
   `Networks()` and `NetworksWithin()`
 - **Enhanced Performance**: Optimized data structures and decoding paths
-- **Go 1.24+ Support**: Takes advantage of modern Go features including
-  iterators
 - **Better Error Handling**: More detailed error types and improved debugging
 - **Integrity Checks**: Validate databases with `Reader.Verify()` and access
   metadata helpers such as `Metadata.BuildTime()`
@@ -114,13 +112,15 @@ err = db.Lookup(ip).Decode(&city)
 
 ### High-Performance Custom Unmarshaling
 
+Import `github.com/oschwald/maxminddb-golang/v2/mmdbdata` for the decoder type.
+
 ```go
 type FastCity struct {
 	CountryISO string
 	CityName   string
 }
 
-func (c *FastCity) UnmarshalMaxMindDB(d *maxminddb.Decoder) error {
+func (c *FastCity) UnmarshalMaxMindDB(d *mmdbdata.Decoder) error {
 	mapIter, size, err := d.ReadMap()
 	if err != nil {
 		return err
@@ -224,8 +224,9 @@ regardless of the data provider.
 
 ## Performance Tips
 
-1. **Reuse Reader instances**: The `Reader` is thread-safe and should be reused
-   across goroutines
+1. **Reuse Reader instances**: Lookups, decoding, and iteration are safe to run
+   concurrently. `Close` invalidates outstanding results and should run after
+   readers are done.
 2. **Use specific structs**: Only decode the fields you need rather than using
    `any`
 3. **Implement Unmarshaler**: For high-throughput applications, implement
@@ -247,7 +248,7 @@ Download from
 
 ## Requirements
 
-- Go 1.24 or later
+- Go 1.25 or later
 - MaxMind DB file in .mmdb format
 
 ## Contributing

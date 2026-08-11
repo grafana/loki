@@ -15,20 +15,14 @@ SHELL = /usr/bin/env bash -o pipefail
 # want to speed up development you can run make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable.
 BUILD_IN_CONTAINER ?= true
+# Unless NONINTERACTIVE is set, docker will be run interactive if it has a TTY
+# attached at launch time.
 NONINTERACTIVE     ?= false
+TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
 
-# Docker flags for container interaction
-ifeq ($(NONINTERACTIVE),true)
-DOCKER_INTERACTIVE_FLAGS :=
-else
-DOCKER_INTERACTIVE_FLAGS := --tty --interactive
-endif
-
-# Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.2
-# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.35.1
+# Ensure you run `make update-go-version` after changing this
+GO_VERSION         := 1.26.5
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -115,17 +109,19 @@ define run_in_container
 			fi; \
 		fi))
 
-	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "USER_UID=$(shell id -u)" --build-arg "USER_GID=$(shell id -g)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
 		-f loki-build-image/Dockerfile \
 		-t $(MAKEFILE_IMAGE) \
 		.
 
-	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
+	@if $(TTY_TEST); then INTERACTIVE_FLAGS='--tty --interactive'; else INTERACTIVE_FLAGS=''; fi; \
+	docker run --rm $$INTERACTIVE_FLAGS \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		$(GIT_MOUNT) \
+		--user $(shell whoami) \
 		--entrypoint /usr/bin/make \
 		-e SRC_DIR=/src/loki \
 		-e BUILD_IN_CONTAINER=false \
@@ -150,6 +146,7 @@ help: ## Display this help
 .PHONY: clean clean-protos
 .PHONY: dev-k3d-loki dev-k3d-enterprise-logs dev-k3d-down
 .PHONY: helm-test helm-lint
+.PHONY: goversion update-go-version
 
 #############
 # Variables #
@@ -191,6 +188,13 @@ binfmt:
 ################
 # Main Targets #
 ################
+
+goversion:
+	@echo $(GO_VERSION)
+
+update-go-version: goversion release-workflows
+	@tools/go-version-bump.sh $(GO_VERSION)
+
 all: logcli loki loki-canary ## build all executables (loki, logcli, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
@@ -263,9 +267,6 @@ production/helm/loki/src/helm-test/helm-test:
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
 
-helm-docs: ## generate reference documentation
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
-
 #################
 # Loki-QueryTee #
 #################
@@ -284,13 +285,21 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
+##################
+# chunks-inspect #
+##################
+.PHONY: cmd/chunks-inspect/chunks-inspect
+chunks-inspect: cmd/chunks-inspect/chunks-inspect ## build chunks-inspect executable
+
+cmd/chunks-inspect/chunks-inspect:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/chunks-inspect
+
 #########
 # Mixin #
 #########
 
 MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
-MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin: INSTALL_WORKFLOW_DEPS_ARGS := loki-build-tools
 loki-mixin: ## compile the loki mixin
@@ -300,16 +309,11 @@ else
 	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
 	@cd $(MIXIN_PATH) && jb install
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH)/alerts.yaml --output-rules $(MIXIN_OUT_PATH)/rules.yaml --directory $(MIXIN_OUT_PATH)/dashboards ${MIXIN_PATH}/mixin.libsonnet
-
-	@rm -rf $(MIXIN_OUT_PATH_SSD) && mkdir $(MIXIN_OUT_PATH_SSD)
-	@cd $(MIXIN_PATH) && jb install
-	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
 endif
 
 loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
-	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 
 ###############
 # Migrate #
@@ -415,6 +419,7 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
+	rm -rf cmd/chunks-inspect/chunks-inspect
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
@@ -643,11 +648,6 @@ loki-operator-image: ## build the operator docker image
 # Documentation #
 #################
 
-documentation-helm-reference-check:
-	@echo "Checking diff"
-	$(MAKE) -BC docs sources/setup/install/helm/reference.md
-	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
-
 ########
 # Misc #
 ########
@@ -853,10 +853,13 @@ update-loki-release-sha:
 
 .PHONY: flake-update
 flake-update:
-	@docker run -v $(CURDIR):/loki \
+	@docker run --rm --tty --interactive \
+		--volume $(shell pwd):/loki \
 		--workdir /loki \
+		--entrypoint bash \
 		nixos/nix \
-		nix \
-		--extra-experimental-features nix-command \
-		--extra-experimental-features flakes \
-		flake update
+		-c "\
+	    git config --global --add safe.directory /loki && \
+      nix --extra-experimental-features nix-command --extra-experimental-features flakes \
+			    flake update \
+		"

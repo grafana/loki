@@ -38,6 +38,7 @@ struct flb_plugin_proxy_def {
     int flags;
     char *name;
     char *description;
+    int  event_type;
 };
 
 #endif

@@ -1,0 +1,119 @@
+
+<lexer>
+  <config>
+    <name>Arturo</name>
+    <alias>arturo</alias>
+    <alias>art</alias>
+    <filename>*.art</filename>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern=";.*?$"><token type="CommentSingle"/></rule>
+      <rule pattern="^((\s#!)|(#!)).*?$"><token type="CommentHashbang"/></rule>
+      <rule pattern="(false|true|maybe)\b"><token type="NameConstant"/></rule>
+      <rule pattern="\b(this|init)\b\??:?"><token type="NameBuiltinPseudo"/></rule>
+      <rule pattern="`.`"><token type="LiteralStringChar"/></rule>
+      <rule pattern="\\\w+\b\??:?"><token type="NameProperty"/></rule>
+      <rule pattern="#\w+"><token type="NameConstant"/></rule>
+      <rule pattern="\b[0-9]+\.[0-9]+"><token type="LiteralNumberFloat"/></rule>
+      <rule pattern="\b[0-9]+"><token type="LiteralNumberInteger"/></rule>
+      <rule pattern="\w+\b\??:"><token type="NameLabel"/></rule>
+      <rule pattern="\&#x27;(?:\w+\b\??:?)"><token type="KeywordDeclaration"/></rule>
+      <rule pattern="\:\w+"><token type="KeywordType"/></rule>
+      <rule pattern="\.\w+\??:?"><token type="NameAttribute"/></rule>
+      <rule pattern="(\()(.*?)(\)\?)"><bygroups><token type="Punctuation"/><usingself state="root"/><token type="Punctuation"/></bygroups></rule>
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><push state="inside-simple-string"/></rule>
+      <rule pattern="»"><token type="LiteralStringSingle"/><push state="inside-smart-string"/></rule>
+      <rule pattern="«««"><token type="LiteralStringDouble"/><push state="inside-safe-string"/></rule>
+      <rule pattern="\{\/"><token type="LiteralStringSingle"/><push state="inside-regex-string"/></rule>
+      <rule pattern="\{\:"><token type="LiteralStringDouble"/><push state="inside-curly-verb-string"/></rule>
+      <rule pattern="(\{)(\!)(\w+)(\s|\n)([\w\W]*?)(^\})">
+        <usingbygroup>
+          <sublexer_name_group>3</sublexer_name_group>
+          <code_group>5</code_group>
+          <emitters>
+            <token type="LiteralStringDouble"/>
+            <token type="LiteralStringInterpol"/>
+            <token type="LiteralStringInterpol"/>
+            <token type="TextWhitespace"/>
+            <token type="LiteralString"/>
+            <token type="LiteralStringDouble"/>
+          </emitters>
+        </usingbygroup>
+      </rule>
+      <rule pattern="\{"><token type="LiteralStringSingle"/><push state="inside-curly-string"/></rule>
+      <rule pattern="\-{3,}"><token type="LiteralStringSingle"/><push state="inside-eof-string"/></rule>
+      <rule><include state="builtin-functions"/></rule>
+      <rule pattern="[()[\],]"><token type="Punctuation"/></rule>
+      <rule pattern="(\-&gt;|==&gt;|\||::|@|\#|\$|\&amp;|!|!!|\./)"><token type="NameDecorator"/></rule>
+      <rule pattern="(&lt;:|:&gt;|:&lt;|&gt;:|&lt;\\|&lt;&gt;|&lt;|&gt;|ø|∞|\+|\-|\*|\~|=|\^|%|/|//|==&gt;|&lt;=&gt;|&lt;==&gt;|=&gt;&gt;|&lt;&lt;=&gt;&gt;|&lt;&lt;==&gt;&gt;|\-\-&gt;|&lt;\-&gt;|&lt;\-\-&gt;|=\||\|=|\-:|:\-|_|\.|\.\.|\\)"><token type="Operator"/></rule>
+      <rule pattern="\b\w+"><token type="Name"/></rule>
+      <rule pattern="\s+"><token type="TextWhitespace"/></rule>
+      <rule pattern=".+$"><token type="Error"/></rule>
+    </state>
+    <state name="inside-interpol">
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule pattern="[^|]+"><usingself state="root"/></rule>
+    </state>
+    <state name="inside-template">
+      <rule pattern="\|\|\&gt;"><token type="LiteralStringInterpol"/><pop depth="1"/></rule>
+      <rule pattern="[^|]+"><usingself state="root"/></rule>
+    </state>
+    <state name="string-escape">
+      <rule pattern="(\\\\|\\n|\\t|\\&quot;)"><token type="LiteralStringEscape"/></rule>
+    </state>
+    <state name="inside-simple-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="&quot;"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+      <rule pattern="[^|&quot;]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="inside-smart-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="\n"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+      <rule pattern="[^|\n]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="inside-safe-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="»»»"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+      <rule pattern="[^|»]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="inside-regex-string">
+      <rule pattern="\\[sSwWdDbBZApPxucItnvfr0]+"><token type="LiteralStringEscape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="\/\}"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+      <rule pattern="[^|\/]+"><token type="LiteralStringRegex"/></rule>
+    </state>
+    <state name="inside-curly-verb-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="\:\}"><token type="LiteralStringDouble"/><pop depth="1"/></rule>
+      <rule pattern="[^|&lt;:]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="inside-curly-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="\}"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+      <rule pattern="[^|&lt;}]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="inside-eof-string">
+      <rule><include state="string-escape"/></rule>
+      <rule pattern="\|"><token type="LiteralStringInterpol"/><push state="inside-interpol"/></rule>
+      <rule pattern="\&lt;\|\|"><token type="LiteralStringInterpol"/><push state="inside-template"/></rule>
+      <rule pattern="\Z"><token type="LiteralStringSingle"/><pop depth="1"/></rule>
+      <rule pattern="[^|&lt;]+"><token type="LiteralString"/></rule>
+    </state>
+    <state name="builtin-functions">
+      <rule pattern="\b(all|and|any|ascii|attr|attribute|attributeLabel|binary|blockchar|contains|database|date|dictionary|empty|equal|even|every|exists|false|floatin|function|greater|greaterOrEqual|if|in|inline|integer|is|key|label|leap|less|lessOrEqual|literal|logical|lower|nand|negative|nor|not|notEqual|null|numeric|odd|or|path|pathLabel|positive|prefix|prime|set|some|sorted|standalone|string|subset|suffix|superset|ymbol|true|try|type|unless|upper|when|whitespace|word|xnor|xor|zero)\b\?"><token type="NameBuiltin"/></rule>
+      <rule pattern="\b(abs|acos|acosh|acsec|acsech|actan|actanh|add|after|alphabet|and|angle|append|arg|args|arity|array|as|asec|asech|asin|asinh|atan|atan2|atanh|attr|attrs|average|before|benchmark|blend|break|builtins1|builtins2|call|capitalize|case|ceil|chop|chunk|clear|close|cluster|color|combine|conj|continue|copy|cos|cosh|couple|csec|csech|ctan|ctanh|cursor|darken|dec|decode|decouple|define|delete|desaturate|deviation|dictionary|difference|digest|digits|div|do|download|drop|dup|e|else|empty|encode|ensure|env|epsilon|escape|execute|exit|exp|extend|extract|factors|false|fdiv|filter|first|flatten|floor|fold|from|function|gamma|gcd|get|goto|hash|help|hypot|if|in|inc|indent|index|infinity|info|input|insert|inspect|intersection|invert|join|keys|kurtosis|last|let|levenshtein|lighten|list|ln|log|loop|lower|mail|map|match|max|maybe|median|min|mod|module|mul|nand|neg|new|nor|normalize|not|now|null|open|or|outdent|pad|panic|path|pause|permissions|permutate|pi|pop|pow|powerset|powmod|prefix|print|prints|process|product|query|random|range|read|relative|remove|rename|render|repeat|replace|request|return|reverse|round|sample|saturate|script|sec|sech|select|serve|set|shl|shr|shuffle|sin|sinh|size|skewness|slice|sort|split|sqrt|squeeze|stack|strip|sub|suffix|sum|switch|symbols|symlink|sys|take|tan|tanh|terminal|to|true|truncate|try|type|union|unique|unless|until|unzip|upper|values|var|variance|volume|webview|while|with|wordwrap|write|xnor|xor|zip)\b"><token type="NameBuiltin"/></rule>
+    </state>
+  </rules>
+</lexer>

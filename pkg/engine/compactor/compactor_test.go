@@ -3,13 +3,54 @@ package compactor
 import (
 	"context"
 	"errors"
+	"flag"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
+
+// fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
+// enables index-only compaction for the listed tenants (log stays off). Use
+// setLog / setIndex to adjust a tenant at runtime. The zero value enables
+// nothing.
+type fakeLimits struct {
+	mu    sync.Mutex
+	index map[string]bool
+	log   map[string]bool
+}
+
+func newFakeLimits(indexTenants ...string) *fakeLimits {
+	idx := make(map[string]bool, len(indexTenants))
+	for _, t := range indexTenants {
+		idx[t] = true
+	}
+	return &fakeLimits{index: idx, log: map[string]bool{}}
+}
+
+func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.index[userID] || f.log[userID], f.log[userID]
+}
+
+func (f *fakeLimits) setIndex(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.index[userID] = on
+}
+
+func (f *fakeLimits) setLog(userID string, on bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.log[userID] = on
+}
 
 // TestPlanner_BootShutdown boots the scaffold with an in-process-only
 // scheduler (empty AdvertiseAddr), waits for it to reach Running, then
@@ -21,9 +62,22 @@ func TestPlanner_BootShutdown(t *testing.T) {
 			Endpoint: defaultEndpoint,
 			// AdvertiseAddr left empty -> scheduler runs in-process only.
 		},
+		PollingInterval:           defaultPollingInterval,
+		MaxRunsPerTask:            defaultMaxRunsPerTask,
+		ToCConsolidateTimeout:     defaultToCConsolidateTimeout,
+		MaxRunningCompactionTasks: defaultMaxRunningCompactionTasks,
+		PlanVersion:               defaultPlanVersion,
 	}
 
-	c, err := New(cfg, log.NewNopLogger())
+	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	c, err := New(PlannerParams{
+		Config:          cfg,
+		Bucket:          bucket,
+		MetastoreWriter: tocWriter,
+		Limits:          newFakeLimits(),
+		Logger:          log.NewNopLogger(),
+	})
 	require.NoError(t, err)
 	require.NotNil(t, c.Scheduler(), "scheduler must be constructed")
 
@@ -74,11 +128,9 @@ func TestConfig_Validate_EnabledRejectsBadValues(t *testing.T) {
 	})
 
 	t.Run("happy path", func(t *testing.T) {
-		cfg := Config{
-			Enabled:                   true,
-			MaxRunningCompactionTasks: 16,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
-		}
+		var cfg Config
+		cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		cfg.Enabled = true
 		require.NoError(t, cfg.Validate())
 	})
 }
@@ -94,8 +146,29 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 			Endpoint:      defaultEndpoint,
 		},
 	}
-	_, err := New(cfg, nil)
+	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	_, err := New(PlannerParams{
+		Config:          cfg,
+		Bucket:          bucket,
+		MetastoreWriter: tocWriter,
+		Limits:          newFakeLimits(),
+	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "resolve scheduler advertise address",
+	require.Contains(t, err.Error(), "resolve advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)
+}
+
+// TestNew_NilLimitsErrors verifies that New returns an error when Limits is nil.
+func TestNew_NilLimitsErrors(t *testing.T) {
+	bucket := objstore.NewInMemBucket()
+	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
+	_, err := New(PlannerParams{
+		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
+		Bucket:          bucket,
+		MetastoreWriter: tocWriter,
+		// Limits intentionally nil
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "limits is required")
 }

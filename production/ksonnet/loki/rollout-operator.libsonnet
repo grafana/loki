@@ -8,7 +8,7 @@
   local serviceAccount = $.core.v1.serviceAccount,
 
   _images+:: {
-    rollout_operator: 'grafana/rollout-operator:v0.1.1',
+    rollout_operator: 'grafana/rollout-operator:v0.37.0',
   },
 
   rollout_operator_args:: {

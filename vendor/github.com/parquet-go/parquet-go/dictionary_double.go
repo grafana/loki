@@ -15,7 +15,7 @@ type doubleDictionary struct {
 	table *hashprobe.Float64Table
 }
 
-func newDoubleDictionary(typ Type, columnIndex int16, numValues int32, data encoding.Values) *doubleDictionary {
+func newDoubleDictionary(typ Type, columnIndex uint16, numValues int32, data encoding.Values) *doubleDictionary {
 	return &doubleDictionary{
 		doublePage: doublePage{
 			typ:         typ,

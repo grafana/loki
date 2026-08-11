@@ -24,7 +24,7 @@ import (
 
 func newTestStorage(walDir string) (*Storage, error) {
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	return NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
+	return NewStorage(log.NewNopLogger(), metrics, nil, walDir)
 }
 
 func TestStorage_InvalidSeries(t *testing.T) {
@@ -135,12 +135,6 @@ func TestStorage_ExistingWAL(t *testing.T) {
 		require.NoError(t, s.Close())
 	}()
 
-	// Verify that the storage picked up existing series when it
-	// replayed the WAL.
-	for series := range s.series.iterator().Channel() {
-		require.Greater(t, series.lastTs, int64(0), "series timestamp not updated")
-	}
-
 	app = s.Appender(context.Background())
 
 	for _, metric := range payload[len(payload)/2:] {
@@ -170,7 +164,7 @@ func TestStorage_ExistingWAL(t *testing.T) {
 	require.Equal(t, expectedExemplars, actualExemplars)
 }
 
-func TestStorage_ExistingWAL_RefID(t *testing.T) {
+func TestStorage_ExistingWAL_NoReplay(t *testing.T) {
 	walDir := t.TempDir()
 
 	s, err := newTestStorage(walDir)
@@ -189,12 +183,19 @@ func TestStorage_ExistingWAL_RefID(t *testing.T) {
 	require.NoError(t, s.Truncate(0))
 	require.NoError(t, s.Close())
 
-	// Create a new storage and see what the ref ID is initialized to.
+	// Reopening the WAL must not replay it. The ruler wipes the WAL on startup,
+	// so a freshly-opened storage starts with no series and a zero ref ID.
 	s, err = newTestStorage(walDir)
 	require.NoError(t, err)
 	defer require.NoError(t, s.Close())
 
-	require.Equal(t, uint64(len(payload)), s.ref.Load(), "cached ref ID should be equal to the number of series written")
+	require.Equal(t, uint64(0), s.ref.Load(), "ref ID must not be restored from the WAL since replay was removed")
+
+	count := 0
+	for range s.series.iterator().Channel() {
+		count++
+	}
+	require.Equal(t, 0, count, "no series should be loaded from the WAL since replay was removed")
 }
 
 func TestStorage_Truncate(t *testing.T) {
@@ -321,53 +322,6 @@ func TestStorage_TruncateAfterClose(t *testing.T) {
 
 	require.NoError(t, s.Close())
 	require.Error(t, ErrWALClosed, s.Truncate(0))
-}
-
-func TestStorage_DisableReplay(t *testing.T) {
-	walDir := t.TempDir()
-
-	// Create a WAL and write some data to it
-	metrics := NewMetrics(prometheus.DefaultRegisterer)
-	s, err := NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
-	require.NoError(t, err)
-
-	app := s.Appender(context.Background())
-
-	// Write some samples
-	payload := buildSeries([]string{"foo", "bar", "baz"})
-	for _, metric := range payload {
-		metric.Write(t, app)
-	}
-
-	require.NoError(t, app.Commit())
-	require.NoError(t, s.Close())
-
-	// Create a new WAL with replay disabled
-	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, false)
-	require.NoError(t, err)
-
-	// Verify that no series were loaded (replay didn't happen)
-	count := 0
-	for range s.series.iterator().Channel() {
-		count++
-	}
-	require.Equal(t, 0, count, "no series should have been loaded with replay disabled")
-
-	require.NoError(t, s.Close())
-
-	// Create a new WAL with replay enabled
-	s, err = NewStorage(log.NewNopLogger(), metrics, nil, walDir, true)
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, s.Close())
-	}()
-
-	// Verify that series were loaded (replay happened)
-	count = 0
-	for range s.series.iterator().Channel() {
-		count++
-	}
-	require.Equal(t, len(payload), count, "series should have been loaded with replay enabled")
 }
 
 type sample struct {

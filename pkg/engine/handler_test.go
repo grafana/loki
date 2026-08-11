@@ -2,8 +2,12 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,6 +15,8 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -21,6 +27,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	querytest "github.com/grafana/loki/v3/pkg/querier/testutil"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 type mockEngine struct {
@@ -721,6 +729,34 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name:    "full-length query with a small range interval is allowed (range interval within grace)",
+			query:   `count_over_time({app="test"}[1h])`,
+			limit:   100,
+			startTs: now.Add(-24 * time.Hour), // query spans exactly the limit
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          24 * time.Hour,
+			},
+			// 1h range interval is within the 24h grace, so it adds nothing: 24h == 24h limit.
+			expectError: false,
+		},
+		{
+			name:    "range interval beyond the grace pushes the query over the max length",
+			query:   `count_over_time({app="test"}[48h])`,
+			limit:   100,
+			startTs: now.Add(-24 * time.Hour),
+			endTs:   now,
+			limits: &querytest.MockLimits{
+				MaxEntriesLimitPerQueryVal: 1000,
+				MaxQueryLengthVal:          24 * time.Hour,
+			},
+			// 24h range + (48h interval - 24h grace) = 48h of data touched, exceeds the 24h limit.
+			expectError:    true,
+			expectedStatus: http.StatusBadRequest,
+			errorContains:  "the query time range exceeds the limit",
+		},
 		// MaxQueryRange tests
 		{
 			name:    "metric query with range within limit is allowed",
@@ -917,6 +953,105 @@ func TestQueryHandler_ValidateRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryHandler_ValidateMaxQueryLookback_RangeInterval(t *testing.T) {
+	cfg := Config{Executor: ExecutorConfig{BatchSize: 100}}
+
+	// runWithCapturedStart executes a range query and returns the start time the
+	// engine actually received, so we can assert how the lookback clamp behaved.
+	runWithCapturedStart := func(t *testing.T, query string, lookback time.Duration, start, end time.Time) time.Time {
+		t.Helper()
+
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{
+			MaxEntriesLimitPerQueryVal: 1000,
+			MaxQueryLookbackVal:        lookback,
+		}
+		handler := newTestHandler(cfg, eng, limits)
+
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			Step:    int64(time.Hour / time.Millisecond),
+			StartTs: start,
+			EndTs:   end,
+			Plan:    &plan.QueryPlan{AST: expr},
+		}
+
+		_, err = handler.Do(user.InjectOrgID(t.Context(), "fake"), req)
+		require.NoError(t, err)
+		require.NotNil(t, capturedParams)
+		return capturedParams.Start()
+	}
+
+	t.Run("range interval beyond grace clamps start, counting only the excess", func(t *testing.T) {
+		now := time.Now()
+		// 30d lookback, full-window query, [10d] range. The engine would read from
+		// start-10d = now-40d. Only the excess beyond the 24h grace counts, so the
+		// start is clamped forward to minStartTime + (10d - 1d) = now-21d.
+		gotStart := runWithCapturedStart(t, `count_over_time({app="test"}[240h])`,
+			720*time.Hour, now.Add(-720*time.Hour), now)
+		require.WithinDuration(t, now.Add(-504*time.Hour), gotStart, time.Second,
+			"start should be clamped to minStartTime + (rangeInterval - grace)")
+	})
+
+	t.Run("range interval within grace does not clamp the full-window query", func(t *testing.T) {
+		now := time.Now()
+		// The user's scenario: 30d lookback, full-window query, [1h] range. The 1h is
+		// within the 24h grace, so the start is left untouched (no surprising clamp).
+		gotStart := runWithCapturedStart(t, `count_over_time({app="test"}[1h])`,
+			720*time.Hour, now.Add(-720*time.Hour), now)
+		require.WithinDuration(t, now.Add(-720*time.Hour), gotStart, time.Second,
+			"start should be unchanged when the range interval is within the grace")
+	})
+
+	t.Run("log query without range interval is unaffected", func(t *testing.T) {
+		now := time.Now()
+
+		var capturedParams logql.Params
+		eng := &mockEngine{
+			executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+				capturedParams = params
+				return logqlmodel.Result{Data: logqlmodel.Streams{}}, nil
+			},
+		}
+		limits := &querytest.MockLimits{
+			MaxEntriesLimitPerQueryVal: 1000,
+			MaxQueryLookbackVal:        time.Hour,
+		}
+		handler := newTestHandler(cfg, eng, limits)
+
+		const query = `{app="test"}`
+		expr, err := syntax.ParseExpr(query)
+		require.NoError(t, err)
+
+		// Start is within the lookback window; with no range interval it stays put.
+		req := &queryrange.LokiRequest{
+			Query:   query,
+			Limit:   100,
+			StartTs: now.Add(-50 * time.Minute),
+			EndTs:   now,
+			Plan:    &plan.QueryPlan{AST: expr},
+		}
+
+		ctx := user.InjectOrgID(t.Context(), "fake")
+		_, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+
+		require.NotNil(t, capturedParams)
+		require.WithinDuration(t, now.Add(-50*time.Minute), capturedParams.Start(), time.Second,
+			"start should be unchanged when the query has no range interval")
+	})
 }
 
 func TestExecutorHandler_AlignQueriesWithStep(t *testing.T) {
@@ -1174,4 +1309,140 @@ func TestQueryHandler_ValidateInstantRequest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMetricStepAlignBeforeCache asserts that the step-alignment middleware
+// runs *before* the results-cache middleware in the v2 engine handler chain,
+// by exercising the production [HandlerFromExecutor] composition end-to-end.
+//
+// The cache extractor ([queryrangebase.PrometheusResponseExtractor.Extract])
+// drops samples outside [req.Start, req.End] on every cache read. If alignment
+// ran inside the cache (cache wrapping alignment), the cache would see the
+// un-aligned request bounds, store extents under those bounds, and clip out
+// the leading floor-aligned sample on every cache hit — turning a 4-sample
+// metric response into 3 silently. By wrapping cache inside alignment, the
+// cache sees the aligned start/end, so the leading sample falls inside the
+// stored extent and survives the per-read [extractMatrix] clip.
+func TestMetricStepAlignBeforeCache(t *testing.T) {
+	const stepMs = int64(172_000) // 172s — does not divide evenly into 12:00:00.
+	// start = 12:00:00 UTC = 1782734400_000ms. 1782734400000 % 172000 = 152000ms.
+	// → aligned start = 1782734400000 - 152000 = 1782734248000 = 11:57:28 UTC.
+	startMs := int64(1782734400_000)
+	alignedStartMs := (startMs / stepMs) * stepMs
+	endMs := startMs + 3*stepMs
+	alignedEndMs := (endMs / stepMs) * stepMs
+
+	// Track the start each invocation of the inner executor sees, so we can
+	// confirm alignment ran before the cache layer. Count invocations so
+	// we can assert the second query actually hit the cache (rather than
+	// silently missing and re-computing the same response).
+	var (
+		capturedStartMs int64
+		executorCalls   int
+	)
+	exec := &mockEngine{
+		executeFunc: func(_ context.Context, params logql.Params) (logqlmodel.Result, error) {
+			executorCalls++
+			capturedStartMs = params.Start().UnixMilli()
+			// Emit samples on the aligned step grid: aligned_start, +step, ...
+			// The first sample at aligned_start is BEFORE the requested startMs;
+			// it must be preserved across cache reads.
+			samples := make([]promql.FPoint, 0, 4)
+			for ts := alignedStartMs; ts <= alignedEndMs; ts += stepMs {
+				samples = append(samples, promql.FPoint{T: ts, F: float64(ts)})
+			}
+			return logqlmodel.Result{
+				Data: promql.Matrix{
+					{Metric: labels.EmptyLabels(), Floats: samples},
+				},
+			}, nil
+		},
+	}
+
+	cfg := Config{
+		Executor:             ExecutorConfig{BatchSize: 100},
+		AlignQueriesWithStep: true,
+		ResultsCache: resultscache.Config{
+			CacheConfig: cache.Config{Cache: cache.NewMockCache()},
+		},
+	}
+	limits := &mockLimits{Limits: &querytest.MockLimits{MaxEntriesLimitPerQueryVal: 1000}}
+
+	// Use the production handler composition so the test depends on the
+	// actual middleware order in [executorHandler].
+	httpHandler, err := HandlerFromExecutor(cfg, log.NewNopLogger(), exec, limits, nil)
+	require.NoError(t, err)
+
+	doQuery := func() []promql.FPoint {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "http://localhost/loki/api/v1/query_range?"+url.Values{
+			"query": {`count_over_time({app="test"}[1m])`},
+			"start": {strconv.FormatInt(startMs*int64(time.Millisecond), 10)},
+			"end":   {strconv.FormatInt(endMs*int64(time.Millisecond), 10)},
+			"step":  {strconv.FormatInt(stepMs/1000, 10)},
+		}.Encode(), nil)
+		req = req.WithContext(user.InjectOrgID(req.Context(), "fake"))
+		rec := httptest.NewRecorder()
+		httpHandler.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+		return parsePromSamples(t, rec.Body.Bytes())
+	}
+
+	// First call: cache miss — executor must be invoked exactly once.
+	got1 := doQuery()
+	require.Equal(t, 1, executorCalls, "first call should invoke the executor (cache miss)")
+	require.Equal(t, alignedStartMs, capturedStartMs,
+		"alignment must run before the engine sees the request")
+	require.Len(t, got1, 4,
+		"cache-miss path must return all four aligned samples including the leading one at %v",
+		time.UnixMilli(alignedStartMs).UTC().Format(time.RFC3339Nano))
+	require.Equal(t, alignedStartMs, got1[0].T,
+		"first sample must be at the floor-aligned start")
+
+	// Second call: cache hit — executor must NOT be invoked again, and the
+	// response must still contain the leading aligned sample. With the fix,
+	// the cache key, stored extent bounds, and the read-time clip all use
+	// the aligned start, so the leading sample at aligned_start survives.
+	// With the pre-fix order, extractMatrix would clip samples to
+	// [startMs, endMs] and drop the leading sample.
+	got2 := doQuery()
+	require.Equal(t, 1, executorCalls,
+		"second call must be served from cache (executor should not run again)")
+	require.Len(t, got2, 4,
+		"cache-hit path must preserve the leading aligned sample (regression: cache wrapping alignment would yield 3)")
+	require.Equal(t, got1, got2,
+		"cache-hit response must equal cache-miss response")
+}
+
+// parsePromSamples decodes the JSON body of a Loki /query_range matrix
+// response and returns the samples of the (single) series.
+func parsePromSamples(t *testing.T, body []byte) []promql.FPoint {
+	t.Helper()
+	var resp struct {
+		Status string `json:"status"`
+		Data   struct {
+			ResultType string `json:"resultType"`
+			Result     []struct {
+				Metric map[string]string `json:"metric"`
+				Values [][]any           `json:"values"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &resp), "body=%s", body)
+	require.Equal(t, "success", resp.Status, "body=%s", body)
+	require.Equal(t, "matrix", resp.Data.ResultType)
+	require.Len(t, resp.Data.Result, 1, "expected exactly one series; body=%s", body)
+	pts := make([]promql.FPoint, 0, len(resp.Data.Result[0].Values))
+	for _, pair := range resp.Data.Result[0].Values {
+		require.Len(t, pair, 2)
+		// Prometheus encodes timestamps in seconds as float64.
+		tsSec, ok := pair[0].(float64)
+		require.True(t, ok, "ts is %T: %v", pair[0], pair[0])
+		valStr, ok := pair[1].(string)
+		require.True(t, ok, "value is %T: %v", pair[1], pair[1])
+		v, err := strconv.ParseFloat(valStr, 64)
+		require.NoError(t, err)
+		pts = append(pts, promql.FPoint{T: int64(tsSec * 1000), F: v})
+	}
+	return pts
 }

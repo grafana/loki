@@ -23,7 +23,7 @@ func Decimal(scale, precision int, typ Type) Node {
 		}
 	case Int64:
 		if precision < 1 || precision > 18 {
-			panic("DECIMAL annotated with Int32 must have precision >= 1 and <= 9, got " + strconv.Itoa(precision))
+			panic("DECIMAL annotated with Int64 must have precision >= 1 and <= 18, got " + strconv.Itoa(precision))
 		}
 		if precision < 10 {
 			log.Printf("WARNING: DECIMAL annotated with Int64 should have a precision >= 10, got %d", precision)

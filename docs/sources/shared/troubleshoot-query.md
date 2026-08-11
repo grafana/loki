@@ -6,7 +6,7 @@ description: |
 ---
 
 [//]: # 'This file documents query error messages and troubleshooting'
-[//]: # 
+[//]: #
 [//]: # 'This shared file is included in these locations:'
 [//]: # '/loki/docs/loki/latest/query/troubleshoot-query.md'
 [//]: # '/loki/docs/loki/latest/operations/troubleshooting/troubleshoot-query.md'
@@ -28,6 +28,7 @@ Query errors can be observed using these Prometheus metrics:
 
 - `loki_request_duration_seconds` - Query latency by route and status code
 - `loki_logql_querystats_bytes_processed_per_seconds` - Bytes processed during queries
+- `loki_logql_querystats_bytes_processed_total` - Total bytes processed by queries, broken down by `tenant`. This is the metric equivalent of the `total_bytes` field in the `caller=metrics.go` query log line and lets you track per-tenant query bytes without parsing logs.
 - `loki_frontend_query_range_duration_seconds_bucket` - Frontend query latency
 
 You can set up alerts on 4xx and 5xx status codes to detect query problems early. This can be helpful when tuning limits configurations.
@@ -543,6 +544,48 @@ Even after query splitting and sharding, individual query shards exceed the per-
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
+### Error: Response larger than max message size
+
+**Error message:**
+
+```text
+response larger than the max message size (<size> vs <max>)
+```
+
+**Cause:**
+
+A query result from the querier to the frontend exceeds the maximum allowed gRPC response size. This typically happens with queries that return very large result sets.
+
+**Default configuration:**
+
+- `server.grpc_server_max_send_msg_size`: 4MB (gRPC server send limit on the querier)
+- `querier.query_frontend_grpc_client.max_recv_msg_size`: 100MB (gRPC client receive limit on the querier worker)
+
+**Resolution:**
+
+- **Reduce query scope** to return fewer results:
+  - Add more specific label matchers
+  - Reduce the time range
+  - Lower the entries limit
+
+- **Increase gRPC message size limits** if needed. Apply these settings to querier nodes:
+
+  ```yaml
+  server:
+    grpc_server_max_send_msg_size: 209715200   # 200MB
+
+  querier:
+    query_frontend_grpc_client:
+      max_recv_msg_size: 209715200             # 200MB
+  ```
+
+**Properties:**
+
+- Enforced by: Querier worker
+- Retryable: No (query scope or limits must change)
+- HTTP status: 413 Request Entity Too Large
+- Configurable per tenant: No
+
 ### Error: Interval value exceeds limit
 
 **Error message:**
@@ -911,34 +954,28 @@ Query parallelism is set to 0, effectively disabling queries for the tenant.
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-### Error: Multi variant queries disabled
+### Error: Multi variant queries no longer supported
 
-Multi variant queries are an experimental feature that enables support for running multiple query variants over the same underlying data. For example, running both a `rate()` and `count_over_time()` query over the same range selector.
+Multi variant queries were an experimental feature that ran multiple query variants over the same underlying data. For example, running both a `rate()` and a `count_over_time()` query over the same range selector. The feature was removed.
 
 **Error message:**
 
-`multi variant queries are disabled for this instance`
+`multi variant queries are no longer supported`
 
 **Cause:**
 
-The query uses the variants feature, but it's disabled for the tenant or instance.
+The query uses a `variants()` expression.
 
 **Resolution:**
 
-* **Remove variant expressions** from the query.
-* **Enable the feature** if needed:
-
-   ```yaml
-   limits_config:
-     enable_multi_variant_queries: true  #default is false
-   ```
+**Rewrite the query** as separate queries, one per variant. For example, replace `variants(rate({app="foo"}[5m]), count_over_time({app="foo"}[5m])) of ({app="foo"}[5m])` with a `rate({app="foo"}[5m])` query and a `count_over_time({app="foo"}[5m])` query.
 
 **Properties:**
 
 - Enforced by: Query Engine
-- Retryable: No (until feature is enabled)
+- Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: Yes
+- Configurable per tenant: No
 
 ## Pipeline processing errors
 

@@ -20,6 +20,9 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/pkg/push"
@@ -37,6 +40,12 @@ var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
 
 func init() {
 	flagext.DefaultValues(&defaultGlobalOTLPConfig)
+}
+
+type otlpAttributeExpansionTenantConfigs struct{}
+
+func (otlpAttributeExpansionTenantConfigs) TenantConfig(_ string) *runtime.Config {
+	return &runtime.Config{LogOTLPAttributeExpansion: true}
 }
 
 func TestOTLPToLokiPushRequest(t *testing.T) {
@@ -62,6 +71,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		expectedPushRequest logproto.PushRequest
 		expectedStats       Stats
 		otlpConfig          OTLPConfig
+		discoverServiceName []string
 	}{
 		{
 			name: "no logs",
@@ -121,11 +131,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: nil,
-					},
-				},
 				StreamLabelsSize:                  21,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
@@ -168,11 +173,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"others": {
 						time.Hour: 0,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"others": {
-						time.Hour: nil,
 					},
 				},
 				StreamLabelsSize:                  27,
@@ -219,12 +219,54 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"others": {
-						time.Hour: nil,
+				StreamLabelsSize:                  47,
+				MostRecentEntryTimestamp:          now,
+				StreamSizeBytes:                   map[string]int64{},
+				MostRecentEntryTimestampPerStream: map[string]time.Time{},
+			},
+		},
+		{
+			name:       "service.name not defined and discovery candidate is empty",
+			otlpConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig),
+			discoverServiceName: []string{
+				"container_name",
+			},
+			generateLogs: func() plog.Logs {
+				ld := plog.NewLogs()
+				ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("container.name", "")
+				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+				ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+				return ld
+			},
+			expectedPushRequest: logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{container_name="", service_name="unknown_service"}`,
+						Entries: []logproto.Entry{
+							{
+								Timestamp:          now,
+								Line:               "test body",
+								StructuredMetadata: push.LabelsAdapter{},
+							},
+						},
 					},
 				},
-				StreamLabelsSize:                  47,
+			},
+			expectedStats: Stats{
+				PolicyNumLines: map[string]int64{
+					"others": 1,
+				},
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
+				},
+				StreamLabelsSize:                  41,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
 				MostRecentEntryTimestampPerStream: map[string]time.Time{},
@@ -305,15 +347,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"service-1-policy": {
 						time.Hour: 37,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "service_image", Value: "loki"},
-							{Name: "op", Value: "buzz"},
-							{Name: "scope_name", Value: "fizz"},
-						},
 					},
 				},
 				StreamLabelsSize:                  21,
@@ -406,15 +439,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
 					"service-1-policy": {
 						time.Hour: 97,
-					},
-				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "resource_nested_foo", Value: "bar"},
-							{Name: "scope_nested_foo", Value: "bar"},
-							{Name: "scope_name", Value: "fizz"},
-						},
 					},
 				},
 				StreamLabelsSize:                  21,
@@ -569,16 +593,6 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 113,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
-					"service-1-policy": {
-						time.Hour: []push.LabelAdapter{
-							{Name: "pod_ip", Value: "10.200.200.200"},
-							{Name: "resource_nested_foo", Value: "bar"},
-							{Name: "scope_nested_foo", Value: "bar"},
-							{Name: "scope_name", Value: "fizz"},
-						},
-					},
-				},
 				StreamLabelsSize:                  42,
 				MostRecentEntryTimestamp:          now,
 				StreamSizeBytes:                   map[string]int64{},
@@ -587,6 +601,11 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			discoverServiceName := defaultServiceDetection
+			if tc.discoverServiceName != nil {
+				discoverServiceName = tc.discoverServiceName
+			}
+
 			stats := NewPushStats()
 			tracker := NewMockTracker()
 			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
@@ -603,7 +622,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				"foo",
 				tc.otlpConfig,
 				nil,
-				defaultServiceDetection,
+				discoverServiceName,
 				tracker,
 				stats,
 				log.NewNopLogger(),
@@ -612,7 +631,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
-			require.Equal(t, tc.expectedStats, *stats)
+
+			// TotalExpandedEntriesSize is the size of each entry after resource/scope attributes have been
+			// merged into its structured metadata, which is exactly what expectedPushRequest's entries already
+			// contain.
+			expectedStats := tc.expectedStats
+			for _, stream := range tc.expectedPushRequest.Streams {
+				for i := range stream.Entries {
+					expectedStats.TotalExpandedEntriesSize += int64(util.EntryTotalSize(&stream.Entries[i]))
+				}
+			}
+
+			require.Equal(t, expectedStats, *stats)
 
 			totalBytes := 0.0
 			for _, policyMapping := range stats.LogLinesBytes {
@@ -626,6 +656,77 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				}
 			}
 			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
+		})
+	}
+}
+
+func TestOTLPToLokiPushRequestAttributeExpansionReport(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+	otlpConfig := DefaultOTLPConfig(GlobalOTLPConfig{
+		DefaultOTLPResourceAttributesAsIndexLabels: []string{"service.name"},
+	})
+	generateLogs := func() plog.Logs {
+		logs := plog.NewLogs()
+		resourceLogs := logs.ResourceLogs().AppendEmpty()
+		resourceLogs.Resource().Attributes().PutStr("service.name", "svc")
+		resourceLogs.Resource().Attributes().PutStr("cluster", "prod")
+		resourceLogs.Resource().Attributes().PutStr("cloud.region", "us-east-1")
+
+		scopeLogs := resourceLogs.ScopeLogs().AppendEmpty()
+		scopeLogs.Scope().SetName("testlib")
+		for range 3 {
+			record := scopeLogs.LogRecords().AppendEmpty()
+			record.Body().SetStr("a log line")
+			record.SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+		}
+		return logs
+	}
+
+	for _, tc := range []struct {
+		name           string
+		expectedReport *otlpattrs.Report
+	}{
+		{
+			name: "enabled",
+			expectedReport: &otlpattrs.Report{
+				Records:                3,
+				Attributes:             3, // service.name is promoted as label
+				AttributeExpandedBytes: 147,
+				Top: []otlpattrs.Attribute{
+					{Kind: otlpattrs.KindResource, Name: "cloud_region", Records: 3, ExpandedBytes: 63},
+					{Kind: otlpattrs.KindScope, Name: "scope_name", Records: 3, ExpandedBytes: 51},
+					{Kind: otlpattrs.KindResource, Name: "cluster", Records: 3, ExpandedBytes: 33},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tenantConfigs, err := runtime.NewTenantConfigs(otlpAttributeExpansionTenantConfigs{})
+			require.NoError(t, err)
+
+			stats := NewPushStats()
+			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+			streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
+				return "test-policy"
+			}
+
+			_, err = otlpToLokiPushRequest(
+				context.Background(),
+				generateLogs(),
+				"test-user",
+				otlpConfig,
+				tenantConfigs,
+				[]string{},
+				NewMockTracker(),
+				stats,
+				log.NewNopLogger(),
+				streamResolver,
+				constants.OTLP,
+			)
+			require.NoError(t, err)
+
+			require.NotNil(t, stats.OTLPAttributes)
+			require.Equal(t, *tc.expectedReport, stats.OTLPAttributes.Report(0))
 		})
 	}
 }

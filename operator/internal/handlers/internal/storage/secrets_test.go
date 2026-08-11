@@ -92,7 +92,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"account_name": []byte("test-account-name"),
 					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="),
 				},
@@ -105,7 +105,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint_suffix": []byte("blob.core.windows.net"),
-					"container":       []byte("this,that"),
+					"container":       []byte("loki-data"),
 					"account_name":    []byte("test-account-name"),
 					"account_key":     []byte("dGVzdC1hY2NvdW50LWtleQ=="),
 				},
@@ -155,7 +155,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"account_name": []byte("test-account-name"),
 					"client_id":    []byte("test-client-id"),
 				},
@@ -168,7 +168,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"account_name": []byte("test-account-name"),
 					"client_id":    []byte("test-client-id"),
 					"tenant_id":    []byte("test-tenant-id"),
@@ -183,7 +183,7 @@ func TestAzureExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
 					"account_name": []byte("test-account-name"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"region":       []byte("test-region"),
 					"account_key":  []byte("test-account-key"),
 				},
@@ -205,7 +205,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 					"audience":     []byte("test-audience"),
@@ -219,7 +219,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 				},
@@ -232,7 +232,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":     []byte("AzureGlobal"),
-					"container":       []byte("this,that"),
+					"container":       []byte("loki-data"),
 					"account_name":    []byte("test-account-name"),
 					"client_id":       []byte("test-client-id"),
 					"tenant_id":       []byte("test-tenant-id"),
@@ -249,7 +249,7 @@ func TestAzureExtract(t *testing.T) {
 				Data: map[string][]byte{
 					"environment":  []byte("AzureGlobal"),
 					"account_name": []byte("test-account-name"),
-					"container":    []byte("this,that"),
+					"container":    []byte("loki-data"),
 					"region":       []byte("test-region"),
 				},
 			},
@@ -277,7 +277,7 @@ func TestAzureExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"environment":     []byte("AzureGlobal"),
-					"container":       []byte("this,that"),
+					"container":       []byte("loki-data"),
 					"account_name":    []byte("id"),
 					"account_key":     []byte("dGVzdC1hY2NvdW50LWtleQ=="), // test-account-key
 					"endpoint_suffix": []byte("blob.core.windows.net"),
@@ -456,7 +456,7 @@ func TestS3Extract(t *testing.T) {
 			name: "missing endpoint",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 				},
 			},
 			wantError: "missing secret field: endpoint",
@@ -467,7 +467,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":    []byte("https://s3.test-region.amazonaws.com"),
 					"region":      []byte("test-region"),
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 				},
 			},
 			wantError: "missing secret field: access_key_id",
@@ -478,7 +478,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":      []byte("https://s3.test-region.amazonaws.com"),
 					"region":        []byte("test-region"),
-					"bucketnames":   []byte("this,that"),
+					"bucketnames":   []byte("loki-data"),
 					"access_key_id": []byte("id"),
 				},
 			},
@@ -489,7 +489,7 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.REGION.amazonaws.com"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"sse_type":          []byte("unsupported"),
@@ -503,7 +503,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":                   []byte("https://s3.test-region.amazonaws.com"),
 					"region":                     []byte("test-region"),
-					"bucketnames":                []byte("this,that"),
+					"bucketnames":                []byte("loki-data"),
 					"access_key_id":              []byte("id"),
 					"access_key_secret":          []byte("secret"),
 					"sse_type":                   []byte("SSE-KMS"),
@@ -519,7 +519,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
 					"region":            []byte("test-region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"sse_type":          []byte("SSE-KMS"),
@@ -535,7 +535,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":                   []byte("https://s3.test-region.amazonaws.com"),
 					"region":                     []byte("test-region"),
-					"bucketnames":                []byte("this,that"),
+					"bucketnames":                []byte("loki-data"),
 					"access_key_id":              []byte("id"),
 					"access_key_secret":          []byte("secret"),
 					"sse_type":                   []byte("SSE-KMS"),
@@ -552,7 +552,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
 					"region":            []byte("test-region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"sse_type":          []byte("SSE-S3"),
@@ -567,7 +567,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
 					"region":            []byte("test-region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -579,7 +579,7 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 					"role_arn":    []byte("role"),
 				},
 			},
@@ -590,7 +590,7 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 					"role_arn":    []byte("role"),
 					"region":      []byte("here"),
 				},
@@ -602,7 +602,7 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 					"role_arn":    []byte("role"),
 					"region":      []byte("here"),
 					"audience":    []byte("audience"),
@@ -617,7 +617,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("hostname.example.com"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -631,7 +631,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("invalid://hostname"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -645,7 +645,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.region.example.com/bucket"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -659,7 +659,7 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.region.amazonaws.com/bucket"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -673,12 +673,12 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.wrong.amazonaws.com"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+			wantError: "endpoint for AWS S3 must include correct region: expected region region, got wrong",
 		},
 		{
 			name: "s3 endpoint format is not a valid s3 URL",
@@ -687,12 +687,40 @@ func TestS3Extract(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("http://region.amazonaws.com"),
 					"region":            []byte("region"),
+					"bucketnames":       []byte("loki-data"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://bucket.vpce-id.s3.region.vpce.amazonaws.com: got http://region.amazonaws.com",
+		},
+		{
+			name: "valid aws s3 vpc endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+			wantCredentialMode: lokiv1.CredentialModeStatic,
+		},
+		{
+			name: "aws s3 vpc endpoint wrong region",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.eu-east-2.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 must include correct region: expected region us-east-1, got eu-east-2",
 		},
 	}
 	for _, tst := range table {
@@ -731,7 +759,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.region.amazonaws.com"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -739,7 +767,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			wantOptions: &storage.S3StorageConfig{
 				Endpoint:       "s3.region.amazonaws.com",
 				Region:         "region",
-				Buckets:        "this,that",
+				Buckets:        "loki-data",
 				ForcePathStyle: false, // defaults to virtual style for AWS endpoints
 			},
 		},
@@ -750,7 +778,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("http://minio:9000"),
 					"region":            []byte(""),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 				},
@@ -758,7 +786,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			wantOptions: &storage.S3StorageConfig{
 				Endpoint:       "minio:9000",
 				Region:         "",
-				Buckets:        "this,that",
+				Buckets:        "loki-data",
 				ForcePathStyle: true, // defaults to path style for non-AWS endpoints
 				Insecure:       true,
 			},
@@ -770,7 +798,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("https://s3.region.amazonaws.com"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"forcepathstyle":    []byte("true"),
@@ -779,7 +807,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			wantOptions: &storage.S3StorageConfig{
 				Endpoint:       "s3.region.amazonaws.com",
 				Region:         "region",
-				Buckets:        "this,that",
+				Buckets:        "loki-data",
 				ForcePathStyle: true,
 			},
 		},
@@ -790,13 +818,32 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				Data: map[string][]byte{
 					"endpoint":          []byte("s3.region.amazonaws.com"),
 					"region":            []byte("region"),
-					"bucketnames":       []byte("this,that"),
+					"bucketnames":       []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"forcepathstyle":    []byte("yes"),
 				},
 			},
 			wantError: `forcepathstyle must be "true" or "false": yes`,
+		},
+		{
+			desc: "aws s3 vpc endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com",
+				Region:         "us-east-1",
+				Buckets:        "this,that",
+				ForcePathStyle: false,
+			},
 		},
 	}
 
@@ -841,7 +888,7 @@ func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 			name: "missing region",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 				},
 			},
 			tokenCCOAuthSecret: &corev1.Secret{},
@@ -852,7 +899,7 @@ func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 					"role_arn":    []byte("role-arn"),
 				},
 			},
@@ -864,7 +911,7 @@ func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"bucketnames": []byte("this,that"),
+					"bucketnames": []byte("loki-data"),
 					"region":      []byte("a-region"),
 				},
 			},
@@ -924,7 +971,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url": []byte("here"),
-					"username": []byte("this,that"),
+					"username": []byte("loki-data"),
 				},
 			},
 			wantError: "missing secret field: user_domain_name",
@@ -934,7 +981,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 				},
 			},
@@ -945,7 +992,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 				},
@@ -957,7 +1004,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 					"user_id":          []byte("there"),
@@ -970,7 +1017,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 					"user_id":          []byte("there"),
@@ -984,7 +1031,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 					"user_id":          []byte("there"),
@@ -999,7 +1046,7 @@ func TestSwiftExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 					"user_id":          []byte("there"),
@@ -1016,7 +1063,7 @@ func TestSwiftExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"auth_url":         []byte("here"),
-					"username":         []byte("this,that"),
+					"username":         []byte("loki-data"),
 					"user_domain_name": []byte("id"),
 					"user_domain_id":   []byte("secret"),
 					"user_id":          []byte("there"),
@@ -1076,7 +1123,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint": []byte("here"),
-					"bucket":   []byte("this,that"),
+					"bucket":   []byte("loki-data"),
 				},
 			},
 			wantError: "missing secret field: access_key_id",
@@ -1086,7 +1133,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"endpoint":      []byte("here"),
-					"bucket":        []byte("this,that"),
+					"bucket":        []byte("loki-data"),
 					"access_key_id": []byte("id"),
 				},
 			},
@@ -1098,7 +1145,7 @@ func TestAlibabaCloudExtract(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
 					"endpoint":          []byte("here"),
-					"bucket":            []byte("this,that"),
+					"bucket":            []byte("loki-data"),
 					"access_key_id":     []byte("id"),
 					"secret_access_key": []byte("secret"),
 				},

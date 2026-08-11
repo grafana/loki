@@ -458,12 +458,6 @@ const maxDecodedSize = 32 * 1024 * 1024
 // If the request body is not snappy-encoded, it returns an error.
 // Used by default in NewHandler.
 func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-	bufPool := sync.Pool{
-		New: func() any {
-			return bytes.NewBuffer(nil)
-		},
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			enc := r.Header.Get("Content-Encoding")
@@ -474,14 +468,15 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 				return
 			}
 
-			buf := bufPool.Get().(*bytes.Buffer)
-			buf.Reset()
-			defer bufPool.Put(buf)
-
-			bodyBytes, err := io.ReadAll(io.TeeReader(r.Body, buf))
+			bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxDecodedSize+1))
 			if err != nil {
 				logger.Error("Error reading request body", "err", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if int64(len(bodyBytes)) > maxDecodedSize {
+				logger.Error("Request body exceeds the limit", "limitBytes", maxDecodedSize)
+				http.Error(w, fmt.Sprintf("request body exceeds the %v bytes limit", maxDecodedSize), http.StatusRequestEntityTooLarge)
 				return
 			}
 

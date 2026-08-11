@@ -34,7 +34,7 @@ func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	logger := util_log.WithContext(r.Context(), d.logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
@@ -42,8 +42,23 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
-	if d.RequestParserWrapper != nil {
-		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
+	// TODO: In future, we want to be able to compose this with the middleware pattern,
+	// but this requires refactor of this file to support next handlers. We will do
+	// this at a later time.
+	var (
+		circuitBreakerOk       bool
+		circuitBreakerDoneFunc func(err error)
+		circuitBreakerErr      error
+	)
+	if d.circuitBreaker != nil {
+		circuitBreakerOk, circuitBreakerDoneFunc = d.circuitBreaker.Allow()
+		// Must be wrapped in a closure so circuitBreakerErr is evaluated when the
+		// deferred function runs.
+		defer func() { circuitBreakerDoneFunc(circuitBreakerErr) }()
+		if !circuitBreakerOk {
+			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
+			return
+		}
 	}
 
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution
@@ -110,6 +125,12 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
+	// Gather information about the different types of push formats Loki receives
+	d.m.pushStatsCount.WithLabelValues(tenantID, pushStats.ContentType, pushStats.ContentEncoding, pushStats.ContentVersion, format).Inc()
+
+	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
+	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
+
 	if logPushRequestStreams {
 		shouldLog := true
 		if len(filterPushRequestStreamsIPs) > 0 {
@@ -159,6 +180,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
+	circuitBreakerErr = err
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)

@@ -143,8 +143,8 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("2"),
-				corev1.ResourceMemory: resource.MustParse("8Gi"),
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("5.25Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
@@ -200,8 +200,8 @@ var resourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("4"),
-				corev1.ResourceMemory: resource.MustParse("20Gi"),
+				corev1.ResourceCPU:    resource.MustParse("2.5"),
+				corev1.ResourceMemory: resource.MustParse("13.25Gi"),
 			},
 		},
 		Distributor: corev1.ResourceRequirements{
@@ -474,7 +474,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+				Replicas: 3,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
@@ -534,7 +534,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+				Replicas: 3,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
 				Replicas: 2,

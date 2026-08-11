@@ -1,9 +1,17 @@
 ## Changelog
 
 
+## v2.38.0
+
+- XADD TRIM (thanks @evan-choi)
+- update XINFO STREAM (thanks @TomBailey167)
+- lua fix (thanks @infastin)
+- partial support for DELEX
+
+
 ## v2.37.0
 
-- suport HEXPIRE (thanks @mojixcoder)
+- support HEXPIRE (thanks @mojixcoder)
 
 
 ## v2.36.1

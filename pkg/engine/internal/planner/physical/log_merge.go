@@ -3,7 +3,6 @@ package physical
 import (
 	"context"
 	"slices"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 
@@ -26,17 +25,9 @@ type LogMerge struct {
 	// sections in object storage.
 	Runs []*compactionv2pb.RunRef
 
-	// SourceIndexPaths is the set of unique source-index paths referenced across
-	// all Runs. Used by the consolidation step to know which indexes the merge's
-	// outputs replace.
-	SourceIndexPaths []string
-
-	// OutputPath is the deterministic object-storage key where the
-	// executor writes the compacted log object.
-	OutputPath string
-
-	// TaskTTL is the per-task execution deadline.
-	TaskTTL time.Duration
+	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
+	// (e.g. "label:service_name")
+	SortSchema []string
 }
 
 // ID implements the Node interface.
@@ -48,13 +39,11 @@ func (*LogMerge) Type() NodeType { return NodeTypeLogMerge }
 // Clone implements the Node interface.
 func (n *LogMerge) Clone() Node {
 	return &LogMerge{
-		NodeID:           ulid.Make(),
-		Tenant:           n.Tenant,
-		ToCWindowStart:   n.ToCWindowStart,
-		Runs:             cloneRuns(n.Runs),
-		SourceIndexPaths: slices.Clone(n.SourceIndexPaths),
-		OutputPath:       n.OutputPath,
-		TaskTTL:          n.TaskTTL,
+		NodeID:         ulid.Make(),
+		Tenant:         n.Tenant,
+		ToCWindowStart: n.ToCWindowStart,
+		Runs:           cloneRuns(n.Runs),
+		SortSchema:     slices.Clone(n.SortSchema),
 	}
 }
 

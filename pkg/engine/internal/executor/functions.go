@@ -43,37 +43,37 @@ func init() {
 
 	// Functions for [types.BinaryOpEq]
 	binaryFunctions.register(types.BinaryOpEq, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a == b, nil }})
-	binaryFunctions.register(types.BinaryOpEq, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a == b, nil }})
+	binaryFunctions.register(types.BinaryOpEq, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a == b, nil }})
 	binaryFunctions.register(types.BinaryOpEq, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a == b, nil }})
 	binaryFunctions.register(types.BinaryOpEq, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a == b, nil }})
 	binaryFunctions.register(types.BinaryOpEq, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a == b, nil }})
 	// Functions for [types.BinaryOpNeq]
 	binaryFunctions.register(types.BinaryOpNeq, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
-	binaryFunctions.register(types.BinaryOpNeq, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a != b, nil }})
+	binaryFunctions.register(types.BinaryOpNeq, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a != b, nil }})
 	binaryFunctions.register(types.BinaryOpNeq, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a != b, nil }})
 	binaryFunctions.register(types.BinaryOpNeq, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a != b, nil }})
 	binaryFunctions.register(types.BinaryOpNeq, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a != b, nil }})
 	// Functions for [types.BinaryOpGt]
 	binaryFunctions.register(types.BinaryOpGt, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) > boolToInt(b), nil }})
-	binaryFunctions.register(types.BinaryOpGt, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a > b, nil }})
+	binaryFunctions.register(types.BinaryOpGt, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a > b, nil }})
 	binaryFunctions.register(types.BinaryOpGt, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a > b, nil }})
 	binaryFunctions.register(types.BinaryOpGt, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a > b, nil }})
 	binaryFunctions.register(types.BinaryOpGt, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a > b, nil }})
 	// Functions for [types.BinaryOpGte]
 	binaryFunctions.register(types.BinaryOpGte, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) >= boolToInt(b), nil }})
-	binaryFunctions.register(types.BinaryOpGte, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a >= b, nil }})
+	binaryFunctions.register(types.BinaryOpGte, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a >= b, nil }})
 	binaryFunctions.register(types.BinaryOpGte, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a >= b, nil }})
 	binaryFunctions.register(types.BinaryOpGte, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a >= b, nil }})
 	binaryFunctions.register(types.BinaryOpGte, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a >= b, nil }})
 	// Functions for [types.BinaryOpLt]
 	binaryFunctions.register(types.BinaryOpLt, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) < boolToInt(b), nil }})
-	binaryFunctions.register(types.BinaryOpLt, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a < b, nil }})
+	binaryFunctions.register(types.BinaryOpLt, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a < b, nil }})
 	binaryFunctions.register(types.BinaryOpLt, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a < b, nil }})
 	binaryFunctions.register(types.BinaryOpLt, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a < b, nil }})
 	binaryFunctions.register(types.BinaryOpLt, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a < b, nil }})
 	// Functions for [types.BinaryOpLte]
 	binaryFunctions.register(types.BinaryOpLte, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) <= boolToInt(b), nil }})
-	binaryFunctions.register(types.BinaryOpLte, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a <= b, nil }})
+	binaryFunctions.register(types.BinaryOpLte, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a <= b, nil }})
@@ -84,9 +84,9 @@ func init() {
 	// Functions for [types.BinaryOpXor]
 	binaryFunctions.register(types.BinaryOpXor, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
 	// Functions for [types.BinaryOpMatchSubstr]
-	binaryFunctions.register(types.BinaryOpMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
+	binaryFunctions.register(types.BinaryOpMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
 	// Functions for [types.BinaryOpNotMatchSubstr]
-	binaryFunctions.register(types.BinaryOpNotMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return !strings.Contains(a, b), nil }})
+	binaryFunctions.register(types.BinaryOpNotMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) { return !strings.Contains(a, b), nil }})
 	// Functions for [types.BinaryOpMatchRe]
 	binaryFunctions.register(types.BinaryOpMatchRe, arrow.BinaryTypes.String, &regexpFunction{eval: func(a, b string, reg *regexp.Regexp) (bool, error) {
 		if reg == nil {
@@ -113,19 +113,19 @@ func init() {
 	}})
 
 	// Functions for [types.BinaryOpEqCaseInsensitive]
-	binaryFunctions.register(types.BinaryOpEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	binaryFunctions.register(types.BinaryOpEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) {
 		return matchutil.EqualUpper([]byte(a), []byte(b)), nil
 	}})
 	// Functions for [types.BinaryOpNotEqCaseInsensitive]
-	binaryFunctions.register(types.BinaryOpNotEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	binaryFunctions.register(types.BinaryOpNotEqCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) {
 		return !matchutil.EqualUpper([]byte(a), []byte(b)), nil
 	}})
 	// Functions for [types.BinaryOpMatchSubstrCaseInsensitive]
-	binaryFunctions.register(types.BinaryOpMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	binaryFunctions.register(types.BinaryOpMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) {
 		return matchutil.ContainsUpper([]byte(a), []byte(b)), nil
 	}})
 	// Functions for [types.BinaryOpNotMatchSubstrCaseInsensitive]
-	binaryFunctions.register(types.BinaryOpNotMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	binaryFunctions.register(types.BinaryOpNotMatchSubstrCaseInsensitive, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{nullAsZero: true, eval: func(a, b string) (bool, error) {
 		return !matchutil.ContainsUpper([]byte(a), []byte(b)), nil
 	}})
 
@@ -247,11 +247,39 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 	return fn, nil
 }
 
+// coerceNullEntries returns the pair of values to compare at row i, applying
+// the LogQL filter null-handling rule: when the comparison is column-vs-literal
+// (one side is a scalar), a null on the non-scalar side is treated as the zero
+// value of T. For strings that is "", which matches v1's behaviour where an
+// absent label compares as "" — so e.g. `| foo=""` and `| foo=~".*"` both match
+// rows where foo is absent. If neither side is a scalar and at least one is
+// null, returns skip=true so the caller preserves the existing null
+// short-circuit (no LogQL semantic applies to that shape).
+//
+// Only enable this via [genericBoolFunction.nullAsZero] for string-typed
+// registrations. For numeric LogQL ops, an absent unwrapped value is dropped
+// rather than coerced to zero, so the old null short-circuit is still correct.
+func coerceNullEntries[E arrow.TypedArray[T], T arrow.ValueType](lhs, rhs E, i int, lhsIsScalar, rhsIsScalar bool) (a, b T, skip bool) {
+	lhsNull := lhs.IsNull(i)
+	rhsNull := rhs.IsNull(i)
+	var zero T
+	switch {
+	case lhsNull && rhsIsScalar:
+		return zero, rhs.Value(i), false
+	case rhsNull && lhsIsScalar:
+		return lhs.Value(i), zero, false
+	case lhsNull || rhsNull:
+		return zero, zero, true
+	default:
+		return lhs.Value(i), rhs.Value(i), false
+	}
+}
+
 type regexpFunction struct {
 	eval func(a, b string, reg *regexp.Regexp) (bool, error)
 }
 
-func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScalar bool) (arrow.Array, error) {
+func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, lhsIsScalar, rhsIsScalar bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
@@ -291,11 +319,12 @@ func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScal
 	}
 
 	for i := range lhsArr.Len() {
-		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
+		a, b, skip := coerceNullEntries(lhsArr, rhsArr, i, lhsIsScalar, rhsIsScalar)
+		if skip {
 			builder.Append(false)
 			continue
 		}
-		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i), re)
+		res, err := f.eval(a, b, re)
 		if err != nil {
 			return nil, err
 		}
@@ -310,10 +339,16 @@ func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScal
 // and can be used for any array type with comparable elements.
 type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (bool, error)
+	// nullAsZero, when true, applies LogQL filter null semantics: in the
+	// column-vs-literal shape, a null on the column side is treated as the
+	// zero value of T (i.e. "" for strings). Set on registrations for
+	// string-typed label/line filter comparators. Leave false for numeric
+	// comparisons, where LogQL drops the row rather than coercing.
+	nullAsZero bool
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
+func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, lhsIsScalar, rhsIsScalar bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
@@ -332,11 +367,20 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _
 	builder.Reserve(lhsArr.Len())
 
 	for i := range lhsArr.Len() {
-		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
+		var a, b T
+		var skip bool
+		if f.nullAsZero {
+			a, b, skip = coerceNullEntries(lhsArr, rhsArr, i, lhsIsScalar, rhsIsScalar)
+		} else if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
+			skip = true
+		} else {
+			a, b = lhsArr.Value(i), rhsArr.Value(i)
+		}
+		if skip {
 			builder.Append(false)
 			continue
 		}
-		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i))
+		res, err := f.eval(a, b)
 		if err != nil {
 			return nil, err
 		}

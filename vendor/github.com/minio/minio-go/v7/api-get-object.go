@@ -46,6 +46,22 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 		}
 	}
 
+	if opts.RDMABuffer != nil && c.rdmaEnabled {
+		n, err := c.getObjectRDMA(ctx, bucketName, objectName, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &Object{
+			mutex:    &sync.Mutex{},
+			isClosed: true,
+			objectInfo: ObjectInfo{
+				Key:  objectName,
+				Size: n,
+			},
+			objectInfoSet: true,
+		}, nil
+	}
+
 	gctx, cancel := context.WithCancel(ctx)
 
 	// Detect if snowball is server location we are talking to.

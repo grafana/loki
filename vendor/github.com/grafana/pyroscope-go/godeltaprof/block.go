@@ -2,7 +2,6 @@ package godeltaprof
 
 import (
 	"io"
-	"runtime"
 	"sort"
 	"sync"
 
@@ -27,7 +26,7 @@ import (
 type BlockProfiler struct {
 	impl           pprof.DeltaMutexProfiler
 	mutex          sync.Mutex
-	runtimeProfile func([]runtime.BlockProfileRecord) (int, bool)
+	runtimeProfile func() []pprof.BlockProfileRecord
 	scaleProfile   pprof.MutexProfileScaler
 	options        pprof.ProfileBuilderOptions
 	gz             gz
@@ -43,7 +42,7 @@ type BlockProfiler struct {
 //	    err := mp.Profile(someWriter)
 func NewMutexProfiler() *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.MutexProfile,
+		runtimeProfile: pprof.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -55,7 +54,7 @@ func NewMutexProfiler() *BlockProfiler {
 
 func NewMutexProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.MutexProfile,
+		runtimeProfile: pprof.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -75,7 +74,7 @@ func NewMutexProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 //	err := bp.Profile(someWriter)
 func NewBlockProfiler() *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.BlockProfile,
+		runtimeProfile: pprof.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -87,7 +86,7 @@ func NewBlockProfiler() *BlockProfiler {
 
 func NewBlockProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
-		runtimeProfile: runtime.BlockProfile,
+		runtimeProfile: pprof.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
 		impl:           pprof.DeltaMutexProfiler{},
 		options: pprof.ProfileBuilderOptions{
@@ -101,18 +100,7 @@ func (d *BlockProfiler) Profile(w io.Writer) error {
 	d.mutex.Lock()
 	defer d.mutex.Unlock()
 
-	var p []runtime.BlockProfileRecord
-	var ok bool
-	n, _ := d.runtimeProfile(nil)
-	for {
-		p = make([]runtime.BlockProfileRecord, n+50)
-		n, ok = d.runtimeProfile(p)
-		if ok {
-			p = p[:n]
-
-			break
-		}
-	}
+	p := d.runtimeProfile()
 
 	sort.Slice(p, func(i, j int) bool { return p[i].Cycles > p[j].Cycles })
 

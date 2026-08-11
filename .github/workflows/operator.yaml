@@ -9,6 +9,9 @@ on:
     paths:
       - 'operator/**'
 
+permissions:
+  contents: read
+
 jobs:
   docs:
     name: docs
@@ -47,7 +50,7 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2
       with:
-        version: v2.11.4
+        version: v2.12.2
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -109,14 +112,7 @@ jobs:
         cache-dependency-path: ./operator/go.sum
     - name: Run tests
       working-directory: ./operator
-      run: go test -coverprofile=profile.cov ./...
+      run: go test ./...
     - name: Run prometheus rule tests
       working-directory: ./operator
       run: make test-unit-prometheus
-    - name: Send coverage
-      uses: shogo82148/actions-goveralls@9606dbc5ac5cf888a0e9ef901515c3cd516a2790 # v1.11.0
-      with:
-        working-directory: ./operator
-        path-to-profile: profile.cov
-        flag-name: Go-1.25
-        shallow: true

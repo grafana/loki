@@ -45,8 +45,6 @@ import (
 
 // httpStorageClient is the HTTP-JSON API implementation of the transport-agnostic
 // storageClient interface.
-//
-// TODO(b/498422946): Add client feature tracker in HTTP client.
 type httpStorageClient struct {
 	creds                      *auth.Credentials
 	hc                         *http.Client
@@ -56,11 +54,17 @@ type httpStorageClient struct {
 	settings                   *settings
 	config                     *storageConfig
 	dynamicReadReqStallTimeout *bucketDelayManager
+	metrics                    *clientMetrics
+	metricsCleanup             func()
+
+	// configFeatureAttributes tracks client-level features that are enabled for this
+	// client instance.
+	configFeatureAttributes uint32
 }
 
 // newHTTPStorageClient initializes a new storageClient that uses the HTTP-JSON
 // Storage API.
-func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageClient, error) {
+func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (client storageClient, err error) {
 	s := initSettings(opts...)
 	o := s.clientOption
 	config := newStorageConfig(o...)
@@ -119,8 +123,50 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 	if err != nil {
 		return nil, fmt.Errorf("dialing: %w", err)
 	}
+
+	var clientMetrics *clientMetrics
+	var metricsCleanup func()
+	if isOtelMetricsEnabled(&config) {
+		var project string
+		if creds != nil {
+			project, _ = creds.ProjectID(ctx)
+		}
+		clientMetrics, metricsCleanup = initClientMetrics(ctx, project, &config)
+	}
+	if metricsCleanup != nil {
+		defer func() {
+			if err != nil {
+				metricsCleanup()
+			}
+		}()
+	}
+
+	// Clone the http.Client to avoid modifying the original one if it was provided by the user.
+	hcClone := *hc
+	c := &httpStorageClient{
+		creds:          creds,
+		hc:             &hcClone,
+		settings:       s,
+		config:         &config,
+		metrics:        clientMetrics,
+		metricsCleanup: metricsCleanup,
+	}
+
+	// Wrap transport to inject tracking headers and metrics.
+	transport := hc.Transport
+	if clientMetrics != nil {
+		transport = &metricsRoundTripper{
+			base:    transport,
+			metrics: clientMetrics,
+		}
+	}
+	hcClone.Transport = &trackingTransport{
+		base:     transport,
+		features: c.configFeatureAttributes,
+	}
+
 	// RawService should be created with the chosen endpoint to take account of user override.
-	rawService, err := raw.NewService(ctx, option.WithEndpoint(ep), option.WithHTTPClient(hc))
+	rawService, err := raw.NewService(ctx, option.WithEndpoint(ep), option.WithHTTPClient(c.hc))
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
@@ -144,21 +190,57 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 		}
 	}
 
-	return &httpStorageClient{
-		creds:                      creds,
-		hc:                         hc,
-		xmlHost:                    u.Host,
-		raw:                        rawService,
-		scheme:                     u.Scheme,
-		settings:                   s,
-		config:                     &config,
-		dynamicReadReqStallTimeout: bd,
-	}, nil
+	c.xmlHost = u.Host
+	c.raw = rawService
+	c.scheme = u.Scheme
+	c.dynamicReadReqStallTimeout = bd
+
+	return c, nil
 }
 
 func (c *httpStorageClient) Close() error {
 	c.hc.CloseIdleConnections()
+	if c.metricsCleanup != nil {
+		c.metricsCleanup()
+	}
 	return nil
+}
+
+// trackingTransport wraps an http.RoundTripper to inject feature tracking headers.
+type trackingTransport struct {
+	base     http.RoundTripper
+	features uint32
+}
+
+func (t *trackingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	baseRT := t.base
+	if baseRT == nil {
+		baseRT = http.DefaultTransport
+	}
+	features := t.features | featureAttributes(req.Context())
+	// Merge all existing headers for this key.
+	features |= mergeFeatureAttributes(req.Header.Values(featureTrackerHeaderName))
+	if features > 0 {
+		// Clone the request to avoid modifying the original one.
+		clonedReq := req.Clone(req.Context())
+		clonedReq.Header.Set(featureTrackerHeaderName, encodeUint32(features))
+		return baseRT.RoundTrip(clonedReq)
+	}
+
+	return baseRT.RoundTrip(req)
+}
+
+func (t *trackingTransport) CloseIdleConnections() {
+	type closeIdler interface {
+		CloseIdleConnections()
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	if tr, ok := base.(closeIdler); ok {
+		tr.CloseIdleConnections()
+	}
 }
 
 // Top-level methods.
@@ -222,6 +304,8 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 	}
 
 	fetch := func(pageSize int, pageToken string) (token string, err error) {
+		ctx, record := startMetricsOp(it.ctx, "ListBuckets", true)
+		defer func() { record(err) }()
 		req := c.raw.Buckets.List(it.projectID)
 		req.Projection("full")
 		req.Prefix(it.Prefix)
@@ -231,15 +315,16 @@ func (c *httpStorageClient) ListBuckets(ctx context.Context, project string, opt
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Buckets
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent)
 		if err != nil {
 			return "", err
 		}
+		var b *BucketAttrs
 		for _, item := range resp.Items {
-			b, err := newBucket(item)
+			b, err = newBucket(item)
 			if err != nil {
 				return "", err
 			}
@@ -348,6 +433,8 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		var err error
+		ctx, record := startMetricsOp(it.ctx, "ListObjects", true)
+		defer func() { record(err) }()
 		// Add trace span around List API call within the fetch.
 		ctx, _ = startSpan(ctx, "httpStorageClient.ObjectsListCall")
 		defer func() { endSpan(ctx, err) }()
@@ -385,7 +472,7 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Objects
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent, withOperation("ListObjects"), withObject(it.query.Prefix), withBucket(bucket))
@@ -767,7 +854,9 @@ func (c *httpStorageClient) UpdateObjectACL(ctx context.Context, bucket, object 
 
 func (c *httpStorageClient) ComposeObject(ctx context.Context, req *composeObjectRequest, opts ...storageOption) (*ObjectAttrs, error) {
 	s := callSettings(c.settings, opts...)
-	rawReq := &raw.ComposeRequest{}
+	rawReq := &raw.ComposeRequest{
+		DeleteSourceObjects: req.deleteSourceObjects,
+	}
 	// Compose requires a non-empty Destination, so we always set it,
 	// even if the caller-provided ObjectAttrs is the zero value.
 	rawReq.Destination = req.dstObject.attrs.toRawObject(req.dstBucket)
@@ -1031,6 +1120,9 @@ func (hiw *httpInternalWriter) Flush() (int64, error) {
 	return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
 }
 
+// Not supported on HTTP Client as this is for setting CRC on appendable objects.
+func (hiw *httpInternalWriter) setAppendFinalCRC32C(sendAppendFinalCRC32C bool, c uint32) {}
+
 func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error) {
 	if params.append {
 		return nil, errors.New("storage: append not supported on HTTP Client; use gRPC")
@@ -1235,6 +1327,8 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 		retry:     s.retry,
 	}
 	fetch := func(pageSize int, pageToken string) (token string, err error) {
+		ctx, record := startMetricsOp(it.ctx, "ListHMACKeys", true)
+		defer func() { record(err) }()
 		call := c.raw.Projects.HmacKeys.List(project)
 		if pageToken != "" {
 			call = call.PageToken(pageToken)
@@ -1253,7 +1347,7 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 		}
 
 		var resp *raw.HmacKeysMetadata
-		err = run(it.ctx, func(ctx context.Context) error {
+		err = run(ctx, func(ctx context.Context) error {
 			resp, err = call.Context(ctx).Do()
 			return err
 		}, s.retry, s.idempotent)
@@ -1261,11 +1355,12 @@ func (c *httpStorageClient) ListHMACKeys(ctx context.Context, project, serviceAc
 			return "", err
 		}
 
+		var hkey *HMACKey
 		for _, metadata := range resp.Items {
 			hk := &raw.HmacKey{
 				Metadata: metadata,
 			}
-			hkey, err := toHMACKeyFromRaw(hk, true)
+			hkey, err = toHMACKeyFromRaw(hk, true)
 			if err != nil {
 				return "", err
 			}
@@ -1406,7 +1501,7 @@ func (r *httpReader) Read(p []byte) (int, error) {
 		n += m
 		r.seen += int64(m)
 		if r.checkCRC {
-			r.gotCRC = crc32.Update(r.gotCRC, crc32cTable, p[:n])
+			r.gotCRC = crc32.Update(r.gotCRC, crc32cTable, p[n-m:n])
 		}
 		if err == nil {
 			return n, nil
@@ -1535,7 +1630,7 @@ func readerReopen(ctx context.Context, header http.Header, params *newRangeReade
 				params.gen = gen64
 			}
 			return nil
-		}, s.retry, s.idempotent)
+		}, s.retry, s.idempotent, withOperation("ReadObject"), withBucket(params.bucket), withObject(params.object))
 		if err != nil {
 			return nil, err
 		}
@@ -1582,6 +1677,7 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 	}
 
 	// Check the CRC iff all of the following hold:
+	// - The user did not disable CRC check.
 	// - We asked for content (length != 0).
 	// - We got all the content (status != PartialContent).
 	// - The server sent a CRC header.
@@ -1591,7 +1687,7 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 	// computes it on the compressed contents, but we compute it on the
 	// uncompressed contents.
 	crc, checkCRC = parseCRC32c(res)
-	if params.length == 0 || res.StatusCode == http.StatusPartialContent || res.Uncompressed || uncompressedByServer(res) {
+	if params.disableCRCCheck || params.length == 0 || res.StatusCode == http.StatusPartialContent || res.Uncompressed || uncompressedByServer(res) {
 		checkCRC = false
 	}
 
@@ -1652,6 +1748,8 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 			wantCRC:  crc,
 			checkCRC: checkCRC,
 		},
+		bucket: params.bucket,
+		object: params.object,
 	}, nil
 }
 
@@ -1680,4 +1778,13 @@ func setHeadersFromCtx(ctx context.Context, header http.Header) {
 			}
 		}
 	}
+}
+
+func (c *httpStorageClient) fetchBucketMetadata(ctx context.Context, bucket string) (string, string, error) {
+	resp, err := c.raw.Buckets.Get(bucket).Projection("noAcl").Context(ctx).Do()
+	if err != nil {
+		return "", "", err
+	}
+	resource, location := getMetadataFromAttrs(resp.Location, resp.LocationType, strconv.FormatUint(resp.ProjectNumber, 10), bucket)
+	return resource, location, nil
 }

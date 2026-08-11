@@ -10,6 +10,7 @@ package libyaml
 
 import (
 	"encoding/base64"
+	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -17,11 +18,174 @@ import (
 	"time"
 )
 
+// resolveMapItem holds a resolved value and its YAML tag for exact string
+// matches in the resolution table.
 type resolveMapItem struct {
 	value any
 	tag   string
 }
 
+// Resolver handles tag resolution for YAML nodes.
+type Resolver struct {
+	opts *Options
+}
+
+// NewResolver creates a new Resolver with the given options.
+func NewResolver(opts *Options) *Resolver {
+	return &Resolver{opts: opts}
+}
+
+// Resolve walks the node tree and resolves tags for untagged nodes.
+// This is called after composition to:
+// - Default quoted scalars to !!str
+// - Default sequences to !!seq
+// - Default mappings to !!map
+// - Resolve plain scalars to implicit types (int, float, bool, null, timestamp)
+func (r *Resolver) Resolve(n *Node) {
+	if n == nil {
+		return
+	}
+
+	switch n.Kind {
+	case ScalarNode:
+		if n.Tag == "" {
+			if n.Style&(SingleQuotedStyle|DoubleQuotedStyle|LiteralStyle|FoldedStyle) != 0 {
+				// Quoted scalars default to !!str without value resolution
+				n.Tag = strTag
+			} else {
+				// Plain scalars: resolve type from value
+				n.Tag, _ = resolve("", n.Value)
+			}
+		}
+
+	case SequenceNode:
+		if n.Tag == "" {
+			n.Tag = seqTag
+		}
+		for _, child := range n.Content {
+			r.Resolve(child)
+		}
+
+	case MappingNode:
+		if n.Tag == "" {
+			n.Tag = mapTag
+		}
+		for _, child := range n.Content {
+			r.Resolve(child)
+		}
+
+	case DocumentNode:
+		for _, child := range n.Content {
+			r.Resolve(child)
+		}
+
+	case AliasNode:
+		// Alias nodes point to already-resolved nodes
+	}
+}
+
+// resolve determines the YAML tag and Go value for a scalar string.
+// It takes a tag hint and the scalar string value, and returns the resolved
+// tag and the corresponding Go value (int, float, bool, [time.Time], etc.).
+// If the tag is already specified and non-resolvable, it returns the input
+// unchanged.
+func resolve(tag string, in string) (rtag string, out any) {
+	tag = shortTag(tag)
+	if !resolvableTag(tag) {
+		return tag, in
+	}
+
+	defer func() {
+		switch tag {
+		case "", rtag, strTag, binaryTag:
+			return
+		case floatTag:
+			if rtag == intTag {
+				switch v := out.(type) {
+				case int64:
+					rtag = floatTag
+					out = float64(v)
+					return
+				case int:
+					rtag = floatTag
+					out = float64(v)
+					return
+				}
+			}
+		}
+		Fail(formatResolverError(
+			fmt.Sprintf("cannot construct %s `%s` as a %s", shortTag(rtag), in, shortTag(tag)),
+			Mark{},
+		))
+	}()
+
+	// Any data is accepted as a !!str or !!binary.
+	// Otherwise, the prefix is enough of a hint about what it might be.
+	hint := byte('N')
+	if in != "" {
+		hint = resolveTable[in[0]]
+	}
+	if hint != 0 && tag != strTag && tag != binaryTag {
+		// Handle things we can lookup in a map.
+		if item, ok := resolveMap[in]; ok {
+			return item.tag, item.value
+		}
+
+		// Base 60 floats are a bad idea, were dropped in YAML 1.2, and
+		// are purposefully unsupported here. They're still quoted on
+		// the way out for compatibility with other parser, though.
+
+		switch hint {
+		case 'M':
+			// We've already checked the map above.
+
+		case '.':
+			// Not in the map, so maybe a normal float.
+			floatv, err := strconv.ParseFloat(in, 64)
+			if err == nil {
+				return floatTag, floatv
+			}
+
+		case 'D', 'S':
+			// Int, float, or timestamp.
+			// Only try values as a timestamp if the value is
+			// unquoted or there's an explicit !!timestamp tag.
+			if tag == "" || tag == timestampTag {
+				t, ok := parseTimestamp(in)
+				if ok {
+					return timestampTag, t
+				}
+			}
+
+			plain := strings.ReplaceAll(in, "_", "")
+			intv, err := strconv.ParseInt(plain, 0, 64)
+			if err == nil {
+				if intv == int64(int(intv)) {
+					return intTag, int(intv)
+				} else {
+					return intTag, intv
+				}
+			}
+			uintv, err := strconv.ParseUint(plain, 0, 64)
+			if err == nil {
+				return intTag, uintv
+			}
+			if yamlStyleFloat.MatchString(plain) {
+				floatv, err := strconv.ParseFloat(plain, 64)
+				if err == nil {
+					return floatTag, floatv
+				}
+			}
+		default:
+			panic("internal error: missing handler for resolver table: " + string(rune(hint)) + " (with " + in + ")")
+		}
+	}
+	return strTag, in
+}
+
+// resolveTable provides a fast lookup table for initial character-based
+// classification during tag resolution.
+// resolveMap maps specific scalar strings to their resolved values and tags.
 var (
 	resolveTable = make([]byte, 256)
 	resolveMap   = make(map[string]resolveMapItem)
@@ -32,6 +196,24 @@ var (
 // https://staticcheck.dev/docs/checks/#SA4026
 var negativeZero = math.Copysign(0.0, -1.0)
 
+// yamlStyleFloat matches floating-point numbers in YAML style (including
+// scientific notation and numbers starting with a dot).
+var yamlStyleFloat = regexp.MustCompile(`^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?$`)
+
+// allowedTimestampFormats lists the timestamp formats supported by the
+// resolver.
+// This is a subset of the formats allowed by the regular expression
+// defined at http://yaml.org/type/timestamp.html.
+var allowedTimestampFormats = []string{
+	"2006-1-2T15:4:5.999999999Z07:00", // RCF3339Nano with short date fields.
+	"2006-1-2t15:4:5.999999999Z07:00", // RFC3339Nano with short date fields and lower-case "t".
+	"2006-1-2 15:4:5.999999999",       // space separated with no time zone
+	"2006-1-2",                        // date only
+	// Notable exception: time.Parse cannot handle: "2001-12-14 21:59:43.10 -5"
+	// from the set of examples.
+}
+
+// init initializes the resolveTable with character class mappings for tag resolution.
 func init() {
 	t := resolveTable
 	t[int('+')] = 'S' // Sign
@@ -68,105 +250,14 @@ func init() {
 	}
 }
 
+// resolvableTag checks if a tag can be automatically resolved from a scalar
+// value.
 func resolvableTag(tag string) bool {
 	switch tag {
 	case "", strTag, boolTag, intTag, floatTag, nullTag, timestampTag:
 		return true
 	}
 	return false
-}
-
-var yamlStyleFloat = regexp.MustCompile(`^[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?$`)
-
-func resolve(tag string, in string) (rtag string, out any) {
-	tag = shortTag(tag)
-	if !resolvableTag(tag) {
-		return tag, in
-	}
-
-	defer func() {
-		switch tag {
-		case "", rtag, strTag, binaryTag:
-			return
-		case floatTag:
-			if rtag == intTag {
-				switch v := out.(type) {
-				case int64:
-					rtag = floatTag
-					out = float64(v)
-					return
-				case int:
-					rtag = floatTag
-					out = float64(v)
-					return
-				}
-			}
-		}
-		failf("cannot construct %s `%s` as a %s", shortTag(rtag), in, shortTag(tag))
-	}()
-
-	// Any data is accepted as a !!str or !!binary.
-	// Otherwise, the prefix is enough of a hint about what it might be.
-	hint := byte('N')
-	if in != "" {
-		hint = resolveTable[in[0]]
-	}
-	if hint != 0 && tag != strTag && tag != binaryTag {
-		// Handle things we can lookup in a map.
-		if item, ok := resolveMap[in]; ok {
-			return item.tag, item.value
-		}
-
-		// Base 60 floats are a bad idea, were dropped in YAML 1.2, and
-		// are purposefully unsupported here. They're still quoted on
-		// the way out for compatibility with other parser, though.
-
-		switch hint {
-		case 'M':
-			// We've already checked the map above.
-
-		case '.':
-			// Not in the map, so maybe a normal float.
-			floatv, err := strconv.ParseFloat(in, 64)
-			if err == nil {
-				return floatTag, floatv
-			}
-
-		case 'D', 'S':
-			// Int, float, or timestamp.
-			// Only try values as a timestamp if the value is unquoted or there's an explicit
-			// !!timestamp tag.
-			if tag == "" || tag == timestampTag {
-				t, ok := parseTimestamp(in)
-				if ok {
-					return timestampTag, t
-				}
-			}
-
-			plain := strings.ReplaceAll(in, "_", "")
-			intv, err := strconv.ParseInt(plain, 0, 64)
-			if err == nil {
-				if intv == int64(int(intv)) {
-					return intTag, int(intv)
-				} else {
-					return intTag, intv
-				}
-			}
-			uintv, err := strconv.ParseUint(plain, 0, 64)
-			if err == nil {
-				return intTag, uintv
-			}
-			if yamlStyleFloat.MatchString(plain) {
-				floatv, err := strconv.ParseFloat(plain, 64)
-				if err == nil {
-					return floatTag, floatv
-				}
-			}
-		default:
-			panic("internal error: missing handler for resolver table: " + string(rune(hint)) + " (with " + in + ")")
-		}
-	}
-	return strTag, in
 }
 
 // encodeBase64 encodes s as base64 that is broken up into multiple lines
@@ -194,17 +285,6 @@ func encodeBase64(s string) string {
 	return string(out[:k])
 }
 
-// This is a subset of the formats allowed by the regular expression
-// defined at http://yaml.org/type/timestamp.html.
-var allowedTimestampFormats = []string{
-	"2006-1-2T15:4:5.999999999Z07:00", // RCF3339Nano with short date fields.
-	"2006-1-2t15:4:5.999999999Z07:00", // RFC3339Nano with short date fields and lower-case "t".
-	"2006-1-2 15:4:5.999999999",       // space separated with no time zone
-	"2006-1-2",                        // date only
-	// Notable exception: time.Parse cannot handle: "2001-12-14 21:59:43.10 -5"
-	// from the set of examples.
-}
-
 // parseTimestamp parses s as a timestamp string and
 // returns the timestamp and reports whether it succeeded.
 // Timestamp formats are defined at http://yaml.org/type/timestamp.html
@@ -228,4 +308,25 @@ func parseTimestamp(s string) (time.Time, bool) {
 		}
 	}
 	return time.Time{}, false
+}
+
+// formatResolverError creates a LoadError for resolver-stage errors.
+func formatResolverError(message string, mark Mark) *LoadError {
+	return &LoadError{
+		Stage:   ResolverStage,
+		Mark:    mark,
+		Message: message,
+	}
+}
+
+// formatResolverErrorContext creates a LoadError with both context and
+// problem information for resolver-stage errors.
+func formatResolverErrorContext(context string, contextMark Mark, message string, mark Mark) *LoadError {
+	return &LoadError{
+		Stage:       ResolverStage,
+		ContextMark: contextMark,
+		ContextMsg:  context,
+		Mark:        mark,
+		Message:     message,
+	}
 }

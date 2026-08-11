@@ -249,6 +249,17 @@ func TestPlanner_Convert(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+
+	// Optimize records a firing for every optimization pass, each with a stable
+	// name.
+	firings := planner.FiredRules()
+	require.NotEmpty(t, firings)
+	names := make([]string, 0, len(firings))
+	for name := range firings {
+		require.NotEmpty(t, name)
+		names = append(names, name)
+	}
+	require.Subset(t, names, []string{"PredicatePushdown", "ProjectionPushdown"})
 }
 
 func TestPlanner_Convert_WithParse(t *testing.T) {
@@ -873,14 +884,11 @@ func TestPlanner_MetadataColumnResolution(t *testing.T) {
 		cat := &catalog{
 			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
 				{
-					SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
-					StreamIDs:  []int64{1, 2},
-					Start:      timeStart,
-					End:        timeEnd,
-					AmbiguousPredicatesByStream: map[int64][]string{
-						1: {"app", "foo"},
-						2: {"app", "bar"},
-					},
+					SectionKey:          metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0},
+					StreamIDs:           []int64{1, 2},
+					Start:               timeStart,
+					End:                 timeEnd,
+					AmbiguousPredicates: []string{"app", "foo", "bar"},
 				},
 			},
 		}

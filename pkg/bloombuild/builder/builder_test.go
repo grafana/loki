@@ -43,7 +43,6 @@ func setupBuilder(t *testing.T, plannerAddr string, limits Limits, logger log.Lo
 				IndexType:  types.IndexTypeTSDB,
 				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v13",
-				RowShards:  16,
 			},
 		},
 	}
@@ -75,7 +74,7 @@ func setupBuilder(t *testing.T, plannerAddr string, limits Limits, logger log.Lo
 	metrics := storage.NewClientMetrics()
 	metrics.Unregister()
 
-	builder, err := New(cfg, limits, schemaCfg, storageCfg, metrics, nil, fakeBloomStore{}, nil, logger, prometheus.NewPedanticRegistry(), nil)
+	builder, err := New(cfg, limits, schemaCfg, storageCfg, metrics, nil, fakeBloomStore{}, nil, logger, prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
 	return builder

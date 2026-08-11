@@ -12,8 +12,7 @@ type Decoder = decoder.Decoder
 type DecoderOption = decoder.DecoderOption
 
 // NewDecoder creates a new Decoder with the given buffer, offset, and options.
-// Error messages automatically include contextual information like offset and
-// path (e.g., "/city/names/en") with zero impact on successful operations.
+// Error messages include contextual offset information.
 func NewDecoder(buffer []byte, offset uint, options ...DecoderOption) *Decoder {
 	d := decoder.NewDataDecoder(buffer)
 	return decoder.NewDecoder(d, offset, options...)

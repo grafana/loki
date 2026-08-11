@@ -200,24 +200,20 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return ast.next.Do(ctx, r)
 	}
 
-	var strategy logql.ShardingStrategy
-
-	if conf.IndexType == types.IndexTypeTSDB {
-		v := ast.limits.TSDBShardingStrategy(tenants[0])
-		version, err := logql.ParseShardVersion(v)
-		if err != nil {
-			level.Warn(spLogger).Log(
-				"msg", "failed to parse shard version",
-				"fallback", version.String(),
-				"err", err.Error(),
-				"user", tenants[0],
-				"query", r.GetQuery(),
-			)
-		}
-		strategy = version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
-	} else {
-		strategy = logql.NewPowerOfTwoStrategy(resolver)
+	// TSDB is the only supported index type, so the resolver is always dynamic
+	// and the sharding strategy is selected per-tenant.
+	v := ast.limits.TSDBShardingStrategy(ctx, tenants[0])
+	version, err := logql.ParseShardVersion(v)
+	if err != nil {
+		level.Warn(spLogger).Log(
+			"msg", "failed to parse shard version",
+			"fallback", version.String(),
+			"err", err.Error(),
+			"user", tenants[0],
+			"query", r.GetQuery(),
+		)
 	}
+	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
 
 	// Merge global shard aggregations and tenant overrides.
 	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
@@ -349,7 +345,7 @@ func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request)
 
 func hasShards(confs ShardingConfigs) bool {
 	for _, conf := range confs {
-		if conf.RowShards > 0 || conf.IndexType == types.IndexTypeTSDB {
+		if conf.IndexType == types.IndexTypeTSDB {
 			return true
 		}
 	}
@@ -385,11 +381,6 @@ func (confs ShardingConfigs) GetConf(start, end int64) (config.PeriodConfig, err
 	// query exists across multiple sharding configs
 	if err != nil {
 		return conf, err
-	}
-
-	// query doesn't have shard factor, so don't try to do AST mapping.
-	if conf.RowShards < 2 && conf.IndexType != types.IndexTypeTSDB {
-		return conf, errors.Errorf("shard factor not high enough: [%d]", conf.RowShards)
 	}
 
 	return conf, nil
@@ -438,9 +429,9 @@ type seriesShardingHandler struct {
 }
 
 func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	conf, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli())
-	// cannot shard with this timerange
-	if err != nil {
+	// GetConf validates that the request fits within a single sharding config;
+	// the returned config is otherwise unused since the shard factor is fixed.
+	if _, err := ss.confs.GetConf(r.GetStart().UnixMilli(), r.GetEnd().UnixMilli()); err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
 		return ss.next.Do(ctx, r)
 	}
@@ -451,14 +442,14 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 	}
 
 	ss.metrics.DownstreamQueries.WithLabelValues("series").Inc()
-	ss.metrics.DownstreamFactor.Observe(float64(conf.RowShards))
+	ss.metrics.DownstreamFactor.Observe(float64(config.DefaultRowShards))
 
-	requests := make([]queryrangebase.Request, 0, conf.RowShards)
-	for i := 0; i < int(conf.RowShards); i++ {
+	requests := make([]queryrangebase.Request, 0, config.DefaultRowShards)
+	for i := 0; i < config.DefaultRowShards; i++ {
 		shardedRequest := *req
 		shardedRequest.Shards = []string{astmapper.ShardAnnotation{
 			Shard: i,
-			Of:    int(conf.RowShards),
+			Of:    config.DefaultRowShards,
 		}.String()}
 		requests = append(requests, &shardedRequest)
 	}

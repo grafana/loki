@@ -49,7 +49,7 @@ type Pipeliner interface {
 var _ Pipeliner = (*Pipeline)(nil)
 
 // Pipeline implements pipelining as described in
-// http://redis.io/topics/pipelining.
+// https://redis.io/docs/latest/develop/using-commands/pipelining.
 // Please note: it is not safe for concurrent use by multiple goroutines.
 type Pipeline struct {
 	cmdable

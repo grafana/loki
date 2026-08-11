@@ -5,10 +5,11 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -142,6 +143,13 @@ type Options struct {
 	//
 	// default: 100 milliseconds
 	DialerRetryTimeout time.Duration
+
+	// DialerRetryBackoff controls the delay between dial retry attempts.
+	//
+	// attempt is 0-based: attempt=0 is the delay after the 1st failed dial (before the 2nd attempt).
+	//
+	// If nil, dial retry backoff is constant and equals DialerRetryTimeout (default: 100ms).
+	DialerRetryBackoff func(attempt int) time.Duration
 
 	// ReadTimeout for socket reads. If reached, commands will fail
 	// with a timeout instead of blocking. Supported values:
@@ -282,8 +290,9 @@ type Options struct {
 	// IdentitySuffix - add suffix to client name.
 	IdentitySuffix string
 
-	// UnstableResp3 enables Unstable mode for Redis Search module with RESP3.
-	// When unstable mode is enabled, the client will use RESP3 protocol and only be able to use RawResult
+	// Deprecated: All RediSearch commands now have stable RESP3 parsing and this
+	// flag is a no-op. It is kept for backwards compatibility and will be removed
+	// in a future release.
 	UnstableResp3 bool
 
 	// Push notifications are always enabled for RESP3 connections (Protocol: 3)
@@ -644,11 +653,8 @@ func (o *queryOptions) remaining() []string {
 	if len(o.q) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(o.q))
-	for k := range o.q {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := slices.Collect(maps.Keys(o.q))
+	slices.Sort(keys)
 	return keys
 }
 
@@ -755,6 +761,7 @@ func newConnPool(
 		DialTimeout:              opt.DialTimeout,
 		DialerRetries:            opt.DialerRetries,
 		DialerRetryTimeout:       opt.DialerRetryTimeout,
+		DialerRetryBackoff:       opt.DialerRetryBackoff,
 		MinIdleConns:             minIdleConns,
 		MaxIdleConns:             maxIdleConns,
 		MaxActiveConns:           maxActiveConns,
@@ -801,6 +808,7 @@ func newPubSubPool(
 		DialTimeout:              opt.DialTimeout,
 		DialerRetries:            opt.DialerRetries,
 		DialerRetryTimeout:       opt.DialerRetryTimeout,
+		DialerRetryBackoff:       opt.DialerRetryBackoff,
 		MinIdleConns:             minIdleConns,
 		MaxIdleConns:             maxIdleConns,
 		MaxActiveConns:           maxActiveConns,

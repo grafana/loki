@@ -3,11 +3,22 @@ package bucket
 import (
 	"bytes"
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"sort"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -126,4 +137,92 @@ func TestObjectClientAdapter_List(t *testing.T) {
 		require.Equal(t, tt.storageObjKeys, keys)
 		require.Equal(t, tt.storageCommonPref, storageCommonPref)
 	}
+}
+
+func TestObjectClientAdapter_IsBackendFilesystem(t *testing.T) {
+	// A filesystem-backed adapter must report true so that callers select the
+	// FSEncoder for chunk keys (see compactor chunk client setup).
+	client, err := NewObjectClient(context.Background(), "filesystem", ConfigWithNamedStores{
+		Config: Config{
+			Filesystem: filesystem.Config{Directory: t.TempDir()},
+		},
+	}, "test", hedging.Config{}, false, log.NewNopLogger())
+	require.NoError(t, err)
+	require.True(t, client.IsBackendFilesystem())
+
+	// Non-filesystem backends must report false.
+	require.False(t, (&ObjectClientAdapter{storeType: S3}).IsBackendFilesystem())
+	require.False(t, (&ObjectClientAdapter{storeType: GCS}).IsBackendFilesystem())
+}
+
+func TestObjectClientAdapter_ClientReusesConnections(t *testing.T) {
+	// We are going to make multiple rounds of calls to a fake S3, and expect that
+	// connections opened by the first round should be reused by every later round.
+	const (
+		concurrency = 8
+		rounds      = 6
+	)
+
+	// Fake S3 responses
+	payload := []byte("some-object-contents")
+	var newConns atomic.Int64
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.Header().Set("ETag", `"d0be2dc421be4fcd0172e5afceea3970"`)
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(payload)
+		}
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			newConns.Add(1)
+		}
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+	cfg.S3.Endpoint = strings.TrimPrefix(srv.URL, "http://")
+	cfg.S3.BucketName = "test-bucket"
+	cfg.S3.Region = "us-east-1"
+	cfg.S3.AccessKeyID = "access-key"
+	cfg.S3.SecretAccessKey = flagext.SecretWithValue("secret-key")
+	cfg.S3.Insecure = true
+	cfg.S3.MaxRetries = 1
+
+	require.GreaterOrEqual(t, cfg.S3.HTTP.MaxIdleConnsPerHost, concurrency,
+		"test is only meaningful if the configured pool can hold every connection we open")
+
+	// Configure hedging on, since the bug where this went wrong only happened when hedging was enabled.
+	// However we don't actually want any hedged requests so use At=time.Hour.
+	client, err := NewObjectClient(context.Background(), S3, ConfigWithNamedStores{Config: cfg}, "test",
+		hedging.Config{At: time.Hour, UpTo: 2, MaxPerSecond: 100}, false, log.NewNopLogger())
+	require.NoError(t, err)
+
+	for range rounds {
+		var wg sync.WaitGroup
+		for range concurrency {
+			wg.Go(func() {
+				rc, _, err := client.GetObject(context.Background(), "some-key")
+				if !assert.NoError(t, err) {
+					return
+				}
+				defer rc.Close()
+
+				// Must read the whole body to enable connection pooling.
+				got, err := io.ReadAll(rc)
+				assert.NoError(t, err)
+				assert.Equal(t, payload, got)
+			})
+		}
+		wg.Wait()
+	}
+
+	// Allow some leeway, up to 2x what should be needed.
+	require.Lessf(t, newConns.Load(), int64(concurrency*2),
+		"opened %d connections to serve %d requests: the client is not reusing connections",
+		newConns.Load(), concurrency*rounds)
 }

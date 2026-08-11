@@ -57,7 +57,7 @@ func RegisterTraceServiceServer(s *grpc.Server, srv TraceServiceServer) {
 //
 //nolint:revive
 func traceServiceExportHandler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
-	in := new(internal.ExportTraceServiceRequest)
+	in := internal.NewExportTraceServiceRequest()
 	if err := dec(in); err != nil {
 		return nil, err
 	}

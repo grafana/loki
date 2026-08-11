@@ -316,7 +316,7 @@ func (orig *Span) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.Status.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

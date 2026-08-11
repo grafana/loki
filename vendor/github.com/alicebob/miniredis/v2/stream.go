@@ -262,6 +262,7 @@ func (s *streamKey) add(entryID string, values []string, now time.Time) (string,
 		ID:     entryID,
 		Values: values,
 	})
+	s.lastAllocatedID = entryID
 	return entryID, nil
 }
 

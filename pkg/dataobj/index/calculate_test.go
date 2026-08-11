@@ -46,7 +46,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 			BufferSize:              2048 * 8,
 			SectionStripeMergeLimit: 2,
 		},
-	}, nil)
+	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	// Add test streams with structured metadata
@@ -96,7 +96,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 
 	for i := range tenants {
 		for _, stream := range testStreams {
-			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream)
+			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream, stream.Entries[0].Timestamp)
 			require.NoError(t, err)
 		}
 	}
@@ -133,8 +133,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, timeRanges, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
@@ -177,8 +176,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		timeRanges := calculator.TimeRanges()
-		obj, closer, err := calculator.Flush()
+		obj, closer, timeRanges, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 

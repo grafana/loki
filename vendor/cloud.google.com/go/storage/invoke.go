@@ -206,10 +206,11 @@ func ShouldRetry(err error) bool {
 		// https://cloud.google.com/storage/docs/exponential-backoff.
 		return e.Code == 408 || e.Code == 429 || (e.Code >= 500 && e.Code < 600)
 	case *net.OpError, *url.Error:
-		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall).
+		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall)
+		// and transport-level errors like server closed idle connections.
 		// Unfortunately the error type is unexported, so we resort to string
 		// matching.
-		retriable := []string{"connection refused", "connection reset", "broken pipe", "client connection lost"}
+		retriable := []string{"connection refused", "connection reset", "broken pipe", "client connection lost", "server closed idle connection"}
 		for _, s := range retriable {
 			if strings.Contains(e.Error(), s) {
 				return true
@@ -242,6 +243,21 @@ func ShouldRetry(err error) bool {
 	// Unwrap is only supported in go1.13.x+
 	if e, ok := err.(interface{ Unwrap() error }); ok {
 		return ShouldRetry(e.Unwrap())
+	}
+	return false
+}
+
+func isError(err error, httpErrorCode int, grpcErrorCode codes.Code) bool {
+	var e *googleapi.Error
+	if errors.As(err, &e) {
+		if e.Code == httpErrorCode {
+			return true
+		}
+	}
+	if s, ok := status.FromError(err); ok {
+		if s.Code() == grpcErrorCode {
+			return true
+		}
 	}
 	return false
 }

@@ -2,7 +2,9 @@ package parquet
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -35,6 +37,11 @@ type File struct {
 	offsetIndexes []format.OffsetIndex
 	rowGroups     []RowGroup
 	config        *FileConfig
+
+	// Decryption state; non-nil when the file has encryption metadata.
+	decryption *DecryptionConfig
+	fileUnique []byte // AadFileUnique from encryption algorithm
+	aadPrefix  []byte // AadPrefix from encryption algorithm
 }
 
 type FileView interface {
@@ -62,13 +69,21 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 	}
 	f := &File{reader: r, size: size, config: c}
 
+	var headerMagic [4]byte
 	if !c.SkipMagicBytes {
-		var b [4]byte
-		if _, err := readAt(r, b[:4], 0); err != nil {
+		if _, err := readAt(r, headerMagic[:], 0); err != nil {
 			return nil, fmt.Errorf("reading magic header of parquet file: %w", err)
 		}
-		if string(b[:4]) != "PAR1" {
-			return nil, fmt.Errorf("invalid magic header of parquet file: %q", b[:4])
+		switch string(headerMagic[:]) {
+		case "PAR1":
+			// plain or plaintext-footer-with-signature
+		case "PARE":
+			// encrypted footer
+			if c.Decryption == nil {
+				return nil, fmt.Errorf("parquet file has encrypted footer (magic \"PARE\") but no DecryptionConfig was provided")
+			}
+		default:
+			return nil, fmt.Errorf("invalid magic header of parquet file: %q", headerMagic[:])
 		}
 	}
 
@@ -95,7 +110,8 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 	}
 	optimisticFooterSize -= 8
 	b := optimisticFooterData[optimisticFooterSize:]
-	if string(b[4:]) != "PAR1" {
+	footerMagic := string(b[4:])
+	if footerMagic != "PAR1" && footerMagic != "PARE" {
 		return nil, fmt.Errorf("invalid magic footer of parquet file: %q", b[4:])
 	}
 
@@ -114,11 +130,102 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 		}
 	}
 
-	if err := thrift.Unmarshal(&f.protocol, footerData, &f.metadata); err != nil {
-		return nil, fmt.Errorf("reading parquet file metadata: %w", err)
+	if footerMagic == "PARE" {
+		// Encrypted footer: footerData = FileCryptoMetaData (thrift) || encrypted footer module.
+		// Decode FileCryptoMetaData using a bytes-backed reader to count bytes consumed.
+		pr := f.protocol.NewReaderFromBytes(footerData)
+		var cryptoMeta format.FileCryptoMetaData
+		if err := thrift.NewDecoder(pr).Decode(&cryptoMeta); err != nil {
+			return nil, fmt.Errorf("reading FileCryptoMetaData: %w", err)
+		}
+		encFooterEnvelope := footerData[pr.BytesRead():]
+
+		// Extract AAD parameters from the encryption algorithm.
+		var fileUnique, aadPrefix []byte
+		switch {
+		case cryptoMeta.EncryptionAlgorithm.AesGcmV1 != nil:
+			fileUnique = cryptoMeta.EncryptionAlgorithm.AesGcmV1.AadFileUnique
+			aadPrefix = cryptoMeta.EncryptionAlgorithm.AesGcmV1.AadPrefix
+		case cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1 != nil:
+			fileUnique = cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1.AadFileUnique
+			aadPrefix = cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1.AadPrefix
+		}
+
+		footerKey, err := c.Decryption.Keys.FooterKey(cryptoMeta.KeyMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("retrieving footer key: %w", err)
+		}
+		footerAAD := makeAAD(aadPrefix, fileUnique, footerModule)
+		plainFooter, err := decryptModule(footerKey, footerAAD, encFooterEnvelope)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting footer: %w", err)
+		}
+		if err := thrift.Unmarshal(&f.protocol, plainFooter, &f.metadata); err != nil {
+			return nil, fmt.Errorf("reading parquet file metadata from decrypted footer: %w", err)
+		}
+		f.decryption = c.Decryption
+		f.fileUnique = fileUnique
+		f.aadPrefix = aadPrefix
+	} else {
+		// Decode the footer metadata using a reader that tracks bytes consumed,
+		// so that we can detect a trailing 28-byte AES-GCM signature without
+		// tripping over the "unexpected trailing bytes" check in thrift.Unmarshal.
+		pr := f.protocol.NewReaderFromBytes(bytes.Clone(footerData))
+		if err := thrift.NewDecoder(pr).Decode(&f.metadata); err != nil {
+			return nil, fmt.Errorf("reading parquet file metadata: %w", err)
+		}
+		trailing := len(footerData) - pr.BytesRead()
+		const sigLen = encNonceSize + encTagSize
+		switch {
+		case trailing == 0:
+			// Plain, unsigned footer — nothing to do.
+		case trailing == sigLen:
+			// Plaintext footer with AES-GCM signature appended.
+			if c.Decryption == nil {
+				return nil, fmt.Errorf("parquet file has a signed footer but no DecryptionConfig was provided")
+			}
+			algo := &f.metadata.EncryptionAlgorithm
+			var fileUnique, aadPrefix []byte
+			switch {
+			case algo.AesGcmV1 != nil:
+				fileUnique = algo.AesGcmV1.AadFileUnique
+				aadPrefix = algo.AesGcmV1.AadPrefix
+			case algo.AesGcmCtrV1 != nil:
+				fileUnique = algo.AesGcmCtrV1.AadFileUnique
+				aadPrefix = algo.AesGcmCtrV1.AadPrefix
+			}
+			plainFooterBytes := footerData[:pr.BytesRead()]
+			sig := footerData[pr.BytesRead():]
+
+			footerKey, err := c.Decryption.Keys.FooterKey(f.metadata.FooterSigningKeyMetadata)
+			if err != nil {
+				return nil, fmt.Errorf("retrieving footer signing key: %w", err)
+			}
+			footerAAD := makeAAD(aadPrefix, fileUnique, footerModule)
+			if err := verifyFooterSignature(footerKey, footerAAD, plainFooterBytes, sig); err != nil {
+				return nil, err
+			}
+			f.decryption = c.Decryption
+			f.fileUnique = fileUnique
+			f.aadPrefix = aadPrefix
+		default:
+			return nil, fmt.Errorf("reading parquet file metadata: unexpected trailing bytes at the end of thrift input: %d", trailing)
+		}
 	}
+
 	if len(f.metadata.Schema) == 0 {
 		return nil, ErrMissingRootColumn
+	}
+
+	// In plaintext-footer mode with encryption, column metadata is stored as
+	// EncryptedColumnMetadata. Decrypt it into MetaData before reading the page
+	// index — column index/offset index offsets live in MetaData and would
+	// otherwise be zero, silently losing the page index for every encrypted
+	// plaintext-footer file.
+	if f.decryption != nil {
+		if err := f.decryptAllColumnMetadata(); err != nil {
+			return nil, err
+		}
 	}
 
 	if !c.SkipPageIndex {
@@ -137,11 +244,14 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 		f.schema = NewSchema(f.root.Name(), f.root)
 	}
 	columns := makeLeafColumns(f.root)
-	rowGroups := makeFileRowGroups(f, columns)
+	rowGroups, err := makeFileRowGroups(f, columns)
+	if err != nil {
+		return nil, err
+	}
 	f.rowGroups = makeRowGroups(rowGroups)
 
 	if !c.SkipBloomFilters {
-		section := io.NewSectionReader(r, 0, size)
+		section := io.NewSectionReader(f.reader, 0, size)
 		rbuf, rbufpool := getBufioReader(section, c.ReadBufferSize)
 		defer putBufioReader(rbuf, rbufpool)
 
@@ -153,9 +263,16 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 			g := &rowGroups[i]
 
 			for j := range g.columns {
-				c := g.columns[j].(*FileColumnChunk)
+				cc := g.columns[j].(*FileColumnChunk)
 
-				if offset := c.chunk.MetaData.BloomFilterOffset; offset > 0 {
+				if offset := cc.chunk.MetaData.BloomFilterOffset; offset > 0 {
+					// Encrypted columns cannot be decoded here because the bloom
+					// filter bytes on disk are AES-GCM envelopes, not plain
+					// thrift.  Defer loading to the lazy readBloomFilter path.
+					if cc.decryptionKey != nil {
+						continue
+					}
+
 					section.Seek(offset, io.SeekStart)
 					rbuf.Reset(section)
 
@@ -168,12 +285,29 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 					offset -= int64(rbuf.Buffered())
 
 					if cast, ok := r.(interface{ SetBloomFilterSection(offset, length int64) }); ok {
-						bloomFilterOffset := c.chunk.MetaData.BloomFilterOffset
+						bloomFilterOffset := cc.chunk.MetaData.BloomFilterOffset
 						bloomFilterLength := (offset - bloomFilterOffset) + int64(header.NumBytes)
 						cast.SetBloomFilterSection(bloomFilterOffset, bloomFilterLength)
 					}
 
-					c.bloomFilter.Store(newBloomFilter(r, offset, &header))
+					if c.PrefetchBloomFilters {
+						bloomData := make([]byte, header.NumBytes)
+						if _, err := io.ReadFull(rbuf, bloomData); err != nil {
+							return nil, fmt.Errorf("reading bloom filter data: %w", err)
+						}
+						// Create bloom filter using in-memory data.
+						bf, err := newBloomFilter(bytes.NewReader(bloomData), 0, &header)
+						if err != nil {
+							return nil, fmt.Errorf("reading bloom filter: %w", err)
+						}
+						cc.bloomFilter.Store(bf)
+					} else {
+						bf, err := newBloomFilter(f, offset, &header)
+						if err != nil {
+							return nil, fmt.Errorf("reading bloom filter: %w", err)
+						}
+						cc.bloomFilter.Store(bf)
+					}
 				}
 			}
 		}
@@ -250,6 +384,25 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 	offsetIndexes := make([]format.OffsetIndex, numColumnChunks)
 	indexBuffer := make([]byte, max(int(columnIndexLength), int(offsetIndexLength)))
 
+	// pageIndexKey returns the AES key used to decrypt this column's
+	// page-index modules, or nil for plaintext columns.  We resolve keys here
+	// (instead of relying on FileRowGroup.init) because ReadPageIndex runs
+	// before makeFileRowGroups during OpenFile.
+	pageIndexKey := func(c *format.ColumnChunk) ([]byte, error) {
+		if f.decryption == nil {
+			return nil, nil
+		}
+		switch {
+		case c.CryptoMetadata.EncryptionWithFooterKey != nil:
+			return f.decryption.Keys.FooterKey(nil)
+		case c.CryptoMetadata.EncryptionWithColumnKey != nil:
+			colKey := c.CryptoMetadata.EncryptionWithColumnKey
+			return f.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+		default:
+			return nil, nil
+		}
+	}
+
 	if columnIndexOffset > 0 {
 		columnIndexData := indexBuffer[:columnIndexLength]
 
@@ -269,6 +422,21 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 				offset := c.ColumnIndexOffset - columnIndexOffset
 				length := int64(c.ColumnIndexLength)
 				buffer := columnIndexData[offset : offset+length]
+				key, err := pageIndexKey(c)
+				if err != nil {
+					if errors.Is(err, ErrKeyNotFound) {
+						return nil
+					}
+					return fmt.Errorf("resolving column index key: rowGroup=%d col=%d: %w", i, j, err)
+				}
+				if key != nil {
+					aad := makeAAD(f.aadPrefix, f.fileUnique, columnIndexModule, int16(i), int16(j))
+					plain, err := decryptModule(key, aad, buffer)
+					if err != nil {
+						return fmt.Errorf("decrypting column index: rowGroup=%d col=%d: %w", i, j, err)
+					}
+					buffer = plain
+				}
 				if err := thrift.Unmarshal(&f.protocol, buffer, &columnIndexes[(i*numColumns)+j]); err != nil {
 					return fmt.Errorf("decoding column index: rowGroup=%d columnChunk=%d/%d: %w", i, j, numColumns, err)
 				}
@@ -295,8 +463,23 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 				offset := c.OffsetIndexOffset - offsetIndexOffset
 				length := int64(c.OffsetIndexLength)
 				buffer := offsetIndexData[offset : offset+length]
+				key, err := pageIndexKey(c)
+				if err != nil {
+					if errors.Is(err, ErrKeyNotFound) {
+						return nil
+					}
+					return fmt.Errorf("resolving offset index key: rowGroup=%d col=%d: %w", i, j, err)
+				}
+				if key != nil {
+					aad := makeAAD(f.aadPrefix, f.fileUnique, offsetIndexModule, int16(i), int16(j))
+					plain, err := decryptModule(key, aad, buffer)
+					if err != nil {
+						return fmt.Errorf("decrypting offset index: rowGroup=%d col=%d: %w", i, j, err)
+					}
+					buffer = plain
+				}
 				if err := thrift.Unmarshal(&f.protocol, buffer, &offsetIndexes[(i*numColumns)+j]); err != nil {
-					return fmt.Errorf("decoding column index: rowGroup=%d columnChunk=%d/%d: %w", i, j, numColumns, err)
+					return fmt.Errorf("decoding offset index: rowGroup=%d columnChunk=%d/%d: %w", i, j, numColumns, err)
 				}
 			}
 			return nil
@@ -307,6 +490,66 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 	}
 
 	return columnIndexes, offsetIndexes, nil
+}
+
+// decryptAllColumnMetadata decrypts EncryptedColumnMetadata for every column
+// chunk in every row group, restoring ColumnChunk.MetaData so that
+// openColumns and schema construction see the full encoding/compression info.
+// This must be called before openColumns.
+func (f *File) decryptAllColumnMetadata() error {
+	// Normalize ordinals before using them in AADs.  Files from writers that
+	// omit the optional Ordinal field have all zeros; validateRowGroupOrdinals
+	// back-fills sequential values so rg.Ordinal is guaranteed to equal the
+	// slice index — matching exactly what the writer embedded in every AAD.
+	if err := validateRowGroupOrdinals(f.metadata.RowGroups); err != nil {
+		return err
+	}
+
+	for rgIdx := range f.metadata.RowGroups {
+		rg := &f.metadata.RowGroups[rgIdx]
+		for colIdx := range rg.Columns {
+			chunk := &rg.Columns[colIdx]
+			if len(chunk.EncryptedColumnMetadata) == 0 {
+				continue
+			}
+			var key []byte
+			switch {
+			case chunk.CryptoMetadata.EncryptionWithFooterKey != nil:
+				var err error
+				key, err = f.decryption.Keys.FooterKey(nil)
+				if err != nil {
+					return fmt.Errorf("resolving footer key for column metadata: %w", err)
+				}
+			case chunk.CryptoMetadata.EncryptionWithColumnKey != nil:
+				colKey := chunk.CryptoMetadata.EncryptionWithColumnKey
+				var err error
+				key, err = f.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+				if err != nil {
+					// Only treat an explicit ErrKeyNotFound as non-fatal: the
+					// caller intentionally omitted this column's key.  Any other
+					// error (KMS failure, bad metadata, …) is propagated so the
+					// caller sees the real problem instead of silent zero data.
+					if errors.Is(err, ErrKeyNotFound) {
+						continue
+					}
+					return fmt.Errorf("resolving column key for column metadata: %w", err)
+				}
+			default:
+				continue
+			}
+			// rg.Ordinal is reliable here because validateRowGroupOrdinals ran above.
+			aad := makeAAD(f.aadPrefix, f.fileUnique, columnMetaDataModule, rg.Ordinal, int16(colIdx))
+			plain, err := decryptModule(key, aad, chunk.EncryptedColumnMetadata)
+			if err != nil {
+				return fmt.Errorf("decrypting column metadata: rowGroup=%d col=%d: %w", rg.Ordinal, colIdx, err)
+			}
+			compact := thrift.CompactProtocol{}
+			if err := thrift.Unmarshal(&compact, plain, &chunk.MetaData); err != nil {
+				return fmt.Errorf("decoding column metadata: rowGroup=%d col=%d: %w", rg.Ordinal, colIdx, err)
+			}
+		}
+	}
+	return nil
 }
 
 // NumRows returns the number of rows in the file.
@@ -401,7 +644,7 @@ type FileRowGroup struct {
 	sorting  []SortingColumn
 }
 
-func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowGroup) {
+func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowGroup) error {
 	g.file = file
 	g.rowGroup = rowGroup
 	g.columns = make([]ColumnChunk, len(rowGroup.Columns))
@@ -412,10 +655,39 @@ func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowG
 
 	for i := range g.columns {
 		fileColumnChunks[i] = FileColumnChunk{
-			file:     file,
-			column:   columns[i],
-			rowGroup: rowGroup,
-			chunk:    &rowGroup.Columns[i],
+			file:            file,
+			column:          columns[i],
+			rowGroup:        rowGroup,
+			chunk:           &rowGroup.Columns[i],
+			columnOrdinal:   int16(i),
+			rowGroupOrdinal: rowGroup.Ordinal,
+		}
+		if file.decryption != nil {
+			chunk := &rowGroup.Columns[i]
+			switch {
+			case chunk.CryptoMetadata.EncryptionWithFooterKey != nil:
+				key, err := file.decryption.Keys.FooterKey(nil)
+				if err != nil {
+					return fmt.Errorf("resolving footer key for column %q: %w", columnPathString(columns[i].Path()), err)
+				}
+				fileColumnChunks[i].decryptionKey = key
+			case chunk.CryptoMetadata.EncryptionWithColumnKey != nil:
+				colKey := chunk.CryptoMetadata.EncryptionWithColumnKey
+				key, err := file.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+				switch {
+				case err == nil:
+					fileColumnChunks[i].decryptionKey = key
+				case errors.Is(err, ErrKeyNotFound):
+					// Caller intentionally omitted this column's key.  Leave
+					// decryptionKey nil so the chunk fails only if the data is
+					// actually accessed.
+				default:
+					// Real error (KMS failure, bad metadata, …) must surface so
+					// the caller learns the cause instead of seeing later
+					// "decode page header" errors masking the missing key.
+					return fmt.Errorf("resolving column key for %q: %w", columnPathString(colKey.PathInSchema), err)
+				}
+			}
 		}
 
 		if file.hasIndexes() {
@@ -438,6 +710,7 @@ func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowG
 			nullsFirst: rowGroup.SortingColumns[i].NullsFirst,
 		}
 	}
+	return nil
 }
 
 // File returns the file that this row group belongs to.
@@ -500,6 +773,11 @@ type FileColumnChunk struct {
 	columnIndex atomic.Pointer[FileColumnIndex]
 	offsetIndex atomic.Pointer[FileOffsetIndex]
 	bloomFilter atomic.Pointer[FileBloomFilter]
+
+	// Decryption state; decryptionKey is nil when the column is not encrypted.
+	decryptionKey   []byte
+	columnOrdinal   int16
+	rowGroupOrdinal int16
 }
 
 // File returns the file that this column chunk belongs to.
@@ -654,7 +932,16 @@ func (c *FileColumnChunk) readColumnIndexFrom(reader io.ReaderAt) (*FileColumnIn
 	if _, err := readAt(reader, indexData, offset); err != nil {
 		return nil, fmt.Errorf("read %d bytes column index at offset %d: %w", length, offset, err)
 	}
-	if err := thrift.Unmarshal(&c.file.protocol, indexData, &columnIndex); err != nil {
+	plain := indexData
+	if c.decryptionKey != nil {
+		aad := makeAAD(c.file.aadPrefix, c.file.fileUnique, columnIndexModule, c.rowGroupOrdinal, c.columnOrdinal)
+		decrypted, err := decryptModule(c.decryptionKey, aad, indexData)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting column index: rowGroup=%d col=%d: %w", c.rowGroupOrdinal, c.columnOrdinal, err)
+		}
+		plain = decrypted
+	}
+	if err := thrift.Unmarshal(&c.file.protocol, plain, &columnIndex); err != nil {
 		return nil, fmt.Errorf("decode column index: rowGroup=%d columnChunk=%d/%d: %w", c.rowGroup.Ordinal, c.Column(), len(c.rowGroup.Columns), err)
 	}
 	index := &FileColumnIndex{index: &columnIndex, kind: c.column.Type().Kind()}
@@ -683,7 +970,16 @@ func (c *FileColumnChunk) readOffsetIndex(reader io.ReaderAt) (*FileOffsetIndex,
 	if _, err := readAt(reader, indexData, offset); err != nil {
 		return nil, fmt.Errorf("read %d bytes offset index at offset %d: %w", length, offset, err)
 	}
-	if err := thrift.Unmarshal(&c.file.protocol, indexData, &offsetIndex); err != nil {
+	plain := indexData
+	if c.decryptionKey != nil {
+		aad := makeAAD(c.file.aadPrefix, c.file.fileUnique, offsetIndexModule, c.rowGroupOrdinal, c.columnOrdinal)
+		decrypted, err := decryptModule(c.decryptionKey, aad, indexData)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting offset index: rowGroup=%d col=%d: %w", c.rowGroupOrdinal, c.columnOrdinal, err)
+		}
+		plain = decrypted
+	}
+	if err := thrift.Unmarshal(&c.file.protocol, plain, &offsetIndex); err != nil {
 		return nil, fmt.Errorf("decode offset index: rowGroup=%d columnChunk=%d/%d: %w", c.rowGroup.Ordinal, c.Column(), len(c.rowGroup.Columns), err)
 	}
 	index := &FileOffsetIndex{index: &offsetIndex}
@@ -709,16 +1005,38 @@ func (c *FileColumnChunk) readBloomFilter(reader io.ReaderAt) (*FileBloomFilter,
 	rbuf, rbufpool := getBufioReader(section, 1024)
 	defer putBufioReader(rbuf, rbufpool)
 
-	header := format.BloomFilterHeader{}
-	compact := thrift.CompactProtocol{}
-	decoder := thrift.NewDecoder(compact.NewReader(rbuf))
+	var header format.BloomFilterHeader
+	var filter *FileBloomFilter
 
-	if err := decoder.Decode(&header); err != nil {
-		return nil, fmt.Errorf("decoding bloom filter header: %w", err)
+	if c.decryptionKey != nil {
+		hdrAAD := makeAAD(c.file.aadPrefix, c.file.fileUnique, bloomFilterHdrModule, c.rowGroupOrdinal, c.columnOrdinal)
+		hdrPlain, err := readDecryptedEnvelopeFrom(rbuf, c.decryptionKey, hdrAAD)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting bloom filter header: %w", err)
+		}
+		compact := thrift.CompactProtocol{}
+		if err := thrift.NewDecoder(compact.NewReaderFromBytes(hdrPlain)).Decode(&header); err != nil {
+			return nil, fmt.Errorf("decoding encrypted bloom filter header: %w", err)
+		}
+		bitsAAD := makeAAD(c.file.aadPrefix, c.file.fileUnique, bloomFilterBitsModule, c.rowGroupOrdinal, c.columnOrdinal)
+		bitsPlain, err := readDecryptedEnvelopeFrom(rbuf, c.decryptionKey, bitsAAD)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting bloom filter bitset: %w", err)
+		}
+		filter = newBloomFilterFromBytes(&header, bitsPlain)
+	} else {
+		compact := thrift.CompactProtocol{}
+		decoder := thrift.NewDecoder(compact.NewReader(rbuf))
+		if err := decoder.Decode(&header); err != nil {
+			return nil, fmt.Errorf("decoding bloom filter header: %w", err)
+		}
+		offset, _ = section.Seek(0, io.SeekCurrent)
+		var err error
+		filter, err = newBloomFilter(reader, offset, &header)
+		if err != nil {
+			return nil, fmt.Errorf("reading bloom filter: %w", err)
+		}
 	}
-
-	offset, _ = section.Seek(0, io.SeekCurrent)
-	filter := newBloomFilter(reader, offset, &header)
 
 	if !c.bloomFilter.CompareAndSwap(nil, filter) {
 		return c.bloomFilter.Load(), nil
@@ -748,6 +1066,21 @@ type FilePages struct {
 	serveLastPage bool
 
 	bufferSize int
+
+	// dec is non-nil only when the column is encrypted. Keeping it behind a
+	// pointer avoids bloating FilePages for the common (non-encrypted) case.
+	dec *filePagesDecryptionState
+}
+
+// filePagesDecryptionState holds per-column decryption context for FilePages.
+type filePagesDecryptionState struct {
+	key             []byte
+	fileUnique      []byte
+	aadPrefix       []byte
+	rowGroupOrdinal int16
+	columnOrdinal   int16
+	dataPageOrd     int16
+	dictPagePending bool // true when next page in the stream is the encrypted dict page
 }
 
 func (f *FilePages) init(c *FileColumnChunk, reader io.ReaderAt) {
@@ -769,6 +1102,21 @@ func (f *FilePages) init(c *FileColumnChunk, reader io.ReaderAt) {
 	f.lastPage = nil
 	f.lastPageIndex = -1
 	f.serveLastPage = false
+
+	// Populate decryption state from the column chunk (only when encrypted).
+	if c.decryptionKey != nil {
+		f.dec = &filePagesDecryptionState{
+			key:             c.decryptionKey,
+			fileUnique:      c.file.fileUnique,
+			aadPrefix:       c.file.aadPrefix,
+			rowGroupOrdinal: c.rowGroupOrdinal,
+			columnOrdinal:   c.columnOrdinal,
+			dataPageOrd:     0,
+			dictPagePending: f.dictOffset > 0,
+		}
+	} else {
+		f.dec = nil
+	}
 }
 
 // ReadDictionary returns the dictionary of the column chunk, or nil if the
@@ -812,33 +1160,51 @@ func (f *FilePages) ReadPage() (Page, error) {
 	}
 
 	for {
-		// Instantiate a new format.PageHeader for each page.
-		//
-		// A previous implementation reused page headers to save allocations.
-		// https://github.com/segmentio/parquet-go/pull/484
-		// The optimization turned out to be less effective than expected,
-		// because all the values referenced by pointers in the page header
-		// are lost when the header is reset and put back in the pool.
-		// https://github.com/parquet-go/parquet-go/pull/11
-		//
-		// Even after being reset, reusing page headers still produced instability
-		// issues.
-		// https://github.com/parquet-go/parquet-go/issues/70
-		header := new(format.PageHeader)
-		if err := f.decoder.Decode(header); err != nil {
-			return nil, err
-		}
+		var (
+			header *format.PageHeader
+			data   *buffer[byte]
+			err    error
+		)
 
-		// if this is a dictionary page and we've already read and decoded the dictionary we can skip past it.
-		// call f.rbuf.Discard to skip the page data and realign f.rbuf with the next page header
-		if header.Type == format.DictionaryPage && f.dictionary != nil {
-			f.rbuf.Discard(int(header.CompressedPageSize))
-			continue
-		}
+		if f.dec != nil {
+			header, data, err = f.readEncryptedPage()
+			if err != nil {
+				return nil, err
+			}
+			// If we've already loaded the dictionary, skip a duplicate dict page.
+			if header.Type == format.DictionaryPage && f.dictionary != nil {
+				data.unref()
+				continue
+			}
+		} else {
+			// Instantiate a new format.PageHeader for each page.
+			//
+			// A previous implementation reused page headers to save allocations.
+			// https://github.com/segmentio/parquet-go/pull/484
+			// The optimization turned out to be less effective than expected,
+			// because all the values referenced by pointers in the page header
+			// are lost when the header is reset and put back in the pool.
+			// https://github.com/parquet-go/parquet-go/pull/11
+			//
+			// Even after being reset, reusing page headers still produced instability
+			// issues.
+			// https://github.com/parquet-go/parquet-go/issues/70
+			header = new(format.PageHeader)
+			if err = f.decoder.Decode(header); err != nil {
+				return nil, err
+			}
 
-		data, err := f.readPage(header, f.rbuf)
-		if err != nil {
-			return nil, err
+			// if this is a dictionary page and we've already read and decoded the dictionary we can skip past it.
+			// call f.rbuf.Discard to skip the page data and realign f.rbuf with the next page header
+			if header.Type == format.DictionaryPage && f.dictionary != nil {
+				f.rbuf.Discard(int(header.CompressedPageSize))
+				continue
+			}
+
+			data, err = f.readPage(header, f.rbuf)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		var page Page
@@ -925,21 +1291,41 @@ func (f *FilePages) readDictionary() error {
 	rbuf, pool := getBufioReader(chunk, f.bufferSize)
 	defer putBufioReader(rbuf, pool)
 
-	decoder := thrift.NewDecoder(f.protocol.NewReader(rbuf))
-
 	header := new(format.PageHeader)
+	var page *buffer[byte]
 
-	if err := decoder.Decode(header); err != nil {
-		return err
+	if f.dec != nil {
+		d := f.dec
+		hdrAAD := makeAAD(d.aadPrefix, d.fileUnique, dictPageHeaderModule, d.rowGroupOrdinal, d.columnOrdinal, 0)
+		hdrPlain, err := readDecryptedEnvelopeFrom(rbuf, d.key, hdrAAD)
+		if err != nil {
+			return err
+		}
+		pr := f.protocol.NewReaderFromBytes(hdrPlain)
+		if err := thrift.NewDecoder(pr).Decode(header); err != nil {
+			return fmt.Errorf("parquet decryption: decoding dict page header: %w", err)
+		}
+		bodyAAD := makeAAD(d.aadPrefix, d.fileUnique, dictPageBodyModule, d.rowGroupOrdinal, d.columnOrdinal, 0)
+		bodyPlain, err := readDecryptedEnvelopeFrom(rbuf, d.key, bodyAAD)
+		if err != nil {
+			return err
+		}
+		page = buffers.get(len(bodyPlain))
+		copy(page.data.Slice(), bodyPlain)
+		page.ref()
+	} else {
+		decoder := thrift.NewDecoder(f.protocol.NewReader(rbuf))
+		if err := decoder.Decode(header); err != nil {
+			return err
+		}
+		page = buffers.get(int(header.CompressedPageSize))
+		page.ref()
+		if _, err := io.ReadFull(rbuf, page.data.Slice()); err != nil {
+			page.unref()
+			return err
+		}
 	}
-
-	page := buffers.get(int(header.CompressedPageSize))
 	defer page.unref()
-
-	if _, err := io.ReadFull(rbuf, page.data.Slice()); err != nil {
-		return err
-	}
-
 	return f.readDictionaryPage(header, page)
 }
 
@@ -1016,6 +1402,71 @@ func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*
 	return page, nil
 }
 
+// readDecryptedEnvelopeFrom reads a Parquet module envelope from r, decrypts it, and
+// returns the plaintext.  The caller supplies the key and pre-built AAD bytes.
+func readDecryptedEnvelopeFrom(r io.Reader, key, aad []byte) ([]byte, error) {
+	var lenBuf [4]byte
+	if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+		return nil, err
+	}
+	moduleLen := int(binary.LittleEndian.Uint32(lenBuf[:]))
+	envelope := make([]byte, 4+moduleLen)
+	copy(envelope[:4], lenBuf[:])
+	if _, err := io.ReadFull(r, envelope[4:]); err != nil {
+		return nil, err
+	}
+	return decryptModule(key, aad, envelope)
+}
+
+// readEncryptedPage reads one page (header + body) from the encrypted stream.
+// It handles both dictionary pages and data pages; the caller must not call it
+// when the stream is exhausted.
+func (f *FilePages) readEncryptedPage() (*format.PageHeader, *buffer[byte], error) {
+	d := f.dec
+	isDictPage := d.dictPagePending
+
+	var hdrModuleType, bodyModuleType byte
+	var pageOrd int16
+	if isDictPage {
+		hdrModuleType = dictPageHeaderModule
+		bodyModuleType = dictPageBodyModule
+		pageOrd = 0
+	} else {
+		hdrModuleType = dataPageHeaderModule
+		bodyModuleType = dataPageBodyModule
+		pageOrd = d.dataPageOrd
+	}
+
+	hdrAAD := makeAAD(d.aadPrefix, d.fileUnique, hdrModuleType, d.rowGroupOrdinal, d.columnOrdinal, pageOrd)
+	hdrPlain, err := readDecryptedEnvelopeFrom(f.rbuf, d.key, hdrAAD)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	header := new(format.PageHeader)
+	pr := f.protocol.NewReaderFromBytes(hdrPlain)
+	if err := thrift.NewDecoder(pr).Decode(header); err != nil {
+		return nil, nil, fmt.Errorf("parquet decryption: decoding page header: %w", err)
+	}
+
+	bodyAAD := makeAAD(d.aadPrefix, d.fileUnique, bodyModuleType, d.rowGroupOrdinal, d.columnOrdinal, pageOrd)
+	bodyPlain, err := readDecryptedEnvelopeFrom(f.rbuf, d.key, bodyAAD)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	page := buffers.get(len(bodyPlain))
+	copy(page.data.Slice(), bodyPlain)
+	page.ref()
+
+	if isDictPage {
+		d.dictPagePending = false
+	} else {
+		d.dataPageOrd++
+	}
+	return header, page, nil
+}
+
 // SeekToRow seeks to the given row index in the column chunk.
 func (f *FilePages) SeekToRow(rowIndex int64) error {
 	if f.chunk == nil {
@@ -1033,8 +1484,22 @@ func (f *FilePages) SeekToRow(rowIndex int64) error {
 		if f.dictOffset > 0 {
 			f.index = 1
 		}
+		if f.dec != nil {
+			f.dec.dataPageOrd = 0
+			f.dec.dictPagePending = false
+		}
 	} else {
 		pages := index.index.PageLocations
+		if len(pages) == 0 {
+			// A 0-row row group may still carry an OffsetIndex with no
+			// page locations. Seeking to row 0 is valid in this case;
+			// the subsequent ReadPage will return io.EOF.
+			if rowIndex == 0 {
+				f.skip = 0
+				return nil
+			}
+			return ErrSeekOutOfRange
+		}
 		target := sort.Search(len(pages), func(i int) bool {
 			return pages[i].FirstRowIndex > rowIndex
 		}) - 1
@@ -1056,6 +1521,11 @@ func (f *FilePages) SeekToRow(rowIndex int64) error {
 		}
 
 		f.index = target
+		// Sync decryption ordinal so the next readEncryptedPage uses the correct AAD.
+		if f.dec != nil {
+			f.dec.dataPageOrd = int16(target)
+			f.dec.dictPagePending = false
+		}
 
 		// if the target page is within the unread portion of the current buffer, just skip/discard some bytes
 		var pos int64

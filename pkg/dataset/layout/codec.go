@@ -40,6 +40,12 @@ func NewWriter(alloc *memory.Allocator, sink buffer.Sink, spec Spec, typ types.T
 	case KindArray:
 		return newArrayWriter(alloc, sink, spec, typ)
 
+	case KindChunked:
+		return newChunkedWriter(alloc, sink, spec, typ)
+
+	case KindStruct:
+		return newStructWriter(alloc, sink, spec, typ)
+
 	default:
 		return nil, fmt.Errorf("unsupported layout kind %q", spec.Kind())
 	}
@@ -117,6 +123,12 @@ func NewReader(alloc *memory.Allocator, layout Layout, source buffer.Source) (Re
 	switch layout.Kind() {
 	case KindArray:
 		return newArrayReader(alloc, layout, source)
+
+	case KindChunked:
+		return newChunkedReader(alloc, layout, source)
+
+	case KindStruct:
+		return newStructReader(alloc, layout, source)
 
 	default:
 		return nil, fmt.Errorf("unsupported layout kind %q", layout.Kind())

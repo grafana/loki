@@ -17,7 +17,11 @@
 
 package xdsresource
 
-import "google.golang.org/grpc/resolver"
+import (
+	"context"
+
+	"google.golang.org/grpc/resolver"
+)
 
 // XDSConfig holds the complete gRPC client-side xDS configuration containing
 // all necessary resources.
@@ -108,6 +112,21 @@ func SetXDSConfig(state resolver.State, config *XDSConfig) resolver.State {
 // resolver state.
 func XDSConfigFromResolverState(state resolver.State) *XDSConfig {
 	if v := state.Attributes.Value(xdsConfigkey{}); v != nil {
+		return v.(*XDSConfig)
+	}
+	return nil
+}
+
+type xdsConfigKey struct{}
+
+// NewContextWithXDSConfig returns a new context with xDSConfig added to it.
+func NewContextWithXDSConfig(ctx context.Context, config *XDSConfig) context.Context {
+	return context.WithValue(ctx, xdsConfigKey{}, config)
+}
+
+// XDSConfigFromContext returns the XDSConfig stored in ctx.
+func XDSConfigFromContext(ctx context.Context) *XDSConfig {
+	if v := ctx.Value(xdsConfigKey{}); v != nil {
 		return v.(*XDSConfig)
 	}
 	return nil

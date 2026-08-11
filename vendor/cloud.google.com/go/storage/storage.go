@@ -127,6 +127,8 @@ type Client struct {
 
 	// Option to use gRRPC appendable upload API was set.
 	grpcAppendableUploads bool
+
+	bucketMetadataCache *bucketMetadataCache
 }
 
 // credsJSON returns the raw JSON of the Client's creds and true, or an empty slice
@@ -224,14 +226,27 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		return nil, fmt.Errorf("storage: %w", err)
 	}
 
-	return &Client{
+	var tcWrapped storageClient = tc
+	if httpClient, ok := tc.(*httpStorageClient); ok && httpClient.metrics != nil {
+		tcWrapped = &metricsStorageClient{
+			storageClient: tc,
+			metrics:       httpClient.metrics,
+			isHTTP:        true,
+		}
+	}
+
+	c := &Client{
 		hc:      hc,
 		raw:     rawService,
 		scheme:  u.Scheme,
 		xmlHost: u.Host,
 		creds:   creds,
-		tc:      tc,
-	}, nil
+		tc:      tcWrapped,
+	}
+	if isACOEnabled() {
+		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
+	}
+	return c, nil
 }
 
 // NewGRPCClient creates a new Storage client using the gRPC transport and API.
@@ -251,10 +266,22 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
-		tc:                    tc,
+	var tcWrapped storageClient = tc
+	if tc.metrics != nil {
+		tcWrapped = &metricsStorageClient{
+			storageClient: tc,
+			metrics:       tc.metrics,
+			isHTTP:        false,
+		}
+	}
+	c := &Client{
+		tc:                    tcWrapped,
 		grpcAppendableUploads: tc.config.grpcAppendableUploads,
-	}, nil
+	}
+	if isACOEnabled() {
+		c.bucketMetadataCache = newBucketMetadataCache(defaultBucketMetadataCacheLimit, c.tc)
+	}
+	return c, nil
 }
 
 // CheckDirectConnectivitySupported checks if gRPC direct connectivity
@@ -321,6 +348,7 @@ func (c *Client) Close() error {
 	c.hc = nil
 	c.raw = nil
 	c.creds = nil
+	c.bucketMetadataCache = nil
 	if c.tc != nil {
 		return c.tc.Close()
 	}
@@ -1038,7 +1066,7 @@ func (o *ObjectHandle) Key(encryptionKey []byte) *ObjectHandle {
 // Attrs returns meta information about the object.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Object.Attrs")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Attrs")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1052,7 +1080,7 @@ func (o *ObjectHandle) Attrs(ctx context.Context) (attrs *ObjectAttrs, err error
 // ObjectAttrsToUpdate docs for details on treatment of zero values.
 // ErrObjectNotExist will be returned if the object is not found.
 func (o *ObjectHandle) Update(ctx context.Context, uattrs ObjectAttrsToUpdate) (oa *ObjectAttrs, err error) {
-	ctx, _ = startSpan(ctx, "Object.Update")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Update")
 	defer func() { endSpan(ctx, err) }()
 
 	if err := o.validate(); err != nil {
@@ -1130,7 +1158,7 @@ type ObjectAttrsToUpdate struct {
 
 // Delete deletes the single specified object.
 func (o *ObjectHandle) Delete(ctx context.Context) (err error) {
-	ctx, _ = startSpan(ctx, "Object.Delete")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Delete")
 	defer func() { endSpan(ctx, err) }()
 	if err := o.validate(); err != nil {
 		return err
@@ -1252,7 +1280,7 @@ type MoveObjectDestination struct {
 // It is the caller's responsibility to call Close when writing is done. To
 // stop writing without saving the data, cancel the context.
 func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
-	ctx, _ = startSpan(ctx, "Object.Writer")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.Writer")
 	return &Writer{
 		ctx:         ctx,
 		o:           o,
@@ -1288,7 +1316,7 @@ func (o *ObjectHandle) NewWriter(ctx context.Context) *Writer {
 // objects which were created append semantics and not finalized.
 // This feature is in preview and is not yet available for general use.
 func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *AppendableWriterOpts) (*Writer, int64, error) {
-	ctx, _ = startSpan(ctx, "Object.WriterFromAppendableObject")
+	ctx, _ = startSpanWithBucket(ctx, o.c, o.bucket, "Object.WriterFromAppendableObject")
 	if o.gen < 0 {
 		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
 	}
@@ -1304,6 +1332,9 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 	opts.apply(w)
 	if w.ChunkSize == 0 {
 		w.ChunkSize = googleapi.DefaultUploadChunkSize
+	}
+	if w.ChunkRetryDeadline == 0 {
+		w.ChunkRetryDeadline = defaultWriteChunkRetryDeadline
 	}
 	err := w.openWriter()
 	if err != nil {
@@ -1339,6 +1370,13 @@ type AppendableWriterOpts struct {
 	ProgressFunc func(int64)
 	// FinalizeOnClose: See Writer.FinalizeOnClose.
 	FinalizeOnClose bool
+	// DisableAutoChecksum: See Writer.DisableAutoChecksum.
+	DisableAutoChecksum bool
+	// SendCRC32C: See Writer.SendCRC32C.
+	SendCRC32C bool
+	// CRC32C of the whole object.
+	// See Writer.CRC32C.
+	CRC32C uint32
 }
 
 func (opts *AppendableWriterOpts) apply(w *Writer) {
@@ -1349,6 +1387,9 @@ func (opts *AppendableWriterOpts) apply(w *Writer) {
 	w.ProgressFunc = opts.ProgressFunc
 	w.ChunkSize = opts.ChunkSize
 	w.FinalizeOnClose = opts.FinalizeOnClose
+	w.DisableAutoChecksum = opts.DisableAutoChecksum
+	w.CRC32C = opts.CRC32C
+	w.SendCRC32C = opts.SendCRC32C
 }
 
 func (o *ObjectHandle) validate() error {
@@ -1566,6 +1607,7 @@ type ObjectAttrs struct {
 	// MD5 is the MD5 hash of the object's content. This field is read-only,
 	// except when used from a Writer. If set on a Writer, the uploaded
 	// data is rejected if its MD5 hash does not match this field.
+	// Note: MD5 validation is not supported for appendable writes.
 	MD5 []byte
 
 	// CRC32C is the CRC32 checksum of the object's content using the Castagnoli93

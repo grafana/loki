@@ -110,7 +110,7 @@ func (c *ClusterClient) executeOnAllShards(ctx context.Context, cmd Cmder, polic
 // executeMultiShard handles commands that operate on multiple keys across shards
 func (c *ClusterClient) executeMultiShard(ctx context.Context, cmd Cmder, policy *routing.CommandPolicy) error {
 	args := cmd.Args()
-	firstKeyPos := int(cmdFirstKeyPos(cmd))
+	firstKeyPos := cmdFirstKeyPosWithInfo(cmd, c.cmdInfoPeek(cmd.Name()))
 	stepCount := int(cmd.stepCount())
 	if stepCount == 0 {
 		stepCount = 1 // Default to 1 if not set
@@ -141,11 +141,11 @@ func (c *ClusterClient) executeMultiShard(ctx context.Context, cmd Cmder, policy
 		keyOrder = append(keyOrder, key)
 	}
 
-	return c.executeMultiSlot(ctx, cmd, slotMap, keyOrder, policy)
+	return c.executeMultiSlot(ctx, cmd, slotMap, keyOrder, policy, firstKeyPos)
 }
 
 // executeMultiSlot executes commands across multiple slots concurrently
-func (c *ClusterClient) executeMultiSlot(ctx context.Context, cmd Cmder, slotMap map[int][]string, keyOrder []string, policy *routing.CommandPolicy) error {
+func (c *ClusterClient) executeMultiSlot(ctx context.Context, cmd Cmder, slotMap map[int][]string, keyOrder []string, policy *routing.CommandPolicy, firstKeyPos int) error {
 	results := make(chan slotResult, len(slotMap))
 	var wg sync.WaitGroup
 
@@ -162,7 +162,7 @@ func (c *ClusterClient) executeMultiSlot(ctx context.Context, cmd Cmder, slotMap
 			}
 
 			// Create a command for this specific slot's keys
-			subCmd := c.createSlotSpecificCommand(ctx, cmd, keys)
+			subCmd := c.createSlotSpecificCommand(ctx, cmd, keys, firstKeyPos)
 			err = node.Client.Process(ctx, subCmd)
 			results <- slotResult{subCmd, keys, err}
 		}(slot, keys)
@@ -176,10 +176,12 @@ func (c *ClusterClient) executeMultiSlot(ctx context.Context, cmd Cmder, slotMap
 	return c.aggregateMultiSlotResults(ctx, cmd, results, keyOrder, policy)
 }
 
-// createSlotSpecificCommand creates a new command for a specific slot's keys
-func (c *ClusterClient) createSlotSpecificCommand(ctx context.Context, originalCmd Cmder, keys []string) Cmder {
+// createSlotSpecificCommand creates a new command for a specific slot's keys.
+// firstKeyPos is passed in from the caller (computed once in executeMultiShard)
+// so this function never independently re-peeks the cache — avoids the
+// cold --> warm inconsistency the reviewer flagged.
+func (c *ClusterClient) createSlotSpecificCommand(ctx context.Context, originalCmd Cmder, keys []string, firstKeyPos int) Cmder {
 	originalArgs := originalCmd.Args()
-	firstKeyPos := int(cmdFirstKeyPos(originalCmd))
 
 	// Build new args with only the specified keys
 	newArgs := make([]interface{}, 0, firstKeyPos+len(keys))
@@ -241,6 +243,8 @@ func createCommandByType(ctx context.Context, cmdType CmdType, args ...interface
 		return NewXPendingExtCmd(ctx, args...)
 	case CmdTypeXAutoClaim:
 		return NewXAutoClaimCmd(ctx, args...)
+	case CmdTypeXAutoClaimWithDeleted:
+		return NewXAutoClaimWithDeletedCmd(ctx, args...)
 	case CmdTypeXAutoClaimJustID:
 		return NewXAutoClaimJustIDCmd(ctx, args...)
 	case CmdTypeXInfoStreamFull:
@@ -465,7 +469,7 @@ func (c *ClusterClient) createAggregator(policy *routing.CommandPolicy, cmd Cmde
 	}
 
 	if !isKeyed {
-		firstKeyPos := cmdFirstKeyPos(cmd)
+		firstKeyPos := cmdFirstKeyPosWithInfo(cmd, c.cmdInfoPeek(cmd.Name()))
 		isKeyed = firstKeyPos > 0
 	}
 
@@ -498,7 +502,7 @@ func (c *ClusterClient) pickArbitraryNode(ctx context.Context) *clusterNode {
 
 // hasKeys checks if a command operates on keys
 func (c *ClusterClient) hasKeys(cmd Cmder) bool {
-	firstKeyPos := cmdFirstKeyPos(cmd)
+	firstKeyPos := cmdFirstKeyPosWithInfo(cmd, c.cmdInfoPeek(cmd.Name()))
 	return firstKeyPos > 0
 }
 
@@ -666,6 +670,12 @@ func (c *ClusterClient) setCommandValue(cmd Cmder, value interface{}) error {
 		if c, ok := cmd.(*XAutoClaimCmd); ok {
 			if v, ok := value.(CmdTypeXAutoClaimValue); ok {
 				c.SetVal(v.messages, v.start)
+			}
+		}
+	case CmdTypeXAutoClaimWithDeleted:
+		if c, ok := cmd.(*XAutoClaimWithDeletedCmd); ok {
+			if v, ok := value.(CmdTypeXAutoClaimWithDeletedValue); ok {
+				c.SetVal(v.messages, v.start, v.deletedIDs)
 			}
 		}
 	case CmdTypeXAutoClaimJustID:

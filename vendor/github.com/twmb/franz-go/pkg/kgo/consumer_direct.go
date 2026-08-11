@@ -79,30 +79,30 @@ func (d *directConsumer) findNewAssignments() map[string]map[int32]Offset {
 		//
 		// For internal partitions, we only allow consuming them if
 		// the topic is explicitly specified.
-		if useTopic {
-			partitions := topicPartitions.load()
-			if d.cfg.regex && partitions.isInternal || len(partitions.partitions) == 0 {
-				continue
-			}
-			toUseTopic := make(map[int32]Offset, len(partitions.partitions))
-			for partition := range partitions.partitions {
-				toUseTopic[int32(partition)] = d.cfg.startOffset
-			}
-			toUse[topic] = toUseTopic
+		if !useTopic {
+			continue
 		}
+		partitions := topicPartitions.load()
+		if d.cfg.regex && partitions.isInternal || len(partitions.partitions) == 0 {
+			continue
+		}
+		toUseTopic := make(map[int32]Offset, len(partitions.partitions))
+		for partition := range partitions.partitions {
+			toUseTopic[int32(partition)] = d.cfg.startOffset
+		}
+		toUse[topic] = toUseTopic
+	}
 
-		// Lastly, if this topic has some specific partitions pinned,
-		// we set those. We only use partitions from topics that have
-		// not been purged.
-		for topic := range d.m {
-			for partition, offset := range d.ps[topic] {
-				toUseTopic, exists := toUse[topic]
-				if !exists {
-					toUseTopic = make(map[int32]Offset, 10)
-					toUse[topic] = toUseTopic
-				}
-				toUseTopic[partition] = offset
+	// If any topic has specific partitions pinned (from ConsumePartitions
+	// or AddConsumePartitions), add them.
+	for topic := range d.m {
+		for partition, offset := range d.ps[topic] {
+			toUseTopic, exists := toUse[topic]
+			if !exists {
+				toUseTopic = make(map[int32]Offset, 10)
+				toUse[topic] = toUseTopic
 			}
+			toUseTopic[partition] = offset
 		}
 	}
 

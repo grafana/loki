@@ -2,7 +2,6 @@ package util //nolint:revive
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -85,12 +84,18 @@ func (w *ringWatcher) lookupAddresses() {
 	}
 
 	for _, ta := range toAdd {
-		level.Debug(w.log).Log("msg", fmt.Sprintf("adding connection to address: %s", ta))
+		level.Debug(w.log).Log(
+			"msg", "adding connection to address",
+			"address", ta,
+		)
 		w.notifications.AddressAdded(ta)
 	}
 
 	for _, tr := range toRemove {
-		level.Debug(w.log).Log("msg", fmt.Sprintf("removing connection to address: %s", tr))
+		level.Debug(w.log).Log(
+			"msg", "removing connection to address",
+			"address", tr,
+		)
 		w.notifications.AddressRemoved(tr)
 	}
 

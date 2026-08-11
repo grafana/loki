@@ -20,14 +20,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 var (
@@ -223,7 +222,7 @@ func newServerService(name string, logger log.Logger, registerer prometheus.Regi
 	)
 
 	// Enable HTTP/2
-	serv.HTTPServer.Handler = h2c.NewHandler(serv.HTTPServer.Handler, &http2.Server{})
+	serverutil.EnableUnencryptedHTTP2(serv.HTTPServer)
 
 	return serv, svc, nil
 }

@@ -64,6 +64,7 @@ type QueryStats struct {
 	TotalEntriesReturned int64 `json:"totalEntriesReturned"` // Number of result entries
 	Splits               int64 `json:"splits"`               // Number of splits
 	Shards               int64 `json:"shards"`               // Number of shards
+	EstimatedQueryBytes  int64 `json:"estimatedQueryBytes"`  // Estimated bytes for this query reported by index stats before chunk reads
 }
 
 // ComparisonResult represents the outcome of comparing two responses

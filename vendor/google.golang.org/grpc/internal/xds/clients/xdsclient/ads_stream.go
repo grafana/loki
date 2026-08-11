@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/grpclog"
@@ -111,8 +112,12 @@ type adsStreamImpl struct {
 	// Guards access to the below fields (and to the contents of the map).
 	mu                sync.Mutex
 	resourceTypeState map[ResourceType]*resourceTypeState // Map of resource types to their state.
-	firstRequest      bool                                // False after the first request is sent out.
 	pendingRequests   []request                           // Subscriptions and unsubscriptions are pushed here.
+
+	// The following fields are accessed atomically.
+	firstRequest       atomic.Bool // False after the first request is sent out.
+	firstStreamCreated atomic.Bool // Set to true after the very first ADS stream is created.
+	streamEstablished  atomic.Bool // Set to true when an ADS stream is established and a response is received, except for the very first stream which is set to true immediately.
 }
 
 // adsStreamOpts contains the options for creating a new ADS Stream.
@@ -241,6 +246,7 @@ func (s *adsStreamImpl) runner(ctx context.Context) {
 		stream, err := s.transport.NewStream(ctx, "/envoy.service.discovery.v3.AggregatedDiscoveryService/StreamAggregatedResources")
 		if err != nil {
 			s.logger.Warningf("Failed to create a new ADS streaming RPC: %v", err)
+			s.streamEstablished.Store(false)
 			s.onError(err, false)
 			return nil
 		}
@@ -248,9 +254,11 @@ func (s *adsStreamImpl) runner(ctx context.Context) {
 			s.logger.Infof("ADS stream created")
 		}
 
-		s.mu.Lock()
-		s.firstRequest = true
-		s.mu.Unlock()
+		s.firstRequest.Store(true)
+		if !s.firstStreamCreated.Load() {
+			s.streamEstablished.Store(true)
+			s.firstStreamCreated.Store(true)
+		}
 
 		// Ensure that the most recently created stream is pushed on the
 		// channel for the `send` goroutine to consume.
@@ -383,7 +391,7 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 	// The xDS protocol only requires that we send the node proto in the first
 	// discovery request on every stream. Sending the node proto in every
 	// request wastes CPU resources on the client and the server.
-	if s.firstRequest {
+	if s.firstRequest.Load() {
 		req.Node = s.nodeProto
 	}
 
@@ -402,7 +410,7 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 		s.logger.Warningf("Sending ADS request for type %q, resources: %v, version: %q, nonce: %q failed: %v", url, names, version, nonce, err)
 		return err
 	}
-	s.firstRequest = false
+	s.firstRequest.Store(false)
 
 	if s.logger.V(perRPCVerbosityLevel) {
 		s.logger.Infof("ADS request sent: %v", pretty.ToJSON(req))
@@ -437,10 +445,14 @@ func (s *adsStreamImpl) recv(stream clients.Stream) bool {
 
 		resources, url, version, nonce, err := s.recvMessage(stream)
 		if err != nil {
+			if !msgReceived {
+				s.streamEstablished.Store(false)
+			}
 			s.onError(err, msgReceived)
 			s.logger.Warningf("ADS stream closed: %v", err)
 			return msgReceived
 		}
+		s.streamEstablished.Store(true)
 		msgReceived = true
 
 		// Invoke the onResponse event handler to parse the incoming message and
@@ -714,4 +726,8 @@ func (fc *adsFlowControl) wait() bool {
 	}
 
 	return fc.stopped
+}
+
+func (s *adsStreamImpl) isStreamEstablished() bool {
+	return s.streamEstablished.Load()
 }

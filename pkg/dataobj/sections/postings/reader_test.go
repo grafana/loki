@@ -28,7 +28,7 @@ func TestReader_ReadBeforeOpen(t *testing.T) {
 
 func TestReader_RoundTrip(t *testing.T) {
 	// Build a tiny postings section with one label entry, read it back.
-	b := postings.NewBuilder(nil, 0, 0)
+	b := postings.NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0).UTC()
 	b.ObserveLabelPosting(postings.LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: ts, UncompressedSize: 100})
 

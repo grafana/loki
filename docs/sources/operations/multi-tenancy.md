@@ -10,16 +10,19 @@ Grafana Loki is a multi-tenant system; requests and data for tenant A are isolat
 tenant B. Requests to the Loki API should include an HTTP header
 (`X-Scope-OrgID`) that identifies the tenant for the request.
 
-Tenant IDs can be any alphanumeric string that fits within the Go HTTP header
-limit (1MB). Operators are recommended to use a reasonable limit for uniquely
-identifying tenants; 20 bytes is usually enough.
+Tenant IDs must not be longer than 150 bytes and can only include a specific
+set of characters; see [Restrictions](#restrictions) below for the full rules.
+Operators are recommended to use a reasonable limit for uniquely identifying
+tenants; 20 bytes is usually enough.
 
 Loki defaults to running in multi-tenant mode.
 Multi-tenant mode is set in the configuration with `auth_enabled: true`.
 
 When configured with `auth_enabled: false`, Loki uses a single tenant.
 The `X-Scope-OrgID` header is not required in Loki API requests.
-The single tenant ID will be the string `fake`.
+The single tenant ID defaults to `fake` and can be changed via the `no_auth_tenant` configuration option.
+On a fresh cluster with an empty bucket this is safe to change at any time; on a cluster that has already
+written data, changing the tenant ID requires migrating existing data to the new tenant path (see [Loki Migrate Tool](https://github.com/grafana/loki/tree/main/cmd/migrate)).
 
 ## Multi-tenant Queries
 

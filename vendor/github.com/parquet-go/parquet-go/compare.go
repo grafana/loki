@@ -225,12 +225,12 @@ func compareRowsFuncOfIndexColumns(compareFuncs []func(Row, Row) int) func(Row, 
 }
 
 //go:noinline
-func compareRowsFuncOfIndexAscending(columnIndex int16, typ Type) func(Row, Row) int {
+func compareRowsFuncOfIndexAscending(columnIndex uint16, typ Type) func(Row, Row) int {
 	return func(row1, row2 Row) int { return typ.Compare(row1[columnIndex], row2[columnIndex]) }
 }
 
 //go:noinline
-func compareRowsFuncOfIndexDescending(columnIndex int16, typ Type) func(Row, Row) int {
+func compareRowsFuncOfIndexDescending(columnIndex uint16, typ Type) func(Row, Row) int {
 	return func(row1, row2 Row) int { return -typ.Compare(row1[columnIndex], row2[columnIndex]) }
 }
 
@@ -263,8 +263,8 @@ var columnPool memory.Pool[[][2]int32]
 
 //go:noinline
 func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []SortingColumn) func(Row, Row) int {
-	highestColumnIndex := int16(0)
-	columnIndexes := make([]int16, len(sortingColumns))
+	highestColumnIndex := uint16(0)
+	columnIndexes := make([]uint16, len(sortingColumns))
 	compareFuncs := make([]func(Value, Value) int, len(sortingColumns))
 
 	for sortingIndex, sortingColumn := range sortingColumns {
@@ -300,7 +300,7 @@ func compareRowsFuncOfColumnValues(leafColumns []leafColumn, sortingColumns []So
 		i1 := 0
 		i2 := 0
 
-		for columnIndex := int16(0); columnIndex <= highestColumnIndex; columnIndex++ {
+		for columnIndex := uint16(0); columnIndex <= highestColumnIndex; columnIndex++ {
 			j1 := i1 + 1
 			j2 := i2 + 1
 

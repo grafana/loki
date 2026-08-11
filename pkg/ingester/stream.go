@@ -122,7 +122,7 @@ func newStream(
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
-		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
+		limiter:              NewStreamRateLimiter(limits, tenant, policy, 10*time.Second),
 		cfg:                  cfg,
 		fp:                   fp,
 		labels:               ls,

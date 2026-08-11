@@ -39,6 +39,7 @@ const (
 	GCE
 	CloudRun
 	CloudRunJob
+	CloudRunWorkerPool
 	CloudFunctions
 	AppEngineStandard
 	AppEngineFlex
@@ -58,6 +59,8 @@ func (d *Detector) CloudPlatform() Platform {
 		return CloudRun
 	case d.onCloudRunJob():
 		return CloudRunJob
+	case d.onCloudRunWorkerPool():
+		return CloudRunWorkerPool
 	case d.onAppEngineStandard():
 		return AppEngineStandard
 	case d.onAppEngine():

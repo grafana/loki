@@ -4,29 +4,23 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
-	"go.opentelemetry.io/otel"
-
-	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
-	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/grafana/dskit/tenant"
+	"go.opentelemetry.io/otel"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -38,11 +32,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
-	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var tracer = otel.Tracer("pkg/storage")
@@ -76,6 +71,27 @@ type Store interface {
 	SelectStore
 	SchemaConfigProvider
 	Instrumentable
+	index.Flusher
+}
+
+// syncerFlusher is the union of the index store's optional on-demand
+// capabilities: flushing the in-memory head to object storage (write side, used
+// by the ingester) and refreshing the object-listing cache + downloading newly
+// shipped indexes (read side, used by the index-gateway). The TSDB store -- the
+// only store implementing either -- implements both, so LokiStore collects them
+// through this single interface (see storeForPeriod). The public index.Flusher
+// and index.Syncer stay separate so write-only and read-only consumers each
+// depend only on the capability they use.
+type syncerFlusher interface {
+	index.Flusher
+	index.Syncer
+}
+
+// namedSyncerFlusher pairs a collected per-period store with its store name, so
+// SyncStatuses can label each index's status.
+type namedSyncerFlusher struct {
+	name string
+	syncerFlusher
 }
 
 type LokiStore struct {
@@ -90,10 +106,8 @@ type LokiStore struct {
 	clientMetrics      ClientMetrics
 	registerer         prometheus.Registerer
 
-	indexReadCache   cache.Cache
-	chunksCache      cache.Cache
-	chunksCacheL2    cache.Cache
-	writeDedupeCache cache.Cache
+	chunksCache   cache.Cache
+	chunksCacheL2 cache.Cache
 
 	limits StoreLimits
 	logger log.Logger
@@ -104,6 +118,12 @@ type LokiStore struct {
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
+
+	// syncerFlushers are the per-period TSDB index stores collected at
+	// construction, used to force the in-memory head to object storage
+	// (FlushIndexes) and to refresh the object-listing cache + download newly
+	// shipped indexes on demand (TriggerSync/SyncStatuses).
+	syncerFlushers []namedSyncerFlusher
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -117,20 +137,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 			objectTypeStats.Set(schemaCfg.Configs[index].ObjectType)
 			schemaStats.Set(schemaCfg.Configs[index].Schema)
 		}
-	}
-
-	indexReadCache, err := cache.New(cfg.IndexQueriesCacheConfig, registerer, logger, stats.IndexCache, metricsNamespace)
-	if err != nil {
-		return nil, err
-	}
-
-	if cache.IsCacheConfigured(storeCfg.WriteDedupeCacheConfig) {
-		level.Warn(logger).Log("msg", "write dedupe cache is deprecated along with legacy index types. Consider using TSDB index which does not require a write dedupe cache.")
-	}
-
-	writeDedupeCache, err := cache.New(storeCfg.WriteDedupeCacheConfig, registerer, logger, stats.WriteDedupeCache, metricsNamespace)
-	if err != nil {
-		return nil, err
 	}
 
 	chunkCacheCfg := storeCfg.ChunkCacheConfig
@@ -150,16 +156,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
-	indexReadCache = cache.StopOnce(indexReadCache)
 	chunksCache = cache.StopOnce(chunksCache)
 	chunksCacheL2 = cache.StopOnce(chunksCacheL2)
-	writeDedupeCache = cache.StopOnce(writeDedupeCache)
-
-	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
-	// chunksCache is not wrapped because chunks content can't be anyways modified without changing its ID so there is no use of
-	// invalidating chunks cache. Also chunks can be fetched only by their ID found in index and we are anyways removing the index and invalidating index cache here.
-	indexReadCache = cache.NewCacheGenNumMiddleware(indexReadCache)
-	writeDedupeCache = cache.NewCacheGenNumMiddleware(writeDedupeCache)
 
 	err = schemaCfg.Load()
 	if err != nil {
@@ -180,10 +178,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 		registerer:         registerer,
 
-		indexReadCache:   indexReadCache,
-		chunksCache:      chunksCache,
-		chunksCacheL2:    chunksCacheL2,
-		writeDedupeCache: writeDedupeCache,
+		chunksCache:   chunksCache,
+		chunksCacheL2: chunksCacheL2,
 
 		logger: logger,
 		limits: limits,
@@ -194,6 +190,41 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		return nil, err
 	}
 	return s, nil
+}
+
+// FlushIndexes forces every writable index store collected at construction to
+// build and ship its in-memory indexes (the TSDB head) to object storage.
+func (s *LokiStore) FlushIndexes(ctx context.Context) error {
+	for _, sf := range s.syncerFlushers {
+		if err := sf.FlushIndexes(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TriggerSync starts a background index sync on every readable index store
+// collected at construction, returning true if any started a new sync.
+func (s *LokiStore) TriggerSync() bool {
+	started := false
+	for _, sf := range s.syncerFlushers {
+		if sf.TriggerSync() {
+			started = true
+		}
+	}
+	return started
+}
+
+// SyncStatuses reports the sync status of each per-period index store, labeled
+// with that store's name -- one entry per index the store syncs.
+func (s *LokiStore) SyncStatuses() []index.SyncStatus {
+	statuses := make([]index.SyncStatus, 0, len(s.syncerFlushers))
+	for _, sf := range s.syncerFlushers {
+		st := sf.SyncStatus()
+		st.Name = sf.name
+		statuses = append(statuses, st)
+	}
+	return statuses
 }
 
 func (s *LokiStore) init() error {
@@ -258,74 +289,102 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
+func shouldUseTeeIndexGatewayClient(cfg indexshipper.Config) bool {
+	if !shouldUseIndexGatewayClient(cfg) {
+		return false
+	}
+
+	teeCfg := cfg.ShadowIndexGatewayClientConfig
+	if teeCfg.Mode == indexgateway.SimpleMode && teeCfg.Address == "" {
+		return false
+	}
+
+	return true
+}
+
 func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+	// currently we only support one index type "tsdb" so all the code below here applies to tsdb only. this method will need to be improved should we ever support another type
+	if !slices.Contains(types.SupportedIndexTypes, p.IndexType) {
+		return nil, nil, nil, fmt.Errorf("unsupported index type %s for schema period starting at %s", p.IndexType, p.From.String())
+	}
+
 	component := fmt.Sprintf("index-store-%s-%s", p.IndexType, p.From.String())
 	indexClientReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, s.registerer)
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
-	if p.IndexType == types.IndexTypeTSDB {
-		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
-			// inject the index-gateway client into the index store
-			gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+	if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
+		primaryClient, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		var shadowClient *indexgateway.GatewayClient
+		var clientToUse series.GatewayClient = primaryClient
+		if shouldUseTeeIndexGatewayClient(s.cfg.TSDBShipperConfig) {
+			shadowClient, err = indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.ShadowIndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
+				primaryClient.Stop()
 				return nil, nil, nil, err
 			}
-			idx := series.NewIndexGatewayClientStore(gw, indexClientLogger)
-
-			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
-				f.Stop()
-				gw.Stop()
-			}, nil
+			teeClient, err := indexgateway.NewTeeGatewayClient(primaryClient, shadowClient, indexClientReg, indexClientLogger)
+			if err != nil {
+				primaryClient.Stop()
+				shadowClient.Stop()
+				return nil, nil, nil, err
+			}
+			clientToUse = teeClient
 		}
 
-		objectClient, err := NewObjectClient(p.ObjectType, component, s.cfg, s.clientMetrics)
-		if err != nil {
-			return nil, nil, nil, err
-		}
+		idx := series.NewIndexGatewayClientStore(clientToUse, indexClientLogger)
 
-		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-
-		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
-
-		return chunkWriter, indexReaderWriter,
-			func() {
-				f.Stop()
-				chunkClient.Stop()
-				stopTSDBStoreFunc()
-				objectClient.Stop()
-			}, nil
+		return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
+			f.Stop()
+			primaryClient.Stop()
+			if shadowClient != nil {
+				shadowClient.Stop()
+			}
+		}, nil
 	}
 
-	idx, err := NewIndexClient(component, p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger, s.metricsNamespace)
-	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "error creating index client")
-	}
-	idx = series_index.NewCachingIndexClient(idx, s.indexReadCache, s.cfg.IndexCacheValidity, s.limits, indexClientLogger, s.cfg.DisableBroadIndexQueries)
-	schema, err := series_index.CreateSchema(p)
+	objectClient, err := NewObjectClient(p.ObjectType, component, s.cfg, s.clientMetrics)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	if s.storeCfg.CacheLookupsOlderThan != 0 {
-		schema = series_index.NewSchemaCaching(schema, time.Duration(s.storeCfg.CacheLookupsOlderThan))
+
+	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
-	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-	monitoredReaderWriter := index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, monitoredReaderWriter, s.storeCfg.DisableIndexDeduplication)
+	// Collect the TSDB index store's on-demand capabilities -- flushing the
+	// in-memory head to object storage (used by the ingester) and refreshing the
+	// listing + downloading newly shipped indexes (used by the index-gateway) --
+	// captured here before the monitored-reader-writer wrap, which implements
+	// neither.
+	//
+	// We deliberately keep these off the index.Reader/Writer/ReaderWriter
+	// interfaces: those are also implemented by stores with nothing to flush or
+	// sync -- e.g. the read-only index-gateway client store (which only stubs
+	// IndexChunk) and the monitored wrapper -- so putting them there would force
+	// meaningless no-ops onto every store. Instead we treat them as optional
+	// capabilities and collect only the stores that implement them. The TSDB store
+	// (today the only such store) implements both, so a single syncerFlusher
+	// assertion collects it for both uses.
+	if sf, ok := indexReaderWriter.(syncerFlusher); ok {
+		s.syncerFlushers = append(s.syncerFlushers, namedSyncerFlusher{name: name, syncerFlusher: sf})
+	}
 
-	return chunkWriter,
-		monitoredReaderWriter,
+	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+
+	return chunkWriter, indexReaderWriter,
 		func() {
-			chunkClient.Stop()
 			f.Stop()
-			idx.Stop()
-		},
-		nil
+			chunkClient.Stop()
+			stopTSDBStoreFunc()
+			objectClient.Stop()
+		}, nil
 }
 
 // decodeReq sanitizes an incoming request, rounds bounds, appends the __name__ matcher,

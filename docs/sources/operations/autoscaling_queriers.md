@@ -86,7 +86,6 @@ ceil(
 To minimize the scenario where Loki scales up shortly after scaling down, set
 a stabilization window for scaling down.
 
-
 ### KEDA configuration
 
 This [KEDA ScaledObject](https://keda.sh/docs/latest/concepts/scaling-deployments/) example configures autoscaling
@@ -136,5 +135,3 @@ annotations:
   description: HPA {{ $labels.namespace }}/{{ $labels.horizontalpodautoscaler }} has been running at max replicas for longer than 3h; this can indicate underprovisioning.
   summary: HPA has been running at max replicas for an extended time
 ```
-
-

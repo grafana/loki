@@ -70,8 +70,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			IngesterName:           "ingester-1",
 			Mode:                   indexshipper.ModeReadWrite,
 		},
-		MaxChunkBatchSize:  10,
-		IndexCacheValidity: 1 * time.Minute,
+		MaxChunkBatchSize: 10,
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -87,7 +86,6 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 16,
 			},
 		},
 	}
@@ -1238,7 +1236,6 @@ func TestStore_indexPrefixChange(t *testing.T) {
 				Prefix: "index_tsdb_",
 				Period: time.Hour * 24,
 			}},
-		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
 
@@ -1352,7 +1349,6 @@ func TestStore_MultiPeriod(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			}
 
 			schemaConfig := config.SchemaConfig{
@@ -1677,7 +1673,6 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},
@@ -1817,7 +1812,6 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 						Prefix: "index_",
 						Period: time.Hour * 24,
 					}},
-				RowShards: 2,
 			},
 			{
 				From:       config.DayTime{Time: timeToModelTime(newStartDate)},

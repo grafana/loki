@@ -1,3 +1,93 @@
+# Release (2026-08-07)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.7
+  * **Bug Fix**: Don't serialize unset JSON documents as `nil` in structure members.
+  * **Bug Fix**: Fix a deserialization panic around collection members in recursive shape configs.
+
+# Release (2026-07-31)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.6
+  * **Bug Fix**: Fix failure to deserialize any `@httpPayload` struct with a non-string member.
+  * **Bug Fix**: Fix failure to serialize any `@httpPayload` struct with a nested struct.
+
+# Release (2026-07-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.5
+  * **Bug Fix**: Fix a performance issue in awsQuery with large response payloads.
+
+# Release (2026-07-16)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.2.1](aws-http-auth/CHANGELOG.md#v121-2026-07-16)
+  * **Bug Fix**: Use r.URL.Host when r.Host is unset.
+* `github.com/aws/smithy-go/aws-http-auth-schemes`: [v1.0.0](aws-http-auth-schemes/CHANGELOG.md#v100-2026-07-16)
+  * **Release**: Module `github.com/aws/smithy-go/aws-http-auth-schemes` adds generic smithy-go client support for AWS Sigv4 and Sigv4a.
+
+# Release (2026-06-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.3
+  * **Bug Fix**: Fix bug in JSON doc encoder and endpoint host label format validation
+
+# Release (2026-06-05)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.2
+  * **Bug Fix**: Fix incorrect serialization of unions in CBOR-based protocols.
+
+# Release (2026-06-04)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.1
+  * **Bug Fix**: Fixed a deserialization failure in all protocols when encountering a union with explicit null members.
+  * **Bug Fix**: Fixed a panic when deserializing nested unions in JSON- and CBOR-based protocols.
+
+# Release (2026-06-02)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.0
+  * **Feature**: Add APIs for schema-based serialization.
+  * **Feature**: Add support for all current AWS and Smithy protocols.
+  * **Bug Fix**: Enforce max nesting depth of 128 on CBOR payloads.
+* `github.com/aws/smithy-go/aws-http-auth`: [v1.2.0](aws-http-auth/CHANGELOG.md#v120-2026-06-02)
+  * **Feature**: Add event stream signer.
+
+# Release (2026-05-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.26.0
+  * **Feature**: Add StringSlice to endpoint rulesfn.
+
 # Release (2026-04-23)
 
 ## General Highlights

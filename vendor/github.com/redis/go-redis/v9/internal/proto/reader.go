@@ -100,9 +100,20 @@ func (r *Reader) PeekReplyType() (byte, error) {
 	return b[0], nil
 }
 
+// PeekPushNotificationName returns the notification name of the next RESP3
+// push frame without consuming it. The caller is expected to have already
+// verified that the next reply is a push notification (e.g. via PeekReplyType
+// returning RespPush).
+//
+// To identify the name the method may block briefly reading more bytes from
+// the underlying connection. That is safe: once the push marker '>' has been
+// observed, the server is committed to sending the rest of the frame, so
+// fetching the next few header bytes does not race with anything the caller
+// could be waiting on. Blocking is preferred to a truncated peek, which would
+// silently misidentify the notification and cause the caller's ReadReply to
+// consume (and drop) the frame; see issue #3839.
 func (r *Reader) PeekPushNotificationName() (string, error) {
-	// "prime" the buffer by peeking at the next byte
-	c, err := r.Peek(1)
+	c, err := r.rd.Peek(1)
 	if err != nil {
 		return "", err
 	}
@@ -110,80 +121,138 @@ func (r *Reader) PeekPushNotificationName() (string, error) {
 		return "", fmt.Errorf("redis: can't peek push notification name, next reply is not a push notification")
 	}
 
-	// peek 36 bytes at most, should be enough to read the push notification name
-	toPeek := 36
-	buffered := r.Buffered()
-	if buffered == 0 {
-		return "", fmt.Errorf("redis: can't peek push notification name, no data available")
+	// Start with a peek window that covers every Redis-defined notification
+	// header (MOVING, MIGRATING, FAILED_OVER, message, pmessage, smessage,
+	// subscribe, unsubscribe, ...). If a longer name is encountered, grow
+	// the window up to maxPushHeaderPeek before giving up.
+	const initialPeek = 36
+	const maxPushHeaderPeek = 4096
+
+	peekSize := initialPeek
+	for {
+		buf, peekErr := r.rd.Peek(peekSize)
+		name, complete, parseErr := parsePushNotificationName(buf)
+		if parseErr != nil {
+			return "", parseErr
+		}
+		if complete {
+			return name, nil
+		}
+		// Parser ran out of bytes. Surface a failed underlying read before
+		// growing further; otherwise grow the peek window and retry.
+		if peekErr != nil {
+			return "", peekErr
+		}
+		if peekSize >= maxPushHeaderPeek {
+			return "", fmt.Errorf("redis: push notification header exceeds %d bytes", maxPushHeaderPeek)
+		}
+		peekSize *= 2
+		if peekSize > maxPushHeaderPeek {
+			peekSize = maxPushHeaderPeek
+		}
 	}
-	if buffered < toPeek {
-		toPeek = buffered
-	}
-	buf, err := r.rd.Peek(toPeek)
-	if err != nil {
-		return "", err
+}
+
+// parsePushNotificationName extracts the notification name from a buffered
+// RESP3 push frame prefix. The three return values are:
+//
+//   - (name, true, nil): the full name is in buf.
+//   - ("", false, nil):  buf is a valid prefix but too short to determine the
+//     name; the caller should fetch more bytes and retry.
+//   - ("", _, err):      buf is malformed.
+//
+// This split lets PeekPushNotificationName tell "incomplete header" apart
+// from "corrupt frame" without ever returning a truncated string.
+func parsePushNotificationName(buf []byte) (string, bool, error) {
+	// Need at least ">N\r" before any meaningful work.
+	if len(buf) < 3 {
+		return "", false, nil
 	}
 	if buf[0] != RespPush {
-		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+		return "", false, fmt.Errorf("redis: can't parse push notification: %q", buf)
 	}
 
-	if len(buf) < 3 {
-		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+	// Skip the array length line ">N\r\n".
+	const arrayLenStart = 1 // first byte after the '>' marker
+	pos, ok, err := skipDigitsThenCRLF(buf, arrayLenStart)
+	if err != nil {
+		return "", false, fmt.Errorf("redis: can't parse push notification: %w", err)
+	}
+	if !ok {
+		return "", false, nil
+	}
+	// Reject ">\r\n": RESP requires at least one digit for the array length.
+	// Without this check the empty length looks like a valid prefix and the
+	// caller would block fetching more bytes for a frame that is already
+	// malformed.
+	if pos-2 == arrayLenStart {
+		return "", false, fmt.Errorf("redis: empty push notification array length")
 	}
 
-	// remove push notification type
-	buf = buf[1:]
-	// remove first line - e.g. >2\r\n
-	for i := 0; i < len(buf)-1; i++ {
-		if buf[i] == '\r' && buf[i+1] == '\n' {
-			buf = buf[i+2:]
-			break
-		} else {
-			if buf[i] < '0' || buf[i] > '9' {
-				return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
-			}
-		}
+	// First element type byte: '$' (bulk) or '+' (simple-string).
+	if pos >= len(buf) {
+		return "", false, nil
 	}
-	if len(buf) < 2 {
-		return "", fmt.Errorf("redis: can't parse push notification: %q", buf)
+	typeOfName := buf[pos]
+	if typeOfName != RespString && typeOfName != RespStatus {
+		return "", false, fmt.Errorf("redis: can't parse push notification name: %q", buf[pos:])
 	}
-	// next line should be $<length><string>\r\n or +<length><string>\r\n
-	// should have the type of the push notification name and it's length
-	if buf[0] != RespString && buf[0] != RespStatus {
-		return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
-	}
-	typeOfName := buf[0]
-	// remove the type of the push notification name
-	buf = buf[1:]
+	pos++
+
 	if typeOfName == RespString {
-		// remove the length of the string
-		if len(buf) < 2 {
-			return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
+		// Read "$M\r\n" then the M-byte name.
+		lenStart := pos
+		next, ok, err := skipDigitsThenCRLF(buf, pos)
+		if err != nil {
+			return "", false, fmt.Errorf("redis: can't parse push notification name length: %w", err)
 		}
-		for i := 0; i < len(buf)-1; i++ {
-			if buf[i] == '\r' && buf[i+1] == '\n' {
-				buf = buf[i+2:]
-				break
-			} else {
-				if buf[i] < '0' || buf[i] > '9' {
-					return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
-				}
-			}
+		if !ok {
+			return "", false, nil
 		}
+		if next-2 == lenStart {
+			return "", false, fmt.Errorf("redis: empty push notification name length")
+		}
+		nameLen, err := util.Atoi(buf[lenStart : next-2])
+		if err != nil {
+			return "", false, fmt.Errorf("redis: invalid push notification name length %q: %w", buf[lenStart:next-2], err)
+		}
+		if nameLen < 0 {
+			return "", false, fmt.Errorf("redis: negative push notification name length: %d", nameLen)
+		}
+		// Compare against the remaining bytes instead of computing
+		// next+nameLen: a hugely advertised length on malformed input could
+		// overflow int, wrap negative, slip past an "end > len(buf)" guard and
+		// panic the slice below. next <= len(buf) here, so the subtraction is
+		// safe.
+		if nameLen > len(buf)-next {
+			return "", false, nil
+		}
+		return util.BytesToString(buf[next : next+nameLen]), true, nil
 	}
 
-	if len(buf) < 2 {
-		return "", fmt.Errorf("redis: can't parse push notification name: %q", buf)
-	}
-	// keep only the notification name
-	for i := 0; i < len(buf)-1; i++ {
+	// RespStatus: scan for the terminating CRLF.
+	for i := pos; i < len(buf)-1; i++ {
 		if buf[i] == '\r' && buf[i+1] == '\n' {
-			buf = buf[:i]
-			break
+			return util.BytesToString(buf[pos:i]), true, nil
 		}
 	}
+	return "", false, nil
+}
 
-	return util.BytesToString(buf), nil
+// skipDigitsThenCRLF advances past zero-or-more ASCII digits and the
+// terminating "\r\n" starting at offset start in buf. It returns the position
+// after the "\r\n" and true on success; (pos, false, nil) if buf is too
+// short; or an error if a non-digit non-CR byte is encountered before the CRLF.
+func skipDigitsThenCRLF(buf []byte, start int) (int, bool, error) {
+	for pos := start; pos < len(buf)-1; pos++ {
+		if buf[pos] == '\r' && buf[pos+1] == '\n' {
+			return pos + 2, true, nil
+		}
+		if buf[pos] < '0' || buf[pos] > '9' {
+			return pos, false, fmt.Errorf("expected digit or CRLF, got %q", buf[pos])
+		}
+	}
+	return len(buf), false, nil
 }
 
 // ReadLine Return a valid reply, it will check the protocol or redis error,
@@ -279,8 +348,8 @@ func (r *Reader) ReadReply() (interface{}, error) {
 }
 
 func (r *Reader) readFloat(line []byte) (float64, error) {
-	v := string(line[1:])
-	switch string(line[1:]) {
+	v := util.BytesToString(line[1:])
+	switch v {
 	case "inf":
 		return math.Inf(1), nil
 	case "-inf":
@@ -292,7 +361,7 @@ func (r *Reader) readFloat(line []byte) (float64, error) {
 }
 
 func (r *Reader) readBool(line []byte) (bool, error) {
-	switch string(line[1:]) {
+	switch util.BytesToString(line[1:]) {
 	case "t":
 		return true, nil
 	case "f":
@@ -303,7 +372,7 @@ func (r *Reader) readBool(line []byte) (bool, error) {
 
 func (r *Reader) readBigInt(line []byte) (*big.Int, error) {
 	i := new(big.Int)
-	if i, ok := i.SetString(string(line[1:]), 10); ok {
+	if i, ok := i.SetString(util.BytesToString(line[1:]), 10); ok {
 		return i, nil
 	}
 	return nil, fmt.Errorf("redis: can't parse bigInt reply: %q", line)
@@ -453,7 +522,7 @@ func (r *Reader) ReadFloat() (float64, error) {
 	case RespFloat:
 		return r.readFloat(line)
 	case RespStatus:
-		return strconv.ParseFloat(string(line[1:]), 64)
+		return strconv.ParseFloat(util.BytesToString(line[1:]), 64)
 	case RespString:
 		s, err := r.readStringReply(line)
 		if err != nil {
@@ -462,6 +531,84 @@ func (r *Reader) ReadFloat() (float64, error) {
 		return strconv.ParseFloat(s, 64)
 	}
 	return 0, fmt.Errorf("redis: can't parse float reply: %.100q", line)
+}
+
+// ReadStringInto reads a string-typed reply directly into buf, avoiding the
+// per-call allocation that ReadString incurs. It returns the number of bytes
+// written to buf.
+//
+// Supported reply types:
+//   - $<n>\r\n<payload>\r\n  bulk string (the GET path; payload is read
+//     straight into buf via bufio.Reader — for payloads larger than the
+//     bufio buffer this is effectively zero-copy from the socket)
+//   - +<status>\r\n          simple string, copied from the header line
+//   - :<int>\r\n             integer, copied as its ASCII representation
+//   - ,<float>\r\n           float, copied as its ASCII representation
+//
+// Errors, nil, push notifications, and RESP3 attributes are intercepted
+// by ReadLine and surfaced through err. RESP3 verbatim strings
+// (=<n>\r\n<txt:payload>\r\n) are intentionally not handled — they are
+// never returned by GET-family commands, and including them re-introduces
+// a hazard class where the response-type byte read from a stale `line[0]`
+// after a bufio refill can be misinterpreted as the verbatim format tag.
+//
+// If the bulk payload does not fit in buf, an error is returned and the
+// payload plus the trailing CRLF are drained from the reader so the
+// connection stays aligned for the next reply. For simple-string / integer
+// / float responses the payload lives in the (already-consumed) header
+// line, so no drain is needed.
+func (r *Reader) ReadStringInto(buf []byte) (int, error) {
+	line, err := r.ReadLine()
+	if err != nil {
+		return 0, err
+	}
+
+	switch line[0] {
+	case RespStatus:
+		// Simple string — data is in the line itself.
+		s := line[1:]
+		if len(s) > len(buf) {
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", len(s), len(buf))
+		}
+		return copy(buf, s), nil
+
+	case RespString:
+		n, err := replyLen(line)
+		if err != nil {
+			return 0, err
+		}
+		if n > len(buf) {
+			// Drain the payload + trailing \r\n so the next read on this
+			// connection sees the start of the next reply rather than the
+			// tail of this one. Otherwise the unread bytes corrupt the
+			// stream and the bad connection gets handed back to the pool.
+			if _, derr := r.rd.Discard(n + 2); derr != nil {
+				return 0, derr
+			}
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", n, len(buf))
+		}
+		// Read data directly into the user's buffer through the bufio.Reader.
+		// bufio.Reader.Read first drains its internal buffer, then for
+		// remaining data larger than its buffer size reads directly from the
+		// underlying reader (socket) — effectively zero-copy.
+		if _, err := io.ReadFull(r.rd, buf[:n]); err != nil {
+			return 0, err
+		}
+		// Discard trailing \r\n.
+		if _, err := r.rd.Discard(2); err != nil {
+			return 0, err
+		}
+		return n, nil
+
+	case RespInt, RespFloat:
+		s := line[1:]
+		if len(s) > len(buf) {
+			return 0, fmt.Errorf("redis: buffer too small: need %d bytes, have %d", len(s), len(buf))
+		}
+		return copy(buf, s), nil
+	}
+
+	return 0, fmt.Errorf("redis: can't parse reply=%.100q reading string into buffer", line)
 }
 
 func (r *Reader) ReadString() (string, error) {
@@ -645,4 +792,194 @@ func IsNilReply(line []byte) bool {
 	return len(line) == 3 &&
 		(line[0] == RespString || line[0] == RespArray) &&
 		line[1] == '-' && line[2] == '1'
+}
+
+// ReadRawReply reads the next RESP reply and returns it as raw bytes without parsing.
+func (r *Reader) ReadRawReply() ([]byte, error) {
+	return r.readRawReplyBuf(nil)
+}
+
+func (r *Reader) readRawReplyBuf(buf []byte) ([]byte, error) {
+	line, err := r.readLine()
+	if err != nil {
+		return buf, err
+	}
+
+	buf = append(buf, line...)
+	buf = append(buf, '\r', '\n')
+
+	switch line[0] {
+	case RespStatus, RespError, RespInt, RespNil, RespFloat, RespBool, RespBigInt:
+		return buf, nil
+
+	case RespString, RespVerbatim, RespBlobError:
+		n, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return buf, nil
+			}
+			return buf, err
+		}
+		curLen := len(buf)
+		buf = append(buf, make([]byte, n+2)...)
+		_, err = io.ReadFull(r.rd, buf[curLen:])
+		return buf, err
+
+	case RespArray, RespSet, RespPush:
+		n, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return buf, nil
+			}
+			return buf, err
+		}
+		for i := 0; i < n; i++ {
+			buf, err = r.readRawReplyBuf(buf)
+			if err != nil {
+				return buf, err
+			}
+		}
+		return buf, nil
+
+	case RespMap:
+		n, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return buf, nil
+			}
+			return buf, err
+		}
+		for i := 0; i < n*2; i++ {
+			buf, err = r.readRawReplyBuf(buf)
+			if err != nil {
+				return buf, err
+			}
+		}
+		return buf, nil
+
+	case RespAttr:
+		// Per RESP3 spec, an attribute is always followed by the actual command reply.
+		// We need to read the attribute's key-value pairs AND the following reply.
+		n, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return buf, nil
+			}
+			return buf, err
+		}
+		// Read the attribute key-value pairs
+		for i := 0; i < n*2; i++ {
+			buf, err = r.readRawReplyBuf(buf)
+			if err != nil {
+				return buf, err
+			}
+		}
+		// Read the command reply that follows the attribute
+		return r.readRawReplyBuf(buf)
+	}
+
+	return buf, fmt.Errorf("redis: can't read raw reply: %.100q", line)
+}
+
+var crlf = []byte{'\r', '\n'}
+
+// ReadRawReplyWriteTo streams the next RESP reply directly to w without intermediate allocations.
+// Returns the number of bytes written and any error encountered.
+func (r *Reader) ReadRawReplyWriteTo(w io.Writer) (int64, error) {
+	return r.readRawReplyWriteTo(w)
+}
+
+func (r *Reader) readRawReplyWriteTo(w io.Writer) (int64, error) {
+	line, err := r.readLine()
+	if err != nil {
+		return 0, err
+	}
+
+	var written int64
+	n, err := w.Write(line)
+	written += int64(n)
+	if err != nil {
+		return written, err
+	}
+	n, err = w.Write(crlf)
+	written += int64(n)
+	if err != nil {
+		return written, err
+	}
+
+	switch line[0] {
+	case RespStatus, RespError, RespInt, RespNil, RespFloat, RespBool, RespBigInt:
+		return written, nil
+
+	case RespString, RespVerbatim, RespBlobError:
+		dataLen, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return written, nil
+			}
+			return written, err
+		}
+		copied, err := io.CopyN(w, r.rd, int64(dataLen)+2)
+		written += copied
+		return written, err
+
+	case RespArray, RespSet, RespPush:
+		count, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return written, nil
+			}
+			return written, err
+		}
+		for i := 0; i < count; i++ {
+			n, err := r.readRawReplyWriteTo(w)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		}
+		return written, nil
+
+	case RespMap:
+		count, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return written, nil
+			}
+			return written, err
+		}
+		for i := 0; i < count*2; i++ {
+			n, err := r.readRawReplyWriteTo(w)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		}
+		return written, nil
+
+	case RespAttr:
+		// Per RESP3 spec, an attribute is always followed by the actual command reply.
+		// We need to read the attribute's key-value pairs AND the following reply.
+		count, err := replyLen(line)
+		if err != nil {
+			if err == Nil {
+				return written, nil
+			}
+			return written, err
+		}
+		// Read the attribute key-value pairs
+		for i := 0; i < count*2; i++ {
+			n, err := r.readRawReplyWriteTo(w)
+			written += n
+			if err != nil {
+				return written, err
+			}
+		}
+		// Read the command reply that follows the attribute
+		n, err := r.readRawReplyWriteTo(w)
+		written += n
+		return written, err
+	}
+
+	return written, fmt.Errorf("redis: can't read raw reply: %.100q", line)
 }

@@ -48,6 +48,14 @@ func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) bool {
 	return l.getTenantLimiter(now, tenantID).AllowN(now, n)
 }
 
+// ReserveN returns a Reservation that indicates how long the caller must wait
+// before n tokens may be consumed at time now for the given tenant. The caller
+// may Cancel the reservation to return the reserved tokens, which is useful when
+// making an all-or-nothing decision across multiple limiters.
+func (l *RateLimiter) ReserveN(now time.Time, tenantID string, n int) *rate.Reservation {
+	return l.getTenantLimiter(now, tenantID).ReserveN(now, n)
+}
+
 // WaitN blocks until n events are allowed to happen.
 // It returns an error if n exceeds the Limiter's burst size, the Context is
 // canceled, or the expected wait time exceeds the Context's Deadline.
