@@ -218,7 +218,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.IndexobjBuilder.BufferSize.Set("128MB")
 	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 
-	cfg.LogsobjBuilder.MaxPageRows = 10000
 	_ = cfg.LogsobjBuilder.TargetPageSize.Set("1MB")
 	_ = cfg.LogsobjBuilder.TargetObjectSize.Set("512MB")
 	_ = cfg.LogsobjBuilder.TargetSectionSize.Set("512MB")
@@ -278,6 +277,9 @@ func (cfg *Config) Validate() error {
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
 		return fmt.Errorf("invalid indexobj builder config: %w", err)
+	}
+	if err := cfg.LogsobjBuilder.Validate(); err != nil {
+		return fmt.Errorf("invalid logsobj builder config: %w", err)
 	}
 	return nil
 }
