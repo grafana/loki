@@ -54,8 +54,6 @@ kafka:
 
 Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
 
-### Breaking change: Removal of various configuration options
-
 ### Breaking change: Removal of LogQL `variants()` queries
 
 The experimental `variants()` LogQL expression is no longer supported.
