@@ -340,7 +340,7 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 
 // logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
 func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
-	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
+	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, prefetchBytes)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
