@@ -36,6 +36,13 @@ type StepEvaluator interface {
 	Error() error
 	// Explain returns a print of the step evaluation tree
 	Explain(Node)
+	// SetMaxOutputSeries informs the evaluator of the maximum number of output
+	// series the query is allowed to produce. Ideally all implementations would perfectly
+	// detect when the output series should be evaluated at the current level and when it
+	// is safe to push the limit down to child evaluators. We are nowhere near this and it would be quite
+	// difficult. Implementing this should be done carefully. Currently we are only setting this at the
+	// root level in evalSample and never pushing down.
+	SetMaxOutputSeries(n int)
 }
 
 type EmptyEvaluator[R StepResult] struct {
@@ -54,3 +61,7 @@ func (EmptyEvaluator[_]) Error() error { return nil }
 func (e EmptyEvaluator[_]) Next() (ok bool, ts int64, r StepResult) {
 	return false, 0, e.value
 }
+
+// SetMaxOutputSeries implements StepEvaluator. EmptyEvaluator produces no
+// series, so the limit is a no-op.
+func (EmptyEvaluator[_]) SetMaxOutputSeries(int) {}

@@ -834,6 +834,14 @@ func (e *ConcatStepEvaluator) Error() error {
 	}
 }
 
+// SetMaxOutputSeries does not enforce the limit. It concatenates the results of
+// sharded sub-queries, so its per-step output can contain the same group once
+// per shard and is larger than the merged result the parent aggregation
+// produces; its count is therefore not a lower bound on the query output. The
+// limit could instead be pushed into each downstream leg whose expression is
+// itself limit-safe, which is left for a follow-up.
+func (*ConcatStepEvaluator) SetMaxOutputSeries(int) {}
+
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
 func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (

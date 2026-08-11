@@ -94,6 +94,8 @@ func (e errorRangeVectorIterator) Error() error {
 	return e.err
 }
 
+func (errorRangeVectorIterator) SetMaxSeries(int) {}
+
 type errorStepEvaluator struct {
 	err error
 }
@@ -111,6 +113,8 @@ func (e errorStepEvaluator) Error() error {
 }
 
 func (e errorStepEvaluator) Explain(Node) {}
+
+func (e errorStepEvaluator) SetMaxOutputSeries(int) {}
 
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	selRange := (5 * time.Second).Nanoseconds()
