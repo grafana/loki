@@ -434,31 +434,6 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 		}
 
 		switch e := op.Plan.AST.(type) {
-		case syntax.VariantsExpr:
-			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, err
-			}
-
-			matchers := e.Matchers()
-
-			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-			}
-
-			for _, v := range e.Variants() {
-				groups, err := v.MatcherGroups()
-				if err != nil {
-					level.Warn(logger).Log("msg", "unexpected matcher groups error in roundtripper", "err", err)
-				}
-
-				for _, g := range groups {
-					if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-				}
-			}
-
-			return r.metric.Do(ctx, req)
 		case syntax.SampleExpr:
 			// The error will be handled later.
 			groups, err := e.MatcherGroups()

@@ -126,7 +126,9 @@ func makeQuickCode(code *syntax.Code) *syntax.Code {
 	}
 	quick := *code
 	quick.Codes = code.QuickCodes
+	quick.Dispatches = code.QuickDispatches
 	quick.QuickCodes = nil
+	quick.QuickDispatches = nil
 	return &quick
 }
 
