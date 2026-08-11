@@ -412,6 +412,19 @@ func logFailedQueryUsage(
 	failedQueryUsageRecordedTotal.WithLabelValues(category).Inc()
 }
 
+// logFailedQueryUsageForRejection emits the failed-query usage line for
+// rejections raised before the request reaches StatsCollectorMiddleware, so a
+// classified failure gets a line wherever in the path it is raised. Nothing ran
+// yet, hence the empty usage and zero duration.
+func logFailedQueryUsageForRejection(ctx context.Context, req queryrangebase.Request, err error) {
+	// Same gate as the middleware: only requests tracked by the HTTP stats
+	// middleware, i.e. real user queries, get a line.
+	if data, _ := ctx.Value(ctxKey).(*queryData); data == nil {
+		return
+	}
+	logFailedQueryUsage(ctx, req, err, &stats.PartialContext{}, time.Now())
+}
+
 // loggedQueryType returns the query type in the taxonomy the regular stats line
 // uses (logql.QueryType), so both lines aggregate by the same values. It parses
 // the expression from the request because logql.Params.GetExpression assumes a

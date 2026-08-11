@@ -573,10 +573,13 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 	)
 
 	if parallelism < 1 {
-		return nil, fmt.Errorf("%w: %w",
+		err := fmt.Errorf("%w: %w",
 			logqlmodel.ErrMaxQueryParallelism,
 			httpgrpc.Errorf(http.StatusTooManyRequests, "%s", logqlmodel.ErrMaxQueryParallelism.Error()),
 		)
+		// Rejected before rt.middleware runs, so the line is emitted here.
+		logFailedQueryUsageForRejection(ctx, request, err)
+		return nil, err
 	}
 
 	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))

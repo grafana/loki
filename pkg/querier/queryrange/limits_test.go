@@ -19,6 +19,7 @@ import (
 	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
@@ -419,19 +420,68 @@ func Test_MaxQueryParallelismDisableClassification(t *testing.T) {
 	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
 	})
-	ctx := user.InjectOrgID(context.Background(), "foo")
+	// The queryData value statsHTTPMiddleware installs marks this as a real user
+	// query, which is what makes the failed-query usage line eligible.
+	data := &queryData{}
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
+
+	query := `{app="foo"} |= "bar"`
+	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
+		testSchemas,
+		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+			return next
+		}),
+	).Do(ctx, &LokiRequest{Query: query, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
+	require.Error(t, err)
+
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
+		server.FailureThrottled, "max_query_parallelism",
+		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+
+	// Rejected before the wrapped middleware chain runs, but still reported.
+	line := lines.only(t)
+	requireFailedQueryUsageShape(t, line)
+	require.Equal(t, query, line["query"])
+	require.Equal(t, fmt.Sprint(util.HashedQuery(query)), line["query_hash"])
+	require.Equal(t, logql.QueryTypeFilter, line["query_type"])
+	require.Equal(t, string(logql.RangeType), line["range_type"])
+	require.Equal(t, time.Hour.String(), line["length"])
+	require.Equal(t, "429", line["status"])
+	require.Equal(t, "0B", line["total_bytes"])
+	require.Equal(t, server.FailureThrottled, line["failure_category"])
+	require.Equal(t, "max_query_parallelism", line["failure_reason"])
+	require.Equal(t, "foo", line["org_id"])
+	require.Equal(t, countBefore+1, failedQueryUsageCount(t, server.FailureThrottled))
+	require.False(t, data.recorded)
+}
+
+// Test_MaxQueryParallelismNoUsageLineForMetadataQuery pins the type gate on the
+// pre-chain path: series queries also go through NewLimitedRoundTripper, but
+// they carry no query usage bytes, so they get no line.
+func Test_MaxQueryParallelismNoUsageLineForMetadataQuery(t *testing.T) {
+	h := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.NewEmptyPrometheusResponse(model.ValMatrix), nil
+	})
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, &queryData{}), "foo")
+
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureThrottled)
 
 	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: 0},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return next
 		}),
-	).Do(ctx, &LokiRequest{})
-	require.Error(t, err)
+	).Do(ctx, &LokiSeriesRequest{Match: []string{`{app="foo"}`}, StartTs: testTime.Add(-time.Hour), EndTs: testTime})
 
 	requireSentinelClassification(t, err, logqlmodel.ErrMaxQueryParallelism,
 		server.FailureThrottled, "max_query_parallelism",
 		http.StatusTooManyRequests, "querying is disabled, please contact your Loki operator")
+	require.Empty(t, lines.all())
+	require.Equal(t, countBefore, failedQueryUsageCount(t, server.FailureThrottled))
 }
 
 // Test_MaxQueryLengthClassification drives the real limitsMiddleware, where
