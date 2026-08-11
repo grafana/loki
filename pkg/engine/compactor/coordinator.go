@@ -22,6 +22,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
+const indexMergeIterations = 3
+
 // tocReplacer is the subset of *metastore.TableOfContentsWriter the
 // coordinator needs.
 type tocReplacer interface {
@@ -789,6 +791,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, windo
 // window errored so a single failing window retries the whole phase.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	phaseCounter := 0
 	for {
 		if ctx.Err() != nil {
 			return
@@ -808,7 +811,14 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 		}
 
 		if outcome != phaseOutcomeError {
+			phaseCounter++
+			if p == phaseIndexMerge && phaseCounter < indexMergeIterations {
+				// Run index merge multiple times before flipping to log merge
+				continue
+			}
+
 			p = p.flip()
+			phaseCounter = 0
 		}
 	}
 }
