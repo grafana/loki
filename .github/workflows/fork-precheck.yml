@@ -1,0 +1,112 @@
+name: Fork pre-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or commit to test
+        required: true
+        default: feat/oci-thanos-objstore
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Check formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Install goimports
+        shell: bash
+        run: |
+          tools_version="$(go list -m -f '{{.Version}}' golang.org/x/tools)"
+          go install "golang.org/x/tools/cmd/goimports@${tools_version}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch upstream main
+        run: |
+          git fetch https://github.com/grafana/loki.git \
+            main:refs/remotes/origin/upstream-main
+
+      - name: Check Go formatting
+        env:
+          GIT_TARGET_BRANCH: upstream-main
+        run: make check-format
+
+      - name: Check whitespace
+        run: git diff --check
+
+  bucket-tests:
+    name: Bucket tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Test storage bucket packages
+        run: |
+          go test -count=1 ./pkg/storage/bucket/...
+
+  golangci-lint:
+    name: GolangCI-Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.10.1
+          args: -v --timeout 15m --build-tags linux
+
+  check-mod:
+    name: Check Go modules and vendor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Check modules and vendor
+        run: make check-mod
