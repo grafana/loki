@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "go.yaml.in/yaml/v4"
+
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oci"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
