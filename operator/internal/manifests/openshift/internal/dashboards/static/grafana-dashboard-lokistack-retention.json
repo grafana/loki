@@ -356,7 +356,7 @@
                "steppedLine": false,
                "targets": [
                   {
-                     "expr": "loki_compactor_apply_retention_last_successful_run_timestamp_seconds{ namespace=~\"$namespace\"} * 1e3",
+                     "expr": "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{ namespace=~\"$namespace\"} * 1e3",
                      "format": "time_series",
                      "instant": true,
                      "refId": "A"
@@ -365,7 +365,7 @@
                "thresholds": [ ],
                "timeFrom": null,
                "timeShift": null,
-               "title": "Last Retention Operation Success",
+               "title": "Last Compact Tables Operation Success",
                "tooltip": {
                   "shared": true,
                   "sort": 2,
@@ -436,13 +436,13 @@
                "span": 6,
                "targets": [
                   {
-                     "expr": "loki_compactor_apply_retention_operation_duration_seconds{ namespace=~\"$namespace\"}",
+                     "expr": "loki_boltdb_shipper_compact_tables_operation_duration_seconds{ namespace=~\"$namespace\"}",
                      "format": "time_series",
                      "legendFormat": "duration",
                      "legendLink": null
                   }
                ],
-               "title": "Retention Operation Duration",
+               "title": "Compact Tables Operations Duration",
                "type": "graph"
             }
          ],
@@ -495,20 +495,196 @@
                "span": 6,
                "targets": [
                   {
-                     "expr": "sum by (status)(rate(loki_compactor_apply_retention_operation_total{ namespace=~\"$namespace\"}[$__rate_interval]))",
+                     "expr": "sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
                      "legendFormat": "{{success}}",
                      "legendLink": null
                   }
                ],
-               "title": "Retention Operations Per Status",
+               "title": "Compact Tables Operations Per Status",
+               "type": "graph"
+            }
+         ],
+         "repeat": null,
+         "repeatIteration": null,
+         "repeatRowId": null,
+         "showTitle": true,
+         "title": "",
+         "titleSize": "h6"
+      },
+      {
+         "collapse": false,
+         "height": "250px",
+         "panels": [
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 11,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "count by(action)(loki_boltdb_shipper_retention_marker_table_processed_total{ namespace=~\"$namespace\"})",
+                     "format": "time_series",
+                     "legendFormat": "{{action}}",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Processed Tables Per Action",
                "type": "graph"
             },
             {
                "datasource": "$datasource",
                "fieldConfig": {
                   "defaults": {
-                     "custom": { },
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 12,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "count by(table,action)(loki_boltdb_shipper_retention_marker_table_processed_total{ namespace=~\"$namespace\" , action=~\"modified|deleted\"})",
+                     "format": "time_series",
+                     "legendFormat": "{{table}}-{{action}}",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Modified Tables",
+               "type": "graph"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 13,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "sum by (table)(rate(loki_boltdb_shipper_retention_marker_count_total{ namespace=~\"$namespace\"}[$__rate_interval])) >0",
+                     "format": "time_series",
+                     "legendFormat": "{{table}}",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Marks Creation Rate Per Table",
+               "type": "graph"
+            }
+         ],
+         "repeat": null,
+         "repeatIteration": null,
+         "repeatRowId": null,
+         "showTitle": true,
+         "title": "Per Table Marker",
+         "titleSize": "h6"
+      },
+      {
+         "collapse": false,
+         "height": "250px",
+         "panels": [
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
                      "thresholds": {
                         "mode": "absolute",
                         "steps": [ ]
@@ -518,34 +694,399 @@
                   "overrides": [ ]
                },
                "format": "short",
-               "id": 8,
+               "id": 14,
                "links": [ ],
                "options": {
-                  "colorMode": "value",
-                  "graphMode": "area",
-                  "justifyMode": "auto",
-                  "orientation": "auto",
-                  "reduceOptions": {
-                     "calcs": [
-                        "lastNotNull"
-                     ],
-                     "fields": "",
-                     "values": false
+                  "legend": {
+                     "showLegend": true
                   },
-                  "text": { },
-                  "textMode": "auto"
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
                },
                "span": 6,
                "targets": [
                   {
-                     "expr": "sum(increase(loki_compactor_retention_chunks_expired_by_ingestion_time_total{ namespace=~\"$namespace\"}[24h]))",
+                     "expr": "sum (increase(loki_boltdb_shipper_retention_marker_count_total{ namespace=~\"$namespace\"}[24h]))",
                      "format": "time_series",
                      "instant": true,
                      "refId": "A"
                   }
                ],
-               "title": "Chunks Expired by Retention (24h)",
+               "thresholds": "70,80",
+               "title": "Marked Chunks (24h)",
                "type": "singlestat"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 15,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 6,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "legendFormat": "99th Percentile",
+                     "refId": "A"
+                  },
+                  {
+                     "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "legendFormat": "50th Percentile",
+                     "refId": "B"
+                  },
+                  {
+                     "expr": "sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_sum{ namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
+                     "format": "time_series",
+                     "legendFormat": "Average",
+                     "refId": "C"
+                  }
+               ],
+               "title": "Mark Table Latency",
+               "type": "graph",
+               "yaxes": [
+                  {
+                     "format": "ms",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": 0,
+                     "show": true
+                  },
+                  {
+                     "format": "short",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": null,
+                     "show": false
+                  }
+               ]
+            }
+         ],
+         "repeat": null,
+         "repeatIteration": null,
+         "repeatRowId": null,
+         "showTitle": true,
+         "title": "",
+         "titleSize": "h6"
+      },
+      {
+         "collapse": false,
+         "height": "250px",
+         "panels": [
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "format": "short",
+               "id": 16,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 6,
+               "targets": [
+                  {
+                     "expr": "sum (increase(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[24h]))",
+                     "format": "time_series",
+                     "instant": true,
+                     "refId": "A"
+                  }
+               ],
+               "thresholds": "70,80",
+               "title": "Delete Chunks (24h)",
+               "type": "singlestat"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 17,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 6,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "legendFormat": "99th Percentile",
+                     "refId": "A"
+                  },
+                  {
+                     "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{ namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "legendFormat": "50th Percentile",
+                     "refId": "B"
+                  },
+                  {
+                     "expr": "sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_sum{ namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
+                     "format": "time_series",
+                     "legendFormat": "Average",
+                     "refId": "C"
+                  }
+               ],
+               "title": "Delete Latency",
+               "type": "graph",
+               "yaxes": [
+                  {
+                     "format": "ms",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": 0,
+                     "show": true
+                  },
+                  {
+                     "format": "short",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": null,
+                     "show": false
+                  }
+               ]
+            }
+         ],
+         "repeat": null,
+         "repeatIteration": null,
+         "repeatRowId": null,
+         "showTitle": true,
+         "title": "Sweeper",
+         "titleSize": "h6"
+      },
+      {
+         "collapse": false,
+         "height": "250px",
+         "panels": [
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "s"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 18,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{ namespace=~\"$namespace\"} > 0)",
+                     "format": "time_series",
+                     "legendFormat": "lag",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Sweeper Lag",
+               "type": "graph"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 19,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{ namespace=~\"$namespace\"})",
+                     "format": "time_series",
+                     "legendFormat": "count",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Marks Files to Process",
+               "type": "graph"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 20,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "sum by (status)(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{ namespace=~\"$namespace\"}[$__rate_interval]))",
+                     "format": "time_series",
+                     "legendFormat": "{{status}}",
+                     "legendLink": null
+                  }
+               ],
+               "title": "Delete Rate Per Status",
+               "type": "graph"
             }
          ],
          "repeat": null,
