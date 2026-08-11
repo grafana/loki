@@ -5,10 +5,13 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +36,14 @@ type Preprocessor func(b []byte) ([]byte, error)
 // Loader loads the configuration from files.
 type Loader func(r io.Reader) (interface{}, error)
 
+// MapLoader loads the configuration from a map.
+type MapLoader func(m map[string]interface{}) (interface{}, error)
+
+type providerHash struct {
+	name   string
+	digest [sha256.Size]byte
+}
+
 // Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
 type Config struct {
@@ -42,6 +53,9 @@ type Config struct {
 	LoadPath     flagext.StringSliceCSV `yaml:"file"`
 	Preprocessor Preprocessor           `yaml:"-"`
 	Loader       Loader                 `yaml:"-"`
+	// MapLoader, if set, is used instead of Loader and receives the merged
+	// configuration as a map[string]any directly.
+	MapLoader MapLoader `yaml:"-"`
 
 	// Configurations related to fetching runtime configurations from HTTP URLs rather than local files.
 	HTTPClientTimeout           time.Duration                       `yaml:"http_client_timeout" category:"advanced"`
@@ -81,8 +95,8 @@ type Manager struct {
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
 
-	// Maps provider name to hash. Only used by loadConfig in Starting and Running states, so it doesn't need synchronization.
-	fileHashes map[string]string
+	// Provider hashes in LoadPath order. Only used by loadConfig in Starting and Running states, so it doesn't need synchronization.
+	fileHashes []providerHash
 
 	providers []provider
 }
@@ -202,7 +216,7 @@ func (om *Manager) loop(ctx context.Context) error {
 // and notifies listeners if successful.
 func (om *Manager) loadConfig(ctx context.Context) error {
 	rawData := make([][]byte, len(om.providers))
-	hashes := map[string]string{}
+	hashes := make([]providerHash, len(om.providers))
 
 	for i, p := range om.providers {
 		buf, err := p.Read(ctx)
@@ -220,19 +234,13 @@ func (om *Manager) loadConfig(ctx context.Context) error {
 		}
 
 		rawData[i] = buf
-		hashes[p.Name()] = fmt.Sprintf("%x", sha256.Sum256(buf))
-	}
-
-	// check if new hashes are the same as before
-	sameHashes := true
-	for name, h := range hashes {
-		if om.fileHashes[name] != h {
-			sameHashes = false
-			break
+		hashes[i] = providerHash{
+			name:   p.Name(),
+			digest: sha256.Sum256(buf),
 		}
 	}
 
-	if sameHashes {
+	if slices.Equal(om.fileHashes, hashes) {
 		// No need to rebuild runtime config.
 		om.configLoadSuccess.Set(1)
 		return nil
@@ -253,17 +261,31 @@ func (om *Manager) loadConfig(ctx context.Context) error {
 		}
 	}
 
-	buf, err := yaml.Marshal(mergedConfig)
-	if err != nil {
-		om.configLoadSuccess.Set(0)
-		return errors.Wrap(err, "marshal file")
-	}
+	var (
+		cfg  interface{}
+		hash [sha256.Size]byte
+		err  error
+	)
+	if om.cfg.MapLoader != nil {
+		hash = combinedFilesHash(hashes)
+		cfg, err = om.cfg.MapLoader(mergedConfig)
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrap(err, "load file")
+		}
+	} else {
+		buf, err := yaml.Marshal(mergedConfig)
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrap(err, "marshal file")
+		}
 
-	hash := sha256.Sum256(buf)
-	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
-	if err != nil {
-		om.configLoadSuccess.Set(0)
-		return errors.Wrap(err, "load file")
+		hash = sha256.Sum256(buf)
+		cfg, err = om.cfg.Loader(bytes.NewReader(buf))
+		if err != nil {
+			om.configLoadSuccess.Set(0)
+			return errors.Wrap(err, "load file")
+		}
 	}
 	om.configLoadSuccess.Set(1)
 
@@ -279,9 +301,23 @@ func (om *Manager) loadConfig(ctx context.Context) error {
 	return nil
 }
 
+func combinedFilesHash(hashes []providerHash) [sha256.Size]byte {
+	h := sha256.New()
+	var nameLength [8]byte
+	for _, providerHash := range hashes {
+		binary.BigEndian.PutUint64(nameLength[:], uint64(len(providerHash.name)))
+		_, _ = h.Write(nameLength[:])
+		_, _ = io.WriteString(h, providerHash.name)
+		_, _ = h.Write(providerHash.digest[:])
+	}
+	var out [sha256.Size]byte
+	copy(out[:], h.Sum(nil))
+	return out
+}
+
 func (om *Manager) unmarshalMaybeGzipped(filename string, data []byte) (map[string]any, error) {
-	yamlFile := map[string]any{}
 	if strings.HasSuffix(filename, ".gz") {
+		yamlFile := map[string]any{}
 		r, err := gzip.NewReader(bytes.NewReader(data))
 		if err != nil {
 			return nil, errors.Wrap(err, "read gzipped file")
@@ -291,14 +327,38 @@ func (om *Manager) unmarshalMaybeGzipped(filename string, data []byte) (map[stri
 		return yamlFile, errors.Wrap(err, "uncompress/unmarshal gzipped file")
 	}
 
-	if err := yaml.Unmarshal(data, &yamlFile); err != nil {
+	m, err := unmarshalJSONOrYAML(data)
+	if err != nil {
 		// Give a hint if we think that file is gzipped.
 		if isGzip(data) {
 			return nil, errors.Wrap(err, "file looks gzipped but doesn't have a .gz extension")
 		}
 		return nil, err
 	}
-	return yamlFile, nil
+	return m, nil
+}
+
+// unmarshalJSONOrYAML decodes data into a map. If the data appears to be a JSON
+// object (its first non-whitespace byte is '{'), it is decoded with
+// encoding/json, which is faster. YAML is used as a fallback
+func unmarshalJSONOrYAML(data []byte) (map[string]any, error) {
+	if looksLikeJSONObject(data) {
+		m := map[string]any{}
+		if err := json.Unmarshal(data, &m); err == nil {
+			return m, nil
+		}
+	}
+
+	m := map[string]any{}
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func looksLikeJSONObject(data []byte) bool {
+	trimmed := bytes.TrimLeft(data, " \t\r\n")
+	return len(trimmed) > 0 && trimmed[0] == '{'
 }
 
 func isGzip(data []byte) bool {
