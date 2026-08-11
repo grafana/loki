@@ -196,7 +196,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	sections, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name"}, schema)
 	require.Equal(t, []v2.Section[sortKey]{
@@ -213,7 +213,7 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Min: sortKey{labels: []string{"auth"}, timestamp: 500},
 			Max: sortKey{labels: []string{"billing"}, timestamp: 900},
 		},
-	}, sections)
+	}, refs)
 }
 
 func TestLogSectionRefsFor_OrdersPhysicalSections(t *testing.T) {
@@ -255,7 +255,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	sections, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
 	require.Equal(t, []v2.Section[sortKey]{
@@ -271,7 +271,7 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
 			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
 		},
-	}, sections)
+	}, refs)
 }
 
 func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
@@ -284,14 +284,14 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	sections, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
 	require.NoError(t, err)
 	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
-	require.Len(t, sections, 1)
-	require.Equal(t, sortKey{timestamp: 10}, sections[0].Min)
-	require.Equal(t, sortKey{timestamp: 20}, sections[0].Max)
-	require.Equal(t, "logs/log-0", sections[0].Ref.ObjectPath)
-	require.Equal(t, int64(100), sections[0].Ref.UncompressedSize)
+	require.Len(t, refs, 1)
+	require.Equal(t, sortKey{timestamp: 10}, refs[0].Min)
+	require.Equal(t, sortKey{timestamp: 20}, refs[0].Max)
+	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
+	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
 
 func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
