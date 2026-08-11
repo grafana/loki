@@ -34,7 +34,7 @@ func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter, format string) {
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
+	logger := util_log.WithContext(r.Context(), d.logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
@@ -59,10 +59,6 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 			errorWriter(w, "circuit breaker open, request denied", http.StatusServiceUnavailable, logger)
 			return
 		}
-	}
-
-	if d.RequestParserWrapper != nil {
-		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
 	// Create a request-scoped policy and retention resolver that will ensure consistent policy and retention resolution

@@ -23,7 +23,7 @@ cumulative, by accumulating samples in memory.
 
 ``` yaml
 processors:
-    deltatocumulative:
+    delta_to_cumulative:
         # how long until a series not receiving new samples is removed
         [ max_stale: <duration> | default = 5m ]
  

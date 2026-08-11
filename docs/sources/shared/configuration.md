@@ -1630,6 +1630,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
 
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
+
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
@@ -4467,12 +4473,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the

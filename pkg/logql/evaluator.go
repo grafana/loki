@@ -524,6 +524,24 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 
 		case syntax.OpTypeAvg:
 			group.groupCount++
+			// Floating-point math has any operation between positive
+			// and a negative Infinity to evaluate to a NaN.
+			//
+			// If our running mean is already +Inf, it will cause the mean
+			// to unintentionally become NaN:
+			//
+			//   Inf + (s.F - Inf) == Inf + (-Inf /* negative from subtraction */) == NaN
+			//
+			// We add checks to prevent unintentional conversions. Explicitly
+			// averaging an +Inf and -Inf will evaluate to NaN as expected.
+			if math.IsInf(group.mean, 0) {
+				if math.IsInf(s.F, 0) && (group.mean > 0) == (s.F > 0) {
+					break // Same-sign infinity leaves the mean unchanged.
+				}
+				if !math.IsInf(s.F, 0) && !math.IsNaN(s.F) {
+					break // A finite sample cannot change an infinite mean.
+				}
+			}
 			group.mean += (s.F - group.mean) / float64(group.groupCount)
 
 		case syntax.OpTypeMax:

@@ -9,7 +9,7 @@ volumes:
   minio:
 
 x-loki-common: &loki-common
-  image: grafana/loki:3.7.4@sha256:87f0a067673756a3cede1bcbf0c74875f7df9b09fddb53e399d0c576f756cfcc
+  image: grafana/loki:3.7.6@sha256:efd47c67f9bac88ca29bcf8cb997d9ab29d1848bd0aff579282295542a745952
   volumes:
     - ./config:/etc/loki/
     - loki:/loki
@@ -40,7 +40,7 @@ x-loki-common: &loki-common
 
 services:
   grafana:
-    image: grafana/grafana:13.1.0@sha256:121a7a9ece6dc10b969f1f96eed64b4f07dfac0d0b8abc070f7cb83bbde86f63
+    image: grafana/grafana:13.1.3@sha256:ab5cb380e3ff3172d6c8bd2e7cfd31cce977d2881b260e1f5bc089bf0b759b43
     ports:
       - "3000:3000"
     environment:
