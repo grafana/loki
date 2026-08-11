@@ -829,7 +829,6 @@ func configurePassGatewayServerPKI(
 		},
 	)
 
-	// Client CA
 	var clientCAVolumeSource corev1.VolumeSource
 	if clientCAs.ConfigMapName != "" {
 		clientCAVolumeSource = corev1.VolumeSource{
@@ -852,7 +851,6 @@ func configurePassGatewayServerPKI(
 		VolumeSource: clientCAVolumeSource,
 	})
 
-	// Server TLS (cert/key from tenants.gateway.tls, or default OpenShift service cert)
 	serverTLSVolumes := buildCustomTLSVolumes(tlsOptions, serverCAName)
 	gwVolumes = append(gwVolumes, serverTLSVolumes...)
 
