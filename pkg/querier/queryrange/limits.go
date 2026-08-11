@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -34,7 +33,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
@@ -411,11 +409,8 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 type seriesLimiter struct {
 	hashes map[uint64]struct{}
-	// uniqueSeriesPerVariant maps from a variant label value to a map of series fingerprints
-	uniqueSeriesPerVariant map[string]map[uint64]struct{}
-	skipVariants           map[string]struct{}
-	rw                     sync.RWMutex
-	buf                    []byte // buf used for hashing to avoid allocations.
+	rw     sync.RWMutex
+	buf    []byte // buf used for hashing to avoid allocations.
 
 	maxSeries int
 	next      queryrangebase.Handler
@@ -432,12 +427,10 @@ func newSeriesLimiter(maxSeries int) queryrangebase.Middleware {
 // The handler returned is thread safe.
 func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangebase.Handler {
 	return &seriesLimiter{
-		hashes:                 make(map[uint64]struct{}),
-		uniqueSeriesPerVariant: make(map[string]map[uint64]struct{}),
-		skipVariants:           make(map[string]struct{}),
-		maxSeries:              int(slm),
-		buf:                    make([]byte, 0, 1024),
-		next:                   next,
+		hashes:    make(map[uint64]struct{}),
+		maxSeries: int(slm),
+		buf:       make([]byte, 0, 1024),
+		next:      next,
 	}
 }
 
@@ -448,7 +441,6 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	metadata := metadata.FromContext(ctx)
-	//TODO(twhitney): Need a way to propagate skipped variants to the queriers
 	res, err := sl.next.Do(ctx, req)
 	if err != nil {
 		return res, err
@@ -464,59 +456,18 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 	defer sl.rw.Unlock()
 
 	var hash uint64
-	for i := 0; i < len(promResponse.Response.Data.Result); i++ {
-		s := promResponse.Response.Data.Result[i]
+	for _, s := range promResponse.Response.Data.Result {
 		lbs := logproto.FromLabelAdaptersToLabels(s.Labels)
-
-		// Extract the variant label, if present
-		variant := ""
-		for _, label := range s.Labels {
-			if label.Name == constants.VariantLabel {
-				variant = label.Value
-				break
-			}
-		}
-
 		hash, sl.buf = lbs.HashWithoutLabels(sl.buf, []string(nil)...)
 
-		// If there's a variant label, track it in the variant map
-		if variant != "" {
-			if _, ok := sl.skipVariants[variant]; ok {
-				// Remove this variant from the result slice
-				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
-				i-- // Adjust the index since we removed an item
-				continue
-			}
+		if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+			metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
+			return res, nil
+		}
 
-			// Get or create the map for this variant
-			variantMap, ok := sl.uniqueSeriesPerVariant[variant]
-			if !ok {
-				variantMap = make(map[uint64]struct{})
-				sl.uniqueSeriesPerVariant[variant] = variantMap
-			}
-
-			variantMap[hash] = struct{}{}
-
-			// Check if adding this series would exceed the limit for this variant
-			if len(variantMap) > sl.maxSeries {
-				sl.skipVariants[variant] = struct{}{}
-				// Remove this variant from the result slice
-				promResponse.Response.Data.Result = slices.Delete(promResponse.Response.Data.Result, i, i+1)
-				i-- // Adjust the index since we removed an item
-				metadata.AddWarning(fmt.Sprintf("maximum of series (%d) reached for variant (%s)", sl.maxSeries, variant))
-				continue
-			}
-		} else {
-			if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
-				metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
-				return res, nil
-			}
-
-			// For non-variant series, track them in the global hashes map
-			sl.hashes[hash] = struct{}{}
-			if len(sl.hashes) > sl.maxSeries {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
-			}
+		sl.hashes[hash] = struct{}{}
+		if len(sl.hashes) > sl.maxSeries {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 		}
 	}
 

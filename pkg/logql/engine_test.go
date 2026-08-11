@@ -28,7 +28,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -295,224 +294,6 @@ func TestEngine_RangeQuery(t *testing.T) {
 			assert.Equal(t, test.expected, res.Data)
 		})
 	}
-}
-
-func TestJoinMultiVariantSampleVector(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	expr, err := syntax.ParseExpr(`variants(count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`)
-	require.NoError(t, err)
-
-	instantParams := LiteralParams{
-		queryExpr: expr,
-		limit:     10,
-		start:     now,
-		end:       now,
-		step:      time.Duration(0),
-	}
-
-	rangeParams := LiteralParams{
-		queryExpr: expr,
-		limit:     10,
-		start:     now.Add(-time.Hour),
-		end:       now,
-		step:      30 * time.Second,
-	}
-
-	testCases := []struct {
-		name             string
-		params           Params
-		maxSeries        int
-		initialVector    promql.Vector
-		stepResults      []StepResult
-		expectedResult   promql_parser.Value
-		expectedWarnings []string
-	}{
-		{
-			name:      "instant query within limits",
-			params:    instantParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "bar")},
-			},
-			expectedResult: promql.Vector{
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "bar")}, //bar comes first alphabetically
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-			},
-		},
-		{
-			name:      "instant query where each variant falls within limits, but aggregate is over limit",
-			params:    instantParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "bar")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
-			},
-			expectedResult: promql.Vector{
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "bar")}, //bar comes first alphabetically
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-			},
-		},
-		{
-			name:      "instant query with a variant over the limits",
-			params:    instantParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "bar")},
-				{T: 60 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "baz")},
-				{T: 60 * 1000, F: 4, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "qux")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
-			},
-			expectedResult: promql.Vector{
-				{T: 60 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "bar")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "app", "foo")},
-			},
-			expectedWarnings: []string{"maximum of series (3) reached for variant (0)"},
-		},
-		{
-			name:      "range query with multiple steps within limits",
-			params:    rangeParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-			},
-			stepResults: []StepResult{
-				vectorResult(promql.Vector{
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				}),
-				vectorResult(promql.Vector{
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				}),
-			},
-			expectedResult: promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{
-						{T: 60 * 1000, F: 1},
-						{T: 90 * 1000, F: 2},
-						{T: 120 * 1000, F: 3},
-					},
-				},
-			},
-		},
-		{
-			name:      "range query with multiple steps within limits per variant, but over the limit in aggregate",
-			params:    rangeParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-			},
-			stepResults: []StepResult{
-				vectorResult(promql.Vector{
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-				}),
-				vectorResult(promql.Vector{
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-				}),
-				vectorResult(promql.Vector{
-					{T: 150 * 1000, F: 4, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-					{T: 150 * 1000, F: 4, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-				}),
-			},
-			expectedResult: promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{
-						{T: 60 * 1000, F: 1},
-						{T: 90 * 1000, F: 2},
-						{T: 120 * 1000, F: 3},
-						{T: 150 * 1000, F: 4},
-					},
-				},
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar"),
-					Floats: []promql.FPoint{
-						{T: 60 * 1000, F: 1},
-						{T: 90 * 1000, F: 2},
-						{T: 120 * 1000, F: 3},
-						{T: 150 * 1000, F: 4},
-					},
-				},
-			},
-		},
-		{
-			name:      "range query with a variant over the limit",
-			params:    rangeParams,
-			maxSeries: 3,
-			initialVector: promql.Vector{
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "foo")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "baz")},
-				{T: 60 * 1000, F: 1, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "qux")},
-			},
-			stepResults: []StepResult{
-				vectorResult(promql.Vector{
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "foo")},
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "baz")},
-					{T: 90 * 1000, F: 2, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "qux")},
-				}),
-				vectorResult(promql.Vector{
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo")},
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "foo")},
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "bar")},
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "baz")},
-					{T: 120 * 1000, F: 3, Metric: labels.FromStrings(constants.VariantLabel, "1", "job", "qux")},
-				}),
-			},
-			expectedResult: promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings(constants.VariantLabel, "0", "app", "foo"),
-					Floats: []promql.FPoint{
-						{T: 60 * 1000, F: 1},
-						{T: 90 * 1000, F: 2},
-						{T: 120 * 1000, F: 3},
-					},
-				},
-			},
-			expectedWarnings: []string{"maximum of series (3) reached for variant (1)"},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			q := &query{
-				params: tc.params,
-			}
-
-			mockEvaluator := &mockStepEvaluator{
-				results: tc.stepResults,
-				t:       t,
-			}
-
-			metadataCtx, ctx := metadata.NewContext(context.Background())
-			result, err := q.JoinMultiVariantSampleVector(ctx, true, vectorResult(tc.initialVector), mockEvaluator, tc.maxSeries)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedResult, result)
-
-			if tc.expectedWarnings != nil {
-				require.Equal(t, tc.expectedWarnings, metadataCtx.Warnings())
-			}
-		})
-	}
-}
-
-// vectorResult is a helper that creates a StepResult from a vector
-func vectorResult(v promql.Vector) StepResult {
-	return &storeSampleResult{vector: v}
 }
 
 // mockStepEvaluator is a mock implementation of StepEvaluator for testing
@@ -948,11 +729,6 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 				return EmptyEvaluator[SampleVector]{value: nil}, nil
 			},
 		),
-		VariantsEvaluatorFunc(
-			func(context.Context, syntax.VariantsExpr, Params) (StepEvaluator, error) {
-				return EmptyEvaluator[SampleVector]{value: nil}, nil
-			},
-		),
 	}
 
 	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
@@ -966,8 +742,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 }
 
 type mockEvaluatorFactory struct {
-	sampleEvalFunc  SampleEvaluatorFunc
-	variantEvalFunc VariantsEvaluatorFunc
+	sampleEvalFunc SampleEvaluatorFunc
 }
 
 func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
@@ -975,13 +750,6 @@ func (m *mockEvaluatorFactory) NewStepEvaluator(ctx context.Context, nextEvaluat
 		return m.sampleEvalFunc(ctx, nextEvaluatorFactory, expr, p)
 	}
 	return nil, errors.New("unimplemented mock SampleEvaluatorFactory")
-}
-
-func (m *mockEvaluatorFactory) NewVariantsStepEvaluator(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error) {
-	if m.variantEvalFunc != nil {
-		return m.variantEvalFunc(ctx, expr, p)
-	}
-	return nil, errors.New("unimplemented mock VariantEvaluatorFactory")
 }
 
 func (m *mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
@@ -1041,49 +809,12 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 	if seriesIn, ok := data.([][]logproto.Series); ok {
 		if paramsIn, ok2 := params.([]SelectSampleParams); ok2 {
 			for i, p := range paramsIn {
-				expr, ok3 := syntax.MustParseExpr(p.Selector).(syntax.VariantsExpr)
-				if ok3 {
-					if p.Plan == nil {
-						p.Plan = &plan.QueryPlan{
-							AST: expr,
-						}
-					}
-
-					curSeries := seriesIn[i]
-					variants := expr.Variants()
-					newSeries := make([]logproto.Series, len(curSeries)*len(variants))
-
-					for vi := range variants {
-						for si, s := range curSeries {
-							lbls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(s.Labels)
-							if err != nil {
-								return nil
-							}
-
-							// Add variant label
-							b := labels.NewBuilder(lbls)
-							b.Set(constants.VariantLabel, fmt.Sprintf("%d", vi))
-							lbls = b.Labels()
-
-							// Copy series with new labels
-							idx := vi*len(curSeries) + si
-							newSeries[idx] = logproto.Series{
-								Labels:  lbls.String(),
-								Samples: s.Samples,
-							}
-						}
-					}
-					series[paramsID(p)] = newSeries
-				} else {
-					for i, p := range paramsIn {
-						if p.Plan == nil {
-							p.Plan = &plan.QueryPlan{
-								AST: syntax.MustParseExpr(p.Selector),
-							}
-						}
-						series[paramsID(p)] = seriesIn[i]
+				if p.Plan == nil {
+					p.Plan = &plan.QueryPlan{
+						AST: syntax.MustParseExpr(p.Selector),
 					}
 				}
+				series[paramsID(p)] = seriesIn[i]
 			}
 		}
 	}

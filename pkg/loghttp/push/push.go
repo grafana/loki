@@ -129,9 +129,8 @@ type StreamResolver interface {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
-	RequestParserWrapper func(inner RequestParser) RequestParser
-	ErrorWriter          func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
+	RequestParser func(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error)
+	ErrorWriter   func(w http.ResponseWriter, errorStr string, code int, logger log.Logger)
 )
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
