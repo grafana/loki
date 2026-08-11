@@ -146,6 +146,14 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 // fixedClock returns a clock function pinned to t.
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
+func sectionRefNames(refs []*compactionv2pb.SectionRef) []string {
+	names := make([]string, len(refs))
+	for i, ref := range refs {
+		names[i] = fmt.Sprintf("%s#%d", ref.ObjectPath, ref.SectionIndex)
+	}
+	return names
+}
+
 func buildOverlappingPostingsIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) {
 	t.Helper()
 	buildIndexWithPostings(ctx, t, bucket, tenant, path, 1<<20, []postings.Row{
@@ -218,13 +226,17 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 
-	// Same tuple, overlapping times -> 2 runs -> still dispatches after the
-	// terminal gate (total size 200 clears the test floor of 1).
+	// Two overlapping objects -> 2 runs. Each object's physical sections must
+	// stay together and ordered in the dispatched task.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 50},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 15, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 50},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 50},
+		{ObjectPath: "logs/log-1", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 25, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 50},
 	})
 
 	runner := &fakeRunner{}
@@ -251,6 +263,9 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	node, ok := root.(*physical.LogMerge)
 	require.True(t, ok)
 	require.Equal(t, []string{"label:service_name"}, node.SortSchema)
+	require.Len(t, node.Runs, 2)
+	require.Equal(t, []string{"logs/log-0#0", "logs/log-0#1"}, sectionRefNames(node.Runs[0].Sections))
+	require.Equal(t, []string{"logs/log-1#0", "logs/log-1#1"}, sectionRefNames(node.Runs[1].Sections))
 
 	swaps := replacer.snapshot()
 	require.Len(t, swaps, 1, "log path now swaps the ToC after dispatch")
@@ -280,16 +295,19 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	require.Empty(t, runner.snapshot())
 }
 
-func TestCompactTenantLogs_TerminalSingleRunSkips(t *testing.T) {
+func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
 	convergedPath := "indexes/aa/converged"
 
-	// Single stat row -> P=1 -> terminal regardless of size.
+	// Overlapping physical sections in one object are one planning unit and do
+	// not trigger a rewrite by themselves.
 	buildIndexWithStats(ctx, t, bucket, "acme", convergedPath, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 10, MaxTimestamp: 30, RowCount: 1, UncompressedSize: 100},
+		{ObjectPath: "logs/log-0", SectionIndex: 1, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 20, MaxTimestamp: 40, RowCount: 1, UncompressedSize: 100},
 	})
 
 	runner := &fakeRunner{}
@@ -514,7 +532,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 	require.Empty(t, replacer.snapshot(), "no swap for a single-index window")
 }
 
-func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsSwaps(t *testing.T) {
+func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsIsNoWork(t *testing.T) {
 	ctx := context.Background()
 	window := imWindow()
 	bucket := objstore.NewInMemBucket()
@@ -536,10 +554,10 @@ func TestRunIndexMergePhase_SingleIndexWithOverlappingSectionsSwaps(t *testing.T
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(3*time.Hour)), newFakeLimits("acme"))
 
-	require.Equal(t, phaseOutcomeSwapped, c.runIndexMergePhase(ctx, "acme", window))
-	require.Len(t, replacer.snapshot(), 1)
-	require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
-	require.Equal(t, time.Hour.Seconds(), testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Empty(t, replacer.snapshot(), "sections from one physical object are already converged")
+	require.Zero(t, testutil.ToFloat64(c.metrics.unconsolidatedBacklog.WithLabelValues("acme")))
+	require.Zero(t, testutil.ToFloat64(c.metrics.oldestBacklogLogAgeSeconds.WithLabelValues("acme")))
 }
 
 func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {

@@ -6,11 +6,17 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 )
 
-// run is one ordered sequence built by calculateRuns. topMax is the upper
+// run is one ordered sequence built by the calculateRuns. topMax is the upper
 // bound of its final section.
 type run[K any] struct {
 	sections []*compactionv2pb.SectionRef
 	topMax   K
+}
+
+type object[K any] struct {
+	path     string
+	sections []*compactionv2pb.SectionRef
+	min, max K
 }
 
 func (r *run[K]) Sections() []*compactionv2pb.SectionRef { return r.sections }
@@ -23,36 +29,63 @@ func (r *run[K]) Size() uint64 {
 	return total
 }
 
-func sortSections[K any](sections []Section[K], compare CompareFunc[K]) {
+func groupSectionsByObject[K any](sections []Section[K], compare CompareFunc[K]) []object[K] {
 	for _, section := range sections {
 		if section.Ref == nil {
 			panic("nil section reference")
 		}
 	}
 
-	sort.Slice(sections, func(i, j int) bool {
-		a, b := sections[i], sections[j]
-		if n := compare(a.Min, b.Min); n != 0 {
+	byPath := make(map[string][]Section[K])
+	for _, section := range sections {
+		path := section.Ref.ObjectPath
+		byPath[path] = append(byPath[path], section)
+	}
+
+	objects := make([]object[K], 0, len(byPath))
+	for path, objectSections := range byPath {
+		// Sort indexes
+		sort.Slice(objectSections, func(i, j int) bool {
+			a, b := objectSections[i], objectSections[j]
+			return a.Ref.SectionIndex < b.Ref.SectionIndex
+		})
+
+		group := object[K]{
+			path:     path,
+			sections: make([]*compactionv2pb.SectionRef, len(objectSections)),
+			min:      objectSections[0].Min,
+			max:      objectSections[0].Max,
+		}
+		for i, section := range objectSections {
+			group.sections[i] = section.Ref
+			if compare(section.Min, group.min) < 0 {
+				group.min = section.Min
+			}
+			if compare(section.Max, group.max) > 0 {
+				group.max = section.Max
+			}
+		}
+		objects = append(objects, group)
+	}
+
+	sort.Slice(objects, func(i, j int) bool {
+		a, b := objects[i], objects[j]
+		if n := compare(a.min, b.min); n != 0 {
 			return n < 0
 		}
-		if n := compare(a.Max, b.Max); n != 0 {
+		if n := compare(a.max, b.max); n != 0 {
 			return n < 0
 		}
-		if a.Ref.ObjectPath != b.Ref.ObjectPath {
-			return a.Ref.ObjectPath < b.Ref.ObjectPath
-		}
-		return a.Ref.SectionIndex < b.Ref.SectionIndex
+		return a.path < b.path
 	})
+	return objects
 }
 
-func calculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []*run[K] {
-	if len(sections) == 0 {
-		return nil
-	}
-	sortSections(sections, compare)
-
-	// Place each section in the run with the greatest upper bound that still
-	// ends before this section starts. If no run is eligible, start a new one.
+func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K] {
+	// Place each object in the run with the greatest upper bound that still
+	// ends before this object starts. If no run is eligible, start a new one.
+	// An object is assumed to be internally sorted and is considered a single Run to simplify planning.
+	//
 	// When two runs have the same upper bound, the oldest run wins.
 	//
 	// Consider three L0 sections sorted by timestamp rather than service_name.
@@ -90,10 +123,10 @@ func calculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []*run[
 	// measures locality even when the number of physical sections does not
 	// change.
 	var runs []*run[K]
-	for _, section := range sections {
+	for _, obj := range objects {
 		var best *run[K]
 		for _, candidate := range runs {
-			canFollow := compare(candidate.topMax, section.Min) < 0
+			canFollow := compare(candidate.topMax, obj.min) < 0
 			isCloser := best == nil || compare(candidate.topMax, best.topMax) > 0
 			if canFollow && isCloser {
 				best = candidate
@@ -102,14 +135,14 @@ func calculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []*run[
 
 		if best == nil {
 			runs = append(runs, &run[K]{
-				sections: []*compactionv2pb.SectionRef{section.Ref},
-				topMax:   section.Max,
+				sections: append([]*compactionv2pb.SectionRef(nil), obj.sections...),
+				topMax:   obj.max,
 			})
 			continue
 		}
 
-		best.sections = append(best.sections, section.Ref)
-		best.topMax = section.Max
+		best.sections = append(best.sections, obj.sections...)
+		best.topMax = obj.max
 	}
 	return runs
 }

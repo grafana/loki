@@ -24,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
 
+const prefetchBytes = 2 * 1024 * 1024
+
 // indexEntry is one index object listed in a ToC for a particular tenant.
 type indexEntry struct {
 	Path                 string
@@ -222,7 +224,7 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 
 	var reads []sectionRead
 	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, 0)
+		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
 		if err != nil {
 			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}

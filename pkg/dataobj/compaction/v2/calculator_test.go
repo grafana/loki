@@ -48,43 +48,43 @@ func TestCalculateRuns(t *testing.T) {
 		{
 			name: "non-overlapping",
 			sections: []Section[testKey]{
-				testSection("o", 2, key("e", 0), key("f", 0)),
-				testSection("o", 0, key("a", 0), key("b", 0)),
-				testSection("o", 1, key("c", 0), key("d", 0)),
+				testSection("a", 2, key("e", 0), key("f", 0)),
+				testSection("b", 0, key("a", 0), key("b", 0)),
+				testSection("c", 1, key("c", 0), key("d", 0)),
 			},
 			want: [][]int64{{0, 1, 2}},
 		},
 		{
 			name: "touching",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("b", 0)),
-				testSection("o", 1, key("b", 0), key("c", 0)),
+				testSection("a", 0, key("a", 0), key("b", 0)),
+				testSection("b", 1, key("b", 0), key("c", 0)),
 			},
 			want: [][]int64{{0}, {1}},
 		},
 		{
 			name: "overlapping",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("d", 0)),
-				testSection("o", 1, key("b", 0), key("e", 0)),
-				testSection("o", 2, key("c", 0), key("f", 0)),
+				testSection("a", 0, key("a", 0), key("d", 0)),
+				testSection("b", 1, key("b", 0), key("e", 0)),
+				testSection("c", 2, key("c", 0), key("f", 0)),
 			},
 			want: [][]int64{{0}, {1}, {2}},
 		},
 		{
 			name: "timestamp breaks label tie",
 			sections: []Section[testKey]{
-				testSection("o", 1, key("api", 30), key("api", 40)),
-				testSection("o", 0, key("api", 10), key("api", 20)),
+				testSection("b", 1, key("api", 30), key("api", 40)),
+				testSection("a", 0, key("api", 10), key("api", 20)),
 			},
 			want: [][]int64{{0, 1}},
 		},
 		{
 			name: "best fit",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("00", 0), key("05", 0)),
-				testSection("o", 1, key("01", 0), key("10", 0)),
-				testSection("o", 2, key("12", 0), key("20", 0)),
+				testSection("a", 0, key("00", 0), key("05", 0)),
+				testSection("b", 1, key("01", 0), key("10", 0)),
+				testSection("c", 2, key("12", 0), key("20", 0)),
 			},
 			want: [][]int64{{0}, {1, 2}},
 		},
@@ -140,7 +140,20 @@ func TestCalculateRuns_TiedBoundsUseReferenceOrder(t *testing.T) {
 	}
 
 	runs := CalculateRuns(sections, compareTestKey)
-	require.Equal(t, [][]string{{"a#0"}, {"a#1"}, {"b#0"}}, runRefs(runs))
+	require.Equal(t, [][]string{{"a#0", "a#1"}, {"b#0"}}, runRefs(runs))
+}
+
+func TestObjectEnvelopeControlsRunsAndConvergence(t *testing.T) {
+	sections := []Section[testKey]{
+		testSection("b", 0, key("c", 0), key("f", 0)),
+		testSection("a", 1, key("d", 0), key("e", 0)),
+		testSection("a", 0, key("a", 0), key("b", 0)),
+	}
+
+	runs := CalculateRuns(sections, compareTestKey)
+
+	require.Equal(t, [][]string{{"a#0", "a#1"}, {"b#0"}}, runRefs(runs))
+	require.False(t, IsConverged(sections, compareTestKey))
 }
 
 func TestIsConverged(t *testing.T) {
@@ -153,25 +166,35 @@ func TestIsConverged(t *testing.T) {
 		{
 			name: "strict run",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("b", 0)),
-				testSection("o", 1, key("c", 0), key("d", 0)),
+				testSection("a", 0, key("a", 0), key("b", 0)),
+				testSection("b", 0, key("c", 0), key("d", 0)),
 			},
 			converged: true,
 		},
 		{
 			name: "touching only",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("b", 0)),
-				testSection("o", 1, key("b", 0), key("c", 0)),
+				testSection("a", 0, key("a", 0), key("b", 0)),
+				testSection("b", 0, key("b", 0), key("c", 0)),
 			},
 			converged: true,
 		},
 		{
 			name: "true overlap",
 			sections: []Section[testKey]{
-				testSection("o", 0, key("a", 0), key("c", 0)),
-				testSection("o", 1, key("b", 0), key("d", 0)),
+				testSection("a", 0, key("a", 0), key("c", 0)),
+				testSection("b", 0, key("b", 0), key("d", 0)),
 			},
+		},
+		{
+			// This test breaks the assumption that sections within an object are sorted.
+			// It's included to show that the algorithm does not check for overlap within an object.
+			name: "overlap within one object is not checked",
+			sections: []Section[testKey]{
+				testSection("a", 0, key("a", 0), key("c", 0)),
+				testSection("a", 1, key("b", 0), key("d", 0)),
+			},
+			converged: true,
 		},
 	}
 
