@@ -3271,110 +3271,6 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeRate,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
 }
 
 func TestParse(t *testing.T) {
@@ -3779,5 +3675,32 @@ func TestParseSampleExpr_String(t *testing.T) {
 		expr, err := ParseExpr(query)
 		require.NoError(t, err)
 		require.Equal(t, query, expr.String())
+	})
+}
+
+// TestParseVariantsRemoved pins that variants() is no longer part of LogQL, and
+// that dropping its VARIANTS and OF keywords freed `variants` and `of` for use
+// as ordinary identifiers.
+func TestParseVariantsRemoved(t *testing.T) {
+	t.Run("variants() no longer parses", func(t *testing.T) {
+		for _, query := range []string{
+			`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+			`variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
+		} {
+			_, err := ParseExpr(query)
+			require.ErrorIs(t, err, logqlmodel.ErrParse, "query: %s", query)
+		}
+	})
+
+	t.Run("variants and of are usable as identifiers", func(t *testing.T) {
+		for _, query := range []string{
+			`{variants="a"}`,
+			`{of="a"}`,
+			`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
+			`{foo="bar"} | logfmt | of = "a" | variants = "b"`,
+		} {
+			_, err := ParseExpr(query)
+			require.NoError(t, err, "query: %s", query)
+		}
 	})
 }

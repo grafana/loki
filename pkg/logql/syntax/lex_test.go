@@ -205,33 +205,26 @@ func Test_parseDuration(t *testing.T) {
 	}
 }
 
-func TestLex_Variants(t *testing.T) {
+// TestLex_VariantsKeywordsFreed pins that `variants` and `of` are ordinary
+// identifiers. They used to be reserved words for the removed variants()
+// expression, which made them unusable as label names.
+func TestLex_VariantsKeywordsFreed(t *testing.T) {
 	for _, tc := range []struct {
 		input    string
 		expected []int
 	}{
 		{
-			`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
+			`{variants="bar"}`,
+			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
 		},
 		{
-			`variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, BYTES_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
-				COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS,
-				OF, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS},
+			`{of="bar"}`,
+			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
 		},
 		{
-			`variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
-				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
-		},
-		{
-			`variants(sum by (app) (count_over_time({foo="bar"}[5m])), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42"[5m])`,
-			[]int{VARIANTS, OPEN_PARENTHESIS, SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, CLOSE_PARENTHESIS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, COMMA,
-				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
-				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, RANGE, CLOSE_PARENTHESIS},
+			`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
+			[]int{SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, COMMA, IDENTIFIER, CLOSE_PARENTHESIS,
+				OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS},
 		},
 	} {
 		t.Run(tc.input, func(t *testing.T) {

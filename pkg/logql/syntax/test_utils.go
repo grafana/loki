@@ -60,11 +60,6 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 				cleaned = append(cleaned, removeFastRegexMatcherFromLabelFilterer(filter))
 			}
 			typed.Unwrap.PostFilters = cleaned
-		case *MultiVariantExpr:
-			typed.logRange.Left = removeFastRegexMatcherFromExpr(typed.logRange.Left).(LogSelectorExpr)
-			for i, variant := range typed.variants {
-				typed.variants[i] = removeFastRegexMatcherFromExpr(variant).(SampleExpr)
-			}
 		}
 		return true
 	})

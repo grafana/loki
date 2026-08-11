@@ -321,9 +321,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	}
 
 	switch e := q.params.GetExpression().(type) {
-	// A VariantsExpr is a specific type of SampleExpr, so make sure this case is evaulated first
-	case syntax.VariantsExpr:
-		return nil, logqlmodel.ErrVariantsUnsupported
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
