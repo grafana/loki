@@ -434,7 +434,9 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	w.lastSortKey = rec.SortKey
 	stream := w.table.streams[rec.StreamID]
 
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, stream.Labels, rec)
+	// There's no equivalent for ingestion time during compaction, so use the current time.
+	ingestionTime := time.Now()
+	err := w.logsBuilder.AppendRecord(w.node.Tenant, stream.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}

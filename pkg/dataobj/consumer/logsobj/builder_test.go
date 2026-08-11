@@ -164,7 +164,7 @@ func TestBuilder_AppendRecord(t *testing.T) {
 		require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
 			Timestamp: time.Now().UTC(),
 			Line:      bytes.Repeat([]byte("a"), 1024),
-		}))
+		}, time.Now()))
 	}
 
 	obj, closer, err := builder.Flush()

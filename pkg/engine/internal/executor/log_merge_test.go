@@ -263,8 +263,9 @@ type outputRecord struct {
 // extracts the embedded compacted log object paths, and loads each object from
 // the data bucket. Returns the streamID->app map and records for each object.
 func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket objstore.Bucket, indexBucket objstore.Bucket, indexPath, tenant string) []struct {
-	streamApp map[int64]string
-	records   []outputRecord
+	streamApp    map[int64]string
+	records      []outputRecord
+	streamLabels []string
 } {
 	t.Helper()
 
@@ -304,8 +305,9 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 
 	// Now load each compacted log object from the data bucket
 	var out []struct {
-		streamApp map[int64]string
-		records   []outputRecord
+		streamApp    map[int64]string
+		records      []outputRecord
+		streamLabels []string
 	}
 
 	for _, logPath := range logObjectPaths {
@@ -313,6 +315,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		require.NoError(t, err, "compacted log object must exist at %s", logPath)
 
 		streamApp := make(map[int64]string)
+		var streamLabels []string
 		for _, sec := range logObj.Sections().Filter(streams.CheckSection) {
 			if sec.Tenant != tenant {
 				continue
@@ -322,6 +325,7 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 			for res := range streams.IterSection(ctx, ss) {
 				s, err := res.Value()
 				require.NoError(t, err)
+				streamLabels = append(streamLabels, s.Labels.String())
 				streamApp[s.ID] = s.Labels.Get("app")
 			}
 		}
@@ -345,9 +349,10 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 		}
 
 		out = append(out, struct {
-			streamApp map[int64]string
-			records   []outputRecord
-		}{streamApp: streamApp, records: records})
+			streamApp    map[int64]string
+			records      []outputRecord
+			streamLabels []string
+		}{streamApp: streamApp, records: records, streamLabels: streamLabels})
 	}
 	return out
 }
@@ -409,10 +414,14 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 
 	totalRecords := 0
 	distinctApps := make(map[string]bool)
+	uniqueStreams := map[string]struct{}{}
 	for objIdx, o := range objs {
 		totalRecords += len(o.records)
 		for _, app := range o.streamApp {
 			distinctApps[app] = true
+		}
+		for _, labels := range o.streamLabels {
+			uniqueStreams[labels] = struct{}{}
 		}
 
 		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
@@ -429,7 +438,7 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	}
 
 	// Cross-object dedup: 9 source stream occurrences => 5 logical streams.
-	require.Equal(t, 5, len(distinctApps))
+	require.Equal(t, 5, len(uniqueStreams))
 	// The 5 distinct label sets are all present.
 	require.Equal(t, map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}, distinctApps)
 	// 9 stream-appends x 4 entries = 36 records.

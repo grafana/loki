@@ -380,7 +380,7 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
 // The SortKey & StreamID fields of the given record are ignored and re-calculated.
-func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record) error {
+func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
@@ -394,7 +394,7 @@ func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Reco
 		_ = yield(record, sz)
 	}
 
-	return b.appendAll(tenant, ls, time.Time{}, singleRecordIter)
+	return b.appendAll(tenant, ls, ingestionTime, singleRecordIter)
 }
 
 func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
