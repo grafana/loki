@@ -160,13 +160,20 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
           { from: 'job=~"($namespace)/compactor"', to: 'namespace="$namespace", job=~".+-compactor-http"' },
+          { from: 'sum(loki_compactor_locked_table_successive_compaction_skips', to: 'sum by (table_name)(loki_compactor_locked_table_successive_compaction_skips' },
         ],
         uid: 'RetCujSHzC8gd9i5fck9a3v9n2EvTzA',
         title: 'OpenShift Logging / LokiStack / Retention',
         tags: defaultLokiTags(super.tags),
         local processedRows = [
           r {
-            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat'), replaceType('timeseries', 'graph')], dropPanels(r.panels, dropList, function(p) true)),
+            panels: mapPanels([
+              replaceMatchers(replacements),
+              replaceLabelFormat('Compact Tables Operations Per Status', '{{success}}', '{{status}}'),
+              replaceLabelFormat('Mark Operations Per Status', '{{success}}', '{{status}}'),
+              replaceType('stat', 'singlestat'),
+              replaceType('timeseries', 'graph'),
+            ], dropPanels(r.panels, dropList, function(p) true)),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],

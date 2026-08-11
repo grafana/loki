@@ -495,7 +495,7 @@
                "span": 6,
                "targets": [
                   {
-                     "expr": "sum(loki_compactor_locked_table_successive_compaction_skips{ namespace=~\"$namespace\"})",
+                     "expr": "sum by (table_name)(loki_compactor_locked_table_successive_compaction_skips{ namespace=~\"$namespace\"})",
                      "format": "time_series",
                      "legendFormat": "{{table_name}}",
                      "legendLink": null
@@ -544,7 +544,7 @@
                   {
                      "expr": "sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "legendFormat": "{{success}}",
+                     "legendFormat": "{{status}}",
                      "legendLink": null
                   }
                ],
@@ -758,7 +758,7 @@
                   {
                      "expr": "sum by (status)(rate(loki_compactor_apply_retention_operation_total{ namespace=~\"$namespace\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "legendFormat": "{{success}}",
+                     "legendFormat": "{{status}}",
                      "legendLink": null
                   }
                ],
