@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -96,7 +97,13 @@ func buildSourceLogObjectWithSections(t *testing.T, bucket objstore.Bucket, path
 	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
 	require.NoError(t, err)
 
-	for tenant, streamSet := range byTenant {
+	tenants := make([]string, 0, len(byTenant))
+	for tenant := range byTenant {
+		tenants = append(tenants, tenant)
+	}
+	slices.Sort(tenants)
+	for _, tenant := range tenants {
+		streamSet := byTenant[tenant]
 		for _, s := range streamSet {
 			require.NotEmpty(t, s.entries, "test stream must have at least one entry")
 			require.NoError(t, b.Append(tenant, logproto.Stream{
@@ -232,7 +239,7 @@ func TestCollectLogSources_RejectsInvalidSectionReferences(t *testing.T) {
 		},
 		"wrong tenant": {
 			refs:    []*compactionv2pb.SectionRef{{ObjectPath: "other", SectionIndex: 0}},
-			wantErr: `out of range [0,0)`,
+			wantErr: `belongs to tenant "other", expected "T"`,
 		},
 	}
 	for name, tc := range tests {
@@ -278,6 +285,39 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 		apps[st.Labels.Get("app")] = true
 	}
 	require.Equal(t, map[string]bool{"a": true}, apps, "other tenants' streams must be excluded")
+}
+
+func TestCollectLogSources_UsesObjectWideLogSectionIndex(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// LOG section indexes in stats are object-wide.
+	buildSourceLogObject(t, bucket, "multi", []string{"label:app"}, map[string][]testStream{
+		"A-other": {{labels: `{app="z"}`, entries: linesAt(base, 1)}},
+		"T":       {{labels: `{app="a"}`, entries: linesAt(base, 1)}},
+	})
+
+	obj, err := dataobj.FromBucket(ctx, bucket, "multi", 0)
+	require.NoError(t, err)
+	var allLogs []*dataobj.Section
+	for _, section := range obj.Sections().Filter(logs.CheckSection) {
+		allLogs = append(allLogs, section)
+	}
+	require.Len(t, allLogs, 2)
+	targetTenant := allLogs[1].Tenant
+
+	c := newTestExecutorContext(t, bucket)
+	sources, err := c.collectLogSources(ctx, &physical.LogMerge{
+		Tenant: targetTenant,
+		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{
+			ObjectPath: "multi", SectionIndex: 1,
+		}}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, sources, 1)
+	require.Len(t, sources[0].logsSections, 1)
+	require.Equal(t, targetTenant, sources[0].logsSections[0].Tenant)
 }
 
 // TestCollectLogSources_ReadsFromUnprefixedDataBucket reproduces the bug where

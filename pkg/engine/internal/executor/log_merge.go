@@ -252,10 +252,14 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			return nil, fmt.Errorf("opening object %q: %w", ref.path, err)
 		}
 
-		var allLogs []*dataobj.Section
+		var (
+			allLogs         []*dataobj.Section
+			tenantLogsCount int
+		)
 		for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+			allLogs = append(allLogs, sec)
 			if sec.Tenant == node.Tenant {
-				allLogs = append(allLogs, sec)
+				tenantLogsCount++
 			}
 		}
 
@@ -265,6 +269,12 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 				return nil, fmt.Errorf("object %q log section index %d out of range [0,%d)", ref.path, sectionIndex, len(allLogs))
 			}
 			section := allLogs[sectionIndex]
+			if section.Tenant != node.Tenant {
+				return nil, fmt.Errorf(
+					"object %q log section %d belongs to tenant %q, expected %q",
+					ref.path, sectionIndex, section.Tenant, node.Tenant,
+				)
+			}
 			logsSections = append(logsSections, section)
 		}
 
@@ -293,7 +303,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 		sources = append(sources, &logSource{
 			path:              ref.path,
 			logsSections:      logsSections,
-			totalLogsSections: len(allLogs),
+			totalLogsSections: tenantLogsCount,
 			streams:           srcStreams,
 		})
 	}
