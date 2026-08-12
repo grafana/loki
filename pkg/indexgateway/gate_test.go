@@ -146,6 +146,8 @@ func TestQueryGate_ValidationRejectsBeforeGate(t *testing.T) {
 	require.NoError(t, gw.queryGate.Start(ctx))
 	defer gw.queryGate.Done()
 
+	// GetVolume is omitted: it swallows parse errors for MatchAny requests by
+	// design, so a malformed request may legitimately acquire a slot.
 	for name, call := range map[string]func() error{
 		"GetChunkRef": func() error {
 			_, err := gw.GetChunkRef(ctx, &logproto.GetChunkRefRequest{Matchers: `{invalid`})
@@ -158,6 +160,17 @@ func TestQueryGate_ValidationRejectsBeforeGate(t *testing.T) {
 		"GetStats": func() error {
 			_, err := gw.GetStats(ctx, &logproto.IndexStatsRequest{Matchers: `{invalid`})
 			return err
+		},
+		"LabelNamesForMetricName": func() error {
+			_, err := gw.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{Matchers: `{invalid`})
+			return err
+		},
+		"LabelValuesForMetricName": func() error {
+			_, err := gw.LabelValuesForMetricName(ctx, &logproto.LabelValuesForMetricNameRequest{Matchers: `{invalid`})
+			return err
+		},
+		"GetShards": func() error {
+			return gw.GetShards(&logproto.ShardsRequest{Query: `{invalid`}, &fakeShardsServer{ctx: ctx})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
