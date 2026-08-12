@@ -151,6 +151,15 @@ Deployments that set `common.path_prefix` but did not explicitly set `-ruler.wal
 
 To preserve the previous location, set `-ruler.wal.dir` explicitly to the old path (e.g. `ruler-wal` or its absolute equivalent) in your config before upgrading. Deployments that already set `-ruler.wal.dir` explicitly are unaffected.
 
+### gRPC `Unavailable` errors now surface as HTTP 503
+
+Query-path errors with the gRPC `Unavailable` status code previously returned HTTP 500.
+They now return HTTP 503, which is the standard gRPC-to-HTTP mapping.
+This affects any component that returns `Unavailable`. This includes index gateways that
+shed load when you enable the new `-index-gateway.max-concurrent` setting for admission
+control. Review any alerts or dashboards that match on the exact status code 500. Both
+codes are in the 5xx class.
+
 ## Helm Chart Upgrades
 
 {{< admonition type="note" >}}

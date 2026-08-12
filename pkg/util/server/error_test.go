@@ -60,6 +60,8 @@ func Test_writeError(t *testing.T) {
 		{"rpc deadline multi", util.MultiError{status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err(), status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, ErrDeadlineExceeded, http.StatusGatewayTimeout},
 		{"mixed context and rpc deadline", util.MultiError{context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, ErrDeadlineExceeded, http.StatusGatewayTimeout},
 		{"mixed context, rpc deadline and another", util.MultiError{errors.New("standard error"), context.DeadlineExceeded, status.New(codes.DeadlineExceeded, context.DeadlineExceeded.Error()).Err()}, "3 errors: standard error; context deadline exceeded; rpc error: code = DeadlineExceeded desc = context deadline exceeded", http.StatusInternalServerError},
+		{"rpc unavailable", status.Error(codes.Unavailable, "the index gateway is at its concurrent request limit; retry another replica"), "the index gateway is at its concurrent request limit; retry another replica", http.StatusServiceUnavailable},
+		{"grpc-go rpc unavailable", grpcstatus.Error(codes.Unavailable, "instance limit"), "instance limit", http.StatusServiceUnavailable},
 		{"parse error", logqlmodel.ParseError{}, "parse error : ", http.StatusBadRequest},
 		{"parse error wrapped in grpc status", grpcStatusWrappedErr{code: codes.Unknown, err: logqlmodel.ParseError{}}, "parse error : ", http.StatusBadRequest},
 		{"interval limit", logqlmodel.ErrIntervalLimit, logqlmodel.ErrIntervalLimit.Error(), http.StatusBadRequest},

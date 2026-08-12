@@ -88,7 +88,11 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	if s, isRPC := status.FromError(err); isRPC {
 		if s.Code() == codes.DeadlineExceeded {
 			return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-		} else if int(s.Code())/100 == 4 || int(s.Code())/100 == 5 {
+		}
+		if s.Code() == codes.Unavailable {
+			return http.StatusServiceUnavailable, errors.New(s.Message())
+		}
+		if int(s.Code())/100 == 4 || int(s.Code())/100 == 5 {
 			return int(s.Code()), errors.New(s.Message())
 		}
 		return http.StatusInternalServerError, err
