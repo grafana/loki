@@ -211,6 +211,14 @@ func (i *mergeSampleIterator) requeue(ei SampleIterator, advanced bool) {
 		return
 	}
 
+	i.closeIterator(ei)
+}
+
+// closeIterator closes a drained input iterator and records its pending error.
+//
+// This function runs while Next drains an iterator. Close reaches only the iterators left
+// on the heap, so without this a fully drained merge would leak every source.
+func (i *mergeSampleIterator) closeIterator(ei SampleIterator) {
 	if err := ei.Err(); err != nil {
 		i.errs = append(i.errs, err)
 	}
@@ -235,7 +243,7 @@ func (i *mergeSampleIterator) Next() bool {
 		i.curr.labels = i.heap.Peek().Labels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
-			i.heap.Pop()
+			i.closeIterator(i.heap.Pop().(SampleIterator))
 		}
 		return true
 	}
@@ -273,6 +281,7 @@ Outer:
 	inner:
 		for {
 			if !next.Next() {
+				i.closeIterator(next)
 				continue Outer
 			}
 			sample := next.At()
@@ -341,14 +350,21 @@ func (i *mergeSampleIterator) Err() error {
 	}
 }
 
+// Close closes every input iterator and returns any error the merge collected.
 func (i *mergeSampleIterator) Close() error {
+	// Closes the sources not yet moved onto the heap (Close before the first Next).
+	for _, it := range i.is {
+		i.closeIterator(it)
+	}
+	i.is = nil
+
+	// Close the sources still on the heap, and closes all of them even when one fails,
+	// so no source leaks.
 	for i.heap.Len() > 0 {
-		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
-			return err
-		}
+		i.closeIterator(i.heap.Pop().(SampleIterator))
 	}
 	i.buffer = nil
-	return nil
+	return i.Err()
 }
 
 // sortSampleIterator iterates over a heap of iterators by sorting samples.
@@ -394,10 +410,7 @@ func (i *sortSampleIterator) init() {
 			continue
 		}
 
-		if err := it.Err(); err != nil {
-			i.errs = append(i.errs, err)
-		}
-		util.LogError("closing iterator", it.Close)
+		i.closeIterator(it)
 	}
 	heap.Init(i.heap)
 
@@ -420,10 +433,7 @@ func (i *sortSampleIterator) Next() bool {
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
 		heap.Pop(i.heap)
-		if err := next.Err(); err != nil {
-			i.errs = append(i.errs, err)
-		}
-		util.LogError("closing iterator", next.Close)
+		i.closeIterator(next)
 		return true
 	}
 	if i.heap.Len() > 1 {
@@ -455,13 +465,28 @@ func (i *sortSampleIterator) Err() error {
 	}
 }
 
-func (i *sortSampleIterator) Close() error {
-	for i.heap.Len() > 0 {
-		if err := i.heap.Pop().(SampleIterator).Close(); err != nil {
-			return err
-		}
+// closeIterator closes a drained input iterator and records its pending error.
+func (i *sortSampleIterator) closeIterator(it SampleIterator) {
+	if err := it.Err(); err != nil {
+		i.errs = append(i.errs, err)
 	}
-	return nil
+	util.LogError("closing iterator", it.Close)
+}
+
+// Close closes every input iterator and returns any error the sort collected.
+func (i *sortSampleIterator) Close() error {
+	// Closes the sources not yet moved onto the heap.
+	for _, it := range i.is {
+		i.closeIterator(it)
+	}
+	i.is = nil
+
+	// Close the sources still on the heap, and closes all of them even when one fails,
+	// so no source leaks.
+	for i.heap.Len() > 0 {
+		i.closeIterator(i.heap.Pop().(SampleIterator))
+	}
+	return i.Err()
 }
 
 type sampleQueryClientIterator struct {
