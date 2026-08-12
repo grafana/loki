@@ -8,10 +8,8 @@ metadata:
   namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
-    app.kubernetes.io/part-of: memberlist
-    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
-    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
-    {{- with .Values.ingester.labels }}
+    {{- $zoneMetaLabels := dict "app.kubernetes.io/part-of" "memberlist" "name" (include "loki.prefixIngesterName" .)ingester-zone-b "rollout-group" (include "loki.prefixRolloutGroup" .)ingester -}}
+    {{- with merge .Values.ingester.labels $zoneMetaLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   annotations:
@@ -63,13 +61,11 @@ spec:
       labels:
         {{- include "loki.ingesterLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
-        rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
-        {{- with merge (dict) .Values.ingester.podLabels .Values.loki.podLabels }}
+        {{- include "loki.ingesterLabels" . | nindent 8 }}
+        {{- $zoneLabels := dict "app.kubernetes.io/part-of" "memberlist" "name" (include "loki.prefixIngesterName" .)ingester-zone-b "rollout-group" (include "loki.prefixRolloutGroup" .)ingester -}}
+        {{- with merge .Values.loki.podLabels .Values.ingester.podLabels $zoneLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-    spec:
-      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- tpl ( . | toYaml) $ | nindent 8 }}
