@@ -119,7 +119,8 @@ func (b *BloomTSDBStore) LoadTSDB(
 		return nil, errors.Wrap(err, "failed to create index reader")
 	}
 
-	idx := tsdb.NewTSDBIndex(reader)
+	// Bloom building reads the whole index; no LBAC filtering applies.
+	idx := tsdb.NewTSDBIndex(reader, nil)
 
 	return idx, nil
 }

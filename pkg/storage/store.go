@@ -184,6 +184,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		logger: logger,
 		limits: limits,
 
+		chunkFilterer: cfg.ChunkFilterer,
+
 		metricsNamespace: metricsNamespace,
 	}
 	if err := s.init(); err != nil {
@@ -352,7 +354,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger)
+	indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, p.IndexTables.PathPrefix, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, s.cfg.ChunkFilterer, indexClientReg, indexClientLogger)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -433,11 +435,6 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 		}
 	}
 	return matchers, nil
-}
-
-func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
-	s.chunkFilterer = chunkFilterer
-	s.Store.SetChunkFilterer(chunkFilterer)
 }
 
 func (s *LokiStore) SetExtractorWrapper(wrapper lokilog.SampleExtractorWrapper) {

@@ -292,7 +292,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	for _, id := range ids {
-		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
+		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, nil, m.log)
 		if err = recoverHead(m.name, m.dir, tmp, []WALIdentifier{id}, legacy, m.log, m.metrics.walCorruptionsRepairs); err != nil {
 			return errors.Wrap(err, "building TSDB from WALs")
 		}

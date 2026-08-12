@@ -121,7 +121,10 @@ type HeadManager struct {
 	flush chan chan error
 }
 
-func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
+// NewHeadManager builds a head manager. chunkFilter may be nil, in which case no
+// filtering is applied. It is handed to every tenantHeads the manager creates, so
+// it never has to be set on an index that queries are already reading.
+func NewHeadManager(name string, chunkFilter chunk.RequestChunkFilterer, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
 	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
 		name:        name,
@@ -129,6 +132,7 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 		dir:         dir,
 		metrics:     metrics,
 		tsdbManager: tsdbManager,
+		chunkFilter: chunkFilter,
 
 		period: defaultRotationPeriod,
 		shards: shards,
@@ -149,11 +153,7 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 			indices = append(indices, m.activeHeads)
 		}
 
-		idx := NewMultiIndex(IndexSlice(indices))
-		if m.chunkFilter != nil {
-			idx.SetChunkFilterer(m.chunkFilter)
-		}
-		return idx, nil
+		return NewMultiIndex(IndexSlice(indices)), nil
 	})
 
 	return m
@@ -280,10 +280,6 @@ func (m *HeadManager) Stop() error {
 	}
 
 	return m.buildTSDBFromHead(m.activeHeads)
-}
-
-func (m *HeadManager) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	m.chunkFilter = chunkFilter
 }
 
 func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
@@ -419,7 +415,7 @@ func (m *HeadManager) Rotate(t time.Time) (err error) {
 	}
 
 	// create new tenant heads
-	nextHeads := newTenantHeads(t, m.shards, m.metrics, m.log)
+	nextHeads := newTenantHeads(t, m.shards, m.metrics, m.chunkFilter, m.log)
 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
@@ -701,14 +697,15 @@ type tenantHeads struct {
 	metrics     *Metrics
 }
 
-func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Logger) *tenantHeads {
+func newTenantHeads(start time.Time, shards int, metrics *Metrics, chunkFilter chunk.RequestChunkFilterer, logger log.Logger) *tenantHeads {
 	res := &tenantHeads{
-		start:   start,
-		shards:  shards,
-		locks:   make([]sync.RWMutex, shards),
-		tenants: make([]map[string]*Head, shards),
-		log:     log.With(logger, "component", "tenant-heads"),
-		metrics: metrics,
+		start:       start,
+		shards:      shards,
+		locks:       make([]sync.RWMutex, shards),
+		tenants:     make([]map[string]*Head, shards),
+		chunkFilter: chunkFilter,
+		log:         log.With(logger, "component", "tenant-heads"),
+		metrics:     metrics,
 	}
 	for i := range res.tenants {
 		res.tenants[i] = make(map[string]*Head)
@@ -783,10 +780,6 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 
 func (t *tenantHeads) Close() error { return nil }
 
-func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
-	t.chunkFilter = chunkFilter
-}
-
 func (t *tenantHeads) Bounds() (model.Time, model.Time) {
 	return model.Time(t.mint.Load()), model.Time(t.maxt.Load())
 }
@@ -800,11 +793,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 		return
 	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
-	if t.chunkFilter != nil {
-		idx.SetChunkFilterer(t.chunkFilter)
-	}
-	return idx, true
+	return NewTSDBIndex(tenant.indexRange(int64(from), int64(through)), t.chunkFilter), true
 
 }
 

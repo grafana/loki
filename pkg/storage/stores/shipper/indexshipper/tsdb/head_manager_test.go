@@ -40,7 +40,7 @@ func newNoopTSDBManager(name, dir string) noopTSDBManager {
 	return noopTSDBManager{
 		name:        name,
 		dir:         dir,
-		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger()),
+		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), nil, log.NewNopLogger()),
 	}
 }
 
@@ -118,7 +118,7 @@ func chunkMetasToLogProtoChunkRefs(user string, fp uint64, xs index.ChunkMetas) 
 
 // Test append
 func Test_TenantHeads_Append(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), nil, log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
@@ -146,7 +146,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 
 // Test multitenant reads
 func Test_TenantHeads_MultiRead(t *testing.T) {
-	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+	h := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), nil, log.NewNopLogger())
 	ls := mustParseLabels(`{foo="bar"}`)
 	chks := []index.ChunkMeta{
 		{
@@ -231,7 +231,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	}
 
 	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	mgr := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(storeName, dir) {
@@ -364,7 +364,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 			now := time.Now()
 
 			storeName := "store_2010-10-10"
-			mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+			mgr := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 			// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 			// so ensure our dirs exist
 			for _, d := range managerRequiredDirs(storeName, dir) {
@@ -420,7 +420,7 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 	}
 
 	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	mgr := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(storeName, dir) {
@@ -468,7 +468,7 @@ func Test_HeadManager_RotateAndBuild(t *testing.T) {
 
 	storeName := "store_2010-10-10"
 	mgr := newRecordingTSDBManager(storeName, dir)
-	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	hm := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
 	for _, d := range managerRequiredDirs(storeName, dir) {
 		require.NoError(t, util.EnsureDirectory(d))
 	}
@@ -504,7 +504,7 @@ func Test_HeadManager_Flush(t *testing.T) {
 	dir := t.TempDir()
 	storeName := "store_2010-10-10"
 	mgr := newRecordingTSDBManager(storeName, dir)
-	hm := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
+	hm := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), mgr)
 	for _, d := range managerRequiredDirs(storeName, dir) {
 		require.NoError(t, util.EnsureDirectory(d))
 	}
@@ -523,39 +523,50 @@ func Test_HeadManager_Flush(t *testing.T) {
 }
 
 func Test_HeadManager_ChunkFilterer(t *testing.T) {
-	now := time.Now()
-	dir := t.TempDir()
-	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
-	for _, d := range managerRequiredDirs(storeName, dir) {
-		require.Nil(t, util.EnsureDirectory(d))
-	}
-	require.Nil(t, mgr.Rotate(now))
-
+	// The filterer is given to the manager at construction, so each case builds its
+	// own. Appending and rotating before querying means the series is read back
+	// through prevHeads, i.e. through a tenantHeads the manager created itself.
 	user := "tenant1"
 	ls := mustParseLabels(`{foo="bar"}`)
-	chks := []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 1}}
-	require.Nil(t, mgr.Append(user, ls, labels.StableHash(ls), chks))
-
 	matchAll := labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+")
-	nextPeriod := time.Now().Add(time.Duration(mgr.period))
-	mgr.tick(nextPeriod) // rotate so data moves to prevHeads, queryable via lazy index
 
-	// Confirm data is reachable via GetChunkRefs before testing Series.
-	refs, err := mgr.GetChunkRefs(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
-	require.Nil(t, err)
-	require.Len(t, refs, 1)
+	newManagerWithSeries := func(t *testing.T, chunkFilter chunk.RequestChunkFilterer) *HeadManager {
+		dir := t.TempDir()
+		storeName := "store_2010-10-10"
+		mgr := NewHeadManager(storeName, chunkFilter, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+		for _, d := range managerRequiredDirs(storeName, dir) {
+			require.Nil(t, util.EnsureDirectory(d))
+		}
+		require.Nil(t, mgr.Rotate(time.Now()))
 
-	// Without a filterer, Series returns the appended series.
-	series, err := mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
-	require.Nil(t, err)
-	require.Len(t, series, 1)
+		chks := []index.ChunkMeta{{MinTime: 1, MaxTime: 10, Checksum: 1}}
+		require.Nil(t, mgr.Append(user, ls, labels.StableHash(ls), chks))
 
-	// With a filterAll filterer, Series returns no results.
-	mgr.SetChunkFilterer(&filterAll{})
-	series, err = mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
-	require.Nil(t, err)
-	require.Len(t, series, 0)
+		// rotate so data moves to prevHeads, queryable via lazy index
+		mgr.tick(time.Now().Add(time.Duration(mgr.period)))
+		return mgr
+	}
+
+	t.Run("without a filterer the appended series is returned", func(t *testing.T) {
+		mgr := newManagerWithSeries(t, nil)
+
+		// Confirm data is reachable via GetChunkRefs before testing Series.
+		refs, err := mgr.GetChunkRefs(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+		require.Nil(t, err)
+		require.Len(t, refs, 1)
+
+		series, err := mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+		require.Nil(t, err)
+		require.Len(t, series, 1)
+	})
+
+	t.Run("a filterAll filterer filters the series out", func(t *testing.T) {
+		mgr := newManagerWithSeries(t, &filterAll{})
+
+		series, err := mgr.Series(context.Background(), user, 0, math.MaxInt64, nil, nil, matchAll)
+		require.Nil(t, err)
+		require.Len(t, series, 0)
+	})
 }
 
 // test mgr recover from multiple wals across multiple periods
@@ -592,7 +603,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	}
 
 	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	mgr := NewHeadManager(storeName, nil, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
@@ -828,7 +839,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger())
+				store, stop, err := NewStore(tc.store, "index/", shipperCfg, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger())
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),
@@ -872,7 +883,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 		},
 	} {
 		b.Run(fmt.Sprintf("%d", tc.readers), func(b *testing.B) {
-			heads := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
+			heads := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), nil, log.NewNopLogger())
 			// 1000 series across 100 tenants
 			nTenants := 10
 			for i := 0; i < 1000; i++ {
