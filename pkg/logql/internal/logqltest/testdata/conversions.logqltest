@@ -1,0 +1,102 @@
+# bytes()
+clear
+load
+  {unit="kb"}    "b=1KB"   @ 10s [repeat every 10s for 18]
+  {unit="kib"}   "b=1KiB"  @ 10s [repeat every 10s for 18]
+  {unit="mb"}    "b=1MB"   @ 10s [repeat every 10s for 18]
+  {unit="dec"}   "b=1.5KB" @ 10s [repeat every 10s for 18]
+  {unit="bare"}  "b=1024"  @ 10s [repeat every 10s for 18]
+  {unit="mixed"} "b=2Kb"   @ 10s [repeat every 10s for 18]
+  {unit="comma"} "b=2,048" @ 10s [repeat every 10s for 18]
+  {unit="frac"}  "b=1.5B"  @ 10s [repeat every 10s for 18]
+  {unit="noise"} "noise"   @ 10s [repeat every 10s for 18]
+
+# The noise line has no `b`, so `unwrap` drops it: no sample, no `__error__`, so it
+# never appears in the output. A value that is present but unconvertible is
+# different: it sets `__error__` and fails the query (see "bytes() parse failure").
+eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m]) by (unit)
+  {unit="kb"}    1000
+  {unit="kib"}   1024
+  {unit="mb"}    1000000
+  {unit="dec"}   1500
+  {unit="bare"}  1024
+  {unit="mixed"} 2000
+  {unit="comma"} 2048
+  {unit="frac"}  1
+eval range from 60s to 180s step 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [30s]) by (unit)
+  {unit="kb"}    1000 1000 1000
+  {unit="kib"}   1024 1024 1024
+  {unit="mb"}    1000000 1000000 1000000
+  {unit="dec"}   1500 1500 1500
+  {unit="bare"}  1024 1024 1024
+  {unit="mixed"} 2000 2000 2000
+  {unit="comma"} 2048 2048 2048
+  {unit="frac"}  1 1 1
+
+# bytes() parse failure.
+clear
+load
+  {unit="bad"} "b=1XB" @ 10s [repeat every 10s for 6]
+
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m]) by (unit)
+  expect fail
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) | __error__="" [1m]) by (unit)
+  expect empty
+
+# duration() / duration_seconds(): both route to the same conversion and return
+# seconds, so they yield identical values on identical input.
+clear
+load
+  {unit="s"}     "d=2s"    @ 10s [repeat every 10s for 18]
+  {unit="ms"}    "d=500ms" @ 10s [repeat every 10s for 18]
+  {unit="m"}     "d=1m"    @ 10s [repeat every 10s for 18]
+  {unit="hm"}    "d=1h30m" @ 10s [repeat every 10s for 18]
+  {unit="fh"}    "d=1.5h"  @ 10s [repeat every 10s for 18]
+  {unit="neg"}   "d=-5s"   @ 10s [repeat every 10s for 18]
+  {unit="noise"} "noise"   @ 10s [repeat every 10s for 18]
+
+eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1m]) by (unit)
+  {unit="s"}   2
+  {unit="ms"}  0.5
+  {unit="m"}   60
+  {unit="hm"}  5400
+  {unit="fh"}  5400
+  {unit="neg"} -5
+# duration_seconds() is identical to duration().
+eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m]) by (unit)
+  {unit="s"}   2
+  {unit="ms"}  0.5
+  {unit="m"}   60
+  {unit="hm"}  5400
+  {unit="fh"}  5400
+  {unit="neg"} -5
+
+eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1m]) by (unit)
+  {unit="s"}   2 2 2
+  {unit="ms"}  0.5 0.5 0.5
+  {unit="m"}   60 60 60
+  {unit="hm"}  5400 5400 5400
+  {unit="fh"}  5400 5400 5400
+  {unit="neg"} -5 -5 -5
+eval range from 60s to 120s step 30s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m]) by (unit)
+  {unit="s"}   2 2 2
+  {unit="ms"}  0.5 0.5 0.5
+  {unit="m"}   60 60 60
+  {unit="hm"}  5400 5400 5400
+  {unit="fh"}  5400 5400 5400
+  {unit="neg"} -5 -5 -5
+
+# duration() parse failure.
+clear
+load
+  {unit="bad"} "d=1d" @ 10s [repeat every 10s for 6]
+
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) [1m]) by (unit)
+  expect fail
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) [1m]) by (unit)
+  expect fail
+
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration(d) | __error__="" [1m]) by (unit)
+  expect empty
+eval instant at 60s max_over_time({unit=~".+"} | logfmt | unwrap duration_seconds(d) | __error__="" [1m]) by (unit)
+  expect empty

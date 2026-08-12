@@ -724,7 +724,7 @@ func _accessPayload(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32, pBuf uin
 	pBt = (*TBtCursor)(unsafe.Pointer(pCur)).FpBt     /* Btree this cursor belongs to */
 	pBufStart = pBuf                                  /* Start of original out buffer */
 	if libc.Int32FromUint16((*TBtCursor)(unsafe.Pointer(pCur)).Fix) >= libc.Int32FromUint16((*TMemPage)(unsafe.Pointer(pPage)).FnCell) {
-		return _sqlite3CorruptError(tls, int32(78282))
+		return _sqlite3CorruptError(tls, int32(78371))
 	}
 	_getCellInfo(tls, pCur)
 	aPayload = (*TBtCursor)(unsafe.Pointer(pCur)).Finfo.FpPayload
@@ -734,7 +734,7 @@ func _accessPayload(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32, pBuf uin
 		 **    &aPayload[pCur->info.nLocal] > &pPage->aData[pBt->usableSize]
 		 ** but is recast into its current form to avoid integer overflow problems
 		 */
-		return _sqlite3CorruptError(tls, int32(78297))
+		return _sqlite3CorruptError(tls, int32(78386))
 	}
 	/* Check if data must be read/written to/from the btree page itself. */
 	if offset < uint32((*TBtCursor)(unsafe.Pointer(pCur)).Finfo.FnLocal) {
@@ -792,7 +792,7 @@ func _accessPayload(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32, pBuf uin
 		for **(**TPgno)(__ccgo_up(bp)) != 0 {
 			/* If required, populate the overflow page-list cache. */
 			if **(**TPgno)(__ccgo_up(bp)) > (*TBtShared)(unsafe.Pointer(pBt)).FnPage {
-				return _sqlite3CorruptError(tls, int32(78370))
+				return _sqlite3CorruptError(tls, int32(78459))
 			}
 			**(**TPgno)(__ccgo_up((*TBtCursor)(unsafe.Pointer(pCur)).FaOverflow + uintptr(iIdx)*4)) = **(**TPgno)(__ccgo_up(bp))
 			if offset >= ovflSize {
@@ -847,7 +847,7 @@ func _accessPayload(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32, pBuf uin
 					if rc == SQLITE_OK {
 						if eOp != 0 && (_sqlite3PagerPageRefcount(tls, **(**uintptr)(__ccgo_up(bp + 8))) != int32(1) || (*TMemPage)(unsafe.Pointer(_sqlite3PagerGetExtra(tls, **(**uintptr)(__ccgo_up(bp + 8))))).FisInit != 0) {
 							_sqlite3PagerUnref(tls, **(**uintptr)(__ccgo_up(bp + 8)))
-							return _sqlite3CorruptError(tls, int32(78440))
+							return _sqlite3CorruptError(tls, int32(78529))
 						}
 						aPayload = _sqlite3PagerGetData(tls, **(**uintptr)(__ccgo_up(bp + 8)))
 						**(**TPgno)(__ccgo_up(bp)) = _sqlite3Get4byte(tls, aPayload)
@@ -870,7 +870,7 @@ func _accessPayload(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32, pBuf uin
 	}
 	if rc == SQLITE_OK && amt > uint32(0) {
 		/* Overflow chain ends prematurely */
-		return _sqlite3CorruptError(tls, int32(78460))
+		return _sqlite3CorruptError(tls, int32(78549))
 	}
 	return rc
 }
@@ -921,7 +921,7 @@ func _allocateBtreePage(tls *libc.TLS, pBt uintptr, ppPage uintptr, pPgno uintpt
 	 ** stores the total number of pages on the freelist. */
 	n = _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage1)).FaData+36)
 	if n >= mxPage {
-		return _sqlite3CorruptError(tls, int32(79672))
+		return _sqlite3CorruptError(tls, int32(79764))
 	}
 	if n > uint32(0) {
 		searchList = uint8(0) /* If the free-list must be searched for 'nearby' */
@@ -976,7 +976,7 @@ func _allocateBtreePage(tls *libc.TLS, pBt uintptr, ppPage uintptr, pPgno uintpt
 				nSearch = nSearch + 1
 			}
 			if v2 || v1 > n {
-				rc = _sqlite3CorruptError(tls, int32(79728))
+				rc = _sqlite3CorruptError(tls, int32(79820))
 			} else {
 				rc = _btreeGetUnusedPage(tls, pBt, iTrunk, bp, 0)
 			}
@@ -1002,7 +1002,7 @@ func _allocateBtreePage(tls *libc.TLS, pBt uintptr, ppPage uintptr, pPgno uintpt
 			} else {
 				if k > (*TBtShared)(unsafe.Pointer(pBt)).FusableSize/libc.Uint32FromInt32(4)-libc.Uint32FromInt32(2) {
 					/* Value of k is out of range.  Database corruption */
-					rc = _sqlite3CorruptError(tls, int32(79757))
+					rc = _sqlite3CorruptError(tls, int32(79849))
 					goto end_allocate_page
 				} else {
 					if searchList != 0 && (nearby == iTrunk || iTrunk < nearby && libc.Int32FromUint8(eMode) == int32(BTALLOC_LE)) {
@@ -1029,7 +1029,7 @@ func _allocateBtreePage(tls *libc.TLS, pBt uintptr, ppPage uintptr, pPgno uintpt
 						} else {
 							iNewTrunk = _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(bp)))).FaData+8)
 							if iNewTrunk > mxPage {
-								rc = _sqlite3CorruptError(tls, int32(79791))
+								rc = _sqlite3CorruptError(tls, int32(79883))
 								goto end_allocate_page
 							}
 							rc = _btreeGetUnusedPage(tls, pBt, iNewTrunk, bp+16, 0)
@@ -1100,7 +1100,7 @@ func _allocateBtreePage(tls *libc.TLS, pBt uintptr, ppPage uintptr, pPgno uintpt
 							}
 							iPage = _sqlite3Get4byte(tls, aData+uintptr(uint32(8)+closest*uint32(4)))
 							if iPage > mxPage || iPage < uint32(2) {
-								rc = _sqlite3CorruptError(tls, int32(79856))
+								rc = _sqlite3CorruptError(tls, int32(79948))
 								goto end_allocate_page
 							}
 							if !(searchList != 0) || (iPage == nearby || iPage < nearby && libc.Int32FromUint8(eMode) == int32(BTALLOC_LE)) {
@@ -1838,12 +1838,12 @@ func _defragmentPage(tls *libc.TLS, pPage uintptr, nMaxFrag int32) (r int32) {
 	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(7))))) <= nMaxFrag {
 		iFree = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(1)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(1)) + 1)))
 		if iFree > usableSize-int32(4) {
-			return _sqlite3CorruptError(tls, int32(74790))
+			return _sqlite3CorruptError(tls, int32(74875))
 		}
 		if iFree != 0 {
 			iFree2 = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree) + 1)))
 			if iFree2 > usableSize-int32(4) {
-				return _sqlite3CorruptError(tls, int32(74793))
+				return _sqlite3CorruptError(tls, int32(74878))
 			}
 			if 0 == iFree2 || libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree2)))) == 0 && libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree2+int32(1))))) == 0 {
 				pEnd = data + uintptr(cellOffset+nCell*int32(2))
@@ -1851,21 +1851,21 @@ func _defragmentPage(tls *libc.TLS, pPage uintptr, nMaxFrag int32) (r int32) {
 				sz = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree+int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree+int32(2)) + 1)))
 				top = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(5)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(5)) + 1)))
 				if top >= iFree {
-					return _sqlite3CorruptError(tls, int32(74801))
+					return _sqlite3CorruptError(tls, int32(74886))
 				}
 				if iFree2 != 0 {
 					if iFree+sz > iFree2 {
-						return _sqlite3CorruptError(tls, int32(74804))
+						return _sqlite3CorruptError(tls, int32(74889))
 					}
 					sz2 = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree2+int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFree2+int32(2)) + 1)))
 					if iFree2+sz2 > usableSize {
-						return _sqlite3CorruptError(tls, int32(74806))
+						return _sqlite3CorruptError(tls, int32(74891))
 					}
 					libc.Xmemmove(tls, data+uintptr(iFree+sz+sz2), data+uintptr(iFree+sz), libc.Uint64FromInt32(iFree2-(iFree+sz)))
 					sz = sz + sz2
 				} else {
 					if iFree+sz > usableSize {
-						return _sqlite3CorruptError(tls, int32(74810))
+						return _sqlite3CorruptError(tls, int32(74895))
 					}
 				}
 				cbrk = top + sz
@@ -1912,12 +1912,12 @@ func _defragmentPage(tls *libc.TLS, pPage uintptr, nMaxFrag int32) (r int32) {
 			 ** if PRAGMA cell_size_check=ON.
 			 */
 			if pc > iCellLast {
-				return _sqlite3CorruptError(tls, int32(74843))
+				return _sqlite3CorruptError(tls, int32(74928))
 			}
 			size = libc.Int32FromUint16((*(*func(*libc.TLS, uintptr, uintptr) Tu16)(unsafe.Pointer(&struct{ uintptr }{(*TMemPage)(unsafe.Pointer(pPage)).FxCellSize})))(tls, pPage, src+uintptr(pc)))
 			cbrk = cbrk - size
 			if cbrk < iCellStart || pc+size > usableSize {
-				return _sqlite3CorruptError(tls, int32(74849))
+				return _sqlite3CorruptError(tls, int32(74934))
 			}
 			**(**Tu8)(__ccgo_up(pAddr1)) = libc.Uint8FromInt32(cbrk >> libc.Int32FromInt32(8))
 			**(**Tu8)(__ccgo_up(pAddr1 + 1)) = libc.Uint8FromInt32(cbrk)
@@ -1933,7 +1933,7 @@ func _defragmentPage(tls *libc.TLS, pPage uintptr, nMaxFrag int32) (r int32) {
 defragment_out:
 	;
 	if libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(7)))))+cbrk-iCellFirst != (*TMemPage)(unsafe.Pointer(pPage)).FnFree {
-		return _sqlite3CorruptError(tls, int32(74863))
+		return _sqlite3CorruptError(tls, int32(74948))
 	}
 	**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(5)))) = libc.Uint8FromInt32(cbrk >> libc.Int32FromInt32(8))
 	**(**uint8)(__ccgo_up(data + uintptr(hdr+int32(5)) + 1)) = libc.Uint8FromInt32(cbrk)
@@ -1966,7 +1966,7 @@ func _dropCell(tls *libc.TLS, pPage uintptr, idx int32, sz int32, pRC uintptr) {
 	pc = libc.Uint32FromInt32(libc.Int32FromUint8(**(**Tu8)(__ccgo_up(ptr)))<<libc.Int32FromInt32(8) | libc.Int32FromUint8(**(**Tu8)(__ccgo_up(ptr + 1))))
 	hdr = libc.Int32FromUint8((*TMemPage)(unsafe.Pointer(pPage)).FhdrOffset)
 	if pc+libc.Uint32FromInt32(sz) > (*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(80423))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(80515))
 		return
 	}
 	rc = _freeSpace(tls, pPage, libc.Int32FromUint32(pc), sz)
@@ -2020,7 +2020,7 @@ func _editPage(tls *libc.TLS, pPg uintptr, iOld int32, iNew int32, nNew int32, p
 	if iOld < iNew {
 		nShift = _pageFreeArray(tls, pPg, iOld, iNew-iOld, pCArray)
 		if nShift > nCell {
-			return _sqlite3CorruptError(tls, int32(81033))
+			return _sqlite3CorruptError(tls, int32(81125))
 		}
 		libc.Xmemmove(tls, (*TMemPage)(unsafe.Pointer(pPg)).FaCellIdx, (*TMemPage)(unsafe.Pointer(pPg)).FaCellIdx+uintptr(nShift*int32(2)), libc.Uint64FromInt32(nCell*int32(2)))
 		nCell = nCell - nShift
@@ -2091,7 +2091,7 @@ editpage_fail:
 	;
 	/* Unable to edit this page. Rebuild it from scratch instead. */
 	if nNew < int32(1) {
-		return _sqlite3CorruptError(tls, int32(81111))
+		return _sqlite3CorruptError(tls, int32(81203))
 	}
 	_populateCellCache(tls, pCArray, iNew, nNew)
 	return _rebuildPage(tls, pCArray, iNew, nNew, pPg)
@@ -2112,78 +2112,6 @@ func _enlargeAndAppend(tls *libc.TLS, p uintptr, z uintptr, N int32) {
 	if N > 0 {
 		libc.Xmemcpy(tls, (*TStrAccum)(unsafe.Pointer(p)).FzText+uintptr((*TStrAccum)(unsafe.Pointer(p)).FnChar), z, libc.Uint64FromInt32(N))
 		**(**Tu32)(__ccgo_up(p + 24)) += libc.Uint32FromInt32(N)
-	}
-}
-
-// C documentation
-//
-//	/*
-//	** Argument pWhere is the WHERE clause belonging to SELECT statement p. This
-//	** function attempts to transform expressions of the form:
-//	**
-//	**     EXISTS (SELECT ...)
-//	**
-//	** into joins. For example, given
-//	**
-//	**    CREATE TABLE sailors(sid INTEGER PRIMARY KEY, name TEXT);
-//	**    CREATE TABLE reserves(sid INT, day DATE, PRIMARY KEY(sid, day));
-//	**
-//	**    SELECT name FROM sailors AS S WHERE EXISTS (
-//	**      SELECT * FROM reserves AS R WHERE S.sid = R.sid AND R.day = '2022-10-25'
-//	**    );
-//	**
-//	** the SELECT statement may be transformed as follows:
-//	**
-//	**    SELECT name FROM sailors AS S, reserves AS R
-//	**      WHERE S.sid = R.sid AND R.day = '2022-10-25';
-//	**
-//	** **Approximately**.  Really, we have to ensure that the FROM-clause term
-//	** that was formerly inside the EXISTS is only executed once.  This is handled
-//	** by setting the SrcItem.fg.fromExists flag, which then causes code in
-//	** the where.c file to exit the corresponding loop after the first successful
-//	** match (if any).
-//	*/
-func _existsToJoin(tls *libc.TLS, pParse uintptr, p uintptr, pWhere uintptr) {
-	var aCsrMap, db, pRight, pSub, pSubWhere uintptr
-	_, _, _, _, _ = aCsrMap, db, pRight, pSub, pSubWhere
-	if (*TParse)(unsafe.Pointer(pParse)).FnErr == 0 && pWhere != uintptr(0) && !((*TExpr)(unsafe.Pointer(pWhere)).Fflags&libc.Uint32FromInt32(libc.Int32FromInt32(EP_OuterON)|libc.Int32FromInt32(EP_InnerON)) != libc.Uint32FromInt32(0)) && (*TSelect)(unsafe.Pointer(p)).FpSrc != uintptr(0) && (*TSrcList)(unsafe.Pointer((*TSelect)(unsafe.Pointer(p)).FpSrc)).FnSrc < libc.Int32FromUint64(libc.Uint64FromInt64(8)*libc.Uint64FromInt32(8)) && ((*TSelect)(unsafe.Pointer(p)).FpLimit == uintptr(0) || (*TExpr)(unsafe.Pointer((*TSelect)(unsafe.Pointer(p)).FpLimit)).FpRight == uintptr(0)) {
-		if libc.Int32FromUint8((*TExpr)(unsafe.Pointer(pWhere)).Fop) == int32(TK_AND) {
-			pRight = (*TExpr)(unsafe.Pointer(pWhere)).FpRight
-			_existsToJoin(tls, pParse, p, (*TExpr)(unsafe.Pointer(pWhere)).FpLeft)
-			_existsToJoin(tls, pParse, p, pRight)
-		} else {
-			if libc.Int32FromUint8((*TExpr)(unsafe.Pointer(pWhere)).Fop) == int32(TK_EXISTS) {
-				pSub = *(*uintptr)(unsafe.Pointer(pWhere + 32))
-				pSubWhere = (*TSelect)(unsafe.Pointer(pSub)).FpWhere
-				if (*TSrcList)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSub)).FpSrc)).FnSrc == int32(1) && (*TSelect)(unsafe.Pointer(pSub)).FselFlags&uint32(SF_Aggregate) == uint32(0) && !(int32(*(*uint32)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSub)).FpSrc + 8 + 24 + 4))&0x4>>2) != 0) && (*TSelect)(unsafe.Pointer(pSub)).FpLimit == uintptr(0) && (*TSelect)(unsafe.Pointer(pSub)).FpPrior == uintptr(0) {
-					/* Before combining the sub-select with the parent, renumber the
-					 ** cursor used by the subselect. This is because the EXISTS expression
-					 ** might be a copy of another EXISTS expression from somewhere
-					 ** else in the tree, and in this case it is important that it use
-					 ** a unique cursor number.  */
-					db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-					aCsrMap = _sqlite3DbMallocZero(tls, db, uint64(libc.Uint64FromInt32((*TParse)(unsafe.Pointer(pParse)).FnTab+libc.Int32FromInt32(2))*uint64(4)))
-					if aCsrMap == uintptr(0) {
-						return
-					}
-					**(**int32)(__ccgo_up(aCsrMap)) = (*TParse)(unsafe.Pointer(pParse)).FnTab + int32(1)
-					_renumberCursors(tls, pParse, pSub, -int32(1), aCsrMap)
-					_sqlite3DbFree(tls, db, aCsrMap)
-					libc.Xmemset(tls, pWhere, 0, uint64(72))
-					(*TExpr)(unsafe.Pointer(pWhere)).Fop = uint8(TK_INTEGER)
-					*(*int32)(unsafe.Pointer(&(*TExpr)(unsafe.Pointer(pWhere)).Fu)) = int32(1)
-					**(**Tu32)(__ccgo_up(pWhere + 4)) |= libc.Uint32FromInt32(libc.Int32FromInt32(EP_IntValue))
-					libc.SetBitFieldPtr32Uint32((*TSelect)(unsafe.Pointer(pSub)).FpSrc+8+24+4, libc.Uint32FromInt32(1), 18, 0x40000)
-					(*TSelect)(unsafe.Pointer(p)).FpSrc = _sqlite3SrcListAppendList(tls, pParse, (*TSelect)(unsafe.Pointer(p)).FpSrc, (*TSelect)(unsafe.Pointer(pSub)).FpSrc)
-					if pSubWhere != 0 {
-						(*TSelect)(unsafe.Pointer(p)).FpWhere = _sqlite3PExpr(tls, pParse, int32(TK_AND), (*TSelect)(unsafe.Pointer(p)).FpWhere, pSubWhere)
-						(*TSelect)(unsafe.Pointer(pSub)).FpWhere = uintptr(0)
-					}
-					(*TSelect)(unsafe.Pointer(pSub)).FpSrc = uintptr(0)
-					_sqlite3ParserAddCleanup(tls, pParse, __ccgo_fp(_sqlite3SelectDeleteGeneric), pSub)
-				}
-			}
-		}
 	}
 }
 
@@ -2767,626 +2695,6 @@ func _fkScanChildren(tls *libc.TLS, pParse uintptr, pSrc uintptr, pTab uintptr, 
 // C documentation
 //
 //	/*
-//	** This routine attempts to flatten subqueries as a performance optimization.
-//	** This routine returns 1 if it makes changes and 0 if no flattening occurs.
-//	**
-//	** To understand the concept of flattening, consider the following
-//	** query:
-//	**
-//	**     SELECT a FROM (SELECT x+y AS a FROM t1 WHERE z<100) WHERE a>5
-//	**
-//	** The default way of implementing this query is to execute the
-//	** subquery first and store the results in a temporary table, then
-//	** run the outer query on that temporary table.  This requires two
-//	** passes over the data.  Furthermore, because the temporary table
-//	** has no indices, the WHERE clause on the outer query cannot be
-//	** optimized.
-//	**
-//	** This routine attempts to rewrite queries such as the above into
-//	** a single flat select, like this:
-//	**
-//	**     SELECT x+y AS a FROM t1 WHERE z<100 AND a>5
-//	**
-//	** The code generated for this simplification gives the same result
-//	** but only has to scan the data once.  And because indices might
-//	** exist on the table t1, a complete scan of the data might be
-//	** avoided.
-//	**
-//	** Flattening is subject to the following constraints:
-//	**
-//	**  (**)  We no longer attempt to flatten aggregate subqueries. Was:
-//	**        The subquery and the outer query cannot both be aggregates.
-//	**
-//	**  (**)  We no longer attempt to flatten aggregate subqueries. Was:
-//	**        (2) If the subquery is an aggregate then
-//	**        (2a) the outer query must not be a join and
-//	**        (2b) the outer query must not use subqueries
-//	**             other than the one FROM-clause subquery that is a candidate
-//	**             for flattening.  (This is due to ticket [2f7170d73bf9abf80]
-//	**             from 2015-02-09.)
-//	**
-//	**   (3)  If the subquery is the right operand of a LEFT JOIN then
-//	**        (3a) the subquery may not be a join
-//	**        (**) Was (3b): "the FROM clause of the subquery may not contain
-//	**             a virtual table"
-//	**        (**) Was: "The outer query may not have a GROUP BY." This case
-//	**             is now managed correctly
-//	**        (3d) the outer query may not be DISTINCT.
-//	**        See also (26) for restrictions on RIGHT JOIN.
-//	**
-//	**   (4)  The subquery can not be DISTINCT.
-//	**
-//	**  (**)  At one point restrictions (4) and (5) defined a subset of DISTINCT
-//	**        sub-queries that were excluded from this optimization. Restriction
-//	**        (4) has since been expanded to exclude all DISTINCT subqueries.
-//	**
-//	**  (**)  We no longer attempt to flatten aggregate subqueries.  Was:
-//	**        If the subquery is aggregate, the outer query may not be DISTINCT.
-//	**
-//	**   (7)  The subquery must have a FROM clause.  TODO:  For subqueries without
-//	**        A FROM clause, consider adding a FROM clause with the special
-//	**        table sqlite_once that consists of a single row containing a
-//	**        single NULL.
-//	**
-//	**   (8)  If the subquery uses LIMIT then the outer query may not be a join.
-//	**
-//	**   (9)  If the subquery uses LIMIT then the outer query may not be aggregate.
-//	**
-//	**  (**)  Restriction (10) was removed from the code on 2005-02-05 but we
-//	**        accidentally carried the comment forward until 2014-09-15.  Original
-//	**        constraint: "If the subquery is aggregate then the outer query
-//	**        may not use LIMIT."
-//	**
-//	**  (11)  The subquery and the outer query may not both have ORDER BY clauses.
-//	**
-//	**  (**)  Not implemented.  Subsumed into restriction (3).  Was previously
-//	**        a separate restriction deriving from ticket #350.
-//	**
-//	**  (13)  The subquery and outer query may not both use LIMIT.
-//	**
-//	**  (14)  The subquery may not use OFFSET.
-//	**
-//	**  (15)  If the outer query is part of a compound select, then the
-//	**        subquery may not use LIMIT.
-//	**        (See ticket #2339 and ticket [02a8e81d44]).
-//	**
-//	**  (16)  If the outer query is aggregate, then the subquery may not
-//	**        use ORDER BY.  (Ticket #2942)  This used to not matter
-//	**        until we introduced the group_concat() function.
-//	**
-//	**  (17)  If the subquery is a compound select, then
-//	**        (17a) all compound operators must be a UNION ALL, and
-//	**        (17b) no terms within the subquery compound may be aggregate
-//	**              or DISTINCT, and
-//	**        (17c) every term within the subquery compound must have a FROM clause
-//	**        (17d) the outer query may not be
-//	**              (17d1) aggregate, or
-//	**              (17d2) DISTINCT
-//	**        (17e) the subquery may not contain window functions, and
-//	**        (17f) the subquery must not be the RHS of a LEFT JOIN.
-//	**        (17g) either the subquery is the first element of the outer
-//	**              query or there are no RIGHT or FULL JOINs in any arm
-//	**              of the subquery.  (This is a duplicate of condition (27b).)
-//	**        (17h) The corresponding result set expressions in all arms of the
-//	**              compound must have the same affinity.
-//	**
-//	**        The parent and sub-query may contain WHERE clauses. Subject to
-//	**        rules (11), (13) and (14), they may also contain ORDER BY,
-//	**        LIMIT and OFFSET clauses.  The subquery cannot use any compound
-//	**        operator other than UNION ALL because all the other compound
-//	**        operators have an implied DISTINCT which is disallowed by
-//	**        restriction (4).
-//	**
-//	**        Also, each component of the sub-query must return the same number
-//	**        of result columns. This is actually a requirement for any compound
-//	**        SELECT statement, but all the code here does is make sure that no
-//	**        such (illegal) sub-query is flattened. The caller will detect the
-//	**        syntax error and return a detailed message.
-//	**
-//	**  (18)  If the sub-query is a compound select, then all terms of the
-//	**        ORDER BY clause of the parent must be copies of a term returned
-//	**        by the parent query.
-//	**
-//	**  (19)  If the subquery uses LIMIT then the outer query may not
-//	**        have a WHERE clause.
-//	**
-//	**  (20)  If the sub-query is a compound select, then it must not use
-//	**        an ORDER BY clause.  Ticket #3773.  We could relax this constraint
-//	**        somewhat by saying that the terms of the ORDER BY clause must
-//	**        appear as unmodified result columns in the outer query.  But we
-//	**        have other optimizations in mind to deal with that case.
-//	**
-//	**  (21)  If the subquery uses LIMIT then the outer query may not be
-//	**        DISTINCT.  (See ticket [752e1646fc]).
-//	**
-//	**  (22)  The subquery may not be a recursive CTE.
-//	**
-//	**  (23)  If the outer query is a recursive CTE, then the sub-query may not be
-//	**        a compound query.  This restriction is because transforming the
-//	**        parent to a compound query confuses the code that handles
-//	**        recursive queries in multiSelect().
-//	**
-//	**  (**)  We no longer attempt to flatten aggregate subqueries.  Was:
-//	**        The subquery may not be an aggregate that uses the built-in min() or
-//	**        or max() functions.  (Without this restriction, a query like:
-//	**        "SELECT x FROM (SELECT max(y), x FROM t1)" would not necessarily
-//	**        return the value X for which Y was maximal.)
-//	**
-//	**  (25)  If either the subquery or the parent query contains a window
-//	**        function in the select list or ORDER BY clause, flattening
-//	**        is not attempted.
-//	**
-//	**  (26)  The subquery may not be the right operand of a RIGHT JOIN.
-//	**        See also (3) for restrictions on LEFT JOIN.
-//	**
-//	**  (27)  The subquery may not contain a FULL or RIGHT JOIN unless it
-//	**        is the first element of the parent query.  Two subcases:
-//	**        (27a) the subquery is not a compound query.
-//	**        (27b) the subquery is a compound query and the RIGHT JOIN occurs
-//	**              in any arm of the compound query.  (See also (17g).)
-//	**
-//	**  (28)  The subquery is not a MATERIALIZED CTE.  (This is handled
-//	**        in the caller before ever reaching this routine.)
-//	**
-//	**
-//	** In this routine, the "p" parameter is a pointer to the outer query.
-//	** The subquery is p->pSrc->a[iFrom].  isAgg is true if the outer query
-//	** uses aggregates.
-//	**
-//	** If flattening is not attempted, this routine is a no-op and returns 0.
-//	** If flattening is attempted this routine returns 1.
-//	**
-//	** All of the expression analysis must occur on both the outer query and
-//	** the subquery before this routine runs.
-//	*/
-func _flattenSubquery(tls *libc.TLS, pParse uintptr, p uintptr, iFrom int32, isAgg int32) (r int32) {
-	bp := tls.Alloc(96)
-	defer tls.Free(96)
-	var aCsrMap, db, pItem, pItemTab, pLimit, pNew, pOrderBy, pOrderBy1, pParent, pPrior, pSrc, pSub, pSub1, pSubSrc, pSubitem, pTabToDel, pToplevel, pWhere, zSavedAuthContext, v5 uintptr
-	var i, iNewParent, iParent, ii, isOuterJoin, nSubSrc, v4 int32
-	var jointype Tu8
-	var _ /* w at bp+0 */ TWalker
-	var _ /* x at bp+48 */ TSubstContext
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = aCsrMap, db, i, iNewParent, iParent, ii, isOuterJoin, jointype, nSubSrc, pItem, pItemTab, pLimit, pNew, pOrderBy, pOrderBy1, pParent, pPrior, pSrc, pSub, pSub1, pSubSrc, pSubitem, pTabToDel, pToplevel, pWhere, zSavedAuthContext, v4, v5
-	zSavedAuthContext = (*TParse)(unsafe.Pointer(pParse)).FzAuthContext /* VDBE cursor number of the pSub result set temp table */
-	iNewParent = -int32(1)                                              /* Replacement table for iParent */
-	isOuterJoin = 0                                                     /* The subquery */
-	db = (*TParse)(unsafe.Pointer(pParse)).Fdb                          /* Walker to persist agginfo data */
-	aCsrMap = uintptr(0)
-	/* Check to see if flattening is permitted.  Return 0 if not.
-	 */
-	if (*Tsqlite3)(unsafe.Pointer(db)).FdbOptFlags&libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_QueryFlattener)) != uint32(0) {
-		return 0
-	}
-	pSrc = (*TSelect)(unsafe.Pointer(p)).FpSrc
-	pSubitem = pSrc + 8 + uintptr(iFrom)*80
-	iParent = (*TSrcItem)(unsafe.Pointer(pSubitem)).FiCursor
-	pSub = (*TSubquery)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(pSubitem + 72)))).FpSelect
-	if (*TSelect)(unsafe.Pointer(p)).FpWin != 0 || (*TSelect)(unsafe.Pointer(pSub)).FpWin != 0 {
-		return 0
-	} /* Restriction (25) */
-	pSubSrc = (*TSelect)(unsafe.Pointer(pSub)).FpSrc
-	/* Prior to version 3.1.2, when LIMIT and OFFSET had to be simple constants,
-	 ** not arbitrary expressions, we allowed some combining of LIMIT and OFFSET
-	 ** because they could be computed at compile-time.  But when LIMIT and OFFSET
-	 ** became arbitrary expressions, we were forced to add restrictions (13)
-	 ** and (14). */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 && (*TSelect)(unsafe.Pointer(p)).FpLimit != 0 {
-		return 0
-	} /* Restriction (13) */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 && (*TExpr)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSub)).FpLimit)).FpRight != 0 {
-		return 0
-	} /* Restriction (14) */
-	if (*TSelect)(unsafe.Pointer(p)).FselFlags&uint32(SF_Compound) != uint32(0) && (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 {
-		return 0 /* Restriction (15) */
-	}
-	if (*TSrcList)(unsafe.Pointer(pSubSrc)).FnSrc == 0 {
-		return 0
-	} /* Restriction (7)  */
-	if (*TSelect)(unsafe.Pointer(pSub)).FselFlags&uint32(SF_Distinct) != 0 {
-		return 0
-	} /* Restriction (4)  */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 && ((*TSrcList)(unsafe.Pointer(pSrc)).FnSrc > int32(1) || isAgg != 0) {
-		return 0 /* Restrictions (8)(9) */
-	}
-	if (*TSelect)(unsafe.Pointer(p)).FpOrderBy != 0 && (*TSelect)(unsafe.Pointer(pSub)).FpOrderBy != 0 {
-		return 0 /* Restriction (11) */
-	}
-	if isAgg != 0 && (*TSelect)(unsafe.Pointer(pSub)).FpOrderBy != 0 {
-		return 0
-	} /* Restriction (16) */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 && (*TSelect)(unsafe.Pointer(p)).FpWhere != 0 {
-		return 0
-	} /* Restriction (19) */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 && (*TSelect)(unsafe.Pointer(p)).FselFlags&uint32(SF_Distinct) != uint32(0) {
-		return 0 /* Restriction (21) */
-	}
-	if (*TSelect)(unsafe.Pointer(pSub)).FselFlags&libc.Uint32FromInt32(libc.Int32FromInt32(SF_Recursive)) != 0 {
-		return 0 /* Restrictions (22) */
-	}
-	/*
-	 ** If the subquery is the right operand of a LEFT JOIN, then the
-	 ** subquery may not be a join itself (3a). Example of why this is not
-	 ** allowed:
-	 **
-	 **         t1 LEFT OUTER JOIN (t2 JOIN t3)
-	 **
-	 ** If we flatten the above, we would get
-	 **
-	 **         (t1 LEFT OUTER JOIN t2) JOIN t3
-	 **
-	 ** which is not at all the same thing.
-	 **
-	 ** See also tickets #306, #350, and #3300.
-	 */
-	if libc.Int32FromUint8((*TSrcItem)(unsafe.Pointer(pSubitem)).Ffg.Fjointype)&(libc.Int32FromInt32(JT_OUTER)|libc.Int32FromInt32(JT_LTORJ)) != 0 {
-		if (*TSrcList)(unsafe.Pointer(pSubSrc)).FnSrc > int32(1) || (*TSelect)(unsafe.Pointer(p)).FselFlags&uint32(SF_Distinct) != uint32(0) || libc.Int32FromUint8((*TSrcItem)(unsafe.Pointer(pSubitem)).Ffg.Fjointype)&int32(JT_RIGHT) != 0 {
-			return 0
-		}
-		isOuterJoin = int32(1)
-	}
-	/* True by restriction (7) */
-	if iFrom > 0 && libc.Int32FromUint8((*(*TSrcItem)(unsafe.Pointer(pSubSrc + 8))).Ffg.Fjointype)&int32(JT_LTORJ) != 0 {
-		return 0 /* Restriction (27a) */
-	}
-	/* Condition (28) is blocked by the caller */
-	/* Restriction (17): If the sub-query is a compound SELECT, then it must
-	 ** use only the UNION ALL operator. And none of the simple select queries
-	 ** that make up the compound SELECT are allowed to be aggregate or distinct
-	 ** queries.
-	 */
-	if (*TSelect)(unsafe.Pointer(pSub)).FpPrior != 0 {
-		if (*TSelect)(unsafe.Pointer(pSub)).FpOrderBy != 0 {
-			return 0 /* Restriction (20) */
-		}
-		if isAgg != 0 || (*TSelect)(unsafe.Pointer(p)).FselFlags&uint32(SF_Distinct) != uint32(0) || isOuterJoin > 0 {
-			return 0 /* (17d1), (17d2), or (17f) */
-		}
-		pSub1 = pSub
-		for {
-			if !(pSub1 != 0) {
-				break
-			}
-			if (*TSelect)(unsafe.Pointer(pSub1)).FselFlags&libc.Uint32FromInt32(libc.Int32FromInt32(SF_Distinct)|libc.Int32FromInt32(SF_Aggregate)) != uint32(0) || (*TSelect)(unsafe.Pointer(pSub1)).FpPrior != 0 && libc.Int32FromUint8((*TSelect)(unsafe.Pointer(pSub1)).Fop) != int32(TK_ALL) || (*TSrcList)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSub1)).FpSrc)).FnSrc < int32(1) || (*TSelect)(unsafe.Pointer(pSub1)).FpWin != 0 {
-				return 0
-			}
-			if iFrom > 0 && libc.Int32FromUint8((*(*TSrcItem)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSub1)).FpSrc + 8))).Ffg.Fjointype)&int32(JT_LTORJ) != 0 {
-				/* Without this restriction, the JT_LTORJ flag would end up being
-				 ** omitted on left-hand tables of the right join that is being
-				 ** flattened. */
-				return 0 /* Restrictions (17g), (27b) */
-			}
-			goto _1
-		_1:
-			;
-			pSub1 = (*TSelect)(unsafe.Pointer(pSub1)).FpPrior
-		}
-		/* Restriction (18). */
-		if (*TSelect)(unsafe.Pointer(p)).FpOrderBy != 0 {
-			ii = 0
-			for {
-				if !(ii < (*TExprList)(unsafe.Pointer((*TSelect)(unsafe.Pointer(p)).FpOrderBy)).FnExpr) {
-					break
-				}
-				if libc.Int32FromUint16(*(*Tu16)(unsafe.Pointer((*TSelect)(unsafe.Pointer(p)).FpOrderBy + 8 + uintptr(ii)*32 + 24))) == 0 {
-					return 0
-				}
-				goto _2
-			_2:
-				;
-				ii = ii + 1
-			}
-		}
-		/* Restriction (23) */
-		if (*TSelect)(unsafe.Pointer(p)).FselFlags&uint32(SF_Recursive) != 0 {
-			return 0
-		}
-		/* Restriction (17h) */
-		if _compoundHasDifferentAffinities(tls, pSub) != 0 {
-			return 0
-		}
-		if (*TSrcList)(unsafe.Pointer(pSrc)).FnSrc > int32(1) {
-			if (*TParse)(unsafe.Pointer(pParse)).FnSelect > int32(500) {
-				return 0
-			}
-			if (*Tsqlite3)(unsafe.Pointer(db)).FdbOptFlags&libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_FlttnUnionAll)) != uint32(0) {
-				return 0
-			}
-			aCsrMap = _sqlite3DbMallocZero(tls, db, libc.Uint64FromInt64(int64((*TParse)(unsafe.Pointer(pParse)).FnTab)+libc.Int64FromInt32(1))*uint64(4))
-			if aCsrMap != 0 {
-				**(**int32)(__ccgo_up(aCsrMap)) = (*TParse)(unsafe.Pointer(pParse)).FnTab
-			}
-		}
-	}
-	/***** If we reach this point, flattening is permitted. *****/
-	/* Authorize the subquery */
-	(*TParse)(unsafe.Pointer(pParse)).FzAuthContext = (*TSrcItem)(unsafe.Pointer(pSubitem)).FzName
-	_sqlite3AuthCheck(tls, pParse, int32(SQLITE_SELECT), uintptr(0), uintptr(0), uintptr(0))
-	(*TParse)(unsafe.Pointer(pParse)).FzAuthContext = zSavedAuthContext
-	/* Delete the transient structures associated with the subquery */
-	if int32(*(*uint32)(unsafe.Pointer(pSubitem + 24 + 4))&0x4>>2) != 0 {
-		pSub1 = _sqlite3SubqueryDetach(tls, db, pSubitem)
-	} else {
-		pSub1 = uintptr(0)
-	}
-	_sqlite3DbFree(tls, db, (*TSrcItem)(unsafe.Pointer(pSubitem)).FzName)
-	_sqlite3DbFree(tls, db, (*TSrcItem)(unsafe.Pointer(pSubitem)).FzAlias)
-	(*TSrcItem)(unsafe.Pointer(pSubitem)).FzName = uintptr(0)
-	(*TSrcItem)(unsafe.Pointer(pSubitem)).FzAlias = uintptr(0)
-	/* If the sub-query is a compound SELECT statement, then (by restrictions
-	 ** 17 and 18 above) it must be a UNION ALL and the parent query must
-	 ** be of the form:
-	 **
-	 **     SELECT <expr-list> FROM (<sub-query>) <where-clause>
-	 **
-	 ** followed by any ORDER BY, LIMIT and/or OFFSET clauses. This block
-	 ** creates N-1 copies of the parent query without any ORDER BY, LIMIT or
-	 ** OFFSET clauses and joins them to the left-hand-side of the original
-	 ** using UNION ALL operators. In this case N is the number of simple
-	 ** select statements in the compound sub-query.
-	 **
-	 ** Example:
-	 **
-	 **     SELECT a+1 FROM (
-	 **        SELECT x FROM tab
-	 **        UNION ALL
-	 **        SELECT y FROM tab
-	 **        UNION ALL
-	 **        SELECT abs(z*2) FROM tab2
-	 **     ) WHERE a!=5 ORDER BY 1
-	 **
-	 ** Transformed into:
-	 **
-	 **     SELECT x+1 FROM tab WHERE x+1!=5
-	 **     UNION ALL
-	 **     SELECT y+1 FROM tab WHERE y+1!=5
-	 **     UNION ALL
-	 **     SELECT abs(z*2)+1 FROM tab2 WHERE abs(z*2)+1!=5
-	 **     ORDER BY 1
-	 **
-	 ** We call this the "compound-subquery flattening".
-	 */
-	pSub = (*TSelect)(unsafe.Pointer(pSub)).FpPrior
-	for {
-		if !(pSub != 0) {
-			break
-		}
-		pOrderBy = (*TSelect)(unsafe.Pointer(p)).FpOrderBy
-		pLimit = (*TSelect)(unsafe.Pointer(p)).FpLimit
-		pPrior = (*TSelect)(unsafe.Pointer(p)).FpPrior
-		pItemTab = (*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab
-		(*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab = uintptr(0)
-		(*TSelect)(unsafe.Pointer(p)).FpOrderBy = uintptr(0)
-		(*TSelect)(unsafe.Pointer(p)).FpPrior = uintptr(0)
-		(*TSelect)(unsafe.Pointer(p)).FpLimit = uintptr(0)
-		pNew = _sqlite3SelectDup(tls, db, p, 0)
-		(*TSelect)(unsafe.Pointer(p)).FpLimit = pLimit
-		(*TSelect)(unsafe.Pointer(p)).FpOrderBy = pOrderBy
-		(*TSelect)(unsafe.Pointer(p)).Fop = uint8(TK_ALL)
-		(*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab = pItemTab
-		if pNew == uintptr(0) {
-			(*TSelect)(unsafe.Pointer(p)).FpPrior = pPrior
-		} else {
-			v5 = pParse + 124
-			*(*int32)(unsafe.Pointer(v5)) = *(*int32)(unsafe.Pointer(v5)) + 1
-			v4 = *(*int32)(unsafe.Pointer(v5))
-			(*TSelect)(unsafe.Pointer(pNew)).FselId = libc.Uint32FromInt32(v4)
-			if aCsrMap != 0 && libc.Int32FromUint8((*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed) == 0 {
-				_renumberCursors(tls, pParse, pNew, iFrom, aCsrMap)
-			}
-			(*TSelect)(unsafe.Pointer(pNew)).FpPrior = pPrior
-			if pPrior != 0 {
-				(*TSelect)(unsafe.Pointer(pPrior)).FpNext = pNew
-			}
-			(*TSelect)(unsafe.Pointer(pNew)).FpNext = p
-			(*TSelect)(unsafe.Pointer(p)).FpPrior = pNew
-		}
-		goto _3
-	_3:
-		;
-		pSub = (*TSelect)(unsafe.Pointer(pSub)).FpPrior
-	}
-	_sqlite3DbFree(tls, db, aCsrMap)
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		_sqlite3SrcItemAttachSubquery(tls, pParse, pSubitem, pSub1, 0)
-		return int32(1)
-	}
-	/* Defer deleting the Table object associated with the
-	 ** subquery until code generation is
-	 ** complete, since there may still exist Expr.pTab entries that
-	 ** refer to the subquery even after flattening.  Ticket #3346.
-	 **
-	 ** pSubitem->pSTab is always non-NULL by test restrictions and tests above.
-	 */
-	if (*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab != uintptr(0) {
-		pTabToDel = (*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab
-		if (*TTable)(unsafe.Pointer(pTabToDel)).FnTabRef == uint32(1) {
-			if (*TParse)(unsafe.Pointer(pParse)).FpToplevel != 0 {
-				v5 = (*TParse)(unsafe.Pointer(pParse)).FpToplevel
-			} else {
-				v5 = pParse
-			}
-			pToplevel = v5
-			_sqlite3ParserAddCleanup(tls, pToplevel, __ccgo_fp(_sqlite3DeleteTableGeneric), pTabToDel)
-		} else {
-			(*TTable)(unsafe.Pointer(pTabToDel)).FnTabRef = (*TTable)(unsafe.Pointer(pTabToDel)).FnTabRef - 1
-		}
-		(*TSrcItem)(unsafe.Pointer(pSubitem)).FpSTab = uintptr(0)
-	}
-	/* The following loop runs once for each term in a compound-subquery
-	 ** flattening (as described above).  If we are doing a different kind
-	 ** of flattening - a flattening other than a compound-subquery flattening -
-	 ** then this loop only runs once.
-	 **
-	 ** This loop moves all of the FROM elements of the subquery into the
-	 ** the FROM clause of the outer query.  Before doing this, remember
-	 ** the cursor number for the original outer query FROM element in
-	 ** iParent.  The iParent cursor will never be used.  Subsequent code
-	 ** will scan expressions looking for iParent references and replace
-	 ** those references with expressions that resolve to the subquery FROM
-	 ** elements we are now copying in.
-	 */
-	pSub = pSub1
-	pParent = p
-	for {
-		if !(pParent != 0) {
-			break
-		}
-		jointype = (*TSrcItem)(unsafe.Pointer(pSubitem)).Ffg.Fjointype
-		pSubSrc = (*TSelect)(unsafe.Pointer(pSub)).FpSrc     /* FROM clause of subquery */
-		nSubSrc = (*TSrcList)(unsafe.Pointer(pSubSrc)).FnSrc /* Number of terms in subquery FROM clause */
-		pSrc = (*TSelect)(unsafe.Pointer(pParent)).FpSrc     /* FROM clause of the outer query */
-		/* The subquery uses a single slot of the FROM clause of the outer
-		 ** query.  If the subquery has more than one element in its FROM clause,
-		 ** then expand the outer query to make space for it to hold all elements
-		 ** of the subquery.
-		 **
-		 ** Example:
-		 **
-		 **    SELECT * FROM tabA, (SELECT * FROM sub1, sub2), tabB;
-		 **
-		 ** The outer query has 3 slots in its FROM clause.  One slot of the
-		 ** outer query (the middle slot) is used by the subquery.  The next
-		 ** block of code will expand the outer query FROM clause to 4 slots.
-		 ** The middle slot is expanded to two slots in order to make space
-		 ** for the two elements in the FROM clause of the subquery.
-		 */
-		if nSubSrc > int32(1) {
-			pSrc = _sqlite3SrcListEnlarge(tls, pParse, pSrc, nSubSrc-int32(1), iFrom+int32(1))
-			if pSrc == uintptr(0) {
-				break
-			}
-			(*TSelect)(unsafe.Pointer(pParent)).FpSrc = pSrc
-			pSubitem = pSrc + 8 + uintptr(iFrom)*80
-		}
-		/* Transfer the FROM clause terms from the subquery into the
-		 ** outer query.
-		 */
-		iNewParent = (*(*TSrcItem)(unsafe.Pointer(pSubSrc + 8))).FiCursor
-		i = 0
-		for {
-			if !(i < nSubSrc) {
-				break
-			}
-			pItem = pSrc + 8 + uintptr(i+iFrom)*80
-			if int32(*(*uint32)(unsafe.Pointer(pItem + 24 + 4))&0x800>>11) != 0 {
-				_sqlite3IdListDelete(tls, db, *(*uintptr)(unsafe.Pointer(pItem + 64)))
-			}
-			**(**TSrcItem)(__ccgo_up(pItem)) = *(*TSrcItem)(unsafe.Pointer(pSubSrc + 8 + uintptr(i)*80))
-			v5 = pItem + 24
-			*(*Tu8)(unsafe.Pointer(v5)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v5))) | libc.Int32FromUint8(jointype)&libc.Int32FromInt32(JT_LTORJ))
-			libc.Xmemset(tls, pSubSrc+8+uintptr(i)*80, 0, uint64(80))
-			goto _8
-		_8:
-			;
-			i = i + 1
-		}
-		v5 = pSubitem + 24
-		*(*Tu8)(unsafe.Pointer(v5)) = Tu8(int32(*(*Tu8)(unsafe.Pointer(v5))) | libc.Int32FromUint8(jointype))
-		/* Begin substituting subquery result set expressions for
-		 ** references to the iParent in the outer query.
-		 **
-		 ** Example:
-		 **
-		 **   SELECT a+5, b*10 FROM (SELECT x*3 AS a, y+10 AS b FROM t1) WHERE a>b;
-		 **   \                     \_____________ subquery __________/          /
-		 **    \_____________________ outer query ______________________________/
-		 **
-		 ** We look at every expression in the outer query and every place we see
-		 ** "a" we substitute "x*3" and every place we see "b" we substitute "y+10".
-		 */
-		if (*TSelect)(unsafe.Pointer(pSub)).FpOrderBy != 0 {
-			/* At this point, any non-zero iOrderByCol values indicate that the
-			 ** ORDER BY column expression is identical to the iOrderByCol'th
-			 ** expression returned by SELECT statement pSub. Since these values
-			 ** do not necessarily correspond to columns in SELECT statement pParent,
-			 ** zero them before transferring the ORDER BY clause.
-			 **
-			 ** Not doing this may cause an error if a subsequent call to this
-			 ** function attempts to flatten a compound sub-query into pParent.
-			 ** See ticket [d11a6e908f].
-			 */
-			pOrderBy1 = (*TSelect)(unsafe.Pointer(pSub)).FpOrderBy
-			i = 0
-			for {
-				if !(i < (*TExprList)(unsafe.Pointer(pOrderBy1)).FnExpr) {
-					break
-				}
-				*(*Tu16)(unsafe.Pointer(pOrderBy1 + 8 + uintptr(i)*32 + 24)) = uint16(0)
-				goto _11
-			_11:
-				;
-				i = i + 1
-			}
-			(*TSelect)(unsafe.Pointer(pParent)).FpOrderBy = pOrderBy1
-			(*TSelect)(unsafe.Pointer(pSub)).FpOrderBy = uintptr(0)
-		}
-		pWhere = (*TSelect)(unsafe.Pointer(pSub)).FpWhere
-		(*TSelect)(unsafe.Pointer(pSub)).FpWhere = uintptr(0)
-		if isOuterJoin > 0 {
-			_sqlite3SetJoinExpr(tls, pWhere, iNewParent, uint32(EP_OuterON))
-		}
-		if pWhere != 0 {
-			if (*TSelect)(unsafe.Pointer(pParent)).FpWhere != 0 {
-				(*TSelect)(unsafe.Pointer(pParent)).FpWhere = _sqlite3PExpr(tls, pParse, int32(TK_AND), pWhere, (*TSelect)(unsafe.Pointer(pParent)).FpWhere)
-			} else {
-				(*TSelect)(unsafe.Pointer(pParent)).FpWhere = pWhere
-			}
-		}
-		if libc.Int32FromUint8((*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed) == 0 {
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FpParse = pParse
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FiTable = iParent
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FiNewTable = iNewParent
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FisOuterJoin = isOuterJoin
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FnSelDepth = 0
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FpEList = (*TSelect)(unsafe.Pointer(pSub)).FpEList
-			(**(**TSubstContext)(__ccgo_up(bp + 48))).FpCList = _findLeftmostExprlist(tls, pSub)
-			_substSelect(tls, bp+48, pParent, 0)
-		}
-		/* The flattened query is a compound if either the inner or the
-		 ** outer query is a compound. */
-		**(**Tu32)(__ccgo_up(pParent + 4)) |= (*TSelect)(unsafe.Pointer(pSub)).FselFlags & uint32(SF_Compound)
-		/* restriction (17b) */
-		/*
-		 ** SELECT ... FROM (SELECT ... LIMIT a OFFSET b) LIMIT x OFFSET y;
-		 **
-		 ** One is tempted to try to add a and b to combine the limits.  But this
-		 ** does not work if either limit is negative.
-		 */
-		if (*TSelect)(unsafe.Pointer(pSub)).FpLimit != 0 {
-			(*TSelect)(unsafe.Pointer(pParent)).FpLimit = (*TSelect)(unsafe.Pointer(pSub)).FpLimit
-			(*TSelect)(unsafe.Pointer(pSub)).FpLimit = uintptr(0)
-		}
-		/* Recompute the SrcItem.colUsed masks for the flattened
-		 ** tables. */
-		i = 0
-		for {
-			if !(i < nSubSrc) {
-				break
-			}
-			_recomputeColumnsUsed(tls, pParent, pSrc+8+uintptr(i+iFrom)*80)
-			goto _12
-		_12:
-			;
-			i = i + 1
-		}
-		goto _7
-	_7:
-		;
-		pParent = (*TSelect)(unsafe.Pointer(pParent)).FpPrior
-		pSub = (*TSelect)(unsafe.Pointer(pSub)).FpPrior
-	}
-	/* Finally, delete what is left of the subquery and return success.
-	 */
-	_sqlite3AggInfoPersistWalkerInit(tls, bp, pParse)
-	_sqlite3WalkSelect(tls, bp, pSub1)
-	_sqlite3SelectDelete(tls, db, pSub1)
-	return int32(1)
-}
-
-// C documentation
-//
-//	/*
 //	** This function is used to add page iPage to the database file free-list.
 //	** It is assumed that the page is not already a part of the free-list.
 //	**
@@ -3414,7 +2722,7 @@ func _freePage2(tls *libc.TLS, pBt uintptr, pMemPage uintptr, iPage TPgno) (r in
 	iTrunk = uint32(0)                                 /* Page number of free-list trunk page */
 	pPage1 = (*TBtShared)(unsafe.Pointer(pBt)).FpPage1 /* Initial number of pages on free-list */
 	if iPage < uint32(2) || iPage > (*TBtShared)(unsafe.Pointer(pBt)).FnPage {
-		return _sqlite3CorruptError(tls, int32(79983))
+		return _sqlite3CorruptError(tls, int32(80075))
 	}
 	if pMemPage != 0 {
 		**(**uintptr)(__ccgo_up(bp + 8)) = pMemPage
@@ -3465,7 +2773,7 @@ func _freePage2(tls *libc.TLS, pBt uintptr, pMemPage uintptr, iPage TPgno) (r in
 	if nFree != uint32(0) { /* Initial number of leaf cells on trunk page */
 		iTrunk = _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(pPage1)).FaData+32)
 		if iTrunk > _btreePagecount(tls, pBt) {
-			**(**int32)(__ccgo_up(bp + 16)) = _sqlite3CorruptError(tls, int32(80030))
+			**(**int32)(__ccgo_up(bp + 16)) = _sqlite3CorruptError(tls, int32(80122))
 			goto freepage_out
 		}
 		**(**int32)(__ccgo_up(bp + 16)) = _btreeGetPage(tls, pBt, iTrunk, bp, 0)
@@ -3474,7 +2782,7 @@ func _freePage2(tls *libc.TLS, pBt uintptr, pMemPage uintptr, iPage TPgno) (r in
 		}
 		nLeaf = _sqlite3Get4byte(tls, (*TMemPage)(unsafe.Pointer(**(**uintptr)(__ccgo_up(bp)))).FaData+4)
 		if nLeaf > (*TBtShared)(unsafe.Pointer(pBt)).FusableSize/uint32(4)-uint32(2) {
-			**(**int32)(__ccgo_up(bp + 16)) = _sqlite3CorruptError(tls, int32(80041))
+			**(**int32)(__ccgo_up(bp + 16)) = _sqlite3CorruptError(tls, int32(80133))
 			goto freepage_out
 		}
 		if nLeaf < (*TBtShared)(unsafe.Pointer(pBt)).FusableSize/uint32(4)-uint32(8) {
@@ -3583,12 +2891,12 @@ func _freeSpace(tls *libc.TLS, pPage uintptr, iStart int32, iSize int32) (r int3
 				if iFreeBlk == 0 {
 					break
 				} /* TH3: corrupt082.100 */
-				return _sqlite3CorruptError(tls, int32(75089))
+				return _sqlite3CorruptError(tls, int32(75174))
 			}
 			iPtr = iFreeBlk
 		}
 		if iFreeBlk > libc.Int32FromUint32((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize)-int32(4) { /* TH3: corrupt081.100 */
-			return _sqlite3CorruptError(tls, int32(75094))
+			return _sqlite3CorruptError(tls, int32(75179))
 		}
 		/* At this point:
 		 **    iFreeBlk:   First freeblock after iStart, or zero if none
@@ -3599,11 +2907,11 @@ func _freeSpace(tls *libc.TLS, pPage uintptr, iStart int32, iSize int32) (r int3
 		if iFreeBlk != 0 && iEnd+int32(3) >= iFreeBlk {
 			nFrag = iFreeBlk - iEnd
 			if iEnd > iFreeBlk {
-				return _sqlite3CorruptError(tls, int32(75106))
+				return _sqlite3CorruptError(tls, int32(75191))
 			}
 			iEnd = iFreeBlk + (libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFreeBlk+int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFreeBlk+int32(2)) + 1))))
 			if iEnd > libc.Int32FromUint32((*TBtShared)(unsafe.Pointer((*TMemPage)(unsafe.Pointer(pPage)).FpBt)).FusableSize) {
-				return _sqlite3CorruptError(tls, int32(75109))
+				return _sqlite3CorruptError(tls, int32(75194))
 			}
 			iSize = iEnd - iStart
 			iFreeBlk = libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFreeBlk))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iFreeBlk) + 1)))
@@ -3616,7 +2924,7 @@ func _freeSpace(tls *libc.TLS, pPage uintptr, iStart int32, iSize int32) (r int3
 			iPtrEnd = iPtr + (libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iPtr+int32(2)))))<<int32(8) | libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(iPtr+int32(2)) + 1))))
 			if iPtrEnd+int32(3) >= iStart {
 				if iPtrEnd > iStart {
-					return _sqlite3CorruptError(tls, int32(75122))
+					return _sqlite3CorruptError(tls, int32(75207))
 				}
 				nFrag = nFrag + (iStart - iPtrEnd)
 				iSize = iEnd - iPtr
@@ -3624,7 +2932,7 @@ func _freeSpace(tls *libc.TLS, pPage uintptr, iStart int32, iSize int32) (r int3
 			}
 		}
 		if nFrag > libc.Int32FromUint8(**(**uint8)(__ccgo_up(data + uintptr(libc.Int32FromUint8(hdr)+int32(7))))) {
-			return _sqlite3CorruptError(tls, int32(75128))
+			return _sqlite3CorruptError(tls, int32(75213))
 		}
 		v2 = data + uintptr(libc.Int32FromUint8(hdr)+int32(7))
 		*(*uint8)(unsafe.Pointer(v2)) = uint8(int32(*(*uint8)(unsafe.Pointer(v2))) - libc.Int32FromUint8(libc.Uint8FromInt32(nFrag)))
@@ -3641,10 +2949,10 @@ func _freeSpace(tls *libc.TLS, pPage uintptr, iStart int32, iSize int32) (r int3
 		 ** so just extend the cell content area rather than create another
 		 ** freelist entry */
 		if iStart < x {
-			return _sqlite3CorruptError(tls, int32(75142))
+			return _sqlite3CorruptError(tls, int32(75227))
 		}
 		if iPtr != libc.Int32FromUint8(hdr)+int32(1) {
-			return _sqlite3CorruptError(tls, int32(75143))
+			return _sqlite3CorruptError(tls, int32(75228))
 		}
 		**(**uint8)(__ccgo_up(data + uintptr(libc.Int32FromUint8(hdr)+int32(1)))) = libc.Uint8FromInt32(iFreeBlk >> libc.Int32FromInt32(8))
 		**(**uint8)(__ccgo_up(data + uintptr(libc.Int32FromUint8(hdr)+int32(1)) + 1)) = libc.Uint8FromInt32(iFreeBlk)
@@ -4415,7 +3723,7 @@ func _fts5ExprNearIsMatch(tls *libc.TLS, pRc uintptr, pNear uintptr) (r int32) {
 			iPos = (**(**TFts5NearTrimmer)(__ccgo_up(a + uintptr(i)*48))).Freader.FiPos
 			pWriter = a + uintptr(i)*48 + 32
 			if (*TFts5Buffer)(unsafe.Pointer((**(**TFts5NearTrimmer)(__ccgo_up(a + uintptr(i)*48))).FpOut)).Fn == 0 || iPos != (*TFts5PoslistWriter)(unsafe.Pointer(pWriter)).FiPrev {
-				_sqlite3Fts5PoslistWriterAppend(tls, (**(**TFts5NearTrimmer)(__ccgo_up(a + uintptr(i)*48))).FpOut, pWriter, iPos)
+				_sqlite3Fts5PoslistSafeAppend(tls, (**(**TFts5NearTrimmer)(__ccgo_up(a + uintptr(i)*48))).FpOut, pWriter, iPos)
 			}
 			goto _3
 		_3:
@@ -5687,10 +4995,10 @@ func _fts5ParseTokenize(tls *libc.TLS, pContext uintptr, tflags int32, pToken ui
 			v1 = nToken
 			(*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FnQueryTerm = v1
 			(*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FnFullTerm = v1
+			libc.Xmemcpy(tls, (*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FpTerm, pToken, libc.Uint64FromInt32(nToken))
 			if (*TFts5Config)(unsafe.Pointer((*TTokenCtx)(unsafe.Pointer(pCtx)).FpConfig)).FbTokendata != 0 {
 				(*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FnQueryTerm = libc.Int32FromUint64(libc.Xstrlen(tls, (*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FpTerm))
 			}
-			libc.Xmemcpy(tls, (*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FpTerm, pToken, libc.Uint64FromInt32(nToken))
 			(*TFts5ExprTerm)(unsafe.Pointer(pSyn)).FpSynonym = (*(*TFts5ExprTerm)(unsafe.Pointer(pPhrase + 32 + uintptr((*TFts5ExprPhrase)(unsafe.Pointer(pPhrase)).FnTerm-int32(1))*40))).FpSynonym
 			(*(*TFts5ExprTerm)(unsafe.Pointer(pPhrase + 32 + uintptr((*TFts5ExprPhrase)(unsafe.Pointer(pPhrase)).FnTerm-int32(1))*40))).FpSynonym = pSyn
 		}
@@ -7158,7 +6466,7 @@ func _getPageNormal(tls *libc.TLS, pPager uintptr, pgno TPgno, ppPage uintptr, f
 	_, _, _, _ = noContent, pPg, rc, v1
 	rc = SQLITE_OK
 	if pgno == uint32(0) {
-		return _sqlite3CorruptError(tls, int32(65157))
+		return _sqlite3CorruptError(tls, int32(65233))
 	}
 	**(**uintptr)(__ccgo_up(bp)) = _sqlite3PcacheFetch(tls, (*TPager)(unsafe.Pointer(pPager)).FpPCache, pgno, int32(3))
 	if **(**uintptr)(__ccgo_up(bp)) == uintptr(0) {
@@ -7189,7 +6497,7 @@ func _getPageNormal(tls *libc.TLS, pPager uintptr, pgno TPgno, ppPage uintptr, f
 		 ** (2) Never try to fetch the locking page
 		 */
 		if pgno == (*TPager)(unsafe.Pointer(pPager)).FlckPgno {
-			rc = _sqlite3CorruptError(tls, int32(65189))
+			rc = _sqlite3CorruptError(tls, int32(65265))
 			goto pager_acquire_err
 		}
 		(*TPgHdr)(unsafe.Pointer(pPg)).FpPager = pPager
@@ -8101,156 +7409,6 @@ func _jsonReturnStringAsBlob(tls *libc.TLS, pStr uintptr) {
 // C documentation
 //
 //	/*
-//	** Load the content from either the sqlite_stat4
-//	** into the relevant Index.aSample[] arrays.
-//	**
-//	** Arguments zSql1 and zSql2 must point to SQL statements that return
-//	** data equivalent to the following:
-//	**
-//	**    zSql1: SELECT idx,count(*) FROM %Q.sqlite_stat4 GROUP BY idx
-//	**    zSql2: SELECT idx,neq,nlt,ndlt,sample FROM %Q.sqlite_stat4
-//	**
-//	** where %Q is replaced with the database name before the SQL is executed.
-//	*/
-func _loadStatTbl(tls *libc.TLS, db uintptr, zSql1 uintptr, zSql2 uintptr, zDb uintptr) (r int32) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var i, nByte Ti64
-	var nCol, nIdxCol, nSample, rc int32
-	var pIdx, pIdx1, pPrevIdx, pPtr, pSample, pSpace, zIndex, zIndex1, zSql uintptr
-	var _ /* pStmt at bp+0 */ uintptr
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = i, nByte, nCol, nIdxCol, nSample, pIdx, pIdx1, pPrevIdx, pPtr, pSample, pSpace, rc, zIndex, zIndex1, zSql /* Result codes from subroutines */
-	**(**uintptr)(__ccgo_up(bp)) = uintptr(0)                                                                                                               /* Text of the SQL statement */
-	pPrevIdx = uintptr(0)                                                                                                                                   /* A slot in pIdx->aSample[] */
-	zSql = _sqlite3MPrintf(tls, db, zSql1, libc.VaList(bp+16, zDb))
-	if !(zSql != 0) {
-		return int32(SQLITE_NOMEM)
-	}
-	rc = Xsqlite3_prepare(tls, db, zSql, -int32(1), bp, uintptr(0))
-	_sqlite3DbFree(tls, db, zSql)
-	if rc != 0 {
-		return rc
-	}
-	for Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp))) == int32(SQLITE_ROW) {
-		nIdxCol = int32(1) /* Available memory as a u8 for easier manipulation */
-		zIndex = Xsqlite3_column_text(tls, **(**uintptr)(__ccgo_up(bp)), 0)
-		if zIndex == uintptr(0) {
-			continue
-		}
-		nSample = Xsqlite3_column_int(tls, **(**uintptr)(__ccgo_up(bp)), int32(1))
-		pIdx = _findIndexOrPrimaryKey(tls, db, zIndex, zDb)
-		if pIdx == uintptr(0) {
-			continue
-		}
-		if (*TIndex)(unsafe.Pointer(pIdx)).FaSample != uintptr(0) {
-			/* The same index appears in sqlite_stat4 under multiple names */
-			continue
-		}
-		if !((*TTable)(unsafe.Pointer((*TIndex)(unsafe.Pointer(pIdx)).FpTable)).FtabFlags&libc.Uint32FromInt32(TF_WithoutRowid) == libc.Uint32FromInt32(0)) && int32(uint32(*(*uint16)(unsafe.Pointer(pIdx + 100))&0x3>>0)) == int32(SQLITE_IDXTYPE_PRIMARYKEY) {
-			nIdxCol = libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnKeyCol)
-		} else {
-			nIdxCol = libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnColumn)
-		}
-		(*TIndex)(unsafe.Pointer(pIdx)).FnSampleCol = nIdxCol
-		(*TIndex)(unsafe.Pointer(pIdx)).FmxSample = nSample
-		nByte = libc.Int64FromUint64((libc.Uint64FromInt64(40)*libc.Uint64FromInt32(nSample) + libc.Uint64FromInt32(7)) & libc.Uint64FromInt32(^libc.Int32FromInt32(7)))
-		nByte = libc.Int64FromUint64(uint64(nByte) + uint64(libc.Uint64FromInt64(8)*libc.Uint64FromInt32(nIdxCol)*libc.Uint64FromInt32(3)*libc.Uint64FromInt32(nSample)))
-		nByte = libc.Int64FromUint64(uint64(nByte) + uint64(libc.Uint64FromInt32(nIdxCol)*libc.Uint64FromInt64(8))) /* Space for Index.aAvgEq[] */
-		(*TIndex)(unsafe.Pointer(pIdx)).FaSample = _sqlite3DbMallocZero(tls, db, libc.Uint64FromInt64(nByte))
-		if (*TIndex)(unsafe.Pointer(pIdx)).FaSample == uintptr(0) {
-			Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-			return int32(SQLITE_NOMEM)
-		}
-		pPtr = (*TIndex)(unsafe.Pointer(pIdx)).FaSample
-		pPtr = pPtr + uintptr((libc.Uint64FromInt32(nSample)*libc.Uint64FromInt64(40)+libc.Uint64FromInt32(7))&libc.Uint64FromInt32(^libc.Int32FromInt32(7)))
-		pSpace = pPtr
-		(*TIndex)(unsafe.Pointer(pIdx)).FaAvgEq = pSpace
-		pSpace = pSpace + uintptr(nIdxCol)*8
-		**(**Tu32)(__ccgo_up((*TIndex)(unsafe.Pointer(pIdx)).FpTable + 48)) |= uint32(TF_HasStat4)
-		i = 0
-		for {
-			if !(i < int64(nSample)) {
-				break
-			}
-			(**(**TIndexSample)(__ccgo_up((*TIndex)(unsafe.Pointer(pIdx)).FaSample + uintptr(i)*40))).FanEq = pSpace
-			pSpace = pSpace + uintptr(nIdxCol)*8
-			(**(**TIndexSample)(__ccgo_up((*TIndex)(unsafe.Pointer(pIdx)).FaSample + uintptr(i)*40))).FanLt = pSpace
-			pSpace = pSpace + uintptr(nIdxCol)*8
-			(**(**TIndexSample)(__ccgo_up((*TIndex)(unsafe.Pointer(pIdx)).FaSample + uintptr(i)*40))).FanDLt = pSpace
-			pSpace = pSpace + uintptr(nIdxCol)*8
-			goto _1
-		_1:
-			;
-			i = i + 1
-		}
-	}
-	rc = Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-	if rc != 0 {
-		return rc
-	}
-	zSql = _sqlite3MPrintf(tls, db, zSql2, libc.VaList(bp+16, zDb))
-	if !(zSql != 0) {
-		return int32(SQLITE_NOMEM)
-	}
-	rc = Xsqlite3_prepare(tls, db, zSql, -int32(1), bp, uintptr(0))
-	_sqlite3DbFree(tls, db, zSql)
-	if rc != 0 {
-		return rc
-	}
-	for Xsqlite3_step(tls, **(**uintptr)(__ccgo_up(bp))) == int32(SQLITE_ROW) { /* Pointer to the index object */
-		nCol = int32(1) /* Number of columns in index */
-		zIndex1 = Xsqlite3_column_text(tls, **(**uintptr)(__ccgo_up(bp)), 0)
-		if zIndex1 == uintptr(0) {
-			continue
-		}
-		pIdx1 = _findIndexOrPrimaryKey(tls, db, zIndex1, zDb)
-		if pIdx1 == uintptr(0) {
-			continue
-		}
-		if (*TIndex)(unsafe.Pointer(pIdx1)).FnSample >= (*TIndex)(unsafe.Pointer(pIdx1)).FmxSample {
-			/* Too many slots used because the same index appears in
-			 ** sqlite_stat4 using multiple names */
-			continue
-		}
-		/* This next condition is true if data has already been loaded from
-		 ** the sqlite_stat4 table. */
-		nCol = (*TIndex)(unsafe.Pointer(pIdx1)).FnSampleCol
-		if pIdx1 != pPrevIdx {
-			_initAvgEq(tls, pPrevIdx)
-			pPrevIdx = pIdx1
-		}
-		pSample = (*TIndex)(unsafe.Pointer(pIdx1)).FaSample + uintptr((*TIndex)(unsafe.Pointer(pIdx1)).FnSample)*40
-		_decodeIntArray(tls, Xsqlite3_column_text(tls, **(**uintptr)(__ccgo_up(bp)), int32(1)), nCol, (*TIndexSample)(unsafe.Pointer(pSample)).FanEq, uintptr(0), uintptr(0))
-		_decodeIntArray(tls, Xsqlite3_column_text(tls, **(**uintptr)(__ccgo_up(bp)), int32(2)), nCol, (*TIndexSample)(unsafe.Pointer(pSample)).FanLt, uintptr(0), uintptr(0))
-		_decodeIntArray(tls, Xsqlite3_column_text(tls, **(**uintptr)(__ccgo_up(bp)), int32(3)), nCol, (*TIndexSample)(unsafe.Pointer(pSample)).FanDLt, uintptr(0), uintptr(0))
-		/* Take a copy of the sample. Add 8 extra 0x00 bytes the end of the buffer.
-		 ** This is in case the sample record is corrupted. In that case, the
-		 ** sqlite3VdbeRecordCompare() may read up to two varints past the
-		 ** end of the allocated buffer before it realizes it is dealing with
-		 ** a corrupt record.  Or it might try to read a large integer from the
-		 ** buffer.  In any case, eight 0x00 bytes prevents this from causing
-		 ** a buffer overread.  */
-		(*TIndexSample)(unsafe.Pointer(pSample)).Fn = Xsqlite3_column_bytes(tls, **(**uintptr)(__ccgo_up(bp)), int32(4))
-		(*TIndexSample)(unsafe.Pointer(pSample)).Fp = _sqlite3DbMallocZero(tls, db, libc.Uint64FromInt32((*TIndexSample)(unsafe.Pointer(pSample)).Fn+int32(8)))
-		if (*TIndexSample)(unsafe.Pointer(pSample)).Fp == uintptr(0) {
-			Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-			return int32(SQLITE_NOMEM)
-		}
-		if (*TIndexSample)(unsafe.Pointer(pSample)).Fn != 0 {
-			libc.Xmemcpy(tls, (*TIndexSample)(unsafe.Pointer(pSample)).Fp, Xsqlite3_column_blob(tls, **(**uintptr)(__ccgo_up(bp)), int32(4)), libc.Uint64FromInt32((*TIndexSample)(unsafe.Pointer(pSample)).Fn))
-		}
-		(*TIndex)(unsafe.Pointer(pIdx1)).FnSample = (*TIndex)(unsafe.Pointer(pIdx1)).FnSample + 1
-	}
-	rc = Xsqlite3_finalize(tls, **(**uintptr)(__ccgo_up(bp)))
-	if rc == SQLITE_OK {
-		_initAvgEq(tls, pPrevIdx)
-	}
-	return rc
-}
-
-// C documentation
-//
-//	/*
 //	** Read data from an memdb-file.
 //	*/
 func _memdbRead(tls *libc.TLS, pFile uintptr, zBuf uintptr, iAmt int32, iOfst Tsqlite_int64) (r int32) {
@@ -8585,7 +7743,7 @@ func _pageFindSlot(tls *libc.TLS, pPg uintptr, nByte int32, pRc uintptr) (r uint
 			} else {
 				if x+pc > maxPC {
 					/* This slot extends off the end of the usable part of the page */
-					**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(74920))
+					**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(75005))
 					return uintptr(0)
 				} else {
 					/* The slot remains on the free-list. Reduce its size to account
@@ -8602,14 +7760,14 @@ func _pageFindSlot(tls *libc.TLS, pPg uintptr, nByte int32, pRc uintptr) (r uint
 		if pc <= iAddr {
 			if pc != 0 {
 				/* The next slot in the chain comes before the current slot */
-				**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(74935))
+				**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(75020))
 			}
 			return uintptr(0)
 		}
 	}
 	if pc > maxPC+nByte-int32(4) {
 		/* The free slot chain extends off the end of the page */
-		**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(74942))
+		**(**int32)(__ccgo_up(pRc)) = _sqlite3CorruptError(tls, int32(75027))
 	}
 	return uintptr(0)
 }
@@ -8684,7 +7842,7 @@ func _pageInsertArray(tls *libc.TLS, pPg uintptr, pBegin uintptr, ppData uintptr
 		 ** database.  But they might for a corrupt database.  Hence use memmove()
 		 ** since memcpy() sends SIGABORT with overlapping buffers on OpenBSD */
 		if uint64(**(**uintptr)(__ccgo_up((*TCellArray)(unsafe.Pointer(pCArray)).FapCell + uintptr(i)*8))+uintptr(sz)) > uint64(pEnd) && uint64(**(**uintptr)(__ccgo_up((*TCellArray)(unsafe.Pointer(pCArray)).FapCell + uintptr(i)*8))) < uint64(pEnd) {
-			_sqlite3CorruptError(tls, int32(80911))
+			_sqlite3CorruptError(tls, int32(81003))
 			return int32(1)
 		}
 		libc.Xmemmove(tls, pSlot, **(**uintptr)(__ccgo_up((*TCellArray)(unsafe.Pointer(pCArray)).FapCell + uintptr(i)*8)), libc.Uint64FromInt32(sz))
@@ -9683,12 +8841,12 @@ func _rebuildPage(tls *libc.TLS, pCArray uintptr, iFirst int32, nCell int32, pPg
 		sz = **(**Tu16)(__ccgo_up((*TCellArray)(unsafe.Pointer(pCArray)).FszCell + uintptr(i)*2))
 		if uint64(pCell) >= uint64(aData+uintptr(j)) && uint64(pCell) < uint64(pEnd) {
 			if uint64(pCell+uintptr(sz)) > uint64(pEnd) {
-				return _sqlite3CorruptError(tls, int32(80813))
+				return _sqlite3CorruptError(tls, int32(80905))
 			}
 			pCell = pTmp + uintptr(int64(pCell)-int64(aData))
 		} else {
 			if uint64(pCell+uintptr(sz)) > uint64(pSrcEnd) && uint64(pCell) < uint64(pSrcEnd) {
-				return _sqlite3CorruptError(tls, int32(80818))
+				return _sqlite3CorruptError(tls, int32(80910))
 			}
 		}
 		pData = pData - uintptr(sz)
@@ -9696,7 +8854,7 @@ func _rebuildPage(tls *libc.TLS, pCArray uintptr, iFirst int32, nCell int32, pPg
 		**(**Tu8)(__ccgo_up(pCellptr + 1)) = libc.Uint8FromInt64(int64(pData) - int64(aData))
 		pCellptr = pCellptr + uintptr(2)
 		if pData < pCellptr {
-			return _sqlite3CorruptError(tls, int32(80824))
+			return _sqlite3CorruptError(tls, int32(80916))
 		}
 		libc.Xmemmove(tls, pData, pCell, uint64(sz))
 		i = i + 1
@@ -9805,14 +8963,14 @@ func _rehash(tls *libc.TLS, pH uintptr, new_size uint32) (r int32) {
 //	** unmodified following an error.
 //	*/
 func _renameQuotefixFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uintptr) {
-	bp := tls.Alloc(496)
-	defer tls.Free(496)
+	bp := tls.Alloc(512)
+	defer tls.Free(512)
 	var db, pSelect, zDb, zInput uintptr
 	var i, rc, v1 int32
 	var xAuth Tsqlite3_xauth
-	var _ /* sCtx at bp+416 */ TRenameCtx
+	var _ /* sCtx at bp+424 */ TRenameCtx
 	var _ /* sParse at bp+0 */ TParse
-	var _ /* sWalker at bp+448 */ TWalker
+	var _ /* sWalker at bp+456 */ TWalker
 	_, _, _, _, _, _, _, _ = db, i, pSelect, rc, xAuth, zDb, zInput, v1
 	db = Xsqlite3_context_db_handle(tls, context)
 	zDb = Xsqlite3_value_text(tls, **(**uintptr)(__ccgo_up(argv)))
@@ -9825,12 +8983,12 @@ func _renameQuotefixFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uin
 		rc = _renameParseSql(tls, bp, zDb, db, zInput, 0)
 		if rc == SQLITE_OK {
 			/* Walker to find tokens that need to be replaced. */
-			libc.Xmemset(tls, bp+416, 0, uint64(32))
-			libc.Xmemset(tls, bp+448, 0, uint64(48))
-			(**(**TWalker)(__ccgo_up(bp + 448))).FpParse = bp
-			(**(**TWalker)(__ccgo_up(bp + 448))).FxExprCallback = __ccgo_fp(_renameQuotefixExprCb)
-			(**(**TWalker)(__ccgo_up(bp + 448))).FxSelectCallback = __ccgo_fp(_renameColumnSelectCb)
-			*(*uintptr)(unsafe.Pointer(bp + 448 + 40)) = bp + 416
+			libc.Xmemset(tls, bp+424, 0, uint64(32))
+			libc.Xmemset(tls, bp+456, 0, uint64(48))
+			(**(**TWalker)(__ccgo_up(bp + 456))).FpParse = bp
+			(**(**TWalker)(__ccgo_up(bp + 456))).FxExprCallback = __ccgo_fp(_renameQuotefixExprCb)
+			(**(**TWalker)(__ccgo_up(bp + 456))).FxSelectCallback = __ccgo_fp(_renameColumnSelectCb)
+			*(*uintptr)(unsafe.Pointer(bp + 456 + 40)) = bp + 424
 			if (**(**TParse)(__ccgo_up(bp))).FpNewTable != 0 {
 				if libc.Int32FromUint8((*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FeTabType) == int32(TABTYP_VIEW) {
 					pSelect = (*(*struct {
@@ -9846,16 +9004,16 @@ func _renameQuotefixFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uin
 					}
 					rc = v1
 					if rc == SQLITE_OK {
-						_sqlite3WalkSelect(tls, bp+448, pSelect)
+						_sqlite3WalkSelect(tls, bp+456, pSelect)
 					}
 				} else {
-					_sqlite3WalkExprList(tls, bp+448, (*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FpCheck)
+					_sqlite3WalkExprList(tls, bp+456, (*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FpCheck)
 					i = 0
 					for {
 						if !(i < int32((*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FnCol)) {
 							break
 						}
-						_sqlite3WalkExpr(tls, bp+448, _sqlite3ColumnExpr(tls, (**(**TParse)(__ccgo_up(bp))).FpNewTable, (*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FaCol+uintptr(i)*16))
+						_sqlite3WalkExpr(tls, bp+456, _sqlite3ColumnExpr(tls, (**(**TParse)(__ccgo_up(bp))).FpNewTable, (*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FaCol+uintptr(i)*16))
 						goto _2
 					_2:
 						;
@@ -9864,19 +9022,19 @@ func _renameQuotefixFunc(tls *libc.TLS, context uintptr, NotUsed int32, argv uin
 				}
 			} else {
 				if (**(**TParse)(__ccgo_up(bp))).FpNewIndex != 0 {
-					_sqlite3WalkExprList(tls, bp+448, (*TIndex)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewIndex)).FaColExpr)
-					_sqlite3WalkExpr(tls, bp+448, (*TIndex)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewIndex)).FpPartIdxWhere)
+					_sqlite3WalkExprList(tls, bp+456, (*TIndex)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewIndex)).FaColExpr)
+					_sqlite3WalkExpr(tls, bp+456, (*TIndex)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewIndex)).FpPartIdxWhere)
 				} else {
 					rc = _renameResolveTrigger(tls, bp)
 					if rc == SQLITE_OK {
-						_renameWalkTrigger(tls, bp+448, (**(**TParse)(__ccgo_up(bp))).FpNewTrigger)
+						_renameWalkTrigger(tls, bp+456, (**(**TParse)(__ccgo_up(bp))).FpNewTrigger)
 					}
 				}
 			}
 			if rc == SQLITE_OK {
-				rc = _renameEditSql(tls, context, bp+416, zInput, uintptr(0), 0)
+				rc = _renameEditSql(tls, context, bp+424, zInput, uintptr(0), 0)
 			}
-			_renameTokenFree(tls, db, (**(**TRenameCtx)(__ccgo_up(bp + 416))).FpList)
+			_renameTokenFree(tls, db, (**(**TRenameCtx)(__ccgo_up(bp + 424))).FpList)
 		}
 		if rc != SQLITE_OK {
 			if _sqlite3WritableSchema(tls, db) != 0 && rc == int32(SQLITE_ERROR) {
@@ -9924,7 +9082,7 @@ func _renameTableTest(tls *libc.TLS, context uintptr, NotUsed int32, argv uintpt
 	var db, zDb, zInput, zWhen uintptr
 	var flags Tu64
 	var xAuth Tsqlite3_xauth
-	var _ /* sNC at bp+416 */ TNameContext
+	var _ /* sNC at bp+424 */ TNameContext
 	var _ /* sParse at bp+0 */ TParse
 	_, _, _, _, _, _, _, _, _, _, _, _ = bNoDQS, bTemp, db, flags, i1, i2, isLegacy, rc, xAuth, zDb, zInput, zWhen
 	db = Xsqlite3_context_db_handle(tls, context)
@@ -9946,11 +9104,11 @@ func _renameTableTest(tls *libc.TLS, context uintptr, NotUsed int32, argv uintpt
 		(*Tsqlite3)(unsafe.Pointer(db)).Fflags = flags
 		if rc == SQLITE_OK {
 			if isLegacy == 0 && (**(**TParse)(__ccgo_up(bp))).FpNewTable != 0 && libc.Int32FromUint8((*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).FeTabType) == int32(TABTYP_VIEW) {
-				libc.Xmemset(tls, bp+416, 0, uint64(56))
-				(**(**TNameContext)(__ccgo_up(bp + 416))).FpParse = bp
+				libc.Xmemset(tls, bp+424, 0, uint64(56))
+				(**(**TNameContext)(__ccgo_up(bp + 424))).FpParse = bp
 				_sqlite3SelectPrep(tls, bp, (*(*struct {
 					FpSelect uintptr
-				})(unsafe.Pointer(&(*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).Fu))).FpSelect, bp+416)
+				})(unsafe.Pointer(&(*TTable)(unsafe.Pointer((**(**TParse)(__ccgo_up(bp))).FpNewTable)).Fu))).FpSelect, bp+424)
 				if (**(**TParse)(__ccgo_up(bp))).FnErr != 0 {
 					rc = (**(**TParse)(__ccgo_up(bp))).Frc
 				}
@@ -10066,41 +9224,6 @@ func _replaceFunc(tls *libc.TLS, context uintptr, argc int32, argv uintptr) {
 	j = j + (nStr - i)
 	**(**uint8)(__ccgo_up(zOut + uintptr(j))) = uint8(0)
 	Xsqlite3_result_text(tls, context, zOut, j, __ccgo_fp(Xsqlite3_free))
-}
-
-// C documentation
-//
-//	/*
-//	** Resize an Index object to hold N columns total.  Return SQLITE_OK
-//	** on success and SQLITE_NOMEM on an OOM error.
-//	*/
-func _resizeIndexObject(tls *libc.TLS, pParse uintptr, pIdx uintptr, N int32) (r int32) {
-	var db, zExtra uintptr
-	var nByte Tu64
-	_, _, _ = db, nByte, zExtra
-	if libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnColumn) >= N {
-		return SQLITE_OK
-	}
-	db = (*TParse)(unsafe.Pointer(pParse)).Fdb
-	nByte = uint64(libc.Uint64FromInt64(8)+libc.Uint64FromInt64(2)+libc.Uint64FromInt64(2)+libc.Uint64FromInt32(1)) * libc.Uint64FromInt32(N)
-	zExtra = _sqlite3DbMallocZero(tls, db, nByte)
-	if zExtra == uintptr(0) {
-		return int32(SQLITE_NOMEM)
-	}
-	libc.Xmemcpy(tls, zExtra, (*TIndex)(unsafe.Pointer(pIdx)).FazColl, uint64(8)*uint64((*TIndex)(unsafe.Pointer(pIdx)).FnColumn))
-	(*TIndex)(unsafe.Pointer(pIdx)).FazColl = zExtra
-	zExtra = zExtra + uintptr(uint64(8)*libc.Uint64FromInt32(N))
-	libc.Xmemcpy(tls, zExtra, (*TIndex)(unsafe.Pointer(pIdx)).FaiRowLogEst, uint64(2)*libc.Uint64FromInt32(libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnKeyCol)+libc.Int32FromInt32(1)))
-	(*TIndex)(unsafe.Pointer(pIdx)).FaiRowLogEst = zExtra
-	zExtra = zExtra + uintptr(uint64(2)*libc.Uint64FromInt32(N))
-	libc.Xmemcpy(tls, zExtra, (*TIndex)(unsafe.Pointer(pIdx)).FaiColumn, uint64(2)*uint64((*TIndex)(unsafe.Pointer(pIdx)).FnColumn))
-	(*TIndex)(unsafe.Pointer(pIdx)).FaiColumn = zExtra
-	zExtra = zExtra + uintptr(uint64(2)*libc.Uint64FromInt32(N))
-	libc.Xmemcpy(tls, zExtra, (*TIndex)(unsafe.Pointer(pIdx)).FaSortOrder, uint64((*TIndex)(unsafe.Pointer(pIdx)).FnColumn))
-	(*TIndex)(unsafe.Pointer(pIdx)).FaSortOrder = zExtra
-	(*TIndex)(unsafe.Pointer(pIdx)).FnColumn = libc.Uint16FromInt32(N) /* See tag-20250221-1 above for proof of safety */
-	libc.SetBitFieldPtr16Uint32(pIdx+100, libc.Uint32FromInt32(1), 4, 0x10)
-	return SQLITE_OK
 }
 
 // C documentation
@@ -10733,7 +9856,7 @@ func _sessionAppendPartialUpdate(tls *libc.TLS, pBuf uintptr, pIter uintptr, aRe
 	var a1, a2, pOut, v1 uintptr
 	var bData, i, n1, n11, n2, n21 int32
 	_, _, _, _, _, _, _, _, _, _ = a1, a2, bData, i, n1, n11, n2, n21, pOut, v1
-	_sessionBufferGrow(tls, pBuf, int64(int32(2)+nRec+nChange), pRc)
+	_sessionBufferGrow(tls, pBuf, libc.Int64FromInt32(2)+int64(nRec)+int64(nChange), pRc)
 	if **(**int32)(__ccgo_up(pRc)) == SQLITE_OK {
 		bData = 0
 		pOut = (*TSessionBuffer)(unsafe.Pointer(pBuf)).FaBuf + uintptr((*TSessionBuffer)(unsafe.Pointer(pBuf)).FnBuf)
@@ -10814,10 +9937,12 @@ func _sessionAppendPartialUpdate(tls *libc.TLS, pBuf uintptr, pIter uintptr, aRe
 //	** each field that is undefined in a1[], swap in the field from a2[].
 //	*/
 func _sessionAppendRecordMerge(tls *libc.TLS, pBuf uintptr, nCol int32, a1 uintptr, n1 int32, a2 uintptr, n2 int32, pRc uintptr) {
-	var i, nn1, nn2 int32
-	var pOut uintptr
-	_, _, _, _ = i, nn1, nn2, pOut
-	_sessionBufferGrow(tls, pBuf, int64(n1+n2), pRc)
+	var a1Eof, a2Eof, pOut uintptr
+	var i, nn1, nn2, v2, v3 int32
+	_, _, _, _, _, _, _, _ = a1Eof, a2Eof, i, nn1, nn2, pOut, v2, v3
+	a1Eof = a1 + uintptr(n1)
+	a2Eof = a2 + uintptr(n2)
+	_sessionBufferGrow(tls, pBuf, int64(n1)+int64(n2), pRc)
 	if **(**int32)(__ccgo_up(pRc)) == SQLITE_OK {
 		pOut = (*TSessionBuffer)(unsafe.Pointer(pBuf)).FaBuf + uintptr((*TSessionBuffer)(unsafe.Pointer(pBuf)).FnBuf)
 		i = 0
@@ -10825,9 +9950,19 @@ func _sessionAppendRecordMerge(tls *libc.TLS, pBuf uintptr, nCol int32, a1 uintp
 			if !(i < nCol) {
 				break
 			}
-			nn1 = _sessionSerialLen(tls, a1)
-			nn2 = _sessionSerialLen(tls, a2)
-			if libc.Int32FromUint8(**(**Tu8)(__ccgo_up(a1))) == 0 || libc.Int32FromUint8(**(**Tu8)(__ccgo_up(a1))) == int32(0xFF) {
+			if a1 < a1Eof {
+				v2 = _sessionSerialLen(tls, a1)
+			} else {
+				v2 = 0
+			}
+			nn1 = v2
+			if a2 < a2Eof {
+				v3 = _sessionSerialLen(tls, a2)
+			} else {
+				v3 = 0
+			}
+			nn2 = v3
+			if nn1 == 0 || nn2 > 0 && (libc.Int32FromUint8(**(**Tu8)(__ccgo_up(a1))) == 0 || libc.Int32FromUint8(**(**Tu8)(__ccgo_up(a1))) == int32(0xFF)) {
 				libc.Xmemcpy(tls, pOut, a2, libc.Uint64FromInt32(nn2))
 				pOut = pOut + uintptr(nn2)
 			} else {
@@ -10859,7 +9994,7 @@ func _sessionAppendStr(tls *libc.TLS, p uintptr, zStr uintptr, pRc uintptr) {
 	var nStr int32
 	_ = nStr
 	nStr = _sqlite3Strlen30(tls, zStr)
-	if 0 == _sessionBufferGrow(tls, p, int64(nStr+int32(1)), pRc) {
+	if 0 == _sessionBufferGrow(tls, p, int64(nStr)+int64(1), pRc) {
 		libc.Xmemcpy(tls, (*TSessionBuffer)(unsafe.Pointer(p)).FaBuf+uintptr((*TSessionBuffer)(unsafe.Pointer(p)).FnBuf), zStr, libc.Uint64FromInt32(nStr))
 		**(**int32)(__ccgo_up(p + 8)) += nStr
 		**(**Tu8)(__ccgo_up((*TSessionBuffer)(unsafe.Pointer(p)).FaBuf + uintptr((*TSessionBuffer)(unsafe.Pointer(p)).FnBuf))) = uint8(0x00)
@@ -11314,7 +10449,7 @@ func _sessionChangesetInvert(tls *libc.TLS, pInput uintptr, __ccgo_fp_xOutput ui
 		}
 		if (*TSessionInput)(unsafe.Pointer(pInput)).FiNext+int32(1) >= (*TSessionInput)(unsafe.Pointer(pInput)).FnData {
 			if (*TSessionInput)(unsafe.Pointer(pInput)).FiNext != (*TSessionInput)(unsafe.Pointer(pInput)).FnData {
-				**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(237677))
+				**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(237907))
 				goto finished_invert
 			}
 			break
@@ -11433,7 +10568,7 @@ func _sessionChangesetInvert(tls *libc.TLS, pInput uintptr, __ccgo_fp_xOutput ui
 				goto finished_invert
 			}
 		default:
-			**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(237780))
+			**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(238010))
 			goto finished_invert
 		}
 		if __ccgo_fp_xOutput != 0 && (**(**TSessionBuffer)(__ccgo_up(bp + 8))).FnBuf >= _sessions_strm_chunk_size {
@@ -11541,12 +10676,12 @@ func _sessionChangesetNextOne(tls *libc.TLS, p uintptr, paRec uintptr, pnRec uin
 	if (*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FzTab == uintptr(0) || (*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FbPatchset != 0 && (*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FbInvert != 0 {
 		/* The first record in the changeset is not a table header. Must be a
 		 ** corrupt changeset. */
-		v2 = _sqlite3CorruptError(tls, int32(237357))
+		v2 = _sqlite3CorruptError(tls, int32(237587))
 		(*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Frc = v2
 		return v2
 	}
 	if libc.Int32FromUint8(op) != int32(SQLITE_UPDATE) && libc.Int32FromUint8(op) != int32(SQLITE_DELETE) && libc.Int32FromUint8(op) != int32(SQLITE_INSERT) || (*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Fin.FiNext >= (*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Fin.FnData {
-		v2 = _sqlite3CorruptError(tls, int32(237363))
+		v2 = _sqlite3CorruptError(tls, int32(237593))
 		(*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Frc = v2
 		return v2
 	}
@@ -11630,7 +10765,7 @@ func _sessionChangesetNextOne(tls *libc.TLS, p uintptr, paRec uintptr, pnRec uin
 				if **(**Tu8)(__ccgo_up((*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FabPK + uintptr(i))) != 0 {
 					**(**uintptr)(__ccgo_up((*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FapValue + uintptr(i)*8)) = **(**uintptr)(__ccgo_up((*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FapValue + uintptr(i+(*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FnCol)*8))
 					if **(**uintptr)(__ccgo_up((*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).FapValue + uintptr(i)*8)) == uintptr(0) {
-						v2 = _sqlite3CorruptError(tls, int32(237409))
+						v2 = _sqlite3CorruptError(tls, int32(237639))
 						(*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Frc = v2
 						return v2
 					}
@@ -11717,7 +10852,7 @@ func _sessionChangesetReadTblhdr(tls *libc.TLS, p uintptr) (r int32) {
 			(*Tsqlite3_changeset_iter)(unsafe.Pointer(p)).Ftblhdr.FnBuf = 0
 			_sessionBufferGrow(tls, p+72, int64(nByte), bp)
 		} else {
-			**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(237271))
+			**(**int32)(__ccgo_up(bp)) = _sqlite3CorruptError(tls, int32(237501))
 		}
 	}
 	if **(**int32)(__ccgo_up(bp)) == SQLITE_OK {
@@ -12197,7 +11332,7 @@ func _sessionReadRecord(tls *libc.TLS, pIn uintptr, nCol int32, abPK uintptr, ap
 		rc = _sessionInputBuffer(tls, pIn, int32(9))
 		if rc == SQLITE_OK {
 			if (*TSessionInput)(unsafe.Pointer(pIn)).FiNext >= (*TSessionInput)(unsafe.Pointer(pIn)).FnData {
-				rc = _sqlite3CorruptError(tls, int32(237090))
+				rc = _sqlite3CorruptError(tls, int32(237320))
 			} else {
 				v3 = pIn + 8
 				v2 = *(*int32)(unsafe.Pointer(v3))
@@ -12222,7 +11357,7 @@ func _sessionReadRecord(tls *libc.TLS, pIn uintptr, nCol int32, abPK uintptr, ap
 				rc = _sessionInputBuffer(tls, pIn, **(**int32)(__ccgo_up(bp)))
 				if rc == SQLITE_OK {
 					if **(**int32)(__ccgo_up(bp)) < 0 || **(**int32)(__ccgo_up(bp)) > (*TSessionInput)(unsafe.Pointer(pIn)).FnData-(*TSessionInput)(unsafe.Pointer(pIn)).FiNext {
-						rc = _sqlite3CorruptError(tls, int32(237111))
+						rc = _sqlite3CorruptError(tls, int32(237341))
 					} else {
 						if eType == int32(SQLITE_TEXT) {
 							v2 = int32(SQLITE_UTF8)
@@ -12237,7 +11372,7 @@ func _sessionReadRecord(tls *libc.TLS, pIn uintptr, nCol int32, abPK uintptr, ap
 			}
 			if eType == int32(SQLITE_INTEGER) || eType == int32(SQLITE_FLOAT) {
 				if (*TSessionInput)(unsafe.Pointer(pIn)).FnData-(*TSessionInput)(unsafe.Pointer(pIn)).FiNext < int32(8) {
-					rc = _sqlite3CorruptError(tls, int32(237121))
+					rc = _sqlite3CorruptError(tls, int32(237351))
 				} else {
 					**(**Tsqlite3_int64)(__ccgo_up(bp + 8)) = _sessionGetI64(tls, aVal)
 					if eType == int32(SQLITE_INTEGER) {
@@ -13205,19 +12340,19 @@ bitvec_set_end:
 //	** transaction is committed before returning.
 //	*/
 func _sqlite3BtreeCopyFile(tls *libc.TLS, pTo uintptr, pFrom uintptr) (r int32) {
-	bp := tls.Alloc(80)
-	defer tls.Free(80)
+	bp := tls.Alloc(96)
+	defer tls.Free(96)
 	var pFd, v1 uintptr
 	var rc int32
 	var _ /* b at bp+0 */ Tsqlite3_backup
-	var _ /* nByte at bp+72 */ Ti64
+	var _ /* nByte at bp+80 */ Ti64
 	_, _, _ = pFd, rc, v1
 	_sqlite3BtreeEnter(tls, pTo)
 	_sqlite3BtreeEnter(tls, pFrom)
 	pFd = _sqlite3PagerFile(tls, _sqlite3BtreePager(tls, pTo))
 	if (*Tsqlite3_file)(unsafe.Pointer(pFd)).FpMethods != 0 {
-		**(**Ti64)(__ccgo_up(bp + 72)) = int64(_sqlite3BtreeGetPageSize(tls, pFrom)) * libc.Int64FromUint32(_sqlite3BtreeLastPage(tls, pFrom))
-		rc = _sqlite3OsFileControl(tls, pFd, int32(SQLITE_FCNTL_OVERWRITE), bp+72)
+		**(**Ti64)(__ccgo_up(bp + 80)) = int64(_sqlite3BtreeGetPageSize(tls, pFrom)) * libc.Int64FromUint32(_sqlite3BtreeLastPage(tls, pFrom))
+		rc = _sqlite3OsFileControl(tls, pFd, int32(SQLITE_FCNTL_OVERWRITE), bp+80)
 		if rc == int32(SQLITE_NOTFOUND) {
 			rc = SQLITE_OK
 		}
@@ -13230,7 +12365,7 @@ func _sqlite3BtreeCopyFile(tls *libc.TLS, pTo uintptr, pFrom uintptr) (r int32) 
 	 ** and sqlite3_backup_finish() to detect that they are being called
 	 ** from this function, not directly by the user.
 	 */
-	libc.Xmemset(tls, bp, 0, uint64(72))
+	libc.Xmemset(tls, bp, 0, uint64(80))
 	(**(**Tsqlite3_backup)(__ccgo_up(bp))).FpSrcDb = (*TBtree)(unsafe.Pointer(pFrom)).Fdb
 	(**(**Tsqlite3_backup)(__ccgo_up(bp))).FpSrc = pFrom
 	(**(**Tsqlite3_backup)(__ccgo_up(bp))).FpDest = pTo
@@ -13329,7 +12464,7 @@ func _sqlite3BtreeTransferRow(tls *libc.TLS, pDest uintptr, pSrc uintptr, iKey T
 	nIn = uint32((*TBtCursor)(unsafe.Pointer(pSrc)).Finfo.FnLocal)
 	aIn = (*TBtCursor)(unsafe.Pointer(pSrc)).Finfo.FpPayload
 	if aIn+uintptr(nIn) > (*TMemPage)(unsafe.Pointer((*TBtCursor)(unsafe.Pointer(pSrc)).FpPage)).FaDataEnd {
-		return _sqlite3CorruptError(tls, int32(82878))
+		return _sqlite3CorruptError(tls, int32(82970))
 	}
 	nRem = (*TBtCursor)(unsafe.Pointer(pSrc)).Finfo.FnPayload
 	if nIn == nRem && nIn < uint32((*TMemPage)(unsafe.Pointer((*TBtCursor)(unsafe.Pointer(pDest)).FpPage)).FmaxLocal) {
@@ -13351,7 +12486,7 @@ func _sqlite3BtreeTransferRow(tls *libc.TLS, pDest uintptr, pSrc uintptr, iKey T
 		}
 		if nRem > nIn {
 			if aIn+uintptr(nIn)+uintptr(4) > (*TMemPage)(unsafe.Pointer((*TBtCursor)(unsafe.Pointer(pSrc)).FpPage)).FaDataEnd {
-				return _sqlite3CorruptError(tls, int32(82903))
+				return _sqlite3CorruptError(tls, int32(82995))
 			}
 			ovflIn = _sqlite3Get4byte(tls, (*TBtCursor)(unsafe.Pointer(pSrc)).Finfo.FpPayload+uintptr(nIn))
 		}
@@ -13669,27 +12804,6 @@ func _sqlite3ExprInt32(tls *libc.TLS, db uintptr, iVal int32) (r uintptr) {
 		(*TExpr)(unsafe.Pointer(pNew)).FnHeight = int32(1)
 	}
 	return pNew
-}
-
-// C documentation
-//
-//	/*
-//	** Make arrangements to invoke OP_Null on a range of registers
-//	** during initialization.
-//	*/
-func _sqlite3ExprNullRegisterRange(tls *libc.TLS, pParse uintptr, iReg int32, nReg int32) {
-	bp := tls.Alloc(80)
-	defer tls.Free(80)
-	var okConstFactor Tu8
-	var _ /* t at bp+0 */ TExpr
-	_ = okConstFactor
-	okConstFactor = libc.Uint8FromInt32(int32(Tbft(*(*uint16)(unsafe.Pointer(pParse + 40)) & 0x80 >> 7)))
-	libc.Xmemset(tls, bp, 0, uint64(72))
-	(**(**TExpr)(__ccgo_up(bp))).Fop = uint8(TK_NULLS)
-	*(*int32)(unsafe.Pointer(bp + 64)) = nReg
-	libc.SetBitFieldPtr16Uint32(pParse+40, libc.Uint32FromInt32(1), 7, 0x80)
-	_sqlite3ExprCodeRunJustOnce(tls, pParse, bp, iReg)
-	libc.SetBitFieldPtr16Uint32(pParse+40, uint32(okConstFactor), 7, 0x80)
 }
 
 // C documentation
@@ -15123,50 +14237,6 @@ func _sqlite3SchemaClear(tls *libc.TLS, p uintptr) {
 // C documentation
 //
 //	/*
-//	** Check all ON clauses in pSelect to verify that they do not reference
-//	** columns to the right.
-//	*/
-func _sqlite3SelectCheckOnClauses(tls *libc.TLS, pParse uintptr, pSelect uintptr) {
-	bp := tls.Alloc(80)
-	defer tls.Free(80)
-	var ii int32
-	var pItem uintptr
-	var _ /* sCtx at bp+48 */ TCheckOnCtx
-	var _ /* w at bp+0 */ TWalker
-	_, _ = ii, pItem
-	libc.Xmemset(tls, bp, 0, uint64(48))
-	(**(**TWalker)(__ccgo_up(bp))).FpParse = pParse
-	(**(**TWalker)(__ccgo_up(bp))).FxExprCallback = __ccgo_fp(_selectCheckOnClausesExpr)
-	(**(**TWalker)(__ccgo_up(bp))).FxSelectCallback = __ccgo_fp(_selectCheckOnClausesSelect)
-	*(*uintptr)(unsafe.Pointer(bp + 40)) = bp + 48
-	libc.Xmemset(tls, bp+48, 0, uint64(24))
-	(**(**TCheckOnCtx)(__ccgo_up(bp + 48))).FpSrc = (*TSelect)(unsafe.Pointer(pSelect)).FpSrc
-	_sqlite3WalkExpr(tls, bp, (*TSelect)(unsafe.Pointer(pSelect)).FpWhere)
-	**(**Tu32)(__ccgo_up(pSelect + 4)) &= libc.Uint32FromInt32(^libc.Int32FromInt32(SF_OnToWhere))
-	/* Check for any table-function args that are attached to virtual tables
-	 ** on the RHS of an outer join. They are subject to the same constraints
-	 ** as ON clauses. */
-	(**(**TCheckOnCtx)(__ccgo_up(bp + 48))).FbFuncArg = int32(1)
-	ii = 0
-	for {
-		if !(ii < (*TSrcList)(unsafe.Pointer((*TSelect)(unsafe.Pointer(pSelect)).FpSrc)).FnSrc) {
-			break
-		}
-		pItem = (*TSelect)(unsafe.Pointer(pSelect)).FpSrc + 8 + uintptr(ii)*80
-		if int32(*(*uint32)(unsafe.Pointer(pItem + 24 + 4))&0x8>>3) != 0 && libc.Int32FromUint8((*TSrcItem)(unsafe.Pointer(pItem)).Ffg.Fjointype)&int32(JT_OUTER) != 0 {
-			(**(**TCheckOnCtx)(__ccgo_up(bp + 48))).FiJoin = (*TSrcItem)(unsafe.Pointer(pItem)).FiCursor
-			_sqlite3WalkExprList(tls, bp, *(*uintptr)(unsafe.Pointer(pItem + 48)))
-		}
-		goto _1
-	_1:
-		;
-		ii = ii + 1
-	}
-}
-
-// C documentation
-//
-//	/*
 //	** Append a new table name to the given SrcList.  Create a new SrcList if
 //	** need be.  A new entry is created in the SrcList even if pTable is NULL.
 //	**
@@ -15268,94 +14338,6 @@ func _sqlite3SrcListAppendList(tls *libc.TLS, pParse uintptr, p1 uintptr, p2 uin
 // C documentation
 //
 //	/*
-//	** If cursors, triggers, views and subqueries are all omitted from
-//	** the build, then none of the following routines, except for
-//	** sqlite3SelectDup(), can be called. sqlite3SelectDup() is sometimes
-//	** called with a NULL argument.
-//	*/
-func _sqlite3SrcListDup(tls *libc.TLS, db uintptr, p uintptr, flags int32) (r uintptr) {
-	var i int32
-	var pNew, pNewItem, pNewSubq, pOldItem, pTab, v3 uintptr
-	var v1 Tu32
-	_, _, _, _, _, _, _, _ = i, pNew, pNewItem, pNewSubq, pOldItem, pTab, v1, v3
-	if p == uintptr(0) {
-		return uintptr(0)
-	}
-	pNew = _sqlite3DbMallocRawNN(tls, db, uint64(uint64(libc.UintptrFromInt32(0)+8)+libc.Uint64FromInt32((*TSrcList)(unsafe.Pointer(p)).FnSrc)*libc.Uint64FromInt64(80)))
-	if pNew == uintptr(0) {
-		return uintptr(0)
-	}
-	v1 = libc.Uint32FromInt32((*TSrcList)(unsafe.Pointer(p)).FnSrc)
-	(*TSrcList)(unsafe.Pointer(pNew)).FnAlloc = v1
-	(*TSrcList)(unsafe.Pointer(pNew)).FnSrc = libc.Int32FromUint32(v1)
-	i = 0
-	for {
-		if !(i < (*TSrcList)(unsafe.Pointer(p)).FnSrc) {
-			break
-		}
-		pNewItem = pNew + 8 + uintptr(i)*80
-		pOldItem = p + 8 + uintptr(i)*80
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).Ffg = (*TSrcItem)(unsafe.Pointer(pOldItem)).Ffg
-		if int32(*(*uint32)(unsafe.Pointer(pOldItem + 24 + 4))&0x4>>2) != 0 {
-			pNewSubq = _sqlite3DbMallocRaw(tls, db, uint64(24))
-			if pNewSubq == uintptr(0) {
-				libc.SetBitFieldPtr32Uint32(pNewItem+24+4, libc.Uint32FromInt32(0), 2, 0x4)
-			} else {
-				libc.Xmemcpy(tls, pNewSubq, *(*uintptr)(unsafe.Pointer(pOldItem + 72)), uint64(24))
-				(*TSubquery)(unsafe.Pointer(pNewSubq)).FpSelect = _sqlite3SelectDup(tls, db, (*TSubquery)(unsafe.Pointer(pNewSubq)).FpSelect, flags)
-				if (*TSubquery)(unsafe.Pointer(pNewSubq)).FpSelect == uintptr(0) {
-					_sqlite3DbFree(tls, db, pNewSubq)
-					pNewSubq = uintptr(0)
-					libc.SetBitFieldPtr32Uint32(pNewItem+24+4, libc.Uint32FromInt32(0), 2, 0x4)
-				}
-			}
-			*(*uintptr)(unsafe.Pointer(pNewItem + 72)) = pNewSubq
-		} else {
-			if int32(*(*uint32)(unsafe.Pointer(pOldItem + 24 + 4))&0x10000>>16) != 0 {
-				*(*uintptr)(unsafe.Pointer(pNewItem + 72)) = *(*uintptr)(unsafe.Pointer(pOldItem + 72))
-			} else {
-				*(*uintptr)(unsafe.Pointer(pNewItem + 72)) = _sqlite3DbStrDup(tls, db, *(*uintptr)(unsafe.Pointer(pOldItem + 72)))
-			}
-		}
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).FzName = _sqlite3DbStrDup(tls, db, (*TSrcItem)(unsafe.Pointer(pOldItem)).FzName)
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).FzAlias = _sqlite3DbStrDup(tls, db, (*TSrcItem)(unsafe.Pointer(pOldItem)).FzAlias)
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).FiCursor = (*TSrcItem)(unsafe.Pointer(pOldItem)).FiCursor
-		if int32(*(*uint32)(unsafe.Pointer(pNewItem + 24 + 4))&0x2>>1) != 0 {
-			*(*uintptr)(unsafe.Pointer(pNewItem + 48)) = _sqlite3DbStrDup(tls, db, *(*uintptr)(unsafe.Pointer(pOldItem + 48)))
-		} else {
-			if int32(*(*uint32)(unsafe.Pointer(pNewItem + 24 + 4))&0x8>>3) != 0 {
-				*(*uintptr)(unsafe.Pointer(pNewItem + 48)) = _sqlite3ExprListDup(tls, db, *(*uintptr)(unsafe.Pointer(pOldItem + 48)), flags)
-			} else {
-				*(*Tu32)(unsafe.Pointer(&(*TSrcItem)(unsafe.Pointer(pNewItem)).Fu1)) = *(*Tu32)(unsafe.Pointer(&(*TSrcItem)(unsafe.Pointer(pOldItem)).Fu1))
-			}
-		}
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).Fu2 = (*TSrcItem)(unsafe.Pointer(pOldItem)).Fu2
-		if int32(*(*uint32)(unsafe.Pointer(pNewItem + 24 + 4))&0x200>>9) != 0 {
-			(*TCteUse)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(pNewItem + 56)))).FnUse = (*TCteUse)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(pNewItem + 56)))).FnUse + 1
-		}
-		v3 = (*TSrcItem)(unsafe.Pointer(pOldItem)).FpSTab
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).FpSTab = v3
-		pTab = v3
-		if pTab != 0 {
-			(*TTable)(unsafe.Pointer(pTab)).FnTabRef = (*TTable)(unsafe.Pointer(pTab)).FnTabRef + 1
-		}
-		if int32(*(*uint32)(unsafe.Pointer(pOldItem + 24 + 4))&0x800>>11) != 0 {
-			*(*uintptr)(unsafe.Pointer(pNewItem + 64)) = _sqlite3IdListDup(tls, db, *(*uintptr)(unsafe.Pointer(pOldItem + 64)))
-		} else {
-			*(*uintptr)(unsafe.Pointer(pNewItem + 64)) = _sqlite3ExprDup(tls, db, *(*uintptr)(unsafe.Pointer(pOldItem + 64)), flags)
-		}
-		(*TSrcItem)(unsafe.Pointer(pNewItem)).FcolUsed = (*TSrcItem)(unsafe.Pointer(pOldItem)).FcolUsed
-		goto _2
-	_2:
-		;
-		i = i + 1
-	}
-	return pNew
-}
-
-// C documentation
-//
-//	/*
 //	** Enlarge the memory allocation on a StrAccum object so that it is
 //	** able to accept at least N more bytes of text.
 //	**
@@ -15413,109 +14395,6 @@ func _sqlite3StrAccumEnlarge(tls *libc.TLS, p uintptr, N Ti64) (r int32) {
 		}
 	}
 	return int32(N)
-}
-
-// C documentation
-//
-//	/*
-//	** Prepare a virtual machine for execution for the first time after
-//	** creating the virtual machine.  This involves things such
-//	** as allocating registers and initializing the program counter.
-//	** After the VDBE has be prepped, it can be executed by one or more
-//	** calls to sqlite3VdbeExec().
-//	**
-//	** This function may be called exactly once on each virtual machine.
-//	** After this routine is called the VM has been "packaged" and is ready
-//	** to run.  After this routine is called, further calls to
-//	** sqlite3VdbeAddOp() functions are prohibited.  This routine disconnects
-//	** the Vdbe from the Parse object that helped generate it so that the
-//	** the Vdbe becomes an independent entity and the Parse object can be
-//	** destroyed.
-//	**
-//	** Use the sqlite3VdbeRewind() procedure to restore a virtual machine back
-//	** to its initial state after it has been run.
-//	*/
-func _sqlite3VdbeMakeReady(tls *libc.TLS, p uintptr, pParse uintptr) {
-	bp := tls.Alloc(32)
-	defer tls.Free(32)
-	var db, v1 uintptr
-	var n, nCursor, nMem, nVar int32
-	var _ /* nArg at bp+0 */ int32
-	var _ /* x at bp+8 */ TReusableSpace
-	_, _, _, _, _, _ = db, n, nCursor, nMem, nVar, v1 /* Reusable bulk memory */
-	(*TVdbe)(unsafe.Pointer(p)).FpVList = (*TParse)(unsafe.Pointer(pParse)).FpVList
-	(*TParse)(unsafe.Pointer(pParse)).FpVList = uintptr(0)
-	db = (*TVdbe)(unsafe.Pointer(p)).Fdb
-	nVar = int32((*TParse)(unsafe.Pointer(pParse)).FnVar)
-	nMem = (*TParse)(unsafe.Pointer(pParse)).FnMem
-	nCursor = (*TParse)(unsafe.Pointer(pParse)).FnTab
-	**(**int32)(__ccgo_up(bp)) = (*TParse)(unsafe.Pointer(pParse)).FnMaxArg
-	/* Each cursor uses a memory cell.  The first cursor (cursor 0) can
-	 ** use aMem[0] which is not otherwise used by the VDBE program.  Allocate
-	 ** space at the end of aMem[] for cursors 1 and greater.
-	 ** See also: allocateCursor().
-	 */
-	nMem = nMem + nCursor
-	if nCursor == 0 && nMem > 0 {
-		nMem = nMem + 1
-	} /* Space for aMem[0] even if not used */
-	/* Figure out how much reusable memory is available at the end of the
-	 ** opcode array.  This extra memory will be reallocated for other elements
-	 ** of the prepared statement.
-	 */
-	n = libc.Int32FromUint64(libc.Uint64FromInt64(24) * libc.Uint64FromInt32((*TVdbe)(unsafe.Pointer(p)).FnOp))                            /* Bytes of opcode memory used */
-	(**(**TReusableSpace)(__ccgo_up(bp + 8))).FpSpace = (*TVdbe)(unsafe.Pointer(p)).FaOp + uintptr(n)                                      /* Unused opcode memory */
-	(**(**TReusableSpace)(__ccgo_up(bp + 8))).FnFree = int64(((*TParse)(unsafe.Pointer(pParse)).FszOpAlloc - n) & ^libc.Int32FromInt32(7)) /* Bytes of unused memory */
-	_resolveP2Values(tls, p, bp)
-	libc.SetBitFieldPtr16Uint32(p+200, uint32(libc.BoolUint8((*TParse)(unsafe.Pointer(pParse)).FisMultiWrite != 0 && int32(Tbft(*(*uint16)(unsafe.Pointer(pParse + 40))&0x2>>1)) != 0)), 5, 0x20)
-	if (*TParse)(unsafe.Pointer(pParse)).Fexplain != 0 {
-		if nMem < int32(10) {
-			nMem = int32(10)
-		}
-		libc.SetBitFieldPtr16Uint32(p+200, uint32((*TParse)(unsafe.Pointer(pParse)).Fexplain), 2, 0xc)
-		(*TVdbe)(unsafe.Pointer(p)).FnResColumn = libc.Uint16FromInt32(int32(12) - int32(4)*int32(Tbft(*(*uint16)(unsafe.Pointer(p + 200))&0xc>>2)))
-	}
-	libc.SetBitFieldPtr16Uint32(p+200, libc.Uint32FromInt32(0), 0, 0x3)
-	/* Memory for registers, parameters, cursor, etc, is allocated in one or two
-	 ** passes.  On the first pass, we try to reuse unused memory at the
-	 ** end of the opcode array.  If we are unable to satisfy all memory
-	 ** requirements by reusing the opcode array tail, then the second
-	 ** pass will fill in the remainder using a fresh memory allocation.
-	 **
-	 ** This two-pass approach that reuses as much memory as possible from
-	 ** the leftover memory at the end of the opcode array.  This can significantly
-	 ** reduce the amount of memory held by a prepared statement.
-	 */
-	(**(**TReusableSpace)(__ccgo_up(bp + 8))).FnNeeded = 0
-	(*TVdbe)(unsafe.Pointer(p)).FaMem = _allocSpace(tls, bp+8, uintptr(0), libc.Int64FromUint64(libc.Uint64FromInt32(nMem)*uint64(56)))
-	(*TVdbe)(unsafe.Pointer(p)).FaVar = _allocSpace(tls, bp+8, uintptr(0), libc.Int64FromUint64(libc.Uint64FromInt32(nVar)*uint64(56)))
-	(*TVdbe)(unsafe.Pointer(p)).FapArg = _allocSpace(tls, bp+8, uintptr(0), libc.Int64FromUint64(libc.Uint64FromInt32(**(**int32)(__ccgo_up(bp)))*uint64(8)))
-	(*TVdbe)(unsafe.Pointer(p)).FapCsr = _allocSpace(tls, bp+8, uintptr(0), libc.Int64FromUint64(libc.Uint64FromInt32(nCursor)*uint64(8)))
-	if (**(**TReusableSpace)(__ccgo_up(bp + 8))).FnNeeded != 0 {
-		v1 = _sqlite3DbMallocRawNN(tls, db, libc.Uint64FromInt64((**(**TReusableSpace)(__ccgo_up(bp + 8))).FnNeeded))
-		(*TVdbe)(unsafe.Pointer(p)).FpFree = v1
-		(**(**TReusableSpace)(__ccgo_up(bp + 8))).FpSpace = v1
-		(**(**TReusableSpace)(__ccgo_up(bp + 8))).FnFree = (**(**TReusableSpace)(__ccgo_up(bp + 8))).FnNeeded
-		if !((*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0) {
-			(*TVdbe)(unsafe.Pointer(p)).FaMem = _allocSpace(tls, bp+8, (*TVdbe)(unsafe.Pointer(p)).FaMem, libc.Int64FromUint64(libc.Uint64FromInt32(nMem)*uint64(56)))
-			(*TVdbe)(unsafe.Pointer(p)).FaVar = _allocSpace(tls, bp+8, (*TVdbe)(unsafe.Pointer(p)).FaVar, libc.Int64FromUint64(libc.Uint64FromInt32(nVar)*uint64(56)))
-			(*TVdbe)(unsafe.Pointer(p)).FapArg = _allocSpace(tls, bp+8, (*TVdbe)(unsafe.Pointer(p)).FapArg, libc.Int64FromUint64(libc.Uint64FromInt32(**(**int32)(__ccgo_up(bp)))*uint64(8)))
-			(*TVdbe)(unsafe.Pointer(p)).FapCsr = _allocSpace(tls, bp+8, (*TVdbe)(unsafe.Pointer(p)).FapCsr, libc.Int64FromUint64(libc.Uint64FromInt32(nCursor)*uint64(8)))
-		}
-	}
-	if (*Tsqlite3)(unsafe.Pointer(db)).FmallocFailed != 0 {
-		(*TVdbe)(unsafe.Pointer(p)).FnVar = 0
-		(*TVdbe)(unsafe.Pointer(p)).FnCursor = 0
-		(*TVdbe)(unsafe.Pointer(p)).FnMem = 0
-	} else {
-		(*TVdbe)(unsafe.Pointer(p)).FnCursor = nCursor
-		(*TVdbe)(unsafe.Pointer(p)).FnVar = int16(nVar)
-		_initMemArray(tls, (*TVdbe)(unsafe.Pointer(p)).FaVar, nVar, db, uint16(MEM_Null))
-		(*TVdbe)(unsafe.Pointer(p)).FnMem = nMem
-		_initMemArray(tls, (*TVdbe)(unsafe.Pointer(p)).FaMem, nMem, db, uint16(MEM_Undefined))
-		libc.Xmemset(tls, (*TVdbe)(unsafe.Pointer(p)).FapCsr, 0, libc.Uint64FromInt32(nCursor)*uint64(8))
-	}
-	_sqlite3VdbeRewind(tls, p)
 }
 
 // C documentation
@@ -16198,7 +15077,7 @@ func _sqlite3WalCheckpoint(tls *libc.TLS, pWal uintptr, db uintptr, eMode int32,
 	if rc == SQLITE_OK {
 		_sqlite3FaultSim(tls, int32(660))
 		if (*TWal)(unsafe.Pointer(pWal)).Fhdr.FmxFrame != 0 && _walPagesize(tls, pWal) != nBuf {
-			rc = _sqlite3CorruptError(tls, int32(71830))
+			rc = _sqlite3CorruptError(tls, int32(71912))
 		} else {
 			if eMode2 != -int32(1) {
 				rc = _walCheckpoint(tls, pWal, db, eMode2, xBusy2, pBusyArg, sync_flags, zBuf)
@@ -17307,7 +16186,7 @@ func _valueFromValueList(tls *libc.TLS, pVal uintptr, ppOut uintptr, bNext int32
 	_, _, _, _, _, _, _ = iOff, pOut, pRhs, rc, sz, zBuf, v1
 	**(**uintptr)(__ccgo_up(ppOut)) = uintptr(0)
 	if pVal == uintptr(0) {
-		return _sqlite3MisuseError(tls, int32(94599))
+		return _sqlite3MisuseError(tls, int32(94730))
 	}
 	if libc.Int32FromUint16((*Tsqlite3_value)(unsafe.Pointer(pVal)).Fflags)&int32(MEM_Dyn) == 0 || (*Tsqlite3_value)(unsafe.Pointer(pVal)).FxDel != __ccgo_fp(_sqlite3VdbeValueListFree) {
 		return int32(SQLITE_ERROR)
@@ -17382,7 +16261,7 @@ func _vdbeIsMatchingIndexKey(tls *libc.TLS, pCur uintptr, bInt int32, mask TBitm
 	(**(**TMem)(__ccgo_up(bp))).Fdb = (*TKeyInfo)(unsafe.Pointer((*TUnpackedRecord)(unsafe.Pointer(p)).FpKeyInfo)).Fdb
 	nRec = _sqlite3BtreePayloadSize(tls, pCur)
 	if nRec > uint32(0x7fffffff) {
-		return _sqlite3CorruptError(tls, int32(93211))
+		return _sqlite3CorruptError(tls, int32(93336))
 	}
 	/* Allocate 5 extra bytes at the end of the buffer. This allows the
 	 ** getVarint32() call below to read slightly past the end of the buffer
@@ -17418,7 +16297,7 @@ func _vdbeIsMatchingIndexKey(tls *libc.TLS, pCur uintptr, bInt int32, mask TBitm
 				**(**Tu32)(__ccgo_up(bp + 60)) = uint32(0)
 				nSerial = 0
 				if idxHdr >= **(**Tu32)(__ccgo_up(bp + 56)) {
-					rc = _sqlite3CorruptError(tls, int32(93242))
+					rc = _sqlite3CorruptError(tls, int32(93367))
 					break
 				}
 				if libc.Int32FromUint8(**(**Tu8)(__ccgo_up(aRec + uintptr(idxHdr)))) < libc.Int32FromUint8(libc.Uint8FromInt32(0x80)) {
@@ -17430,7 +16309,7 @@ func _vdbeIsMatchingIndexKey(tls *libc.TLS, pCur uintptr, bInt int32, mask TBitm
 				idxHdr = idxHdr + uint32(libc.Uint8FromInt32(v1))
 				nSerial = libc.Int32FromUint32(_sqlite3VdbeSerialTypeLen(tls, **(**Tu32)(__ccgo_up(bp + 60))))
 				if idxRec+libc.Uint32FromInt32(nSerial) > nRec {
-					rc = _sqlite3CorruptError(tls, int32(93248))
+					rc = _sqlite3CorruptError(tls, int32(93373))
 				} else {
 					_sqlite3VdbeSerialGet(tls, aRec+uintptr(idxRec), **(**Tu32)(__ccgo_up(bp + 60)), bp)
 					if _vdbeSkipField(tls, mask, ii, (*TUnpackedRecord)(unsafe.Pointer(p)).FaMem+uintptr(ii)*56, bp, bInt) == 0 {
@@ -18107,7 +16986,7 @@ func _walFrames(tls *libc.TLS, pWal uintptr, szPage int32, pList uintptr, nTrunc
 		}
 	}
 	if libc.Int32FromUint32((*TWal)(unsafe.Pointer(pWal)).FszPage) != szPage {
-		return _sqlite3CorruptError(tls, int32(71564)) /* TH3 test case: cov1/corrupt155.test */
+		return _sqlite3CorruptError(tls, int32(71646)) /* TH3 test case: cov1/corrupt155.test */
 	}
 	/* Setup information needed to write frames into the WAL */
 	(**(**TWalWriter)(__ccgo_up(bp))).FpWal = pWal
@@ -18304,7 +17183,7 @@ func _walIndexAppend(tls *libc.TLS, pWal uintptr, iFrame Tu32, iPage Tu32) (r in
 			v2 = nCollide
 			nCollide = nCollide - 1
 			if v2 == 0 {
-				return _sqlite3CorruptError(tls, int32(68778))
+				return _sqlite3CorruptError(tls, int32(68860))
 			}
 			goto _1
 		_1:
@@ -18835,478 +17714,6 @@ func _whereClauseInsert(tls *libc.TLS, pWC uintptr, p uintptr, wtFlags Tu16) (r 
 // C documentation
 //
 //	/*
-//	** pIdx is an index that covers all of the low-number columns used by
-//	** pWInfo->pSelect (columns from 0 through 62) or an index that has
-//	** expressions terms.  Hence, we cannot determine whether or not it is
-//	** a covering index by using the colUsed bitmasks.  We have to do a search
-//	** to see if the index is covering.  This routine does that search.
-//	**
-//	** The return value is one of these:
-//	**
-//	**      0                The index is definitely not a covering index
-//	**
-//	**      WHERE_IDX_ONLY   The index is definitely a covering index
-//	**
-//	**      WHERE_EXPRIDX    The index is likely a covering index, but it is
-//	**                       difficult to determine precisely because of the
-//	**                       expressions that are indexed.  Score it as a
-//	**                       covering index, but still keep the main table open
-//	**                       just in case we need it.
-//	**
-//	** This routine is an optimization.  It is always safe to return zero.
-//	** But returning one of the other two values when zero should have been
-//	** returned can lead to incorrect bytecode and assertion faults.
-//	*/
-func _whereIsCoveringIndex(tls *libc.TLS, pWInfo uintptr, pIdx uintptr, iTabCur int32) (r Tu32) {
-	bp := tls.Alloc(64)
-	defer tls.Free(64)
-	var i, rc int32
-	var _ /* ck at bp+0 */ TCoveringIndexCheck
-	var _ /* w at bp+16 */ TWalker
-	_, _ = i, rc
-	if (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpSelect == uintptr(0) {
-		/* We don't have access to the full query, so we cannot check to see
-		 ** if pIdx is covering.  Assume it is not. */
-		return uint32(0)
-	}
-	if int32(uint32(*(*uint16)(unsafe.Pointer(pIdx + 100))&0x800>>11)) == 0 {
-		i = 0
-		for {
-			if !(i < libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnColumn)) {
-				break
-			}
-			if int32(**(**Ti16)(__ccgo_up((*TIndex)(unsafe.Pointer(pIdx)).FaiColumn + uintptr(i)*2))) >= libc.Int32FromUint64(libc.Uint64FromInt64(8)*libc.Uint64FromInt32(8))-libc.Int32FromInt32(1) {
-				break
-			}
-			goto _1
-		_1:
-			;
-			i = i + 1
-		}
-		if i >= libc.Int32FromUint16((*TIndex)(unsafe.Pointer(pIdx)).FnColumn) {
-			/* pIdx does not index any columns greater than 62, but we know from
-			 ** colMask that columns greater than 62 are used, so this is not a
-			 ** covering index */
-			return uint32(0)
-		}
-	}
-	(**(**TCoveringIndexCheck)(__ccgo_up(bp))).FpIdx = pIdx
-	(**(**TCoveringIndexCheck)(__ccgo_up(bp))).FiTabCur = iTabCur
-	(**(**TCoveringIndexCheck)(__ccgo_up(bp))).FbExpr = uint8(0)
-	(**(**TCoveringIndexCheck)(__ccgo_up(bp))).FbUnidx = uint8(0)
-	libc.Xmemset(tls, bp+16, 0, uint64(48))
-	(**(**TWalker)(__ccgo_up(bp + 16))).FxExprCallback = __ccgo_fp(_whereIsCoveringIndexWalkCallback)
-	(**(**TWalker)(__ccgo_up(bp + 16))).FxSelectCallback = __ccgo_fp(_sqlite3SelectWalkNoop)
-	*(*uintptr)(unsafe.Pointer(bp + 16 + 40)) = bp
-	_sqlite3WalkSelect(tls, bp+16, (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpSelect)
-	if (**(**TCoveringIndexCheck)(__ccgo_up(bp))).FbUnidx != 0 {
-		rc = 0
-	} else {
-		if (**(**TCoveringIndexCheck)(__ccgo_up(bp))).FbExpr != 0 {
-			rc = int32(WHERE_EXPRIDX)
-		} else {
-			rc = int32(WHERE_IDX_ONLY)
-		}
-	}
-	return libc.Uint32FromInt32(rc)
-}
-
-// C documentation
-//
-//	/*
-//	** Add all WhereLoop objects for a single table of the join where the table
-//	** is identified by pBuilder->pNew->iTab.  That table is guaranteed to be
-//	** a b-tree table, not a virtual table.
-//	**
-//	** The costs (WhereLoop.rRun) of the b-tree loops added by this function
-//	** are calculated as follows:
-//	**
-//	** For a full scan, assuming the table (or index) contains nRow rows:
-//	**
-//	**     cost = nRow * 3.0                    // full-table scan
-//	**     cost = nRow * K                      // scan of covering index
-//	**     cost = nRow * (K+3.0)                // scan of non-covering index
-//	**
-//	** where K is a value between 1.1 and 3.0 set based on the relative
-//	** estimated average size of the index and table records.
-//	**
-//	** For an index scan, where nVisit is the number of index rows visited
-//	** by the scan, and nSeek is the number of seek operations required on
-//	** the index b-tree:
-//	**
-//	**     cost = nSeek * (log(nRow) + K * nVisit)          // covering index
-//	**     cost = nSeek * (log(nRow) + (K+3.0) * nVisit)    // non-covering index
-//	**
-//	** Normally, nSeek is 1. nSeek values greater than 1 come about if the
-//	** WHERE clause includes "x IN (....)" terms used in place of "x=?". Or when
-//	** implicit "x IN (SELECT x FROM tbl)" terms are added for skip-scans.
-//	**
-//	** The estimated values (nRow, nVisit, nSeek) often contain a large amount
-//	** of uncertainty.  For this reason, scoring is designed to pick plans that
-//	** "do the least harm" if the estimates are inaccurate.  For example, a
-//	** log(nRow) factor is omitted from a non-covering index scan in order to
-//	** bias the scoring in favor of using an index, since the worst-case
-//	** performance of using an index is far better than the worst-case performance
-//	** of a full table scan.
-//	*/
-func _whereLoopAddBtree(tls *libc.TLS, pBuilder uintptr, mPrereq TBitmask) (r int32) {
-	bp := tls.Alloc(176)
-	defer tls.Free(176)
-	var b, iCur, iSortIdx, ii, rc, v5 int32
-	var isCov Tu32
-	var nLookup, rLogSize, rSize TLogEst
-	var pFirst, pNew, pProbe, pSrc, pTab, pTabList, pTerm, pTerm1, pWC, pWC2, pWCEnd, pWInfo, v2 uintptr
-	var _ /* aiColumnPk at bp+164 */ Ti16
-	var _ /* aiRowEstPk at bp+160 */ [2]TLogEst
-	var _ /* m at bp+168 */ TBitmask
-	var _ /* sPk at bp+0 */ TIndex
-	_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ = b, iCur, iSortIdx, ii, isCov, nLookup, pFirst, pNew, pProbe, pSrc, pTab, pTabList, pTerm, pTerm1, pWC, pWC2, pWCEnd, pWInfo, rLogSize, rSize, rc, v2, v5 /* The aiRowLogEst[] value for the sPk index */
-	**(**Ti16)(__ccgo_up(bp + 164)) = int16(-int32(1))                                                                                                                                                                             /* Template WhereLoop object */
-	rc = SQLITE_OK                                                                                                                                                                                                                 /* Return code */
-	iSortIdx = int32(1)                                                                                                                                                                                                            /* Table being queried */
-	pNew = (*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpNew
-	pWInfo = (*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpWInfo
-	pTabList = (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpTabList
-	pSrc = pTabList + 8 + uintptr((*TWhereLoop)(unsafe.Pointer(pNew)).FiTab)*80
-	pTab = (*TSrcItem)(unsafe.Pointer(pSrc)).FpSTab
-	pWC = (*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpWC
-	if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x2>>1) != 0 {
-		/* An INDEXED BY clause specifies a particular index to use */
-		pProbe = *(*uintptr)(unsafe.Pointer(pSrc + 56))
-	} else {
-		if !((*TTable)(unsafe.Pointer(pTab)).FtabFlags&libc.Uint32FromInt32(TF_WithoutRowid) == libc.Uint32FromInt32(0)) {
-			pProbe = (*TTable)(unsafe.Pointer(pTab)).FpIndex
-		} else { /* First of real indices on the table */
-			libc.Xmemset(tls, bp, 0, uint64(160))
-			(**(**TIndex)(__ccgo_up(bp))).FnKeyCol = uint16(1)
-			(**(**TIndex)(__ccgo_up(bp))).FnColumn = uint16(1)
-			(**(**TIndex)(__ccgo_up(bp))).FaiColumn = bp + 164
-			(**(**TIndex)(__ccgo_up(bp))).FaiRowLogEst = bp + 160
-			(**(**TIndex)(__ccgo_up(bp))).FonError = uint8(OE_Replace)
-			(**(**TIndex)(__ccgo_up(bp))).FpTable = pTab
-			(**(**TIndex)(__ccgo_up(bp))).FszIdxRow = int16(3) /* TUNING: Interior rows of IPK table are very small */
-			libc.SetBitFieldPtr16Uint32(bp+100, libc.Uint32FromInt32(SQLITE_IDXTYPE_IPK), 0, 0x3)
-			(**(**[2]TLogEst)(__ccgo_up(bp + 160)))[0] = (*TTable)(unsafe.Pointer(pTab)).FnRowLogEst
-			(**(**[2]TLogEst)(__ccgo_up(bp + 160)))[int32(1)] = 0
-			pFirst = (*TTable)(unsafe.Pointer((*TSrcItem)(unsafe.Pointer(pSrc)).FpSTab)).FpIndex
-			if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x1>>0) == 0 {
-				/* The real indices of the table are only considered if the
-				 ** NOT INDEXED qualifier is omitted from the FROM clause */
-				(**(**TIndex)(__ccgo_up(bp))).FpNext = pFirst
-			}
-			pProbe = bp
-		}
-	}
-	rSize = (*TTable)(unsafe.Pointer(pTab)).FnRowLogEst
-	/* Automatic indexes */
-	if !((*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpOrSet != 0) && libc.Int32FromUint16((*TWhereInfo)(unsafe.Pointer(pWInfo)).FwctrlFlags)&(libc.Int32FromInt32(WHERE_RIGHT_JOIN)|libc.Int32FromInt32(WHERE_OR_SUBCLAUSE)) == 0 && (*Tsqlite3)(unsafe.Pointer((*TParse)(unsafe.Pointer((*TWhereInfo)(unsafe.Pointer(pWInfo)).FpParse)).Fdb)).Fflags&uint64(SQLITE_AutoIndex) != uint64(0) && !(int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x2>>1) != 0) && !(int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x1>>0) != 0) && !(int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x10>>4) != 0) && !(int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x80>>7) != 0) && libc.Int32FromUint8((*TSrcItem)(unsafe.Pointer(pSrc)).Ffg.Fjointype)&int32(JT_RIGHT) == 0 {
-		pWCEnd = (*TWhereClause)(unsafe.Pointer(pWC)).Fa + uintptr((*TWhereClause)(unsafe.Pointer(pWC)).FnTerm)*56
-		rLogSize = _estLog(tls, rSize)
-		pTerm = (*TWhereClause)(unsafe.Pointer(pWC)).Fa
-		for {
-			if !(rc == SQLITE_OK && pTerm < pWCEnd) {
-				break
-			}
-			if (*TWhereTerm)(unsafe.Pointer(pTerm)).FprereqRight&(*TWhereLoop)(unsafe.Pointer(pNew)).FmaskSelf != 0 {
-				goto _1
-			}
-			if _termCanDriveIndex(tls, pTerm, pSrc, uint64(0)) != 0 {
-				(*(*struct {
-					FnEq          Tu16
-					FnBtm         Tu16
-					FnTop         Tu16
-					FnDistinctCol Tu16
-					FpIndex       uintptr
-					FpOrderBy     uintptr
-				})(unsafe.Pointer(pNew + 24))).FnEq = uint16(1)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FnSkip = uint16(0)
-				(*(*struct {
-					FnEq          Tu16
-					FnBtm         Tu16
-					FnTop         Tu16
-					FnDistinctCol Tu16
-					FpIndex       uintptr
-					FpOrderBy     uintptr
-				})(unsafe.Pointer(pNew + 24))).FpIndex = uintptr(0)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FnLTerm = uint16(1)
-				**(**uintptr)(__ccgo_up((*TWhereLoop)(unsafe.Pointer(pNew)).FaLTerm)) = pTerm
-				/* TUNING: One-time cost for computing the automatic index is
-				 ** estimated to be X*N*log2(N) where N is the number of rows in
-				 ** the table being indexed and where X is 7 (LogEst=28) for normal
-				 ** tables or 0.5 (LogEst=-10) for views and subqueries.  The value
-				 ** of X is smaller for views and subqueries so that the query planner
-				 ** will be more aggressive about generating automatic indexes for
-				 ** those objects, since there is no opportunity to add schema
-				 ** indexes on subqueries and views. */
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FrSetup = int16(int32(rLogSize) + int32(rSize))
-				if !(libc.Int32FromUint8((*TTable)(unsafe.Pointer(pTab)).FeTabType) == libc.Int32FromInt32(TABTYP_VIEW)) && (*TTable)(unsafe.Pointer(pTab)).FtabFlags&uint32(TF_Ephemeral) == uint32(0) {
-					v2 = pNew + 18
-					*(*TLogEst)(unsafe.Pointer(v2)) = TLogEst(int32(*(*TLogEst)(unsafe.Pointer(v2))) + libc.Int32FromInt32(28))
-				} else {
-					v2 = pNew + 18
-					*(*TLogEst)(unsafe.Pointer(v2)) = TLogEst(int32(*(*TLogEst)(unsafe.Pointer(v2))) - libc.Int32FromInt32(25)) /* Greatly reduced setup cost for auto indexes
-					 ** on ephemeral materializations of views */
-				}
-				if int32((*TWhereLoop)(unsafe.Pointer(pNew)).FrSetup) < 0 {
-					(*TWhereLoop)(unsafe.Pointer(pNew)).FrSetup = 0
-				}
-				/* TUNING: Each index lookup yields 20 rows in the table.  This
-				 ** is more than the usual guess of 10 rows, since we have no way
-				 ** of knowing how selective the index will ultimately be.  It would
-				 ** not be unreasonable to make this value much larger. */
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = int16(43)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FrRun = _sqlite3LogEstAdd(tls, rLogSize, (*TWhereLoop)(unsafe.Pointer(pNew)).FnOut)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FwsFlags = uint32(WHERE_AUTO_INDEX)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).Fprereq = mPrereq | (*TWhereTerm)(unsafe.Pointer(pTerm)).FprereqRight
-				rc = _whereLoopInsert(tls, pBuilder, pNew)
-			}
-			goto _1
-		_1:
-			;
-			pTerm += 56
-		}
-	}
-	/* Loop over all indices. If there was an INDEXED BY clause, then only
-	 ** consider index pProbe.  */
-	for {
-		if !(rc == SQLITE_OK && pProbe != 0) {
-			break
-		}
-		if (*TIndex)(unsafe.Pointer(pProbe)).FpPartIdxWhere != uintptr(0) && !(_whereUsablePartialIndex(tls, (*TSrcItem)(unsafe.Pointer(pSrc)).FiCursor, (*TSrcItem)(unsafe.Pointer(pSrc)).Ffg.Fjointype, pWC, (*TIndex)(unsafe.Pointer(pProbe)).FpPartIdxWhere) != 0) {
-			/* See ticket [98d973b8f5] */
-			goto _4 /* Partial index inappropriate for this query */
-		}
-		if int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x100>>8)) != 0 {
-			goto _4
-		}
-		rSize = **(**TLogEst)(__ccgo_up((*TIndex)(unsafe.Pointer(pProbe)).FaiRowLogEst))
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FnEq = uint16(0)
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FnBtm = uint16(0)
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FnTop = uint16(0)
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FnDistinctCol = uint16(0)
-		(*TWhereLoop)(unsafe.Pointer(pNew)).FnSkip = uint16(0)
-		(*TWhereLoop)(unsafe.Pointer(pNew)).FnLTerm = uint16(0)
-		(*TWhereLoop)(unsafe.Pointer(pNew)).FiSortIdx = uint8(0)
-		(*TWhereLoop)(unsafe.Pointer(pNew)).FrSetup = 0
-		(*TWhereLoop)(unsafe.Pointer(pNew)).Fprereq = mPrereq
-		(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = rSize
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FpIndex = pProbe
-		(*(*struct {
-			FnEq          Tu16
-			FnBtm         Tu16
-			FnTop         Tu16
-			FnDistinctCol Tu16
-			FpIndex       uintptr
-			FpOrderBy     uintptr
-		})(unsafe.Pointer(pNew + 24))).FpOrderBy = uintptr(0)
-		b = _indexMightHelpWithOrderBy(tls, pBuilder, pProbe, (*TSrcItem)(unsafe.Pointer(pSrc)).FiCursor)
-		/* The ONEPASS_DESIRED flags never occurs together with ORDER BY */
-		if int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x3>>0)) == int32(SQLITE_IDXTYPE_IPK) {
-			/* Integer primary key index */
-			(*TWhereLoop)(unsafe.Pointer(pNew)).FwsFlags = uint32(WHERE_IPK)
-			/* Full table scan */
-			if b != 0 {
-				v5 = iSortIdx
-			} else {
-				v5 = 0
-			}
-			(*TWhereLoop)(unsafe.Pointer(pNew)).FiSortIdx = libc.Uint8FromInt32(v5)
-			/* TUNING: Cost of full table scan is 3.0*N.  The 3.0 factor is an
-			 ** extra cost designed to discourage the use of full table scans,
-			 ** since index lookups have better worst-case performance if our
-			 ** stat guesses are wrong.  Reduce the 3.0 penalty slightly
-			 ** (to 2.75) if we have valid STAT4 information for the table.
-			 ** At 2.75, a full table scan is preferred over using an index on
-			 ** a column with just two distinct values where each value has about
-			 ** an equal number of appearances.  Without STAT4 data, we still want
-			 ** to use an index in that case, since the constraint might be for
-			 ** the scarcer of the two values, and in that case an index lookup is
-			 ** better.
-			 */
-			(*TWhereLoop)(unsafe.Pointer(pNew)).FrRun = int16(int32(rSize) + int32(16) - int32(2)*libc.BoolInt32((*TTable)(unsafe.Pointer(pTab)).FtabFlags&uint32(TF_HasStat4) != uint32(0)))
-			_whereLoopOutputAdjust(tls, pWC, pNew, rSize)
-			if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x4>>2) != 0 {
-				if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x40>>6) != 0 {
-					**(**Tu32)(__ccgo_up(pNew + 48)) |= uint32(WHERE_COROUTINE)
-				}
-				/* Do not set btree.pOrderBy for a recursive CTE. In this case
-				 ** the ORDER BY clause does not determine the overall order that
-				 ** rows are emitted from the CTE in.  */
-				if (*TSelect)(unsafe.Pointer((*TSubquery)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(pSrc + 72)))).FpSelect)).FselFlags&uint32(SF_Recursive) == uint32(0) {
-					(*(*struct {
-						FnEq          Tu16
-						FnBtm         Tu16
-						FnTop         Tu16
-						FnDistinctCol Tu16
-						FpIndex       uintptr
-						FpOrderBy     uintptr
-					})(unsafe.Pointer(pNew + 24))).FpOrderBy = (*TSelect)(unsafe.Pointer((*TSubquery)(unsafe.Pointer(*(*uintptr)(unsafe.Pointer(pSrc + 72)))).FpSelect)).FpOrderBy
-				}
-			} else {
-				if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x40000>>18) != 0 {
-					(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = 0
-				}
-			}
-			rc = _whereLoopInsert(tls, pBuilder, pNew)
-			(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = rSize
-			if rc != 0 {
-				break
-			}
-		} else {
-			if int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x20>>5)) != 0 {
-				**(**TBitmask)(__ccgo_up(bp + 168)) = uint64(0)
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FwsFlags = libc.Uint32FromInt32(libc.Int32FromInt32(WHERE_IDX_ONLY) | libc.Int32FromInt32(WHERE_INDEXED))
-			} else {
-				**(**TBitmask)(__ccgo_up(bp + 168)) = (*TSrcItem)(unsafe.Pointer(pSrc)).FcolUsed & (*TIndex)(unsafe.Pointer(pProbe)).FcolNotIdxed
-				if (*TIndex)(unsafe.Pointer(pProbe)).FpPartIdxWhere != 0 {
-					_wherePartIdxExpr(tls, (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpParse, pProbe, (*TIndex)(unsafe.Pointer(pProbe)).FpPartIdxWhere, bp+168, 0, uintptr(0))
-				}
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FwsFlags = uint32(WHERE_INDEXED)
-				if **(**TBitmask)(__ccgo_up(bp + 168)) == libc.Uint64FromInt32(1)<<(libc.Int32FromUint64(libc.Uint64FromInt64(8)*libc.Uint64FromInt32(8))-libc.Int32FromInt32(1)) || int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x800>>11)) != 0 && !(int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x400>>10)) != 0) && **(**TBitmask)(__ccgo_up(bp + 168)) != uint64(0) {
-					isCov = _whereIsCoveringIndex(tls, pWInfo, pProbe, (*TSrcItem)(unsafe.Pointer(pSrc)).FiCursor)
-					if isCov == uint32(0) {
-					} else {
-						**(**TBitmask)(__ccgo_up(bp + 168)) = uint64(0)
-						**(**Tu32)(__ccgo_up(pNew + 48)) |= isCov
-						if isCov&uint32(WHERE_IDX_ONLY) != 0 {
-						} else {
-						}
-					}
-				} else {
-					if **(**TBitmask)(__ccgo_up(bp + 168)) == uint64(0) && ((*TTable)(unsafe.Pointer(pTab)).FtabFlags&uint32(TF_WithoutRowid) == uint32(0) || (*TWhereInfo)(unsafe.Pointer(pWInfo)).FpSelect != uintptr(0) || _sqlite3FaultSim(tls, int32(700)) != 0) {
-						(*TWhereLoop)(unsafe.Pointer(pNew)).FwsFlags = libc.Uint32FromInt32(libc.Int32FromInt32(WHERE_IDX_ONLY) | libc.Int32FromInt32(WHERE_INDEXED))
-					}
-				}
-			}
-			/* Full scan via index */
-			if b != 0 || !((*TTable)(unsafe.Pointer(pTab)).FtabFlags&libc.Uint32FromInt32(TF_WithoutRowid) == libc.Uint32FromInt32(0)) || (*TIndex)(unsafe.Pointer(pProbe)).FpPartIdxWhere != uintptr(0) || int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x2>>1) != 0 || **(**TBitmask)(__ccgo_up(bp + 168)) == uint64(0) && int32(uint32(*(*uint16)(unsafe.Pointer(pProbe + 100))&0x4>>2)) == 0 && int32((*TIndex)(unsafe.Pointer(pProbe)).FszIdxRow) < int32((*TTable)(unsafe.Pointer(pTab)).FszTabRow) && libc.Int32FromUint16((*TWhereInfo)(unsafe.Pointer(pWInfo)).FwctrlFlags)&int32(WHERE_ONEPASS_DESIRED) == 0 && _sqlite3Config.FbUseCis != 0 && (*Tsqlite3)(unsafe.Pointer((*TParse)(unsafe.Pointer((*TWhereInfo)(unsafe.Pointer(pWInfo)).FpParse)).Fdb)).FdbOptFlags&libc.Uint32FromInt32(libc.Int32FromInt32(SQLITE_CoverIdxScan)) == uint32(0) {
-				if b != 0 {
-					v5 = iSortIdx
-				} else {
-					v5 = 0
-				}
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FiSortIdx = libc.Uint8FromInt32(v5)
-				/* The cost of visiting the index rows is N*K, where K is
-				 ** between 1.1 and 3.0, depending on the relative sizes of the
-				 ** index and table rows. */
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FrRun = int16(int32(rSize) + int32(1) + int32(15)*int32((*TIndex)(unsafe.Pointer(pProbe)).FszIdxRow)/int32((*TTable)(unsafe.Pointer(pTab)).FszTabRow))
-				if **(**TBitmask)(__ccgo_up(bp + 168)) != uint64(0) {
-					/* If this is a non-covering index scan, add in the cost of
-					 ** doing table lookups.  The cost will be 3x the number of
-					 ** lookups.  Take into account WHERE clause terms that can be
-					 ** satisfied using just the index, and that do not require a
-					 ** table lookup. */
-					nLookup = int16(int32(rSize) + int32(16))
-					iCur = (*TSrcItem)(unsafe.Pointer(pSrc)).FiCursor
-					pWC2 = pWInfo + 104
-					ii = 0
-					for {
-						if !(ii < (*TWhereClause)(unsafe.Pointer(pWC2)).FnTerm) {
-							break
-						}
-						pTerm1 = (*TWhereClause)(unsafe.Pointer(pWC2)).Fa + uintptr(ii)*56
-						if !(_sqlite3ExprCoveredByIndex(tls, (*TWhereTerm)(unsafe.Pointer(pTerm1)).FpExpr, iCur, pProbe) != 0) {
-							break
-						}
-						/* pTerm can be evaluated using just the index.  So reduce
-						 ** the expected number of table lookups accordingly */
-						if int32((*TWhereTerm)(unsafe.Pointer(pTerm1)).FtruthProb) <= 0 {
-							nLookup = int16(int32(nLookup) + int32((*TWhereTerm)(unsafe.Pointer(pTerm1)).FtruthProb))
-						} else {
-							nLookup = nLookup - 1
-							if libc.Int32FromUint16((*TWhereTerm)(unsafe.Pointer(pTerm1)).FeOperator)&(libc.Int32FromInt32(WO_EQ)|libc.Int32FromInt32(WO_IS)) != 0 {
-								nLookup = int16(int32(nLookup) - libc.Int32FromInt32(19))
-							}
-						}
-						goto _7
-					_7:
-						;
-						ii = ii + 1
-					}
-					(*TWhereLoop)(unsafe.Pointer(pNew)).FrRun = _sqlite3LogEstAdd(tls, (*TWhereLoop)(unsafe.Pointer(pNew)).FrRun, nLookup)
-				}
-				_whereLoopOutputAdjust(tls, pWC, pNew, rSize)
-				if libc.Int32FromUint8((*TSrcItem)(unsafe.Pointer(pSrc)).Ffg.Fjointype)&int32(JT_RIGHT) != 0 && (*TIndex)(unsafe.Pointer(pProbe)).FaColExpr != 0 {
-					/* Do not do an SCAN of a index-on-expression in a RIGHT JOIN
-					 ** because the cursor used to access the index might not be
-					 ** positioned to the correct row during the right-join no-match
-					 ** loop. */
-				} else {
-					if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x40000>>18) != 0 {
-						(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = 0
-					}
-					rc = _whereLoopInsert(tls, pBuilder, pNew)
-				}
-				(*TWhereLoop)(unsafe.Pointer(pNew)).FnOut = rSize
-				if rc != 0 {
-					break
-				}
-			}
-		}
-		(*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FbldFlags1 = uint8(0)
-		rc = _whereLoopAddBtreeIndex(tls, pBuilder, pSrc, pProbe, 0)
-		if libc.Int32FromUint8((*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FbldFlags1) == int32(SQLITE_BLDF1_INDEXED) {
-			/* If a non-unique index is used, or if a prefix of the key for
-			 ** unique index is used (making the index functionally non-unique)
-			 ** then the sqlite_stat1 data becomes important for scoring the
-			 ** plan */
-			**(**Tu32)(__ccgo_up(pTab + 48)) |= uint32(TF_MaybeReanalyze)
-		}
-		_sqlite3Stat4ProbeFree(tls, (*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpRec)
-		(*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FnRecValid = 0
-		(*TWhereLoopBuilder)(unsafe.Pointer(pBuilder)).FpRec = uintptr(0)
-		goto _4
-	_4:
-		;
-		if int32(*(*uint32)(unsafe.Pointer(pSrc + 24 + 4))&0x2>>1) != 0 {
-			v2 = uintptr(0)
-		} else {
-			v2 = (*TIndex)(unsafe.Pointer(pProbe)).FpNext
-		}
-		pProbe = v2
-		iSortIdx = iSortIdx + 1
-	}
-	return rc
-}
-
-// C documentation
-//
-//	/*
 //	** Add WhereLoop entries to handle OR terms.  This works for either
 //	** btrees or virtual tables.
 //	*/
@@ -19474,36 +17881,6 @@ func _whereLoopResize(tls *libc.TLS, db uintptr, p uintptr, n int32) (r int32) {
 	}
 	(*TWhereLoop)(unsafe.Pointer(p)).FaLTerm = paNew
 	(*TWhereLoop)(unsafe.Pointer(p)).FnLSlot = libc.Uint16FromInt32(n)
-	return SQLITE_OK
-}
-
-// C documentation
-//
-//	/*
-//	** Transfer content from the second pLoop into the first.
-//	*/
-func _whereLoopXfer(tls *libc.TLS, db uintptr, pTo uintptr, pFrom uintptr) (r int32) {
-	_whereLoopClearUnion(tls, db, pTo)
-	if libc.Int32FromUint16((*TWhereLoop)(unsafe.Pointer(pFrom)).FnLTerm) > libc.Int32FromUint16((*TWhereLoop)(unsafe.Pointer(pTo)).FnLSlot) && _whereLoopResize(tls, db, pTo, libc.Int32FromUint16((*TWhereLoop)(unsafe.Pointer(pFrom)).FnLTerm)) != 0 {
-		libc.Xmemset(tls, pTo, 0, uint64(libc.UintptrFromInt32(0)+56))
-		return int32(SQLITE_NOMEM)
-	}
-	libc.Xmemcpy(tls, pTo, pFrom, uint64(libc.UintptrFromInt32(0)+56))
-	libc.Xmemcpy(tls, (*TWhereLoop)(unsafe.Pointer(pTo)).FaLTerm, (*TWhereLoop)(unsafe.Pointer(pFrom)).FaLTerm, uint64((*TWhereLoop)(unsafe.Pointer(pTo)).FnLTerm)*uint64(8))
-	if (*TWhereLoop)(unsafe.Pointer(pFrom)).FwsFlags&uint32(WHERE_VIRTUALTABLE) != 0 {
-		libc.SetBitFieldPtr8Uint32(pFrom+24+4, libc.Uint32FromInt32(0), 0, 0x1)
-	} else {
-		if (*TWhereLoop)(unsafe.Pointer(pFrom)).FwsFlags&uint32(WHERE_AUTO_INDEX) != uint32(0) {
-			(*(*struct {
-				FnEq          Tu16
-				FnBtm         Tu16
-				FnTop         Tu16
-				FnDistinctCol Tu16
-				FpIndex       uintptr
-				FpOrderBy     uintptr
-			})(unsafe.Pointer(pFrom + 24))).FpIndex = uintptr(0)
-		}
-	}
 	return SQLITE_OK
 }
 

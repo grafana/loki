@@ -18,6 +18,13 @@ linters:
     - revive
     - unconvert
     - usestdlibvars
+  settings:
+    goconst:
+      # Newer goconst versions default ignore-calls to false, which flags
+      # idiomatic call-argument strings such as t.Fatalf("err: %v", err) and
+      # net.Dial("tcp", addr). Restore the prior default so only genuinely
+      # repeated constant values are reported.
+      ignore-calls: true
 
 run:
   timeout: 5m
@@ -25,3 +32,4 @@ run:
 
 issues:
   max-issues-per-linter: 0
+  max-same-issues: 0

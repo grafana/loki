@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/sigv4"
+	"go.uber.org/atomic"
 	yaml "go.yaml.in/yaml/v4"
 	"golang.org/x/time/rate"
 
@@ -107,9 +108,6 @@ type Limits struct {
 	MaxLineSizeTruncateIdentifier string           `yaml:"max_line_size_truncate_identifier" json:"max_line_size_truncate_identifier"`
 	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
-
-	// LogQL engine options
-	EnableMultiVariantQueries bool `yaml:"enable_multi_variant_queries" json:"enable_multi_variant_queries"`
 
 	// Metadata field extraction
 	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
@@ -561,13 +559,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
-	f.BoolVar(
-		&l.EnableMultiVariantQueries,
-		"limits.enable-multi-variant-queries",
-		false,
-		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
-	)
-
 	f.BoolVar(&l.DebugEngineTasks, "limits.debug-engine-tasks", false, "Experimental: Toggles verbose debug logging of tasks in the new query engine.")
 	f.BoolVar(&l.DebugEngineStreams, "limits.debug-engine-streams", false, "Experimental: Toggles verbose debug logging of data streams in the new query engine.")
 }
@@ -593,6 +584,8 @@ func (l *Limits) UnmarshalYAML(value *yaml.Node) error {
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
 	type plain Limits
+
+	defaultLimits := defaultLimits.Load()
 
 	// During startup we wont have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
@@ -706,13 +699,16 @@ func (l *Limits) Validate() error {
 // to default to any values specified on the command line, not default
 // command line values.  This global contains those values.  I (Tom) cannot
 // find a nicer way I'm afraid.
-var defaultLimits *Limits
+// Atomic because a process running more than one Loki instance, as the
+// integration tests do, sets it while another instance is reloading its runtime
+// config. Only ever replaced as a whole, never mutated once published.
+var defaultLimits atomic.Pointer[Limits]
 
 // SetDefaultLimitsForYAMLUnmarshalling sets global default limits, used when loading
 // Limits from YAML files. This is used to ensure per-tenant limits are defaulted to
 // those values.
 func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
-	defaultLimits = &defaults
+	defaultLimits.Store(&defaults)
 }
 
 type TenantLimits interface {
@@ -1376,10 +1372,6 @@ func (o *Overrides) PersistenceGranularity(userID string) time.Duration {
 
 func (o *Overrides) PatternRateThreshold(userID string) float64 {
 	return o.getOverridesForUser(userID).PatternRateThreshold
-}
-
-func (o *Overrides) EnableMultiVariantQueries(userID string) bool {
-	return o.getOverridesForUser(userID).EnableMultiVariantQueries
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.

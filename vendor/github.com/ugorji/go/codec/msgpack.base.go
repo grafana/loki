@@ -61,6 +61,9 @@ const (
 	mpNegFixNumMax byte = 0xff
 )
 
+const mpMaxLen = 1<<32 - 1 // math.MaxUint32
+const mpMaxLenOverflowErrorMsgPrefix = "msgpack container length exceeds max of 2^32-1"
+
 var mpTimeExtTag int8 = -1
 var mpTimeExtTagU = uint8(mpTimeExtTag)
 

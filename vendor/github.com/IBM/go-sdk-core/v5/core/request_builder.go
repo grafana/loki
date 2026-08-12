@@ -59,7 +59,7 @@ const (
 type FormData struct {
 	fileName    string
 	contentType string
-	contents    interface{}
+	contents    any
 }
 
 // RequestBuilder is used to build an HTTP Request instance.
@@ -219,10 +219,10 @@ func (requestBuilder *RequestBuilder) AddHeader(name string, value string) *Requ
 // AddFormData adds a new mime part (constructed from the input parameters)
 // to the request's multi-part form.
 func (requestBuilder *RequestBuilder) AddFormData(fieldName string, fileName string, contentType string,
-	contents interface{}) *RequestBuilder {
+	contents any) *RequestBuilder {
 	if fileName == "" {
 		if file, ok := contents.(*os.File); ok {
-			if !((os.File{}) == *file) { // if file is not empty
+			if (os.File{}) != *file { // if file is not empty
 				name := filepath.Base(file.Name())
 				fileName = name
 			}
@@ -237,7 +237,7 @@ func (requestBuilder *RequestBuilder) AddFormData(fieldName string, fileName str
 }
 
 // SetBodyContentJSON sets the body content from a JSON structure.
-func (requestBuilder *RequestBuilder) SetBodyContentJSON(bodyContent interface{}) (*RequestBuilder, error) {
+func (requestBuilder *RequestBuilder) SetBodyContentJSON(bodyContent any) (*RequestBuilder, error) {
 	requestBuilder.Body = new(bytes.Buffer)
 	err := json.NewEncoder(requestBuilder.Body.(io.Writer)).Encode(bodyContent)
 	if err != nil {
@@ -281,7 +281,7 @@ func createFormFile(formWriter *multipart.Writer, fieldname string, filename str
 }
 
 // SetBodyContentForMultipart sets the body content for a part in a multi-part form.
-func (requestBuilder *RequestBuilder) SetBodyContentForMultipart(contentType string, content interface{}, writer io.Writer) error {
+func (requestBuilder *RequestBuilder) SetBodyContentForMultipart(contentType string, content any, writer io.Writer) error {
 	var err error
 	if stream, ok := content.(io.Reader); ok {
 		_, err = io.Copy(writer, stream)
@@ -483,8 +483,8 @@ func (requestBuilder *RequestBuilder) createMultipartFormRequestBody() (bodyRead
 }
 
 // SetBodyContent sets the body content from one of three different sources.
-func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonContent interface{}, jsonPatchContent interface{},
-	nonJSONContent interface{}) (builder *RequestBuilder, err error) {
+func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonContent any, jsonPatchContent any,
+	nonJSONContent any) (builder *RequestBuilder, err error) {
 	if !IsNil(jsonContent) {
 		builder, err = requestBuilder.SetBodyContentJSON(jsonContent)
 		if err != nil {
@@ -529,7 +529,7 @@ func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonCon
 // AddQuerySlice converts the passed in slice 'slice' by calling the ConverSlice method,
 // and adds the converted slice to the request's query string. An error is returned when
 // conversion fails.
-func (requestBuilder *RequestBuilder) AddQuerySlice(param string, slice interface{}) (err error) {
+func (requestBuilder *RequestBuilder) AddQuerySlice(param string, slice any) (err error) {
 	convertedSlice, err := ConvertSlice(slice)
 	if err != nil {
 		err = RepurposeSDKProblem(err, "convert-slice-error")

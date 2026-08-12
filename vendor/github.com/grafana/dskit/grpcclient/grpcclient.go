@@ -45,6 +45,9 @@ type Config struct {
 	ConnectBackoffBaseDelay time.Duration `yaml:"connect_backoff_base_delay" category:"advanced"`
 	ConnectBackoffMaxDelay  time.Duration `yaml:"connect_backoff_max_delay" category:"advanced"`
 
+	KeepaliveTime    time.Duration `yaml:"keepalive_time" category:"advanced"`
+	KeepaliveTimeout time.Duration `yaml:"keepalive_timeout" category:"advanced"`
+
 	Middleware       []grpc.UnaryClientInterceptor  `yaml:"-"`
 	StreamMiddleware []grpc.StreamClientInterceptor `yaml:"-"`
 
@@ -63,6 +66,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 const defaultInitialWindowSize = 65535 // From https://github.com/grpc/grpc-go/blob/c9d3ea5673252d212c69f3d3c10ce1d7b287a86b/internal/transport/defaults.go#L28
+
+const (
+	defaultKeepaliveTime    = 20 * time.Second
+	defaultKeepaliveTimeout = 10 * time.Second
+)
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -92,6 +100,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ConnectTimeout, prefix+".connect-timeout", 5*time.Second, "The maximum amount of time to establish a connection. A value of 0 means default gRPC client connect timeout and backoff.")
 	f.DurationVar(&cfg.ConnectBackoffBaseDelay, prefix+".connect-backoff-base-delay", time.Second, "Initial backoff delay after first connection failure. Only relevant if ConnectTimeout > 0.")
 	f.DurationVar(&cfg.ConnectBackoffMaxDelay, prefix+".connect-backoff-max-delay", 5*time.Second, "Maximum backoff delay when establishing a connection. Only relevant if ConnectTimeout > 0.")
+	f.DurationVar(&cfg.KeepaliveTime, prefix+".keepalive-time", defaultKeepaliveTime, "After a duration of this time if the client doesn't see any activity it pings the server to see if the transport is still alive. This also determines the socket's TCP_USER_TIMEOUT together with keepalive-timeout.")
+	f.DurationVar(&cfg.KeepaliveTimeout, prefix+".keepalive-timeout", defaultKeepaliveTimeout, "After having pinged for keepalive check, the client waits for a duration of this time and if no activity is seen even after that the connection is closed.")
 
 	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
@@ -187,10 +197,26 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
 		grpcWithChainUnaryInterceptor(unaryClientInterceptors...),
 		grpc.WithChainStreamInterceptor(streamClientInterceptors...),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                time.Second * 20,
-			Timeout:             time.Second * 10,
-			PermitWithoutStream: true,
-		}),
+		grpc.WithKeepaliveParams(cfg.keepaliveParams()),
 	), nil
+}
+
+// keepaliveParams returns the client keepalive parameters, falling back to the
+// defaults when Time or Timeout are unset (e.g. a Config built from YAML that
+// omits these keys, or a struct literal). This avoids accidentally disabling
+// keepalive: grpc-go treats a zero Time as "no keepalive pings".
+func (cfg *Config) keepaliveParams() keepalive.ClientParameters {
+	keepaliveTime := cfg.KeepaliveTime
+	if keepaliveTime <= 0 {
+		keepaliveTime = defaultKeepaliveTime
+	}
+	keepaliveTimeout := cfg.KeepaliveTimeout
+	if keepaliveTimeout <= 0 {
+		keepaliveTimeout = defaultKeepaliveTimeout
+	}
+	return keepalive.ClientParameters{
+		Time:                keepaliveTime,
+		Timeout:             keepaliveTimeout,
+		PermitWithoutStream: true,
+	}
 }

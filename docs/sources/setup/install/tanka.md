@@ -48,13 +48,12 @@ jb install github.com/grafana/loki/production/ksonnet/loki@main
 
 ## Install a log-shipping agent
 
-The ksonnet Promtail module has been removed and is no longer available. Use [Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/) to ship logs to Loki.
+Use [Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/) to ship logs to Loki.
 
-For installation and migration guidance, refer to:
+For installation guidance, refer to:
 
 - [Install Grafana Alloy](https://grafana.com/docs/alloy/latest/set-up/install/)
 - [Install Alloy on Kubernetes](https://grafana.com/docs/alloy/latest/set-up/install/kubernetes/)
-- [Migrate from Promtail to Alloy](https://grafana.com/docs/alloy/latest/set-up/migrate/from-promtail/)
 
 Revise the YAML contents of `environments/loki/main.jsonnet`, updating these variables:
 

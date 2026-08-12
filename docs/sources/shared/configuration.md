@@ -1630,6 +1630,12 @@ dataobj:
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
 
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
+
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
@@ -2732,10 +2738,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
 [l2_chunk_cache_handoff: <duration> | default = 0s]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### common
@@ -3440,6 +3442,18 @@ write_failures_logging:
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
 
+# Customize the logging of OTLP attribute expansion.
+otlp_attribute_logging:
+  # Number of attribute expansion reports to emit per second, per tenant. Each
+  # report is one summary line plus one line per attribute.
+  # CLI flag: -distributor.otlp-attribute-logging.rate
+  [rate: <float> | default = 1]
+
+  # Maximum number of attributes to log on their own line for a reported
+  # request. The remaining attributes are summarised on a single overflow line.
+  # CLI flag: -distributor.otlp-attribute-logging.max-attributes
+  [max_attributes: <int> | default = 20]
+
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
@@ -3862,6 +3876,17 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
 
 cluster_validation:
   # Primary cluster validation label.
@@ -4459,12 +4484,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
@@ -5461,6 +5480,12 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-duplicate-stream-info
 [log_duplicate_stream_info: <boolean> | default = false]
 
+# Log which OTLP resource and scope attributes are expanded into structured
+# metadata, for a rate limited subset of push requests. Only attribute names and
+# sizes are logged, never values.
+# CLI flag: -operation-config.log-otlp-attribute-expansion
+[log_otlp_attribute_expansion: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -5500,23 +5525,6 @@ index:
 
   # Table period.
   [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# Configured how the chunks are updated and stored.
-chunks:
-  # Table prefix for all period tables.
-  [prefix: <string> | default = ""]
-
-  # Table period.
-  [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int> | default = 16]
 ```
 
 ### profiling
@@ -6132,9 +6140,6 @@ wal_cleaner:
 # Remote-write configuration to send rule samples to a Prometheus remote-write
 # endpoint.
 remote_write:
-  # Deprecated: Use 'clients' instead. Configure remote write client.
-  [client: <RemoteWriteConfig>]
-
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
@@ -6796,11 +6801,6 @@ congestion_control:
 # storage. Example: loki/
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
-
-# Disable broad index queries which results in reduced cache usage and faster
-# query performance at the expense of somewhat higher QPS on the index store.
-# CLI flag: -store.disable-broad-index-queries
-[disable_broad_index_queries: <boolean> | default = false]
 
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk

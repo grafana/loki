@@ -176,23 +176,24 @@ func TestMemstoreBlocks(t *testing.T) {
 	})
 
 	store := testStore(fn)
+	t.Cleanup(store.Stop)
 
 	done := make(chan struct{})
 	go func() {
 		_, _ = store.Querier(0, 1)
-		done <- struct{}{}
+		close(done)
 	}()
 
 	select {
 	case <-time.After(time.Millisecond):
 	case <-done:
-		t.FailNow()
+		t.Fatal("Querier returned before Start was called")
 	}
 
 	store.Start(MockRuleIter(ars))
 	select {
 	case <-done:
-	case <-time.After(time.Millisecond):
-		t.FailNow()
+	case <-time.After(time.Second):
+		t.Fatal("Querier did not return after Start was called")
 	}
 }

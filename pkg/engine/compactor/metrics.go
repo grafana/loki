@@ -56,6 +56,7 @@ type coordinatorMetrics struct {
 	// stats run concurrently before a ToC replace; the histogram surfaces
 	// per-call latency early so it can be caught before it dominates a cycle.
 	fileSizeStatDurationSeconds prometheus.Histogram
+	indexInputRuns              prometheus.Histogram
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -63,7 +64,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 	return &coordinatorMetrics{
 		unconsolidatedBacklog: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_unconsolidated_index_backlog",
-			Help: "Per-tenant count of indexes in the current + previous ToC windows whose max_timestamp is older than the consolidation SLO. Steady state: 0.",
+			Help: "Per-tenant count of nonterminal index runs beyond one. Steady state: 0.",
 		}, []string{labelTenant}),
 		oldestBacklogLogAgeSeconds: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_oldest_backlog_log_age_seconds",
@@ -81,11 +82,11 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelOutcome}),
 		tenantCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_cycles_total",
-			Help: "Per-tenant index-compaction cycle outcomes. compacted = ran index compaction successfully, converged = no index or single index (log-compaction path), failed = cycle returned error.",
+			Help: "Per-tenant index-compaction cycle outcomes. compacted = ToC swapped, converged = no true section overlap, failed = cycle returned error.",
 		}, []string{labelOutcome, labelTenant}),
 		tenantLogCyclesTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_tenant_log_cycles_total",
-			Help: "Per-tenant log-compaction cycle outcomes. compacted = converged window dispatched log-merge tasks, converged = single index with no log-merge work, failed = cycle returned error.",
+			Help: "Per-tenant log-compaction cycle outcomes. compacted = ToC swapped, converged = no worthwhile section overlap, failed = cycle returned error.",
 		}, []string{labelOutcome, labelTenant}),
 		indexesRemovedTotal: f.NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_dataobj_compaction_indexes_removed_total",
@@ -114,25 +115,28 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Help:    "Latency of a single object-storage Attributes call issued to fill in index file size before a ToC replace.",
 			Buckets: prometheus.ExponentialBuckets(0.001, 2, 14), // 1ms .. ~8s
 		}),
+		indexInputRuns: f.NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_dataobj_compaction_index_input_runs",
+			Help:    "Number of strict index runs offered to the task planner.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 12),
+		}),
 	}
 }
 
-// observeEntries records metrics regarding the age and number of entries per
-// tenant and window.
-//   - unconsolidated_index_backlog = max(0, len(entries)-1) — indexes beyond
-//     the single converged target that still await consolidation.
-//   - oldest_backlog_log_age_seconds = now - min(End) over all entries when a
-//     backlog exists (len > 1), else 0.
-//   - indexes_per_tenant_window = len(entries).
-func (m *coordinatorMetrics) observeEntries(
-	tenant string,
-	entries []indexEntry,
-	now time.Time,
-) {
+func (m *coordinatorMetrics) observeIndexInputRuns(runs int) {
+	if m != nil {
+		m.indexInputRuns.Observe(float64(runs))
+	}
+}
+
+func (m *coordinatorMetrics) observeIndexConvergence(tenant string, converged bool, runs int, entries []indexEntry, now time.Time) {
 	if m == nil {
 		return
 	}
-	backlog := max(0, len(entries)-1)
+	backlog := max(0, runs-1)
+	if converged {
+		backlog = 0
+	}
 	m.unconsolidatedBacklog.WithLabelValues(tenant).Set(float64(backlog))
 
 	var oldestAge float64
@@ -143,8 +147,13 @@ func (m *coordinatorMetrics) observeEntries(
 		}
 	}
 	m.oldestBacklogLogAgeSeconds.WithLabelValues(tenant).Set(oldestAge)
+}
 
-	m.indexesPerTenantWindow.WithLabelValues(tenant).Set(float64(len(entries)))
+// observeEntries records the raw ToC index count before section discovery.
+func (m *coordinatorMetrics) observeEntries(tenant string, entries []indexEntry) {
+	if m != nil {
+		m.indexesPerTenantWindow.WithLabelValues(tenant).Set(float64(len(entries)))
+	}
 }
 
 // oldestEnd returns the minimum End timestamp across entries, or the zero
@@ -256,18 +265,14 @@ type workerMetrics struct {
 	outputBytesCompressed   *prometheus.HistogramVec // tenant
 	outputBytesUncompressed *prometheus.HistogramVec // tenant
 
-	logMergeTasksTotal              *prometheus.CounterVec   // tenant, outcome
-	logMergeDurationSeconds         *prometheus.HistogramVec // tenant
-	logMergeOutputRecords           *prometheus.HistogramVec // tenant
-	logMergeOutputStreams           *prometheus.HistogramVec // tenant
-	logMergeOutputBytesCompressed   *prometheus.HistogramVec // tenant
-	logMergeOutputBytesUncompressed *prometheus.HistogramVec // tenant
+	logMergeTasksTotal            *prometheus.CounterVec   // tenant, outcome
+	logMergeDurationSeconds       *prometheus.HistogramVec // tenant
+	logMergeOutputBytesCompressed *prometheus.HistogramVec // tenant
 }
 
 func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 	f := promauto.With(reg)
 	byteBuckets := prometheus.ExponentialBuckets(1024, 2, 21)
-	countBuckets := prometheus.ExponentialBuckets(1, 2, 16)
 	durationBuckets := prometheus.ExponentialBuckets(0.01, 2, 14)
 	return &workerMetrics{
 		outputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
@@ -289,24 +294,9 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			Help:    "Wall-clock duration of a LogMerge task on the worker.",
 			Buckets: durationBuckets,
 		}, []string{labelTenant}),
-		logMergeOutputRecords: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_records",
-			Help:    "Number of log records written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputStreams: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_streams",
-			Help:    "Number of output streams written by a successful LogMerge task.",
-			Buckets: countBuckets,
-		}, []string{labelTenant}),
 		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
-			Buckets: byteBuckets,
-		}, []string{labelTenant}),
-		logMergeOutputBytesUncompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_bytes_uncompressed",
-			Help:    "Estimated uncompressed bytes of log records written by a successful LogMerge task.",
 			Buckets: byteBuckets,
 		}, []string{labelTenant}),
 	}
@@ -341,16 +331,7 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 	if stats.Outcome != "success" {
 		return
 	}
-	if stats.OutputRecords > 0 {
-		m.logMergeOutputRecords.WithLabelValues(tenant).Observe(float64(stats.OutputRecords))
-	}
-	if stats.OutputStreams > 0 {
-		m.logMergeOutputStreams.WithLabelValues(tenant).Observe(float64(stats.OutputStreams))
-	}
 	if stats.OutputBytesCompressed > 0 {
 		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
-	}
-	if stats.OutputBytesUncompressed > 0 {
-		m.logMergeOutputBytesUncompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesUncompressed))
 	}
 }

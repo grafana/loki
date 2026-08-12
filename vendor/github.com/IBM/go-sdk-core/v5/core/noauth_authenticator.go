@@ -35,7 +35,7 @@ func (NoAuthAuthenticator) Validate() error {
 	return nil
 }
 
-func (this *NoAuthAuthenticator) Authenticate(request *http.Request) error {
+func (noAuthenticator *NoAuthAuthenticator) Authenticate(request *http.Request) error {
 	// Nothing to do since we're not providing any authentication.
 	return nil
 }

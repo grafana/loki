@@ -49,10 +49,8 @@ func isMatroskaFileTypeMatched(in []byte, flType string) bool {
 // The logic of search is: find first instance of \x42\x82 and then
 // search for given string after n bytes of above instance.
 func isFileTypeNamePresent(in []byte, flType string) bool {
-	ind, maxInd, lenIn := 0, 4096, len(in)
-	if lenIn < maxInd { // restricting length to 4096
-		maxInd = lenIn
-	}
+	ind, lenIn := 0, len(in)
+	maxInd := min(4096, lenIn)
 	ind = bytes.Index(in[:maxInd], []byte("\x42\x82"))
 	if ind > 0 && lenIn > ind+2 {
 		ind += 2
