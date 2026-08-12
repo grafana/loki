@@ -42,7 +42,7 @@ type seriesFixture struct {
 // keep a symbol list in sync by hand, and it reorders series by fingerprint,
 // which is the order AddSeries requires. Refs are assigned in that order,
 // starting at 1.
-func writeIndexFixture(t *testing.T, format int, series []seriesFixture) string {
+func writeIndexFixture(t testing.TB, format int, series []seriesFixture) string {
 	t.Helper()
 	fileName := filepath.Join(t.TempDir(), IndexFilename)
 
@@ -86,7 +86,7 @@ func writeIndexFixture(t *testing.T, format int, series []seriesFixture) string 
 // openBothReaders opens path with both reader implementations, registering
 // cleanups that close them. It returns the concrete reader types because
 // several tests compare their internals.
-func openBothReaders(t *testing.T, path string) (*ByteSliceReader, *StreamReader) {
+func openBothReaders(t testing.TB, path string) (*ByteSliceReader, *StreamReader) {
 	t.Helper()
 
 	mmap, err := NewMmapFileReader(path)
@@ -103,13 +103,51 @@ func openBothReaders(t *testing.T, path string) (*ByteSliceReader, *StreamReader
 // writeCrossCheckFixture builds a small but non-trivial index used by
 // the cross-check tests: multiple label names, multiple values per
 // name, a couple of chunks per series.
-func writeCrossCheckFixture(t *testing.T, format int) string {
+func writeCrossCheckFixture(t testing.TB, format int) string {
 	t.Helper()
 	return writeIndexFixture(t, format, []seriesFixture{
 		{ls: labels.FromStrings("a", "1", "b", "1", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}}},
 		{ls: labels.FromStrings("a", "1", "b", "2", "c", "svcA"), chunks: []ChunkMeta{{Checksum: 2, MinTime: 10, MaxTime: 20, KB: 1, Entries: 1}}},
 		{ls: labels.FromStrings("a", "2", "b", "3", "c", "svcB"), chunks: []ChunkMeta{{Checksum: 3, MinTime: 20, MaxTime: 30, KB: 1, Entries: 1}}},
 	})
+}
+
+// BenchmarkNewStreamFileReader reproduces the index-open hot path.
+func BenchmarkNewStreamFileReader(b *testing.B) {
+	path := writeCrossCheckFixture(b, FormatV4)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, err := NewStreamFileReader(path)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := r.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkPostings(b *testing.B) {
+	path := writeCrossCheckFixture(b, FormatV4)
+	r, err := NewStreamFileReader(path)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		postings, err := r.Postings("c", nil, "svcA")
+		if err != nil {
+			b.Fatal(err)
+		}
+		for postings.Next() {
+			_ = postings.At()
+		}
+		if err := postings.Err(); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 // chunkSpan is the millisecond width of every chunk written by
