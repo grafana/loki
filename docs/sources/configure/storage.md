@@ -56,7 +56,7 @@ The file system is the simplest backend for chunks, although it's also susceptib
 
 GCS is a hosted object store offered by Google. It is a good candidate for a managed object store, especially when you're already running on GCP, and is production safe.
 
-#### Amazon Simple Storage Storage (S3)
+#### Amazon Simple Storage Service (S3)
 
 S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
 
