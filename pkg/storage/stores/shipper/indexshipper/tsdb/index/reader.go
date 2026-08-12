@@ -13,8 +13,9 @@ type Reader interface {
 	Version() int
 
 	// RawFileReader exposes the underlying index file bytes as an
-	// io.ReadSeeker so the indexshipper can upload the raw file.
-	RawFileReader() (io.ReadSeeker, error)
+	// io.ReadSeekCloser so the indexshipper can upload the raw file.
+	// The caller owns the returned reader and must Close it.
+	RawFileReader() (io.ReadSeekCloser, error)
 
 	// PostingsRanges returns the byte range in the underlying index file for
 	// every posting list.

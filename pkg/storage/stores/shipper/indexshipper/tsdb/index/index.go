@@ -1423,9 +1423,16 @@ func (r *ByteSliceReader) Version() int {
 	return r.version
 }
 
-func (r *ByteSliceReader) RawFileReader() (io.ReadSeeker, error) {
-	return bytes.NewReader(r.b.Range(0, r.b.Len())), nil
+func (r *ByteSliceReader) RawFileReader() (io.ReadSeekCloser, error) {
+	return nopCloserReadSeeker{bytes.NewReader(r.b.Range(0, r.b.Len()))}, nil
 }
+
+// nopCloserReadSeeker wraps an io.ReadSeeker with a no-op Close method so
+// callers can rely on a single io.ReadSeekCloser type regardless of whether
+// the underlying reader owns a real resource.
+type nopCloserReadSeeker struct{ io.ReadSeeker }
+
+func (nopCloserReadSeeker) Close() error { return nil }
 
 // Range marks a byte range.
 type Range struct {
