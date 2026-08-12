@@ -567,12 +567,25 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 	const tenant = "T"
 	sortSchema := []string{"label:app"}
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	buildSourceLogObject(t, dataBucket, "legacy", sortSchema, map[string][]testStream{
+	buildSourceLogObjectWithSections(t, dataBucket, "legacy", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="z"}`, entries: linesAt(base, 2)},
 			{labels: `{app="a"}`, entries: linesAt(base.Add(time.Hour), 2)},
 		},
-	})
+	}, true)
+
+	source, err := dataobj.FromBucket(ctx, dataBucket, "legacy", 0)
+	require.NoError(t, err)
+	var sectionRefs []*compactionv2pb.SectionRef
+	for index, section := range source.Sections().Filter(logs.CheckSection) {
+		if section.Tenant == tenant {
+			sectionRefs = append(sectionRefs, &compactionv2pb.SectionRef{
+				ObjectPath:   "legacy",
+				SectionIndex: int64(index),
+			})
+		}
+	}
+	require.Greater(t, len(sectionRefs), 1, "test requires multiple independently sorted runs")
 
 	c := newTestExecutorContext(t, indexBucket)
 	c.dataBucket = dataBucket
@@ -582,9 +595,7 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 		SortOnly:    true,
 		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
 		ShardCount:  16,
-		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
-			{ObjectPath: "legacy", SectionIndex: 0},
-		}}},
+		Runs:        []*compactionv2pb.RunRef{{Sections: sectionRefs}},
 	})
 	require.NoError(t, err)
 	require.Len(t, artifacts, 1)

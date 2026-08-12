@@ -31,11 +31,16 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 
 // IteratorForSchema returns an iterator that performs a k-way merge of records
 // from multiple schema-sorted logs sections. The input sections must be sorted
-// by [schema sort key ASC, streamID ASC, timestamp DESC].
+// by [shard ASC, schema sort key ASC, streamID ASC, timestamp DESC].
 //
-// It expects sortKeys to contain a mapping from StreamID to schema sort key.
+// It expects shards and sortKeys to contain mappings from StreamID to shard and
+// schema sort key. Emitted records are annotated with both values.
 func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(shards, sortKeys)})
+	return iterator(ctx, sections, iteratorOptions{
+		less:     logs.CompareForSortSchema(shards, sortKeys),
+		shards:   shards,
+		sortKeys: sortKeys,
+	})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from

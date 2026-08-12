@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"time"
@@ -355,98 +356,46 @@ func (c *Context) doLogObjectSort(ctx context.Context, node *physical.LogMerge, 
 		return nil, err
 	}
 
-	objectBuilder := dataobj.NewBuilder(c.scratchStore)
-	streamsBuilder := streams.NewBuilder(streams.NewMetrics(), int(c.indexobjCfg.TargetPageSize), c.indexobjCfg.MaxPageRows)
-	streamsBuilder.SetTenant(node.Tenant)
-	for _, stream := range table.streams[1:] {
-		streamsBuilder.AppendValue(stream)
-	}
-	if err := objectBuilder.Append(streamsBuilder); err != nil {
-		return nil, fmt.Errorf("building sorted streams section: %w", err)
-	}
-
-	newLogsBuilder := func() *logs.Builder {
-		builder := logs.NewBuilder(logs.NewMetrics(), logs.BuilderOptions{
-			PageSizeHint:     int(c.indexobjCfg.TargetPageSize),
-			PageMaxRowCount:  c.indexobjCfg.MaxPageRows,
-			BufferSize:       int(c.indexobjCfg.BufferSize),
-			StripeMergeLimit: c.indexobjCfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendUnordered,
-			SortOrder:        logs.SortSchemaASC,
-			SchemaLabels:     node.SortSchema,
-			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       streams.ShardFactor,
-			SchemaSortKeys:   table.sortKeys,
-			SchemaShards:     table.shards,
-		})
-		builder.SetTenant(node.Tenant)
-		return builder
-	}
-
-	logsBuilder := newLogsBuilder()
-	var records int
-	for _, section := range sources[0].logsSections {
-		opened, err := logs.Open(ctx, section)
-		if err != nil {
-			return nil, fmt.Errorf("opening logs section from %q: %w", sources[0].path, err)
-		}
-		for result := range logs.IterSection(ctx, opened) {
-			record, err := result.Value()
-			if err != nil {
-				return nil, err
-			}
-			globalID, ok := table.streamIDRemaps[0][record.StreamID]
-			if !ok {
-				return nil, fmt.Errorf("object %q record references unknown stream ID %d", sources[0].path, record.StreamID)
-			}
-			record.StreamID = globalID
-			record.SortKey = table.sortKeys[globalID]
-			record.ShardHash = int64(table.shards[globalID])
-			record.Line = slices.Clone(record.Line)
-			record.Metadata = record.Metadata.Copy()
-			logsBuilder.Append(record)
-			records++
-		}
-	}
-	if records == 0 {
-		return nil, fmt.Errorf("sort-only LogMerge found no records for tenant %q", node.Tenant)
-	}
-	if logsBuilder.UncompressedSize() > 0 {
-		if err := objectBuilder.Append(logsBuilder); err != nil {
-			return nil, fmt.Errorf("building sorted logs section: %w", err)
-		}
-	}
-
-	obj, closer, err := objectBuilder.Flush()
+	runs, runsCloser, records, err := c.buildSortedLogRuns(ctx, node, sources[0], table)
 	if err != nil {
-		return nil, fmt.Errorf("flushing sorted object: %w", err)
+		return nil, err
 	}
-	pathReader, err := obj.Reader(ctx)
-	if err != nil {
-		return nil, errors.Join(err, closer.Close())
-	}
-	path, pathErr := v2.CompactedLogObjectPath(node.Tenant, pathReader)
-	if closeErr := pathReader.Close(); closeErr != nil && pathErr == nil {
-		pathErr = closeErr
-	}
-	if pathErr != nil {
-		return nil, errors.Join(pathErr, closer.Close())
-	}
-	size, err := c.uploadObject(ctx, c.dataObjectBucket(), path, obj)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("uploading sorted object %q: %w", path, err), closer.Close())
-	}
-
 	indexBuilder, err := indexobj.NewBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
-		return nil, errors.Join(err, closer.Close())
+		return nil, errors.Join(err, runsCloser.Close())
 	}
 	calc := dataobjindex.NewCalculator(indexBuilder)
-	if err := calc.Calculate(ctx, c.logger, obj, path); err != nil {
-		return nil, errors.Join(fmt.Errorf("indexing sorted object %q: %w", path, err), closer.Close())
+
+	var runSections []*dataobj.Section
+	for _, section := range runs.Sections().Filter(logs.CheckSection) {
+		runSections = append(runSections, section)
 	}
-	if err := closer.Close(); err != nil {
-		return nil, fmt.Errorf("closing sorted object %q: %w", path, err)
+	merged, err := sortmerge.IteratorForSchema(ctx, runSections, table.shards, table.sortKeys)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("starting sorted-run merge: %w", err), runsCloser.Close())
+	}
+	w, err := c.newLogObjectWriter(node, table, calc)
+	if err != nil {
+		return nil, errors.Join(err, runsCloser.Close())
+	}
+	for result := range merged {
+		record, err := result.Value()
+		if err != nil {
+			return nil, errors.Join(err, runsCloser.Close())
+		}
+		if err := w.add(ctx, record); err != nil {
+			return nil, errors.Join(err, runsCloser.Close())
+		}
+	}
+	stats, err := w.finish(ctx)
+	if err != nil {
+		return nil, errors.Join(err, runsCloser.Close())
+	}
+	if err := runsCloser.Close(); err != nil {
+		return nil, fmt.Errorf("closing sorted runs: %w", err)
+	}
+	if stats.OutputObjects == 0 {
+		return nil, fmt.Errorf("sort-only LogMerge produced no objects for tenant %q", node.Tenant)
 	}
 
 	idxObj, idxCloser, _, err := calc.Flush()
@@ -472,15 +421,84 @@ func (c *Context) doLogObjectSort(ctx context.Context, node *physical.LogMerge, 
 	}
 
 	level.Info(c.logger).Log(
-		"msg", "LogMerge: uploaded sort-only object",
+		"msg", "LogMerge: uploaded sort-only objects",
 		"tenant", node.Tenant,
 		"source_object", sources[0].path,
-		"path", path,
+		"input_sections", len(sources[0].logsSections),
+		"output_objects", stats.OutputObjects,
 		"records", records,
-		"bytes", size,
+		"bytes", stats.OutputBytesCompressed,
 		"duration", time.Since(start),
 	)
 	return []v2.ResultArtifact{{Path: idxPath}}, nil
+}
+
+// buildSortedLogRuns independently sorts each source LOG section into the
+// target layout. The resulting sections are bounded intermediate runs that can
+// be globally ordered with a k-way merge.
+func (c *Context) buildSortedLogRuns(
+	ctx context.Context,
+	node *physical.LogMerge,
+	source *logSource,
+	table *globalStreamTable,
+) (*dataobj.Object, io.Closer, int, error) {
+	objectBuilder := dataobj.NewBuilder(c.scratchStore)
+	newLogsBuilder := func() *logs.Builder {
+		builder := logs.NewBuilder(logs.NewMetrics(), logs.BuilderOptions{
+			PageSizeHint:     int(c.indexobjCfg.TargetPageSize),
+			PageMaxRowCount:  c.indexobjCfg.MaxPageRows,
+			BufferSize:       int(c.indexobjCfg.BufferSize),
+			StripeMergeLimit: c.indexobjCfg.SectionStripeMergeLimit,
+			AppendStrategy:   logs.AppendUnordered,
+			SortOrder:        logs.SortSchemaASC,
+			SchemaLabels:     node.SortSchema,
+			StreamOrder:      logs.StreamOrderStableHashV1,
+			ShardCount:       streams.ShardFactor,
+			SchemaSortKeys:   table.sortKeys,
+			SchemaShards:     table.shards,
+		})
+		builder.SetTenant(node.Tenant)
+		return builder
+	}
+
+	var records int
+	for _, section := range source.logsSections {
+		logsBuilder := newLogsBuilder()
+		opened, err := logs.Open(ctx, section)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("opening logs section from %q: %w", source.path, err)
+		}
+		for result := range logs.IterSection(ctx, opened) {
+			record, err := result.Value()
+			if err != nil {
+				return nil, nil, 0, err
+			}
+			globalID, ok := table.streamIDRemaps[0][record.StreamID]
+			if !ok {
+				return nil, nil, 0, fmt.Errorf("object %q record references unknown stream ID %d", source.path, record.StreamID)
+			}
+			record.StreamID = globalID
+			record.SortKey = table.sortKeys[globalID]
+			record.ShardHash = int64(table.shards[globalID])
+			record.Line = slices.Clone(record.Line)
+			record.Metadata = record.Metadata.Copy()
+			logsBuilder.Append(record)
+			records++
+		}
+		if logsBuilder.UncompressedSize() > 0 {
+			if err := objectBuilder.Append(logsBuilder); err != nil {
+				return nil, nil, 0, fmt.Errorf("building sorted log run: %w", err)
+			}
+		}
+	}
+	if records == 0 {
+		return nil, nil, 0, fmt.Errorf("sort-only LogMerge found no records for tenant %q", node.Tenant)
+	}
+	runs, closer, err := objectBuilder.Flush()
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("flushing sorted log runs: %w", err)
+	}
+	return runs, closer, records, nil
 }
 
 // resolveStreams decodes a streams section into a map from local stream ID to its

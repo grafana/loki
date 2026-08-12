@@ -297,6 +297,45 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	require.Equal(t, 8, count)
 }
 
+func TestIteratorForSchema_AnnotatesMergedRecords(t *testing.T) {
+	ctx := context.Background()
+	sortSchema := []string{"label:app"}
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	obj, closeObj := buildSchemaObject(t, sortSchema, map[string][]push.Entry{
+		`{app="b"}`: {{Timestamp: t0, Line: "b"}},
+		`{app="a"}`: {{Timestamp: t0, Line: "a"}},
+	})
+	defer closeObj()
+
+	sections := collectSections(t, obj)
+	shards := make([]uint32, 3)
+	sortKeys := make([]string, 3)
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		opened, err := streams.Open(ctx, section)
+		require.NoError(t, err)
+		for result := range streams.IterSection(ctx, opened) {
+			stream, err := result.Value()
+			require.NoError(t, err)
+			key, err := logsobj.NewStreamOrderKey(stream.Labels, sortSchema)
+			require.NoError(t, err)
+			shards[stream.ID] = key.Shard
+			sortKeys[stream.ID] = key.SchemaKey
+		}
+	}
+
+	iter, err := sortmerge.IteratorForSchema(ctx, sections, shards, sortKeys)
+	require.NoError(t, err)
+	var count int
+	for result := range iter {
+		record, err := result.Value()
+		require.NoError(t, err)
+		require.Equal(t, sortKeys[record.StreamID], record.SortKey)
+		require.Equal(t, int64(shards[record.StreamID]), record.ShardHash)
+		count++
+	}
+	require.Equal(t, 2, count)
+}
+
 // recOrder compares records by [sortKey ASC, streamID ASC, timestamp DESC].
 func recOrder(a, b logs.Record) int {
 	if r := cmp.Compare(a.ShardHash, b.ShardHash); r != 0 {
