@@ -33,7 +33,7 @@ type streamSymbols struct {
 // capturing the sparse offset table, and building labelNameSymbols.
 func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int, isLabelName func(symbol string) bool) (*streamSymbols, error) {
 	decbuf := factory.NewDecbufAtChecked(ctx, off, castagnoliTable)
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	}
 
 	decbuf := s.factory.NewDecbufAtUnchecked(context.Background(), s.off)
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return "", err
 	}
