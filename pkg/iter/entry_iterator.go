@@ -408,6 +408,7 @@ func (i *queryClientIterator) Close() error {
 type nonOverlappingIterator struct {
 	iterators []EntryIterator
 	curr      EntryIterator
+	err       error
 }
 
 // NewNonOverlappingIterator gives a chained iterator over a list of iterators.
@@ -419,15 +420,23 @@ func NewNonOverlappingIterator(iterators []EntryIterator) EntryIterator {
 
 func (i *nonOverlappingIterator) Next() bool {
 	for i.curr == nil || !i.curr.Next() {
-		if len(i.iterators) == 0 {
-			if i.curr != nil {
-				i.curr.Close()
-			}
-			return false
-		}
 		if i.curr != nil {
+			// The current iterator stopped. If it failed, surface the error and stop:
+			// any error fails the query, so advancing would hide the failure as normal
+			// exhaustion and read remaining streams whose data the query discards.
+			if err := i.curr.Err(); err != nil {
+				i.err = err
+				return false
+			}
+			// A close error here is a cleanup failure, not a read failure. Reporting it
+			// as a read failure would be inaccurate.
 			i.curr.Close()
 		}
+
+		if len(i.iterators) == 0 {
+			return false
+		}
+
 		i.curr, i.iterators = i.iterators[0], i.iterators[1:]
 	}
 
@@ -453,21 +462,22 @@ func (i *nonOverlappingIterator) StreamHash() uint64 {
 }
 
 func (i *nonOverlappingIterator) Err() error {
-	if i.curr == nil {
-		return nil
-	}
-	return i.curr.Err()
+	return i.err
 }
 
 func (i *nonOverlappingIterator) Close() error {
+	// Close every iterator and keep all errors: Add ignores nil, so a clean close
+	// still returns nil.
+	var errs util.MultiError
 	if i.curr != nil {
-		i.curr.Close()
+		errs.Add(i.curr.Close())
 	}
 	for _, iter := range i.iterators {
-		iter.Close()
+		errs.Add(iter.Close())
 	}
 	i.iterators = nil
-	return nil
+
+	return errs.Err()
 }
 
 type timeRangedIterator struct {

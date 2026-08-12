@@ -541,3 +541,180 @@ func TestMergeSampleIteratorZeroHash(t *testing.T) {
 	require.NoError(t, it.Err())
 	require.NoError(t, it.Close())
 }
+
+// TestNonOverlappingSampleIterator_ShouldSurfaceErrors verifies the concatenation
+// reports a sub-iterator failure through Err instead of treating it as normal
+// exhaustion.
+func TestNonOverlappingSampleIterator_ShouldSurfaceErrors(t *testing.T) {
+	failing := func(ts int, labels string, err error) SampleIterator {
+		return &erroringSampleIterator{samples: []logproto.Sample{sample(ts)}, labels: labels, err: err}
+	}
+	healthy := func(ts int, labels string) SampleIterator {
+		return NewSeriesIterator(logproto.Series{Labels: labels, Samples: []logproto.Sample{sample(ts)}})
+	}
+
+	t.Run("error stops iteration and is surfaced", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			failing(1, `{app="a"}`, wantErr),
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 1, got, "iteration stops at the failing stream; later streams are not played")
+		require.ErrorIs(t, it.Err(), wantErr, "the error must be surfaced, not dropped as normal exhaustion")
+	})
+
+	t.Run("error in the last stream is surfaced", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			healthy(1, `{app="a"}`),
+			failing(2, `{app="b"}`, wantErr),
+		})
+
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("no error returns nil", func(t *testing.T) {
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			healthy(1, `{app="a"}`),
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got)
+		require.NoError(t, it.Err())
+	})
+
+	t.Run("close error surfaces through Close, not Err", func(t *testing.T) {
+		wantErr := errors.New("close boom")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: wantErr},
+			healthy(2, `{app="b"}`),
+		})
+
+		require.NoError(t, it.Err(), "a close error is not a read error")
+		require.ErrorIs(t, it.Close(), wantErr, "Close must surface a sub-iterator close error")
+	})
+
+	t.Run("close error while iterating is not a read error", func(t *testing.T) {
+		// The first iterator reads cleanly, then its Close fails while iterating.
+		// That is a cleanup failure, not a read failure, so iteration continues
+		// and Err stays nil.
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, closeErr: errors.New("close boom")},
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got, "both streams play; a close failure does not stop iteration")
+		require.NoError(t, it.Err(), "a close error during iteration must not become a read error")
+	})
+
+	t.Run("stream that errors before any sample stops immediately", func(t *testing.T) {
+		wantErr := errors.New("open failed")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			&erroringSampleIterator{labels: `{app="a"}`, err: wantErr}, // no samples
+			healthy(2, `{app="b"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 0, got, "no samples are produced")
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("error in a middle stream stops before later streams", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			healthy(1, `{app="a"}`),
+			failing(2, `{app="b"}`, wantErr),
+			healthy(3, `{app="c"}`),
+		})
+
+		var got int
+		for it.Next() {
+			got++
+		}
+		require.Equal(t, 2, got, "the stream after the failing one is not played")
+		require.ErrorIs(t, it.Err(), wantErr)
+	})
+
+	t.Run("fail-fast leaves cleanup to Close", func(t *testing.T) {
+		// The fail-fast path does not close the errored current iterator, so Close
+		// must close it and the never-started streams, each exactly once.
+		errored := &erroringSampleIterator{samples: []logproto.Sample{sample(1)}, labels: `{app="a"}`, err: errors.New("boom")}
+		later1 := &erroringSampleIterator{samples: []logproto.Sample{sample(2)}, labels: `{app="b"}`}
+		later2 := &erroringSampleIterator{samples: []logproto.Sample{sample(3)}, labels: `{app="c"}`}
+
+		it := NewNonOverlappingSampleIterator([]SampleIterator{errored, later1, later2})
+		for it.Next() { //nolint:revive
+		}
+		require.NoError(t, it.Close())
+
+		require.Equal(t, 1, errored.closed, "the errored current iterator is closed once")
+		require.Equal(t, 1, later1.closed, "an un-started iterator is closed once")
+		require.Equal(t, 1, later2.closed, "an un-started iterator is closed once")
+	})
+
+	t.Run("Close surfaces every close error", func(t *testing.T) {
+		it := NewNonOverlappingSampleIterator([]SampleIterator{
+			&erroringSampleIterator{samples: []logproto.Sample{sample(1)}, closeErr: errors.New("close a")},
+			&erroringSampleIterator{samples: []logproto.Sample{sample(2)}, closeErr: errors.New("close b")},
+		})
+
+		err := it.Close() // no iteration, so both remain for Close to close
+		require.ErrorContains(t, err, "close a")
+		require.ErrorContains(t, err, "close b")
+	})
+
+	t.Run("Err is stable after a read error", func(t *testing.T) {
+		wantErr := errors.New("boom")
+		it := NewNonOverlappingSampleIterator([]SampleIterator{failing(1, `{app="a"}`, wantErr)})
+
+		for it.Next() { //nolint:revive
+		}
+		require.False(t, it.Next(), "further Next calls keep returning false")
+		require.ErrorIs(t, it.Err(), wantErr, "Err stays set")
+	})
+}
+
+// erroringSampleIterator yields its samples, then fails: the Next after the last
+// sample returns false with err set, modeling a stream that read some data and
+// then failed mid-stream.
+type erroringSampleIterator struct {
+	samples  []logproto.Sample
+	labels   string
+	err      error // a read failure, returned by Err once the samples are exhausted
+	closeErr error // a cleanup failure, returned by Close; kept separate from err
+	closed   int   // number of times Close was called
+	i        int
+}
+
+func (it *erroringSampleIterator) Next() bool {
+	it.i++
+	return it.i <= len(it.samples)
+}
+func (it *erroringSampleIterator) At() logproto.Sample { return it.samples[it.i-1] }
+func (it *erroringSampleIterator) Labels() string      { return it.labels }
+func (it *erroringSampleIterator) StreamHash() uint64  { return 0 }
+func (it *erroringSampleIterator) Close() error        { it.closed++; return it.closeErr }
+func (it *erroringSampleIterator) Err() error {
+	if it.i > len(it.samples) {
+		return it.err
+	}
+	return nil
+}
