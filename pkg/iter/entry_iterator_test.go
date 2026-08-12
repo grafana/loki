@@ -1091,6 +1091,22 @@ func TestNonOverlappingIterator_ShouldSurfaceErrors(t *testing.T) {
 		require.Equal(t, 1, later2.closed, "an un-started iterator is closed once")
 	})
 
+	t.Run("close error replaying an already-surfaced read error is not reported again", func(t *testing.T) {
+		// Some EntryIterator implementations (e.g. the chunk block iterator) return
+		// their stored read error from Close too, as a fallback for callers that
+		// only check the Close return value. That must not turn into a second,
+		// spurious close error once the read error already surfaced through Err.
+		wantErr := errors.New("boom")
+		errored := &erroringEntryIterator{entries: []logproto.Entry{line(1)}, labels: `{app="a"}`, err: wantErr, closeErr: wantErr}
+
+		it := NewNonOverlappingIterator([]EntryIterator{errored, healthy(2, `{app="b"}`)})
+		for it.Next() { //nolint:revive
+		}
+		require.ErrorIs(t, it.Err(), wantErr)
+		require.NoError(t, it.Close())
+		require.Equal(t, 1, errored.closed)
+	})
+
 	t.Run("Close surfaces every close error", func(t *testing.T) {
 		it := NewNonOverlappingIterator([]EntryIterator{
 			&erroringEntryIterator{entries: []logproto.Entry{line(1)}, closeErr: errors.New("close a")},

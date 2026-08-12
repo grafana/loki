@@ -673,7 +673,12 @@ func (i *nonOverlappingSampleIterator) Close() error {
 	// still returns nil.
 	var errs util.MultiError
 	if i.curr != nil {
-		errs.Add(i.curr.Close())
+		// If curr already failed, some implementations return that same read error
+		// from Close too. It was already surfaced through Err, so closing here is
+		// cleanup only: do not report it a second time as a close error.
+		if err := i.curr.Close(); err != nil && i.err == nil {
+			errs.Add(err)
+		}
 	}
 	for _, iter := range i.iterators {
 		errs.Add(iter.Close())
