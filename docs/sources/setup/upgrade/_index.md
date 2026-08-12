@@ -62,7 +62,7 @@ stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
 ### Breaking change: Thanos storage clients are used by default
 
-The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.
 
 Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
 
@@ -465,7 +465,7 @@ period_config:
 ```
 
 {{< admonition type="note" >}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on legacy indexes.
 {{< /admonition >}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -588,7 +588,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 #### Write dedupe cache is deprecated
 
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
-If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
+If you are using a legacy index type, you must migrate to TSDB to use Loki 4.0.
 
 #### Embedded cache metric changes
 
