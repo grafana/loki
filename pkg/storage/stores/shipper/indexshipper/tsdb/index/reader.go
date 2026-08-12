@@ -7,6 +7,14 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+// ReaderOptions selects and configures one of the Reader implementations in this package.
+type ReaderOptions interface {
+	// OpenReader constructs the reader described by these options against the
+	// selected index file.
+	// The caller owns the returned Reader and must Close it.
+	OpenReader(path string) (Reader, error)
+}
+
 // Reader is the read-side interface implemented by every on-disk TSDB index reader.
 type Reader interface {
 	// Version returns the on-disk index format version.

@@ -67,7 +67,11 @@ func NewStore(
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
 
-	var err error
+	readerOpts, err := indexShipperCfg.IndexReaderOptions()
+	if err != nil {
+		return err
+	}
+
 	s.indexShipper, err = indexshipper.NewIndexShipper(
 		prefix,
 		indexShipperCfg,
@@ -75,7 +79,7 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 		limits,
 		nil,
 		func(p string) (shipperindex.Index, error) {
-			return OpenShippableTSDB(p, indexShipperCfg.IndexReaderMode)
+			return OpenShippableTSDB(p, readerOpts)
 		},
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),

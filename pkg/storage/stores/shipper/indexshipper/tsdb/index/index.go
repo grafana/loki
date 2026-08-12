@@ -1310,6 +1310,18 @@ func NewByteSliceReader(b ByteSlice) (*ByteSliceReader, error) {
 	return newByteSliceReader(b, io.NopCloser(nil))
 }
 
+// MmapOptions selects the mmap-backed reader, which has nothing to tune.
+type MmapOptions struct{}
+
+// OpenReader implements ReaderOptions.
+func (MmapOptions) OpenReader(path string) (Reader, error) {
+	r, err := NewMmapFileReader(path)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // NewMmapFileReader returns a new index reader against the given index file.
 // It uses mmap to read the file.
 func NewMmapFileReader(path string) (*ByteSliceReader, error) {

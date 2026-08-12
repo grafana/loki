@@ -258,6 +258,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 			CacheLocation:        filepath.Join(dir, "cache"),
 			Mode:                 indexshipper.ModeWriteOnly,
 			ResyncInterval:       24 * time.Hour,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 	}
 
