@@ -4,33 +4,32 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
-// pendingSummary is a terminal task's state, retained for its deferred summary
-// (see Workflow.pendingSummaries).
+// pendingSummary is a terminal task result retained for its deferred summary
+// (see Workflow.taskResults).
 type pendingSummary struct {
-	oldState TaskState
-	status   TaskStatus
+	result TaskResult
 
 	taskFinishNanos int64
 }
 
 // flushTaskSummaries logs the deferred per-task summaries at Close, flagging the
-// tasks on the critical path. onTaskChange records each summary and finish time
-// under the terminal-state lock, so on the normal path all are present once the
-// results pipeline closes (every task terminal).
+// tasks on the critical path. onTaskResult records each summary and finish time
+// under the task-results lock, so on the normal path all are present once the
+// results pipeline closes (every task has a result).
 func (wf *Workflow) flushTaskSummaries() {
 	wf.tasksMut.RLock()
 	defer wf.tasksMut.RUnlock()
 
 	onPath := make(map[*Task]struct{})
-	for _, task := range criticalPath(&wf.graph, wf.pendingSummaries) {
+	for _, task := range criticalPath(&wf.graph, wf.taskResults) {
 		onPath[task] = struct{}{}
 	}
 
 	// TODO(rfratto): make Workflow.Close a hard barrier; a fail-fast query can drop
 	// a sibling that finishes at the instant of teardown (failing task unaffected).
-	for t, s := range wf.pendingSummaries {
+	for t, s := range wf.taskResults {
 		_, critical := onPath[t]
-		wf.printTaskSummary(t, s.oldState, s.status, critical)
+		wf.printTaskSummary(t, s.result, critical)
 	}
 }
 
@@ -46,10 +45,10 @@ func (wf *Workflow) flushTaskSummaries() {
 // critical path is determined by which child delivered the last batch a parent
 // needed, which the workflow does not observe.
 //
-// Tasks participate regardless of terminal status (success, failure, or
-// cancellation): selection is purely by finish time. Short-circuited or
-// pre-assignment-cancelled tasks tend to finish early and so are rarely chosen
-// as the gating child, which matches the intent.
+// Tasks participate regardless of terminal outcome (success, failure, or
+// cancellation): selection is purely by finish time. Pre-assignment-cancelled
+// tasks tend to finish early and so are rarely chosen as the gating child,
+// which matches the intent.
 //
 // If the graph has multiple roots, criticalPath starts from the root with the
 // latest finish time. Query workflows have a single root today (the physical

@@ -74,7 +74,11 @@ type Config struct {
 	CacheTTL                 time.Duration             `yaml:"cache_ttl"`
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
+	DownloadTimeout          time.Duration             `yaml:"download_timeout"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
+
+	// Temporary experimental feature
+	ShadowIndexGatewayClientConfig indexgateway.ClientConfig `yaml:"shadow_index_gateway_client,omitempty" category:"experimental" doc:"hidden"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -88,18 +92,25 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.IndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.index-gateway-client", f)
+	cfg.ShadowIndexGatewayClientConfig.RegisterFlagsWithPrefix(prefix+"shipper.shadow-index-gateway-client", f)
 
 	f.StringVar(&cfg.ActiveIndexDirectory, prefix+"shipper.active-index-directory", "", "Directory where ingesters would write index files which would then be uploaded by shipper to configured storage")
 	f.StringVar(&cfg.CacheLocation, prefix+"shipper.cache-location", "", "Cache location for restoring index files from storage for queries")
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
+	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query. "+
+		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
 }
 
 func (cfg *Config) Validate() error {
 	// set the default value for mode
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
+	}
+
+	if cfg.DownloadTimeout <= 0 {
+		return fmt.Errorf("shipper.download-timeout must be greater than zero, got %s", cfg.DownloadTimeout)
 	}
 
 	return nil
@@ -198,6 +209,7 @@ func (s *indexShipper) init(prefix string, storageClient client.ObjectClient, li
 			SyncInterval:      s.cfg.ResyncInterval,
 			CacheTTL:          s.cfg.CacheTTL,
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
+			DownloadTimeout:   s.cfg.DownloadTimeout,
 			Limits:            limits,
 		}
 		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)

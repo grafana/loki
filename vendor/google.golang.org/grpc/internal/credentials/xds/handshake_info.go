@@ -210,6 +210,9 @@ func (hi *HandshakeInfo) ClientSideTLSConfig(ctx context.Context, hostname strin
 
 func (hi *HandshakeInfo) buildVerifyFunc(km *certprovider.KeyMaterial, isClient bool, sni string) func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 	return func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return fmt.Errorf("xds: no peer certificates presented")
+		}
 		// Parse all raw certificates presented by the peer.
 		var certs []*x509.Certificate
 		for _, rc := range rawCerts {

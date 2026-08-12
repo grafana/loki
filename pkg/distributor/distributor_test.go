@@ -1952,6 +1952,131 @@ func TestDistributor_PushShardStreamsPolicyOverride(t *testing.T) {
 	require.False(t, otherSharded, "non-foo stream should not be time-sharded (tenant default off)")
 }
 
+// TestDistributor_PushBackfillBypassesRejectOldSamples verifies that streams carrying the internal
+// backfill label skip the reject_old_samples validation (backfill data is old by definition), while
+// regular streams on the same tenant are still subject to it and the too-far-in-future check stays
+// in force for backfill streams.
+func TestDistributor_PushBackfillBypassesRejectOldSamples(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = true
+	require.NoError(t, limits.RejectOldSamplesMaxAge.Set("24h"))
+	require.NoError(t, limits.Validate())
+
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	old := time.Now().Add(-48 * time.Hour)
+	backfillLbls := fmt.Sprintf(`{app="backfilled", %s="true", %s="shard-1"}`, constants.BackfillLabel, constants.BackfillShardLabel)
+	mkReq := func(lbls string, ts time.Time) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbls,
+			Entries: []logproto.Entry{{Timestamp: ts, Line: "a"}},
+		}}}
+	}
+
+	// A regular stream with an entry older than reject_old_samples_max_age is rejected.
+	_, err := distributors[0].Push(ctx, mkReq(`{app="regular"}`, old))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timestamp too old")
+
+	// A backfill stream with an entry too far in the future is still rejected.
+	_, err = distributors[0].Push(ctx, mkReq(backfillLbls, time.Now().Add(time.Hour)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "timestamp too new")
+
+	// The same old entry on a backfill stream is accepted and reaches the ingesters.
+	_, err = distributors[0].Push(ctx, mkReq(backfillLbls, old))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="backfilled"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}, time.Second, 10*time.Millisecond, "expected the backfill stream to reach the ingesters")
+}
+
+// TestDistributor_PushBackfillDisablesTimeSharding verifies that streams carrying the internal
+// backfill label are not time-sharded by Loki even when time sharding is enabled, because backfill
+// workers implement time sharding on the client side (via constants.BackfillShardLabel). A regular
+// old stream on the same tenant is still time-sharded.
+func TestDistributor_PushBackfillDisablesTimeSharding(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false // we push intentionally old logs to trigger time sharding
+	limits.ShardStreams.TimeShardingEnabled = true
+	require.NoError(t, limits.Validate())
+
+	// prepare() builds distributors with ingester MaxChunkAge=2h → time-shard length 1h.
+	distributors, ingesters := prepare(t, 1, 3, limits, nil)
+
+	// Logs older than time_sharding_ignore_recent (40m default), spanning two 1h buckets.
+	old := time.Now().Add(-3 * time.Hour)
+	mkReq := func(lbls string) *logproto.PushRequest {
+		return &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: old, Line: "a"},
+				{Timestamp: old.Add(time.Hour + time.Minute), Line: "b"},
+			},
+		}}}
+	}
+
+	// A regular old stream (should be time-sharded) and a backfill stream (should not).
+	_, err := distributors[0].Push(ctx, mkReq(`{app="regular"}`))
+	require.NoError(t, err)
+	_, err = distributors[0].Push(ctx, mkReq(fmt.Sprintf(`{app="backfilled", %s="true", %s="shard-1"}`, constants.BackfillLabel, constants.BackfillShardLabel)))
+	require.NoError(t, err)
+
+	streamPushed := func(app string) bool {
+		for i := range ingesters {
+			ingesters[i].mu.Lock()
+			for _, pr := range ingesters[i].pushed {
+				for _, st := range pr.Streams {
+					if strings.Contains(st.Labels, `app="`+app+`"`) {
+						ingesters[i].mu.Unlock()
+						return true
+					}
+				}
+			}
+			ingesters[i].mu.Unlock()
+		}
+		return false
+	}
+	require.Eventually(t, func() bool {
+		return streamPushed("regular") && streamPushed("backfilled")
+	}, time.Second, 10*time.Millisecond, "expected both streams to reach the ingesters")
+
+	regularSharded, backfilledSharded := false, false
+	for i := range ingesters {
+		ingesters[i].mu.Lock()
+		for _, pr := range ingesters[i].pushed {
+			for _, st := range pr.Streams {
+				if !strings.Contains(st.Labels, "__time_shard__") {
+					continue
+				}
+				if strings.Contains(st.Labels, `app="regular"`) {
+					regularSharded = true
+				}
+				if strings.Contains(st.Labels, `app="backfilled"`) {
+					backfilledSharded = true
+				}
+			}
+		}
+		ingesters[i].mu.Unlock()
+	}
+	require.True(t, regularSharded, "regular old stream should be time-sharded")
+	require.False(t, backfilledSharded, "backfill stream should not be time-sharded by Loki")
+}
+
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
@@ -3060,6 +3185,29 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDistributorMaxInflightBytesLimit(t *testing.T) {
+	validationLimits := &validation.Limits{}
+	flagext.DefaultValues(validationLimits)
+	distributors, _ := prepare(t, 1, 3, validationLimits, nil)
+	d := distributors[0]
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{{
+			Labels: "{foo=\"bar\"}",
+			Entries: []logproto.Entry{{
+				Timestamp: time.Now(),
+				Line:      strings.Repeat("a", 1025),
+			}},
+		}},
+	}
+	_, err := d.Push(ctx, req)
+	require.NoError(t, err)
+	// Set the max inflight bytes to 1KB, the same request should be rejected.
+	d.cfg.MaxInflightBytes = 1024
+	_, err = d.Push(ctx, req)
+	require.ErrorIs(t, err, errServiceUnavailableMaxLoad)
+
 }
 
 func ptr[T any](v T) *T { return &v }

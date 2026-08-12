@@ -192,7 +192,7 @@ func TestWorkerStreamDataCommSiteLabels(t *testing.T) {
 		Logger:      log.NewNopLogger(),
 		Metrics:     m,
 		WireMetrics: wire.NewMetrics(),
-		Stream:      &workflow.Stream{ULID: streamID, TenantID: "test-tenant"},
+		Stream:      &workflow.Stream{ULID: streamID},
 		TaskType:    taskTypeLeaf,
 		Dialer: func(ctx context.Context, _ net.Addr) (wire.Conn, error) {
 			return listener.DialFrom(ctx, wire.LocalScheduler)

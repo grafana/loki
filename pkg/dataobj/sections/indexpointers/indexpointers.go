@@ -82,17 +82,21 @@ func (s *Section) Columns() []*Column { return s.columns }
 type ColumnType int
 
 const (
-	ColumnTypeInvalid      ColumnType = iota // ColumnTypeInvalid is an invalid column.
-	ColumnTypePath                           // ColumnTypePath is a column containing the path to the index object.
-	ColumnTypeMinTimestamp                   // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
-	ColumnTypeMaxTimestamp                   // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+	ColumnTypeInvalid              ColumnType = iota // ColumnTypeInvalid is an invalid column.
+	ColumnTypePath                                   // ColumnTypePath is a column containing the path to the index object.
+	ColumnTypeMinTimestamp                           // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
+	ColumnTypeMaxTimestamp                           // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+	ColumnTypeFileSize                               // ColumnTypeFileSize is the encoded on-disk size of the index object in bytes.
+	ColumnTypeUncompressedLogsSize                   // ColumnTypeUncompressedLogsSize is the uncompressed log volume (bytes) referenced by the index object.
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid:      "invalid",
-	ColumnTypePath:         "path",
-	ColumnTypeMinTimestamp: "min_timestamp",
-	ColumnTypeMaxTimestamp: "max_timestamp",
+	ColumnTypeInvalid:              "invalid",
+	ColumnTypePath:                 "path",
+	ColumnTypeMinTimestamp:         "min_timestamp",
+	ColumnTypeMaxTimestamp:         "max_timestamp",
+	ColumnTypeFileSize:             "file_size",
+	ColumnTypeUncompressedLogsSize: "uncompressed_logs_size",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -107,6 +111,10 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":
 		return ColumnTypeMaxTimestamp, nil
+	case "file_size":
+		return ColumnTypeFileSize, nil
+	case "uncompressed_logs_size":
+		return ColumnTypeUncompressedLogsSize, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)

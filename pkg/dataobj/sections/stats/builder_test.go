@@ -99,7 +99,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj1",
 			SectionIndex:     0,
-			SortSchema:       "service_name",
+			SortSchema:       "label:service_name",
 			Labels:           map[string]string{"service_name": "foo"},
 			MinTimestamp:     1000,
 			MaxTimestamp:     2000,
@@ -109,7 +109,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj2",
 			SectionIndex:     1,
-			SortSchema:       "service_name",
+			SortSchema:       "label:service_name",
 			Labels:           map[string]string{"service_name": "bar"},
 			MinTimestamp:     500,
 			MaxTimestamp:     1500,
@@ -119,7 +119,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			ObjectPath:       "/tenant/abc/obj3",
 			SectionIndex:     2,
-			SortSchema:       "service_name",
+			SortSchema:       "label:service_name",
 			Labels:           map[string]string{"service_name": "baz"},
 			MinTimestamp:     3000,
 			MaxTimestamp:     4000,
@@ -141,7 +141,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			"object_path.utf8":        "/tenant/abc/obj2",
 			"section_index.int64":     int64(1),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 1500).UTC(),
 			"row_count.int64":         int64(50),
@@ -151,7 +151,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			"object_path.utf8":        "/tenant/abc/obj3",
 			"section_index.int64":     int64(2),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 4000).UTC(),
 			"row_count.int64":         int64(200),
@@ -161,7 +161,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		{
 			"object_path.utf8":        "/tenant/abc/obj1",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 2000).UTC(),
 			"row_count.int64":         int64(100),
@@ -178,11 +178,11 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
 
 	// Intentionally appended out of order.
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 300})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 100})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "gamma"}, MinTimestamp: 50})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 300})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "gamma"}, MinTimestamp: 50})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
@@ -193,7 +193,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -203,7 +203,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -213,7 +213,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -223,7 +223,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -233,7 +233,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -250,9 +250,9 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
 
 	// Multiple rows with the same service_name, different timestamps.
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, ObjectPath: "a"})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200, ObjectPath: "b"})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300, ObjectPath: "c"})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, ObjectPath: "a"})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200, ObjectPath: "b"})
 
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
@@ -263,7 +263,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		{
 			"object_path.utf8":        "a",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -273,7 +273,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		{
 			"object_path.utf8":        "b",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -283,7 +283,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		{
 			"object_path.utf8":        "c",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -296,7 +296,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 
 // TestCompare_FullKeyOrder locks the canonical stats sort order
 func TestCompare_FullKeyOrder(t *testing.T) {
-	const schema = "service_name,namespace"
+	const schema = "label:service_name,label:namespace"
 	base := func() Stat {
 		return Stat{
 			SortSchema:   schema,
@@ -362,8 +362,8 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 	// All rows share the same (service_name, MinTimestamp, MaxTimestamp).
 	// They differ only in ObjectPath and SectionIndex, and are appended in an
 	// order that the coarse (labels, minT, maxT) sort would leave untouched.
-	const schema = "service_name"
-	labels := map[string]string{schema: "svc"}
+	const schema = "label:service_name"
+	labels := map[string]string{"service_name": "svc"}
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objB", SectionIndex: 0})
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 1})
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 0})
@@ -412,8 +412,8 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 func TestBuilder_MissingServiceName(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
 
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": ""}, ObjectPath: "obj1", MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
@@ -424,7 +424,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 		{
 			"object_path.utf8":        "obj1",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -434,7 +434,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 		{
 			"object_path.utf8":        "obj2",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -457,7 +457,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	for i := range 3 {
 		b.Append(Stat{
 			ObjectPath:   "x",
-			SortSchema:   "service_name",
+			SortSchema:   "label:service_name",
 			Labels:       map[string]string{"service_name": "svc"},
 			MinTimestamp: int64(i * 100),
 		})
@@ -472,7 +472,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 	for i := range 3 {
 		b.Append(Stat{
 			ObjectPath:   "y",
-			SortSchema:   "service_name",
+			SortSchema:   "label:service_name",
 			Labels:       map[string]string{"service_name": "svc"},
 			MinTimestamp: int64((i + 3) * 100),
 		})
@@ -505,12 +505,13 @@ func TestBuilder_LargeValues(t *testing.T) {
 
 	longPath := "/" + strings.Repeat("a", 10000)
 	longLabel := strings.Repeat("b", 5000)
-	longSchema := strings.Repeat("c", 2000)
+	longName := strings.Repeat("c", 2000)
+	longSchema := "label:" + longName
 
 	b.Append(Stat{
 		ObjectPath:       longPath,
 		SortSchema:       longSchema,
-		Labels:           map[string]string{longSchema: longLabel},
+		Labels:           map[string]string{longName: longLabel},
 		SectionIndex:     99,
 		MinTimestamp:     1_000_000,
 		MaxTimestamp:     2_000_000,
@@ -525,7 +526,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	require.Len(t, actual, 1)
 
 	// Build the expected label column name dynamically
-	labelColName := longSchema + ".label.utf8"
+	labelColName := longName + ".label.utf8"
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        longPath,
@@ -546,7 +547,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
 	b.SetTenant("test-tenant")
 
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "first"}, MinTimestamp: 100})
 	b.Reset()
 
 	// After Reset, builder should be empty and produce no sections when flushed.
@@ -554,7 +555,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	require.Zero(t, b.EstimatedSize(), "estimated size should be zero after reset")
 
 	// Add new data after reset and flush.
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
 	t.Cleanup(func() { _ = closer.Close() })
@@ -564,7 +565,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 		{
 			"object_path.utf8":        "",
 			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "service_name",
+			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
 			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
 			"row_count.int64":         int64(0),
@@ -595,7 +596,7 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.
 func TestBuilder_FlushResetsBuilder(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
-	b.Append(Stat{SortSchema: "service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
+	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100})
 
 	obj, closer := buildObject(t, b)
 	closer.Close()

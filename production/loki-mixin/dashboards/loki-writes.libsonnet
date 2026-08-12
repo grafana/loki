@@ -3,7 +3,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
-    local showBigTable = false,
 
     'loki-writes.json': {
                           local cfg = self,
@@ -180,50 +179,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.p99LatencyByPod(
                               'loki_index_request_duration_seconds',
                               '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
-                            )
-                          )
-                        )
-                        .addRowIf(
-                          showBigTable,
-                          $.row('BigTable')
-                          .addPanel(
-                            $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_bigtable_request_duration_seconds_count{%s operation="/google.bigtable.v2.Bigtable/MutateRows"}' % dashboards['loki-writes.json'].ingesterSelector)
-                          )
-                          .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
-                            utils.latencyRecordingRulePanel(
-                              'loki_bigtable_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers +
-                              dashboards['loki-writes.json'].matchers.ingester +
-                              [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')],
-                            )
-                          )
-                          .addPanel(
-                            $.p99LatencyByPod(
-                              'loki_bigtable_request_duration_seconds',
-                              $.toPrometheusSelector(
-                                dashboards['loki-writes.json'].clusterMatchers +
-                                dashboards['loki-writes.json'].matchers.ingester +
-                                [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')],
-                              ),
-                            )
-                          )
-                        )
-                        .addRow(
-                          $.row('BoltDB Index')
-                          .addPanel(
-                            $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
-                          )
-                          .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
-                            $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
-                          )
-                          .addPanel(
-                            $.p99LatencyByPod(
-                              'loki_boltdb_shipper_request_duration_seconds',
-                              '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
                         ),

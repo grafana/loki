@@ -1,0 +1,382 @@
+clear
+load
+  {app="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="bar"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# Scalar literals and scalar arithmetic (instant-only; the loaded data is not queried).
+# healthcheck
+eval instant at 60s 1+1
+  2
+# single literal
+eval instant at 60s 2
+  2
+# single comparison
+eval instant at 60s 1 == 1
+  1
+# single comparison; the bool modifier between two scalars is reduced away
+eval instant at 60s 1 == bool 1
+  1
+eval instant at 60s 10 / 5 / 2
+  1
+eval instant at 60s 10 / (5 / 2)
+  4
+eval instant at 60s 10 % 3
+  1
+# Division and modulo return NaN for a zero divisor.
+eval instant at 60s 10 / 0
+  NaN
+eval instant at 60s 10 % 0
+  NaN
+eval instant at 60s 1+1--1
+  3
+
+# Vector / scalar.
+eval instant at 60s count_over_time({app="foo"}[1m]) > 1
+  {app="foo"} 6
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > 1
+  {app="foo"} 6 6 6 6 6
+# Should return the same result as `count_over_time({app="foo"}[1m]) > 1`.
+# https://grafana.com/docs/loki/latest/query/#comparison-operators
+# Between a vector and a scalar, the operator is applied to every sample's value in the vector.
+eval instant at 60s 1 < count_over_time({app="foo"}[1m])
+  {app="foo"} 6
+eval range from 60s to 180s step 30s 1 < count_over_time({app="foo"}[1m])
+  {app="foo"} 6 6 6 6 6
+eval instant at 60s rate({app="bar"}[1m]) - 1
+  {app="bar"} -0.95
+eval range from 60s to 180s step 30s rate({app="bar"}[1m]) - 1
+  {app="bar"} -0.95 -0.95 -0.95 -0.95 -0.95
+eval instant at 60s 1 - rate({app="bar"}[1m])
+  {app="bar"} 0.95
+eval range from 60s to 180s step 30s 1 - rate({app="bar"}[1m])
+  {app="bar"} 0.95 0.95 0.95 0.95 0.95
+eval instant at 60s rate({app="bar"}[1m]) - 1 / 2
+  {app="bar"} -0.45
+eval range from 60s to 180s step 30s rate({app="bar"}[1m]) - 1 / 2
+  {app="bar"} -0.45 -0.45 -0.45 -0.45 -0.45
+# Modulo applies to each sample; the scalar can be on either side.
+eval instant at 60s count_over_time({app="foo"}[1m]) % 4
+  {app="foo"} 2
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) % 4
+  {app="foo"} 2 2 2 2 2
+eval instant at 60s 16 % count_over_time({app="foo"}[1m])
+  {app="foo"} 4
+eval range from 60s to 180s step 30s 16 % count_over_time({app="foo"}[1m])
+  {app="foo"} 4 4 4 4 4
+# Division and modulo return NaN for a zero divisor.
+eval instant at 60s count_over_time({app="foo"}[1m]) / 0
+  {app="foo"} NaN
+eval instant at 60s count_over_time({app="foo"}[1m]) % 0
+  {app="foo"} NaN
+
+# Logical operators.
+eval instant at 60s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
+  {app="foo"} 0.1
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or rate({app="bar"}[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1
+  {} 0
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+  {} 0 0 0 0 0
+
+eval instant at 60s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
+  {app="bar"} 0.05
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) and rate({app="bar"}[1m])
+  {app="bar"} 0.05 0.05 0.05 0.05 0.05
+
+eval instant at 60s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
+  {app="foo"} 0.1
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) unless rate({app="bar"}[1m])
+  {app="foo"} 0.1 0.1 0.1 0.1 0.1
+
+# Vector / vector arithmetic (matched on identical labels; foo is dropped, bar survives).
+eval instant at 60s rate({app=~"foo|bar"}[1m]) + rate({app="bar"}[1m])
+  {app="bar"} 0.1
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) + rate({app="bar"}[1m])
+  {app="bar"} 0.1 0.1 0.1 0.1 0.1
+eval instant at 60s rate({app=~"foo|bar"}[1m]) - rate({app="bar"}[1m])
+  {app="bar"} 0
+eval range from 60s to 180s step 30s rate({app=~"foo|bar"}[1m]) - rate({app="bar"}[1m])
+  {app="bar"} 0 0 0 0 0
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) * count_over_time({app="bar"}[1m])
+  {app="bar"} 9
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) * count_over_time({app="bar"}[1m])
+  {app="bar"} 9 9 9 9 9
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) / count_over_time({app="bar"}[1m])
+  {app="bar"} 1
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) / count_over_time({app="bar"}[1m])
+  {app="bar"} 1 1 1 1 1
+eval instant at 60s count_over_time({app=~"foo|bar"}[1m]) % count_over_time({app="bar"}[1m])
+  {app="bar"} 0
+eval range from 60s to 180s step 30s count_over_time({app=~"foo|bar"}[1m]) % count_over_time({app="bar"}[1m])
+  {app="bar"} 0 0 0 0 0
+# A zero divisor yields NaN for both / and %.
+eval instant at 60s sum(count_over_time({app="foo"}[1m])) / vector(0)
+  {} NaN
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m])) / vector(0)
+  {} NaN NaN NaN NaN NaN
+eval instant at 60s sum(count_over_time({app="foo"}[1m])) % vector(0)
+  {} NaN
+eval range from 60s to 180s step 30s sum(count_over_time({app="foo"}[1m])) % vector(0)
+  {} NaN NaN NaN NaN NaN
+eval instant at 60s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 27
+eval range from 60s to 180s step 30s count_over_time({app="bar"}[1m]) ^ count_over_time({app="bar"}[1m])
+  {app="bar"} 27 27 27 27 27
+
+# Vector / vector comparison. Bare foo vs bar never share labels → empty result.
+eval instant at 60s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > count_over_time({app="bar"}[1m])
+  expect empty
+eval instant at 60s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
+eval range from 60s to 180s step 30s count_over_time({app="foo"}[1m]) > bool count_over_time({app="bar"}[1m])
+  expect empty
+
+# `without (app)` strips app so the two sides match on the empty label set.
+eval instant at 60s sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 1
+eval range from 60s to 180s step 30s sum without(app) (count_over_time({app="foo"}[1m])) > bool sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 1 1 1 1 1
+eval instant at 60s sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 6
+eval range from 60s to 180s step 30s sum without(app) (count_over_time({app="foo"}[1m])) >= sum without(app) (count_over_time({app="bar"}[1m]))
+  {} 6 6 6 6 6
+
+# `by (app)` additions: foo+bar never match; foo+foo doubles.
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="bar"}[1m]))
+  expect empty
+eval instant at 60s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12
+eval range from 60s to 180s step 30s sum by (app) (count_over_time({app="foo"}[1m])) + sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12 12 12 12 12
+
+# Vector to vector comparison operators. Non-bool keeps the left value; `bool` gives 1
+# where the comparison holds, else 0.
+#
+# In this scenario, the sides match on `id` as less-than, equal, and greater-than pairs,
+# so each operator keeps a different subset.
+clear
+load
+  {app="left",  id="lt"} "x" @ 0s [repeat every 20s for 10]
+  {app="left",  id="eq"} "x" @ 0s [repeat every 20s for 10]
+  {app="left",  id="gt"} "x" @ 0s [repeat every 10s for 19]
+  {app="right", id="lt"} "x" @ 0s [repeat every 10s for 19]
+  {app="right", id="eq"} "x" @ 0s [repeat every 20s for 10]
+  {app="right", id="gt"} "x" @ 0s [repeat every 20s for 10]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+# <
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) < sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) < sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) < bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 0
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) < bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 0 0 0 0 0
+# <=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) <= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+  {id="eq"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) <= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+  {id="eq"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) <= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 1
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) <= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 0 0 0 0 0
+# >
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) > sum by (id) (count_over_time({app="right"}[1m]))
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) > sum by (id) (count_over_time({app="right"}[1m]))
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) > bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 0
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) > bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 1 1 1 1 1
+# >=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) >= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) >= sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3 3 3 3 3
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) >= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 1
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) >= bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 1 1 1 1 1
+# ==
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) == sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) == sum by (id) (count_over_time({app="right"}[1m]))
+  {id="eq"} 3 3 3 3 3
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) == bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0
+  {id="eq"} 1
+  {id="gt"} 0
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) == bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 0 0 0 0 0
+  {id="eq"} 1 1 1 1 1
+  {id="gt"} 0 0 0 0 0
+# !=
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) != sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3
+  {id="gt"} 6
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) != sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 3 3 3 3 3
+  {id="gt"} 6 6 6 6 6
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) != bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1
+  {id="eq"} 0
+  {id="gt"} 1
+eval range from 60s to 180s step 30s sum by (id) (count_over_time({app="left"}[1m])) != bool sum by (id) (count_over_time({app="right"}[1m]))
+  {id="lt"} 1 1 1 1 1
+  {id="eq"} 0 0 0 0 0
+  {id="gt"} 1 1 1 1 1
+# `bool` is only valid immediately after the operator; before it the query fails to parse.
+eval instant at 60s sum by (id) (count_over_time({app="left"}[1m])) bool > sum by (id) (count_over_time({app="right"}[1m]))
+  expect fail msg: syntax error: unexpected bool
+
+clear
+load
+  {app="foo"} "xbar"  @ 0s [repeat every 10s for 19]
+  {app="foo"} "noise" @ 5s [repeat every 10s for 19]
+  {app="bar"} "xbar"  @ 0s [repeat every 20s for 10]
+  {app="bar"} "noise" @ 10s [repeat every 20s for 10]
+
+eval instant at 60s 10 / ((rate({app="foo"} |~".+bar" [1m]) /5))
+  {app="foo"} 500
+eval range from 60s to 180s step 30s 10 / ((rate({app="foo"} |~".+bar" [1m]) /5))
+  {app="foo"} 500 500 500 500 500
+
+# Operator precedence and composition (a + a/a, then avg/sum over it).
+eval instant at 60s sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 1.1
+  {app="bar"} 1.05
+eval range from 60s to 180s step 30s sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))
+  {app="foo"} 1.1 1.1 1.1 1.1 1.1
+  {app="bar"} 1.05 1.05 1.05 1.05 1.05
+eval instant at 60s avg by (app) ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) * 2
+  {app="foo"} 2.2
+  {app="bar"} 2.1
+eval range from 60s to 180s step 30s avg by (app) ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) * 2
+  {app="foo"} 2.2 2.2 2.2 2.2 2.2
+  {app="bar"} 2.1 2.1 2.1 2.1 2.1
+eval instant at 60s sum ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) + 1
+  {} 3.15
+eval range from 60s to 180s step 30s sum ( sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) + sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) / sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m])) ) + 1
+  {} 3.15 3.15 3.15 3.15 3.15
+
+# on()/on(app)/ignoring — one stream carrying a machine label.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
+  {} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on () sum by (app) (count_over_time({app="foo"}[1m]))
+  {} 12 12 12 12 12
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) + on (app) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 12 12 12 12 12
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo"} 0 0 0 0 0
+
+# Two machine streams: many-to-one needs an explicit group_left/right.
+clear
+load
+  {app="foo", machine="fuzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool ignoring (machine) sum by (app) (count_over_time({app="foo"}[1m]))
+  expect fail msg: multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left () sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0
+  {app="foo", machine="buzz"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on () group_left () sum by (app) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz"} 0 0 0 0 0
+  {app="foo", machine="buzz"} 0 0 0 0 0
+
+# group_left / group_right copying the `pool` label.
+clear
+load
+  {app="foo", machine="fuzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="foo", machine="buzz", pool="foo"} "x" @ 0s [repeat every 10s for 19]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0
+  {app="foo", machine="buzz", pool="foo"} 0
+eval range from 60s to 180s step 30s sum by (app,machine) (count_over_time({app="foo"}[1m])) > bool on (app) group_left (pool) sum by (app,pool) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 0 0 0 0 0
+  {app="foo", machine="buzz", pool="foo"} 0 0 0 0 0
+eval instant at 60s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1
+  {app="foo", machine="buzz", pool="foo"} 1
+eval range from 60s to 180s step 30s sum by (app,pool) (count_over_time({app="foo"}[1m])) > bool on (app) group_right (pool) sum by (app,machine) (count_over_time({app="foo"}[1m]))
+  {app="foo", machine="fuzz", pool="foo"} 1 1 1 1 1
+  {app="foo", machine="buzz", pool="foo"} 1 1 1 1 1
+
+# `or vector(0)` fills the steps where the left side is absent.
+clear
+load
+  {app="foo"}   "x"     @ 0s [repeat every 10s for 7]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval range from 60s to 180s step 30s rate({app="foo"}[1m]) or vector(0)
+  {app="foo"} 0.1 0.05 _ _ _
+  {} 0 0 0 0 0
+
+eval range from 60s to 180s step 30s sum(rate({app="foo"}[1m])) or vector(0)
+  {} 0.1 0.05 0 0 0
+
+# Non-bool `>` drops the non-matching samples; `> bool` keeps values as 0.
+clear
+load
+  {app="foo"}   "x"     @ 10s [repeat every 10s for 5]
+  {app="foo"}   "x"     @ 100s
+  {app="noise"} "noise" @ 10s [repeat every 10s for 6]
+
+eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > 3
+  {app="foo"} 5 _ _
+eval range from 60s to 120s step 30s count_over_time({app="foo"}[1m]) > bool 3
+  {app="foo"} 1 0 0

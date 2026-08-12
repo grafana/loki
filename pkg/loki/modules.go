@@ -211,7 +211,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	h := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !t.Cfg.AuthEnabled {
-				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), "fake")))
+				next.ServeHTTP(w, r.WithContext(user.InjectOrgID(r.Context(), t.Cfg.NoAuthTenant)))
 				return
 			}
 
@@ -387,10 +387,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	if t.PushParserWrapper != nil {
-		t.distributor.RequestParserWrapper = t.PushParserWrapper
 	}
 
 	// Register the distributor to receive Push requests over GRPC
@@ -963,9 +959,11 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 func (t *Loki) updateConfigForShipperStore() {
 	// Always set these configs
 	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
 
 	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
 		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.ShadowIndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
 	}
 
 	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
@@ -1679,6 +1677,10 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
+	if t.RulerEvaluatorWrapper != nil {
+		t.ruleEvaluator = t.RulerEvaluatorWrapper(t.ruleEvaluator)
+	}
+
 	return svc, nil
 }
 
@@ -1952,6 +1954,7 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	if t.Cfg.isTarget(IndexGateway) {
 		interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, interceptors.PerTenantStreamRequest)
 	}
 	return nil, nil
 }
@@ -2382,6 +2385,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		Config:          t.Cfg.DataObj.Compaction,
 		Bucket:          indexBucket,
 		MetastoreWriter: tocWriter,
+		Limits:          t.Overrides,
 		Logger:          logger,
 		Registerer:      prometheus.DefaultRegisterer,
 	})
@@ -2446,8 +2450,12 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	ms := metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config:       t.Cfg.DataObj.Compaction.Worker,
-		Bucket:       indexBucket,
+		Config: t.Cfg.DataObj.Compaction.Worker,
+		Bucket: indexBucket,
+		// Source log objects live at the unprefixed dataobj root, so the
+		// LogMerge executor reads them through the unprefixed store rather than
+		// the index-prefixed bucket used for index I/O and ToC.
+		DataBucket:   store,
 		Metastore:    ms,
 		ScratchStore: t.scratchStore,
 		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
@@ -2509,7 +2517,7 @@ func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	}
 
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), backend, cfg.Config, clientName, util_log.Logger, nil)
 	if err != nil {
 		return nil, err
 	}

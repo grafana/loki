@@ -27,8 +27,14 @@ var (
 	// e.g. go build -ldflags -X "github.com/pires/go-proxyproto.DefaultReadHeaderTimeout=1s".
 	DefaultReadHeaderTimeout = 10 * time.Second
 
-	// ErrInvalidUpstream should be returned when an upstream connection address
-	// is not trusted, and therefore is invalid.
+	// ErrInvalidUpstream should be returned (possibly wrapped) by a policy
+	// function when an upstream connection address is not trusted or cannot be
+	// classified. Listener.Accept closes that connection and keeps listening;
+	// a policy error that does not wrap ErrInvalidUpstream is returned by
+	// Accept itself, which typically stops the caller's accept loop. All
+	// built-in policies wrap address-classification failures in
+	// ErrInvalidUpstream so a single unclassifiable peer cannot stop the
+	// listener.
 	ErrInvalidUpstream = fmt.Errorf("proxyproto: upstream connection address not trusted for PROXY information")
 )
 
@@ -39,6 +45,23 @@ var (
 // connections in order to prevent blocking operations. If no ReadHeaderTimeout
 // is set, a default of 10s will be used. This can be disabled by setting the
 // timeout to < 0.
+//
+// When neither Policy nor ConnPolicy is set, DefaultPolicy applies: REQUIRE,
+// so connections that do not open with a PROXY header fail their first
+// Read/Write with ErrNoProxyProtocol. Headers are still honored from ANY peer
+// under REQUIRE; a listener reachable by untrusted clients should set a
+// trusted-source policy (e.g. TrustProxyHeaderFrom or TrustProxyHeaderFromRanges).
+//
+// Listener is stream-oriented (TCP, Unix stream): the header is read once at
+// the start of the byte stream. It cannot implement the PROXY protocol over
+// UDP, where the spec requires a header parsed independently in each datagram;
+// use ParseUDPDatagram and Header.FormatUDPDatagram for that.
+//
+// Note that ReadHeaderTimeout only bounds how long a single slow connection can
+// hold a goroutine and file descriptor during header detection; it is not a
+// connection count or accept-rate limit. Deployments exposed to untrusted
+// clients should keep ReadHeaderTimeout low and enforce connection/rate limits
+// upstream (or around Accept).
 //
 // Only one of Policy or ConnPolicy should be provided. If both are provided then
 // a panic would occur during accept.
@@ -55,6 +78,8 @@ type Listener struct {
 	ReadHeaderTimeout time.Duration
 	// ReadBufferSize is the read buffer size for accepted connections. When > 0,
 	// each accepted connection uses this size for proxy header detection; 0 means default.
+	// See the sizing note on WithBufferSize: values below 107 bytes break v1
+	// header parsing.
 	ReadBufferSize int
 }
 
@@ -90,6 +115,8 @@ func ValidateHeader(v Validator) func(*Conn) {
 }
 
 // SetReadHeaderTimeout sets the readHeaderTimeout for a connection when passed as option to NewConn().
+// A value of 0 disables the header read timeout; negative values are ignored,
+// leaving the connection's current timeout (the NewConn default) in place.
 func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 	return func(c *Conn) {
 		if t >= 0 {
@@ -102,6 +129,12 @@ func SetReadHeaderTimeout(t time.Duration) func(*Conn) {
 // Values <= 0 are ignored and the default (256 bytes) is used. Values < 16 are
 // effectively 16 due to bufio's minimum. The default is tuned for typical proxy
 // protocol header lengths.
+//
+// The buffer must be able to hold an entire v1 header line (up to 107 bytes):
+// v1 parsing requires the line to be available without refilling the buffer
+// (the slow-loris defense), so a smaller buffer rejects every v1 connection
+// with ErrCantReadVersion1Header even from well-behaved senders. v2 parsing
+// refills freely and works with any size.
 func WithBufferSize(length int) func(*Conn) {
 	return func(c *Conn) {
 		if length <= 0 {
@@ -123,7 +156,7 @@ func (p *Listener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 
-		proxyHeaderPolicy := USE
+		proxyHeaderPolicy := DefaultPolicy
 		if p.Policy != nil && p.ConnPolicy != nil {
 			panic("only one of policy or connpolicy must be provided.")
 		}
@@ -164,13 +197,15 @@ func (p *Listener) Accept() (net.Conn, error) {
 		}
 		newConn := NewConn(conn, opts...)
 
-		// If the ReadHeaderTimeout for the listener is unset, use the default timeout.
-		if p.ReadHeaderTimeout == 0 {
-			p.ReadHeaderTimeout = DefaultReadHeaderTimeout
+		// Set the readHeaderTimeout of the new conn to the value of the listener,
+		// falling back to the default when unset. Read into a local rather than
+		// writing back to the shared Listener: mutating p here races with
+		// concurrent Accept calls and would silently rewrite the caller's struct.
+		readHeaderTimeout := p.ReadHeaderTimeout
+		if readHeaderTimeout == 0 {
+			readHeaderTimeout = DefaultReadHeaderTimeout
 		}
-
-		// Set the readHeaderTimeout of the new conn to the value of the listener
-		newConn.readHeaderTimeout = p.ReadHeaderTimeout
+		newConn.readHeaderTimeout = readHeaderTimeout
 
 		return newConn, nil
 	}
@@ -189,6 +224,25 @@ func (p *Listener) Addr() net.Addr {
 // NewConn is used to wrap a net.Conn that may be speaking the PROXY protocol
 // into a proxyproto.Conn.
 //
+// Conn is stream-oriented; see the note on Listener about the PROXY protocol
+// over UDP datagrams.
+//
+// By default the returned Conn applies DefaultPolicy (REQUIRE, so the peer
+// must open with a PROXY header; override with the WithPolicy option) and
+// DefaultReadHeaderTimeout (10s) while detecting the PROXY protocol header, so
+// a client that connects but never sends data cannot make header detection
+// block forever.
+//
+// The timeout bounds header detection only, not the first Read end-to-end:
+// under a non-REQUIRE policy, when no header is present Read falls through to
+// a normal read of the underlying connection, which can still block on a
+// silent client (pinning a goroutine and file descriptor). For an end-to-end
+// bound, set a read deadline on the connection, or keep the REQUIRE policy,
+// which makes the first Read fail when no header arrives within the timeout.
+//
+// Override the timeout with the SetReadHeaderTimeout option; pass
+// SetReadHeaderTimeout(0) to disable it entirely.
+//
 // NOTE: NewConn may interfere with previously set ReadDeadline on the provided net.Conn,
 // because it sets a temporary deadline when detecting and reading the PROXY protocol header.
 // If you need to enforce a specific ReadDeadline on the connection, be sure to call Conn.SetReadDeadline
@@ -197,8 +251,10 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	br := bufio.NewReaderSize(conn, readBufferSize)
 
 	pConn := &Conn{
-		bufReader: br,
-		conn:      conn,
+		bufReader:         br,
+		conn:              conn,
+		ProxyHeaderPolicy: DefaultPolicy,
+		readHeaderTimeout: DefaultReadHeaderTimeout,
 	}
 
 	for _, opt := range opts {
@@ -208,9 +264,10 @@ func NewConn(conn net.Conn, opts ...func(*Conn)) *Conn {
 	return pConn
 }
 
-// Read is check for the proxy protocol header when doing
-// the initial scan. If there is an error parsing the header,
-// it is returned and the socket is closed.
+// Read checks for the proxy protocol header on the first call, then reads
+// from the connection. If there is an error processing the header, it is
+// returned by this and every subsequent call. The connection is NOT closed by
+// this package; the caller should close it.
 func (p *Conn) Read(b []byte) (int, error) {
 	// Ensure header processing runs at most once and surface any errors.
 	if err := p.ensureHeaderProcessed(); err != nil {
@@ -275,7 +332,7 @@ func (p *Conn) ProxyHeader() *Header {
 func (p *Conn) LocalAddr() net.Addr {
 	// Ensure header processing runs at most once.
 	_ = p.ensureHeaderProcessed()
-	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil || p.header.DestinationAddr == nil {
 		return p.conn.LocalAddr()
 	}
 
@@ -291,7 +348,7 @@ func (p *Conn) LocalAddr() net.Addr {
 func (p *Conn) RemoteAddr() net.Addr {
 	// Ensure header processing runs at most once.
 	_ = p.ensureHeaderProcessed()
-	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil {
+	if p.header == nil || p.header.Command.IsLocal() || p.readErr != nil || p.header.SourceAddr == nil {
 		return p.conn.RemoteAddr()
 	}
 
@@ -391,11 +448,17 @@ func (p *Conn) readHeader() error {
 		if t == nil {
 			t = time.Time{}
 		}
-		if err := p.conn.SetReadDeadline(t.(time.Time)); err != nil {
-			return err
-		}
+		// Restore the user's deadline on a best-effort basis. This must not
+		// discard a header we already parsed: some connections (notably
+		// net.Pipe) return an error from SetReadDeadline once the peer has
+		// closed, which can happen right after the peer sends the header and
+		// closes. Only surface a restore failure when the read produced neither
+		// a header nor an error of its own.
+		restoreErr := p.conn.SetReadDeadline(t.(time.Time))
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			err = ErrNoProxyProtocol
+		} else if err == nil && header == nil {
+			err = restoreErr
 		}
 	}
 

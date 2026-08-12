@@ -51,6 +51,7 @@ import (
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loghttp/push/otlpattrs"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -73,6 +74,8 @@ var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 
+	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
+
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
 		if r == utf8.RuneError {
@@ -91,6 +94,7 @@ type Config struct {
 	// Request parser
 	MaxRecvMsgSize      int   `yaml:"max_recv_msg_size"`
 	MaxDecompressedSize int64 `yaml:"max_decompressed_size"`
+	MaxInflightBytes    int   `yaml:"max_inflight_bytes"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -100,6 +104,10 @@ type Config struct {
 
 	// WriteFailuresLoggingCfg customizes write failures logging behavior.
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
+
+	// OTLPAttributeLogging configures the sampled logging of OTLP attribute expansion
+	// which is enabled per tenant with the log_otlp_attribute_expansion runtime config.
+	OTLPAttributeLogging otlpattrs.Cfg `yaml:"otlp_attribute_logging" doc:"description=Customize the logging of OTLP attribute expansion."`
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
@@ -113,7 +121,8 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
+	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -121,10 +130,13 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.DataObjTeeConfig.RegisterFlags(fs)
+	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.Int64Var(&cfg.MaxDecompressedSize, "distributor.max-decompressed-size", 5000<<20, "The maximum size of a decompressed message. Defaults to 50x max-recv-msg-size.")
+	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -134,14 +146,50 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
-		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+		return errors.New("at least one of kafka and ingestor writes must be enabled")
 	}
 	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
+	}
+	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
 	}
 	// Set default maxDecompressedSize if not configured (50x maxRecvMsgSize)
 	if cfg.MaxDecompressedSize == 0 && cfg.MaxRecvMsgSize > 0 {
 		cfg.MaxDecompressedSize = int64(cfg.MaxRecvMsgSize) * 50
+	}
+	if cfg.MaxInflightBytes < 0 {
+		return errors.New("max inflight bytes cannot be less than zero")
+	}
+	return nil
+}
+
+type CircuitBreakerConfig struct {
+	Enabled         bool          `yaml:"enabled"`
+	OpenPeriod      time.Duration `yaml:"open_period"`
+	MinFailures     int           `yaml:"min_failures"`
+	PermittedTrials int           `yaml:"permitted_trials"`
+}
+
+func (cfg *CircuitBreakerConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.circuit-breaker.enabled", false, "Enable circuit breakers.")
+	f.DurationVar(&cfg.OpenPeriod, "distributor.circuit-breaker.open-period", time.Second, "The open period.")
+	f.IntVar(&cfg.MinFailures, "distributor.circuit-breaker.min-failures", 1, "The minimum number of successive failures required to open the circuit breaker.")
+	f.IntVar(&cfg.PermittedTrials, "distributor.circuit-breaker.permitted-trials", 1, "The number of permitted trial requests in the half-open state. All requests must succeed to close the circuit breaker, any failure re-opens it.")
+}
+
+func (cfg *CircuitBreakerConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if cfg.OpenPeriod <= 0 {
+		return errors.New("the open period must be a positive duration")
+	}
+	if cfg.MinFailures < 1 {
+		return errors.New("the minimum number of failures must be at least 1")
+	}
+	if cfg.PermittedTrials < 1 {
+		return errors.New("the permitted number of trials must be at least 1")
 	}
 	return nil
 }
@@ -275,7 +323,8 @@ type Distributor struct {
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
 
-	RequestParserWrapper push.RequestParserWrapper
+	// Rate limited reporter for OTLP resource and scope attribute expansion.
+	otlpAttrReporter *otlpattrs.Reporter
 
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
@@ -297,6 +346,7 @@ type Distributor struct {
 	// Track the max inflight bytes in the last 1 minute.
 	inflightBytesHighWatermark prometheus.Summary
 	inflightBytes              atomic.Int64
+	circuitBreaker             circuitBreaker
 }
 
 // New a distributor creates.
@@ -440,6 +490,7 @@ func New(
 		ingesterTasks:         make(chan pushIngesterTask),
 		m:                     newMetrics(registerer),
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		otlpAttrReporter:      otlpattrs.NewReporter(cfg.OTLPAttributeLogging, configs),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
@@ -450,6 +501,19 @@ func New(
 			Objectives: map[float64]float64{1.0: 0.1},
 			MaxAge:     time.Minute,
 		}),
+	}
+
+	if cfg.CircuitBreaker.Enabled {
+		circuitBreaker := newTrialCircuitBreaker(
+			cfg.CircuitBreaker.OpenPeriod,
+			cfg.CircuitBreaker.MinFailures,
+			cfg.CircuitBreaker.PermittedTrials,
+			func(err error) bool {
+				return errors.Is(err, kgo.ErrMaxBuffered) || errors.Is(err, errServiceUnavailableMaxLoad)
+			},
+		)
+		registerer.MustRegister(circuitBreaker)
+		d.circuitBreaker = circuitBreaker
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -603,8 +667,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
-	d.inflightBytesHighWatermark.Observe(float64(d.inflightBytes.Add(requestSize)))
+	newInflightBytes := d.inflightBytes.Add(requestSize)
+	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
+
+	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
+	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
+		return nil, errServiceUnavailableMaxLoad
+	}
 
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -650,7 +720,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		if !shardStreamsCfg.TimeShardingEnabled {
+		// Backfill streams implement time sharding on the client side (via the
+		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
+		// exploding stream cardinality. Rate-based sharding still applies.
+		if !shardStreamsCfg.TimeShardingEnabled || labels.Has(constants.BackfillLabel) {
 			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
 			return
 		}
@@ -732,9 +805,18 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			prevTs := stream.Entries[0].Timestamp
 			streamEntriesSize := 0
 
+			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
+			// label is reserved: the push parsers reject streams that already carry it, so it can
+			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
+			// validation. Entries too far in the future are still rejected.
+			entryValidationContext := validationContext
+			if lbs.Has(constants.BackfillLabel) {
+				entryValidationContext.rejectOldSample = false
+			}
+
 			labelNamer := otlptranslator.LabelNamer{}
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
+				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue

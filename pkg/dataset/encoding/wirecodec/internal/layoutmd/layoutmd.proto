@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package grafana.dataset.layout.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/layoutmd";
+
+// Layout holds metadata for a layout, which is a hierarchical structure that
+// defines how data is organized.
+message Layout {
+  // encoding_ref is the index into the dataset-wide dictionary that holds the
+  // encoding name of the layout.
+  uint64 encoding_ref = 1;
+
+  // encoding_metadata holds optional encoding-specific metadata about this
+  // Layout.
+  bytes encoding_metadata = 2;
+
+  // row_count holds the number of rows in the layout.
+  uint64 row_count = 3;
+
+  // buffer_ids holds the IDs of the buffers that store additional
+  // layout-specific data.
+  repeated uint64 buffer_ids = 4;
+
+  // children holds the Layout's child Layouts, if any.
+  repeated Layout children = 5;
+}

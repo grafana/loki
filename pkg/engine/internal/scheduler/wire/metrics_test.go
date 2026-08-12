@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/go-kit/log"
@@ -245,42 +246,47 @@ func TestPeer_Metrics_BlockedOutgoingQueue(t *testing.T) {
 }
 
 func TestPeer_Metrics_LocalRoundTripFrameLabels(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	clientMetrics := NewMetrics()
-	client := &Peer{Logger: log.NewNopLogger(), Metrics: clientMetrics, Buffer: 4}
-	server := &Peer{
-		Logger:  log.NewNopLogger(),
-		Metrics: NewMetrics(),
-		Buffer:  4,
-		Handler: func(context.Context, *Peer, Message) error { return nil },
-	}
-	peerPair(ctx, t, client, server)
+		clientMetrics := NewMetrics()
+		client := &Peer{Logger: log.NewNopLogger(), Metrics: clientMetrics, Buffer: 4}
+		server := &Peer{
+			Logger:  log.NewNopLogger(),
+			Metrics: NewMetrics(),
+			Buffer:  4,
+			Handler: func(context.Context, *Peer, Message) error { return nil },
+		}
+		peerPair(ctx, t, client, server)
 
-	require.NoError(t, client.SendMessage(ctx, WorkerReadyMessage{}))
+		require.NoError(t, client.SendMessage(ctx, WorkerReadyMessage{}))
 
-	messageType := WorkerReadyMessage{}.Kind().String()
-	// A local send times only the connection total (the dropped
-	// local_channel_send phase equalled it), which also feeds write_busy.
-	require.Equal(t, uint64(1), histogramCount(t, clientMetrics.reg,
-		"loki_engine_scheduler_wire_frame_send_seconds",
-		map[string]string{
-			"phase":        phaseConnSendTotal.String(),
-			"transport":    transportLocal.String(),
-			"frame_type":   FrameKindMessage.String(),
-			"message_type": messageType,
-			"mode":         sendModeSync.String(),
-		}))
-	require.Equal(t, uint64(1), histogramCount(t, clientMetrics.reg,
-		"loki_engine_scheduler_wire_frame_receive_seconds",
-		map[string]string{
-			"phase":        phaseLocalChannelReceive.String(),
-			"transport":    transportLocal.String(),
-			"frame_type":   FrameKindAck.String(),
-			"message_type": "none",
-			"mode":         sendModeInternal.String(),
-		}))
+		// Wait for the outgoing goroutine to record the send-side metric.
+		synctest.Wait()
+
+		messageType := WorkerReadyMessage{}.Kind().String()
+		// A local send times only the connection total (the dropped
+		// local_channel_send phase equalled it), which also feeds write_busy.
+		require.Equal(t, uint64(1), histogramCount(t, clientMetrics.reg,
+			"loki_engine_scheduler_wire_frame_send_seconds",
+			map[string]string{
+				"phase":        phaseConnSendTotal.String(),
+				"transport":    transportLocal.String(),
+				"frame_type":   FrameKindMessage.String(),
+				"message_type": messageType,
+				"mode":         sendModeSync.String(),
+			}))
+		require.Equal(t, uint64(1), histogramCount(t, clientMetrics.reg,
+			"loki_engine_scheduler_wire_frame_receive_seconds",
+			map[string]string{
+				"phase":        phaseLocalChannelReceive.String(),
+				"transport":    transportLocal.String(),
+				"frame_type":   FrameKindAck.String(),
+				"message_type": "none",
+				"mode":         sendModeInternal.String(),
+			}))
+	})
 }
 
 // TestHTTP2WriteBusyExcludesLockWait proves that the write-lock wait on an

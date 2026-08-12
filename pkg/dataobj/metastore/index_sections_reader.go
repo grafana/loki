@@ -44,6 +44,13 @@ type indexSectionsReader struct {
 	// Bloom filter predicates (will be filtered to remove stream labels after streams are resolved)
 	predicates []*labels.Matcher
 
+	// predicateNames holds the label names of every predicate, regardless of
+	// match type. It is used to decide which stream-label columns to read so
+	// that label filters of any match type (=, !=, =~, !~) are recognized as
+	// stream labels during disambiguation. Bloom filtering still only uses the
+	// equality-only predicates above.
+	predicateNames map[string]struct{}
+
 	batchSize int
 
 	// Reader state
@@ -80,9 +87,12 @@ func newIndexSectionsReader(
 	predicates []*labels.Matcher,
 	batchSize int,
 ) *indexSectionsReader {
-	// Only keep equal predicates for bloom filtering
+	// Only keep equal predicates for bloom filtering, but track every predicate
+	// name so non-equality label filters are still recognized as stream labels.
 	var equalPredicates []*labels.Matcher
+	predicateNames := make(map[string]struct{}, len(predicates))
 	for _, p := range predicates {
+		predicateNames[p.Name] = struct{}{}
 		if p.Type == labels.MatchEqual {
 			equalPredicates = append(equalPredicates, p)
 		}
@@ -97,6 +107,7 @@ func newIndexSectionsReader(
 		obj:                obj,
 		matchers:           matchers,
 		predicates:         equalPredicates,
+		predicateNames:     predicateNames,
 		batchSize:          batchSize,
 		start:              start,
 		end:                end,
@@ -136,10 +147,7 @@ func (r *indexSectionsReader) init(ctx context.Context) error {
 
 	sStart, sEnd := r.scalarTimestamps()
 
-	predicateKeys := make(map[string]struct{}, len(r.predicates))
-	for _, predicate := range r.predicates {
-		predicateKeys[predicate.Name] = struct{}{}
-	}
+	predicateKeys := r.predicateNames
 
 	var (
 		unopenedStreams  []*dataobj.Section
@@ -458,12 +466,6 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 		return nil
 	}
 
-	region := xcap.RegionFromContext(ctx)
-	startTime := time.Now()
-	defer func() {
-		region.Record(StatMetastoreStreamsReadTime.Observe(time.Since(startTime).Seconds()))
-	}()
-
 	for _, sr := range r.streamsReaders {
 		if sr == nil {
 			// Sections can be skipped during Open if they don't have relevant data.
@@ -513,8 +515,6 @@ func (r *indexSectionsReader) lazyReadStreams(ctx context.Context) error {
 			level.Warn(utillog.WithContext(ctx, r.logger)).Log("msg", "error closing streams reader", "err", err)
 		}
 	}
-
-	region.Record(StatMetastoreStreamsRead.Observe(int64(len(r.matchingStreamIDs))))
 
 	r.filterBloomPredicates()
 	r.readStreams = true
@@ -573,10 +573,6 @@ func (r *indexSectionsReader) addLabelNamesForStream(streamID int64, names []str
 // readPointers returns the next batch of pointers from the current pointers
 // section.
 func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBatch, error) {
-	defer func(start time.Time) {
-		r.readSpan.Record(StatMetastoreSectionPointersReadTime.Observe(time.Since(start).Seconds()))
-	}(time.Now())
-
 	for r.pointersReaderIdx < len(r.pointersReaders) {
 		pr := r.pointersReaders[r.pointersReaderIdx]
 		if pr == nil {
@@ -605,7 +601,6 @@ func (r *indexSectionsReader) readPointers(ctx context.Context) (arrow.RecordBat
 					r.pointerSectionProductive[r.pointersReaderIdx] = true
 					r.readSpan.Record(StatMetastorePointerSectionsProductive.Observe(1))
 				}
-				r.readSpan.Record(StatMetastoreSectionPointersRead.Observe(int64(matchedRows)))
 				r.bloomRowsRead += uint64(matchedRows)
 				return filteredRec, nil
 			}

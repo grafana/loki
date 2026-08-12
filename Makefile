@@ -15,18 +15,14 @@ SHELL = /usr/bin/env bash -o pipefail
 # want to speed up development you can run make BUILD_IN_CONTAINER=false target
 # or you can override this with an environment variable.
 BUILD_IN_CONTAINER ?= true
+# Unless NONINTERACTIVE is set, docker will be run interactive if it has a TTY
+# attached at launch time.
 NONINTERACTIVE     ?= false
+TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
 
-# Docker flags for container interaction
-ifeq ($(NONINTERACTIVE),true)
-DOCKER_INTERACTIVE_FLAGS :=
-else
-DOCKER_INTERACTIVE_FLAGS := --tty --interactive
-endif
-
 # Ensure you run `make update-go-version` after changing this
-GO_VERSION         := 1.26.4
+GO_VERSION         := 1.26.5
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -113,12 +109,13 @@ define run_in_container
 			fi; \
 		fi))
 
-	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
+	@docker build --rm $(OCI_BUILD_ARGS) --build-arg "USER=$(shell whoami)" --build-arg "USER_UID=$(shell id -u)" --build-arg "USER_GID=$(shell id -g)" --build-arg "SRC_DIR=/src/loki" --build-arg "INSTALL_WORKFLOW_DEPS_ARGS=$(INSTALL_WORKFLOW_DEPS_ARGS)" \
 		-f loki-build-image/Dockerfile \
 		-t $(MAKEFILE_IMAGE) \
 		.
 
-	@docker run --rm $(DOCKER_INTERACTIVE_FLAGS) \
+	@if $(TTY_TEST); then INTERACTIVE_FLAGS='--tty --interactive'; else INTERACTIVE_FLAGS=''; fi; \
+	docker run --rm $$INTERACTIVE_FLAGS \
 		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
 		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
@@ -288,6 +285,15 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
+##################
+# chunks-inspect #
+##################
+.PHONY: cmd/chunks-inspect/chunks-inspect
+chunks-inspect: cmd/chunks-inspect/chunks-inspect ## build chunks-inspect executable
+
+cmd/chunks-inspect/chunks-inspect:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/chunks-inspect
+
 #########
 # Mixin #
 #########
@@ -413,6 +419,7 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
+	rm -rf cmd/chunks-inspect/chunks-inspect
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary

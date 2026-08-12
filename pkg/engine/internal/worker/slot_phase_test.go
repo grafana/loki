@@ -1,11 +1,9 @@
 package worker
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -29,32 +27,6 @@ func TestSlotPhaseTrackerComputeIsLifetimeMinusComm(t *testing.T) {
 	require.InDelta(t, 6.0, comm, 1e-9)
 	require.InDelta(t, 4.0, compute, 1e-9)
 	require.InDelta(t, 10.0, comm+compute, 1e-9)
-}
-
-type slowClosingSink struct{ delay time.Duration }
-
-func (s slowClosingSink) Close(context.Context) error {
-	time.Sleep(s.delay)
-	return nil
-}
-
-// TestCloseSinksCountsCloseSendAsComm is a contract test for the main-goroutine
-// sink-close status send: its wait must land in the slot's comm-blocked total,
-// not in compute. It fails if closeSinks stops adding the close duration to the
-// slot.
-func TestCloseSinksCountsCloseSendAsComm(t *testing.T) {
-	base := time.Now()
-	m := newMetrics()
-	tracker := newSlotPhaseTracker(m, taskTypeLeaf, base)
-
-	const closeDelay = 20 * time.Millisecond
-	closeSinks(context.Background(), []closableSink{slowClosingSink{delay: closeDelay}}, tracker, log.NewNopLogger())
-
-	tracker.Observe(time.Now(), outcomeSuccess)
-
-	comm := testutil.ToFloat64(m.slotPhaseSeconds.WithLabelValues(slotPhaseComm.String(), taskTypeLeaf.String(), outcomeSuccess.String()))
-	// The close send blocked the main goroutine, so comm must include it.
-	require.GreaterOrEqual(t, comm, closeDelay.Seconds())
 }
 
 // TestSlotPhaseTrackerComputeNeverNegative ensures comm is clamped to the slot

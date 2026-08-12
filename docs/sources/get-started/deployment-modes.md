@@ -16,7 +16,7 @@ Because Loki decouples the data it stores from the software which ingests and qu
 
 ## Comparison of deployment modes
 
-| | [Monolithic](#monilithic-mode) | [HA Monolithic](#ha-monolithic-mode) | [Microservices](#microservices-mode) |
+| | [Monolithic](#monolithic-mode) | [HA Monolithic](#ha-monolithic-mode) | [Microservices](#microservices-mode) |
 |---|---|---|---|
 | Durability | ✅ | ✅ | ✅ |
 | High availability | ❌ | ✅ | ✅ |

@@ -22,6 +22,7 @@ package thrift
 import (
 	"compress/zlib"
 	"context"
+	"fmt"
 	"io"
 )
 
@@ -33,9 +34,12 @@ type TZlibTransportFactory struct {
 
 // TZlibTransport is a TTransport implementation that makes use of zlib compression.
 type TZlibTransport struct {
-	reader    io.ReadCloser
-	transport TTransport
-	writer    *zlib.Writer
+	reader      io.ReadCloser
+	transport   TTransport
+	writer      *zlib.Writer
+	writeCloser io.Closer
+	conf        *TConfiguration
+	bytesRead   int64
 }
 
 // GetTransport constructs a new instance of NewTZlibTransport
@@ -64,26 +68,27 @@ func NewTZlibTransportFactoryWithFactory(level int, factory TTransportFactory) *
 
 // NewTZlibTransport constructs a new instance of TZlibTransport
 func NewTZlibTransport(trans TTransport, level int) (*TZlibTransport, error) {
-	w, err := zlib.NewWriterLevel(trans, level)
+	writer, closer, err := newZlibWriterCloserLevel(trans, level)
 	if err != nil {
 		return nil, err
 	}
-
 	return &TZlibTransport{
-		writer:    w,
-		transport: trans,
+		writer:      writer,
+		writeCloser: closer,
+		transport:   trans,
 	}, nil
 }
 
 // Close closes the reader and writer (flushing any unwritten data) and closes
 // the underlying transport.
 func (z *TZlibTransport) Close() error {
+	z.bytesRead = 0
 	if z.reader != nil {
 		if err := z.reader.Close(); err != nil {
 			return err
 		}
 	}
-	if err := z.writer.Close(); err != nil {
+	if err := z.writeCloser.Close(); err != nil {
 		return err
 	}
 	return z.transport.Close()
@@ -109,14 +114,24 @@ func (z *TZlibTransport) Open() error {
 
 func (z *TZlibTransport) Read(p []byte) (int, error) {
 	if z.reader == nil {
-		r, err := zlib.NewReader(z.transport)
+		r, err := newZlibReader(z.transport)
 		if err != nil {
 			return 0, NewTTransportExceptionFromError(err)
 		}
 		z.reader = r
 	}
 
-	return z.reader.Read(p)
+	n, err := z.reader.Read(p)
+	if n > 0 {
+		z.bytesRead += int64(n)
+		if maxSize := int64(z.conf.GetMaxMessageSize()); z.bytesRead > maxSize {
+			return n, NewTProtocolExceptionWithType(
+				SIZE_LIMIT,
+				fmt.Errorf("decompressed size exceeded limit of %d bytes", maxSize),
+			)
+		}
+	}
+	return n, err
 }
 
 // RemainingBytes returns the size in bytes of the data that is still to be
@@ -131,6 +146,7 @@ func (z *TZlibTransport) Write(p []byte) (int, error) {
 
 // SetTConfiguration implements TConfigurationSetter for propagation.
 func (z *TZlibTransport) SetTConfiguration(conf *TConfiguration) {
+	z.conf = conf
 	PropagateTConfiguration(z.transport, conf)
 }
 

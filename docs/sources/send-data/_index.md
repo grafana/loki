@@ -36,13 +36,13 @@ Grafana Labs cannot provide support for third-party clients. Once an issue has b
 
 The following are popular third-party Loki clients:
 
-- [Docker Driver](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/) - When using Docker and not Kubernetes, the Docker logging driver for Loki should
+- [Docker Driver](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/) - When using Docker and not Kubernetes, the Docker logging driver for Loki can
 be used as it automatically adds labels appropriate to the running container.
-- [Fluent Bit](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/) - The Fluent Bit plugin is ideal when you already have Fluentd deployed
+- [Fluent Bit](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/) - The Fluent Bit plugin is ideal when you already have Fluent Bit deployed
 and you already have configured `Parser` and `Filter` plugins.
 - [Fluentd](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/) - The Fluentd plugin is ideal when you already have Fluentd deployed
 and you already have configured `Parser` and `Filter` plugins. Fluentd also works well for extracting metrics from logs when using itsPrometheus plugin.
-- [Logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/) - If you are already using logstash and/or beats, this will be the easiest way to start.
+- [Logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/) - If you are already using Logstash and/or Beats, this plugin lets you send logs to Loki, though Grafana Labs discourages its use for new deployments; see the Logstash page for details.
 By adding our output plugin you can quickly try Loki without doing big configuration changes.
 
 These third-party clients also enable sending logs to Loki:

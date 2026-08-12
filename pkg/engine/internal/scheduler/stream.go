@@ -2,52 +2,33 @@ package scheduler
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// stream wraps a [workflow.Stream] with its handler and state.
+// stream wraps a [workflow.Stream] with its handler and scheduler-side facts.
 type stream struct {
 	inner   *workflow.Stream
-	handler workflow.StreamEventHandler
-
-	state workflow.StreamState
+	handler workflow.StreamClosedHandler
+	closed  bool
 
 	localReceiver workflow.RecordWriter // Local receiver (for root task results)
 	taskReceiver  ulid.ULID             // ID of the receiving task.
 	taskSender    ulid.ULID             // ID of the sending task.
 }
 
-var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
-	workflow.StreamStateIdle:    {workflow.StreamStateOpen, workflow.StreamStateBlocked, workflow.StreamStateClosed},
-	workflow.StreamStateOpen:    {workflow.StreamStateBlocked, workflow.StreamStateClosed},
-	workflow.StreamStateBlocked: {workflow.StreamStateOpen, workflow.StreamStateClosed},
-	workflow.StreamStateClosed:  {}, // Closed streams cannot transition to any other state.
-}
-
-// setState updates the state of the stream. setState returns an error if the
-// transition is invalid.
-//
-// Returns true if the state was updated, false otherwise (such as if the task
-// is already in the desired state).
-func (s *stream) setState(m *metrics, newState workflow.StreamState) (bool, error) {
-	oldState := s.state
-
-	if newState == oldState {
-		return false, nil
+// markClosed records that the stream is closed. It returns false if the stream was
+// already closed.
+func (s *stream) markClosed(m *metrics) bool {
+	if s.closed {
+		return false
 	}
 
-	validStates := validStreamTransitions[oldState]
-	if !slices.Contains(validStates, newState) {
-		return false, fmt.Errorf("invalid state transition from %s to %s", oldState, newState)
-	}
-
-	s.state = newState
-	m.streamsTotal.WithLabelValues(newState.String()).Inc()
-	return true, nil
+	s.closed = true
+	m.streamClosuresTotal.Inc()
+	return true
 }
 
 // setLocalListener sets the local listener for the stream. Fails if there is

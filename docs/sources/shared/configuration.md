@@ -88,7 +88,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [target: <string> | default = "all"]
 
 # Enables authentication through the X-Scope-OrgID header, which must be present
-# if true. If false, the OrgID will always be set to 'fake'.
+# if true. If false, the OrgID will always be set to the value of
+# -auth.no-auth-tenant.
 # CLI flag: -auth.enabled
 [auth_enabled: <boolean> | default = true]
 
@@ -96,6 +97,12 @@ lbac:
   # Enables label based access control through the X-Prom-Label-Policy header.
   # CLI flag: -lbac.enabled
   [enabled: <boolean> | default = false]
+
+# Tenant ID to use when auth is disabled. Defaults to 'fake' for backwards
+# compatibility. Safe to change on a fresh cluster; on an existing cluster, data
+# stored under the old tenant path must be migrated first (see cmd/migrate).
+# CLI flag: -auth.no-auth-tenant
+[no_auth_tenant: <string> | default = "fake"]
 
 # The amount of virtual memory in bytes to reserve as ballast in order to
 # optimize garbage collection. Larger ballasts result in fewer garbage
@@ -1614,14 +1621,36 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
+    # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
+    # by the coordinator. 0 means unlimited.
+    # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
+    [logs_max_running_compaction_tasks: <int> | default = 16]
+
     # Experimental: Coordinator main-loop cadence.
     # CLI flag: -dataobj.compaction.polling-interval
     [polling_interval: <duration> | default = 5m]
+
+    # Experimental: Number of older metastore windows to compact in addition to
+    # the current window. 0 compacts only the current window; 1 also compacts
+    # the previous window.
+    # CLI flag: -dataobj.compaction.window-lookback
+    [window_lookback: <int> | default = 0]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.
     # CLI flag: -dataobj.compaction.max-runs-per-task
     [max_runs_per_task: <int> | default = 8]
+
+    # Experimental: Maximum runs per LogMerge task (K for log compaction).
+    # Separate from max-runs-per-task to scale independently
+    # CLI flag: -dataobj.compaction.logs.max-runs-per-task
+    [logs_max_runs_per_task: <int> | default = 3]
+
+    # Experimental: Minimum total compactable data (sum of all runs'
+    # uncompressed size) that justifies log compaction. Converged windows below
+    # this floor are skipped.
+    # CLI flag: -dataobj.compaction.logs.min-compaction-size
+    [logs_min_compaction_size: <int> | default = 4MiB]
 
     # Experimental: Coordinator-side timeout around the inline ToC
     # ReplaceIndexPointers call. Not a task TTL.
@@ -2169,6 +2198,10 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
+# Alibabacloud Region to use.
+# CLI flag: -<prefix>.oss.region
+[region: <string> | default = ""]
+
 # alibabacloud Access Key ID
 # CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
@@ -2177,6 +2210,13 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# Specify the RAM role name of the ECS instance. ECS RAM role authentication is
+# used only when neither access_key_id nor secret_access_key is configured and
+# requires signature_version=v4. If not set, the role name will be automatically
+# retrieved from the ECS instance metadata.
+# CLI flag: -<prefix>.oss.ram-role-name
+[ram_role_name: <string> | default = ""]
+
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 30]
@@ -2184,6 +2224,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 60]
+
+# The signature version to use for authenticating against OSS. Supported values
+# are: v1, v4. ECS RAM role authentication requires signature_version=v4.
+# CLI flag: -<prefix>.oss.signature-version
+[signature_version: <string> | default = "v1"]
 ```
 
 ### analytics
@@ -2693,10 +2738,6 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
 [l2_chunk_cache_handoff: <duration> | default = 0s]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### common
@@ -3368,6 +3409,10 @@ ring:
 # CLI flag: -distributor.max-decompressed-size
 [max_decompressed_size: <int> | default = 5242880000]
 
+# The maximum number of inflight bytes at a time. 0 means disabled.
+# CLI flag: -distributor.max-inflight-bytes
+[max_inflight_bytes: <int> | default = 0]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -3396,6 +3441,18 @@ write_failures_logging:
   # Whether a insight=true key should be logged or not. Default: false.
   # CLI flag: -distributor.write-failures-logging.add-insights-label
   [add_insights_label: <boolean> | default = false]
+
+# Customize the logging of OTLP attribute expansion.
+otlp_attribute_logging:
+  # Number of attribute expansion reports to emit per second, per tenant. Each
+  # report is one summary line plus one line per attribute.
+  # CLI flag: -distributor.otlp-attribute-logging.rate
+  [rate: <float> | default = 1]
+
+  # Maximum number of attributes to log on their own line for a reported
+  # request. The remaining attributes are summarised on a single overflow line.
+  # CLI flag: -distributor.otlp-attribute-logging.max-attributes
+  [max_attributes: <int> | default = 20]
 
 otlp_config:
   # List of default otlp resource attributes to be picked as index labels
@@ -3452,6 +3509,25 @@ dataobj_tee:
   # used instead.
   # CLI flag: -distributor.dataobj-tee.use-rendezvous-hashing
   [use_rendezvous_hashing: <boolean> | default = false]
+
+circuit_breaker:
+  # Enable circuit breakers.
+  # CLI flag: -distributor.circuit-breaker.enabled
+  [enabled: <boolean> | default = false]
+
+  # The open period.
+  # CLI flag: -distributor.circuit-breaker.open-period
+  [open_period: <duration> | default = 1s]
+
+  # The minimum number of successive failures required to open the circuit
+  # breaker.
+  # CLI flag: -distributor.circuit-breaker.min-failures
+  [min_failures: <int> | default = 1]
+
+  # The number of permitted trial requests in the half-open state. All requests
+  # must succeed to close the circuit breaker, any failure re-opens it.
+  # CLI flag: -distributor.circuit-breaker.permitted-trials
+  [permitted_trials: <int> | default = 1]
 ```
 
 ### etcd
@@ -3800,6 +3876,17 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
 
 cluster_validation:
   # Primary cluster validation label.
@@ -4398,12 +4485,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
 
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
-
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
 # log entry.
@@ -4868,6 +4949,16 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
+# Experimental. Whether dataobj index compaction runs for the tenant.
+# CLI flag: -dataobj-compaction.index.enable
+[dataobj_index_compaction_enabled: <boolean> | default = false]
+
+# Experimental. Whether dataobj log compaction runs for the tenant. Log
+# compaction implies index compaction; enabling log compaction without index
+# compaction is a configuration error.
+# CLI flag: -dataobj-compaction.log.enable
+[dataobj_log_compaction_enabled: <boolean> | default = false]
+
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
@@ -5047,12 +5138,6 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Experimental: Controls the amount of scan tasks that can be running in
-# parallel in the new query engine. The default of 0 means unlimited parallelism
-# and all tasks will be scheduled at once.
-# CLI flag: -limits.max-scan-task-parallelism
-[max_scan_task_parallelism: <int> | default = 0]
 
 # Experimental: Toggles verbose debug logging of tasks in the new query engine.
 # CLI flag: -limits.debug-engine-tasks
@@ -5395,6 +5480,12 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-duplicate-stream-info
 [log_duplicate_stream_info: <boolean> | default = false]
 
+# Log which OTLP resource and scope attributes are expanded into structured
+# metadata, for a rate limited subset of push requests. Only attribute names and
+# sizes are logged, never values.
+# CLI flag: -operation-config.log-otlp-attribute-expansion
+[log_otlp_attribute_expansion: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -5434,23 +5525,6 @@ index:
 
   # Table period.
   [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# Configured how the chunks are updated and stored.
-chunks:
-  # Table prefix for all period tables.
-  [prefix: <string> | default = ""]
-
-  # Table period.
-  [period: <duration>]
-
-  # A map to be added to all managed tables.
-  [tags: <map of string to string>]
-
-# How many shards will be created. Only used if schema is v10 or greater.
-[row_shards: <int> | default = 16]
 ```
 
 ### profiling
@@ -6066,9 +6140,6 @@ wal_cleaner:
 # Remote-write configuration to send rule samples to a Prometheus remote-write
 # endpoint.
 remote_write:
-  # Deprecated: Use 'clients' instead. Configure remote write client.
-  [client: <RemoteWriteConfig>]
-
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
@@ -6202,7 +6273,8 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 
 # Delimiter used to replace the default delimiter ':' in chunk IDs when storing
 # chunks. This is mainly intended when you run a MinIO instance on a Windows
-# machine. You should not change this value inflight.
+# machine. You must not change this value during operations, otherwise you may
+# not be able to read existing chunks from object storage.
 # CLI flag: -<prefix>.s3.chunk-delimiter
 [chunk_delimiter: <string> | default = ""]
 
@@ -6730,11 +6802,6 @@ congestion_control:
 # CLI flag: -store.object-prefix
 [object_prefix: <string> | default = ""]
 
-# Disable broad index queries which results in reduced cache usage and faster
-# query performance at the expense of somewhat higher QPS on the index store.
-# CLI flag: -store.disable-broad-index-queries
-[disable_broad_index_queries: <boolean> | default = false]
-
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
@@ -6795,6 +6862,13 @@ tsdb_shipper:
   # tenant index query readiness, use limits overrides config.
   # CLI flag: -tsdb.shipper.query-ready-num-days
   [query_ready_num_days: <int> | default = 0]
+
+  # Timeout for downloading a table's initial set of index files from object
+  # storage when serving a query. Raise this for tenants with large indexes when
+  # slow object-storage responses cause downloads to hit the deadline; lower it
+  # to fail queries faster when storage is degraded.
+  # CLI flag: -tsdb.shipper.download-timeout
+  [download_timeout: <duration> | default = 1m]
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate

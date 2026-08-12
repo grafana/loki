@@ -33,6 +33,7 @@ type multiExtractorSampleBufferedIterator struct {
 
 	extractors []log.StreamSampleExtractor
 	stats      *stats.Context
+	hasher     util.SampleHasher
 
 	cur            []logproto.Sample
 	currLabels     []log.LabelsResult
@@ -70,7 +71,7 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 				lblString := sample.Labels.String()
 				e.cur = append(e.cur, logproto.Sample{
 					Value:     sample.Value,
-					Hash:      util.UniqueSampleHash(lblString, e.currLine),
+					Hash:      e.hasher.Hash(lblString, e.currLine),
 					Timestamp: e.currTs,
 				})
 			}

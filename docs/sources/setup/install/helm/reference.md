@@ -77,7 +77,7 @@ Values that are not part of a specific component group.
 | --- | --- | --- | --- |
 | `commonLabels` | object | Labels to be added to resources | `{}` |
 | `deploymentMode` | string | Deployment mode lets you specify how to deploy Loki. There are 3 options: - Monolithic (deprecated: SingleBinary): Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day. - SimpleScalable (deprecated, removed in Loki 4): Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day. - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day. There are also 2 additional modes used for migrating between deployment modes: - Monolithic<->SimpleScalable (deprecated: SingleBinary<->SimpleScalable): Migrate from SingleBinary to SimpleScalable (or vice versa) - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa) Note: SimpleScalable and Distributed REQUIRE the use of object storage. Ref: https://grafana.com/docs/loki/latest/get-started/deployment-modes/ | `"Monolithic"` |
-| `extraObjects` | string |  | `nil` | 
+| `extraObjects` | string |  | `nil` |
 | `fullnameOverride` | string | Overrides the chart's computed fullname | `""` |
 | `ignoreMinioDeprecation` | bool | Ignore MinIO deprecation validation when `minio.enabled=true`. This is a temporary compatibility escape hatch. | `false` |
 | `imagePullSecrets` | list | Image pull secrets for Docker images | `[]` |
@@ -769,7 +769,7 @@ Configuration for the gateway, an NGINX reverse proxy that routes incoming read 
 | `gateway.metrics.image.pullPolicy` | string |  | `"IfNotPresent"` |
 | `gateway.metrics.image.registry` | string |  | `"ghcr.io"` |
 | `gateway.metrics.image.repository` | string |  | `"jkroepke/access-log-exporter"` |
-| `gateway.metrics.image.tag` | string |  | `"0.4.4"` |
+| `gateway.metrics.image.tag` | string |  | `"0.4.6"` |
 | `gateway.metrics.livenessProbe` | object | Liveness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":30,"periodSeconds":10,"timeoutSeconds":5}` |
 | `gateway.metrics.readinessProbe` | object | Readiness probe for memcached exporter | `{"failureThreshold":3,"httpGet":{"path":"/health","port":"http-metrics"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3}` |
 | `gateway.metrics.resizePolicy` | list | Container resize policy for the gateway metrics exporter Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |
@@ -1197,7 +1197,7 @@ Common configuration shared by the Memcached deployments backing Loki's caches. 
 | `memcached.enabled` | bool | Enable the built in memcached server provided by the chart | `true` |
 | `memcached.image.pullPolicy` | string | Memcached Docker image pull policy | `"IfNotPresent"` |
 | `memcached.image.repository` | string | Memcached Docker image repository | `"memcached"` |
-| `memcached.image.tag` | string | Memcached Docker image tag | `"1.6.42-alpine"` |
+| `memcached.image.tag` | string | Memcached Docker image tag | `"1.6.45-alpine"` |
 | `memcached.livenessProbe` | object | Liveness probe for memcached pods | `{"failureThreshold":3,"initialDelaySeconds":30,"periodSeconds":10,"tcpSocket":{"port":"client"},"timeoutSeconds":5}` |
 | `memcached.podSecurityContext` | object | The SecurityContext override for memcached pods | `{"fsGroup":11211,"runAsGroup":11211,"runAsNonRoot":true,"runAsUser":11211,"seccompProfile":{"type":"RuntimeDefault"}}` |
 | `memcached.priorityClassName` | string | The name of the PriorityClass for memcached pods | `nil` |
@@ -1266,6 +1266,7 @@ Monitoring section determines which monitoring features to enable
 | `monitoring.dashboards.grafanaOperator.folder` | string | Which folder contains all dashboards in Grafana # This folder will be created on the Root level # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `"General"` |
 | `monitoring.dashboards.grafanaOperator.folderRef` | string | Which GrafanaFolder reference contains all dashboards in Grafana # This allows you to use subfolder hierarchy. # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `nil` |
 | `monitoring.dashboards.grafanaOperator.folderUID` | string | Which UID of the target folder contains all dashboards in Grafana # This allows you to use subfolder hierarchy # Only one of 'folder', 'folderUID' or 'folderRef' can be set # | `nil` |
+| `monitoring.dashboards.grafanaOperator.instanceSelector` | object | instanceSelector for the GrafanaDashboard resources # The grafana-operator matches this against the labels on your Grafana CR # An empty selector (the default) matches every Grafana instance | `{}` |
 | `monitoring.dashboards.grafanaOperator.labels` | object | Additional labels for the GrafanaOperator resources | `{}` |
 | `monitoring.dashboards.grafanaOperator.resyncPeriod` | string | How frequently the operator should resync resources (in duration format) | `"10m"` |
 | `monitoring.dashboards.labels` | object | Labels for the dashboards ConfigMap resources | `{"grafana_dashboard":"1"}` |
@@ -1924,7 +1925,7 @@ Configuration for the k8s-sidecar container that watches for ConfigMaps and Secr
 | `sidecar.image.registry` | string |  | `"docker.io"` |
 | `sidecar.image.repository` | string | The Docker registry and image for the k8s sidecar | `"kiwigrid/k8s-sidecar"` |
 | `sidecar.image.sha` | string | Docker image sha. If empty, no sha will be used | `""` |
-| `sidecar.image.tag` | string | Docker image tag | `"2.8.0"` |
+| `sidecar.image.tag` | string | Docker image tag | `"2.8.1"` |
 | `sidecar.livenessProbe` | object | Liveness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":30,"periodSeconds":30,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.readinessProbe` | object | Readiness probe definition. | `{"enabled":true,"failureThreshold":3,"httpGet":{"path":"/healthz","port":"http-sidecar"},"initialDelaySeconds":3,"periodSeconds":10,"successThreshold":1,"timeoutSeconds":1}` |
 | `sidecar.resizePolicy` | list | Container resize policy for the sidecar Example: resizePolicy: - resourceName: cpu restartPolicy: NotRequired - resourceName: memory restartPolicy: RestartContainer | `[]` |

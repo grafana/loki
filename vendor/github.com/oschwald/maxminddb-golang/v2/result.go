@@ -1,6 +1,7 @@
 package maxminddb
 
 import (
+	"errors"
 	"math"
 	"net/netip"
 )
@@ -33,6 +34,9 @@ func (r Result) Decode(v any) error {
 	}
 	if r.offset == notFound {
 		return nil
+	}
+	if r.reader == nil || r.reader.buffer == nil {
+		return errors.New("cannot call Decode on a closed database")
 	}
 
 	return r.reader.decoder.Decode(r.offset, v)
@@ -91,6 +95,9 @@ func (r Result) DecodePath(v any, path ...any) error {
 	}
 	if r.offset == notFound {
 		return nil
+	}
+	if r.reader == nil || r.reader.buffer == nil {
+		return errors.New("cannot call DecodePath on a closed database")
 	}
 	return r.reader.decoder.DecodePath(r.offset, path, v)
 }

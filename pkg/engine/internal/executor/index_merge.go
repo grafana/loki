@@ -1,79 +1,64 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/loser"
-	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-// executeIndexMerge orchestrates the index merge: existence-check, classify sections,
-// drive both merges, feed indexobj.Builder, and upload the result.
+// executeIndexMerge orchestrates the index merge: classify sections,
+// drive both merges, feed indexobj.Builder, upload the result, and emit a record
+// reporting the content-hash path.
 func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge) Pipeline {
 	return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-		if err := c.doIndexMerge(ctx, node); err != nil {
+		arts, err := c.doIndexMerge(ctx, node)
+		if err != nil {
 			return errorPipeline(ctx, err)
 		}
-		return emptyPipeline()
+		return NewBufferedPipeline(v2.BuildResultRecord(memory.DefaultAllocator, arts))
 	}, nil)
 }
 
-func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) error {
+func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	// Check prerequisites
 	if c.bucket == nil {
-		return errors.New("no object store bucket configured")
+		return nil, errors.New("no object store bucket configured")
 	}
 
-	// Check if output already exists (short-circuit on retry).
-	//
-	// We probe with a GetObject rather than Exists/HeadObject: under IRSA roles
-	// that grant s3:GetObject/s3:PutObject but not s3:ListBucket, a HeadObject on
-	// a missing key returns 403 AccessDenied instead of 404 NoSuchKey, which
-	// objstore surfaces as a hard error. GetObject returns a genuine NoSuchKey on
-	// a missing key without requiring ListBucket. Treat access-denied here as
-	// "not present" too, so a restrictive read policy never blocks the merge.
-	exists, err := c.outputExists(ctx, node.OutputIndexPath)
+	// Classify sections from all runs, grouped by source object.
+	objects, err := c.classifyRuns(ctx, node)
 	if err != nil {
-		return fmt.Errorf("checking output existence: %w", err)
-	}
-	if exists {
-		level.Info(c.logger).Log("msg", "IndexMerge: output already exists, short-circuiting", "path", node.OutputIndexPath)
-		return nil
-	}
-
-	// Classify sections from all runs
-	postingsSections, statsSections, err := c.classifyRuns(ctx, node)
-	if err != nil {
-		return fmt.Errorf("classifying runs: %w", err)
+		return nil, fmt.Errorf("classifying runs: %w", err)
 	}
 
 	// Create index object builder
 	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore)
 	if err != nil {
-		return fmt.Errorf("creating index builder: %w", err)
+		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
 
 	// Merge postings sections
-	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, postingsSections, builder); err != nil {
-		return fmt.Errorf("merging postings: %w", err)
+	if err := c.mergePostingsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 
 	// Merge stats sections
-	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, statsSections, builder); err != nil {
-		return fmt.Errorf("merging stats: %w", err)
+	if err := c.mergeStatsIntoBuilder(ctx, node.Tenant, objects, builder); err != nil {
+		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
 	// Snapshot the builder's in-memory accumulated size BEFORE Flush. This is the
@@ -85,22 +70,34 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	obj, closer, err := builder.Flush()
 	if err != nil {
 		if errors.Is(err, indexobj.ErrBuilderEmpty) {
-			// Upload a zero-byte sentinel.
-			return c.bucket.Upload(ctx, node.OutputIndexPath, io.NopCloser(bytes.NewReader([]byte{})))
+			// Empty builder produces no artifact.
+			return nil, nil
 		}
-		return fmt.Errorf("flushing builder: %w", err)
+		return nil, fmt.Errorf("flushing builder: %w", err)
 	}
-	defer closer.Close()
 
-	// Stream object directly to upload
-	reader, err := obj.Reader(ctx)
+	// Compute content-hash path and upload
+	pathReader, err := obj.Reader(ctx)
 	if err != nil {
-		return fmt.Errorf("getting object reader: %w", err)
+		return nil, errors.Join(err, closer.Close())
 	}
-	defer reader.Close()
+	path, hashErr := v2.CompactedIndexPath(node.Tenant, pathReader)
+	if cerr := pathReader.Close(); cerr != nil && hashErr == nil {
+		hashErr = cerr
+	}
+	if hashErr != nil {
+		return nil, errors.Join(hashErr, closer.Close())
+	}
 
-	if err := c.bucket.Upload(ctx, node.OutputIndexPath, reader); err != nil {
-		return fmt.Errorf("uploading merged index: %w", err)
+	uploadReader, err := obj.Reader(ctx)
+	if err != nil {
+		return nil, errors.Join(err, closer.Close())
+	}
+	if err := c.bucket.Upload(ctx, path, uploadReader); err != nil {
+		return nil, errors.Join(fmt.Errorf("uploading merged index: %w", err), uploadReader.Close(), closer.Close())
+	}
+	if err := uploadReader.Close(); err != nil {
+		return nil, errors.Join(fmt.Errorf("closing upload reader: %w", err), closer.Close())
 	}
 
 	// Observe output sizes once the upload has succeeded. obj.Size() reflects
@@ -108,74 +105,56 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) e
 	if c.indexMergeObserver != nil {
 		c.indexMergeObserver.ObserveIndexMergeOutput(node.Tenant, obj.Size(), uncompressedBytes)
 	}
-	return nil
-}
 
-// outputExists reports whether the IndexMerge output object is already present.
-// It probes with GetObject so a restrictive read policy (s3:GetObject without
-// s3:ListBucket) still yields a correct answer: a missing key returns
-// not-found, and an access-denied response is treated as not-present rather
-// than a fatal error.
-func (c *Context) outputExists(ctx context.Context, path string) (bool, error) {
-	rc, err := c.bucket.Get(ctx, path)
-	if err != nil {
-		if c.bucket.IsObjNotFoundErr(err) || c.bucket.IsAccessDeniedErr(err) {
-			return false, nil
-		}
-		return false, err
+	if err := closer.Close(); err != nil {
+		return nil, fmt.Errorf("closing merged index: %w", err)
 	}
-	_ = rc.Close()
-	return true, nil
+
+	return []v2.ResultArtifact{{Path: path}}, nil
 }
 
-// classifyRuns scans all sections of each referenced source object and
-// classifies them as postings or stats. Non-mergable section types (streams,
-// pointers, indexPointers) are silently ignored. Validates that all stats
-// sections share the same SortSchema.
-func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
-	postingsSections []runSection,
-	statsSections []runSection,
-	err error,
-) {
+// classifyRuns opens each unique source object once and groups its mergable
+// sections by type (postings, stats), preserving section order within each
+// object. Non-mergable section types (streams, pointers, indexPointers) are
+// silently ignored. It validates that all stats sections share the same SortSchema
+func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) ([]objectSections, error) {
 	// Deduplicate source objects by path. One object may be referenced by
 	// multiple SectionRefs in the same or different runs; we open and scan it
 	// exactly once.
-	type objectEntry struct {
-		obj    *dataobj.Object
-		runIdx int // first run that referenced this object
-	}
-	objects := make(map[string]*objectEntry)
+	objects := make(map[string]*dataobj.Object)
 
-	for runIdx, runRef := range node.Runs {
+	for _, runRef := range node.Runs {
 		for _, sectionRef := range runRef.Sections {
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
 			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, 0)
 			if openErr != nil {
-				return nil, nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
+				return nil, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}
-			objects[sectionRef.ObjectPath] = &objectEntry{obj: obj, runIdx: runIdx}
+			objects[sectionRef.ObjectPath] = obj
 		}
 	}
 
-	// For each unique source object, scan all of its sections and classify by
-	// type. Unknown section types (streams, pointers, indexPointers) are
-	// skipped silently — they're not applicable to an index merge.
-	// Iterate in sorted order for deterministic section ordering.
+	// Iterate objects in sorted path order for deterministic output.
 	paths := make([]string, 0, len(objects))
 	for path := range objects {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
 
-	// Make sure all stats section have the same sort schema by checking the sort
-	// schema from the first row of each section. Catches misconfigured
-	// cross-tenant merges or upstream schema-evolution bugs.
+	// For each unique source object, scan its sections and classify by type,
+	// preserving section order. Unknown section types (streams, pointers,
+	// indexPointers) are skipped silently. Make sure all stats sections share
+	// the same sort schema (checked from the first row of each). statsSeen
+	// counts stats sections across all objects, for stable error messages.
+	grouped := make([]objectSections, 0, len(paths))
 	var firstSortSchema string
+	statsSeen := 0
 	for _, path := range paths {
-		entry := objects[path]
-		for _, sec := range entry.obj.Sections() {
+		obj := objects[path]
+		group := objectSections{path: path}
+		for _, sec := range obj.Sections() {
 			// Index objects are multi-tenant; only merge sections for the tenant
 			// being compacted, or other tenants' rows leak into this output.
 			if sec.Tenant != node.Tenant {
@@ -183,33 +162,31 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			}
 			switch {
 			case postings.CheckSection(sec):
-				postingsSections = append(postingsSections, runSection{
-					section: sec,
-					runIdx:  entry.runIdx,
-				})
+				group.postings = append(group.postings, sec)
 			case stats.CheckSection(sec):
 				sortSchema, readErr := readStatsSortSchema(ctx, sec)
 				if readErr != nil {
-					return nil, nil, fmt.Errorf("reading stats section %d SortSchema: %w", len(statsSections), readErr)
+					return nil, fmt.Errorf("reading stats section %d SortSchema: %w", statsSeen, readErr)
 				}
-				if len(statsSections) == 0 {
+				if statsSeen == 0 {
 					firstSortSchema = sortSchema
 				} else if sortSchema != firstSortSchema {
-					return nil, nil, fmt.Errorf(
+					return nil, fmt.Errorf(
 						"stats sections have mismatched SortSchema: section 0 has %q, section %d has %q",
-						firstSortSchema, len(statsSections), sortSchema,
+						firstSortSchema, statsSeen, sortSchema,
 					)
 				}
-				statsSections = append(statsSections, runSection{
-					section: sec,
-					runIdx:  entry.runIdx,
-				})
+				statsSeen++
+				group.stats = append(group.stats, sec)
 				// default: skip silently (streams/pointers/indexPointers etc.)
 			}
 		}
+		if len(group.postings) > 0 || len(group.stats) > 0 {
+			grouped = append(grouped, group)
+		}
 	}
 
-	return postingsSections, statsSections, nil
+	return grouped, nil
 }
 
 // readStatsSortSchema opens a stats section and returns the SortSchema from
@@ -231,34 +208,38 @@ func readStatsSortSchema(ctx context.Context, sec *dataobj.Section) (string, err
 	return row.SortSchema, nil
 }
 
-type runSection struct {
-	section *dataobj.Section
-	runIdx  int
+// objectSections holds one source object's mergable sections, split by type and
+// kept in section order. A single object's same-type sections are contiguous,
+// non-overlapping slices of that object's sorted row stream (the section
+// encoders sort every row, then split into sections at size boundaries), so
+// they can be concatenated in section order — see [sectionConcatSeq].
+type objectSections struct {
+	path     string
+	postings []*dataobj.Section
+	stats    []*dataobj.Section
 }
 
-// mergePostingsIntoBuilder merges postings sections using a K-way merge heap and
-// feeds results into the builder.
-func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.MergeBuilder) error {
-	if len(sections) == 0 {
+// mergePostingsIntoBuilder merges the postings sections of all source objects
+// with a K-way loser-tree merge and feeds the result into the builder.
+func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+	readers := make([]sequence[postings.Row], 0, len(objects))
+	for _, obj := range objects {
+		if len(obj.postings) == 0 {
+			continue
+		}
+		readers = append(readers, &sectionConcatSeq[postings.Row]{
+			ctx:        ctx,
+			objectPath: obj.path,
+			sections:   obj.postings,
+			seqIdx:     len(readers),
+			open:       openPostingsReader,
+		})
+	}
+	if len(readers) == 0 {
 		return nil
 	}
 
-	// Open all postings sections and create readers.
-	readers := make([]sequence[postings.Row], 0, len(sections))
-
-	for i, rs := range sections {
-		sec, err := postings.Open(ctx, rs.section)
-		if err != nil {
-			return fmt.Errorf("opening postings section from run %d: %w", rs.runIdx, err)
-		}
-
-		readers = append(readers, indexedSeq[postings.Row]{
-			CloseIterator: postings.NewRowReader(ctx, sec, nil),
-			idx:           i,
-		})
-	}
-
-	// Drive a K-way merge over the readers via a loser tree.
+	// Drive a K-way merge over the per-object sequences via a loser tree.
 	tree := loser.New(
 		readers,
 		heapVal[postings.Row]{isMax: true},
@@ -275,15 +256,12 @@ func (c *Context) mergePostingsIntoBuilder(ctx context.Context, tenant string, s
 
 		row := tree.Winner().At()
 
-		// A collision on the full sort key (Kind, ObjectPath, SectionIndex,
+		// A collision on the identity key (Kind, ObjectPath, SectionIndex,
 		// ColumnName, LabelValue) means two source indexes reference the same
-		// physical section/column/label — this shouldn't happen so log a warning
-		// and emit a metric for tracking. The data is logically equivalent, so
-		// keep the first row and drop the later duplicate.
-		if last != nil && comparePostingsRow(*last, row) == 0 {
-			if region := xcap.RegionFromContext(ctx); region != nil {
-				region.Record(statIndexMergeDuplicatePostings.Observe(1))
-			}
+		// physical section/column/label — this shouldn't happen, so log a
+		// warning. The data is logically equivalent, so keep the first row and
+		// drop the later duplicate.
+		if last != nil && samePostingsKey(*last, row) {
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: postings full-key collision",
 				"tenant", tenant,
@@ -322,29 +300,28 @@ func (c *Context) writePostingsRow(builder *indexobj.MergeBuilder, tenant string
 	}
 }
 
-// mergeStatsIntoBuilder merges stats sections using a K-way merge heap and
-// feeds results into the builder. Uses D3 aggregation with schema/label validation.
-func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sections []runSection, builder *indexobj.MergeBuilder) error {
-	if len(sections) == 0 {
+// mergeStatsIntoBuilder merges the stats sections of all source objects with a
+// K-way loser-tree merge and feeds the result into the builder. Uses D3
+// aggregation with schema/label validation.
+func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, objects []objectSections, builder *indexobj.MergeBuilder) error {
+	readers := make([]sequence[stats.Stat], 0, len(objects))
+	for _, obj := range objects {
+		if len(obj.stats) == 0 {
+			continue
+		}
+		readers = append(readers, &sectionConcatSeq[stats.Stat]{
+			ctx:        ctx,
+			objectPath: obj.path,
+			sections:   obj.stats,
+			seqIdx:     len(readers),
+			open:       openStatsReader,
+		})
+	}
+	if len(readers) == 0 {
 		return nil
 	}
 
-	// Open all stats sections and create readers.
-	readers := make([]sequence[stats.Stat], 0, len(sections))
-
-	for i, rs := range sections {
-		sec, err := stats.Open(ctx, rs.section)
-		if err != nil {
-			return fmt.Errorf("opening stats section from run %d: %w", rs.runIdx, err)
-		}
-
-		readers = append(readers, indexedSeq[stats.Stat]{
-			CloseIterator: stats.NewRowReader(ctx, sec),
-			idx:           i,
-		})
-	}
-
-	// Drive a K-way merge over the readers via a loser tree.
+	// Drive a K-way merge over the per-object sequences via a loser tree.
 	tree := loser.New(
 		readers,
 		heapVal[stats.Stat]{isMax: true},
@@ -366,12 +343,8 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 		// reference the same physical (ObjectPath, SectionIndex) — which
 		// shouldn't happen. SortSchema and Labels are guaranteed to match on
 		// such collisions (same source section), as are the aggregate counts;
-		// keep the first row, drop the later duplicate, warn, and observe an
-		// xcap statistic.
+		// keep the first row, drop the later duplicate, and warn.
 		if last != nil && stats.Compare(*last, row) == 0 {
-			if region := xcap.RegionFromContext(ctx); region != nil {
-				region.Record(statIndexMergeDuplicateStats.Observe(1))
-			}
 			level.Warn(c.logger).Log(
 				"msg", "IndexMerge: stats full-key collision",
 				"tenant", tenant,
@@ -398,20 +371,100 @@ func (c *Context) mergeStatsIntoBuilder(ctx context.Context, tenant string, sect
 	return nil
 }
 
-// indexedSeq attaches a stable index to an [iter.CloseIterator] so the
-// loser tree can break ties deterministically. The index must be readable when
-// the tree snapshots each sequence so it travels with
-// the sequence rather than being derived at yield time.
-//
-// indexedSeq satisfies sequence[R] via the embedded iterator (promoting
-// Next/At/Err/Close) plus Index.
-type indexedSeq[R any] struct {
-	iter.CloseIterator[R] // promotes Next/At/Err/Close
-	idx                   int
+// sectionConcatSeq lazily concatenates the row readers of one source object's
+// same-type sections, read in section order, exposing them to the K-way merge
+// as a single sequence[R]. Only one section reader is open at a time, so K such
+// sequences hold K Arrow batches concurrently instead of one batch per section
+// across the whole task — the core of the index-merge memory reduction.
+// sectionConcatSeq satisfies sequence[R] (iter.CloseIterator[R] plus Index).
+type sectionConcatSeq[R any] struct {
+	ctx        context.Context
+	objectPath string // source object path, for error context
+	sections   []*dataobj.Section
+	open       func(context.Context, *dataobj.Section) (iter.CloseIterator[R], error)
+	seqIdx     int
+
+	idx int                   // index of the section currently being read
+	cur iter.CloseIterator[R] // reader for sections[idx-1]; nil until first Next / between sections
+	row R                     // current row, valid after Next returns true
+	err error
 }
 
-// Index returns the iterators index in the merge. Used for stable tiebreak ordering.
-func (s indexedSeq[R]) Index() int { return s.idx }
+// Index returns this sequence's stable index in the merge, for tiebreak ordering.
+func (s *sectionConcatSeq[R]) Index() int { return s.seqIdx }
+
+// At returns the current row. Valid only after Next returns true.
+func (s *sectionConcatSeq[R]) At() R { return s.row }
+
+// Err returns the first error encountered, if any.
+func (s *sectionConcatSeq[R]) Err() error { return s.err }
+
+// Next advances to the next row, transparently opening the next section once the
+// current one is drained. It keeps at most one section reader open at a time.
+// Returns false on exhaustion or on the first error.
+func (s *sectionConcatSeq[R]) Next() bool {
+	for {
+		if s.err != nil {
+			return false
+		}
+		if s.cur == nil {
+			if s.idx >= len(s.sections) {
+				return false
+			}
+			it, err := s.open(s.ctx, s.sections[s.idx])
+			if err != nil {
+				s.err = fmt.Errorf("opening section %d/%d of object %q: %w", s.idx, len(s.sections), s.objectPath, err)
+				return false
+			}
+			s.cur = it
+		}
+		if s.cur.Next() {
+			s.row = s.cur.At()
+			return true
+		}
+		// Current section drained or errored: capture any error, close, advance.
+		err := s.cur.Err()
+		_ = s.cur.Close()
+		s.cur = nil
+		if err != nil {
+			s.err = err
+			return false
+		}
+		s.idx++
+	}
+}
+
+// Close releases the currently open section reader, if any.
+func (s *sectionConcatSeq[R]) Close() error {
+	if s.cur != nil {
+		err := s.cur.Close()
+		s.cur = nil
+		return err
+	}
+	return nil
+}
+
+// openPostingsReader opens a postings section and returns a row iterator over it.
+func openPostingsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
+	ps, err := postings.Open(ctx, sec)
+	if err != nil {
+		return nil, err
+	}
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns()})
+	if err := reader.Open(ctx); err != nil {
+		return nil, fmt.Errorf("opening postings reader: %w", err)
+	}
+	return postings.NewRowReader(ctx, reader), nil
+}
+
+// openStatsReader opens a stats section and returns a row iterator over it.
+func openStatsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[stats.Stat], error) {
+	ss, err := stats.Open(ctx, sec)
+	if err != nil {
+		return nil, err
+	}
+	return stats.NewRowReader(ctx, ss), nil
+}
 
 // sequence[R] is one group cursor for the K-way merge. It is an
 // [iter.CloseIterator] (Next/At/Err/Close) extended with Index for stable

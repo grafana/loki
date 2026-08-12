@@ -88,6 +88,24 @@ func labelEntrySize(e LabelEntry) int {
 	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
 }
 
+// trimTrailingZeros returns b with trailing zero bytes removed. Stream-ID
+// bitmaps are LSB-encoded, so trailing zero bytes contain no set bits and are
+// semantically insignificant: readers derive the bit count from each row's byte
+// length and zero-extend shorter operands during unions (see scanner.go).
+//
+// The stored column is variable-length BINARY, so trimming is safe and keeps
+// per-row bitmaps at their natural size. Previously every bitmap in a section
+// was zero-padded to the section's longest bitmap, which — when a single hot
+// label matched many streams — allocated and zeroed that maximum length for
+// every row, dominating both compaction CPU and index object size.
+func trimTrailingZeros(b []byte) []byte {
+	n := len(b)
+	for n > 0 && b[n-1] == 0 {
+		n--
+	}
+	return b[:n]
+}
+
 // writeSection encodes a single-kind section (blooms or labels) into a columnar
 // encoder, flushes to w, and returns bytes written. Encoder is reset on return.
 func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, blooms []BloomEntry, labels []LabelEntry) (int64, error) {
@@ -125,7 +143,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating kind column: %w", err)
 	}
 
-	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount)
+	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount, false)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
@@ -135,12 +153,12 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating section_index column: %w", err)
 	}
 
-	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, p.pageSizeHint, p.pageMaxRowCount)
+	columnNameBuilder, err := binaryColumnBuilder(ColumnTypeColumnName, p.pageSizeHint, p.pageMaxRowCount, true)
 	if err != nil {
 		return fmt.Errorf("creating column_name column: %w", err)
 	}
 
-	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, p.pageSizeHint, p.pageMaxRowCount)
+	labelValueBuilder, err := binaryColumnBuilder(ColumnTypeLabelValue, p.pageSizeHint, p.pageMaxRowCount, true)
 	if err != nil {
 		return fmt.Errorf("creating label_value column: %w", err)
 	}
@@ -159,7 +177,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating bloom_filter column: %w", err)
 	}
 
-	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, p.pageSizeHint, p.pageMaxRowCount)
+	streamIDBitmapBuilder, err := binaryColumnBuilder(ColumnTypeStreamIDBitmap, p.pageSizeHint, p.pageMaxRowCount, false)
 	if err != nil {
 		return fmt.Errorf("creating stream_id_bitmap column: %w", err)
 	}
@@ -179,29 +197,6 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating max_timestamp column: %w", err)
 	}
 
-	// Compute the max bitmap length across both bloom and label entries for normalization.
-	maxBitmapLen := 0
-	for _, e := range bloomEntries {
-		if len(e.StreamIDBitmap) > maxBitmapLen {
-			maxBitmapLen = len(e.StreamIDBitmap)
-		}
-	}
-	for _, e := range labelEntries {
-		if len(e.StreamIDBitmap) > maxBitmapLen {
-			maxBitmapLen = len(e.StreamIDBitmap)
-		}
-	}
-
-	// normalizeBitmap pads a bitmap to maxBitmapLen.
-	normalizeBitmap := func(b []byte) []byte {
-		if len(b) == maxBitmapLen {
-			return b
-		}
-		padded := make([]byte, maxBitmapLen)
-		copy(padded, b)
-		return padded
-	}
-
 	// Populate column builders: bloom entries first (Kind=0), then label entries (Kind=1).
 	rowIdx := 0
 
@@ -212,7 +207,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
 		_ = bloomFilterBuilder.Append(rowIdx, dataset.BinaryValue(e.BloomFilter))
-		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.StreamIDBitmap)))
+		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(trimTrailingZeros(e.StreamIDBitmap)))
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
@@ -226,7 +221,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.LabelValue)))
 		_ = bloomFilterBuilder.Append(rowIdx, dataset.Value{}) // null for label
-		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(normalizeBitmap(e.StreamIDBitmap)))
+		_ = streamIDBitmapBuilder.Append(rowIdx, dataset.BinaryValue(trimTrailingZeros(e.StreamIDBitmap)))
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
@@ -269,7 +264,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 // Tag is empty: postings columns are all fixed (one column per Logical type),
 // so Logical alone uniquely identifies the column. Setting Tag would duplicate
 // it. Matches the convention used by streams.Reader for fixed columns.
-func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
+func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int, storeRangeStats bool) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,
 		PageMaxRowCount: pageRowCount,
@@ -279,6 +274,9 @@ func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*d
 		},
 		Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
 		Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: storeRangeStats,
+		},
 	})
 }
 

@@ -220,10 +220,6 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 // 			IndexType: store,
 // 			Schema:    schema,
 // 			From:      config.DayTime{Time: from},
-// 			ChunkTables: config.PeriodicTableConfig{
-// 				Prefix: "cortex",
-// 				Period: 24 * time.Hour,
-// 			},
 // 			IndexTables: config.IndexPeriodicTableConfig{
 // 				PeriodicTableConfig: config.PeriodicTableConfig{
 // 					Prefix: "cortex_chunks",

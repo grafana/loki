@@ -1,6 +1,7 @@
 package logsobj
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -20,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 var testBuilderConfig = BuilderConfig{
@@ -118,6 +120,50 @@ func TestBuilder_Append(t *testing.T) {
 				Timestamp: time.Now().UTC(),
 				Line:      strings.Repeat("a", 1024),
 			}},
+		}, time.Now()))
+	}
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	// When a section builder is reset, which happens on flush, the
+	// tenant is reset too. We must check that the tenant is added back
+	// to the section builder otherwise tenant will be absent from successive
+	// sections.
+	secs := obj.Sections()
+	require.Equal(t, 1, secs.Count(streams.CheckSection))
+	require.Greater(t, secs.Count(logs.CheckSection), 1)
+	for _, section := range secs.Filter(logs.CheckSection) {
+		require.Equal(t, tenant, section.Tenant)
+	}
+}
+
+// TestBuilder_AppendRecord ensures that appending to the buffer eventually reports
+// that the buffer is full via the AppendRecord call.
+func TestBuilder_AppendRecord(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	builder, err := NewBuilder(testBuilderConfig, nil, NewBuilderMetrics(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	tenant := "test"
+
+	lbs, err := syntax.ParseLabels(`{cluster="test",app="foo"}`)
+	require.NoError(t, err)
+
+	for {
+		require.NoError(t, ctx.Err())
+
+		// Append until the builder reports that it is full.
+		if builder.IsFull() {
+			break
+		}
+
+		require.NoError(t, builder.AppendRecord(tenant, lbs, logs.Record{
+			Timestamp: time.Now().UTC(),
+			Line:      bytes.Repeat([]byte("a"), 1024),
 		}, time.Now()))
 	}
 
@@ -783,9 +829,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			streamIDsAfter[stream.id] = struct{}{}
 
 			if i > 0 {
-				prevKey, err := computeSortKey(streamsAfter[i-1].labels, schemaLabels)
+				prevKey, err := ComputeSortKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				currKey, err := computeSortKey(stream.labels, schemaLabels)
+				currKey, err := ComputeSortKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
 				require.LessOrEqual(t, prevKey, currKey)
 			}
@@ -825,9 +871,9 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				continue
 			}
 			prev := logsAfter[i-1]
-			prevKey, err := computeSortKey(prev.labels, schemaLabels)
+			prevKey, err := ComputeSortKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey, err := computeSortKey(record.labels, schemaLabels)
+			currKey, err := ComputeSortKey(record.labels, schemaLabels)
 			require.NoError(t, err)
 
 			switch {
@@ -922,7 +968,7 @@ func TestComputeSortKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := computeSortKey(tt.labels, tt.schemaLabels)
+			got, err := ComputeSortKey(tt.labels, tt.schemaLabels)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

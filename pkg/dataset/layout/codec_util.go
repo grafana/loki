@@ -34,6 +34,29 @@ func datumToMask(alloc *memory.Allocator, datum columnar.Datum, length int) (mem
 	}
 }
 
+// unionMasks returns a bitmap where bits set in either a or b are set.
+// An empty bitmap is treated as all-set for the given length.
+func unionMasks(alloc *memory.Allocator, a, b memory.Bitmap, length int) memory.Bitmap {
+	if a.Len() == 0 && b.Len() == 0 {
+		return memory.Bitmap{}
+	}
+	if a.Len() == 0 {
+		a = memory.NewBitmap(alloc, length)
+		a.AppendCount(true, length)
+	}
+	if b.Len() == 0 {
+		b = memory.NewBitmap(alloc, length)
+		b.AppendCount(true, length)
+	}
+	aArr := columnar.NewBool(a, memory.Bitmap{})
+	bArr := columnar.NewBool(b, memory.Bitmap{})
+	result, err := compute.Or(alloc, aArr, bArr, memory.Bitmap{})
+	if err != nil {
+		panic("unionMasks: " + err.Error())
+	}
+	return result.(*columnar.Bool).Values()
+}
+
 // intersectMasks returns a new mask where only bits set in both a and b are
 // set.
 func intersectMasks(alloc *memory.Allocator, a, b memory.Bitmap) memory.Bitmap {

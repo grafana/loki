@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package grafana.dataset.v1;
+
+import "pkg/dataset/encoding/wirecodec/internal/arraymd/arraymd.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataset/encoding/wirecodec/internal/datasetmd";
+
+// Metadata holds the metadata for a dataset.
+message Metadata {
+  // The buffer ID holding the root typemd.Type for the overall dataset.
+  // Required.
+  uint64 type_buffer_id = 1;
+
+  // The buffer ID holding the root layoutmd.Layout for the overall dataset.
+  // Required.
+  uint64 layout_buffer_id = 2;
+
+  // The buffer ID holding the encoded FileStats type for the overall dataset.
+  // Optional.
+  uint64 file_stats_id = 3;
+
+  // The buffer ID holding the encoded Dictionary type for the overall
+  // dataset. Required.
+  uint64 dictionary_buffer_id = 4;
+}
+
+// FileStats holds file-level statistics.
+message FileStats {
+  // FieldStats holds statistics for each field in the dataset. If the dataset
+  // isn't a struct, there will be a single entry.
+  repeated grafana.dataset.array.v1.Stats field_stats = 1;
+}
+
+// Dictionary globally encodes the set of strings referenced by other elements
+// of the dataset metadata.
+message Dictionary {
+  repeated string keys = 1;
+}

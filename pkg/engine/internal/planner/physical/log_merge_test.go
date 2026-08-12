@@ -17,12 +17,11 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 		Runs: []*compactionv2pb.RunRef{
 			{
 				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: "objs/a.dataobj", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
+					{ObjectPath: "objects/aa/bb", SectionIndex: 0, MinKey: []string{"a"}, MaxKey: []string{"f"}},
 				},
 			},
 		},
-		SourceIndexPaths: []string{"idx/x.idx"},
-		OutputPath:       "tenants/tenant-29/objects/abc",
+		SortSchema: []string{"label:service_name"},
 	}
 
 	clone := orig.Clone().(*LogMerge)
@@ -31,14 +30,14 @@ func TestLogMerge_CloneIsDeepCopy(t *testing.T) {
 
 	clone.Runs[0].Sections[0].MinKey[0] = "MUTATED"
 	clone.Runs[0].Sections[0].MaxKey[0] = "MUTATED"
-	clone.SourceIndexPaths[0] = "MUTATED"
+	clone.SortSchema[0] = "MUTATED"
 
 	require.Equal(t, []string{"a"}, orig.Runs[0].Sections[0].MinKey,
 		"Clone must deep-copy nested SectionRef.MinKey")
 	require.Equal(t, []string{"f"}, orig.Runs[0].Sections[0].MaxKey,
 		"Clone must deep-copy nested SectionRef.MaxKey")
-	require.Equal(t, "idx/x.idx", orig.SourceIndexPaths[0],
-		"Clone must deep-copy SourceIndexPaths")
+	require.Equal(t, "label:service_name", orig.SortSchema[0],
+		"Clone must deep-copy SortSchema")
 }
 
 // TestLogMerge_Clone_TolerateNilElements verifies cloneRuns does not
@@ -58,5 +57,5 @@ func TestLogMerge_Clone_AllowsNilRuns(t *testing.T) {
 	orig := &LogMerge{NodeID: ulid.Make()}
 	cloned := orig.Clone().(*LogMerge)
 	require.Nil(t, cloned.Runs)
-	require.Nil(t, cloned.SourceIndexPaths)
+	require.Nil(t, cloned.SortSchema)
 }

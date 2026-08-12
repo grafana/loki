@@ -22,7 +22,8 @@ type Builder struct {
 	tenant  string
 	encode  SectionEncoder
 
-	rows []Stat
+	rows          []Stat
+	estimatedSize int
 }
 
 // NewBuilder creates a new Builder.
@@ -47,21 +48,24 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 // Append adds a [Stat] row to the builder.
 func (b *Builder) Append(stat Stat) {
 	b.rows = append(b.rows, stat)
+	b.estimatedSize += statSize(stat)
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
-// rows in bytes. The estimate uses a per-row heuristic:
+// rows in bytes, maintained incrementally by [Builder.Append] (see statSize).
+func (b *Builder) EstimatedSize() int {
+	return b.estimatedSize
+}
+
+// statSize is the per-row size heuristic:
 //   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
 //   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
-func (b *Builder) EstimatedSize() int {
-	var total int
-	for _, r := range b.rows {
-		total += 5 * 8 // int64 columns: SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize
-		total += len(r.ObjectPath) + len(r.SortSchema)
-		for k, v := range r.Labels {
-			total += len(k) + len(v)
-		}
+func statSize(r Stat) int {
+	total := 5 * 8
+	total += len(r.ObjectPath) + len(r.SortSchema)
+	for k, v := range r.Labels {
+		total += len(k) + len(v)
 	}
 	return total
 }
@@ -69,6 +73,7 @@ func (b *Builder) EstimatedSize() int {
 // Reset clears all accumulated rows and resets the builder to a fresh state.
 func (b *Builder) Reset() {
 	b.rows = b.rows[:0]
+	b.estimatedSize = 0
 }
 
 // Compare reports the canonical sort order of two [Stat] rows. It returns a
@@ -77,9 +82,11 @@ func (b *Builder) Reset() {
 //
 // Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
-	// Iterates the SortSchema with [strings.SplitSeq] so the function does not
-	// allocate per comparison; the flush sort invokes it O(n log n) times.
-	for key := range strings.SplitSeq(a.SortSchema, ",") {
+	for fqn := range strings.SplitSeq(a.SortSchema, ",") {
+		typ, key, ok := strings.Cut(fqn, ":")
+		if !ok || typ != "label" || key == "" {
+			continue
+		}
 		if va, vb := a.Labels[key], b.Labels[key]; va != vb {
 			return strings.Compare(va, vb)
 		}

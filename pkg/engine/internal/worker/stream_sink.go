@@ -23,7 +23,6 @@ type streamSink struct {
 	Metrics *metrics
 
 	WireMetrics *wire.Metrics
-	Scheduler   *wire.Peer
 	Stream      *workflow.Stream
 	TaskType    taskType
 	Dialer      func(ctx context.Context, addr net.Addr) (wire.Conn, error)
@@ -43,18 +42,12 @@ type streamSink struct {
 
 // Bind informs the sink about the address to send stream data to. Calls to Bind
 // after the first will return an error.
-func (sink *streamSink) Bind(ctx context.Context, destination net.Addr) error {
+func (sink *streamSink) Bind(destination net.Addr) error {
 	sink.lazyInit()
 
 	var bound bool
 	sink.bindOnce.Do(func() {
 		bound = true
-
-		// Best-effort inform the scheduler that we're ready to send data.
-		_, _ = sink.Metrics.timeSend(ctx, sink.Scheduler, "stream_status_open_async", sendModeAsync, sink.TaskType, wire.StreamStatusMessage{
-			StreamID: sink.Stream.ULID,
-			State:    workflow.StreamStateOpen,
-		})
 
 		sink.destination = destination
 		close(sink.bound) // Wake up any Send goroutines
@@ -115,11 +108,6 @@ func (sink *streamSink) Send(ctx context.Context, rec arrow.RecordBatch) error {
 }
 
 func (sink *streamSink) send(ctx context.Context, rec arrow.RecordBatch) error {
-	// TODO(rfratto): We should send a Blocked status update to the scheduler if
-	// SendMessage doesn't finish quickly enough.
-	//
-	// We need to find a way to efficiently do that here that doesn't cancel the
-	// send.
 	// stream_data keeps its callback because it also resolves the peer before
 	// sending; getPeer is timed inside the same site rather than split out.
 	_, err := sink.Metrics.timeCommSite("stream_data_sync", sendModeSync, wire.StreamDataMessage{}.Kind(), sink.TaskType, func() error {
@@ -192,21 +180,8 @@ func (sink *streamSink) isRetryable(err error) bool {
 	return errors.Is(err, wire.ErrConnClosed)
 }
 
-// Close closes the sink.
-func (sink *streamSink) Close(ctx context.Context) error {
+// Close releases the sink's local connection resources.
+func (sink *streamSink) Close() {
 	sink.lazyInit()
-
-	var err error
-
-	sink.closeOnce.Do(func() {
-		sink.cancel()
-
-		// Best-effort inform the scheduler that we're done sending data.
-		_, err = sink.Metrics.timeSend(ctx, sink.Scheduler, "stream_status_closed_async", sendModeAsync, sink.TaskType, wire.StreamStatusMessage{
-			StreamID: sink.Stream.ULID,
-			State:    workflow.StreamStateClosed,
-		})
-	})
-
-	return err
+	sink.closeOnce.Do(sink.cancel)
 }

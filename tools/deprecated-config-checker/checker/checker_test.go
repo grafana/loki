@@ -24,6 +24,7 @@ var (
 		"frontend_worker.match_max_concurrent",
 		"common.storage.s3.sse_encryption",
 		"ruler.storage.s3.sse_encryption",
+		"ruler.remote_write.client",
 		"storage_config.boltdb_shipper.use_boltdb_shipper_as_backup",
 		"storage_config.aws.sse_encryption",
 		"storage_config.s3.sse_encryption",
@@ -36,6 +37,7 @@ var (
 		"compactor.shared_store",
 		"compactor.shared_store_key_prefix",
 		"chunk_store_config.write_dedupe_cache_config",
+		"chunk_store_config.cache_lookups_older_than",
 		"limits_config.unordered_writes",
 		"limits_config.enforce_metric_name",
 		"limits_config.ruler_evaluation_delay_duration",
@@ -50,6 +52,10 @@ var (
 		"storage_config.aws.dynamodb",
 		"storage_config.index_queries_cache_config",
 		"storage_config.index_cache_validity",
+		"storage_config.disable_broad_index_queries",
+		"schema_config.configs.[0].row_shards",
+		"schema_config.configs.[0].chunks",
+		"schema_config.configs.[0].index.tags",
 		"schema_config.configs.[1].store",
 		"schema_config.configs.[1].object_store",
 		"schema_config.configs.[2].store",
@@ -69,7 +75,6 @@ var (
 	}
 
 	expectedConfigDeprecates = []string{
-		"ruler.remote_write.client",
 		"index_gateway.ring.replication_factor",
 		"limits_config.ruler_remote_write_url",
 		"limits_config.ruler_remote_write_timeout",

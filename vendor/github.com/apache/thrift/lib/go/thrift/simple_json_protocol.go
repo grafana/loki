@@ -432,7 +432,13 @@ func (p *TSimpleJSONProtocol) ReadMapBegin(ctx context.Context) (keyType TType, 
 	if err != nil {
 		return keyType, valueType, 0, err
 	}
-	err = checkSizeForProtocol(int32(size), p.cfg)
+	if iSize > math.MaxInt32 {
+		return keyType, valueType, 0, NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("size exceeded max allowed: %d", iSize),
+		)
+	}
+	err = checkSizeForProtocol(int32(iSize), p.cfg)
 	if err != nil {
 		return keyType, valueType, 0, err
 	}
@@ -1110,6 +1116,12 @@ func (p *TSimpleJSONProtocol) ParseElemListBegin() (elemType TType, size int, e 
 	nSize, _, err := p.ParseI64()
 	if err != nil {
 		return elemType, 0, err
+	}
+	if nSize > math.MaxInt32 {
+		return elemType, 0, NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("size exceeded max allowed: %d", nSize),
+		)
 	}
 	err = checkSizeForProtocol(int32(nSize), p.cfg)
 	if err != nil {

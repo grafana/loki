@@ -123,6 +123,11 @@ func tryFindFirstCharClass(node *RegexNode, ccIn **CharSet) int {
 		}
 		return 0
 
+	case NtGrapheme:
+		// Every rune can begin a grapheme, so there is no useful candidate
+		// restriction to derive.
+		return 0
+
 	// Zero-width elements.  These don't contribute to the starting set, so return null to indicate a caller
 	// should keep looking past them.
 	case NtEmpty, NtNothing, NtBol, NtEol, NtBoundary, NtNonboundary, NtECMABoundary, NtNonECMABoundary,
@@ -895,10 +900,11 @@ func tryFindRawFixedSets(node *RegexNode, res *[]FixedDistanceSet, distance *int
 							combined[fixedSet.Distance] = v
 						}
 					} else {
+						setCopy := fixedSet.Set.Copy()
 						combined[fixedSet.Distance] = struct {
 							Set   *CharSet
 							Count int
-						}{Set: fixedSet.Set, Count: 1}
+						}{Set: &setCopy, Count: 1}
 					}
 				}
 			}

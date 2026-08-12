@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -37,11 +36,6 @@ const (
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
-
-	// defaultBlockSize is used for target block size when cutting partially deleted chunks from a delete request.
-	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
-	// different block size in the new chunk which should be fine.
-	defaultBlockSize = 256 * 1024
 
 	chunkMetasSectionIdx              = 1
 	chunkStructuredMetadataSectionIdx = 2
@@ -1215,47 +1209,6 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 	return newChunk, nil
 }
 
-// Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
-	if err != nil {
-		return nil, err
-	}
-
-	var newChunk *MemChunk
-	// as close as possible, respect the block/target sizes specified. However,
-	// if the blockSize is not set, use reasonable defaults.
-	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
-	} else {
-		// Using defaultBlockSize for target block size.
-		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-	}
-
-	for itr.Next() {
-		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
-			continue
-		}
-		if _, err := newChunk.Append(&entry); err != nil {
-			return nil, err
-		}
-	}
-
-	if newChunk.Size() == 0 {
-		return nil, chunk.ErrRewriteNoDataLeft
-	}
-
-	if err := newChunk.Close(); err != nil {
-		return nil, err
-	}
-
-	return newChunk, nil
-}
-
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
 // This may seem roundabout, but the encoding is already a field on the parent MemChunk type. encBlock
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
@@ -1390,6 +1343,7 @@ func (hb *headBlock) SampleIterator(
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
 
+	var hasher util.SampleHasher
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
@@ -1421,7 +1375,7 @@ func (hb *headBlock) SampleIterator(
 				s.Samples = append(s.Samples, logproto.Sample{
 					Timestamp: e.t,
 					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+					Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
 				})
 			}
 
@@ -1859,6 +1813,7 @@ type sampleBufferedIterator struct {
 
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
+	hasher    util.SampleHasher
 
 	curr       []logproto.Sample
 	currLabels []log.LabelsResult
@@ -1900,7 +1855,7 @@ func (e *sampleBufferedIterator) Next() bool {
 			e.curr = append(e.curr, logproto.Sample{
 				Timestamp: e.currTs,
 				Value:     sample.Value,
-				Hash:      util.UniqueSampleHash(lblString, e.currLine),
+				Hash:      e.hasher.Hash(lblString, e.currLine),
 			})
 		}
 

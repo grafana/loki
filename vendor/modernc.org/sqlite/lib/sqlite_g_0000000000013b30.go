@@ -216,7 +216,7 @@ func Xsqlite3_uri_key(tls *libc.TLS, zFilename uintptr, N int32) (r uintptr) {
 //	**
 //	** See also: [sqlite_version()] and [sqlite_source_id()].
 //	*/
-var Xsqlite3_version = [7]uint8{'3', '.', '5', '3', '.', '2'}
+var Xsqlite3_version = [7]uint8{'3', '.', '5', '3', '.', '3'}
 
 // C documentation
 //
@@ -465,27 +465,6 @@ func _computeFloor(tls *libc.TLS, p uintptr) {
 			}
 		}
 	}
-}
-
-// C documentation
-//
-//	/*
-//	** Compute the Hour, Minute, and Seconds from the julian day number.
-//	*/
-func _computeHMS(tls *libc.TLS, p uintptr) {
-	var day_min, day_ms int32
-	_, _ = day_min, day_ms /* milliseconds, minutes into the day */
-	if (*TDateTime)(unsafe.Pointer(p)).FvalidHMS != 0 {
-		return
-	}
-	_computeJD(tls, p)
-	day_ms = int32(((*TDateTime)(unsafe.Pointer(p)).FiJD + libc.Int64FromInt32(43200000)) % libc.Int64FromInt32(86400000))
-	(*TDateTime)(unsafe.Pointer(p)).Fs = float64(day_ms%libc.Int32FromInt32(60000)) / float64(1000)
-	day_min = day_ms / int32(60000)
-	(*TDateTime)(unsafe.Pointer(p)).Fm = day_min % int32(60)
-	(*TDateTime)(unsafe.Pointer(p)).Fh = day_min / int32(60)
-	libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 0, 0x1)
-	(*TDateTime)(unsafe.Pointer(p)).FvalidHMS = uint8(1)
 }
 
 var _cume_distName = [10]uint8{'c', 'u', 'm', 'e', '_', 'd', 'i', 's', 't'}
@@ -2673,7 +2652,7 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 	}
 	/* The super-journal page number must never be used as a pointer map page */
 	if key == uint32(0) {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74216))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74301))
 		return
 	}
 	iPtrmap = _ptrmapPageno(tls, pBt, key)
@@ -2686,12 +2665,12 @@ func _ptrmapPut(tls *libc.TLS, pBt uintptr, key TPgno, eType Tu8, parent TPgno, 
 		/* The first byte of the extra data is the MemPage.isInit byte.
 		 ** If that byte is set, it means this page is also being used
 		 ** as a btree page. */
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74229))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74314))
 		goto ptrmap_exit
 	}
 	offset = libc.Int32FromUint32(libc.Uint32FromInt32(5) * (key - iPtrmap - libc.Uint32FromInt32(1)))
 	if offset < 0 {
-		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74234))
+		**(**int32)(__ccgo_up(pRC)) = _sqlite3CorruptError(tls, int32(74319))
 		goto ptrmap_exit
 	}
 	pPtrmap = _sqlite3PagerGetData(tls, **(**uintptr)(__ccgo_up(bp)))
@@ -2770,27 +2749,6 @@ func _rbuObjIterGetBindlist(tls *libc.TLS, p uintptr, nBind int32) (r uintptr) {
 //	**       if( pFuncDef->zName==row_valueName ){ ... }
 //	*/
 var _row_numberName = [11]uint8{'r', 'o', 'w', '_', 'n', 'u', 'm', 'b', 'e', 'r'}
-
-// C documentation
-//
-//	/*
-//	** Set the time to the current time reported by the VFS.
-//	**
-//	** Return the number of errors.
-//	*/
-func _setDateTimeToCurrent(tls *libc.TLS, context uintptr, p uintptr) (r int32) {
-	(*TDateTime)(unsafe.Pointer(p)).FiJD = _sqlite3StmtCurrentTime(tls, context)
-	if (*TDateTime)(unsafe.Pointer(p)).FiJD > 0 {
-		(*TDateTime)(unsafe.Pointer(p)).FvalidJD = uint8(1)
-		libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(1), 3, 0x8)
-		libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 4, 0x10)
-		_clearYMD_HMS_TZ(tls, p)
-		return 0
-	} else {
-		return int32(1)
-	}
-	return r
-}
 
 // C documentation
 //
@@ -4058,7 +4016,7 @@ func _sqlite3VdbeMemFromBtree(tls *libc.TLS, pCur uintptr, offset Tu32, amt Tu32
 		return int32(SQLITE_NOMEM)
 	}
 	if uint64(amt)+uint64(offset) > libc.Uint64FromInt64(_sqlite3BtreeMaxRecordSize(tls, pCur)) {
-		return _sqlite3CorruptError(tls, int32(86966))
+		return _sqlite3CorruptError(tls, int32(87091))
 	}
 	v1 = _sqlite3VdbeMemClearAndResize(tls, pMem, libc.Int32FromUint32(amt+uint32(1)))
 	rc = v1

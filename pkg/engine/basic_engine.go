@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	internalerrors "github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -30,7 +31,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
-var ErrNotSupported = errors.New("feature not supported in new query engine")
+// ErrNotSupported is the public sentinel callers branch on (querier fallback,
+// HTTP 501). The canonical definition lives in the internal errors package so
+// it can be returned from inner packages such as the physical planner; this
+// re-export keeps the existing public surface stable.
+var ErrNotSupported = internalerrors.ErrNotSupported
 
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with

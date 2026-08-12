@@ -127,7 +127,14 @@ func (b *MergeBuilder) AppendPostingsLabelEntry(tenantID string, entry postings.
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
-	b.currentSizeEstimate += postSize - preSize
+
+	if postSize > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true
@@ -149,7 +156,15 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 
 	postSize := tenantPostings.EstimatedSize()
 	b.unflushedSizeEstimate += postSize - preSize
-	b.currentSizeEstimate += postSize - preSize
+
+	// Cut a section at the target size; see AppendPostingsLabelEntry.
+	if postSize > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPostings); err != nil {
+			return err
+		}
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	if b.currentSizeEstimate > int(b.cfg.TargetObjectSize) {
 		b.builderFull = true

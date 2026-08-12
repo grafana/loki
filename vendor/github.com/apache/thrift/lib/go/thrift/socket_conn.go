@@ -114,11 +114,16 @@ func (sc *socketConn) Read(p []byte) (n int, err error) {
 	return sc.Conn.Read(p)
 }
 
+// Close closes the connection and the underlying net.Conn.
+//
+// Only the first call will actually close the underlying connection;
+// subsequent calls return net.ErrClosed error.
 func (sc *socketConn) Close() error {
-	if !sc.isValid() {
-		// Already closed
+	if sc == nil || sc.Conn == nil {
 		return net.ErrClosed
 	}
-	sc.closed.Store(1)
-	return sc.Conn.Close()
+	if sc.closed.CompareAndSwap(0, 1) {
+		return sc.Conn.Close()
+	}
+	return net.ErrClosed
 }

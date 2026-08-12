@@ -29,7 +29,6 @@ type CacheStats struct {
 	Hits    *xcap.StatisticInt64
 	Misses  *xcap.StatisticInt64
 	Batches *xcap.StatisticInt64
-	Rows    *xcap.StatisticInt64
 	Bytes   *xcap.StatisticInt64
 }
 
@@ -86,8 +85,7 @@ type cachingPipeline struct {
 	passthrough bool // true once we know we won't cache (size overflow)
 	encoder     *CacheEntryEncoder
 
-	// Accumulated across whichever path is active
-	cachedRows    int64
+	// Accumulated across whichever path is active.
 	cachedRecords int64
 }
 
@@ -125,14 +123,12 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.hit {
 		rec, err := p.decoder.Next()
 		if rec != nil {
-			p.cachedRows += rec.NumRows()
 			p.cachedRecords++
 		}
 
 		if errors.Is(err, EOF) {
 			region := xcap.RegionFromContext(ctx)
 			region.Record(p.stats.Batches.Observe(p.cachedRecords))
-			region.Record(p.stats.Rows.Observe(p.cachedRows))
 		}
 
 		return rec, err
@@ -158,7 +154,6 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 		region := xcap.RegionFromContext(ctx)
 		region.Record(p.stats.Batches.Observe(p.cachedRecords))
-		region.Record(p.stats.Rows.Observe(p.cachedRows))
 		region.Record(p.stats.Bytes.Observe(int64(len(payload))))
 		return nil, err
 	}
@@ -180,7 +175,6 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 		return rec, nil
 	}
 
-	p.cachedRows += rec.NumRows()
 	p.cachedRecords++
 
 	// Adding this last record made us go over the max cacheable size, so disable caching for this task result
@@ -196,7 +190,7 @@ func (p *cachingPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 // accumulated encoder state and resetting cached stats counters.
 func (p *cachingPipeline) disableCache() {
 	p.encoder.Reset()
-	p.cachedRows, p.cachedRecords = 0, 0
+	p.cachedRecords = 0
 	p.passthrough = true
 }
 
@@ -252,14 +246,12 @@ func NewTaskCacheRegistry(cfg resultscache.Config, reg prometheus.Registerer, lo
 		Hits:    TaskCacheHits,
 		Misses:  TaskCacheMisses,
 		Batches: TaskCacheBatches,
-		Rows:    TaskCacheRows,
 		Bytes:   TaskCacheBytes,
 	}
 	dataObjScanCacheStats := CacheStats{
 		Hits:    DataObjScanCacheHits,
 		Misses:  DataObjScanCacheMisses,
 		Batches: DataObjScanCacheBatches,
-		Rows:    DataObjScanCacheRows,
 		Bytes:   DataObjScanCacheBytes,
 	}
 

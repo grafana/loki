@@ -115,3 +115,10 @@ func WithZonalBucketAPIs() option.ClientOption {
 func WithDirectConnectivityEnforced() option.ClientOption {
 	return internal.WithDirectConnectivityEnforced.(func() option.ClientOption)()
 }
+
+// WithOtelMetrics provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewClient] or [cloud.google.com/go/storage.NewGRPCClient].
+// It enables client-side OpenTelemetry metrics.
+func WithOtelMetrics() option.ClientOption {
+	return internal.WithOtelMetrics.(func() option.ClientOption)()
+}

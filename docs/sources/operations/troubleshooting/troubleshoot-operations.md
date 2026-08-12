@@ -647,11 +647,18 @@ deletion is not available for this tenant
 
 **Cause:**
 
-A delete request was submitted for a tenant that does not have deletion enabled. Log deletion must be explicitly enabled per tenant.
+A delete request was submitted for a tenant, but the deletion API endpoints aren't reachable. This happens when `retention_enabled` is `false` in the compactor configuration (its default), or when the tenant's `deletion_mode` override has been explicitly set to `disabled`.
 
 **Resolution:**
 
-- **Enable deletion for the tenant** in the runtime configuration:
+- **Enable retention on the compactor**, which gates the deletion API endpoints:
+
+  ```yaml
+  compactor:
+    retention_enabled: true
+  ```
+
+- **If needed, override the deletion mode for the tenant** in the runtime configuration:
 
   ```yaml
   overrides:
@@ -660,9 +667,9 @@ A delete request was submitted for a tenant that does not have deletion enabled.
   ```
 
   Valid deletion modes:
-  - `disabled` - Deletion is not allowed (default)
+  - `disabled` - Deletion is not allowed
   - `filter-only` - Lines matching delete requests are filtered at query time but not physically deleted
-  - `filter-and-delete` - Lines are filtered at query time and physically deleted during compaction
+  - `filter-and-delete` - Lines are filtered at query time and physically deleted during compaction (default)
 
 - **Ensure the compactor is configured** for retention:
 

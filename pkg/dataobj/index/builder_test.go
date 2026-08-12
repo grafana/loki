@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -18,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
@@ -32,6 +35,76 @@ var testBuilderConfig = logsobj.BuilderBaseConfig{
 	BufferSize: 4 * 1024 * 1024,
 
 	SectionStripeMergeLimit: 2,
+}
+
+func TestIndexBuilder_CleanShutdown(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+
+	var logBuf bytes.Buffer
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(&logBuf))
+
+	builder, err := NewIndexBuilder(
+		Config{
+			BuilderBaseConfig: testBuilderConfig,
+			EventsPerIndex:    16, // high so append does not trigger a build
+			FlushInterval:     time.Millisecond,
+			MaxIdleTime:       0, // flush immediately once buffered
+			MaxAge:            time.Hour,
+		},
+		metastore.Config{},
+		kafka.Config{},
+		logger,
+		"instance-id",
+		bucket,
+		nil,
+		prometheus.NewRegistry(),
+	)
+	require.NoError(t, err)
+	builder.client.Close()
+	builder.client = &mockKafkaClient{}
+
+	blocking := &blockingCalculator{
+		started: make(chan struct{}),
+	}
+	builder.indexer.(*serialIndexer).calculator = blocking
+
+	require.NoError(t, builder.StartAsync(ctx))
+	require.NoError(t, builder.AwaitRunning(ctx))
+
+	builder.handlePartitionsAssigned(ctx, nil, map[string][]int32{
+		"loki.metastore-events": {0},
+	})
+
+	// Buffer an event; the idle flush worker will start a build that blocks in Calculate.
+	builder.processRecord(context.Background(), &kgo.Record{
+		Value:     eventBytes,
+		Partition: 0,
+	})
+
+	select {
+	case <-blocking.started:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for in-flight index build to start")
+	}
+
+	builder.StopAsync()
+	require.NoError(t, builder.AwaitTerminated(context.Background()))
+	require.Equal(t, services.Terminated, builder.State())
+	require.Nil(t, builder.FailureCase())
+
+	logs := logBuf.String()
+	require.NotContains(t, logs, "failed to build index")
 }
 
 func TestIndexBuilder_PartitionRevocation(t *testing.T) {
@@ -441,11 +514,32 @@ func (m *mockKafkaClient) CommitRecords(_ context.Context, _ ...*kgo.Record) err
 	return nil
 }
 
-func (m *mockKafkaClient) PollRecords(_ context.Context, _ int) kgo.Fetches {
+func (m *mockKafkaClient) PollRecords(ctx context.Context, _ int) kgo.Fetches {
+	<-ctx.Done()
 	return nil
 }
 
 func (m *mockKafkaClient) Close() {}
+
+// blockingCalculator blocks in Calculate until the request context is cancelled.
+type blockingCalculator struct {
+	startedOnce sync.Once
+	started     chan struct{}
+}
+
+func (c *blockingCalculator) Calculate(ctx context.Context, _ log.Logger, _ *dataobj.Object, _ string) error {
+	c.startedOnce.Do(func() { close(c.started) })
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (c *blockingCalculator) Flush() (*dataobj.Object, io.Closer, []multitenancy.TimeRange, error) {
+	return nil, nil, nil, fmt.Errorf("unexpected flush")
+}
+
+func (c *blockingCalculator) Reset() {}
+
+func (c *blockingCalculator) IsFull() bool { return false }
 
 func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
 	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
