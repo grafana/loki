@@ -161,6 +161,11 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	predicate := chunk.NewPredicate(matchers, &req.Plan)
 	chunkRefsLookupStart := time.Now()
 	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, predicate, nil)
@@ -253,6 +258,12 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 	if err != nil {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
 		return nil, err
@@ -289,6 +300,12 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
@@ -318,6 +335,12 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 		}
 		matchers = matcherExpr.Mts
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	names, err := g.indexQuerier.LabelValuesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, req.LabelName, matchers...)
 	if err != nil {
 		return nil, err
@@ -337,6 +360,11 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 		return nil, err
 	}
 
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
+
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
@@ -350,6 +378,11 @@ func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return nil, mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
 }
@@ -368,6 +401,11 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	if err != nil {
 		return err
 	}
+
+	if err := g.queryGate.Start(ctx); err != nil {
+		return mapGateError(err)
+	}
+	defer g.queryGate.Done()
 
 	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {
