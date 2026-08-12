@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/buger/jsonparser"
@@ -38,21 +39,6 @@ var (
 	fatal      = []byte("fatal")
 
 	errKeyFound = errors.New("key found")
-
-	levelPatterns = []struct {
-		word  string
-		level string
-	}{
-		{"trace", constants.LogLevelTrace},
-		{"debug", constants.LogLevelDebug},
-		{"fatal", constants.LogLevelFatal},
-		{"critical", constants.LogLevelCritical},
-		{"error", constants.LogLevelError},
-		{"err", constants.LogLevelError},
-		{"warning", constants.LogLevelWarn},
-		{"warn", constants.LogLevelWarn},
-		{"info", constants.LogLevelInfo},
-	}
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
@@ -349,55 +335,80 @@ func isJSON(line string) bool {
 // Colons are intentionally excluded: they indicate a key:value compound (e.g. misc:error)
 // where the keyword is not a standalone log level.
 // Operates on bytes since log lines are expected to be ASCII.
-func isLeftWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
-		return true
-	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '\'' || c == '=' || c == '|'
+func isLeftWordDelim(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '[' || r == '(' || r == '{' || r == '"' || r == '\'' || r == '=' || r == '|'
 }
 
 // isRightWordBoundary checks the character to the right of a potential keyword match.
 // Colons are allowed here to support "level:" prefix patterns (e.g. "debug: message").
 // Equals and quotes are allowed to support key=value and key="value" patterns.
 // Operates on bytes since log lines are expected to be ASCII.
-func isRightWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
+func isRightWordDelim(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '[' || r == ']' || r == '(' || r == ')' || r == '{' || r == '}' || r == ':' || r == ',' || r == '!' || r == '"' || r == '\'' || r == '=' || r == '|'
+}
+
+func matchSuffix(str, suffix string) bool {
+	for _, s := range suffix {
+		if len(str) == 0 {
+			return false
+		}
+		r, size := utf8.DecodeRuneInString(str)
+		if unicode.ToLower(r) != s {
+			return false
+		}
+		str = str[size:]
+	}
+	if len(str) == 0 {
 		return true
 	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '\'' || c == '=' || c == '|'
+	r, _ := utf8.DecodeRuneInString(str)
+	return isRightWordDelim(r)
 }
 
-func indexOfBoundedLevel(log, level string) int {
-	offset := 0
-	for {
-		pos := strings.Index(log[offset:], level)
-		if pos == -1 {
-			return -1
+func detectLevelFromLogLine(str string) string {
+	prev := ' '
+	for len(str) > 0 {
+		cur, size := utf8.DecodeRuneInString(str)
+		if isLeftWordDelim(prev) {
+			switch unicode.ToLower(cur) {
+			case 't':
+				if matchSuffix(str, "trace") {
+					return constants.LogLevelTrace
+				}
+			case 'd':
+				if matchSuffix(str, "debug") {
+					return constants.LogLevelDebug
+				}
+			case 'f':
+				if matchSuffix(str, "fatal") {
+					return constants.LogLevelFatal
+				}
+			case 'c':
+				if matchSuffix(str, "critical") {
+					return constants.LogLevelCritical
+				}
+			case 'e':
+				if matchSuffix(str, "error") {
+					return constants.LogLevelError
+				}
+				if matchSuffix(str, "err") {
+					return constants.LogLevelError
+				}
+			case 'w':
+				if matchSuffix(str, "warning") {
+					return constants.LogLevelWarn
+				}
+				if matchSuffix(str, "warn") {
+					return constants.LogLevelWarn
+				}
+			case 'i':
+				if matchSuffix(str, "info") {
+					return constants.LogLevelInfo
+				}
+			}
 		}
-		abs := offset + pos
-		if isLeftWordBoundary(log, abs-1) && isRightWordBoundary(log, abs+len(level)) {
-			return abs
-		}
-		offset = abs + 1
+		str = str[size:]
+		prev = cur
 	}
-}
-
-func detectLevelFromLogLine(log string) string {
-	lowerLog := strings.ToLower(log)
-	idx, bestGuess := len(lowerLog), constants.LogLevelUnknown
-
-	for _, p := range levelPatterns {
-		pos := indexOfBoundedLevel(lowerLog, p.word)
-		if pos == -1 || pos >= idx {
-			continue
-		}
-		idx = pos
-		bestGuess = p.level
-		if idx == 0 {
-			break
-		}
-	}
-	return bestGuess
+	return constants.LogLevelUnknown
 }
