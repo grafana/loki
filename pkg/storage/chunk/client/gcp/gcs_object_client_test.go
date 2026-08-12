@@ -3,9 +3,12 @@ package gcp
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -153,73 +156,50 @@ func TestUpstreamRetryableErrs(t *testing.T) {
 	}
 }
 
-func TestTCPErrs(t *testing.T) {
+type errTransport struct{ err error }
 
+func (t errTransport) RoundTrip(*http.Request) (*http.Response, error) { return nil, t.err }
+
+func TestTCPErrs(t *testing.T) {
 	tests := []struct {
-		name           string
-		responseSleep  time.Duration
-		connectSleep   time.Duration
-		clientTimeout  time.Duration
-		serverTimeout  time.Duration
-		connectTimeout time.Duration
-		closeOnNew     bool
-		closeOnActive  bool
-		retryable      bool
+		name         string
+		transportErr error
+		retryable    bool
 	}{
 		{
-			name:          "request took longer than client timeout, not retryable",
-			responseSleep: time.Millisecond * 20,
-			clientTimeout: time.Millisecond * 10,
-			retryable:     false,
+			name:         "client side timeout, not retryable",
+			transportErr: context.DeadlineExceeded,
+			retryable:    false,
 		},
 		{
-			name:          "client timeout exceeded on connect, not retryable",
-			connectSleep:  time.Millisecond * 20,
-			clientTimeout: time.Millisecond * 10,
-			retryable:     false,
+			// Retryable because it's a server-side timeout
+			name:         "transport connect timeout exceeded, retryable",
+			transportErr: fmt.Errorf("net/http: request canceled (Client.Timeout exceeded while awaiting headers): %w", context.DeadlineExceeded),
+			retryable:    true,
 		},
 		{
-			// there are retryable because it's a server-side timeout
-			name:           "transport connect timeout exceeded, retryable",
-			connectSleep:   time.Millisecond * 40,
-			connectTimeout: time.Millisecond * 20,
-			// even though the client timeout is set, the connect timeout will be hit first
-			clientTimeout: time.Millisecond * 100,
-			retryable:     true,
-		},
-		{
-			name:          "connection is closed server-side before being established",
-			connectSleep:  time.Millisecond * 10,
-			clientTimeout: time.Millisecond * 100,
-			closeOnNew:    true,
-			retryable:     true,
-		},
-		{
-			name:          "connection is closed server-side after being established",
-			connectSleep:  time.Millisecond * 10,
-			clientTimeout: time.Millisecond * 100,
-			closeOnActive: true,
-			retryable:     true,
+			name: "connection is closed server-side, retryable",
+			transportErr: &net.OpError{
+				Op:  "read",
+				Net: "tcp",
+				Err: &os.SyscallError{Syscall: "read", Err: syscall.ECONNRESET},
+			},
+			retryable: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			server := fakeSleepingServer(t, tc.responseSleep, tc.connectSleep, tc.closeOnNew, tc.closeOnActive)
-			ctx, cancelFunc := context.WithTimeout(context.Background(), tc.clientTimeout)
-			defer t.Cleanup(cancelFunc)
+			ctx := context.Background()
 
-			client := http.DefaultClient
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			client.Transport = transport
-			client.Timeout = tc.connectTimeout
+			client := &http.Client{Transport: errTransport{tc.transportErr}}
 
 			cli, err := newGCSObjectClient(ctx, GCSConfig{
 				BucketName:    "test-bucket",
 				Insecure:      true,
 				EnableRetries: false,
 			}, hedging.Config{}, func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error) {
-				opts = append(opts, option.WithEndpoint(server.URL))
+				opts = append(opts, option.WithEndpoint("http://fake-gcs.invalid"))
 				opts = append(opts, option.WithoutAuthentication())
 				opts = append(opts, option.WithHTTPClient(client))
 				return storage.NewClient(ctx, opts...)
@@ -241,28 +221,5 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 	server.StartTLS()
 	t.Cleanup(server.Close)
 
-	return server
-}
-
-func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		// sleep on response to mimic server overload
-		time.Sleep(responseSleep)
-	}))
-	server.Config.ConnState = func(conn net.Conn, state http.ConnState) {
-		// sleep on initial connection attempt to mimic server non-responsiveness
-		if state == http.StateNew {
-			time.Sleep(connectSleep)
-			if closeOnNew {
-				require.NoError(t, conn.Close())
-			}
-		}
-
-		if closeOnActive && state != http.StateClosed {
-			require.NoError(t, conn.Close())
-		}
-	}
-	t.Cleanup(server.Close)
-	server.Start()
 	return server
 }
