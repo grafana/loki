@@ -14,9 +14,9 @@ Loki has object storage clients based on the [Thanos Object Storage Client Go mo
 
 One of the reasons for making this change is to have a consistent storage configuration across Grafana Loki, Mimir and other telemetry databases from Grafana Labs. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
 
-Loki 4.0 uses the Thanos based clients by default, because the `use_thanos_objstore` setting defaults to `true`. The legacy storage clients are deprecated. Use this guide to convert your storage configuration to the new format. If you are not ready to migrate, set `use_thanos_objstore` to `false` to keep using the legacy clients.
+Loki 4.0 uses the Thanos-based clients by default, because the `use_thanos_objstore` setting defaults to `true`. The legacy storage clients are deprecated. Use this guide to convert your storage configuration to the new format. If you are not ready to migrate, set `use_thanos_objstore` to `false` to keep using the legacy clients.
 
-In Loki 3.4 and later 3.x releases, the Thanos based clients are optional. To use them in those releases, set `use_thanos_objstore` to `true`.
+In Loki 3.4 and later 3.x releases, the Thanos-based clients are optional. To use them in those releases, set `use_thanos_objstore` to `true`.
 
 {{< admonition type="note" >}}
 The new storage configuration deviates from the existing format. The following sections describe the changes in detail for each provider.
@@ -25,12 +25,12 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
 
 ### Configure the new storage clients
 
-1. Configure your object storage under `storage_config.object_store`. When the Thanos based clients are in use, Loki reads this section instead of the legacy storage configuration. In Loki 3.x, you must also set `use_thanos_objstore` to `true` in the `storage_config` section, or set the `-use-thanos-objstore` flag to `true`. The following examples set this option explicitly, which is also valid in Loki 4.0.
+1. Configure your object storage under `storage_config.object_store`. When the Thanos-based clients are in use, Loki reads this section instead of the legacy storage configuration. In Loki 3.x, you must also set `use_thanos_objstore` to `true` in the `storage_config` section, or set the `-use-thanos-objstore` flag to `true`. The following examples set this option explicitly, which is also valid in Loki 4.0.
 
    ```yaml
    # Uses the new storage clients for connecting to gcs backend
    storage_config:
-     use_thanos_objstore: true # use the Thanos based storage clients
+     use_thanos_objstore: true # use the Thanos-based storage clients
      object_store:
        gcs:
          bucket_name: "example-bucket"
@@ -40,7 +40,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
 
    ```yaml
    storage_config:
-      use_thanos_objstore: true # use the Thanos based storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
    common:
      storage:
        object_store:
@@ -52,7 +52,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
 
    ```yaml
    storage_config:
-      use_thanos_objstore: true # use the Thanos based storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
    ruler_storage:
       backend: gcs
       gcs:
@@ -64,7 +64,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
    ```yaml
    # Example configuration to prefix all objects with "prefix"
    storage_config:
-      use_thanos_objstore: true # use the Thanos based storage clients
+      use_thanos_objstore: true # use the Thanos-based storage clients
       object_store:
          storage_prefix: "prefix"
    ```

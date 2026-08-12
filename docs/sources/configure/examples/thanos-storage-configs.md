@@ -7,7 +7,7 @@ weight: 100
 
 # Configuration examples for using Thanos-based storage clients
 
-Use these examples as a starting point for configuring [Thanos based object storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) in Grafana Loki. Each example is a complete configuration you can adapt and run, not just a snippet.
+Use these examples as a starting point for configuring [Thanos-based object storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) in Grafana Loki. Each example is a complete configuration you can adapt and run, not just a snippet.
 
 ## GCS example
 
