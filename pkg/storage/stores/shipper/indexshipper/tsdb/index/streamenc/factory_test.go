@@ -39,14 +39,13 @@ func BenchmarkDecbufFactory_NewDecbufAtUnchecked(b *testing.B) {
 	for factoryName, factory := range factories {
 		b.Run(fmt.Sprintf("DecbufFactory=%s", factoryName), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				decbuf := factory.NewDecbufAtUnchecked(context.Background(), 0)
-				b.Cleanup(func() { _ = decbuf.Close() })
+				d := factory.NewDecbufAtUnchecked(context.Background(), 0)
 
-				if err := decbuf.Err(); err != nil {
+				if err := d.Err(); err != nil {
 					require.NoError(b, err)
 				}
 
-				if err := decbuf.Close(); err != nil {
+				if err := d.Close(); err != nil {
 					require.NoError(b, err)
 				}
 			}
