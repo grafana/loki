@@ -10,8 +10,8 @@ keywords:
 
 # Migrate to TSDB
 
-[TSDB](../../../operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
-If you are running Loki with [boltdb-shipper](../../../operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
+[TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
+If you are running Loki with [boltdb-shipper](https://grafana.com/docs/loki/v3.0.x/operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
 we strongly recommend migrating to TSDB.
 
 
@@ -68,7 +68,7 @@ storage_config:
 
 ### Run compactor
 
-We strongly recommended running the [compactor](../../../operations/storage/retention/#compactor) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
+We strongly recommended running the [compactor](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/#compactor) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
 Not running index compaction will result in sub-optimal query performance.
 
-Please refer to the [compactor section](../../../operations/storage/retention/#compactor) for more information and configuration examples.
+Please refer to the [compactor section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/#compactor) for more information and configuration examples.
