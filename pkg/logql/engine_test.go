@@ -50,8 +50,6 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 		{query: `rate({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
 		{query: `sum(rate({app="foo"} [1h]))`, expErr: "[1h] > [10m]"},
 		{query: `sum_over_time({app="foo"} |= "foo" | json | unwrap bar [1h])`, expErr: "[1h] > [10m]"},
-		{query: `variants(rate({app="foo"}[5m])) of ({app="foo"}[5m])`, expErr: ""},
-		{query: `variants(rate({app="foo"}[1h])) of ({app="foo"}[1h])`, expErr: "[1h] > [10m]"},
 	} {
 		for _, downstream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
@@ -444,29 +442,6 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	return iter.NewSortSampleIterator(e.samples()), nil
-}
-
-func TestMultiVariantQueries_Unsupported(t *testing.T) {
-	variantQuery := `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`
-	testTime := time.Unix(60, 0)
-
-	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
-	params, err := NewLiteralParams(
-		variantQuery,
-		testTime,
-		testTime,
-		0,
-		0,
-		logproto.BACKWARD,
-		0,
-		nil,
-		nil,
-	)
-	require.NoError(t, err)
-
-	q := eng.Query(params)
-	_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
-	require.ErrorIs(t, err, logqlmodel.ErrVariantsUnsupported)
 }
 
 func TestStepEvaluator_Error(t *testing.T) {

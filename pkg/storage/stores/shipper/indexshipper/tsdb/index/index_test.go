@@ -136,7 +136,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 	require.NoError(t, ir.Close())
 
@@ -147,7 +147,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	require.NoError(t, err)
 	f.Close()
 
-	_, err = NewFileReader(dir)
+	_, err = NewMmapFileReader(dir)
 	require.Error(t, err)
 }
 
@@ -160,7 +160,7 @@ func TestIndexRW_Create_Open_V4(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 	require.Equal(t, FormatV4, ir.Version())
 	require.NoError(t, ir.Close())
@@ -198,7 +198,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 
 	p, err := ir.Postings("a", nil, "1")
@@ -287,7 +287,7 @@ func TestPostingsMany(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(fn)
+	ir, err := NewMmapFileReader(fn)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ir.Close()) }()
 
@@ -428,7 +428,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	_, err = iw.Close(false)
 	require.NoError(t, err)
 
-	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
+	ir, err := NewMmapFileReader(filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	for p := range mi.postings {
@@ -501,7 +501,7 @@ func TestDecbufUvarintWithInvalidBuffer(t *testing.T) {
 func TestReaderWithInvalidBuffer(t *testing.T) {
 	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
-	_, err := NewReader(b)
+	_, err := NewByteSliceReader(b)
 	require.Error(t, err)
 }
 
@@ -513,7 +513,7 @@ func TestNewFileReaderErrorNoOpenFiles(t *testing.T) {
 	err := os.WriteFile(idxName, []byte("corrupted contents"), 0o666)
 	require.NoError(t, err)
 
-	_, err = NewFileReader(idxName)
+	_, err = NewMmapFileReader(idxName)
 	require.Error(t, err)
 
 	// dir.Close will fail on Win if idxName fd is not closed on error path.
@@ -765,7 +765,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			_, err = iw.Close(false)
 			require.NoError(t, err)
 
-			ir, err := NewFileReader(filepath.Join(dir, name))
+			ir, err := NewMmapFileReader(filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			postings, err := ir.Postings("fizz", nil, "buzz")
@@ -1027,7 +1027,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		r, err := newReader(RealByteSlice(bs), io.NopCloser(nil))
+		r, err := newByteSliceReader(RealByteSlice(bs), io.NopCloser(nil))
 		require.NoError(b, err)
 		require.NoError(b, r.Close())
 	}
