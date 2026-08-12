@@ -2853,7 +2853,7 @@ Only one of the Simple Authentication and Security Layer (SASL) username or pass
 **Error message:**
 
 ```text
-UNSUPPORTED_SASL_MECHANISM: The broker does not support the requested SASL mechanism.
+unsupported sasl_mechanism: must be one of SASLMechanismPlain, SASLMechanismScramSHA256, SASLMechanismScramSHA512
 ```
 
 **Cause:**
