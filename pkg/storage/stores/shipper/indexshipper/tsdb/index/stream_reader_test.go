@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -129,15 +130,29 @@ func BenchmarkNewStreamFileReader(b *testing.B) {
 	}
 }
 
+func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerLabel int) string {
+	t.Helper()
+	chunks := make([]ChunkMeta, numChunksPerLabel)
+	for i := range numChunksPerLabel {
+		chunks[i] = ChunkMeta{Checksum: uint32(i), MinTime: int64(i * 10), MaxTime: int64(i*10 + 10)}
+	}
+	series := make([]seriesFixture, numSeries)
+	for i := range numSeries {
+		series[i].ls = labels.FromStrings("a", strconv.Itoa(i%5), "b", strconv.Itoa(i%11), "c", strconv.Itoa(i%17))
+		series[i].chunks = chunks
+	}
+	return writeIndexFixture(t, FormatV4, series)
+}
+
 func BenchmarkPostings(b *testing.B) {
-	path := writeCrossCheckFixture(b, FormatV4)
+	path := writeBenchmarkFixture(b, 1_000_000, 3)
 	r, err := NewStreamFileReader(path)
 	require.NoError(b, err)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		postings, err := r.Postings("c", nil, "svcA")
+		postings, err := r.Postings("c", nil, "3")
 		if err != nil {
 			b.Fatal(err)
 		}
