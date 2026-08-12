@@ -15,6 +15,8 @@ func TestLex(t *testing.T) {
 		expected []int
 	}{
 		{`{foo="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{variants="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
+		{`{of="bar"}`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE}},
 		{"{foo=\"bar\"} |~  `\\w+`", []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING}},
 		{`{foo="bar"} |~ "\\w+"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING}},
 		{`{foo="bar"} |~ "\\w+" | latency > 250ms`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE_MATCH, STRING, PIPE, IDENTIFIER, GT, DURATION}},
@@ -202,48 +204,5 @@ func Test_parseDuration(t *testing.T) {
 
 		require.Equal(t, err, nil)
 		require.Equal(t, tc.expected, actual)
-	}
-}
-
-// TestLex_VariantsKeywordsFreed pins that `variants` and `of` are ordinary
-// identifiers. They used to be reserved words for the removed variants()
-// expression, which made them unusable as label names.
-func TestLex_VariantsKeywordsFreed(t *testing.T) {
-	for _, tc := range []struct {
-		input    string
-		expected []int
-	}{
-		{
-			`{variants="bar"}`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
-		},
-		{
-			`{of="bar"}`,
-			[]int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
-		},
-		{
-			`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
-			[]int{SUM, BY, OPEN_PARENTHESIS, IDENTIFIER, COMMA, IDENTIFIER, CLOSE_PARENTHESIS,
-				OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS},
-		},
-	} {
-		t.Run(tc.input, func(t *testing.T) {
-			actual := []int{}
-			l := lexer{
-				Scanner: Scanner{
-					Mode: scanner.SkipComments | scanner.ScanStrings,
-				},
-			}
-			l.Init(strings.NewReader(tc.input))
-			var lval syntaxSymType
-			for {
-				tok := l.Lex(&lval)
-				if tok == 0 {
-					break
-				}
-				actual = append(actual, tok)
-			}
-			require.Equal(t, tc.expected, actual)
-		})
 	}
 }

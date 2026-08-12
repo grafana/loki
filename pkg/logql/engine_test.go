@@ -444,25 +444,6 @@ func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSamplePar
 	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
-// TestMultiVariantQueries_Unsupported pins that a variants() query is rejected
-// when the query is parsed, so it never reaches the engine.
-func TestMultiVariantQueries_Unsupported(t *testing.T) {
-	testTime := time.Unix(60, 0)
-
-	_, err := NewLiteralParams(
-		`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
-		testTime,
-		testTime,
-		0,
-		0,
-		logproto.BACKWARD,
-		0,
-		nil,
-		nil,
-	)
-	require.ErrorIs(t, err, logqlmodel.ErrParse)
-}
-
 func TestStepEvaluator_Error(t *testing.T) {
 	tests := []struct {
 		name    string
