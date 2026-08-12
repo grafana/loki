@@ -957,6 +957,7 @@ github.com/grafana/dskit/dns
 github.com/grafana/dskit/dns/godns
 github.com/grafana/dskit/dns/miekgdns
 github.com/grafana/dskit/flagext
+github.com/grafana/dskit/gate
 github.com/grafana/dskit/grpcclient
 github.com/grafana/dskit/grpcencoding/snappy
 github.com/grafana/dskit/grpcutil

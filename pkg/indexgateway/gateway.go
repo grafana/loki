@@ -12,6 +12,7 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,6 +55,7 @@ type Gateway struct {
 	indexQuerier IndexQuerier
 	bloomQuerier BloomQuerier
 	metrics      *Metrics
+	queryGate    gate.Gate
 
 	cfg    Config
 	limits Limits
@@ -72,6 +74,7 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 		limits:       limits,
 		log:          log,
 		metrics:      NewMetrics(r),
+		queryGate:    newQueryGate(cfg, r),
 	}
 
 	g.Service = services.NewIdleService(nil, func(_ error) error {
