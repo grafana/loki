@@ -3885,6 +3885,17 @@ backoff_config:
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
+
 cluster_validation:
   # Primary cluster validation label.
   # CLI flag: -<prefix>.cluster-validation.label
@@ -4481,12 +4492,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the

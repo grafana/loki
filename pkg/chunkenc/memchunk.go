@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -1344,6 +1343,7 @@ func (hb *headBlock) SampleIterator(
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
 
+	var hasher util.SampleHasher
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
 		for _, extractor := range extractors {
@@ -1375,7 +1375,7 @@ func (hb *headBlock) SampleIterator(
 				s.Samples = append(s.Samples, logproto.Sample{
 					Timestamp: e.t,
 					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+					Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
 				})
 			}
 
@@ -1813,6 +1813,7 @@ type sampleBufferedIterator struct {
 
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
+	hasher    util.SampleHasher
 
 	curr       []logproto.Sample
 	currLabels []log.LabelsResult
@@ -1854,7 +1855,7 @@ func (e *sampleBufferedIterator) Next() bool {
 			e.curr = append(e.curr, logproto.Sample{
 				Timestamp: e.currTs,
 				Value:     sample.Value,
-				Hash:      util.UniqueSampleHash(lblString, e.currLine),
+				Hash:      e.hasher.Hash(lblString, e.currLine),
 			})
 		}
 
