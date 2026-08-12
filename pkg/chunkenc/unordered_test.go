@@ -367,9 +367,9 @@ func TestHeadBlockSampleHashesMatchAcrossFormats(t *testing.T) {
 	collect := func(t *testing.T, hb HeadBlock) []logproto.Sample {
 		t.Helper()
 
-		extractors, err := getMultiVariantExtractors(multiVariantQuery, streamLabels)
+		extractors, err := getStreamExtractors(countAndBytesQueries, streamLabels)
 		require.NoError(t, err)
-		require.Len(t, extractors, 1, "a variants() query consolidates into a single extractor")
+		require.Len(t, extractors, 2, "the block must emit two samples per line, so their hashes have to differ")
 
 		it := hb.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
 		defer it.Close()
@@ -616,7 +616,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	backward, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(100, 0), logproto.BACKWARD, noopStreamPipeline)
 	require.Nil(t, err)
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
 	countExtractor := extractors[0]
 
@@ -666,7 +666,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		},
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
 	countExtractor := extractors[0]
 
@@ -735,7 +735,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 	ct = 0
 	i = 0
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
 	require.NoError(t, err)
 	countExtractor := extractors[0]
 	smpl := c.SampleIterator(
