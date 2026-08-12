@@ -362,7 +362,7 @@ func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 		sb := strings.Builder{}
 		sb.WriteString("[")
 		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
 			if i != len(task.Runs)-1 {
 				sb.WriteString(", ")
 			}
@@ -489,7 +489,7 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 		sb := strings.Builder{}
 		sb.WriteString("[")
 		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
 			if i != len(task.Runs)-1 {
 				sb.WriteString(", ")
 			}

@@ -178,6 +178,50 @@ func TestPruneStream(t *testing.T) {
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)
 }
 
+// TestPruneStreamMultipleClustersInSameLevel guards against a regression where
+// totalClusters was tallied once per cluster processed (an intermediate,
+// partially-pruned snapshot) instead of once per level after all of that
+// level's clusters were pruned. With a single cluster the two approaches
+// happen to agree, which is why TestPruneStream didn't catch it: two or more
+// clusters in the same level aging out together is required to tell them
+// apart.
+func TestPruneStreamMultipleClustersInSameLevel(t *testing.T) {
+	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	stream, err := newStream(
+		model.Fingerprint(labels.StableHash(lbs)),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drain.DefaultConfig(),
+		&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
+		mockWriter,
+		aggregation.NewMetrics(nil),
+		0.99,
+	)
+	require.NoError(t, err)
+
+	// Two distinct patterns produce two distinct clusters in the same
+	// ("unknown") level, both old enough to be pruned away in one sweep.
+	err = stream.Push(context.Background(), []push.Entry{
+		{Timestamp: time.Unix(20, 0), Line: "aaaa bbbb cccc dddd"},
+		{Timestamp: time.Unix(20, 0), Line: "wwww xxxx yyyy zzzz"},
+	})
+	require.NoError(t, err)
+
+	clusters := 0
+	for _, p := range stream.patterns {
+		clusters += len(p.Clusters())
+	}
+	require.Equal(t, 2, clusters, "expected 2 distinct clusters before pruning")
+
+	require.True(t, stream.prune(time.Hour),
+		"stream has zero clusters left in every level; prune() should report it as empty")
+}
+
 func TestStreamPruneFiltersLowVolumePatterns(t *testing.T) {
 	lbs := labels.New(
 		labels.Label{Name: "test", Value: "test"},

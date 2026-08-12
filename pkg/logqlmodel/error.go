@@ -19,9 +19,6 @@ var (
 	ErrUnsupportedSyntaxForInstantQuery = errors.New(
 		"log queries are not supported as an instant query type, please change your query to a range query type",
 	)
-	ErrVariantsUnsupported = errors.New(
-		"multi variant queries are no longer supported",
-	)
 	ErrorLabel         = "__error__"
 	PreserveErrorLabel = "__preserve_error__"
 	ErrorDetailsLabel  = "__error_details__"

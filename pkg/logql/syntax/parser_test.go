@@ -3271,110 +3271,6 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeRate,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
 }
 
 func TestParse(t *testing.T) {
@@ -3780,4 +3676,22 @@ func TestParseSampleExpr_String(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, query, expr.String())
 	})
+}
+
+// TestParseUnreservedWordsAsLabelNames pins that `variants` and `of` are usable
+// as label names. Reserving a word in the grammar makes every query over a
+// stream that uses it as a label fail to parse, and `of` in particular is a
+// tempting name for a future clause.
+func TestParseUnreservedWordsAsLabelNames(t *testing.T) {
+	for _, query := range []string{
+		`{variants="a"}`,
+		`{of="a"}`,
+		`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
+		`{foo="bar"} | logfmt | of = "a" | variants = "b"`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			_, err := ParseExpr(query)
+			require.NoError(t, err)
+		})
+	}
 }
