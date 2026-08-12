@@ -80,7 +80,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	calc := dataobjindex.NewCalculator(indexBuilder)
 
 	sections, remaps := sectionsWithRemaps(sources, table)
-	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.sortKeys, node.SortSchema)
+	merged, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, table.shards, table.sortKeys, node.SortSchema)
 	if err != nil {
 		return nil, fmt.Errorf("starting k-way log merge: %w", err)
 	}
@@ -336,8 +336,8 @@ func (c *Context) doLogObjectSort(ctx context.Context, node *physical.LogMerge, 
 			sources[0].path, len(sources[0].logsSections), sources[0].totalLogsSections,
 		)
 	}
-	if node.StreamOrder != compactionv2pb.STREAM_ORDER_STABLE_HASH_V1 || node.ShardCount != 1 {
-		return nil, fmt.Errorf("sort-only LogMerge requires stable-hash-v1 with shard_count=1")
+	if node.StreamOrder != compactionv2pb.STREAM_ORDER_STABLE_HASH_V1 || node.ShardCount != streams.ShardFactor {
+		return nil, fmt.Errorf("sort-only LogMerge requires stable-hash-v1 with shard_count=%d", streams.ShardFactor)
 	}
 
 	table, err := buildGlobalStreamTable(sources, node.SortSchema)
@@ -365,8 +365,9 @@ func (c *Context) doLogObjectSort(ctx context.Context, node *physical.LogMerge, 
 			SortOrder:        logs.SortSchemaASC,
 			SchemaLabels:     node.SortSchema,
 			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       1,
+			ShardCount:       streams.ShardFactor,
 			SchemaSortKeys:   table.sortKeys,
+			SchemaShards:     table.shards,
 		})
 		builder.SetTenant(node.Tenant)
 		return builder
@@ -390,6 +391,7 @@ func (c *Context) doLogObjectSort(ctx context.Context, node *physical.LogMerge, 
 			}
 			record.StreamID = globalID
 			record.SortKey = table.sortKeys[globalID]
+			record.ShardHash = int64(table.shards[globalID])
 			record.Line = slices.Clone(record.Line)
 			record.Metadata = record.Metadata.Copy()
 			logsBuilder.Append(record)
@@ -495,6 +497,7 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 // globalStreamTable holds the disjoint global stream assignment for a merge
 type globalStreamTable struct {
 	sortKeys       []string          // index = global ID (1..N); [0] unused
+	shards         []uint32          // index = global ID; shard precedes schema in the physical order
 	streams        []streams.Stream  // index = global ID; source stream with aggregates
 	streamIDRemaps []map[int64]int64 // per source object (by index): sourceStreamID -> globalID
 }
@@ -530,6 +533,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 
 	table := &globalStreamTable{
 		sortKeys:       make([]string, len(allEntries)+1),
+		shards:         make([]uint32, len(allEntries)+1),
 		streams:        make([]streams.Stream, len(allEntries)+1),
 		streamIDRemaps: make([]map[int64]int64, len(sources)),
 	}
@@ -537,8 +541,10 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 	for i, e := range allEntries {
 		gid := int64(i + 1)
 		table.sortKeys[gid] = e.key.SchemaKey
+		table.shards[gid] = e.key.Shard
 		s := e.stream
 		s.ID = gid
+		s.ShardHash = int64(e.key.Shard)
 		table.streams[gid] = s
 		globalIDs[s.Labels.String()] = gid
 	}

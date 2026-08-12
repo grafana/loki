@@ -29,6 +29,10 @@ type Record struct {
 	// SortKey is a pre-computed schema sort key. It is not encoded into the section;
 	// it only guides the in-memory sort during building.
 	SortKey string
+
+	// ShardHash is labels.StableHash(stream labels) modulo the shard factor. It
+	// is not encoded into LOG sections; it guides schema-layout sorting.
+	ShardHash int64
 }
 
 type AppendStrategy int
@@ -115,6 +119,10 @@ type BuilderOptions struct {
 	// SchemaSortKeys maps stream ID to schema key when SortSchemaASC is used
 	// with AppendUnordered and sorted stripes must be merged.
 	SchemaSortKeys []string
+
+	// SchemaShards maps stream ID to its shard when SortSchemaASC is used with
+	// AppendUnordered.
+	SchemaShards []uint32
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -248,7 +256,7 @@ func (b *Builder) flushSection() *table {
 
 	compressionOpts := zstdCompressionOpts(zstd.SpeedDefault)
 
-	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder, b.opts.SchemaSortKeys)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder, b.opts.SchemaShards, b.opts.SchemaSortKeys)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))

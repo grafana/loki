@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // indexEntry is one index object listed in a ToC for a particular tenant.
@@ -361,7 +362,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	targetLayoutID := (logs.SortLayout{
 		SchemaLabels: targetSchema,
 		StreamOrder:  logs.StreamOrderStableHashV1,
-		ShardCount:   1,
+		ShardCount:   streams.ShardFactor,
 	}).ID()
 	_, labelNames, err = parseSortSchema(targetSchemaName)
 	if err != nil {

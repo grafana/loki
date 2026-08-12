@@ -45,6 +45,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(15, 0),
 			Rows:             3,
 			UncompressedSize: 30,
+			ShardHash:        1,
 		},
 		{
 			ID:               2,
@@ -53,6 +54,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(100, 0),
 			Rows:             1,
 			UncompressedSize: 20,
+			ShardHash:        10,
 		},
 	}
 

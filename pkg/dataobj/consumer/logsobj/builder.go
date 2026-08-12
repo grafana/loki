@@ -207,7 +207,7 @@ func schemaShardCount(schemaLabels []string) uint32 {
 	if len(schemaLabels) == 0 {
 		return 0
 	}
-	return 1
+	return streams.ShardFactor
 }
 
 // TenantOverrides provides per-tenant configuration for the Builder.
@@ -421,6 +421,7 @@ func (b *Builder) appendRecord(tenant string, streamLabels labels.Labels, record
 
 	record.StreamID = sb.Record(streamLabels, record.Timestamp, size)
 	record.SortKey = sortKey
+	record.ShardHash = int64(labels.StableHash(streamLabels) % uint64(streams.ShardFactor))
 	lb.Append(record)
 
 	// If our logs section has gotten big enough, flush it to the encoder and
@@ -582,6 +583,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			sortOrder          logs.SortOrder
 			schemaLabels       []string
 			schemaSortKeys     []string
+			schemaShards       []uint32
 			logsAppendStrategy logs.AppendStrategy = logs.AppendOrdered
 			iter               result.Seq[logs.Record]
 			iterErr            error
@@ -627,12 +629,14 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			sortOrder = logs.SortSchemaASC
 			logsAppendStrategy = logs.AppendUnordered
 			schemaSortKeys = make([]string, len(streamRemap.sortKeys))
+			schemaShards = make([]uint32, len(streamRemap.shards))
 			for oldID, newID := range streamRemap.ids {
 				if newID > 0 {
 					schemaSortKeys[newID] = streamRemap.sortKeys[oldID]
+					schemaShards[newID] = streamRemap.shards[oldID]
 				}
 			}
-			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
+			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.shards, streamRemap.sortKeys, streamRemap.ids)
 		} else {
 			if err := b.buildStreamSection(ctx, tenant, streamsSectionIter(ctx, streamsSection), sb); err != nil {
 				return nil, nil, err
@@ -654,8 +658,9 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			SortOrder:        sortOrder,
 			SchemaLabels:     schemaLabels,
 			StreamOrder:      logs.StreamOrderStableHashV1,
-			ShardCount:       1,
+			ShardCount:       streams.ShardFactor,
 			SchemaSortKeys:   schemaSortKeys,
+			SchemaShards:     schemaShards,
 		})
 		lb.SetTenant(tenant)
 
@@ -768,6 +773,7 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 }
 
 type streamIDRemap struct {
+	shards   []uint32
 	sortKeys []string
 	ids      []int64
 }
@@ -794,6 +800,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 	var (
 		collected = make([]streamWithSortKey, 0, numStreams)
 		remap     = streamIDRemap{
+			shards:   make([]uint32, numStreams+1),
 			sortKeys: make([]string, numStreams+1),
 			ids:      make([]int64, numStreams+1),
 		}
@@ -831,10 +838,12 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		}
 
 		remap.sortKeys[oldID] = collected[i].orderKey.SchemaKey
+		remap.shards[oldID] = collected[i].orderKey.Shard
 		remap.ids[oldID] = newID
 
 		// Remap to the new stream ID.
 		collected[i].stream.ID = newID
+		collected[i].stream.ShardHash = int64(collected[i].orderKey.Shard)
 	}
 
 	return result.Iter(func(yield func(streams.Stream) bool) error {

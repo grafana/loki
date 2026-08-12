@@ -34,18 +34,19 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 // by [schema sort key ASC, streamID ASC, timestamp DESC].
 //
 // It expects sortKeys to contain a mapping from StreamID to schema sort key.
-func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(sortKeys)})
+func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(shards, sortKeys)})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
 // multiple source objects. Each section's stream IDs are rewritten into a single global space
 // via remaps[i] (the map for sections[i]) before records are compared, so one
 // merge can order records across objects.
-func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
+func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalShards []uint32, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{
-		less:     logs.CompareForSortSchema(globalSortKeys),
+		less:     logs.CompareForSortSchema(globalShards, globalSortKeys),
 		remaps:   remaps,
+		shards:   globalShards,
 		sortKeys: globalSortKeys,
 		schema:   expectedSchema,
 	})
@@ -57,6 +58,7 @@ type iteratorOptions struct {
 	less     func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
 	remaps   []map[int64]int64
 	sortKeys []string
+	shards   []uint32
 	schema   []string
 }
 
@@ -152,6 +154,7 @@ func iterator(
 				// sort key so downstream builders (SortSchemaASC) sort correctly.
 				if opts.sortKeys != nil && record.StreamID >= 0 && int(record.StreamID) < len(opts.sortKeys) {
 					record.SortKey = opts.sortKeys[record.StreamID]
+					record.ShardHash = int64(opts.shards[record.StreamID])
 				}
 				if !yield(record) {
 					return nil

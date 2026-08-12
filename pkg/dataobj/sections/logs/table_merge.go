@@ -20,7 +20,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder, schemaSortKeys []string) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder, schemaShards []uint32, schemaSortKeys []string) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -28,7 +28,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 	// Even if there's only one table, we still pass to mergeTables to ensure
 	// it's compressed with compressionOpts.
 	if len(tables) == 1 {
-		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables, sort, schemaSortKeys)
+		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables, sort, schemaShards, schemaSortKeys)
 	}
 
 	in := tables
@@ -38,7 +38,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 		for i := 0; i < len(in); i += maxMergeSize {
 			set := in[i:min(i+maxMergeSize, len(in))]
-			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set, sort, schemaSortKeys)
+			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set, sort, schemaShards, schemaSortKeys)
 			if err != nil {
 				return nil, err
 			}
@@ -53,7 +53,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder, schemaSortKeys []string) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder, schemaShards []uint32, schemaSortKeys []string) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -98,7 +98,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 	var less func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
 	if sort == SortSchemaASC {
-		less = CompareForSortSchema(schemaSortKeys)
+		less = CompareForSortSchema(schemaShards, schemaSortKeys)
 	} else {
 		less = CompareForSortOrder(sort)
 	}
@@ -214,7 +214,7 @@ func (seq *DatasetSequence) Close() {
 // schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
 // sortKeys maps streamID to its pre-computed sort key.
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForSortSchema(shards []uint32, sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -238,6 +238,11 @@ func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], re
 			return true
 		}
 
+		aShard := shards[aStreamID]
+		bShard := shards[bStreamID]
+		if res := cmp.Compare(aShard, bShard); res != 0 {
+			return res < 0
+		}
 		aKey := sortKeys[aStreamID]
 		bKey := sortKeys[bStreamID]
 		if res := cmp.Compare(aKey, bKey); res != 0 {

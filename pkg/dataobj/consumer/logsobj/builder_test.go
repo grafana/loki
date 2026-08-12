@@ -596,7 +596,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj2, "schema-tenant"))
+		require.Equal(t, []string{"zoo", "middle", "alpha"}, appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
 		var allTS []time.Time
@@ -632,11 +632,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			require.Equal(t, logs.SortLayout{
 				SchemaLabels: []string{"label:app"},
 				StreamOrder:  logs.StreamOrderStableHashV1,
-				ShardCount:   1,
+				ShardCount:   16,
 			}, logsSection.SortLayout())
 		}
 
-		require.Equal(t, []string{"a", "b"}, appOrder(t, obj2, "t1"))
+		require.Equal(t, []string{"b", "a"}, appOrder(t, obj2, "t1"))
 		timestampsDescWithinGroups(t, obj2, "t1")
 	})
 
@@ -646,6 +646,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj := buildObj(t, cfg, "t1", []string{"zoo", "alpha", "middle"}, overrides)
 
 		streamToApp := make(map[int64]string)
+		streamToShard := make(map[int64]int64)
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
 			return streams.CheckSection(s) && s.Tenant == "t1"
 		}) {
@@ -655,6 +656,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				val, err := res.Value()
 				require.NoError(t, err)
 				streamToApp[val.ID] = val.Labels.Get("app")
+				streamToShard[val.ID] = val.ShardHash
 			}
 		}
 
@@ -680,6 +682,8 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				app := streamToApp[val.StreamID]
 				if !firstRecord {
 					switch {
+					case streamToShard[val.StreamID] != streamToShard[prevStreamID]:
+						require.GreaterOrEqual(t, streamToShard[val.StreamID], streamToShard[prevStreamID])
 					case app != prevApp:
 						require.GreaterOrEqual(t, app, prevApp)
 					case val.StreamID != prevStreamID:
@@ -703,7 +707,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 		obj3 := copyAndSort(t, cfg, obj2, nil)
 
-		require.Equal(t, []string{"alpha", "middle", "zoo"}, appOrder(t, obj3, "t1"),
+		require.Equal(t, []string{"zoo", "middle", "alpha"}, appOrder(t, obj3, "t1"),
 			"second CopyAndSort must preserve schema sort using persisted metadata")
 		timestampsDescWithinGroups(t, obj3, "t1")
 	})
@@ -756,7 +760,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, []pair{{"ns-a", "app-a"}, {"ns-a", "app-z"}, {"ns-b", "app-a"}, {"ns-b", "app-z"}}, got)
+		require.Equal(t, []pair{{"ns-b", "app-a"}, {"ns-a", "app-z"}, {"ns-b", "app-z"}, {"ns-a", "app-a"}}, got)
 	})
 
 	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {
@@ -873,11 +877,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			streamIDsAfter[stream.id] = struct{}{}
 
 			if i > 0 {
-				prevKey, err := ComputeSortKey(streamsAfter[i-1].labels, schemaLabels)
+				prevKey, err := NewStreamOrderKey(streamsAfter[i-1].labels, schemaLabels)
 				require.NoError(t, err)
-				currKey, err := ComputeSortKey(stream.labels, schemaLabels)
+				currKey, err := NewStreamOrderKey(stream.labels, schemaLabels)
 				require.NoError(t, err)
-				require.LessOrEqual(t, prevKey, currKey)
+				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
 			}
 		}
 		require.ElementsMatch(t, beforeLabels, afterLabels)
@@ -915,14 +919,14 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				continue
 			}
 			prev := logsAfter[i-1]
-			prevKey, err := ComputeSortKey(prev.labels, schemaLabels)
+			prevKey, err := NewStreamOrderKey(prev.labels, schemaLabels)
 			require.NoError(t, err)
-			currKey, err := ComputeSortKey(record.labels, schemaLabels)
+			currKey, err := NewStreamOrderKey(record.labels, schemaLabels)
 			require.NoError(t, err)
 
 			switch {
-			case prevKey != currKey:
-				require.LessOrEqual(t, prevKey, currKey)
+			case CompareStreamOrderKey(prevKey, currKey) != 0:
+				require.LessOrEqual(t, CompareStreamOrderKey(prevKey, currKey), 0)
 			case prev.streamID != record.streamID:
 				require.LessOrEqual(t, prev.streamID, record.streamID)
 			default:

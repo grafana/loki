@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
@@ -56,6 +57,7 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			}
 			batchErr = calcCtx.builder.ObserveBloomPosting(calcCtx.tenantID, postings.BloomObservation{
 				ObjectPath:       calcCtx.objectPath,
+				ShardFactor:      int64(streams.ShardFactor),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       md.Name,
 				Value:            md.Value,

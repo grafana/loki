@@ -14,7 +14,7 @@ import (
 // remaps stream IDs. The caller feeds the result to an AppendUnordered builder,
 // which performs the actual target-layout sort.
 func sortedSchemaIter(
-	ctx context.Context, sections []*dataobj.Section, sortKeys []string, streamIDs []int64,
+	ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string, streamIDs []int64,
 ) (result.Seq[logs.Record], error) {
 	return result.Iter(func(yield func(logs.Record) bool) error {
 		for _, section := range sections {
@@ -42,6 +42,7 @@ func sortedSchemaIter(
 					return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
 				}
 				rec.SortKey = sortKey
+				rec.ShardHash = int64(shards[oldStreamID])
 				rec.StreamID = streamID
 				rec.Line = bytes.Clone(rec.Line)
 				rec.Metadata = rec.Metadata.Copy()

@@ -260,6 +260,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:          arrow.Null,
 	ColumnTypeKind:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
+	ColumnTypeShardFactor:      arrow.PrimitiveTypes.Int64,
 	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeColumnName:       arrow.BinaryTypes.String,
 	ColumnTypeLabelValue:       arrow.BinaryTypes.String,

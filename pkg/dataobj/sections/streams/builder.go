@@ -37,11 +37,15 @@ type Stream struct {
 
 	// Total number of log records in the stream.
 	Rows int
+
+	// ShardHash is labels.StableHash(Labels) modulo [ShardFactor].
+	ShardHash int64
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
+	s.ShardHash = 0
 	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
@@ -54,6 +58,9 @@ var streamPool = sync.Pool{
 		return &Stream{}
 	},
 }
+
+// ShardFactor is the number of shards in the physical log sort layout.
+const ShardFactor uint32 = 16
 
 // Builder builds a streams section.
 type Builder struct {
@@ -151,6 +158,7 @@ func (b *Builder) AppendValue(val Stream) {
 	newStream.Reset()
 
 	newStream.ID = val.ID
+	newStream.ShardHash = val.ShardHash
 	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
 	newStream.UncompressedSize = val.UncompressedSize
 	newStream.Labels = val.Labels
@@ -187,6 +195,7 @@ func (b *Builder) EstimatedSize() int {
 	var sizeEstimate int
 
 	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
+	sizeEstimate += len(b.ordered) * idDeltaSize        // Shard hash
 	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
 	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
 	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
@@ -219,6 +228,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
+	newStream.ShardHash = int64(hash % uint64(ShardFactor))
 	newStream.Labels = streamLabels
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
@@ -281,6 +291,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
+	shardHashBuilder, err := numberColumnBuilder(ColumnTypeShardHash, b.pageSize, b.pageRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard hash column: %w", err)
+	}
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
@@ -335,6 +349,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
+		_ = shardHashBuilder.Append(i, dataset.Int64Value(stream.ShardHash))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
@@ -377,6 +392,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
+	}
+
+	if err := encodeColumn(enc, ColumnTypeShardHash, shardHashBuilder); err != nil {
+		return fmt.Errorf("encoding shard hash column: %w", err)
 	}
 
 	return nil

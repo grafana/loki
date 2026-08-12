@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
@@ -45,6 +46,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			}
 			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
+				ShardFactor:      int64(streams.ShardFactor),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,

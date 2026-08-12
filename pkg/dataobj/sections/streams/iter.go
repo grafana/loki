@@ -174,6 +174,12 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 			}
 			stream.ID = columnValue.Int64()
 
+		case ColumnTypeShardHash:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
+				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
+			}
+			stream.ShardHash = columnValue.Int64()
+
 		case ColumnTypeMinTimestamp:
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)

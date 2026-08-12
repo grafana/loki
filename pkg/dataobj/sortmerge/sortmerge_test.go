@@ -172,13 +172,13 @@ func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]p
 // disjoint global stream IDs in (sortKey, sourceIdx, sourceStreamID) order, returning
 // the flattened logs sections plus the per-section remap and globalSortKeys the
 // merge needs. This mirrors what the compactor executor does.
-func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object, sortSchema []string) ([]*dataobj.Section, []map[int64]int64, []string) {
+func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object, sortSchema []string) ([]*dataobj.Section, []map[int64]int64, []uint32, []string) {
 	t.Helper()
 
 	type entry struct {
 		sourceIdx      int
 		sourceStreamID int64
-		sortKey        string
+		orderKey       logsobj.StreamOrderKey
 	}
 	var all []entry
 	perObjLogs := make([][]*dataobj.Section, len(objs))
@@ -192,9 +192,9 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 			for res := range streams.IterSection(ctx, ss) {
 				stream, err := res.Value()
 				require.NoError(t, err)
-				key, err := logsobj.ComputeSortKey(stream.Labels, sortSchema)
+				key, err := logsobj.NewStreamOrderKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
-				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, sortKey: key})
+				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, orderKey: key})
 			}
 		}
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool {
@@ -205,7 +205,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 	}
 
 	slices.SortFunc(all, func(a, b entry) int {
-		if r := cmp.Compare(a.sortKey, b.sortKey); r != 0 {
+		if r := logsobj.CompareStreamOrderKey(a.orderKey, b.orderKey); r != 0 {
 			return r
 		}
 		if r := cmp.Compare(a.sourceIdx, b.sourceIdx); r != 0 {
@@ -219,9 +219,11 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 		remapsByObj[i] = map[int64]int64{}
 	}
 	globalSortKeys := make([]string, len(all)+1)
+	globalShards := make([]uint32, len(all)+1)
 	for i, e := range all {
 		gid := int64(i + 1)
-		globalSortKeys[gid] = e.sortKey
+		globalSortKeys[gid] = e.orderKey.SchemaKey
+		globalShards[gid] = e.orderKey.Shard
 		remapsByObj[e.sourceIdx][e.sourceStreamID] = gid
 	}
 
@@ -233,7 +235,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 			remaps = append(remaps, remapsByObj[sourceIdx])
 		}
 	}
-	return sections, remaps, globalSortKeys
+	return sections, remaps, globalShards, globalSortKeys
 }
 
 // TestIteratorWithStreamRemap_MergesAcrossObjects merges two schema-sorted
@@ -265,9 +267,9 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	})
 	defer closeB()
 
-	sections, remaps, globalSortKeys := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
+	sections, remaps, globalShards, globalSortKeys := planGlobalStreams(ctx, t, []*dataobj.Object{objA, objB}, sortSchema)
 
-	iter, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, globalSortKeys, sortSchema)
+	iter, err := sortmerge.IteratorWithStreamRemap(ctx, sections, remaps, globalShards, globalSortKeys, sortSchema)
 	require.NoError(t, err)
 
 	var (
@@ -297,6 +299,9 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 
 // recOrder compares records by [sortKey ASC, streamID ASC, timestamp DESC].
 func recOrder(a, b logs.Record) int {
+	if r := cmp.Compare(a.ShardHash, b.ShardHash); r != 0 {
+		return r
+	}
 	if r := cmp.Compare(a.SortKey, b.SortKey); r != 0 {
 		return r
 	}

@@ -11,6 +11,8 @@ import "time"
 type LabelObservation struct {
 	// ObjectPath is the path of the data object that originated this posting.
 	ObjectPath string
+	// ShardFactor is the number of shards used by ObjectPath.
+	ShardFactor int64
 	// SectionIndex is the index of the logs section within ObjectPath.
 	SectionIndex int64
 	// ColumnName is the name of the labels column being indexed.
@@ -40,6 +42,8 @@ type LabelObservation struct {
 type BloomObservation struct {
 	// ObjectPath is the path of the data object that originated this posting.
 	ObjectPath string
+	// ShardFactor is the number of shards used by ObjectPath.
+	ShardFactor int64
 	// SectionIndex is the index of the logs section within ObjectPath.
 	SectionIndex int64
 	// ColumnName is the name of the metadata column being indexed.

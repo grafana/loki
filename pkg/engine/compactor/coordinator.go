@@ -19,6 +19,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -318,7 +319,7 @@ func (c *coordinator) compactTenantLogs(
 			SortSchema:  sortSchema,
 			SortOnly:    true,
 			StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
-			ShardCount:  1,
+			ShardCount:  streams.ShardFactor,
 		})
 	} else {
 		runs := v2.CalculateObjectRuns(sections, compareSortKey)
@@ -329,7 +330,7 @@ func (c *coordinator) compactTenantLogs(
 		tasks = v2.PlanWithOptions(runs, tenant, c.cfg.LogMaxRunsPerTask, v2.PlanOptions{
 			SortSchema:  sortSchema,
 			StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
-			ShardCount:  1,
+			ShardCount:  streams.ShardFactor,
 		})
 	}
 

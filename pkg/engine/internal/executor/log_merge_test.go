@@ -501,15 +501,12 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 			distinctApps[app] = true
 		}
 
-		// Each object is schema-sorted by [app ASC, streamID ASC, timestamp DESC].
+		// Canonical stream IDs encode [shard, app, stable hash, full labels].
 		for i := 1; i < len(o.records); i++ {
 			prev, curr := o.records[i-1], o.records[i]
-			require.LessOrEqual(t, prev.app, curr.app, "apps must be non-decreasing within object %d", objIdx)
-			if prev.app == curr.app {
-				require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within an app")
-				if prev.streamID == curr.streamID {
-					require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
-				}
+			require.LessOrEqual(t, prev.streamID, curr.streamID, "streamIDs must be non-decreasing within object %d", objIdx)
+			if prev.streamID == curr.streamID {
+				require.False(t, curr.ts.After(prev.ts), "timestamps must be non-increasing within a stream")
 			}
 		}
 	}
@@ -544,7 +541,7 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 		SortSchema:  sortSchema,
 		SortOnly:    true,
 		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
-		ShardCount:  1,
+		ShardCount:  16,
 		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
 			{ObjectPath: "legacy", SectionIndex: 0},
 		}}},
@@ -557,7 +554,7 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 	require.Len(t, outputs[0].records, 4)
 	for i := 1; i < len(outputs[0].records); i++ {
 		prev, current := outputs[0].records[i-1], outputs[0].records[i]
-		require.LessOrEqual(t, prev.app, current.app)
+		require.LessOrEqual(t, prev.streamID, current.streamID)
 		if prev.streamID == current.streamID {
 			require.False(t, current.ts.After(prev.ts))
 		}
@@ -578,7 +575,7 @@ func TestDoLogObjectMerge_RejectsLegacyLayoutForStrictMerge(t *testing.T) {
 		Tenant:      tenant,
 		SortSchema:  sortSchema,
 		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
-		ShardCount:  1,
+		ShardCount:  16,
 		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
 			{ObjectPath: "legacy", SectionIndex: 0},
 		}}},
