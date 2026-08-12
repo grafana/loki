@@ -155,9 +155,20 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 	return pb
 }
 
-// AppendStat records a per-sort-key aggregate for a data object section.
+// AppendStat records a per-sort-key aggregate without physical layout metadata.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	return b.AppendStatWithLayout(
+		tenantID, objectPath, sectionIdx, sortSchema, "",
+		labels, minTs, maxTs, rows, uncompressedSize,
+	)
+}
+
+// AppendStatWithLayout records a per-sort-key aggregate and the source LOG
+// section's physical sort layout.
+func (b *Builder) AppendStatWithLayout(tenantID, objectPath string, sectionIdx int64,
+	sortSchema, physicalSortLayout string,
+	labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -167,14 +178,15 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
 	tenantStats.Append(stats.Stat{
-		ObjectPath:       objectPath,
-		SectionIndex:     sectionIdx,
-		SortSchema:       sortSchema,
-		Labels:           labels,
-		MinTimestamp:     minTs.UnixNano(),
-		MaxTimestamp:     maxTs.UnixNano(),
-		RowCount:         int64(rows),
-		UncompressedSize: uncompressedSize,
+		ObjectPath:         objectPath,
+		SectionIndex:       sectionIdx,
+		SortSchema:         sortSchema,
+		PhysicalSortLayout: physicalSortLayout,
+		Labels:             labels,
+		MinTimestamp:       minTs.UnixNano(),
+		MaxTimestamp:       maxTs.UnixNano(),
+		RowCount:           int64(rows),
+		UncompressedSize:   uncompressedSize,
 	})
 
 	postAppendSizeEstimate := tenantStats.EstimatedSize()

@@ -22,27 +22,29 @@ var sectionType = dataobj.SectionType{
 type ColumnType int
 
 const (
-	ColumnTypeInvalid          ColumnType = iota // ColumnTypeInvalid is an invalid column type.
-	ColumnTypeObjectPath                         // "object_path"
-	ColumnTypeSectionIndex                       // "section_index"
-	ColumnTypeSortSchema                         // "sort_schema"
-	ColumnTypeMinTimestamp                       // "min_timestamp"
-	ColumnTypeMaxTimestamp                       // "max_timestamp"
-	ColumnTypeRowCount                           // "row_count"
-	ColumnTypeUncompressedSize                   // "uncompressed_size"
-	ColumnTypeLabel                              // "label" — dynamic; tag carries label name
+	ColumnTypeInvalid            ColumnType = iota // ColumnTypeInvalid is an invalid column type.
+	ColumnTypeObjectPath                           // "object_path"
+	ColumnTypeSectionIndex                         // "section_index"
+	ColumnTypeSortSchema                           // "sort_schema"
+	ColumnTypePhysicalSortLayout                   // "physical_sort_layout"
+	ColumnTypeMinTimestamp                         // "min_timestamp"
+	ColumnTypeMaxTimestamp                         // "max_timestamp"
+	ColumnTypeRowCount                             // "row_count"
+	ColumnTypeUncompressedSize                     // "uncompressed_size"
+	ColumnTypeLabel                                // "label" — dynamic; tag carries label name
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid:          "invalid",
-	ColumnTypeObjectPath:       "object_path",
-	ColumnTypeSectionIndex:     "section_index",
-	ColumnTypeSortSchema:       "sort_schema",
-	ColumnTypeMinTimestamp:     "min_timestamp",
-	ColumnTypeMaxTimestamp:     "max_timestamp",
-	ColumnTypeRowCount:         "row_count",
-	ColumnTypeUncompressedSize: "uncompressed_size",
-	ColumnTypeLabel:            "label",
+	ColumnTypeInvalid:            "invalid",
+	ColumnTypeObjectPath:         "object_path",
+	ColumnTypeSectionIndex:       "section_index",
+	ColumnTypeSortSchema:         "sort_schema",
+	ColumnTypePhysicalSortLayout: "physical_sort_layout",
+	ColumnTypeMinTimestamp:       "min_timestamp",
+	ColumnTypeMaxTimestamp:       "max_timestamp",
+	ColumnTypeRowCount:           "row_count",
+	ColumnTypeUncompressedSize:   "uncompressed_size",
+	ColumnTypeLabel:              "label",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -57,6 +59,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeSectionIndex, nil
 	case "sort_schema":
 		return ColumnTypeSortSchema, nil
+	case "physical_sort_layout":
+		return ColumnTypePhysicalSortLayout, nil
 	case "min_timestamp":
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":
@@ -87,14 +91,15 @@ func CheckSection(section *dataobj.Section) bool {
 
 // Stat represents a single row in the stats section.
 type Stat struct {
-	ObjectPath       string
-	SectionIndex     int64
-	SortSchema       string
-	Labels           map[string]string // Label values keyed by sort schema key name
-	MinTimestamp     int64             // UnixNano
-	MaxTimestamp     int64             // UnixNano
-	RowCount         int64
-	UncompressedSize int64
+	ObjectPath         string
+	SectionIndex       int64
+	SortSchema         string
+	PhysicalSortLayout string
+	Labels             map[string]string // Label values keyed by sort schema key name
+	MinTimestamp       int64             // UnixNano
+	MaxTimestamp       int64             // UnixNano
+	RowCount           int64
+	UncompressedSize   int64
 }
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.

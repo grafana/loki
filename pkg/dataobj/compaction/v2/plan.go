@@ -45,6 +45,22 @@ func CalculateObjectRuns[K any](sections []Section[K], compare CompareFunc[K]) [
 	return runs
 }
 
+// GroupObjectRuns returns exactly one run per physical object. Sections remain
+// in section-index order and each object is ordered deterministically by its
+// key envelope and path.
+func GroupObjectRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
+	chains := buildObjectChains(sections, compare)
+	runs := make([]Run, 0, len(chains))
+	for _, chain := range chains {
+		refs := make([]*compactionv2pb.SectionRef, len(chain.sections))
+		for i, section := range chain.sections {
+			refs[i] = section.Ref
+		}
+		runs = append(runs, &run[K]{sections: refs, topMax: chain.max})
+	}
+	return runs
+}
+
 // IsConverged reports whether sections have no positive overlap. Touching
 // bounds are converged because rewriting cannot remove their ambiguity. It
 // does not mutate sections.
@@ -106,6 +122,20 @@ func BelowMinCompactionSize(runs []Run, minSize uint64) bool {
 //   - len(runs) == 0 -> returns nil (no tasks).
 //   - k >= P         -> returns a single TaskSpec containing all runs.
 func Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2pb.TaskSpec {
+	return PlanWithOptions(runs, tenant, k, PlanOptions{SortSchema: sortSchema})
+}
+
+// PlanOptions configures the physical layout and operation of planned tasks.
+type PlanOptions struct {
+	SortSchema  []string
+	SortOnly    bool
+	StreamOrder compactionv2pb.StreamOrder
+	ShardCount  uint32
+}
+
+// PlanWithOptions groups runs into task batches and stamps each task with its
+// target physical layout.
+func PlanWithOptions(runs []Run, tenant string, k int, opts PlanOptions) []*compactionv2pb.TaskSpec {
 	if k <= 0 {
 		panic(fmt.Sprintf("k must be > 0, got %d", k))
 	}
@@ -123,9 +153,12 @@ func Plan(runs []Run, tenant string, k int, sortSchema []string) []*compactionv2
 	for start := 0; start < len(refs); start += k {
 		end := min(start+k, len(refs))
 		tasks = append(tasks, &compactionv2pb.TaskSpec{
-			Tenant:     tenant,
-			Runs:       refs[start:end],
-			SortSchema: sortSchema,
+			Tenant:      tenant,
+			Runs:        refs[start:end],
+			SortSchema:  opts.SortSchema,
+			SortOnly:    opts.SortOnly,
+			StreamOrder: opts.StreamOrder,
+			ShardCount:  opts.ShardCount,
 		})
 	}
 	return tasks

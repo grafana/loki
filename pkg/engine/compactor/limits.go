@@ -8,4 +8,7 @@ type Limits interface {
 	// is true only when log compaction is enabled. The invalid combination
 	// (log without index) is rejected at config validation.
 	CompactionPhases(userID string) (runIndex, runLog bool)
+
+	// SortSchemaLabels returns the tenant's desired ordered sort-schema keys.
+	SortSchemaLabels(userID string) []string
 }

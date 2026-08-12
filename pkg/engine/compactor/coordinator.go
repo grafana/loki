@@ -305,20 +305,35 @@ func (c *coordinator) compactTenantLogs(
 	converged indexEntry,
 ) (compactionStats, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
-	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
+	sortSchema := c.limits.SortSchemaLabels(tenant)
+	sections, layoutCompatible, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path, sortSchema)
 	if err != nil {
 		return newCompactionStats(), fmt.Errorf("reading log section refs: %w", err)
 	}
 
-	runs := v2.CalculateObjectRuns(sections, compareSortKey)
-	if v2.AreObjectsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
-		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
-		return newCompactionStats(), nil
+	var tasks []*compactionv2pb.TaskSpec
+	if !layoutCompatible {
+		runs := v2.GroupObjectRuns(sections, compareSortKey)
+		tasks = v2.PlanWithOptions(runs, tenant, 1, v2.PlanOptions{
+			SortSchema:  sortSchema,
+			SortOnly:    true,
+			StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+			ShardCount:  1,
+		})
+	} else {
+		runs := v2.CalculateObjectRuns(sections, compareSortKey)
+		if v2.AreObjectsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+			level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
+			return newCompactionStats(), nil
+		}
+		tasks = v2.PlanWithOptions(runs, tenant, c.cfg.LogMaxRunsPerTask, v2.PlanOptions{
+			SortSchema:  sortSchema,
+			StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+			ShardCount:  1,
+		})
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
-
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "sort_only", !layoutCompatible, "tasks", len(tasks))
 	if len(tasks) < 20 {
 		// Debugging: Print the task details if there aren't too many.
 		for _, task := range tasks {

@@ -267,15 +267,16 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 }
 
 var columnDatatypes = map[ColumnType]arrow.DataType{
-	ColumnTypeInvalid:          arrow.Null,
-	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
-	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
-	ColumnTypeSortSchema:       arrow.BinaryTypes.String,
-	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeRowCount:         arrow.PrimitiveTypes.Int64,
-	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
-	ColumnTypeLabel:            arrow.BinaryTypes.String,
+	ColumnTypeInvalid:            arrow.Null,
+	ColumnTypeObjectPath:         arrow.BinaryTypes.String,
+	ColumnTypeSectionIndex:       arrow.PrimitiveTypes.Int64,
+	ColumnTypeSortSchema:         arrow.BinaryTypes.String,
+	ColumnTypePhysicalSortLayout: arrow.BinaryTypes.String,
+	ColumnTypeMinTimestamp:       arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMaxTimestamp:       arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeRowCount:           arrow.PrimitiveTypes.Int64,
+	ColumnTypeUncompressedSize:   arrow.PrimitiveTypes.Int64,
+	ColumnTypeLabel:              arrow.BinaryTypes.String,
 }
 
 func columnToField(col *Column) arrow.Field {

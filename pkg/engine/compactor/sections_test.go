@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
@@ -114,6 +115,15 @@ type testIndexObject struct {
 
 func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string, rows []stats.Stat) {
 	t.Helper()
+	for i := range rows {
+		schema, _, err := parseSortSchema(rows[i].SortSchema)
+		require.NoError(t, err)
+		rows[i].PhysicalSortLayout = (logs.SortLayout{
+			SchemaLabels: schema,
+			StreamOrder:  logs.StreamOrderStableHashV1,
+			ShardCount:   1,
+		}).ID()
+	}
 	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})
 }
 
@@ -196,9 +206,9 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name"}, schema)
+	require.True(t, compatible)
 	require.Equal(t, []v2.Section[sortKey]{
 		{
 			Ref: &compactionv2pb.SectionRef{
@@ -226,9 +236,9 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 			Labels: map[string]string{"service_name": "auth", "namespace": "eu"}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name", "label:namespace"})
 	require.NoError(t, err)
-	require.Equal(t, []string{"label:service_name", "label:namespace"}, schema)
+	require.True(t, compatible)
 	require.Equal(t, []v2.Section[sortKey]{
 		{
 			Ref: &compactionv2pb.SectionRef{
@@ -255,9 +265,9 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 			Labels: map[string]string{}, MinTimestamp: 10, MaxTimestamp: 20, RowCount: 1, UncompressedSize: 100},
 	})
 
-	refs, schema, err := logSectionRefsFor(ctx, bucket, "acme", path)
+	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, nil)
 	require.NoError(t, err)
-	require.Empty(t, schema, "empty sort_schema yields no schema keys (not a bogus label: entry)")
+	require.True(t, compatible)
 	require.Len(t, refs, 1)
 	require.Equal(t, sortKey{timestamp: 20}, refs[0].Min)
 	require.Equal(t, sortKey{timestamp: 10}, refs[0].Max)
@@ -265,7 +275,7 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
 
-func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
+func TestLogSectionRefsFor_MixedSchemasRequireMigration(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	path := "indexes/aa/mixed"
@@ -277,8 +287,10 @@ func TestLogSectionRefsFor_RejectsMixedSchemas(t *testing.T) {
 			Labels: map[string]string{"namespace": "prod"}, MinTimestamp: 10, MaxTimestamp: 20},
 	})
 
-	_, _, err := logSectionRefsFor(ctx, bucket, "acme", path)
-	require.ErrorContains(t, err, `contains log sort schemas "label:service_name" and "label:namespace"`)
+	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
+	require.NoError(t, err)
+	require.False(t, compatible)
+	require.Len(t, refs, 2)
 }
 
 // TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes

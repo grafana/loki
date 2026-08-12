@@ -58,12 +58,12 @@ func (b *Builder) EstimatedSize() int {
 }
 
 // statSize is the per-row size heuristic:
-//   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-//   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
+//   - 5 int64 columns × 8 bytes = 40 bytes
+//   - fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
 func statSize(r Stat) int {
 	total := 5 * 8
-	total += len(r.ObjectPath) + len(r.SortSchema)
+	total += len(r.ObjectPath) + len(r.SortSchema) + len(r.PhysicalSortLayout)
 	for k, v := range r.Labels {
 		total += len(k) + len(v)
 	}

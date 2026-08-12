@@ -148,7 +148,11 @@ func TestBuilder_EndToEnd(t *testing.T) {
 			require.ElementsMatch(t, obj1.Tenants(), obj2.Tenants())
 			for _, tenant := range tenants {
 				require.Equal(t, 1, countTenantSections(obj2, tenant, streams.CheckSection))
-				require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
+				if tc.useSortSchema {
+					require.Equal(t, 1, countTenantSections(obj2, tenant, logs.CheckSection))
+				} else {
+					require.Greater(t, countTenantSections(obj2, tenant, logs.CheckSection), 1)
+				}
 				assertBuilderE2ESchemaLabels(t, obj2, tenant, expectedSchemaLabels)
 
 				got := resolveTenantLogs(t, obj2, tenant)

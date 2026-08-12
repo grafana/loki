@@ -88,6 +88,35 @@ func TestPlan_NilSortSchemaStaysEmpty(t *testing.T) {
 	require.Empty(t, tasks[0].SortSchema)
 }
 
+func TestPlanWithOptions_StampsSortOnlyLayout(t *testing.T) {
+	runs := []Run{fakeRun{sections: []*compactionv2pb.SectionRef{{ObjectPath: "a"}}}}
+	tasks := PlanWithOptions(runs, "t1", 1, PlanOptions{
+		SortSchema:  []string{"label:service_name"},
+		SortOnly:    true,
+		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+		ShardCount:  1,
+	})
+	require.Len(t, tasks, 1)
+	require.True(t, tasks[0].SortOnly)
+	require.Equal(t, compactionv2pb.STREAM_ORDER_STABLE_HASH_V1, tasks[0].StreamOrder)
+	require.Equal(t, uint32(1), tasks[0].ShardCount)
+}
+
+func TestGroupObjectRuns_OneRunPerObject(t *testing.T) {
+	sections := []Section[int]{
+		{Ref: &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 1}, Min: 2, Max: 3},
+		{Ref: &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0}, Min: 1, Max: 2},
+		{Ref: &compactionv2pb.SectionRef{ObjectPath: "b", SectionIndex: 0}, Min: 1, Max: 2},
+	}
+	runs := GroupObjectRuns(sections, func(a, b int) int { return a - b })
+	require.Len(t, runs, 2)
+	require.Equal(t, "a", runs[0].Sections()[0].ObjectPath)
+	require.Equal(t, []int64{0, 1}, []int64{
+		runs[1].Sections()[0].SectionIndex,
+		runs[1].Sections()[1].SectionIndex,
+	})
+}
+
 func TestRun_SizeAndSections(t *testing.T) {
 	s1 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 0, UncompressedSize: 100}
 	s2 := &compactionv2pb.SectionRef{ObjectPath: "a", SectionIndex: 1, UncompressedSize: 250}

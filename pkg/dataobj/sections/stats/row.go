@@ -52,6 +52,13 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Stat 
 		result.SortSchema = col.(*array.String).Value(rowIndex)
 	}
 
+	if col := getColumn("physical_sort_layout.utf8"); col != nil && !col.IsNull(rowIndex) {
+		result.PhysicalSortLayout = col.(*array.String).Value(rowIndex)
+		if result.PhysicalSortLayout == "unknown" {
+			result.PhysicalSortLayout = ""
+		}
+	}
+
 	if col := getColumn("min_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
 		result.MinTimestamp = int64(col.(*array.Timestamp).Value(rowIndex))
 	}

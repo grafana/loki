@@ -232,7 +232,7 @@ func TestCollectLogSources_RejectsInvalidSectionReferences(t *testing.T) {
 		},
 		"wrong tenant": {
 			refs:    []*compactionv2pb.SectionRef{{ObjectPath: "other", SectionIndex: 0}},
-			wantErr: `belongs to tenant "other", expected "T"`,
+			wantErr: `out of range [0,0)`,
 		},
 	}
 	for name, tc := range tests {
@@ -520,6 +520,70 @@ func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	require.Equal(t, map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": true}, distinctApps)
 	// Deduplicating streams does not discard their records.
 	require.Equal(t, 36, totalRecords)
+}
+
+func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	buildSourceLogObject(t, dataBucket, "legacy", sortSchema, map[string][]testStream{
+		tenant: {
+			{labels: `{app="z"}`, entries: linesAt(base, 2)},
+			{labels: `{app="a"}`, entries: linesAt(base.Add(time.Hour), 2)},
+		},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	artifacts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
+		Tenant:      tenant,
+		SortSchema:  sortSchema,
+		SortOnly:    true,
+		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+		ShardCount:  1,
+		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "legacy", SectionIndex: 0},
+		}}},
+	})
+	require.NoError(t, err)
+	require.Len(t, artifacts, 1)
+
+	outputs := readCompactedObjectsFromIndex(ctx, t, dataBucket, indexBucket, artifacts[0].Path, tenant)
+	require.Len(t, outputs, 1)
+	require.Len(t, outputs[0].records, 4)
+	for i := 1; i < len(outputs[0].records); i++ {
+		prev, current := outputs[0].records[i-1], outputs[0].records[i]
+		require.LessOrEqual(t, prev.app, current.app)
+		if prev.streamID == current.streamID {
+			require.False(t, current.ts.After(prev.ts))
+		}
+	}
+}
+
+func TestDoLogObjectMerge_RejectsLegacyLayoutForStrictMerge(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	buildSourceLogObject(t, bucket, "legacy", sortSchema, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(time.Unix(0, 0), 1)}},
+	})
+
+	c := newTestExecutorContext(t, bucket)
+	_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
+		Tenant:      tenant,
+		SortSchema:  sortSchema,
+		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+		ShardCount:  1,
+		Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "legacy", SectionIndex: 0},
+		}}},
+	})
+	require.ErrorContains(t, err, "stale LogMerge plan")
 }
 
 func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T) {

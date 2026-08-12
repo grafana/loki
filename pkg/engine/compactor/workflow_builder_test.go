@@ -57,8 +57,11 @@ func TestBuildIndexMergePlan_AssignsFreshNodeID(t *testing.T) {
 func TestBuildLogMergePlan(t *testing.T) {
 	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC)
 	task := &compactionv2pb.TaskSpec{
-		Tenant:     "t1",
-		SortSchema: []string{"label:service_name"},
+		Tenant:      "t1",
+		SortSchema:  []string{"label:service_name"},
+		SortOnly:    true,
+		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+		ShardCount:  1,
 		Runs: []*compactionv2pb.RunRef{
 			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "logs/log-0", SectionIndex: 0, MinKey: []string{"auth"}}}},
 		},
@@ -75,6 +78,9 @@ func TestBuildLogMergePlan(t *testing.T) {
 	require.Equal(t, window.UnixNano(), node.ToCWindowStart)
 	require.Equal(t, task.Runs, node.Runs)
 	require.Equal(t, task.SortSchema, node.SortSchema)
+	require.Equal(t, task.SortOnly, node.SortOnly)
+	require.Equal(t, task.StreamOrder, node.StreamOrder)
+	require.Equal(t, task.ShardCount, node.ShardCount)
 
 	task2 := &compactionv2pb.TaskSpec{
 		Tenant: "t1",

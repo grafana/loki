@@ -34,6 +34,16 @@ func FromRecordBatch(rec arrow.RecordBatch, dest []Stat) (int, error) {
 					dest[rIdx].SortSchema = strCol.Value(rIdx)
 				}
 			}
+		case "physical_sort_layout.utf8":
+			strCol := col.(*array.String)
+			for rIdx := range numRows {
+				if !col.IsNull(rIdx) {
+					dest[rIdx].PhysicalSortLayout = strCol.Value(rIdx)
+					if dest[rIdx].PhysicalSortLayout == "unknown" {
+						dest[rIdx].PhysicalSortLayout = ""
+					}
+				}
+			}
 		case "min_timestamp.timestamp":
 			tsCol := col.(*array.Timestamp)
 			for rIdx := range numRows {

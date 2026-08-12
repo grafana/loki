@@ -20,7 +20,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder, schemaSortKeys []string) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -28,7 +28,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 	// Even if there's only one table, we still pass to mergeTables to ensure
 	// it's compressed with compressionOpts.
 	if len(tables) == 1 {
-		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables, sort)
+		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables, sort, schemaSortKeys)
 	}
 
 	in := tables
@@ -38,7 +38,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 		for i := 0; i < len(in); i += maxMergeSize {
 			set := in[i:min(i+maxMergeSize, len(in))]
-			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set, sort)
+			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set, sort, schemaSortKeys)
 			if err != nil {
 				return nil, err
 			}
@@ -53,7 +53,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *dataset.CompressionOptions, tables []*table, sort SortOrder, schemaSortKeys []string) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -96,7 +96,13 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 
 	var rows int
 
-	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
+	var less func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
+	if sort == SortSchemaASC {
+		less = CompareForSortSchema(schemaSortKeys)
+	} else {
+		less = CompareForSortOrder(sort)
+	}
+	tree := loser.New(tableSequences, maxValue, tableSequenceAt, less, tableSequenceClose)
 	defer tree.Close()
 
 	var prev dataset.Row

@@ -20,6 +20,7 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 )
@@ -337,11 +338,12 @@ func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error)
 	return columns, nil
 }
 
-// logSectionRefsFor returns one bounded reference per log section indexed by idxPath.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string) ([]v2.Section[sortKey], []string, error) {
+// logSectionRefsFor returns one bounded reference per log section indexed by
+// idxPath and whether every section has the target physical layout.
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxPath string, targetSchema []string) ([]v2.Section[sortKey], bool, error) {
 	obj, err := dataobj.FromBucket(ctx, bucket, idxPath, 0)
 	if err != nil {
-		return nil, nil, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
+		return nil, false, fmt.Errorf("open converged index tenant=%s index=%s: %w", tenant, idxPath, err)
 	}
 
 	type sectionID struct {
@@ -350,13 +352,22 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 	}
 
 	var (
-		schema     []string
 		labelNames []string
-		schemaName string
 		reader     stats.Reader
 
 		bySection = make(map[sectionID]*v2.Section[sortKey])
 	)
+	targetSchemaName := strings.Join(targetSchema, ",")
+	targetLayoutID := (logs.SortLayout{
+		SchemaLabels: targetSchema,
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   1,
+	}).ID()
+	_, labelNames, err = parseSortSchema(targetSchemaName)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse target log sort schema tenant=%s: %w", tenant, err)
+	}
+	compatible := true
 	defer reader.Close()
 
 	const batchSize = 1024
@@ -368,18 +379,18 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 		statsSection, err := stats.Open(ctx, section)
 		if err != nil {
-			return nil, nil, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, false, fmt.Errorf("open stats section tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		reader.Reset(stats.ReaderOptions{Columns: statsSection.Columns()})
 		if err := reader.Open(ctx); err != nil {
-			return nil, nil, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
+			return nil, false, fmt.Errorf("opening reader tenant=%s index=%s: %w", tenant, idxPath, err)
 		}
 
 		for {
 			record, readErr := reader.Read(ctx, batchSize)
 			if readErr != nil && !errors.Is(readErr, io.EOF) {
-				return nil, nil, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
+				return nil, false, fmt.Errorf("reading batch tenant=%s index=%s: %w", tenant, idxPath, readErr)
 			}
 			numRows := int(record.NumRows())
 			if numRows == 0 && errors.Is(readErr, io.EOF) {
@@ -389,18 +400,12 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			rows := scratch[:numRows]
 			n, err := stats.FromRecordBatch(record, rows)
 			if err != nil {
-				return nil, nil, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
+				return nil, false, fmt.Errorf("decode stats batch tenant=%s index=%s: %w", tenant, idxPath, err)
 			}
 
 			for _, stat := range rows[:n] {
-				if schemaName == "" && len(bySection) == 0 {
-					schemaName = stat.SortSchema
-					schema, labelNames, err = parseSortSchema(stat.SortSchema)
-					if err != nil {
-						return nil, nil, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, idxPath, err)
-					}
-				} else if stat.SortSchema != schemaName {
-					return nil, nil, fmt.Errorf("index %s contains log sort schemas %q and %q", idxPath, schemaName, stat.SortSchema)
+				if stat.PhysicalSortLayout != targetLayoutID {
+					compatible = false
 				}
 
 				var labels []string
@@ -464,7 +469,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		}
 		return cmp.Compare(a.Ref.SectionIndex, b.Ref.SectionIndex)
 	})
-	return refs, schema, nil
+	return refs, compatible, nil
 }
 
 func parseSortSchema(value string) (schema, labelNames []string, _ error) {

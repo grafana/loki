@@ -257,6 +257,43 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	require.Equal(t, []string{convergedPath}, swaps[0].oldPaths)
 }
 
+func TestCompactTenantLogs_LegacyLayoutSortsEveryObject(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	indexPath := "indexes/aa/legacy"
+	buildIndex(ctx, t, bucket, testIndexObject{
+		tenant:      "acme",
+		path:        indexPath,
+		sectionSize: 1 << 21,
+		stats: []stats.Stat{
+			{ObjectPath: "logs/a", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "a"}, MinTimestamp: 10, MaxTimestamp: 20, UncompressedSize: 100},
+			{ObjectPath: "logs/b", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "b"}, MinTimestamp: 30, MaxTimestamp: 40, UncompressedSize: 100},
+		},
+	})
+
+	runner := &fakeRunner{}
+	c := newTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+	_, err := c.compactTenantLogs(ctx, "acme", window, indexEntry{Path: indexPath})
+	require.NoError(t, err)
+
+	calls := runner.snapshot()
+	require.Len(t, calls, 2)
+	paths := make([]string, 0, len(calls))
+	for _, call := range calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+		node := root.(*physical.LogMerge)
+		require.True(t, node.SortOnly)
+		require.Len(t, node.Runs, 1)
+		require.Len(t, node.Runs[0].Sections, 1)
+		require.Equal(t, compactionv2pb.STREAM_ORDER_STABLE_HASH_V1, node.StreamOrder)
+		require.Equal(t, uint32(1), node.ShardCount)
+		paths = append(paths, node.Runs[0].Sections[0].ObjectPath)
+	}
+	require.ElementsMatch(t, []string{"logs/a", "logs/b"}, paths)
+}
+
 func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()

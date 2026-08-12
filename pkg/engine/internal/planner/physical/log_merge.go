@@ -28,6 +28,14 @@ type LogMerge struct {
 	// SortSchema is the tenant's resolved sort schema as ordered FQN sort keys
 	// (e.g. "label:service_name")
 	SortSchema []string
+
+	// SortOnly rewrites one tenant/object into the target layout without
+	// merging it with other objects.
+	SortOnly bool
+
+	// StreamOrder and ShardCount complete the target physical sort layout.
+	StreamOrder compactionv2pb.StreamOrder
+	ShardCount  uint32
 }
 
 // ID implements the Node interface.
@@ -44,6 +52,9 @@ func (n *LogMerge) Clone() Node {
 		ToCWindowStart: n.ToCWindowStart,
 		Runs:           cloneRuns(n.Runs),
 		SortSchema:     slices.Clone(n.SortSchema),
+		SortOnly:       n.SortOnly,
+		StreamOrder:    n.StreamOrder,
+		ShardCount:     n.ShardCount,
 	}
 }
 

@@ -629,6 +629,11 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			labels, err := logsSection.SchemaLabels()
 			require.NoError(t, err)
 			require.Equal(t, []string{"label:app"}, labels, "SchemaLabels must be persisted in section metadata")
+			require.Equal(t, logs.SortLayout{
+				SchemaLabels: []string{"label:app"},
+				StreamOrder:  logs.StreamOrderStableHashV1,
+				ShardCount:   1,
+			}, logsSection.SortLayout())
 		}
 
 		require.Equal(t, []string{"a", "b"}, appOrder(t, obj2, "t1"))
@@ -661,6 +666,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 			schemaLabels, err := logsSection.SchemaLabels()
 			require.NoError(t, err)
 			require.Equal(t, []string{"label:app"}, schemaLabels)
+			require.Equal(t, logs.StreamOrderUnspecified, logsSection.SortLayout().StreamOrder)
 
 			var (
 				prevApp      string

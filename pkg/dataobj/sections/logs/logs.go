@@ -5,6 +5,7 @@ package logs
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -27,6 +28,30 @@ var schemaSortSectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "logs",
 	Version:   schemaSortVersion,
+}
+
+// StreamOrder identifies how object-local stream IDs are assigned.
+type StreamOrder int
+
+const (
+	StreamOrderUnspecified  StreamOrder = 0
+	StreamOrderStableHashV1 StreamOrder = 2
+)
+
+// SortLayout describes the physical ordering contract of a logs section.
+type SortLayout struct {
+	SchemaLabels []string
+	StreamOrder  StreamOrder
+	ShardCount   uint32
+}
+
+// ID returns a stable identifier suitable for copying into planner-facing
+// index statistics.
+func (l SortLayout) ID() string {
+	if len(l.SchemaLabels) == 0 && l.StreamOrder == StreamOrderUnspecified && l.ShardCount == 0 {
+		return ""
+	}
+	return fmt.Sprintf("v1/%d/%d/%s", l.StreamOrder, l.ShardCount, strings.Join(l.SchemaLabels, "\x00"))
 }
 
 // CheckSection returns true if section is a logs section.
@@ -129,6 +154,25 @@ func (s *Section) SchemaLabels() ([]string, error) {
 		return nil, nil
 	}
 	return si.SchemaLabels, nil
+}
+
+// SortLayout returns the physical ordering contract persisted for this section.
+func (s *Section) SortLayout() SortLayout {
+	si := s.inner.SortInfo()
+	if si == nil {
+		return SortLayout{}
+	}
+
+	var streamOrder StreamOrder
+	switch si.StreamOrder {
+	case datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1:
+		streamOrder = StreamOrderStableHashV1
+	}
+	return SortLayout{
+		SchemaLabels: si.SchemaLabels,
+		StreamOrder:  streamOrder,
+		ShardCount:   si.ShardCount,
+	}
 }
 
 // A Column represents one of the columns in the logs section. Valid columns

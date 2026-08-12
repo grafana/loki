@@ -101,7 +101,7 @@ func Test_mergeTables(t *testing.T) {
 			// TableC should have been initially deduped by buildTable
 			require.Equal(t, tableC.Timestamp.Desc.RowsCount, 2)
 
-			mergedTable, err := mergeTables(&buf, pageSize, pageRows, nil, []*table{tableA, tableB, tableC}, strategy.sortOrder)
+			mergedTable, err := mergeTables(&buf, pageSize, pageRows, nil, []*table{tableA, tableB, tableC}, strategy.sortOrder, nil)
 			require.NoError(t, err)
 
 			mergedColumns, err := result.Collect(mergedTable.ListColumns(context.Background()))

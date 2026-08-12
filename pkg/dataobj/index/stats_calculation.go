@@ -131,11 +131,12 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 
 	sortSchema := strings.Join(c.schema, ",")
 	for _, agg := range sorted {
-		err := calcCtx.builder.AppendStat(
+		err := calcCtx.builder.AppendStatWithLayout(
 			calcCtx.tenantID,
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
 			sortSchema,
+			calcCtx.physicalLayout.ID(),
 			agg.labels,
 			agg.minTimestamp,
 			agg.maxTimestamp,

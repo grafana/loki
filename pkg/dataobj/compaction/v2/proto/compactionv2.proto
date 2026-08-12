@@ -11,6 +11,13 @@ import "gogoproto/gogo.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto";
 
+enum StreamOrder {
+  STREAM_ORDER_UNSPECIFIED = 0;
+  reserved 1;
+  reserved "STREAM_ORDER_LOCAL_ID";
+  STREAM_ORDER_STABLE_HASH_V1 = 2;
+}
+
 // SectionRef identifies one section in object storage with its sort-key bounds.
 //
 // The section's sort-key is the tuple (sort_schema_label_values, __timestamp__)
@@ -47,4 +54,7 @@ message TaskSpec {
   string tenant = 1 [(gogoproto.jsontag) = "tenant"];
   repeated RunRef runs = 2 [(gogoproto.jsontag) = "runs"];
   repeated string sort_schema = 3 [(gogoproto.jsontag) = "sort_schema"];
+  bool sort_only = 4 [(gogoproto.jsontag) = "sort_only"];
+  StreamOrder stream_order = 5 [(gogoproto.jsontag) = "stream_order"];
+  uint32 shard_count = 6 [(gogoproto.jsontag) = "shard_count"];
 }

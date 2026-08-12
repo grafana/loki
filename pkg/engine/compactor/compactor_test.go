@@ -40,6 +40,10 @@ func (f *fakeLimits) CompactionPhases(userID string) (runIndex, runLog bool) {
 	return f.index[userID] || f.log[userID], f.log[userID]
 }
 
+func (*fakeLimits) SortSchemaLabels(string) []string {
+	return []string{"label:service_name"}
+}
+
 func (f *fakeLimits) setIndex(userID string, on bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -49,6 +49,7 @@ type logsCalculationContext struct {
 	tenantID       string
 	objectPath     string
 	sectionIdx     int64
+	physicalLayout logs.SortLayout
 	streamIDLookup map[int64]int64
 	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
 	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
@@ -265,6 +266,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		tenantID:       tenantID,
 		objectPath:     objectPath,
 		sectionIdx:     sectionIdx,
+		physicalLayout: logsSection.SortLayout(),
 		streamIDLookup: streamIDLookup,
 		streamLabels:   streamLabels,
 		builder:        c.indexobjBuilder,

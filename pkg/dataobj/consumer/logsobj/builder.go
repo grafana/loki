@@ -2,7 +2,6 @@
 package logsobj
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -147,6 +146,11 @@ type BuilderConfig struct {
 	// DataobjSortSchemaEnabled controls whether the per-tenant sort_schema tenant config is used
 	// to determine sort order instead of DataobjSortOrder.
 	DataobjUseSortSchema bool `yaml:"dataobj_use_sort_schema" doc:"hidden"`
+
+	// SchemaStreamOrder records stable-hash ordering for outputs whose stream
+	// IDs were assigned by the canonical hash comparator. Zero is unknown and
+	// forces a later sort-only migration.
+	SchemaStreamOrder logs.StreamOrder `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -197,6 +201,13 @@ func appendStrategy(ordered bool) logs.AppendStrategy {
 		return logs.AppendOrdered
 	}
 	return logs.AppendUnordered
+}
+
+func schemaShardCount(schemaLabels []string) uint32 {
+	if len(schemaLabels) == 0 {
+		return 0
+	}
+	return 1
 }
 
 // TenantOverrides provides per-tenant configuration for the Builder.
@@ -305,6 +316,8 @@ func (b *Builder) initBuilder(tenant string) {
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 sortOrder,
 			SchemaLabels:              schemaLabels,
+			StreamOrder:               b.cfg.SchemaStreamOrder,
+			ShardCount:                schemaShardCount(schemaLabels),
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -566,10 +579,12 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 		// TODO(chaudum): Handle special case len(sections) == 1
 
 		var (
-			sortOrder    logs.SortOrder
-			schemaLabels []string
-			iter         result.Seq[logs.Record]
-			iterErr      error
+			sortOrder          logs.SortOrder
+			schemaLabels       []string
+			schemaSortKeys     []string
+			logsAppendStrategy logs.AppendStrategy = logs.AppendOrdered
+			iter               result.Seq[logs.Record]
+			iterErr            error
 		)
 
 		if b.cfg.DataobjUseSortSchema {
@@ -610,6 +625,13 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			}
 
 			sortOrder = logs.SortSchemaASC
+			logsAppendStrategy = logs.AppendUnordered
+			schemaSortKeys = make([]string, len(streamRemap.sortKeys))
+			for oldID, newID := range streamRemap.ids {
+				if newID > 0 {
+					schemaSortKeys[newID] = streamRemap.sortKeys[oldID]
+				}
+			}
 			iter, iterErr = sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
 		} else {
 			if err := b.buildStreamSection(ctx, tenant, streamsSectionIter(ctx, streamsSection), sb); err != nil {
@@ -628,13 +650,16 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			PageMaxRowCount:  b.cfg.MaxPageRows,
 			BufferSize:       int(b.cfg.BufferSize),
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
-			AppendStrategy:   logs.AppendOrdered,
+			AppendStrategy:   logsAppendStrategy,
 			SortOrder:        sortOrder,
 			SchemaLabels:     schemaLabels,
+			StreamOrder:      logs.StreamOrderStableHashV1,
+			ShardCount:       1,
+			SchemaSortKeys:   schemaSortKeys,
 		})
 		lb.SetTenant(tenant)
 
-		if err := b.drainLogsIter(ctx, iter, lb, tenant); err != nil {
+		if err := b.drainLogsIter(ctx, iter, lb, tenant, logsAppendStrategy == logs.AppendOrdered); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -698,7 +723,7 @@ func (b *Builder) Reset() {
 // drainLogsIter consumes iter, appending each record to lb and flushing
 // completed sections to b.builder whenever the section size target is exceeded.
 // It appends the final (possibly partial) section after the iterator is exhausted.
-func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string) error {
+func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record], lb *logs.Builder, tenant string, splitSections bool) error {
 	for rec := range iter {
 		select {
 		case <-ctx.Done():
@@ -710,7 +735,7 @@ func (b *Builder) drainLogsIter(ctx context.Context, iter result.Seq[logs.Record
 			return err
 		}
 		lb.Append(val)
-		if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+		if splitSections && lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
 			if err := b.builder.Append(lb); err != nil {
 				return err
 			}
@@ -748,8 +773,8 @@ type streamIDRemap struct {
 }
 
 type streamWithSortKey struct {
-	stream  streams.Stream
-	sortKey string
+	stream   streams.Stream
+	orderKey StreamOrderKey
 }
 
 // sortAndRemapStreams orders the streams by the sort key and reassigns
@@ -779,21 +804,19 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
-		k, err := ComputeSortKey(stream.Labels, schemaLabels)
+		stream.Labels = stream.Labels.Copy()
+		k, err := NewStreamOrderKey(stream.Labels, schemaLabels)
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
 		collected = append(collected, streamWithSortKey{
-			stream:  stream,
-			sortKey: k,
+			stream:   stream,
+			orderKey: k,
 		})
 	}
 
 	slices.SortFunc(collected, func(a, b streamWithSortKey) int {
-		if res := cmp.Compare(a.sortKey, b.sortKey); res != 0 {
-			return res
-		}
-		return cmp.Compare(a.stream.ID, b.stream.ID)
+		return CompareStreamOrderKey(a.orderKey, b.orderKey)
 	})
 
 	for i := range collected {
@@ -807,7 +830,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 			return nil, streamIDRemap{}, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prevNewID, newID)
 		}
 
-		remap.sortKeys[oldID] = collected[i].sortKey
+		remap.sortKeys[oldID] = collected[i].orderKey.SchemaKey
 		remap.ids[oldID] = newID
 
 		// Remap to the new stream ID.
