@@ -6840,6 +6840,12 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
+  # Experimental. Number of idle file handles the stream index reader keeps open
+  # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
+  # 0 to disable pooling.
+  # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
+  [streaming_index_max_idle_file_handles: <int> | default = 16]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
