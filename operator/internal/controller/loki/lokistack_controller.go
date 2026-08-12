@@ -399,7 +399,7 @@ func (r *LokiStackReconciler) enqueueForObjectStorageServices() handler.EventHan
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if stack.Spec.NetworkPolicies == nil || stack.Spec.NetworkPolicies.RuleSet == "None" {
+			if stack.Spec.NetworkPolicies == nil || stack.Spec.NetworkPolicies.RuleSet == lokiv1.NetworkPolicyRuleSetNone {
 				continue
 			}
 

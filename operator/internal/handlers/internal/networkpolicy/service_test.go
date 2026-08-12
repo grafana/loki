@@ -380,7 +380,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 		expectedError bool
 	}{
 		{
-			name: "kubernetes service endpoint with explicit port",
+			name: "Kubernetes service endpoint with explicit port",
 			objStore: storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: "http://minio.openshift-logging.svc.cluster.local:9001",
@@ -418,7 +418,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{9000},
 		},
 		{
-			name: "static S3 endpoint with custom port",
+			name: "external S3 endpoint with custom port",
 			objStore: storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: "https://s3.example.com:9443",
@@ -427,7 +427,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{9443},
 		},
 		{
-			name: "static S3 endpoint without port",
+			name: "external S3 endpoint without port",
 			objStore: storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: "https://s3.amazonaws.com",
@@ -445,7 +445,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{8080},
 		},
 		{
-			name: "Swift endpoint with auth URL port",
+			name: "Swift auth url endpoint with port",
 			objStore: storage.Options{
 				Swift: &storage.SwiftStorageConfig{
 					AuthURL: "http://swift.example.com:5000/v3",
@@ -454,7 +454,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{5000, 443},
 		},
 		{
-			name: "Swift endpoint with OpenShift feature gate enabled (no logging mode)",
+			name: "Swift auth url endpoint with OpenShift feature gate enabled",
 			objStore: storage.Options{
 				Swift: &storage.SwiftStorageConfig{
 					AuthURL: "http://swift.example.com:5000/v3",
@@ -468,7 +468,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{5000, 13808},
 		},
 		{
-			name: "Swift endpoint without auth URL port",
+			name: "Swift auth url endpoint without port",
 			objStore: storage.Options{
 				Swift: &storage.SwiftStorageConfig{
 					AuthURL: "http://swift.example.com/v3",
@@ -477,7 +477,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{443},
 		},
 		{
-			name: "S3 with HTTP and HTTPS proxy",
+			name: "External S3 with HTTP and HTTPS proxy",
 			objStore: storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: "https://s3.amazonaws.com",
@@ -510,7 +510,7 @@ func TestDetermineObjectStoragePorts(t *testing.T) {
 			expectedPorts: []int32{443, 3128},
 		},
 		{
-			name: "Kubernetes Service with proxy",
+			name: "Kubernetes Service with HTTP proxy",
 			objStore: storage.Options{
 				S3: &storage.S3StorageConfig{
 					Endpoint: "http://minio.default.svc.cluster.local:9000",
