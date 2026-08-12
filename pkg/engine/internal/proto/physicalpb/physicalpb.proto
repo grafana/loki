@@ -312,6 +312,9 @@ message LogMerge {
   int64 toc_window_start_unix_nanos = 2;
   repeated proto.RunRef runs = 3;
   repeated string sort_schema = 4;
+  bool sort_only = 5;
+  proto.StreamOrder stream_order = 6;
+  uint32 shard_count = 7;
 }
 
 // Cache controls Task-level caching.

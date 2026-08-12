@@ -7,6 +7,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
+	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/testutils"
@@ -38,7 +39,7 @@ func TestRoundTripNodes_Reflection(t *testing.T) {
 		new(physical.ScanSet),
 		new(physical.TopK),
 		new(physical.VectorAggregation),
-		//new(physical.LogMerge),
+		new(physical.LogMerge),
 	}
 
 	for _, n := range cases {
@@ -92,6 +93,7 @@ func newPhysicalFiller() *testutils.Filler {
 	f.RegisterFixed(types.ColumnTypeLabel)
 	f.RegisterFixed(types.RangeAggregationTypeCount)
 	f.RegisterFixed(types.VectorAggregationTypeSum)
+	f.RegisterFixed(compactionv2pb.STREAM_ORDER_STABLE_HASH_V1)
 
 	// physical.ScanTarget is a discriminated union: Type determines whether
 	// DataObject or Pointers is set (and only one at a time). The generic
