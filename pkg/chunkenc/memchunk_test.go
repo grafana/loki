@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash"
 	"math"
@@ -31,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -48,16 +46,21 @@ var testEncodings = []compression.Codec{
 }
 
 var (
-	testBlockSize     = 256 * 1024
-	testTargetSize    = 1500 * 1024
-	testBlockSizes    = []int{64 * 1024, 256 * 1024, 512 * 1024}
-	multiVariantQuery = `variants(
-    count_over_time({app="myapp"} [5m]),
-    bytes_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
-	multiVariantCountOnlyQuery = `variants(
-    count_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
+	// sampleIdxLabel tells apart the samples that countAndBytesQueries produce for
+	// one log line. Each query sets it to a different value, so the two samples get
+	// different labels and therefore different sample hashes.
+	sampleIdxLabel = "sample_idx"
+
+	// countAndBytesQueries each yield one sample per log line, so a sample iterator
+	// built from both emits two samples per line.
+	countAndBytesQueries = []string{
+		`count_over_time({app="myapp"} | label_format sample_idx="0" [5m])`,
+		`bytes_over_time({app="myapp"} | label_format sample_idx="1" [5m])`,
+	}
+	countOnlyQueries = []string{countAndBytesQueries[0]}
 
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
@@ -231,7 +234,7 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "myapp"))
+				extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "myapp"))
 				require.NoError(t, err)
 				countExtractor := extractors[0]
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
@@ -249,7 +252,7 @@ func TestBlock(t *testing.T) {
 				require.Equal(t, len(cases), idx)
 
 				t.Run("multi-extractor", func(t *testing.T) {
-					extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
+					extractors, err := getStreamExtractors(countAndBytesQueries, labels.FromStrings("app", "foo"))
 					require.NoError(t, err)
 
 					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
@@ -273,7 +276,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, sampleIdxLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
@@ -284,7 +287,7 @@ func TestBlock(t *testing.T) {
 						require.Equal(t, cases[idx].ts, s.Timestamp)
 						require.NotEmpty(t, s.Hash)
 						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
+						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, sampleIdxLabel)) {
 							actualCounts = append(actualCounts, s.Value)
 						} else {
 							actualBytes = append(actualBytes, s.Value)
@@ -998,7 +1001,7 @@ func BenchmarkRead(b *testing.B) {
 		}
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
 	countExtractor := extractors[0]
 	for _, bs := range testBlockSizes {
@@ -1145,7 +1148,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				b.ResetTimer()
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+				extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
 				require.NoError(b, err)
 				countExtractor := extractors[0]
 
@@ -1162,25 +1165,25 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-func getMultiVariantExtractors(query string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
-	expr, err := syntax.ParseSampleExpr(query)
-	if err != nil {
-		return nil, err
-	}
+// getStreamExtractors returns one StreamSampleExtractor per query, so a caller
+// can drive a sample iterator that emits one sample per query per log line.
+func getStreamExtractors(queries []string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
+	streamExtractors := make([]log.StreamSampleExtractor, 0, len(queries))
+	for _, query := range queries {
+		expr, err := syntax.ParseSampleExpr(query)
+		if err != nil {
+			return nil, err
+		}
 
-	multiVariantExpr, ok := expr.(*syntax.MultiVariantExpr)
-	if !ok {
-		return nil, errors.New("expected multi-variant expression")
-	}
+		extractors, err := expr.Extractors()
+		if err != nil {
+			return nil, err
+		}
+		if len(extractors) != 1 {
+			return nil, fmt.Errorf("expected 1 extractor for %q, got %d", query, len(extractors))
+		}
 
-	extractors, err := multiVariantExpr.Extractors()
-	if err != nil {
-		return nil, err
-	}
-
-	streamExtractors := make([]log.StreamSampleExtractor, len(extractors))
-	for i, extractor := range extractors {
-		streamExtractors[i] = extractor.ForStream(lbls)
+		streamExtractors = append(streamExtractors, extractors[0].ForStream(lbls))
 	}
 
 	return streamExtractors, nil
@@ -1205,7 +1208,7 @@ func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
 
 				b.ResetTimer()
 
-				extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
+				extractors, err := getStreamExtractors(countAndBytesQueries, labels.FromStrings("app", "foo"))
 				require.NoError(b, err)
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
