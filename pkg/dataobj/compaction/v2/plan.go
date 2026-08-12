@@ -24,7 +24,8 @@ type Run interface {
 }
 
 // CalculateRuns groups sections into N disjoint, contiguous runs based on the Min and Max sort keys.
-// All sections within a single object are assumed to be a Run. It panics if a section has a nil Ref.
+// Sections of the same object are treated as one indivisible unit and always land in the same run.
+// It panics if a section has a nil Ref.
 func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 	if len(sections) == 0 {
 		return nil
