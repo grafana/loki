@@ -441,12 +441,12 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 // decompressed size limit. The readers wrapping the body are limited to max+1 bytes,
 // so a size greater than max means the body was truncated. decompressedSize may be
 // nil, in which case only the compressed size is checked.
-func checkSizeLimits(bodySize, decompressedSize util.SizeReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
-	if size := bodySize.Size(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
+func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
+	if size := bodySizeReader.Size(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
 		return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 	}
-	if decompressedSize != nil {
-		if size := decompressedSize.Size(); maxDecompressedSize > 0 && size > maxDecompressedSize {
+	if decompressedSizeReader != nil {
+		if size := decompressedSizeReader.Size(); maxDecompressedSize > 0 && size > maxDecompressedSize {
 			return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
 		}
 	}
