@@ -207,6 +207,16 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelAggregationExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return e.validate()
+	case *CountDistinctSketchExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return e.validate()
 	case *LabelReplaceExpr:
 		if e.err != nil {
 			return e.err
