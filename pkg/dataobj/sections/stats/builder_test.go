@@ -300,6 +300,8 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 	base := func() Stat {
 		return Stat{
 			SortSchema:   schema,
+			Shard:        2,
+			HasShard:     true,
 			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
 			MinTimestamp: 100,
 			MaxTimestamp: 200,
@@ -316,6 +318,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 		name   string
 		mutate func(*Stat)
 	}{
+		{"shard", func(s *Stat) { s.Shard = 7 }},
 		{"first sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"} }},
 		{"second sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "svc", "namespace": "zz"} }},
 		{"min timestamp", func(s *Stat) { s.MinTimestamp = 999 }},

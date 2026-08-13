@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -49,6 +51,15 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 }
 
 func flushAndReadAllStatsTable(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
+	t.Helper()
+	rows := flushAndReadAllStatsTableRaw(t, builder)
+	for _, row := range rows {
+		delete(row, "shard.int64")
+	}
+	return rows
+}
+
+func flushAndReadAllStatsTableRaw(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
 	t.Helper()
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -131,6 +142,50 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 		"label columns must stay keyed by the bare Prometheus name")
 }
 
+func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	first := labels.FromStrings("service_name", "api", "instance", "0")
+	firstShard := uint32(labels.StableHash(first) % uint64(streams.ShardFactor))
+	var second labels.Labels
+	for i := 1; i < 256; i++ {
+		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
+		if uint32(labels.StableHash(candidate)%uint64(streams.ShardFactor)) != firstShard {
+			second = candidate
+			break
+		}
+	}
+	require.NotEmpty(t, second)
+	ctx := &logsCalculationContext{
+		tenantID:   "tenant-1",
+		objectPath: "test/path/obj1",
+		sectionIdx: 0,
+		streamLabels: map[int64]labels.Labels{
+			1: first,
+			2: second,
+		},
+		builder: builder,
+	}
+	calc := &statsCalculation{schema: defaultSortSchema}
+	records := []logs.Record{
+		{StreamID: 1, Timestamp: time.Unix(100, 0).UTC(), Line: []byte("a")},
+		{StreamID: 2, Timestamp: time.Unix(150, 0).UTC(), Line: []byte("c")},
+	}
+
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
+	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, records))
+	require.NoError(t, calc.Flush(context.Background(), ctx))
+
+	actual := flushAndReadAllStatsTableRaw(t, builder)
+	require.Len(t, actual, 2)
+	gotShards := make(map[int64]struct{}, len(actual))
+	for _, row := range actual {
+		require.Equal(t, "api", row["service_name.label.utf8"])
+		gotShards[row["shard.int64"].(int64)] = struct{}{}
+	}
+	require.Contains(t, gotShards, int64(firstShard))
+	require.Contains(t, gotShards, int64(labels.StableHash(second)%uint64(streams.ShardFactor)))
+}
+
 func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	ctx := makeTestCalcContext(builder)
@@ -168,10 +223,13 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.NoError(t, calc.Flush(context.Background(), ctx))
 
 	actual := flushAndReadAllStatsTable(t, builder)
-	// We expect 3 aggregates: "", "svcA", "svcB" (sorted)
+	// We expect 3 aggregates: "", "svcA", and "svcB".
 	require.Len(t, actual, 3)
+	byService := make(map[string]arrowtest.Row, len(actual))
+	for _, row := range actual {
+		byService[row["service_name.label.utf8"].(string)] = row
+	}
 
-	// Sorted order: "" < "svcA" < "svcB"
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
@@ -181,7 +239,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
 		"row_count.int64":         int64(1),
 		"uncompressed_size.int64": int64(len(line4)),
-	}, actual[0])
+	}, byService[""])
 
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
@@ -192,7 +250,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"max_timestamp.timestamp": ts2,
 		"row_count.int64":         int64(2),
 		"uncompressed_size.int64": int64(len(line1) + len(line2)),
-	}, actual[1])
+	}, byService["svcA"])
 
 	require.Equal(t, arrowtest.Row{
 		"object_path.utf8":        "test/path/obj1",
@@ -203,7 +261,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"max_timestamp.timestamp": ts3,
 		"row_count.int64":         int64(1),
 		"uncompressed_size.int64": int64(len(line3)),
-	}, actual[2])
+	}, byService["svcB"])
 }
 
 func TestStatsCalculation_MetadataFields(t *testing.T) {
@@ -307,8 +365,14 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	// svcA and svcB
 	require.Len(t, actual, 2)
 
-	// Rows are sorted by label value asc, so "svcA" < "svcB" → svcA is actual[0]
-	svcA := actual[0]
+	var svcA arrowtest.Row
+	for _, row := range actual {
+		if row["service_name.label.utf8"] == "svcA" {
+			svcA = row
+			break
+		}
+	}
+	require.NotNil(t, svcA)
 	require.Equal(t, int64(2), svcA["row_count.int64"])
 	require.Equal(t, time.Unix(10, 0).UTC(), svcA["min_timestamp.timestamp"])
 	require.Equal(t, time.Unix(30, 0).UTC(), svcA["max_timestamp.timestamp"])

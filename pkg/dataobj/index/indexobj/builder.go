@@ -169,6 +169,28 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 func (b *Builder) AppendStatWithLayout(tenantID, objectPath string, sectionIdx int64,
 	sortSchema, physicalSortLayout string,
 	labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	return b.appendStat(
+		tenantID, objectPath, sectionIdx, sortSchema, physicalSortLayout,
+		labels, minTs, maxTs, rows, uncompressedSize, nil,
+	)
+}
+
+// AppendStatWithLayoutAndShard records a per-sort-key aggregate with its
+// source LOG section's physical layout and shard.
+func (b *Builder) AppendStatWithLayoutAndShard(tenantID, objectPath string, sectionIdx int64,
+	sortSchema, physicalSortLayout string,
+	labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64,
+	shard uint32) error {
+	return b.appendStat(
+		tenantID, objectPath, sectionIdx, sortSchema, physicalSortLayout,
+		labels, minTs, maxTs, rows, uncompressedSize, &shard,
+	)
+}
+
+func (b *Builder) appendStat(tenantID, objectPath string, sectionIdx int64,
+	sortSchema, physicalSortLayout string,
+	labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64,
+	shard *uint32) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -177,7 +199,7 @@ func (b *Builder) AppendStatWithLayout(tenantID, objectPath string, sectionIdx i
 	tenantStats := b.getStatsBuilderForTenant(tenantID)
 	preAppendSizeEstimate := tenantStats.EstimatedSize()
 
-	tenantStats.Append(stats.Stat{
+	stat := stats.Stat{
 		ObjectPath:         objectPath,
 		SectionIndex:       sectionIdx,
 		SortSchema:         sortSchema,
@@ -187,7 +209,12 @@ func (b *Builder) AppendStatWithLayout(tenantID, objectPath string, sectionIdx i
 		MaxTimestamp:       maxTs.UnixNano(),
 		RowCount:           int64(rows),
 		UncompressedSize:   uncompressedSize,
-	})
+	}
+	if shard != nil {
+		stat.Shard = *shard
+		stat.HasShard = true
+	}
+	tenantStats.Append(stat)
 
 	postAppendSizeEstimate := tenantStats.EstimatedSize()
 	b.unflushedSizeEstimate += postAppendSizeEstimate - preAppendSizeEstimate

@@ -272,6 +272,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeSectionIndex:       arrow.PrimitiveTypes.Int64,
 	ColumnTypeSortSchema:         arrow.BinaryTypes.String,
 	ColumnTypePhysicalSortLayout: arrow.BinaryTypes.String,
+	ColumnTypeShard:              arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:       arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:       arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeRowCount:           arrow.PrimitiveTypes.Int64,

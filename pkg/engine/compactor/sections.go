@@ -36,15 +36,18 @@ type indexEntry struct {
 }
 
 type sortKey struct {
+	shard     uint32
 	labels    []string
 	timestamp int64
 }
 
 func compareSortKey(a, b sortKey) int {
+	if n := cmp.Compare(a.shard, b.shard); n != 0 {
+		return n
+	}
 	if n := slices.Compare(a.labels, b.labels); n != 0 {
 		return n
 	}
-	// Compare timestamps in descending order
 	return cmp.Compare(b.timestamp, a.timestamp)
 }
 
@@ -351,7 +354,6 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 		path  string
 		index int64
 	}
-
 	var (
 		labelNames []string
 		reader     stats.Reader
@@ -405,27 +407,21 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			}
 
 			for _, stat := range rows[:n] {
-				if stat.PhysicalSortLayout != targetLayoutID {
+				if stat.PhysicalSortLayout != targetLayoutID || !stat.HasShard || stat.Shard >= streams.ShardFactor {
 					compatible = false
 				}
 
-				var labels []string
-				if len(labelNames) > 0 {
-					labels = make([]string, len(labelNames))
-					for i, name := range labelNames {
-						labels[i] = stat.Labels[name]
-					}
+				labels := make([]string, len(labelNames))
+				for i, name := range labelNames {
+					labels[i] = stat.Labels[name]
 				}
-				// Log records sort by timestamp descending after their schema
-				// labels, so the chronological maximum is the ordering minimum
-				// and the chronological minimum is the ordering maximum.
-				minKey := sortKey{labels: labels, timestamp: stat.MaxTimestamp}
-				maxKey := sortKey{labels: labels, timestamp: stat.MinTimestamp}
+				minKey := sortKey{shard: stat.Shard, labels: labels, timestamp: stat.MaxTimestamp}
+				maxKey := sortKey{shard: stat.Shard, labels: labels, timestamp: stat.MinTimestamp}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]
 				if !ok {
-					bySection[id] = &v2.Section[sortKey]{
+					bounded = &v2.Section[sortKey]{
 						Ref: &compactionv2pb.SectionRef{
 							ObjectPath:       stat.ObjectPath,
 							SectionIndex:     stat.SectionIndex,
@@ -438,20 +434,20 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 						Min: minKey,
 						Max: maxKey,
 					}
-					continue
+					bySection[id] = bounded
+				} else {
+					if compareSortKey(minKey, bounded.Min) < 0 {
+						bounded.Min = minKey
+						bounded.Ref.MinKey = minKey.labels
+					}
+					if compareSortKey(maxKey, bounded.Max) > 0 {
+						bounded.Max = maxKey
+						bounded.Ref.MaxKey = maxKey.labels
+					}
+					bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
+					bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
+					bounded.Ref.UncompressedSize += stat.UncompressedSize
 				}
-
-				if compareSortKey(minKey, bounded.Min) < 0 {
-					bounded.Min = minKey
-					bounded.Ref.MinKey = minKey.labels
-				}
-				if compareSortKey(maxKey, bounded.Max) > 0 {
-					bounded.Max = maxKey
-					bounded.Ref.MaxKey = maxKey.labels
-				}
-				bounded.Ref.MinTimestamp = min(bounded.Ref.MinTimestamp, stat.MinTimestamp)
-				bounded.Ref.MaxTimestamp = max(bounded.Ref.MaxTimestamp, stat.MaxTimestamp)
-				bounded.Ref.UncompressedSize += stat.UncompressedSize
 			}
 
 			if errors.Is(readErr, io.EOF) {
@@ -462,6 +458,10 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 
 	refs := make([]v2.Section[sortKey], 0, len(bySection))
 	for _, ref := range bySection {
+		if !compatible {
+			ref.Min = sortKey{}
+			ref.Max = sortKey{}
+		}
 		refs = append(refs, *ref)
 	}
 	slices.SortFunc(refs, func(a, b v2.Section[sortKey]) int {

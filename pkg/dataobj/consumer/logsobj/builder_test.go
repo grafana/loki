@@ -109,17 +109,17 @@ func TestBuilderAppendRecord(t *testing.T) {
 		Timestamp: time.Unix(100, 0).UTC(),
 		Metadata:  labels.FromStrings("trace_id", "abc"),
 		Line:      []byte("hello"),
-	}, time.Unix(100, 0).UTC()))
+	}, time.Unix(100, 0).UTC(), 0))
 	require.NoError(t, builder.AppendRecord("tenant", appAInstance1, logs.Record{
 		StreamID:  42,
 		Timestamp: time.Unix(200, 0).UTC(),
 		Line:      []byte("goodbye"),
-	}, time.Unix(200, 0).UTC()))
+	}, time.Unix(200, 0).UTC(), 0))
 	require.NoError(t, builder.AppendRecord("tenant", appAInstance2, logs.Record{
 		StreamID:  99,
 		Timestamp: time.Unix(150, 0).UTC(),
 		Line:      []byte("other"),
-	}, time.Unix(150, 0).UTC()))
+	}, time.Unix(150, 0).UTC(), 0))
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)

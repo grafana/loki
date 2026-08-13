@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 func TestLoadTenantIndexes_GroupsByTenant(t *testing.T) {
@@ -123,6 +125,10 @@ func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Buck
 			StreamOrder:  logs.StreamOrderStableHashV1,
 			ShardCount:   16,
 		}).ID()
+		if !rows[i].HasShard {
+			rows[i].Shard = uint32(labels.StableHash(labels.FromMap(rows[i].Labels)) % uint64(streams.ShardFactor))
+			rows[i].HasShard = true
+		}
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})
 }
@@ -201,29 +207,28 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, MinTimestamp: 500, MaxTimestamp: 1000, RowCount: 3, UncompressedSize: 300},
+			Labels: map[string]string{"service_name": "auth"}, Shard: 2, HasShard: true,
+			MinTimestamp: 500, MaxTimestamp: 1000, RowCount: 3, UncompressedSize: 300},
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "billing"}, MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
+			Labels: map[string]string{"service_name": "billing"}, Shard: 7, HasShard: true,
+			MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
 	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
 	require.NoError(t, err)
 	require.True(t, compatible)
-	require.Equal(t, []v2.Section[sortKey]{
-		{
-			Ref: &compactionv2pb.SectionRef{
-				ObjectPath:       "logs/log-0",
-				SectionIndex:     0,
-				MinKey:           []string{"auth"},
-				MaxKey:           []string{"billing"},
-				MinTimestamp:     100,
-				MaxTimestamp:     1000,
-				UncompressedSize: 500,
-			},
-			Min: sortKey{labels: []string{"auth"}, timestamp: 1000},
-			Max: sortKey{labels: []string{"billing"}, timestamp: 100},
-		},
-	}, refs)
+	require.Len(t, refs, 1)
+	require.Equal(t, &compactionv2pb.SectionRef{
+		ObjectPath:       "logs/log-0",
+		SectionIndex:     0,
+		MinKey:           []string{"auth"},
+		MaxKey:           []string{"billing"},
+		MinTimestamp:     100,
+		MaxTimestamp:     1000,
+		UncompressedSize: 500,
+	}, refs[0].Ref)
+	require.Equal(t, sortKey{shard: 2, labels: []string{"auth"}, timestamp: 1000}, refs[0].Min)
+	require.Equal(t, sortKey{shard: 7, labels: []string{"billing"}, timestamp: 100}, refs[0].Max)
 }
 
 func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T) {
@@ -239,20 +244,10 @@ func TestLogSectionRefsFor_MultiKeySchemaOrdersValuesAndReturnsFQN(t *testing.T)
 	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name", "label:namespace"})
 	require.NoError(t, err)
 	require.True(t, compatible)
-	require.Equal(t, []v2.Section[sortKey]{
-		{
-			Ref: &compactionv2pb.SectionRef{
-				ObjectPath:       "logs/log-0",
-				MinKey:           []string{"auth", "eu"},
-				MaxKey:           []string{"auth", "eu"},
-				MinTimestamp:     10,
-				MaxTimestamp:     20,
-				UncompressedSize: 100,
-			},
-			Min: sortKey{labels: []string{"auth", "eu"}, timestamp: 20},
-			Max: sortKey{labels: []string{"auth", "eu"}, timestamp: 10},
-		},
-	}, refs)
+	require.Len(t, refs, 1)
+	require.Equal(t, refs[0].Min.shard, refs[0].Max.shard)
+	require.Equal(t, []string{"auth", "eu"}, refs[0].Min.labels)
+	require.Equal(t, []string{"auth", "eu"}, refs[0].Max.labels)
 }
 
 func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
@@ -269,8 +264,9 @@ func TestLogSectionRefsFor_EmptySortSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, compatible)
 	require.Len(t, refs, 1)
-	require.Equal(t, sortKey{timestamp: 20}, refs[0].Min)
-	require.Equal(t, sortKey{timestamp: 10}, refs[0].Max)
+	require.Equal(t, refs[0].Min.shard, refs[0].Max.shard)
+	require.Equal(t, int64(20), refs[0].Min.timestamp)
+	require.Equal(t, int64(10), refs[0].Max.timestamp)
 	require.Equal(t, "logs/log-0", refs[0].Ref.ObjectPath)
 	require.Equal(t, int64(100), refs[0].Ref.UncompressedSize)
 }
@@ -291,6 +287,70 @@ func TestLogSectionRefsFor_MixedSchemasRequireMigration(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, compatible)
 	require.Len(t, refs, 2)
+	for _, ref := range refs {
+		require.Equal(t, sortKey{}, ref.Min)
+		require.Equal(t, sortKey{}, ref.Max)
+	}
+}
+
+func TestLogSectionRefsFor_ShardBoundsAvoidFalseOverlap(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	path := "indexes/aa/physical-bounds"
+
+	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
+		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "api"}, Shard: 2, HasShard: true, MinTimestamp: 10, MaxTimestamp: 20},
+		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
+			Labels: map[string]string{"service_name": "api"}, Shard: 7, HasShard: true, MinTimestamp: 10, MaxTimestamp: 20},
+	})
+
+	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
+	require.NoError(t, err)
+	require.True(t, compatible)
+	require.Len(t, refs, 2)
+	require.True(t, v2.AreObjectsConverged(refs, compareSortKey))
+}
+
+func TestLogSectionRefsFor_MissingOrInvalidShardRequiresMigration(t *testing.T) {
+	targetLayout := (logs.SortLayout{
+		SchemaLabels: []string{"label:service_name"},
+		StreamOrder:  logs.StreamOrderStableHashV1,
+		ShardCount:   16,
+	}).ID()
+
+	for _, test := range []struct {
+		name string
+		stat stats.Stat
+	}{
+		{
+			name: "missing",
+			stat: stats.Stat{ObjectPath: "logs/log-0", SortSchema: "label:service_name",
+				PhysicalSortLayout: targetLayout, Labels: map[string]string{"service_name": "api"}},
+		},
+		{
+			name: "out_of_range",
+			stat: stats.Stat{ObjectPath: "logs/log-0", SortSchema: "label:service_name",
+				PhysicalSortLayout: targetLayout, Labels: map[string]string{"service_name": "api"},
+				Shard: streams.ShardFactor, HasShard: true},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			bucket := objstore.NewInMemBucket()
+			path := "indexes/aa/" + test.name
+			buildIndex(ctx, t, bucket, testIndexObject{
+				tenant: "acme", path: path, sectionSize: 1 << 21, stats: []stats.Stat{test.stat},
+			})
+
+			refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
+			require.NoError(t, err)
+			require.False(t, compatible)
+			require.Len(t, refs, 1)
+			require.Equal(t, sortKey{}, refs[0].Min)
+			require.Equal(t, sortKey{}, refs[0].Max)
+		})
+	}
 }
 
 // TestLoadTenantIndexes_PopulatesSizeColumns verifies that loadTenantIndexes
