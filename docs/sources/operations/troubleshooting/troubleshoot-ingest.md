@@ -79,6 +79,42 @@ The tenant has exceeded their configured ingestion rate limit. This is a global 
 - HTTP status: 429 Too Many Requests
 - Configurable per tenant: Yes
 
+### Error: `per_stream_rate_limit`
+
+**Error message:**
+
+`Per stream rate limit exceeded (limit: <limit>/sec) while attempting to ingest for stream '<stream_labels>' totaling <bytes>, consider splitting a stream via additional labels or contact your Loki administrator to see if the limit can be increased`
+
+**Cause:**
+
+A single stream has exceeded its own rate limit. Each stream has a rate limit applied to it to prevent individual streams from overwhelming the set of ingesters it is distributed to. This limit is enforced by the ingester, not the distributor.
+
+**Default configuration:**
+
+- `per_stream_rate_limit`: 3 MB/sec
+- `per_stream_rate_limit_burst`: 15 MB
+
+**Resolution:**
+
+* **Split the stream** into several smaller streams by adding more distinguishing labels, so the write volume is spread across more streams.
+
+* **Reduce the rate of writes to the stream**, for example with an Alloy `stage.limit` block.
+
+* **Increase the per-stream limits** (we typically recommend no higher than 5MB for `per_stream_rate_limit` and 20MB for `per_stream_rate_limit_burst`):
+
+   ```yaml
+   limits_config:
+     per_stream_rate_limit: 5MB
+     per_stream_rate_limit_burst: 20MB
+   ```
+
+**Properties:**
+
+- Enforced by: Ingester
+- Retryable: Yes
+- HTTP status: 429 Too Many Requests
+- Configurable per tenant: Yes
+
 ### Error: `stream_limit`
 
 **Error message:**
@@ -310,6 +346,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 
 **Default configuration:**
 
+- `unordered_writes`: true (since Loki 2.4). This flag, and `-ingester.unordered-writes`, are deprecated and will be removed in a future major release, after which out-of-order writes will be accepted unconditionally.
 - `max_chunk_age`: 2 hours
 - Acceptable timestamp window: 1 hour behind the newest entry (half of `max_chunk_age`)
 
@@ -334,7 +371,7 @@ Logs are being ingested with timestamps that violate Loki's ordering constraints
 - Enforced by: Ingester
 - Retryable: No
 - HTTP status: 400 Bad Request
-- Configurable per tenant: No (for `max_chunk_age`)
+- Configurable per tenant: Yes, for `unordered_writes`. No, for `max_chunk_age` (global only).
 
 ### Error: `greater_than_max_sample_age`
 
