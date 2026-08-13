@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -237,7 +237,7 @@ func (c *Compactor) init(
 		if c.cfg.RetentionEnabled {
 			var (
 				raw              client.ObjectClient
-				encoder          chunkclient.KeyEncoder
+				encoder          chunkstore.KeyEncoder
 				name             = fmt.Sprintf("%s_%s", period.ObjectType, period.From.String())
 				retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention", name, MarkersFolder)
 				r                = prometheus.WrapRegistererWith(prometheus.Labels{"from": name}, r)
@@ -274,11 +274,11 @@ func (c *Compactor) init(
 			// object client and to the thanos object store adapter backed by a
 			// filesystem bucket.
 			if _, ok := raw.(*local.FSObjectClient); ok {
-				encoder = chunkclient.FSEncoder
+				encoder = chunkstore.FSEncoder
 			} else if adapter, ok := raw.(*bucket.ObjectClientAdapter); ok && adapter.IsBackendFilesystem() {
-				encoder = chunkclient.FSEncoder
+				encoder = chunkstore.FSEncoder
 			}
-			chunkClient := chunkclient.NewClient(objectClient, encoder, schemaConfig)
+			chunkClient := chunkstore.NewClient(objectClient, encoder, schemaConfig)
 
 			if c.cfg.DeletionMarkerObjectStorePrefix != "" {
 				markerStorageClient = client.NewPrefixedObjectClient(raw, c.cfg.DeletionMarkerObjectStorePrefix)

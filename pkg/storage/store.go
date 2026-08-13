@@ -25,7 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -102,7 +102,7 @@ type LokiStore struct {
 	schemaCfg config.SchemaConfig
 
 	chunkMetrics       *ChunkMetrics
-	chunkClientMetrics chunkclient.ChunkClientMetrics
+	chunkClientMetrics chunkstore.ChunkClientMetrics
 	clientMetrics      ClientMetrics
 	registerer         prometheus.Registerer
 
@@ -173,7 +173,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 		congestionControllerFactory: congestion.NewController,
 
-		chunkClientMetrics: chunkclient.NewChunkClientMetrics(registerer),
+		chunkClientMetrics: chunkstore.NewChunkClientMetrics(registerer),
 		clientMetrics:      clientMetrics,
 		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
 		registerer:         registerer,
@@ -258,7 +258,7 @@ func (s *LokiStore) init() error {
 	return nil
 }
 
-func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (chunkclient.Client, error) {
+func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (chunkstore.Client, error) {
 	objectStoreType := p.ObjectType
 	if objectStoreType == "" {
 		objectStoreType = p.IndexType
@@ -272,7 +272,7 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (chunkclient.Cli
 		return nil, errors.Wrap(err, "error creating object client")
 	}
 
-	chunks = chunkclient.NewMetricsChunkClient(chunks, s.chunkClientMetrics)
+	chunks = chunkstore.NewMetricsChunkClient(chunks, s.chunkClientMetrics)
 	return chunks, nil
 }
 
@@ -302,7 +302,7 @@ func shouldUseTeeIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient chunkclient.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient chunkstore.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	// currently we only support one index type "tsdb" so all the code below here applies to tsdb only. this method will need to be improved should we ever support another type
 	if !slices.Contains(types.SupportedIndexTypes, p.IndexType) {
 		return nil, nil, nil, fmt.Errorf("unsupported index type %s for schema period starting at %s", p.IndexType, p.From.String())

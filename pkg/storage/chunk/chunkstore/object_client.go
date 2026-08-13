@@ -1,4 +1,4 @@
-package chunkclient
+package chunkstore
 
 import (
 	"bytes"

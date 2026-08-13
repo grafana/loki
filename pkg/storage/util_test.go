@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -174,8 +174,8 @@ type mockChunkStore struct {
 // mockChunkStore cannot implement both chunk.Store and chunk.Client,
 // since there is a conflict in signature for DeleteChunk method.
 var (
-	_ stores.Store       = &mockChunkStore{}
-	_ chunkclient.Client = &mockChunkStoreClient{}
+	_ stores.Store      = &mockChunkStore{}
+	_ chunkstore.Client = &mockChunkStoreClient{}
 )
 
 func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams []*logproto.Stream) *mockChunkStore {

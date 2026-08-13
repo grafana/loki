@@ -20,13 +20,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
 type mockChunkClient struct {
-	chunkclient.Client
+	chunkstore.Client
 	chunks map[string]storage_chunk.Chunk
 	mtx    sync.RWMutex
 }
@@ -269,7 +269,7 @@ func TestJobRunner_Run(t *testing.T) {
 			}
 
 			// Create job runner
-			runner := NewJobRunner(1, func(_ string) (chunkclient.Client, error) {
+			runner := NewJobRunner(1, func(_ string) (chunkstore.Client, error) {
 				return mockClient, nil
 			}, nil)
 
@@ -411,7 +411,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	}
 
 	// Create job runner with chunk processing concurrency of 2
-	runner := NewJobRunner(2, func(_ string) (chunkclient.Client, error) {
+	runner := NewJobRunner(2, func(_ string) (chunkstore.Client, error) {
 		return mockClient, nil
 	}, nil)
 
