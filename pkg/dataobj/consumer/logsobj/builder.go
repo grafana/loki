@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -262,8 +263,8 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store, metrics *BuilderM
 	}, nil
 }
 
-// initBuilder initializes the builders for the tenant.
-func (b *Builder) initBuilder(tenant string) {
+// buildersFor initializes the builders for the tenant.
+func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 	if _, ok := b.streams[tenant]; !ok {
 		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		sb.SetTenant(tenant)
@@ -309,6 +310,8 @@ func (b *Builder) initBuilder(tenant string) {
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
 	}
+
+	return b.streams[tenant], b.logs[tenant]
 }
 
 func (b *Builder) GetEarliestRecordTime() time.Time {
@@ -323,23 +326,7 @@ func (b *Builder) IsFull() bool {
 	return b.currentSizeEstimate > int(b.cfg.TargetObjectSize)
 }
 
-// Append buffers a stream to be written to a data object.
-// Callers are expected to poll [Builder.IsFull] before appending and
-// to flush the builder once it reports full. Appending entries to a full
-// builder is permitted.
-func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
-	ls, err := b.parseLabels(stream.Labels)
-	if err != nil {
-		return err
-	}
-
-	b.initBuilder(tenant)
-	sb, lb := b.streams[tenant], b.logs[tenant]
-
-	b.metrics.appends.Inc()
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
-
+func (b *Builder) getSortKey(tenant string, ls labels.Labels) (string, error) {
 	var sortKey string
 	if b.cfg.DataobjUseSortSchema && b.overrides != nil {
 		schemaLabels := b.overrides.SortSchemaLabels(tenant)
@@ -347,26 +334,82 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 			var err error
 			sortKey, err = ComputeSortKey(ls, schemaLabels)
 			if err != nil {
-				return fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+				return "", fmt.Errorf("compute sort key for tenant %s: %w", tenant, err)
+			}
+		}
+	}
+	return sortKey, nil
+}
+
+// Append buffers a stream to be written to a data object.
+// Callers are expected to poll [Builder.IsFull] before appending and
+// to flush the builder once it reports full. Appending entries to a full
+// builder is permitted.
+func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Time) error {
+	b.metrics.appends.Inc()
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	ls, err := b.parseLabels(stream.Labels)
+	if err != nil {
+		return err
+	}
+
+	recordIter := func(yield func(logs.Record, int64) bool) {
+		for _, entry := range stream.Entries {
+			sz := int64(len(entry.Line))
+			for _, md := range entry.StructuredMetadata {
+				sz += int64(len(md.Value))
+			}
+			ok := yield(logs.Record{
+				Timestamp: entry.Timestamp,
+				Metadata:  convertMetadata(entry.StructuredMetadata),
+				Line:      []byte(entry.Line),
+			}, sz)
+			if !ok {
+				return
 			}
 		}
 	}
 
-	for _, entry := range stream.Entries {
-		sz := int64(len(entry.Line))
-		for _, md := range entry.StructuredMetadata {
-			sz += int64(len(md.Value))
-		}
+	return b.appendAll(tenant, ls, recTime, recordIter)
+}
 
-		streamID := sb.Record(ls, entry.Timestamp, sz)
+// AppendRecord buffers a pre-existing log record to be written to a data object.
+// Callers are expected to poll [Builder.IsFull] before appending and
+// to flush the builder once it reports full. Appending entries to a full
+// builder is permitted.
+// The SortKey & StreamID fields of the given record are ignored and re-calculated.
+func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
+	b.metrics.appends.Inc()
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
-		lb.Append(logs.Record{
-			StreamID:  streamID,
-			Timestamp: entry.Timestamp,
-			Metadata:  convertMetadata(entry.StructuredMetadata),
-			Line:      []byte(entry.Line),
-			SortKey:   sortKey,
-		})
+	sz := int64(len(record.Line))
+	record.Metadata.Range(func(lb labels.Label) {
+		sz += int64(len(lb.Value))
+	})
+
+	singleRecordIter := func(yield func(entry logs.Record, size int64) bool) {
+		_ = yield(record, sz)
+	}
+
+	return b.appendAll(tenant, ls, ingestionTime, singleRecordIter)
+}
+
+func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Time, entriesIter iter.Seq2[logs.Record, int64]) error {
+	streamSortKey, err := b.getSortKey(tenant, ls)
+	if err != nil {
+		return err
+	}
+
+	sb, lb := b.buildersFor(tenant)
+
+	for entry, size := range entriesIter {
+		entry.SortKey = streamSortKey
+		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
+
+		lb.Append(entry)
 
 		// If our logs section has gotten big enough, we want to flush it to the
 		// encoder and start a new section.
@@ -379,8 +422,8 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 		}
 	}
 
-	if b.earliestRecordTime.IsZero() || recTime.Before(b.earliestRecordTime) {
-		b.earliestRecordTime = recTime
+	if b.earliestRecordTime.IsZero() || recordTime.Before(b.earliestRecordTime) {
+		b.earliestRecordTime = recordTime
 	}
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty

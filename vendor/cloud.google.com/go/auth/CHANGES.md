@@ -1,5 +1,12 @@
 # Changes
 
+## [0.23.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.22.0...auth/v0.23.0) (2026-08-07)
+
+
+### Features
+
+* X509 workload identity ecp support ([#20138](https://github.com/googleapis/google-cloud-go/issues/20138)) ([5fa474a](https://github.com/googleapis/google-cloud-go/commit/5fa474a10a3863a1bb34ecb27540e8a574d7a736))
+
 ## [0.22.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.21.0...auth/v0.22.0) (2026-07-13)
 
 
