@@ -34,8 +34,7 @@ type stream struct {
 	instanceID         string
 
 	// Fields retained so Drains can be created lazily on first observation
-	// of each detected_level. Most streams only see 1–3 levels; eagerly
-	// allocating all len(constants.LogLevels) trees was pure idle RSS.
+	// of each detected_level. Most streams only see 1–3 levels
 	drainCfg      *drain.Config
 	drainLimits   drain.Limits
 	guessedFormat string
