@@ -65,7 +65,7 @@ require (
 	github.com/opentracing-contrib/go-grpc v0.1.4 // indirect
 	github.com/opentracing-contrib/go-stdlib v1.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b
-	github.com/oschwald/geoip2-golang/v2 v2.2.0
+	github.com/oschwald/geoip2-golang/v2 v2.3.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.28
 	github.com/pkg/errors v0.9.1
@@ -120,14 +120,14 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/ulid/v2 v2.1.2
-	github.com/parquet-go/parquet-go v0.30.1
+	github.com/parquet-go/parquet-go v0.31.0
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/prometheus/otlptranslator v1.0.0
 	github.com/prometheus/sigv4 v0.4.1
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.19.1
 	github.com/shirou/gopsutil/v4 v4.26.7
-	github.com/thanos-io/objstore v0.0.0-20260615134008-fb6fd3a5170a
+	github.com/thanos-io/objstore v0.0.0-20260810080323-9ad2de9be10b
 	github.com/tjhop/slog-gokit v0.2.0
 	github.com/twmb/franz-go v1.21.3
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
@@ -242,7 +242,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.158.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.158.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.158.0 // indirect
-	github.com/oschwald/maxminddb-golang/v2 v2.4.1 // indirect
+	github.com/oschwald/maxminddb-golang/v2 v2.5.0 // indirect
 	github.com/parquet-go/bitpack v1.0.0 // indirect
 	github.com/parquet-go/jsonlite v1.5.2 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect

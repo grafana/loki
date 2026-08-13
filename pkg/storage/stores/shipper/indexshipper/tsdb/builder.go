@@ -134,7 +134,7 @@ func (b *Builder) Build(
 		return id, err
 	}
 
-	reader, err := index.NewFileReader(tmpPath)
+	reader, err := index.NewMmapFileReader(tmpPath)
 	if err != nil {
 		return id, err
 	}
@@ -245,7 +245,7 @@ func (b *Builder) BuildInMemory(
 		return nil, nil, err
 	}
 
-	reader, err := index.NewReader(index.RealByteSlice(data))
+	reader, err := index.NewByteSliceReader(index.RealByteSlice(data))
 	if err != nil {
 		return id, nil, err
 	}

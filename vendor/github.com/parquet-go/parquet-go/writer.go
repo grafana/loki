@@ -206,6 +206,19 @@ func makeWriteFunc[T any](t reflect.Type, writeRows writeRowsFunc) writeFunc[T] 
 				// These fields are usually lazily initialized when writing rows,
 				// we need them to exist now tho.
 				c.columnBuffer = c.newColumnBuffer()
+				// Record the original buffer so the dictionary-encoded buffer is
+				// restored when the row group is flushed after a fallback to PLAIN
+				// switched the column to a different buffer.
+				c.originalColumnBuffer = c.columnBuffer
+				w.columns[i] = c.columnBuffer
+			}
+		} else {
+			// The column buffers may have been replaced since the previous call:
+			// when a column's dictionary outgrows DictionaryMaxBytes its buffer is
+			// swapped for a PLAIN-encoded one (fallbackDictionaryToPlain), and
+			// flushing a row group restores the original buffer. Re-resolve the
+			// cached references so rows are not written into abandoned buffers.
+			for i, c := range w.base.writer.currentRowGroup.columns {
 				w.columns[i] = c.columnBuffer
 			}
 		}
@@ -723,6 +736,17 @@ func newConcurrentRowGroupWriter(w *writer, config *WriterConfig) *ConcurrentRow
 		}
 
 		if isDictionaryEncoding(encoding) {
+			// The deprecated PLAIN_DICTIONARY encoding is normalized to
+			// RLE_DICTIONARY: the spec defines a single dictionary data
+			// page layout for both enum values — Encodings.md: "Data page
+			// format: the bit width used to encode the entry ids stored
+			// as 1 byte (max bit width = 32), followed by the values
+			// encoded using the RLE/Bit-Packing described above" — so the
+			// plain int32 index layout of plain.DictionaryEncoding
+			// produces pages no reader understands. Schemas derived from
+			// files written by legacy writers report PLAIN_DICTIONARY as
+			// the column encoding, which is how the configuration arises.
+			encoding = &RLEDictionary
 			dictBuffer := columnType.NewValues(make([]byte, 0, defaultDictBufferSize), nil)
 			dictionary = columnType.NewDictionary(columnIndex, 0, dictBuffer)
 			columnType = dictionary.Type()

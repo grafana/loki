@@ -46,6 +46,27 @@ const (
 	UploadInterval = 1 * time.Minute
 )
 
+// IndexReaderMode selects the implementation used to read TSDB index files from disk.
+type IndexReaderMode string
+
+const (
+	// IndexReaderModeMmap memory-maps the index file.
+	// This is the historical default.
+	// Mmap page faults are invisible to the Go runtime, which causes a
+	// thread to be locked for the duration of the page fault.
+	IndexReaderModeMmap IndexReaderMode = "mmap"
+	// IndexReaderModeStream serves reads via schedulable file I/O so the
+	// runtime can observe blocking.
+	// It is not yet fully implemented and currently delegates calls to a
+	// mmap reader under the hood.
+	// Over time its implementation will be fleshed out until it no longer
+	// depends on the mmap implementation.
+	IndexReaderModeStream IndexReaderMode = "stream"
+)
+
+// DefaultIndexReaderMode is the mode used when none is configured.
+const DefaultIndexReaderMode = IndexReaderModeMmap
+
 type Index interface {
 	Close() error
 }
@@ -75,6 +96,7 @@ type Config struct {
 	ResyncInterval           time.Duration             `yaml:"resync_interval"`
 	QueryReadyNumDays        int                       `yaml:"query_ready_num_days"`
 	DownloadTimeout          time.Duration             `yaml:"download_timeout"`
+	IndexReaderMode          IndexReaderMode           `yaml:"index_reader_mode" category:"experimental"`
 	IndexGatewayClientConfig indexgateway.ClientConfig `yaml:"index_gateway_client"`
 
 	// Temporary experimental feature
@@ -101,12 +123,20 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
 	f.DurationVar(&cfg.DownloadTimeout, prefix+"shipper.download-timeout", time.Minute, "Timeout for downloading a table's initial set of index files from object storage when serving a query. "+
 		"Raise this for tenants with large indexes when slow object-storage responses cause downloads to hit the deadline; lower it to fail queries faster when storage is degraded.")
+	f.StringVar((*string)(&cfg.IndexReaderMode), prefix+"shipper.index-reader-mode", string(DefaultIndexReaderMode),
+		"Experimental. Implementation used to read TSDB index files off disk. Supported values: mmap (memory-map the file, the historical default) or stream (experimental, not yet fully implemented).")
 }
 
 func (cfg *Config) Validate() error {
 	// set the default value for mode
 	if cfg.Mode == "" {
 		cfg.Mode = ModeReadWrite
+	}
+
+	switch cfg.IndexReaderMode {
+	case IndexReaderModeMmap, IndexReaderModeStream:
+	default:
+		return fmt.Errorf("invalid shipper.index-reader-mode %q, must be one of mmap|stream", cfg.IndexReaderMode)
 	}
 
 	if cfg.DownloadTimeout <= 0 {

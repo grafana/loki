@@ -1030,9 +1030,10 @@ func (c *FileColumnChunk) readBloomFilter(reader io.ReaderAt) (*FileBloomFilter,
 		if err := decoder.Decode(&header); err != nil {
 			return nil, fmt.Errorf("decoding bloom filter header: %w", err)
 		}
-		offset, _ = section.Seek(0, io.SeekCurrent)
+		sectionPos, _ := section.Seek(0, io.SeekCurrent)
+		dataOffset := offset + sectionPos - int64(rbuf.Buffered())
 		var err error
-		filter, err = newBloomFilter(reader, offset, &header)
+		filter, err = newBloomFilter(reader, dataOffset, &header)
 		if err != nil {
 			return nil, fmt.Errorf("reading bloom filter: %w", err)
 		}
@@ -1193,6 +1194,9 @@ func (f *FilePages) ReadPage() (Page, error) {
 			if err = f.decoder.Decode(header); err != nil {
 				return nil, err
 			}
+			if err = validatePageHeader(header); err != nil {
+				return nil, err
+			}
 
 			// if this is a dictionary page and we've already read and decoded the dictionary we can skip past it.
 			// call f.rbuf.Discard to skip the page data and realign f.rbuf with the next page header
@@ -1305,6 +1309,9 @@ func (f *FilePages) readDictionary() error {
 		if err := thrift.NewDecoder(pr).Decode(header); err != nil {
 			return fmt.Errorf("parquet decryption: decoding dict page header: %w", err)
 		}
+		if err := validatePageHeader(header); err != nil {
+			return err
+		}
 		bodyAAD := makeAAD(d.aadPrefix, d.fileUnique, dictPageBodyModule, d.rowGroupOrdinal, d.columnOrdinal, 0)
 		bodyPlain, err := readDecryptedEnvelopeFrom(rbuf, d.key, bodyAAD)
 		if err != nil {
@@ -1316,6 +1323,9 @@ func (f *FilePages) readDictionary() error {
 	} else {
 		decoder := thrift.NewDecoder(f.protocol.NewReader(rbuf))
 		if err := decoder.Decode(header); err != nil {
+			return err
+		}
+		if err := validatePageHeader(header); err != nil {
 			return err
 		}
 		page = buffers.get(int(header.CompressedPageSize))
@@ -1366,6 +1376,42 @@ func (f *FilePages) readDataPageV2(header *format.PageHeader, page *buffer[byte]
 		}
 	}
 	return f.chunk.column.decodeDataPageV2(DataPageHeaderV2{&header.DataPageHeaderV2.V}, page, f.dictionary, header.UncompressedPageSize)
+}
+
+// validatePageHeader rejects page headers whose size or count fields decoded to
+// negative values. Those values end up being trusted by the code later on
+// which results in panics if they're off
+func validatePageHeader(header *format.PageHeader) error {
+	reject := func(field string, value int32) error {
+		return fmt.Errorf("invalid page header: %s=%d: %w", field, value, ErrCorrupted)
+	}
+	if header.CompressedPageSize < 0 {
+		return reject("compressed_page_size", header.CompressedPageSize)
+	}
+	if header.UncompressedPageSize < 0 {
+		return reject("uncompressed_page_size", header.UncompressedPageSize)
+	}
+	if h := header.DataPageHeader; h.Valid && h.V.NumValues < 0 {
+		return reject("data_page_header.num_values", h.V.NumValues)
+	}
+	if h := header.DictionaryPageHeader; h.Valid && h.V.NumValues < 0 {
+		return reject("dictionary_page_header.num_values", h.V.NumValues)
+	}
+	if h := header.DataPageHeaderV2; h.Valid {
+		switch {
+		case h.V.NumValues < 0:
+			return reject("data_page_header_v2.num_values", h.V.NumValues)
+		case h.V.NumNulls < 0:
+			return reject("data_page_header_v2.num_nulls", h.V.NumNulls)
+		case h.V.NumRows < 0:
+			return reject("data_page_header_v2.num_rows", h.V.NumRows)
+		case h.V.RepetitionLevelsByteLength < 0:
+			return reject("data_page_header_v2.repetition_levels_byte_length", h.V.RepetitionLevelsByteLength)
+		case h.V.DefinitionLevelsByteLength < 0:
+			return reject("data_page_header_v2.definition_levels_byte_length", h.V.DefinitionLevelsByteLength)
+		}
+	}
+	return nil
 }
 
 func (f *FilePages) readPage(header *format.PageHeader, reader *bufio.Reader) (*buffer[byte], error) {
@@ -1447,6 +1493,9 @@ func (f *FilePages) readEncryptedPage() (*format.PageHeader, *buffer[byte], erro
 	pr := f.protocol.NewReaderFromBytes(hdrPlain)
 	if err := thrift.NewDecoder(pr).Decode(header); err != nil {
 		return nil, nil, fmt.Errorf("parquet decryption: decoding page header: %w", err)
+	}
+	if err := validatePageHeader(header); err != nil {
+		return nil, nil, err
 	}
 
 	bodyAAD := makeAAD(d.aadPrefix, d.fileUnique, bodyModuleType, d.rowGroupOrdinal, d.columnOrdinal, pageOrd)
