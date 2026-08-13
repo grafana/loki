@@ -115,9 +115,11 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 	for columnIndex, columnValue := range row.Values {
 		column := columns[columnIndex]
 
-		if columnValue.IsNil() || columnValue.IsZero() {
-			switch column.Type {
-			case ColumnTypeMessage:
+		// A truly absent cell decodes to a nil value. The INT64 columns (stream ID, timestamp) must
+		// still decode a physical zero — a timestamp of exactly the Unix epoch is a valid value, not an
+		// absent one — so skip only on nil here and let the binary cases handle their own empty values.
+		if columnValue.IsNil() {
+			if column.Type == ColumnTypeMessage {
 				// Clear the message field so callers that reuse the Record
 				// don't see stale line data from a previous row.
 				record.Line = record.Line[:0]
@@ -139,6 +141,10 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			record.Timestamp = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMetadata:
+			if columnValue.IsZero() {
+				// An empty metadata value is absent for this key.
+				continue
+			}
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
@@ -150,6 +156,13 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			}
 
 		case ColumnTypeMessage:
+			if columnValue.IsZero() {
+				// If the line is empty, we need to clear the message field so
+				// callers that reuse the Record don't see stale line data from
+				// a previous row.
+				record.Line = record.Line[:0]
+				continue
+			}
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}

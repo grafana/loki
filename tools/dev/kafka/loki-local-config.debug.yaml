@@ -35,6 +35,9 @@ kafka_config:
 
 querier:
   query_partition_ingesters: true
+  engine:
+    # Route eligible metric queries through the stream-first execution path in this dev env.
+    stream_ordered_execution_enabled: true
 
 ingest_limits:
   enabled: true

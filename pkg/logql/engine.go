@@ -159,6 +159,15 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
+
+	// StreamOrderedExecutionEnabled opts eligible metric queries into the stream-ordered execution
+	// path. Off by default; the default per-timestamp path is used otherwise.
+	StreamOrderedExecutionEnabled bool `yaml:"stream_ordered_execution_enabled"`
+
+	// DataObjectsReaderEnabled reads data objects for eligible stream-ordered metric queries, over the
+	// data-object-available window, instead of the chunk store. Off by default. Has no effect unless
+	// StreamOrderedExecutionEnabled is also on.
+	DataObjectsReaderEnabled bool `yaml:"dataobjects_reader_enabled" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -168,6 +177,8 @@ func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
+	f.BoolVar(&opts.StreamOrderedExecutionEnabled, prefix+"stream-ordered-execution-enabled", false, "When enabled, eligible metric queries process logs on a per-stream order (instead of a per-timestamp one).")
+	f.BoolVar(&opts.DataObjectsReaderEnabled, prefix+"dataobjects-reader-enabled", false, "Experimental: When enabled, eligible stream-ordered metric queries read data objects (over the data-object-available window) instead of the chunk store. Requires stream-ordered-execution-enabled to take effect.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -195,7 +206,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *QueryEn
 	}
 	return &QueryEngine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize, opts.StreamOrderedExecutionEnabled),
 		limits:           l,
 		opts:             opts,
 	}

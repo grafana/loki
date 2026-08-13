@@ -9,6 +9,8 @@ import (
 	io_prometheus_client "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var (
@@ -28,6 +30,17 @@ func extractMetricFamily(name, metrics string) (*io_prometheus_client.MetricFami
 		return nil, ErrNoMetricFound
 	}
 	return mf, nil
+}
+
+// sumCounter returns the sum of every label series of the named counter metric family, using
+// util.MetricFamilyMap.SumCounters. It returns 0 for a metric that is not present.
+func sumCounter(metricName, metrics string) (float64, error) {
+	parser := expfmt.NewTextParser(model.UTF8Validation)
+	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	if err != nil {
+		return 0, err
+	}
+	return util.MetricFamilyMap(mfs).SumCounters(metricName), nil
 }
 
 func extractMetric(metricName, metrics string) (float64, map[string]string, error) {

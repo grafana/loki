@@ -161,6 +161,44 @@ func (s Int64Set) Size() int {
 	return len(s.values)
 }
 
+// memoizedInt64Set wraps an [Int64Set] and caches the result of the most recent
+// Contains call. When consecutive lookups repeat a value, as in a stream_id
+// column that a logs section sorts into long runs, the cached result is reused
+// instead of a map lookup.
+//
+// Contains mutates the cache without synchronization, so a memoizedInt64Set is
+// NOT safe for concurrent use. Build one per reader.
+type memoizedInt64Set struct {
+	set        Int64Set
+	haveLast   bool
+	lastKey    int64
+	lastResult bool
+}
+
+// NewMemoizedInt64ValueSet returns a [ValueSet], backed by an [Int64Set], that
+// reuses the previous Contains result for a repeated value. Use it when lookups
+// come in runs and the set is not shared across goroutines; otherwise use
+// [NewInt64ValueSet].
+func NewMemoizedInt64ValueSet(values []Value) ValueSet {
+	return &memoizedInt64Set{set: NewInt64ValueSet(values)}
+}
+
+func (s *memoizedInt64Set) Contains(value Value) bool {
+	key := value.Int64()
+	if s.haveLast && key == s.lastKey {
+		return s.lastResult
+	}
+	_, ok := s.set.values[key]
+	s.haveLast = true
+	s.lastKey = key
+	s.lastResult = ok
+	return ok
+}
+
+func (s *memoizedInt64Set) Iter() iter.Seq[Value] { return s.set.Iter() }
+
+func (s *memoizedInt64Set) Size() int { return s.set.Size() }
+
 type Uint64ValueSet struct {
 	values map[uint64]Value
 }

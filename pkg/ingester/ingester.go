@@ -1182,6 +1182,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
 			Plan:     req.Plan,
+			Order:    req.Order,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
@@ -1189,12 +1190,16 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			return err
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		if req.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+			it = iter.NewStreamFirstMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		} else {
+			it = iter.NewTimestampFirstMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		}
 	}
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendSampleBatches(ctx, it, queryServer)
+	return sendSampleBatches(ctx, it, queryServer, req.Order == logproto.SAMPLE_ORDER_BY_STREAM)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is `tsdb`.

@@ -317,6 +317,8 @@ func (s *Store) ChunksDownloadDuration() time.Duration {
 func (s *Summary) Merge(m Summary) {
 	s.Splits += m.Splits
 	s.Shards += m.Shards
+	s.StreamFirstSubqueries += m.StreamFirstSubqueries
+	s.TimestampFirstSubqueries += m.TimestampFirstSubqueries
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
@@ -624,6 +626,18 @@ func (c *Context) AddSplitQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
+// IncStreamFirstSubqueries and IncTimestampFirstSubqueries count range-aggregation sub-evaluations
+// by their sample execution order. The caller decides the order (this low-level package cannot
+// import logproto: logproto depends on stats). The counters are summed on merge, so a fully-merged
+// query's result reflects the mix of orders across all its shards and splits.
+func (c *Context) IncStreamFirstSubqueries() {
+	atomic.AddInt64(&c.result.Summary.StreamFirstSubqueries, 1)
+}
+
+func (c *Context) IncTimestampFirstSubqueries() {
+	atomic.AddInt64(&c.result.Summary.TimestampFirstSubqueries, 1)
+}
+
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PrePredicateDecompressedRows, i)
 }
@@ -774,6 +788,8 @@ func (s Summary) kvList() []any {
 		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
+		"Summary.StreamFirstSubqueries", s.StreamFirstSubqueries,
+		"Summary.TimestampFirstSubqueries", s.TimestampFirstSubqueries,
 	}
 }
 

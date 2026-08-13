@@ -34,13 +34,16 @@ func RunScript(t *testing.T, name, script string) {
 	streams := newStreamsParser()
 	streamsChanged := true
 
-	// Each stack owns everything it needs to run a query, including its store.
+	// Each stack owns everything it needs to run a query, including its store. The two v1 stream-first
+	// stacks (chunks and data objects) exercise the per-stream read path this PR adds.
 	directStack := newDirectStack(t)
+	chunksStreamFirstStack := newChunksStreamFirstStack(t)
+	dataObjectsStack := newDataObjectsStack(t)
 	frontendWithoutShardingStack, err := newQueryFrontendStack(t, false)
 	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=false)", name)
 	frontendWithSharding, err := newQueryFrontendStack(t, true)
 	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true)", name)
-	stacks := []executionStack{directStack, frontendWithoutShardingStack, frontendWithSharding}
+	stacks := []executionStack{directStack, chunksStreamFirstStack, dataObjectsStack, frontendWithoutShardingStack, frontendWithSharding}
 
 	// refreshStreams gives every stack the current data before an eval.
 	refreshStreams := func() {

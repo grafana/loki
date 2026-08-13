@@ -110,6 +110,10 @@ message Summary {
   // This is useful to identify haystack-sized queries when index filtering makes
   // totalBytesProcessed appear much smaller.
   int64 estimatedQueryBytes = 13 [(gogoproto.jsontag) = "estimatedQueryBytes,omitempty"];
+  // Number of range-aggregation sub-evaluations executed in stream-first (per-stream) sample order.
+  int64 streamFirstSubqueries = 14 [(gogoproto.jsontag) = "streamFirstSubqueries,omitempty"];
+  // Number of range-aggregation sub-evaluations executed in timestamp-first sample order.
+  int64 timestampFirstSubqueries = 15 [(gogoproto.jsontag) = "timestampFirstSubqueries,omitempty"];
 }
 
 // Statistics from Index queries

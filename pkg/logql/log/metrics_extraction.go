@@ -77,16 +77,18 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 	}, nil
 }
 
-func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
-	if res, ok := l.streamExtractors[hash]; ok {
+func (l *lineSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
+	// Verify the cached extractor is for these exact labels: Hash can collide, and serving a
+	// colliding stream's extractor would report its samples under the wrong labels.
+	if res, ok := l.streamExtractors[hash]; ok && labels.Equal(res.(*streamLineSampleExtractor).builder.base, lbls) {
 		return res
 	}
 
 	res := &streamLineSampleExtractor{
 		Stage:         l.Stage,
 		LineExtractor: l.LineExtractor,
-		builder:       l.baseBuilder.ForLabels(labels, hash),
+		builder:       l.baseBuilder.ForLabels(lbls, hash),
 	}
 	l.streamExtractors[hash] = res
 	return res
@@ -184,15 +186,16 @@ func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.baseBuilder.referencedStructuredMetadata
 }
 
-func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
-	hash := l.baseBuilder.Hash(labels)
-	if res, ok := l.streamExtractors[hash]; ok {
+func (l *labelSampleExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
+	hash := l.baseBuilder.Hash(lbls)
+	// Verify the cached extractor is for these exact labels (Hash can collide).
+	if res, ok := l.streamExtractors[hash]; ok && labels.Equal(res.(*streamLabelSampleExtractor).builder.base, lbls) {
 		return res
 	}
 
 	res := &streamLabelSampleExtractor{
 		labelSampleExtractor: l,
-		builder:              l.baseBuilder.ForLabels(labels, hash),
+		builder:              l.baseBuilder.ForLabels(lbls, hash),
 	}
 	l.streamExtractors[hash] = res
 	return res

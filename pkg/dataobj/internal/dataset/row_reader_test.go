@@ -1003,3 +1003,215 @@ func Test_Reader_Stats(t *testing.T) {
 	require.Equal(t, int64(3), obsMap[dataobj.StatDatasetPrimaryRowsRead.Name()])
 	require.Equal(t, int64(1), obsMap[dataobj.StatDatasetSecondaryRowsRead.Name()])
 }
+
+func TestRowReader_computeColumnFixedSizes(t *testing.T) {
+	col := func(physical datasetmd.PhysicalType, rows, values int) Column {
+		return &MemColumn{Desc: ColumnDesc{
+			Type:        ColumnType{Physical: physical},
+			RowsCount:   rows,
+			ValuesCount: values,
+		}}
+	}
+
+	// int64Full/uint64Full are fixed-width with no NULLs; int64Sparse has NULLs
+	// (a per-row-variable size); binaryFull is variable-width.
+	int64Full := col(datasetmd.PHYSICAL_TYPE_INT64, 10, 10)
+	int64Sparse := col(datasetmd.PHYSICAL_TYPE_INT64, 10, 7)
+	uint64Full := col(datasetmd.PHYSICAL_TYPE_UINT64, 10, 10)
+	binaryFull := col(datasetmd.PHYSICAL_TYPE_BINARY, 10, 10)
+
+	r := &RowReader{opts: RowReaderOptions{Columns: []Column{int64Full, int64Sparse, uint64Full, binaryFull}}}
+	r.computeColumnFixedSizes()
+	require.Equal(t, []int64{8, -1, 8, -1}, r.columnFixedSize)
+
+	t.Run("all fixed", func(t *testing.T) {
+		total, ok := r.fixedSizeForColumns([]int{0, 2})
+		require.True(t, ok)
+		require.Equal(t, int64(16), total)
+	})
+
+	t.Run("sparse disables", func(t *testing.T) {
+		_, ok := r.fixedSizeForColumns([]int{0, 1})
+		require.False(t, ok)
+	})
+
+	t.Run("variable width disables", func(t *testing.T) {
+		_, ok := r.fixedSizeForColumns([]int{0, 3})
+		require.False(t, ok)
+	})
+
+	t.Run("no columns is fixed with zero size", func(t *testing.T) {
+		total, ok := r.fixedSizeForColumns(nil)
+		require.True(t, ok)
+		require.Equal(t, int64(0), total)
+	})
+}
+
+// Test_Reader_PrimaryRowBytes asserts the StatDatasetPrimaryRowBytes accounting
+// is exact for both the fixed-width fast path (bulk count*size) and the
+// variable-width slow path (per-row Value.Size).
+func Test_Reader_PrimaryRowBytes(t *testing.T) {
+	primaryRowBytes := func(t *testing.T, makePredicate func(columns []Column) Predicate) int64 {
+		t.Helper()
+
+		dset, columns := buildTestDataset(t)
+		r := NewRowReader(RowReaderOptions{
+			Dataset:    dset,
+			Columns:    columns,
+			Predicates: []Predicate{makePredicate(columns)},
+		})
+		defer r.Close()
+
+		ctx, _ := xcap.NewCapture(context.Background(), nil)
+		ctx, region := xcap.StartRegion(ctx, "logs.Reader")
+		defer region.End()
+
+		// A batch larger than the dataset reads every row in one call.
+		_, err := readDatasetWithContext(ctx, r, len(basicReaderTestData)+1)
+		require.NoError(t, err)
+
+		obsMap := make(map[string]int64)
+		for _, obs := range region.Observations() {
+			obsMap[obs.Statistic.Name()] = obs.Value.(int64)
+		}
+		return obsMap[dataobj.StatDatasetPrimaryRowBytes.Name()]
+	}
+
+	t.Run("fixed width counted in bulk", func(t *testing.T) {
+		// birth_year is a fully-populated int64, so every row contributes 8 bytes.
+		// GreaterThan(1900) keeps every row (the minimum birth year is 1975), so
+		// all rows are read. A wrong fixed size would break the count*size product.
+		got := primaryRowBytes(t, func(columns []Column) Predicate {
+			return GreaterThanPredicate{Column: columns[3], Value: Int64Value(1900)}
+		})
+		require.Equal(t, int64(len(basicReaderTestData))*8, got)
+	})
+
+	t.Run("variable width counted per row", func(t *testing.T) {
+		// first_name is binary, so the slow path must sum each row's length. A
+		// FuncPredicate cannot prune pages, so every row is read.
+		got := primaryRowBytes(t, func(columns []Column) Predicate {
+			return FuncPredicate{Column: columns[0], Keep: func(Column, Value) bool { return true }}
+		})
+
+		var want int64
+		for _, p := range basicReaderTestData {
+			want += int64(len(p.firstName))
+		}
+		require.Equal(t, want, got)
+	})
+
+	t.Run("duplicate column counted once", func(t *testing.T) {
+		// A single predicate references birth_year twice. It must be read once, so
+		// bytes stay 8/row; a within-predicate dedup miss would double to 16/row.
+		// The range keeps every row.
+		got := primaryRowBytes(t, func(columns []Column) Predicate {
+			return AndPredicate{
+				Left:  GreaterThanPredicate{Column: columns[3], Value: Int64Value(1900)},
+				Right: LessThanPredicate{Column: columns[3], Value: Int64Value(2100)},
+			}
+		})
+		require.Equal(t, int64(len(basicReaderTestData))*8, got)
+	})
+}
+
+// Test_Reader_ReadWithPredicatesOnSameColumn covers two predicates on one
+// column: the second introduces no new column to read (computePredicateReadColumns
+// dedupes it), so the reader must evaluate it against the already-read values.
+func Test_Reader_ReadWithPredicatesOnSameColumn(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	r := NewRowReader(RowReaderOptions{
+		Dataset: dset,
+		Columns: columns,
+		Predicates: []Predicate{
+			GreaterThanPredicate{Column: columns[3], Value: Int64Value(1980)}, // birth_year
+			LessThanPredicate{Column: columns[3], Value: Int64Value(1988)},
+		},
+	})
+	defer r.Close()
+
+	actualRows, err := readDataset(r, 3)
+	require.NoError(t, err)
+
+	var expected []testPerson
+	for _, p := range basicReaderTestData {
+		if p.birthYear > 1980 && p.birthYear < 1988 {
+			expected = append(expected, p)
+		}
+	}
+	require.Equal(t, expected, convertToTestPersons(actualRows))
+}
+
+// Test_Reader_ReadWithPredicate_MixedReusedAndNewColumn covers a predicate that
+// references both an already-read column (birth_year) and a new one (first_name):
+// the reader must fill only the new column and evaluate both. Prefetch is on, so
+// this also exercises the precompute over wrapped reader columns.
+func Test_Reader_ReadWithPredicate_MixedReusedAndNewColumn(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	r := NewRowReader(RowReaderOptions{
+		Dataset:  dset,
+		Columns:  columns,
+		Prefetch: true,
+		Predicates: []Predicate{
+			GreaterThanPredicate{Column: columns[3], Value: Int64Value(1980)}, // birth_year
+			AndPredicate{
+				Left:  LessThanPredicate{Column: columns[3], Value: Int64Value(1988)},          // birth_year, reused
+				Right: EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("Frank"))}, // first_name, new
+			},
+		},
+	})
+	defer r.Close()
+
+	actualRows, err := readDataset(r, 3)
+	require.NoError(t, err)
+
+	var expected []testPerson
+	for _, p := range basicReaderTestData {
+		if p.birthYear > 1980 && p.birthYear < 1988 && p.firstName == "Frank" {
+			expected = append(expected, p)
+		}
+	}
+	require.Equal(t, expected, convertToTestPersons(actualRows))
+}
+
+// Test_Reader_Reset_DifferentPredicates re-opens a reader with a different
+// predicate set on a different column and asserts the precomputed columns are
+// rebuilt, with no stale state from the first Open.
+func Test_Reader_Reset_DifferentPredicates(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+
+	r := NewRowReader(RowReaderOptions{
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: []Predicate{GreaterThanPredicate{Column: columns[3], Value: Int64Value(1985)}}, // birth_year
+	})
+	defer r.Close()
+
+	rowsA, err := readDataset(r, 3)
+	require.NoError(t, err)
+	var expectedA []testPerson
+	for _, p := range basicReaderTestData {
+		if p.birthYear > 1985 {
+			expectedA = append(expectedA, p)
+		}
+	}
+	require.Equal(t, expectedA, convertToTestPersons(rowsA))
+
+	r.Reset(RowReaderOptions{
+		Dataset:    dset,
+		Columns:    columns,
+		Predicates: []Predicate{EqualPredicate{Column: columns[0], Value: BinaryValue([]byte("Alice"))}}, // first_name
+	})
+
+	rowsB, err := readDataset(r, 3)
+	require.NoError(t, err)
+	var expectedB []testPerson
+	for _, p := range basicReaderTestData {
+		if p.firstName == "Alice" {
+			expectedB = append(expectedB, p)
+		}
+	}
+	require.Equal(t, expectedB, convertToTestPersons(rowsB))
+}

@@ -5544,6 +5544,17 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+  # When enabled, eligible metric queries process logs on a per-stream order
+  # (instead of a per-timestamp one).
+  # CLI flag: -querier.engine.stream-ordered-execution-enabled
+  [stream_ordered_execution_enabled: <boolean> | default = false]
+
+  # Experimental: When enabled, eligible stream-ordered metric queries read data
+  # objects (over the data-object-available window) instead of the chunk store.
+  # Requires stream-ordered-execution-enabled to take effect.
+  # CLI flag: -querier.engine.dataobjects-reader-enabled
+  [dataobjects_reader_enabled: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent

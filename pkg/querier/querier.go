@@ -14,17 +14,22 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -64,6 +69,13 @@ type Config struct {
 
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
+
+	// Data-object availability window, mirrored from the query-engine config (query-engine.storage-*)
+	// so the v1 data-object reader and the v2 engine agree on where data objects live. Set
+	// programmatically, not via yaml.
+	DataObjectsStorageLag           time.Duration `yaml:"-"`
+	DataObjectsStorageStartDate     flagext.Time  `yaml:"-"`
+	DataObjectsStorageRetentionDays int64         `yaml:"-"`
 }
 
 // RegisterFlags register flags.
@@ -133,10 +145,16 @@ type SingleTenantQuerier struct {
 	patternQuerier  pattern.PatterQuerier
 	deleteGetter    deletion.DeleteGetter
 	logger          log.Logger
+
+	// dataObjStore serves stream-first metric queries from data objects over the data-object-available
+	// window. It is nil unless the experimental v1 data-object reader is enabled.
+	dataObjStore Store
 }
 
-// New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger) (*SingleTenantQuerier, error) {
+// New makes a new Querier. When dataObjBucket and dataObjMetastore are both non-nil, eligible
+// stream-first metric queries read the data-object-available slice from data objects; pass nil for
+// both to disable that (the default).
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -144,6 +162,10 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 		limits:          limits,
 		deleteGetter:    d,
 		logger:          logger,
+	}
+
+	if dataObjBucket != nil && dataObjMetastore != nil {
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, logger, reg)
 	}
 
 	return q, nil
@@ -264,14 +286,77 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
-		storeIter, err := q.store.SelectSamples(ctx, params)
+		storeIter, err := q.storeForSampleParams(params).SelectSamples(ctx, params)
 		if err != nil {
 			return nil, err
 		}
 
 		iters = append(iters, storeIter)
 	}
-	return iter.NewMergeSampleIterator(ctx, iters), nil
+
+	// When stream-first ordering is requested, every source — the store and each ingester (via the
+	// order-preserving wire codec) — returns its samples stream-first, so they can feed the
+	// cross-source merge directly, without a re-sort here.
+	if params.Order == logproto.SAMPLE_ORDER_BY_STREAM {
+		return iter.NewStreamFirstMergeSampleIterator(ctx, iters), nil
+	}
+	return iter.NewTimestampFirstMergeSampleIterator(ctx, iters), nil
+}
+
+// storeForSampleParams picks the store for the store-side slice of a sample query. When the
+// data-object reader is enabled and the query is stream-first, it returns a per-query StoreCombiner
+// that serves the data-object-available window from data objects and the rest from the chunk store.
+// Otherwise it returns the plain chunk store.
+//
+// The chunk store is registered on both sides of the data-object window, so the combiner routes,
+// oldest to newest: chunks (before data objects existed), data objects (the available window), then
+// chunks again (data objects lag now, so the freshly-flushed slice stays on chunks). Any of the three
+// bands can be empty for a given query; the combiner only reads the bands the query overlaps.
+func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSampleParams) Store {
+	// Stream-first is the only path a data-object source can feed; its output ordering matches the
+	// stream-first merge. Everything else stays on the chunk store.
+	if q.dataObjStore == nil || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
+		return q.store
+	}
+
+	// The data-object reader does not deduplicate, so it must never overlap the ingester query. That
+	// disjointness only holds under a bounded ingester/store split (IngesterQueryStoreMaxLookback set),
+	// which limits the ingester query to the recent window and the store side to everything strictly
+	// older. Without it, fall back to chunks.
+	if q.cfg.IngesterQueryStoreMaxLookback == 0 {
+		return q.store
+	}
+
+	// Reuse the query engine's window computation so v1 and v2 agree on where data objects live.
+	availability := engine.Config{
+		StorageLag:           q.cfg.DataObjectsStorageLag,
+		StorageStartDate:     q.cfg.DataObjectsStorageStartDate,
+		StorageRetentionDays: q.cfg.DataObjectsStorageRetentionDays,
+	}
+	dataobjStart, dataobjEnd := availability.ValidQueryRange()
+
+	dataobjStartTime := model.TimeFromUnixNano(dataobjStart.UnixNano())
+	dataobjEndTime := model.TimeFromUnixNano(dataobjEnd.UnixNano())
+
+	// params.End is the store-side end (= the ingester query start under the bounded split). Clamp the
+	// data-object band to be strictly older than it, so a sample at the exact split boundary falls to
+	// the chunk store (which deduplicates against the ingester) and never to the data-object reader.
+	if storeEnd := model.TimeFromUnixNano(params.End.UnixNano()); dataobjEndTime >= storeEnd {
+		dataobjEndTime = storeEnd - 1
+	}
+
+	// Without a configured start (no storage-start-date and no retention) we don't know how far back
+	// data objects go, so we can't route to them. An inverted or empty window is likewise unusable.
+	// Fall back to chunks.
+	if dataobjStartTime <= 0 || dataobjStartTime >= dataobjEndTime {
+		return q.store
+	}
+
+	return NewStoreCombiner([]StoreConfig{
+		{Store: q.store, From: 0}, // older-than-availability band
+		{Store: q.dataObjStore, From: dataobjStartTime},
+		{Store: q.store, From: dataobjEndTime + 1}, // recent band: data objects lag now
+	})
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

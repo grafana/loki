@@ -537,6 +537,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// Use Pattern ingester RetainFor value to determine when to query pattern ingesters
 	t.Cfg.Querier.QueryPatternIngestersWithin = t.Cfg.Pattern.RetainFor
 
+	// Mirror the data-object availability window so the v1 data-object reader uses the same window as
+	// the v2 engine.
+	t.Cfg.Querier.DataObjectsStorageLag = t.Cfg.QueryEngine.StorageLag
+	t.Cfg.Querier.DataObjectsStorageStartDate = t.Cfg.QueryEngine.StorageStartDate
+	t.Cfg.Querier.DataObjectsStorageRetentionDays = t.Cfg.QueryEngine.StorageRetentionDays
+
 	// Querier worker's max concurrent must be the same as the querier setting
 	t.Cfg.Worker.MaxConcurrent = t.Cfg.Querier.MaxConcurrent
 	deleteStore, err := t.deleteRequestsClient("querier", t.Overrides)
@@ -544,10 +550,36 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	// The data-object bucket and metastore are needed by the v2 engine and, independently, by the v1
+	// engine's experimental data-object reader. Build them when either is enabled.
+	dataObjectsReader := t.Cfg.Querier.Engine.DataObjectsReaderEnabled
+	var (
+		store objstore.Bucket
+		ms    metastore.Metastore
+	)
+	if t.Cfg.QueryEngine.Enable || dataObjectsReader {
+		store, err = t.getDataObjBucket("dataobj-querier")
+		if err != nil {
+			return nil, err
+		}
+		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
+	// The querier reads data objects only when the v1 reader is enabled; otherwise pass nil so it uses
+	// the chunk store exclusively.
+	var (
+		querierBucket    objstore.Bucket
+		querierMetastore metastore.Metastore
+	)
+	if dataObjectsReader {
+		querierBucket, querierMetastore = store, ms
+	}
+
+	querierImpl, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, querierBucket, querierMetastore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
+	t.Querier = querierImpl
 
 	if t.Cfg.Pattern.Enabled {
 		patternQuerier, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
@@ -580,18 +612,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		t.HTTPAuthMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
 		serverutil.ResponseJSONMiddleware(),
-	}
-
-	var (
-		store objstore.Bucket
-		ms    metastore.Metastore
-	)
-	if t.Cfg.QueryEngine.Enable {
-		store, err = t.getDataObjBucket("dataobj-querier")
-		if err != nil {
-			return nil, err
-		}
-		ms = metastore.NewObjectMetastore(store, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
 	}
 
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Cfg.QueryEngine, ms, t.Querier, t.Overrides, store, prometheus.DefaultRegisterer, logger)
@@ -2563,7 +2583,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
