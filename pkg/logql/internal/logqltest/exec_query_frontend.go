@@ -196,8 +196,15 @@ func (*queryFrontendExecutionStack) isEvalSupported(_ evalCmd, exp expectations)
 func (s *queryFrontendExecutionStack) setStreams(streams []logproto.Stream) {
 	store := newScriptStore(s.t, streams)
 	s.storeMu.Lock()
+	old := s.store
 	s.store = store
 	s.storeMu.Unlock()
+
+	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
+	// No query runs between evals, so the old store is idle here.
+	if old != nil {
+		old.close()
+	}
 }
 
 func (s *queryFrontendExecutionStack) querier() logql.Querier {

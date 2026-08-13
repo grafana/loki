@@ -2,6 +2,7 @@ package logqltest
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,8 +32,9 @@ import (
 // production storage.LokiStore read path (chunk decode + pipeline), so scripts exercise
 // as much production code as practical. It is not meant for large data.
 type testingChunkStore struct {
-	store  *storage.LokiStore
-	chunks map[string]*chunkenc.MemChunk
+	store     *storage.LokiStore
+	chunks    map[string]*chunkenc.MemChunk
+	closeOnce sync.Once
 }
 
 // newTestingChunkStore builds a filesystem-backed store (TSDB index) rooted in a fresh temp dir.
@@ -139,8 +141,10 @@ func (s *testingChunkStore) querier() logql.Querier {
 	return s.store
 }
 
+// close stops the underlying store. It is safe to call more than once: setStreams closes the
+// previous store on refresh, and a t.Cleanup closes the final one at test end.
 func (s *testingChunkStore) close() {
-	s.store.Stop()
+	s.closeOnce.Do(s.store.Stop)
 }
 
 func newMemChunk() *chunkenc.MemChunk {

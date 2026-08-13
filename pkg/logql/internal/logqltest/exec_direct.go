@@ -37,6 +37,10 @@ func (*directExecutionStack) isEvalSupported(evalCmd, expectations) bool {
 }
 
 func (s *directExecutionStack) setStreams(streams []logproto.Stream) {
+	// Stop the previous store so a multi-scenario script does not leave one running per refresh.
+	if s.store != nil {
+		s.store.close()
+	}
 	s.store = newScriptStore(s.t, streams)
 }
 
