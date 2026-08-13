@@ -12,9 +12,6 @@ var (
 	ErrMethodNotImplemented = errors.New("method is not implemented")
 	// ErrStorageObjectNotFound when object storage does not have requested object
 	ErrStorageObjectNotFound = errors.New("object not found in storage")
-	// ErrChunkDecodeFailed lets callers classify a decode failure by identity. The
-	// text is the leading verb of the error getChunk builds, so it must not change.
-	ErrChunkDecodeFailed = errors.New("failed to decode chunk")
 )
 
 // Client is for storing and retrieving chunks.

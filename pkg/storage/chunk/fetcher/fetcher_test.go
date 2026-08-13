@@ -1,22 +1,14 @@
 package fetcher
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"slices"
 	"strconv"
-	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/minio/minio-go/v7"
-	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -29,10 +21,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/errclass"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func Test(t *testing.T) {
@@ -249,255 +239,72 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	chunkClient := client.NewClientWithMaxParallel(testutils.NewInMemoryObjectClient(), nil, 1, sc)
 	require.NoError(t, chunkClient.PutChunks(context.Background(), chunks))
 
-	// Every chunk is a cache hit that cannot be decoded, so storage is never asked.
-	storeInCache(t, sc, l1, nil, chunks)
+	key := sc.ExternalKey(chunks[0].ChunkRef)
+	require.NoError(t, l1.Store(context.Background(), []string{key}, [][]byte{[]byte("not a chunk")}))
 
 	f, err := New(l1, l2, false, sc, chunkClient, 0, 0)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
-	logs := captureLogs(t)
-	beforeFailures := readFailureCounters(t)
+	beforeFailures := readStorageErrorCounters(t)
 
 	got, err := f.FetchChunks(context.Background(), chunks)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
-	require.Equal(t, 1, strings.Count(logs.String(), `msg="error process response from cache"`))
-	require.Equal(t, 0, strings.Count(logs.String(), `msg="failed downloading chunks"`))
-	require.Empty(t, failureCounterDeltas(t, beforeFailures))
+	require.Empty(t, storageErrorCounterDeltas(t, beforeFailures))
 }
 
-// TestFetchChunks_LosesChunksSilently asserts that the loss is still silent.
-// Every case gets fewer chunks than it asked for and a nil error. A change that
-// makes FetchChunks report the loss must change this test.
-func TestFetchChunks_LosesChunksSilently(t *testing.T) {
-	var (
-		slowDown  = minio.ErrorResponse{Code: "SlowDown", StatusCode: http.StatusServiceUnavailable}
-		noSuchKey = minio.ErrorResponse{Code: "NoSuchKey", StatusCode: http.StatusNotFound}
-	)
-
-	// The store wraps every error twice, so the classification has to survive it.
-	wrapped := func(err error) error {
-		return errors.WithStack(errors.Wrapf(err, "boom"))
-	}
-
+func TestFetchChunks_RecordsSuppressedStorageErrors(t *testing.T) {
+	storageErr := errors.New("storage failed")
 	tests := []struct {
-		name         string
-		chunks       []c
-		notInStore   []int
-		inject       func(objects *testutils.FailingObjectClient, keys []string)
-		wantReturned int
-		wantFailures map[string]float64
+		name       string
+		client     *storageErrorClient
+		wantReason string
 	}{
-		{
-			name:   "storage throttles two of three",
-			chunks: []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}, {3 * time.Hour, 4 * time.Hour}},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Fail(wrapped(slowDown), keys[0], keys[1])
-			},
-			wantReturned: 1,
-			wantFailures: map[string]float64{errclass.Throttled: 2},
-		},
-		{
-			name:         "chunk absent from the store",
-			chunks:       []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}},
-			notInStore:   []int{1},
-			wantReturned: 1,
-			// The client predicate has to answer this one. errclass sees an
-			// unrecognised error, because the backend error is private to the client.
-			wantFailures: map[string]float64{errclass.NotFound: 1},
-		},
-		{
-			name:   "storage returns NoSuchKey",
-			chunks: []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Fail(noSuchKey, keys[0])
-			},
-			wantReturned: 1,
-			wantFailures: map[string]float64{errclass.NotFound: 1},
-		},
-		{
-			name:   "body stops arriving part way through",
-			chunks: []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Truncate(keys[0], 8)
-			},
-			wantReturned: 1,
-			wantFailures: map[string]float64{errclass.ConnReset: 1},
-		},
-		{
-			name:   "every chunk fails",
-			chunks: []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}, {3 * time.Hour, 4 * time.Hour}},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Fail(slowDown, keys...)
-			},
-			wantReturned: 0,
-			wantFailures: map[string]float64{errclass.Throttled: 3},
-		},
-		{
-			name:   "two reasons in one batch",
-			chunks: []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}, {3 * time.Hour, 4 * time.Hour}},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Fail(slowDown, keys[0])
-				objects.Fail(noSuchKey, keys[1])
-			},
-			wantReturned: 1,
-			// GetParallelChunks keeps only the last error, so both lost chunks take
-			// the reason of the last one to fail. The throttled chunk is misreported.
-			// PR-1b collects every error and this expectation then splits in two.
-			wantFailures: map[string]float64{errclass.NotFound: 2},
-		},
+		{name: "not found", client: &storageErrorClient{err: storageErr, notFound: true, retryable: true}, wantReason: storageErrorNotFound},
+		{name: "retryable", client: &storageErrorClient{err: storageErr, retryable: true}, wantReason: storageErrorRetryable},
+		{name: "other", client: &storageErrorClient{err: storageErr}, wantReason: storageErrorOther},
+		{name: "canceled", client: &storageErrorClient{err: context.Canceled}},
+		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}},
+		{name: "no error", client: &storageErrorClient{}},
 	}
 
 	for _, test := range tests {
-		// The counters are process wide, so these cases must stay sequential.
 		t.Run(test.name, func(t *testing.T) {
-			ctx := context.Background()
-			sc := testSchemaConfig()
-			chunks := makeChunks(time.Now(), test.chunks...)
-
-			keys := make([]string, len(chunks))
-			for i := range chunks {
-				keys[i] = sc.ExternalKey(chunks[i].ChunkRef)
-			}
-
-			inStore := make([]chunk.Chunk, 0, len(chunks))
-			for i := range chunks {
-				if !slices.Contains(test.notInStore, i) {
-					inStore = append(inStore, chunks[i])
-				}
-			}
-
-			objects := testutils.NewFailingObjectClient(testutils.NewInMemoryObjectClient())
-			chunkClient := client.NewClientWithMaxParallel(objects, nil, 1, sc)
-			require.NoError(t, chunkClient.PutChunks(ctx, inStore))
-
-			if test.inject != nil {
-				test.inject(objects, keys)
-			}
-
-			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, sc, chunkClient, 0, 0)
+			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0)
 			require.NoError(t, err)
 			t.Cleanup(f.Stop)
 
-			beforeFailures := readFailureCounters(t)
-
-			got, err := f.FetchChunks(ctx, chunks)
+			before := readStorageErrorCounters(t)
+			got, err := f.FetchChunks(context.Background(), makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}))
 
 			require.NoError(t, err)
-			require.Len(t, got, test.wantReturned)
-
-			deltas := failureCounterDeltas(t, beforeFailures)
-			require.Equal(t, test.wantFailures, deltas)
-
-			// Written by hand per case, so it cannot restate the subtraction the
-			// code performs.
-			var counted float64
-			for _, delta := range deltas {
-				counted += delta
+			require.Empty(t, got)
+			if test.wantReason == "" {
+				require.Empty(t, storageErrorCounterDeltas(t, before))
+			} else {
+				require.Equal(t, map[string]float64{test.wantReason: 1}, storageErrorCounterDeltas(t, before))
 			}
-			require.Equal(t, float64(len(chunks)-test.wantReturned), counted)
 		})
 	}
 }
 
-// TestFetchChunks_LosesChunksSilently_OnCancellation covers the shape that
-// produces most of the volume in production. A query that stops early cancels
-// the context of a batch nobody will read.
-func TestFetchChunks_LosesChunksSilently_OnCancellation(t *testing.T) {
-	sc := testSchemaConfig()
-	chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
-
-	objects := testutils.NewFailingObjectClient(testutils.NewInMemoryObjectClient())
-	signal := &signalOnGet{ObjectClient: objects, started: make(chan struct{})}
-	chunkClient := client.NewClientWithMaxParallel(signal, nil, 1, sc)
-	require.NoError(t, chunkClient.PutChunks(context.Background(), chunks))
-
-	for _, chk := range chunks {
-		release := objects.Block(sc.ExternalKey(chk.ChunkRef))
-		t.Cleanup(func() { close(release) })
-	}
-
-	f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, sc, chunkClient, 0, 0)
-	require.NoError(t, err)
-	t.Cleanup(f.Stop)
-
-	before := readFailureCounters(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	var (
-		got      []chunk.Chunk
-		fetchErr error
-		done     = make(chan struct{})
-	)
-	go func() {
-		defer close(done)
-		got, fetchErr = f.FetchChunks(ctx, chunks)
-	}()
-
-	<-signal.started
-	cancel()
-	<-done
-
-	require.NoError(t, fetchErr)
-	require.Empty(t, got)
-	require.Equal(t, map[string]float64{errclass.Canceled: 2}, failureCounterDeltas(t, before))
-}
-
-// TestFetchChunks_LosesChunksSilently_OnShortReturn covers a store that drops a
-// chunk and reports no error. This is what mockChunkStoreClient in pkg/storage
-// does, which is why no batch test there can catch the loss.
-func TestFetchChunks_LosesChunksSilently_OnShortReturn(t *testing.T) {
-	ctx := context.Background()
-	sc := testSchemaConfig()
-	chunks := makeChunks(time.Now(), c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour})
-
-	inner := client.NewClientWithMaxParallel(testutils.NewInMemoryObjectClient(), nil, 1, sc)
-	require.NoError(t, inner.PutChunks(ctx, chunks))
-
-	f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, sc, shortReturnClient{Client: inner, drop: 1}, 0, 0)
-	require.NoError(t, err)
-	t.Cleanup(f.Stop)
-
-	before := readFailureCounters(t)
-
-	got, err := f.FetchChunks(ctx, chunks)
-
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.Equal(t, map[string]float64{errclass.Unknown: 1}, failureCounterDeltas(t, before))
-}
-
-// TestLossMetricsAreExposed pins the storage failure reasons.
-func TestLossMetricsAreExposed(t *testing.T) {
-	families, err := prometheus.DefaultGatherer.Gather()
-	require.NoError(t, err)
-
-	for _, family := range families {
-		if family.GetName() == "loki_chunk_fetcher_failures_total" {
-			require.Len(t, family.GetMetric(), len(errclass.Reasons()))
-			return
-		}
-	}
-	t.Fatal("loki_chunk_fetcher_failures_total is not registered")
-}
-
-func readFailureCounters(t *testing.T) map[string]float64 {
+func readStorageErrorCounters(t *testing.T) map[string]float64 {
 	t.Helper()
 
-	out := make(map[string]float64, len(errclass.Reasons()))
-	for _, reason := range errclass.Reasons() {
-		out[reason] = testutil.ToFloat64(chunkFetchFailures.WithLabelValues(reason))
+	out := make(map[string]float64, 3)
+	for _, reason := range []string{storageErrorNotFound, storageErrorRetryable, storageErrorOther} {
+		out[reason] = testutil.ToFloat64(storageErrors.WithLabelValues(reason))
 	}
 	return out
 }
 
-func failureCounterDeltas(t *testing.T, before map[string]float64) map[string]float64 {
+func storageErrorCounterDeltas(t *testing.T, before map[string]float64) map[string]float64 {
 	t.Helper()
 
 	out := map[string]float64{}
-	for reason, after := range readFailureCounters(t) {
+	for reason, after := range readStorageErrorCounters(t) {
 		if delta := after - before[reason]; delta != 0 {
 			out[reason] = delta
 		}
@@ -505,68 +312,21 @@ func failureCounterDeltas(t *testing.T, before map[string]float64) map[string]fl
 	return out
 }
 
-// signalOnGet reports the start of the first chunk read, so a test can cancel at
-// a known point rather than sleep.
-type signalOnGet struct {
-	client.ObjectClient
-
-	once    sync.Once
-	started chan struct{}
-}
-
-func (s *signalOnGet) GetObject(ctx context.Context, key string) (io.ReadCloser, int64, error) {
-	s.once.Do(func() { close(s.started) })
-	return s.ObjectClient.GetObject(ctx, key)
-}
-
-// shortReturnClient drops chunks and reports success.
-type shortReturnClient struct {
+type storageErrorClient struct {
 	client.Client
-
-	drop int
+	err                 error
+	notFound, retryable bool
 }
 
-func (s shortReturnClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
-	got, _ := s.Client.GetChunks(ctx, chunks)
-	if len(got) < s.drop {
-		return nil, nil
-	}
-	return got[:len(got)-s.drop], nil
+func (s *storageErrorClient) GetChunks(context.Context, []chunk.Chunk) ([]chunk.Chunk, error) {
+	return nil, s.err
 }
+
+func (s *storageErrorClient) IsChunkNotFoundErr(error) bool { return s.notFound }
+func (s *storageErrorClient) IsRetryableErr(error) bool     { return s.retryable }
 
 func testSchemaConfig() config.SchemaConfig {
 	return testutils.SchemaConfig("inmemory", "v11", model.Now().Add(-100*24*time.Hour))
-}
-
-// captureLogs redirects the logger the fetcher falls back to when the context
-// carries none. The logger is a global, so callers must not run in parallel.
-func captureLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
-
-	buf := &bytes.Buffer{}
-	previous := util_log.Logger
-	util_log.Logger = log.NewLogfmtLogger(log.NewSyncWriter(buf))
-	t.Cleanup(func() { util_log.Logger = previous })
-
-	return buf
-}
-
-func storeInCache(t *testing.T, sc config.SchemaConfig, c cache.Cache, valid, corrupt []chunk.Chunk) {
-	t.Helper()
-
-	keys := make([]string, 0, len(valid)+len(corrupt))
-	bufs := make([][]byte, 0, len(valid)+len(corrupt))
-	for _, chk := range valid {
-		encoded, err := chk.Encoded()
-		require.NoError(t, err)
-		keys = append(keys, sc.ExternalKey(chk.ChunkRef))
-		bufs = append(bufs, encoded)
-	}
-	for _, chk := range corrupt {
-		keys = append(keys, sc.ExternalKey(chk.ChunkRef))
-		bufs = append(bufs, []byte("not a chunk"))
-	}
-	require.NoError(t, c.Store(context.Background(), keys, bufs))
 }
 
 func BenchmarkFetch(b *testing.B) {

@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/errclass"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -38,20 +38,19 @@ var (
 		// TODO: consider adding `chunk_target_size` to this list in case users set very large chunk sizes
 		Buckets: []float64{128, 1024, 16 * 1024, 64 * 1024, 128 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 1.5 * 1024 * 1024, 2 * 1024 * 1024, 4 * 1024 * 1024},
 	}, []string{"source"})
-	chunkFetchFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+	storageErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
-		Name:      "failures_total",
-		Help: "Chunks that could not be returned to the caller due to a storage fetch failure, by failure reason. " +
-			"Counted once per lost chunk",
+		Name:      "storage_errors_total",
+		Help:      "Storage errors suppressed by the chunk fetcher.",
 	}, []string{"reason"})
 )
 
-func init() {
-	for _, reason := range errclass.Reasons() {
-		chunkFetchFailures.WithLabelValues(reason)
-	}
-}
+const (
+	storageErrorNotFound  = "not_found"
+	storageErrorRetryable = "retryable"
+	storageErrorOther     = "other"
+)
 
 const chunkDecodeParallelism = 16
 
@@ -243,13 +242,11 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	// This over-reports. Query iterators prefetch one batch ahead and do not join it
-	// on close, so failures can be counted for chunks no query consumed.
-	storeLost := len(missing) - len(fromStorage)
-	if storeLost > 0 {
-		reason := c.failureReason(storageErr)
-		chunkFetchFailures.WithLabelValues(reason).Add(float64(storeLost))
-		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr, "reason", reason, "failed_chunks", storeLost)
+	if storageErr != nil {
+		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
+			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
+		}
+		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 	}
 
 	allChunks := append(fromCache, fromStorage...)
@@ -352,19 +349,14 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 	return found, missing, err
 }
 
-// failureReason names the cause of a lost chunk for the failure metric. The
-// storage client is authoritative for a missing object, because it knows
-// backends that errclass has no error shape for.
-func (c *Fetcher) failureReason(err error) string {
-	if err == nil {
-		return errclass.Unknown
+func (c *Fetcher) storageErrorReason(err error) string {
+	if c.storage.IsChunkNotFoundErr(err) {
+		return storageErrorNotFound
 	}
-
-	reason := errclass.Reason(err)
-	if reason == errclass.Other && c.storage.IsChunkNotFoundErr(err) {
-		return errclass.NotFound
+	if c.storage.IsRetryableErr(err) {
+		return storageErrorRetryable
 	}
-	return reason
+	return storageErrorOther
 }
 
 func (c *Fetcher) IsChunkNotFoundErr(err error) bool {
