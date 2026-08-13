@@ -342,28 +342,26 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				return fmt.Errorf("symbolizer lookup: %w", err)
 			}
 
-			samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
-			if !ok || len(samples) == 0 {
+			sample, ok := extractor.ProcessString(ts, line, structuredMetadata)
+			if !ok {
 				return nil
 			}
 
-			for _, sample := range samples {
-				lblStr := sample.Labels.String()
-				s, found := series[lblStr]
-				if !found {
-					s = &logproto.Series{
-						Labels:     lblStr,
-						Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-						StreamHash: extractor.BaseLabels().Hash(),
-					}
-					series[lblStr] = s
+			lblStr := sample.Labels.String()
+			s, found := series[lblStr]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+					StreamHash: extractor.BaseLabels().Hash(),
 				}
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: ts,
-					Value:     sample.Value,
-					Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
-				})
+				series[lblStr] = s
 			}
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: ts,
+				Value:     sample.Value,
+				Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
+			})
 
 			if extractor.ReferencedStructuredMetadata() {
 				setQueryReferencedStructuredMetadata = true

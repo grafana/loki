@@ -1349,29 +1349,27 @@ func (hb *headBlock) SampleIterator(
 		stats.AddHeadChunkBytes(int64(len(e.s)))
 		stats.AddPostFilterLines(1)
 
-		samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
-		if !ok || len(samples) == 0 {
+		sample, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+		if !ok {
 			continue
 		}
 
-		for _, sample := range samples {
-			lblStr := sample.Labels.String()
-			s, found := series[lblStr]
-			if !found {
-				s = &logproto.Series{
-					Labels:     lblStr,
-					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-					StreamHash: extractor.BaseLabels().Hash(),
-				}
-				series[lblStr] = s
+		lblStr := sample.Labels.String()
+		s, found := series[lblStr]
+		if !found {
+			s = &logproto.Series{
+				Labels:     lblStr,
+				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				StreamHash: extractor.BaseLabels().Hash(),
 			}
-
-			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: e.t,
-				Value:     sample.Value,
-				Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
-			})
+			series[lblStr] = s
 		}
+
+		s.Samples = append(s.Samples, logproto.Sample{
+			Timestamp: e.t,
+			Value:     sample.Value,
+			Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
+		})
 
 		if extractor.ReferencedStructuredMetadata() {
 			setQueryReferencedStructuredMetadata = true
@@ -1791,8 +1789,6 @@ func newSampleIterator(
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
-		curr:             []logproto.Sample{},
-		currLabels:       []log.LabelsResult{},
 	}
 }
 
@@ -1803,48 +1799,28 @@ type sampleBufferedIterator struct {
 	stats     *stats.Context
 	hasher    util.SampleHasher
 
-	curr       []logproto.Sample
-	currLabels []log.LabelsResult
+	curr       logproto.Sample
+	currLabels log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	// sample at e.curr[0] is the current sample
-	// since there is more than one sample, shift the remaining samples down by one
-	// to make e.curr[1] the new current sample
-	if len(e.curr) > 1 {
-		e.curr = e.curr[1:]
-		e.currLabels = e.currLabels[1:]
-
-		return true
-	}
-
-	// sample at e.curr[0] is the current sample
-	// since there is only one sample (the current one), we need to shift it out
-	// and clear the slice
-	if len(e.curr) == 1 {
-		e.curr = e.curr[:0]
-		e.currLabels = e.currLabels[:0]
-	}
-
 	for e.bufferedIterator.Next() {
 		e.stats.AddPostFilterLines(1)
 
-		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
-		if !ok || len(samples) == 0 {
+		sample, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		if !ok {
 			continue
 		}
 
-		for _, sample := range samples {
-			e.currLabels = append(e.currLabels, sample.Labels)
-
-			// multilple samples from the same line can't have the same line hash or they will be deduplicated
-			// so they must have unique labels, which we'll use to create a unique line hash
-			lblString := sample.Labels.String()
-			e.curr = append(e.curr, logproto.Sample{
-				Timestamp: e.currTs,
-				Value:     sample.Value,
-				Hash:      e.hasher.Hash(lblString, e.currLine),
-			})
+		lblString := sample.Labels.String()
+		e.currLabels = sample.Labels
+		e.curr = logproto.Sample{
+			Timestamp: e.currTs,
+			Value:     sample.Value,
+			// Two entries in one stream can share a timestamp and a line but extract
+			// different labels. Without the labels in the hash, the merge iterator drops
+			// one as a duplicate.
+			Hash: e.hasher.Hash(lblString, e.currLine),
 		}
 
 		return true
@@ -1860,12 +1836,12 @@ func (e *sampleBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String() }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.curr[0]
+	return e.curr
 }
 
 // validateBlock validates block by doing following checks:
