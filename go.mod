@@ -417,7 +417,7 @@ require (
 	golang.org/x/mod v0.39.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/tools v0.48.0
-	google.golang.org/genproto v0.0.0-20260622175928-b703f567277d // indirect
+	google.golang.org/genproto v0.0.0-20260810153831-ec0a7760b754 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260810153831-ec0a7760b754 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260807164820-c8921c73eeea
 	gopkg.in/inf.v0 v0.9.1 // indirect
