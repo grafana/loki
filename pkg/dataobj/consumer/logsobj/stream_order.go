@@ -24,7 +24,7 @@ func NewStreamOrderKey(streamLabels labels.Labels, schemaLabels []string) (Strea
 	}
 	hash := labels.StableHash(streamLabels)
 	return StreamOrderKey{
-		Shard:     uint32(hash % uint64(streams.ShardFactor)),
+		Shard:     uint32(streams.ShardBucket(streamLabels)),
 		SchemaKey: schemaKey,
 		Hash:      hash,
 		Labels:    streamLabels,

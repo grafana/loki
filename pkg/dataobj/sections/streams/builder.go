@@ -220,6 +220,13 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
+const shardBits = 4 // N = 16 buckets
+
+func ShardBucket(streamLabels labels.Labels) uint64 {
+	fp := labels.StableHash(streamLabels)
+	return fp >> (64 - shardBits)
+}
+
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	streamLabels.Range(func(l labels.Label) {
 		b.currentLabelsSize += len(l.Value)
@@ -228,31 +235,13 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
-	newStream.ShardHash = int64(hash % uint64(ShardFactor))
+	newStream.ShardHash = int64(ShardBucket(streamLabels))
 	newStream.Labels = streamLabels
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
 	b.metrics.streamCount.Inc()
 	return newStream
-}
-
-// StreamID returns the stream ID for the provided streamLabels. If the stream
-// has not been recorded, StreamID returns 0.
-func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
-	hash := labels.StableHash(streamLabels)
-	matches, ok := b.lookup[hash]
-	if !ok {
-		return 0
-	}
-
-	for _, stream := range matches {
-		if labels.Equal(stream.Labels, streamLabels) {
-			return stream.ID
-		}
-	}
-
-	return 0
 }
 
 // Flush flushes the streams section to the provided writer.

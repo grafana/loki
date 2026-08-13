@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -610,6 +611,244 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 			require.False(t, current.ts.After(prev.ts))
 		}
 	}
+}
+
+func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	sortSchema := []string{"label:app"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Keep the source data intentionally small and local to this test. Replace
+	// these streams with captured data when using this as a profiling or
+	// investigation harness.
+	sourcePaths := []string{"source-0", "source-1", "source-2", "source-3"}
+	for ts, path := range sourcePaths {
+		streams := make(map[string][]testStream)
+		// 10 log lines * 32 streams, added in reverse sort-schema order, in every object.
+		apps := 32
+		for i := range apps {
+			streams[tenant] = append(streams[tenant], testStream{
+				labels: fmt.Sprintf(
+					`{app="unique-%d",service_name="service-%d",cluster="%d",namespace="namespace-%d"}`,
+					apps-i, i, i, i, // Append in reverse app ordering so the sort will reverse it.
+				),
+				entries: linesAt(base.Add(time.Duration(ts)*time.Hour+time.Minute), 10),
+			})
+
+		}
+
+		buildSourceLogObject(t, dataBucket, path, sortSchema, streams)
+	}
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+
+	// Phase one: independently migrate each legacy object into the target
+	// [shard, schema, stable hash, timestamp DESC] physical layout.
+	var sortedRuns []*compactionv2pb.RunRef
+	observedShards := make(map[int64]struct{})
+	for _, sourcePath := range sourcePaths {
+		source, err := dataobj.FromBucket(ctx, dataBucket, sourcePath, 0)
+		require.NoError(t, err)
+
+		var sourceSections []*compactionv2pb.SectionRef
+		for sectionIndex, section := range source.Sections().Filter(logs.CheckSection) {
+			if section.Tenant == tenant {
+				sourceSections = append(sourceSections, &compactionv2pb.SectionRef{
+					ObjectPath:   sourcePath,
+					SectionIndex: int64(sectionIndex),
+				})
+			}
+		}
+		require.NotEmpty(t, sourceSections)
+
+		sortArtifacts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
+			Tenant:      tenant,
+			SortSchema:  sortSchema,
+			SortOnly:    true,
+			StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+			ShardCount:  streams.ShardFactor,
+			Runs:        []*compactionv2pb.RunRef{{Sections: sourceSections}},
+		})
+		require.NoError(t, err)
+		require.Len(t, sortArtifacts, 1)
+
+		sortedPaths := logObjectPathsFromStatsIndex(
+			ctx,
+			t,
+			indexBucket,
+			sortArtifacts[0].Path,
+			tenant,
+		)
+		require.Len(t, sortedPaths, 1)
+
+		for _, sortedPath := range sortedPaths {
+			sortedObject, err := dataobj.FromBucket(ctx, dataBucket, sortedPath, 0)
+			require.NoError(t, err)
+
+			var sortedSections []*compactionv2pb.SectionRef
+			for sectionIndex, section := range sortedObject.Sections().Filter(logs.CheckSection) {
+				if section.Tenant != tenant {
+					continue
+				}
+				opened, err := logs.Open(ctx, section)
+				require.NoError(t, err)
+				layout := opened.SortLayout()
+				require.Equal(t, sortSchema, layout.SchemaLabels)
+				require.Equal(t, logs.StreamOrderStableHashV1, layout.StreamOrder)
+				require.Equal(t, streams.ShardFactor, layout.ShardCount)
+
+				sortedSections = append(sortedSections, &compactionv2pb.SectionRef{
+					ObjectPath:   sortedPath,
+					SectionIndex: int64(sectionIndex),
+				})
+				//fmt.Println("logs section: ", sortedPath, ", sort layout: ", layout)
+			}
+			require.NotEmpty(t, sortedSections)
+			sortedRuns = append(sortedRuns, &compactionv2pb.RunRef{Sections: sortedSections})
+
+			for _, section := range sortedObject.Sections().Filter(streams.CheckSection) {
+				if section.Tenant != tenant {
+					continue
+				}
+				opened, err := streams.Open(ctx, section)
+				require.NoError(t, err)
+				for result := range streams.IterSection(ctx, opened) {
+					stream, err := result.Value()
+					require.NoError(t, err)
+
+					//fmt.Printf("stream in logs obj: ID(%d), hash(%d), shardBucket(%d), labels(%s)\n", stream.ID, labels.StableHash(stream.Labels), stream.ShardHash, stream.Labels)
+					//expected := int64(promlabels.StableHash(stream.Labels) % uint64(streams.ShardFactor))
+					//require.Equal(t, expected, stream.ShardHash, "labels=%s", stream.Labels.String())
+					observedShards[stream.ShardHash] = struct{}{}
+				}
+			}
+		}
+	}
+	require.Len(t, sortedRuns, 4)
+	require.Greater(t, len(observedShards), 1, "dummy streams should exercise more than one shard")
+
+	// Phase two: the four migrated runs are now compatible with strict k-way
+	// merge and can be compacted together.
+	mergeArtifacts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
+		Tenant:      tenant,
+		SortSchema:  sortSchema,
+		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
+		ShardCount:  streams.ShardFactor,
+		Runs:        sortedRuns,
+	})
+	require.NoError(t, err)
+	require.Len(t, mergeArtifacts, 1)
+
+	outputs := readCompactedObjectsFromIndex(
+		ctx,
+		t,
+		dataBucket,
+		indexBucket,
+		mergeArtifacts[0].Path,
+		tenant,
+	)
+	var totalStreams, totalRecords int
+	for _, output := range outputs {
+		totalStreams += len(output.streamApp)
+		totalRecords += len(output.records)
+	}
+
+	mergedLogPaths := logObjectPathsFromStatsIndex(
+		ctx,
+		t,
+		indexBucket,
+		mergeArtifacts[0].Path,
+		tenant,
+	)
+	require.Len(t, mergedLogPaths, 1)
+
+	for _, mergedPath := range mergedLogPaths {
+		mergedObject, err := dataobj.FromBucket(ctx, dataBucket, mergedPath, 0)
+		require.NoError(t, err)
+
+		var sortedSections []*compactionv2pb.SectionRef
+		for sectionIndex, section := range mergedObject.Sections().Filter(logs.CheckSection) {
+			if section.Tenant != tenant {
+				continue
+			}
+			opened, err := logs.Open(ctx, section)
+			require.NoError(t, err)
+			layout := opened.SortLayout()
+			require.Equal(t, sortSchema, layout.SchemaLabels)
+			require.Equal(t, logs.StreamOrderStableHashV1, layout.StreamOrder)
+			require.Equal(t, streams.ShardFactor, layout.ShardCount)
+
+			sortedSections = append(sortedSections, &compactionv2pb.SectionRef{
+				ObjectPath:   mergedPath,
+				SectionIndex: int64(sectionIndex),
+			})
+			fmt.Println("logs section: ", mergedPath, ", sort layout: ", layout)
+		}
+		require.NotEmpty(t, sortedSections)
+		sortedRuns = append(sortedRuns, &compactionv2pb.RunRef{Sections: sortedSections})
+
+		for _, section := range mergedObject.Sections().Filter(streams.CheckSection) {
+			if section.Tenant != tenant {
+				continue
+			}
+			opened, err := streams.Open(ctx, section)
+			require.NoError(t, err)
+			for result := range streams.IterSection(ctx, opened) {
+				stream, err := result.Value()
+				require.NoError(t, err)
+
+				fmt.Printf("stream in logs obj: ID(%d), hash(%d), shardBucket(%d), labels(%s)\n", stream.ID, labels.StableHash(stream.Labels), stream.ShardHash, stream.Labels)
+				//expected := int64(promlabels.StableHash(stream.Labels) % uint64(streams.ShardFactor))
+				//require.Equal(t, expected, stream.ShardHash, "labels=%s", stream.Labels.String())
+				observedShards[stream.ShardHash] = struct{}{}
+			}
+		}
+	}
+
+	require.Equal(t, 5, totalStreams, "four copies of the common stream should be deduplicated")
+	require.Equal(t, 16, totalRecords, "sorting and merging must preserve every log record")
+}
+
+func logObjectPathsFromStatsIndex(
+	ctx context.Context,
+	t *testing.T,
+	indexBucket objstore.Bucket,
+	indexPath string,
+	tenant string,
+) []string {
+	t.Helper()
+
+	indexObject, err := dataobj.FromBucket(ctx, indexBucket, indexPath, 0)
+	require.NoError(t, err)
+
+	unique := make(map[string]struct{})
+	for _, section := range indexObject.Sections().Filter(stats.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		opened, err := stats.Open(ctx, section)
+		require.NoError(t, err)
+		reader := stats.NewRowReader(ctx, opened)
+		for reader.Next() {
+			if path := reader.At().ObjectPath; path != "" {
+				unique[path] = struct{}{}
+			}
+		}
+		require.NoError(t, reader.Err())
+		reader.Close()
+	}
+
+	paths := make([]string, 0, len(unique))
+	for path := range unique {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+	return paths
 }
 
 func TestDoLogObjectMerge_RejectsLegacyLayoutForStrictMerge(t *testing.T) {

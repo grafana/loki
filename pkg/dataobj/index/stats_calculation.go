@@ -63,7 +63,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		streamLbls := calcCtx.streamLabels[log.StreamID]
 		shard, ok := c.streamShards[log.StreamID]
 		if !ok {
-			shard = uint32(labels.StableHash(streamLbls) % uint64(streams.ShardFactor))
+			shard = uint32(streams.ShardBucket(streamLbls))
 			c.streamShards[log.StreamID] = shard
 		}
 

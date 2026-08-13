@@ -426,7 +426,7 @@ func (b *Builder) appendRecord(tenant string, streamLabels labels.Labels, record
 
 	record.StreamID = sb.Record(streamLabels, record.Timestamp, size)
 	record.SortKey = sortKey
-	record.ShardHash = int64(labels.StableHash(streamLabels) % uint64(streams.ShardFactor))
+	record.ShardHash = int64(streams.ShardBucket(streamLabels))
 	lb.Append(record)
 
 	// If our logs section has gotten big enough, flush it to the encoder and
