@@ -33,7 +33,27 @@ All monitoring resources are disabled by default.
 
 As of chart 18.0.0, alert rules are managed under `monitoring.alerts`, not `monitoring.rules` (which now controls recording rules only). The release-identifying metric label is `app_instance` by default (`monitoring.appInstanceLabelName`).
 
-For details on available monitoring keys, refer to the [Helm Chart Reference](../reference/).
+For details on available monitoring keys, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
+
+### Deploying dashboards via the Grafana Operator
+
+Instead of ConfigMaps, the chart can render `GrafanaDashboard` custom resources for the [Grafana Operator](https://github.com/grafana/grafana-operator) project. When you run an operator-managed Grafana instance, this lets that instance import the Loki dashboards automatically, without a sidecar watching ConfigMaps.
+
+```yaml
+monitoring:
+  dashboards:
+    enabled: true
+    grafanaOperator:
+      enabled: true
+      instanceSelector:
+        matchLabels:
+          dashboards: "grafana"
+      folder: Loki
+```
+
+`instanceSelector` is a label selector that the Grafana Operator matches against the labels on your Grafana custom resource; an empty selector (the default) matches every Grafana instance. `folder`, `folderUID`, and `folderRef` all place the dashboards into a folder in Grafana, so set only one of them.
+
+For the full list of `monitoring.dashboards.grafanaOperator` keys, including `annotations`, `labels`, and `resyncPeriod`, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
 ## Recommended: Kubernetes monitoring Helm chart
 

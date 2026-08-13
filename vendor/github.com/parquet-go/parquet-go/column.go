@@ -351,6 +351,17 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 			// the page headers to determine which compression and encodings are
 			// applied.
 			for _, encoding := range c.chunks[0].MetaData.Encoding {
+				// BIT_PACKED appears in the encodings list when the
+				// deprecated bit-packed encoding was used for repetition
+				// or definition levels. Encodings.md: "Note that the
+				// BIT_PACKED encoding method is only supported for
+				// encoding repetition and definition levels." It is never
+				// a data page encoding, so it must not be reported as the
+				// column encoding (it would make schemas derived from
+				// this file unwritable).
+				if encoding == format.BitPacked {
+					continue
+				}
 				if c.encoding == nil {
 					c.encoding = LookupEncoding(encoding)
 				}
@@ -768,6 +779,12 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 		return nil, err
 	}
 
+	if !isDictionaryEncoding(pageEncoding) {
+		if err := checkPageDataCapacity(pageKind, c.Type().Length(), numValues, values); err != nil {
+			return nil, err
+		}
+	}
+
 	newPage := pageType.NewPage(c.Index(), numValues, values)
 	switch {
 	case c.maxRepetitionLevel > 0:
@@ -865,7 +882,35 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer[byte
 	if err != nil {
 		return nil, err
 	}
+	if err := checkPageDataCapacity(pageType.Kind(), pageType.Length(), numValues, values); err != nil {
+		return nil, err
+	}
 	return pageType.NewDictionary(int(c.index), numValues, values), nil
+}
+
+// check data buffer has enough capacity for the nubmer of values & value type
+func checkPageDataCapacity(kind Kind, typeLength, numValues int, values encoding.Values) error {
+	n := int64(numValues)
+	var need int64
+	switch kind {
+	case Boolean: // bit packed
+		need = (n + 7) / 8
+	case Int32, Float:
+		need = 4 * n
+	case Int64, Double:
+		need = 8 * n
+	case Int96:
+		need = 12 * n
+	case FixedLenByteArray:
+		need = int64(typeLength) * n
+	default:
+		return nil
+	}
+	data, _ := values.Data()
+	if int64(cap(data)) < need {
+		return fmt.Errorf("page header declares %d values requiring %d bytes but decoded buffer holds only %d: %w", numValues, need, cap(data), ErrCorrupted)
+	}
+	return nil
 }
 
 var _ Node = (*Column)(nil)

@@ -174,10 +174,10 @@ func (s *stream) prune(olderThan time.Duration) bool {
 			if cluster.Size == 0 {
 				pattern.Delete(cluster)
 			}
-			// Clear empty branches and track total clusters
-			pattern.Prune()
-			totalClusters += len(pattern.Clusters())
 		}
+		// Clear empty branches and track total clusters
+		pattern.Prune()
+		totalClusters += len(pattern.Clusters())
 	}
 
 	// Filter clusters by volume if volumeThreshold is set (< 1.0)

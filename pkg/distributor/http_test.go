@@ -140,12 +140,6 @@ func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
 	})
 
 	t.Run("Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-
-		// NOTE: this currently returns 400, not 413: an oversized JSON body is
-		// truncated by the max-recv-msg-size LimitReader and fails to decode
-		// before any size check maps to ErrRequestBodyTooLarge. We assert 413
-		// here as the desired behavior.
 		body := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
 
@@ -215,7 +209,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	}
 
 	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		protoBytes, err := proto.Marshal(&logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -247,7 +240,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		body := withGzip(t, lokiJSON)
 		require.Greater(t, int64(len(lokiJSON)), distributors[0].cfg.MaxDecompressedSize)
@@ -271,7 +263,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed OTLP JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		otlpLogs := plog.NewLogs()
 		rl := otlpLogs.ResourceLogs().AppendEmpty()
 		rl.Resource().Attributes().PutStr("service.name", "test-service")

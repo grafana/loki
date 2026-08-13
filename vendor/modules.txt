@@ -1312,10 +1312,10 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/oschwald/geoip2-golang/v2 v2.2.0
+# github.com/oschwald/geoip2-golang/v2 v2.3.0
 ## explicit; go 1.25.0
 github.com/oschwald/geoip2-golang/v2
-# github.com/oschwald/maxminddb-golang/v2 v2.4.1
+# github.com/oschwald/maxminddb-golang/v2 v2.5.0
 ## explicit; go 1.25.0
 github.com/oschwald/maxminddb-golang/v2
 github.com/oschwald/maxminddb-golang/v2/internal/decoder
@@ -1328,7 +1328,7 @@ github.com/parquet-go/bitpack/unsafecast
 # github.com/parquet-go/jsonlite v1.5.2
 ## explicit; go 1.23
 github.com/parquet-go/jsonlite
-# github.com/parquet-go/parquet-go v0.30.1
+# github.com/parquet-go/parquet-go v0.31.0
 ## explicit; go 1.24.9
 github.com/parquet-go/parquet-go
 github.com/parquet-go/parquet-go/bloom
@@ -1611,7 +1611,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20260615134008-fb6fd3a5170a => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
+# github.com/thanos-io/objstore v0.0.0-20260810080323-9ad2de9be10b => github.com/grafana/objstore v0.0.0-20260721130030-becd33cc63ff
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil

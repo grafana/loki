@@ -6,8 +6,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -89,9 +92,6 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 	case *syntax.LiteralExpr:
 		return e, 0, nil
 	case *syntax.VectorExpr:
-		return e, 0, nil
-	case *syntax.MultiVariantExpr:
-		// TODO(twhitney): this should be possible to support but hasn't been implemented yet
 		return e, 0, nil
 	case *syntax.MatchersExpr, *syntax.PipelineExpr:
 		return m.mapLogSelectorExpr(e.(syntax.LogSelectorExpr), r)
@@ -499,6 +499,14 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
+		// Below this point the avg_over_time() is decomposed into a sum_over_time()
+		// divided by a count_over_time(). The count leg cannot reproduce a
+		// post filter on __error__, because only the unwrap conversion sets that
+		// label and the count_over_time() doesn't support unwrap.
+		if hasUnwrapPostFiltersOnError(expr.Left) {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		grouping := expr.Grouping
 		if grouping == nil {
 			grouping = &syntax.Grouping{Without: true}
@@ -518,7 +526,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// Strip unwrap from log range
-		countOverTimeSelector, err := expr.Left.WithoutUnwrap()
+		countOverTimeSelector, err := convertUnwrapToLabelFilters(expr.Left)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -693,4 +701,59 @@ func isLiteralOrVector(e syntax.Expr) bool {
 
 func badASTMapping(got syntax.Expr) error {
 	return fmt.Errorf("bad AST mapping: expected SampleExpr, but got (%T)", got)
+}
+
+// convertUnwrapToLabelFilters returns a copy of the log range with the unwrap
+// removed and replaced by the label filters that select the same log lines.
+//
+// A line yields an unwrapped sample only when the unwrap identifier resolves to
+// a non-empty label and the post filters keep the line, so `| unwrap x | f`
+// becomes `| x != "" | f`.
+func convertUnwrapToLabelFilters(r *syntax.LogRangeExpr) (*syntax.LogRangeExpr, error) {
+	if r.Unwrap == nil {
+		return syntax.Clone(r)
+	}
+
+	// WithoutUnwrap clones the selector, and the copy is required: the stages
+	// below are appended in place, while the caller keeps the original pipeline
+	// on the sum leg of the decomposition.
+	out, err := r.WithoutUnwrap()
+	if err != nil {
+		return nil, err
+	}
+
+	stages := syntax.MultiStageExpr{
+		&syntax.LabelFilterExpr{
+			LabelFilterer: log.NewStringLabelFilter(
+				labels.MustNewMatcher(labels.MatchNotEqual, r.Unwrap.Identifier, ""),
+			),
+		},
+	}
+	for _, f := range r.Unwrap.PostFilters {
+		stages = append(stages, &syntax.LabelFilterExpr{LabelFilterer: f})
+	}
+
+	switch left := out.Left.(type) {
+	case *syntax.PipelineExpr:
+		left.MultiStages = append(left.MultiStages, stages...)
+	case *syntax.MatchersExpr:
+		out.Left = &syntax.PipelineExpr{Left: left, MultiStages: stages}
+	default:
+		return nil, fmt.Errorf("unsupported log selector type %T", out.Left)
+	}
+	return out, nil
+}
+
+func hasUnwrapPostFiltersOnError(r *syntax.LogRangeExpr) bool {
+	if r.Unwrap == nil {
+		return false
+	}
+	for _, f := range r.Unwrap.PostFilters {
+		for _, name := range f.RequiredLabelNames() {
+			if name == logqlmodel.ErrorLabel || name == logqlmodel.ErrorDetailsLabel {
+				return true
+			}
+		}
+	}
+	return false
 }
