@@ -666,15 +666,16 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	if rec.StreamID <= 0 || rec.StreamID >= int64(len(w.table.streams)) {
 		return fmt.Errorf("merged record references invalid global stream ID %d", rec.StreamID)
 	}
+	size := logRecordSize(rec)
 	stream := w.table.streams[rec.StreamID]
-	if err := w.builder.AppendRecord(w.node.Tenant, stream.Labels, rec, rec.Timestamp); err != nil {
+	if err := w.builder.AppendRecord(w.node.Tenant, stream.Labels, rec, rec.Timestamp, int64(size)); err != nil {
 		return fmt.Errorf("appending compacted log record: %w", err)
 	}
 
 	w.currentSortKey = rec.SortKey
 	w.hasSortKey = true
 	w.objRecords++
-	w.objSize += logRecordSize(rec)
+	w.objSize += size
 	return nil
 }
 

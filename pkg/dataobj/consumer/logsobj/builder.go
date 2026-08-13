@@ -377,21 +377,26 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 // AppendRecord buffers an already-decoded log record for streamLabels. The
 // record's StreamID and SortKey are replaced with values assigned by the
 // builder, allowing streams with equal labels to be deduplicated.
-func (b *Builder) AppendRecord(tenant string, streamLabels labels.Labels, record logs.Record, recTime time.Time) error {
+func (b *Builder) AppendRecord(tenant string, streamLabels labels.Labels, record logs.Record, recTime time.Time, size int64) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	sortKey, err := b.computeSortKey(tenant, streamLabels)
-	if err != nil {
-		return err
+	sortKey := record.SortKey
+	if record.SortKey == "" {
+		var err error
+		sortKey, err = b.computeSortKey(tenant, streamLabels)
+		if err != nil {
+			return err
+		}
 	}
 
-	var size int64
-	size += int64(len(record.Line))
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += int64(len(metadata.Value))
-	})
+	if size == 0 {
+		size += int64(len(record.Line))
+		record.Metadata.Range(func(metadata labels.Label) {
+			size += int64(len(metadata.Value))
+		})
+	}
 
 	if err := b.appendRecord(tenant, streamLabels, record, sortKey, size); err != nil {
 		return err
