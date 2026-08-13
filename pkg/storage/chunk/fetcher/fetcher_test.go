@@ -257,6 +257,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	t.Cleanup(f.Stop)
 
 	logs := captureLogs(t)
+	beforeFailures := readFailureCounters(t)
 
 	got, err := f.FetchChunks(context.Background(), chunks)
 	require.NoError(t, err)
@@ -264,6 +265,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 
 	require.Equal(t, 1, strings.Count(logs.String(), `msg="error process response from cache"`))
 	require.Equal(t, 0, strings.Count(logs.String(), `msg="failed downloading chunks"`))
+	require.Empty(t, failureCounterDeltas(t, beforeFailures))
 }
 
 // TestFetchChunks_LosesChunksSilently asserts that the loss is still silent.
@@ -282,14 +284,11 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		handoff      time.Duration
 		chunks       []c
 		notInStore   []int
-		l1Corrupt    []int
-		l2Corrupt    []int
 		inject       func(objects *testutils.FailingObjectClient, keys []string)
 		wantReturned int
-		wantFailures map[lossLabels]float64
+		wantFailures map[string]float64
 	}{
 		{
 			name:   "storage throttles two of three",
@@ -298,7 +297,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 				objects.Fail(wrapped(slowDown), keys[0], keys[1])
 			},
 			wantReturned: 1,
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.Throttled}: 2},
+			wantFailures: map[string]float64{errclass.Throttled: 2},
 		},
 		{
 			name:         "chunk absent from the store",
@@ -307,7 +306,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 			wantReturned: 1,
 			// The client predicate has to answer this one. errclass sees an
 			// unrecognised error, because the backend error is private to the client.
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.NotFound}: 1},
+			wantFailures: map[string]float64{errclass.NotFound: 1},
 		},
 		{
 			name:   "storage returns NoSuchKey",
@@ -316,35 +315,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 				objects.Fail(noSuchKey, keys[0])
 			},
 			wantReturned: 1,
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.NotFound}: 1},
-		},
-		{
-			name:         "poisoned L1 entry",
-			chunks:       []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}, {3 * time.Hour, 4 * time.Hour}},
-			l1Corrupt:    []int{2},
-			wantReturned: 2,
-			wantFailures: map[lossLabels]float64{{sourceCacheL1, errclass.Decode}: 1},
-		},
-		{
-			name:         "poisoned L2 entry",
-			handoff:      48 * time.Hour,
-			chunks:       []c{{72 * time.Hour, 73 * time.Hour}, {74 * time.Hour, 75 * time.Hour}, {76 * time.Hour, 77 * time.Hour}},
-			l2Corrupt:    []int{0},
-			wantReturned: 2,
-			wantFailures: map[lossLabels]float64{{sourceCacheL2, errclass.Decode}: 1},
-		},
-		{
-			name:      "cache and storage each lose one",
-			chunks:    []c{{time.Hour, 2 * time.Hour}, {2 * time.Hour, 3 * time.Hour}, {3 * time.Hour, 4 * time.Hour}},
-			l1Corrupt: []int{0},
-			inject: func(objects *testutils.FailingObjectClient, keys []string) {
-				objects.Fail(slowDown, keys[1])
-			},
-			wantReturned: 1,
-			wantFailures: map[lossLabels]float64{
-				{sourceCacheL1, errclass.Decode}:  1,
-				{sourceStore, errclass.Throttled}: 1,
-			},
+			wantFailures: map[string]float64{errclass.NotFound: 1},
 		},
 		{
 			name:   "body stops arriving part way through",
@@ -353,7 +324,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 				objects.Truncate(keys[0], 8)
 			},
 			wantReturned: 1,
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.ConnReset}: 1},
+			wantFailures: map[string]float64{errclass.ConnReset: 1},
 		},
 		{
 			name:   "every chunk fails",
@@ -362,7 +333,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 				objects.Fail(slowDown, keys...)
 			},
 			wantReturned: 0,
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.Throttled}: 3},
+			wantFailures: map[string]float64{errclass.Throttled: 3},
 		},
 		{
 			name:   "two reasons in one batch",
@@ -375,7 +346,7 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 			// GetParallelChunks keeps only the last error, so both lost chunks take
 			// the reason of the last one to fail. The throttled chunk is misreported.
 			// PR-1b collects every error and this expectation then splits in two.
-			wantFailures: map[lossLabels]float64{{sourceStore, errclass.NotFound}: 2},
+			wantFailures: map[string]float64{errclass.NotFound: 2},
 		},
 	}
 
@@ -402,20 +373,15 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 			chunkClient := client.NewClientWithMaxParallel(objects, nil, 1, sc)
 			require.NoError(t, chunkClient.PutChunks(ctx, inStore))
 
-			l1, l2 := cache.NewMockCache(), cache.NewMockCache()
-			storeInCache(t, sc, l1, nil, pick(chunks, test.l1Corrupt))
-			storeInCache(t, sc, l2, nil, pick(chunks, test.l2Corrupt))
-
 			if test.inject != nil {
 				test.inject(objects, keys)
 			}
 
-			f, err := New(l1, l2, false, sc, chunkClient, test.handoff, 0)
+			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, sc, chunkClient, 0, 0)
 			require.NoError(t, err)
 			t.Cleanup(f.Stop)
 
 			beforeFailures := readFailureCounters(t)
-			beforeCorrupt := testutil.ToFloat64(cacheCorrupt)
 
 			got, err := f.FetchChunks(ctx, chunks)
 
@@ -432,9 +398,6 @@ func TestFetchChunks_LosesChunksSilently(t *testing.T) {
 				counted += delta
 			}
 			require.Equal(t, float64(len(chunks)-test.wantReturned), counted)
-
-			decoded := deltas[lossLabels{sourceCacheL1, errclass.Decode}] + deltas[lossLabels{sourceCacheL2, errclass.Decode}]
-			require.Equal(t, decoded, testutil.ToFloat64(cacheCorrupt)-beforeCorrupt)
 		})
 	}
 }
@@ -479,7 +442,7 @@ func TestFetchChunks_LosesChunksSilently_OnCancellation(t *testing.T) {
 
 	require.NoError(t, fetchErr)
 	require.Empty(t, got)
-	require.Equal(t, map[lossLabels]float64{{sourceStore, errclass.Canceled}: 2}, failureCounterDeltas(t, before))
+	require.Equal(t, map[string]float64{errclass.Canceled: 2}, failureCounterDeltas(t, before))
 }
 
 // TestFetchChunks_LosesChunksSilently_OnShortReturn covers a store that drops a
@@ -503,48 +466,40 @@ func TestFetchChunks_LosesChunksSilently_OnShortReturn(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	require.Equal(t, map[lossLabels]float64{{sourceStore, errclass.Unknown}: 1}, failureCounterDeltas(t, before))
+	require.Equal(t, map[string]float64{errclass.Unknown: 1}, failureCounterDeltas(t, before))
 }
 
-// TestLossMetricsAreExposed pins the reachable label pairs. A thirteenth series
-// means something increments a combination that cannot happen.
+// TestLossMetricsAreExposed pins the storage failure reasons.
 func TestLossMetricsAreExposed(t *testing.T) {
 	families, err := prometheus.DefaultGatherer.Gather()
 	require.NoError(t, err)
 
 	for _, family := range families {
 		if family.GetName() == "loki_chunk_fetcher_failures_total" {
-			require.Len(t, family.GetMetric(), 12)
+			require.Len(t, family.GetMetric(), len(errclass.Reasons()))
 			return
 		}
 	}
 	t.Fatal("loki_chunk_fetcher_failures_total is not registered")
 }
 
-type lossLabels struct {
-	source, reason string
-}
-
-func readFailureCounters(t *testing.T) map[lossLabels]float64 {
+func readFailureCounters(t *testing.T) map[string]float64 {
 	t.Helper()
 
-	out := make(map[lossLabels]float64, 12)
+	out := make(map[string]float64, len(errclass.Reasons()))
 	for _, reason := range errclass.Reasons() {
-		out[lossLabels{sourceStore, reason}] = testutil.ToFloat64(chunkFetchFailures.WithLabelValues(sourceStore, reason))
-	}
-	for _, source := range []string{sourceCacheL1, sourceCacheL2} {
-		out[lossLabels{source, errclass.Decode}] = testutil.ToFloat64(chunkFetchFailures.WithLabelValues(source, errclass.Decode))
+		out[reason] = testutil.ToFloat64(chunkFetchFailures.WithLabelValues(reason))
 	}
 	return out
 }
 
-func failureCounterDeltas(t *testing.T, before map[lossLabels]float64) map[lossLabels]float64 {
+func failureCounterDeltas(t *testing.T, before map[string]float64) map[string]float64 {
 	t.Helper()
 
-	out := map[lossLabels]float64{}
-	for labels, after := range readFailureCounters(t) {
-		if delta := after - before[labels]; delta != 0 {
-			out[labels] = delta
+	out := map[string]float64{}
+	for reason, after := range readFailureCounters(t) {
+		if delta := after - before[reason]; delta != 0 {
+			out[reason] = delta
 		}
 	}
 	return out
@@ -581,14 +536,6 @@ func (s shortReturnClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) 
 
 func testSchemaConfig() config.SchemaConfig {
 	return testutils.SchemaConfig("inmemory", "v11", model.Now().Add(-100*24*time.Hour))
-}
-
-func pick(chunks []chunk.Chunk, indexes []int) []chunk.Chunk {
-	out := make([]chunk.Chunk, 0, len(indexes))
-	for _, i := range indexes {
-		out = append(out, chunks[i])
-	}
-	return out
 }
 
 // captureLogs redirects the logger the fetcher falls back to when the context
