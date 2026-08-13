@@ -750,7 +750,7 @@ func nodeOf(path []string, t reflect.Type, tags parquetTags, tagReplacements []S
 				}
 				n = FieldID(n, id)
 			default:
-				throwUnknownTag(t, "map", option)
+				throwUnknownTag(t, "map", joinOptionArgs(option, args))
 			}
 		})
 
@@ -786,6 +786,17 @@ func splitOptionArgs(s string) (option, args string) {
 		args = "()"
 	}
 	return
+}
+
+// joinOptionArgs is the inverse of splitOptionArgs for the purpose of
+// rendering a tag back to the user. splitOptionArgs returns args="()" as
+// a sentinel meaning "no parens in the source"; we drop it here so plain
+// options don't render as "foo()" in panic messages.
+func joinOptionArgs(option, args string) string {
+	if args == "()" {
+		return option
+	}
+	return option + args
 }
 
 func parseDecimalArgs(args string) (scale, precision int, err error) {
@@ -1327,6 +1338,8 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					throwInvalidTag(t, name, option+args)
 				}
 				setNode(Geography(crs, alg))
+			default:
+				throwUnknownTag(t, name, joinOptionArgs(option, args))
 			}
 		})
 	}
@@ -1390,6 +1403,7 @@ func forEachTagOption(tags []string, do func(option, args string)) {
 			option, tag = split(tag)
 			var args string
 			option, args = splitOptionArgs(option)
+			option = strings.TrimSpace(option)
 			do(option, args)
 		}
 	}

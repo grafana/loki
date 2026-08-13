@@ -3,7 +3,9 @@ package parquet
 import (
 	"io"
 
+	"github.com/google/uuid"
 	"github.com/parquet-go/parquet-go/encoding"
+	"github.com/parquet-go/parquet-go/internal/unsafecast"
 )
 
 type be128Page struct {
@@ -96,4 +98,33 @@ func (r *be128PageValues) ReadValues(values []Value) (n int, err error) {
 		err = io.EOF
 	}
 	return n, err
+}
+
+func (r *be128PageValues) ReadBE128s(values [][16]byte) (n int, err error) {
+	n = copy(values, r.page.values[r.offset:])
+	r.offset += n
+	if r.offset == len(r.page.values) {
+		err = io.EOF
+	}
+	return n, err
+}
+
+func (col *be128ColumnBuffer) WriteBE128s(values [][16]byte) (int, error) {
+	col.values = append(col.values, values...)
+	return len(values), nil
+}
+
+func (r *be128PageValues) ReadUUIDs(values []uuid.UUID) (n int, err error) {
+	pageValues := unsafecast.Slice[uuid.UUID](r.page.values)
+	n = copy(values, pageValues[r.offset:])
+	r.offset += n
+	if r.offset == len(pageValues) {
+		err = io.EOF
+	}
+	return n, err
+}
+
+func (col *be128ColumnBuffer) WriteUUIDs(values []uuid.UUID) (int, error) {
+	col.values = append(col.values, unsafecast.Slice[[16]byte](values)...)
+	return len(values), nil
 }

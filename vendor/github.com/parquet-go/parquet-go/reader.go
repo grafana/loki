@@ -662,6 +662,9 @@ func makeFileRowGroups(file *File, columns []*Column) ([]FileRowGroup, error) {
 	if err := validateRowGroupOrdinals(rowGroups); err != nil {
 		return nil, err
 	}
+	if err := validateRowCounts(file.metadata.NumRows, rowGroups); err != nil {
+		return nil, err
+	}
 
 	fileRowGroups := make([]FileRowGroup, len(rowGroups))
 	for i := range fileRowGroups {
@@ -708,6 +711,20 @@ func validateRowGroupOrdinals(rowGroups []format.RowGroup) error {
 	for i, rg := range rowGroups {
 		if int(rg.Ordinal) != i {
 			return fmt.Errorf("row group ordinal %d at index %d does not match its position", rg.Ordinal, i)
+		}
+	}
+	return nil
+}
+
+// validateRowCounts rejects negative row counts in the file footer and row groups
+// prevent panics later on that would reach for an invalid slice index
+func validateRowCounts(fileNumRows int64, rowGroups []format.RowGroup) error {
+	if fileNumRows < 0 {
+		return fmt.Errorf("invalid file metadata: num_rows=%d is negative", fileNumRows)
+	}
+	for i := range rowGroups {
+		if n := rowGroups[i].NumRows; n < 0 {
+			return fmt.Errorf("invalid file metadata: row group %d num_rows=%d is negative", i, n)
 		}
 	}
 	return nil
