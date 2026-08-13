@@ -161,12 +161,14 @@ Examples:
 ## Probabilistic aggregation
 
 {{< admonition type="note" >}}
-Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use this feature, set `limits_config.shard_aggregations:approx_topk` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). To enable this feature in Grafana Cloud, contact Grafana Support.
+Probabilistic aggregation is an experimental feature. Engineering and on-call support is not available. Documentation is either limited or not provided outside of code comments. No SLA is provided. To use these features, set `limits_config.shard_aggregations` to include `approx_topk` and/or `approx_count_distinct` in your [Loki configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). `approx_count_distinct` also requires `frontend.encoding: protobuf`. To enable these features in Grafana Cloud, contact Grafana Support.
 {{< /admonition >}}
 
-LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one. 
+### `approx_topk`
 
-The function is of the form: 
+LogQL's `approx_topk` function provides a probabilistic approximation of `topk`. It is a drop-in replacement for `topk` that is great for when `topk` queries time out or hit the maximum series limit. This tends to happen when the list of values that you're sorting through in order to find the most frequent values is very large. `approx_topk` is also great in cases where a faster, approximate answer is preferred to a slower, more accurate one.
+
+The function is of the form:
 
 ```logql
 approx_topk(k, <vector expression>)
@@ -174,7 +176,7 @@ approx_topk(k, <vector expression>)
 
 `approx_topk` is only supported for instant queries. Grouping is also not supported and should be handled by an inner `sum by` or `sum without` even though this might not be the same behavior as `topk by`.
 
-Under the hood, `approx_topk` is implemented using sharding. The [count-min sketch](https://en.wikipedia.org/wiki/Count%E2%80%93min_sketch) algorithm and a heap are used to approximate the counts for each shard. The accuracy of the approximation depends on the size of the heap, which is defined by Loki's`max_count_min_sketch_heap_size` parameter. Accuracy decreases as `k` approaches the size of the heap (which has a default size of `10,000`). 
+Under the hood, `approx_topk` is implemented using sharding. The [count-min sketch](https://en.wikipedia.org/wiki/Count%E2%80%93min_sketch) algorithm and a heap are used to approximate the counts for each shard. The accuracy of the approximation depends on the size of the heap, which is defined by Loki's`max_count_min_sketch_heap_size` parameter. Accuracy decreases as `k` approaches the size of the heap (which has a default size of `10,000`).
 
 The expression `approx_topk(k,inner)` becomes
 
@@ -188,6 +190,44 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
+
+### `approx_count_distinct`
+
+LogQL's `approx_count_distinct` function approximates the number of distinct values of a label or extracted field without creating one series per distinct value. Use it when an exact `count by` would explode series cardinality.
+
+The function is of the form:
+
+```logql
+approx_count_distinct(
+  <counted field>,
+  <log expression> [<duration>]
+) by (<grouping fields>)
+```
+
+Example:
+
+```logql
+approx_count_distinct(
+  mac_address,
+  {job="devices"} | json [1d]
+) by (version)
+```
+
+`approx_count_distinct` is only supported for instant queries. An explicit range duration and `by (...)` grouping are required. Do not group by the counted field. `unwrap` is not supported.
+
+Under the hood, Loki builds one [HyperLogLog](https://en.wikipedia.org/wiki/HyperLogLog) sketch per output group at precision 14 (sparse at low cardinality, about 16 KiB when dense). Index sharding merges sketches before estimating so overlapping values across shards are counted once.
+
+The expression `approx_count_distinct(field, range) by (group)` becomes
+
+```
+evaluate(
+  merge(
+    count_distinct_sketch(field, range, shard=0),
+    count_distinct_sketch(field, range, shard=1),
+    ...
+  )
+)
+```
 
 ## Result ordering
 
