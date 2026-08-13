@@ -56,3 +56,87 @@ message EntryAdapter {
     (gogoproto.jsontag) = "parsed,omitempty"
   ];
 }
+
+// InternalPushRequest carries entries which arrived with OTLP resource or scope attributes, from
+// the distributor through Kafka to the ingester. It is never accepted from or returned to
+// clients: PushRequest above remains the only public shape, and is unchanged by this format.
+//
+// Once this format is rolled out the producer writes nothing else, including for traffic that
+// arrived without any resource or scope attributes, so the topic holds two message types only for
+// as long as records written before the rollout are still within retention. A consumer reads those
+// older records by attempting this format first and falling back to PushRequest when the decode
+// fails, which the field numbering below makes reliable.
+message InternalPushRequest {
+  repeated NestedStreamAdapter streams = 1 [
+    (gogoproto.jsontag) = "streams",
+    (gogoproto.nullable) = false
+  ];
+  // format in which streams are ingested - loki or otlp
+  string format = 2 [(gogoproto.jsontag) = "format"];
+}
+
+// NestedStreamAdapter keeps labels at field 1 and hash at field 3, matching StreamAdapter, so a
+// reader that parses one of these records as a StreamAdapter still reads both correctly. It finds
+// no entries, because they are all inside resourceLogs at field 4, which it skips.
+message NestedStreamAdapter {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  // hash contains the original hash of the stream.
+  //
+  // The numbering here is deliberately incompatible with StreamAdapter rather than aligned with
+  // it. hash is a varint at field 2, where StreamAdapter holds its length delimited entries, and
+  // resourceLogs is length delimited at field 3, where StreamAdapter holds its varint hash. A
+  // record of either format therefore fails to decode as the other with a wire type error,
+  // instead of decoding to a stream with no entries and silently discarding every line. That is
+  // what allows a consumer to attempt this format first and fall back on error. Adding a varint
+  // field 2 to StreamAdapter, or a length delimited field 2 here, would quietly remove the
+  // property, so it is worth a test.
+  uint64 hash = 2 [(gogoproto.jsontag) = "-"];
+  // resourceLogs carries every entry of the stream, nested under the attributes that apply to it,
+  // so the association is containment and an entry cannot name a set that is absent.
+  //
+  // There is deliberately no flat entry list alongside this one. Entries always live inside a
+  // scope, and a stream with nothing to share carries one resourceLogs entry holding one scopeLogs
+  // entry with both attribute lists empty. Keeping a flat list as well would put entries in two
+  // places depending on their origin, so every consumer, splitter and materialiser would need two
+  // traversals and two code paths. The uniform representation costs two message headers per
+  // stream instead, four bytes for a small stream and eight for a large one.
+  //
+  // This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients are
+  // discarded, and it is never returned in query responses.
+  repeated ResourceLogs resourceLogs = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "-"
+  ];
+}
+
+// ResourceLogs holds one OTLP resource's attributes and the scopes emitted beneath it.
+message ResourceLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated ScopeLogs scopeLogs = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "scopeLogs"
+  ];
+}
+
+// ScopeLogs holds one OTLP scope's attributes and the entries emitted beneath it.
+//
+// The effective structured metadata of an entry is the enclosing resource's attrs, then this
+// scope's attrs, then the entry's own structuredMetadata. The read path keeps the last pair for a
+// repeated label name, so precedence is own > scope > resource, which is the precedence the
+// expanded form produced.
+message ScopeLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated EntryAdapter entries = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "entries",
+    (gogoproto.customtype) = "Entry"
+  ];
+}
