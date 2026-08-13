@@ -1411,7 +1411,6 @@ type fakeLimits struct {
 	maxStatsCacheFreshness      time.Duration
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
-	enableMultiVariantQueries   bool
 	tsdbShardingStrategy        func(context.Context, string) string
 }
 
@@ -1549,10 +1548,6 @@ func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) str
 
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
-}
-
-func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
-	return f.enableMultiVariantQueries
 }
 
 func (f fakeLimits) DebugEngineTasks(_ string) bool {

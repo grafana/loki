@@ -326,8 +326,6 @@ type Distributor struct {
 	// Rate limited reporter for OTLP resource and scope attribute expansion.
 	otlpAttrReporter *otlpattrs.Reporter
 
-	RequestParserWrapper push.RequestParserWrapper
-
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup

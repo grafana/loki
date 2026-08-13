@@ -4,11 +4,27 @@
 
 package sqlite3
 
+const __DBL_IS_IEC_60559__ = 1
+
 const __FLOAT128_TYPE__ = 1
+
+const __FLT128_IS_IEC_60559__ = 1
+
+const __FLT32X_IS_IEC_60559__ = 1
+
+const __FLT32_IS_IEC_60559__ = 1
+
+const __FLT64X_IS_IEC_60559__ = 1
+
+const __FLT64_IS_IEC_60559__ = 1
+
+const __FLT_IS_IEC_60559__ = 1
 
 const __GNUC__ = 14
 
 const __GXX_ABI_VERSION = 1019
+
+const __LDBL_IS_IEC_60559__ = 1
 
 const __builtin_copysignq = 0
 
