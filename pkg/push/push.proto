@@ -30,6 +30,33 @@ message StreamAdapter {
   ];
   // hash contains the original hash of the stream.
   uint64 hash = 3 [(gogoproto.jsontag) = "-"];
+  // sharedResourceAttributes is the OTLP resource attributes that every entry of this stream
+  // shares, carried once here instead of being copied onto each entry's structuredMetadata.
+  //
+  // A stream is emitted per distinct combination of index labels, resource attributes and scope
+  // attributes, which is what makes a plain list sufficient: every entry of the stream shares
+  // both lists. A request whose entries span several combinations therefore becomes several
+  // streams, and so several records, each carrying its own copy.
+  //
+  // The effective structured metadata of an entry is these attributes, then the scope
+  // attributes, then the entry's own structuredMetadata. The read path keeps the last pair for a
+  // repeated label name, so precedence is own > scope > resource, which is the precedence the
+  // expanded form produced.
+  //
+  // This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients are
+  // discarded, and it is never returned in query responses.
+  repeated LabelPairAdapter sharedResourceAttributes = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter",
+    (gogoproto.jsontag) = "-"
+  ];
+  // sharedScopeAttributes is the OTLP scope attributes the entries of this stream share, carried
+  // the same way and applying after the resource attributes.
+  repeated LabelPairAdapter sharedScopeAttributes = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "LabelAdapter",
+    (gogoproto.jsontag) = "-"
+  ];
 }
 
 message LabelPairAdapter {
