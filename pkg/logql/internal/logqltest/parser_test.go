@@ -182,66 +182,110 @@ func TestParseEval(t *testing.T) {
 }
 
 func TestExpectationsParser(t *testing.T) {
-	// Failure assertion.
-	p := newExpectationsParser()
-	require.NoError(t, p.parse("expect fail msg: boom happened"))
-	exp := p.get()
-	require.True(t, exp.fail)
-	require.Equal(t, failMsg, exp.failKind)
-	require.Equal(t, "boom happened", exp.failText)
+	t.Run("fail with msg qualifier", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse("expect fail msg: boom happened"))
+		exp := p.get()
+		require.True(t, exp.fail)
+		require.Equal(t, failMsg, exp.failKind)
+		require.Equal(t, "boom happened", exp.failText)
+	})
 
-	// Scalar result.
-	p = newExpectationsParser()
-	require.NoError(t, p.parse("3.5"))
-	exp = p.get()
-	require.NotNil(t, exp.scalar)
-	require.Equal(t, 3.5, *exp.scalar)
+	t.Run("scalar", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse("3.5"))
+		exp := p.get()
+		require.NotNil(t, exp.scalar)
+		require.Equal(t, 3.5, *exp.scalar)
+	})
 
-	// Series results (vector/matrix), including a gap.
-	p = newExpectationsParser()
-	require.NoError(t, p.parse(`{app="foo"} 1 2 3`))
-	require.NoError(t, p.parse(`{app="bar"} _ 5`))
-	exp = p.get()
-	require.Len(t, exp.series, 2)
-	require.Equal(t, `{app="foo"}`, exp.series[0].labels)
-	require.Equal(t, []sample{{present: true, value: 1}, {present: true, value: 2}, {present: true, value: 3}}, exp.series[0].samples)
-	require.Equal(t, `{app="bar"}`, exp.series[1].labels)
-	require.Equal(t, []sample{{present: false}, {present: true, value: 5}}, exp.series[1].samples)
+	t.Run("series with a gap", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`{app="foo"} 1 2 3`))
+		require.NoError(t, p.parse(`{app="bar"} _ 5`))
+		exp := p.get()
+		require.Len(t, exp.series, 2)
+		require.Equal(t, `{app="foo"}`, exp.series[0].labels)
+		require.Equal(t, []sample{{present: true, value: 1}, {present: true, value: 2}, {present: true, value: 3}}, exp.series[0].samples)
+		require.Equal(t, `{app="bar"}`, exp.series[1].labels)
+		require.Equal(t, []sample{{present: false}, {present: true, value: 5}}, exp.series[1].samples)
+	})
 
-	// Ordered annotation switches series comparison to positional.
-	p = newExpectationsParser()
-	require.NoError(t, p.parse("expect ordered"))
-	require.NoError(t, p.parse(`{app="a"} 1`))
-	exp = p.get()
-	require.True(t, exp.ordered)
-	require.Len(t, exp.series, 1)
+	t.Run("expect ordered", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse("expect ordered"))
+		require.NoError(t, p.parse(`{app="a"} 1`))
+		exp := p.get()
+		require.True(t, exp.ordered)
+		require.Len(t, exp.series, 1)
+	})
 
-	// expect empty.
-	p = newExpectationsParser()
-	require.NoError(t, p.parse("expect empty"))
-	require.True(t, p.get().empty)
+	t.Run("expect empty", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse("expect empty"))
+		require.True(t, p.get().empty)
+	})
 
-	// expect fail with a regex qualifier.
-	p = newExpectationsParser()
-	require.NoError(t, p.parse("expect fail regex: many-to-one.*explicit"))
-	exp = p.get()
-	require.True(t, exp.fail)
-	require.Equal(t, failRegex, exp.failKind)
-	require.Equal(t, "many-to-one.*explicit", exp.failText)
+	t.Run("fail with regex qualifier", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse("expect fail regex: many-to-one.*explicit"))
+		exp := p.get()
+		require.True(t, exp.fail)
+		require.Equal(t, failRegex, exp.failKind)
+		require.Equal(t, "many-to-one.*explicit", exp.failText)
+	})
 
-	// Bare `expect fail` is allowed; a typo'd qualifier is rejected rather than silently ignored.
-	require.NoError(t, newExpectationsParser().parse("expect fail"))
-	require.Error(t, newExpectationsParser().parse("expect fail mesg: typo"))
+	t.Run("bare fail is allowed, a typo'd qualifier is not", func(t *testing.T) {
+		require.NoError(t, newExpectationsParser().parse("expect fail"))
+		require.Error(t, newExpectationsParser().parse("expect fail mesg: typo"))
+	})
 
-	// A qualifier with no text would silently match any error, so it is rejected.
-	require.Error(t, newExpectationsParser().parse("expect fail msg:"))
-	require.Error(t, newExpectationsParser().parse("expect fail regex:"))
+	t.Run("fail qualifier without text is rejected", func(t *testing.T) {
+		// An empty qualifier would silently match any error.
+		require.Error(t, newExpectationsParser().parse("expect fail msg:"))
+		require.Error(t, newExpectationsParser().parse("expect fail regex:"))
+	})
 
-	// Invalid scalar line.
-	require.Error(t, newExpectationsParser().parse("not-a-number"))
+	t.Run("invalid scalar line is rejected", func(t *testing.T) {
+		require.Error(t, newExpectationsParser().parse("not-a-number"))
+	})
 
-	// Unrecognized expect annotation.
-	require.Error(t, newExpectationsParser().parse("expect sorted"))
+	t.Run("unrecognized expect annotation is rejected", func(t *testing.T) {
+		require.Error(t, newExpectationsParser().parse("expect sorted"))
+	})
+
+	t.Run("skip marks one stack's values as not compared", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+queryFrontendShardStackName+`"`))
+		require.NoError(t, p.parse(`{app="a"} 1`))
+		exp := p.get()
+		require.True(t, exp.isValueComparisonSkipped[queryFrontendShardStackName])
+		require.False(t, exp.isValueComparisonSkipped[directStackName])
+	})
+
+	t.Run("skip directives accumulate across stacks", func(t *testing.T) {
+		p := newExpectationsParser()
+		require.NoError(t, p.parse(`skip values-comparison on "`+directStackName+`"`))
+		require.NoError(t, p.parse(`skip values-comparison on "`+queryFrontendShardStackName+`"`))
+		exp := p.get()
+		require.True(t, exp.isValueComparisonSkipped[directStackName])
+		require.True(t, exp.isValueComparisonSkipped[queryFrontendShardStackName])
+	})
+
+	t.Run("skip with unknown target is rejected", func(t *testing.T) {
+		require.ErrorContains(t, newExpectationsParser().parse(`skip series on "`+directStackName+`"`), "unsupported skip target")
+	})
+
+	t.Run("skip with unknown stack is rejected", func(t *testing.T) {
+		// A typo would otherwise silently skip nothing.
+		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison on "nope"`), "unknown stack")
+	})
+
+	t.Run("malformed skip directive is rejected", func(t *testing.T) {
+		// Missing `on`, or an unquoted stack name.
+		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison "`+directStackName+`"`), "invalid skip directive")
+		require.ErrorContains(t, newExpectationsParser().parse(`skip values-comparison on `+directStackName), "invalid skip directive")
+	})
 }
 
 func TestExpectationsValidate(t *testing.T) {
