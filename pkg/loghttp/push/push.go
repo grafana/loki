@@ -199,7 +199,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, maxDecom
 
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, maxDecompressedSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
-		if errors.Is(err, util.ErrMessageSizeTooLarge) {
+		if errors.Is(err, util.ErrMessageSizeTooLarge) || errors.Is(err, util.ErrMessageDecompressedSizeTooLarge) {
 			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
 		return nil, nil, err
@@ -339,10 +339,15 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySize := util.NewSizeReader(r.Body)
+	bodySizeReader := util.NewSizeReader(r.Body)
+	// decompressedSize reflects the decompressed size of the request body. It stays
+	// nil when the body is not decompressed here, either because it is uncompressed
+	// or because ParseProtoReaderWithLimits does the snappy-decoding (and its own
+	// decompressed size check) below.
+	var decompressedSizeReader util.SizeReader
 
 	// Apply compressed size limit
-	body = bodySize
+	body = bodySizeReader
 	if maxRecvMsgSize > 0 {
 		body = io.LimitReader(body, int64(maxRecvMsgSize)+1)
 	}
@@ -362,7 +367,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(gzipReader *gzip.Reader) {
 			_ = gzipReader.Close()
 		}(gzipReader)
-		body = gzipReader
+		decompressedSizeReader = util.NewSizeReader(gzipReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -371,7 +377,8 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(flateReader io.ReadCloser) {
 			_ = flateReader.Close()
 		}(flateReader)
-		body = flateReader
+		decompressedSizeReader = util.NewSizeReader(flateReader)
+		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
 		}
@@ -403,6 +410,12 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 
 		if err != nil {
+			// The readers above are limited to max+1 bytes, so an oversized body is
+			// truncated and fails to decode. Report that as a size error rather than
+			// as a malformed request.
+			if sizeErr := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); sizeErr != nil {
+				return nil, sizeErr
+			}
 			return nil, err
 		}
 
@@ -414,14 +427,30 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 	}
 
-	pushStats.BodySize = bodySize.Size()
+	pushStats.BodySize = bodySizeReader.Size()
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
-	if size := bodySize.Size(); size > int64(maxRecvMsgSize) && maxRecvMsgSize > 0 {
-		return nil, fmt.Errorf("compressed message size %d exceeds limit %d", size, maxRecvMsgSize)
+	if err := checkSizeLimits(bodySizeReader, decompressedSizeReader, maxRecvMsgSize, maxDecompressedSize); err != nil {
+		return nil, err
 	}
 	return &req, nil
+}
+
+// checkSizeLimits reports whether the request body exceeded the compressed or the
+// decompressed size limit. The readers wrapping the body are limited to max+1 bytes,
+// so a size greater than max means the body was truncated. decompressedSize may be
+// nil, in which case only the compressed size is checked.
+func checkSizeLimits(bodySize, decompressedSize util.SizeReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
+	if size := bodySize.Size(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
+		return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
+	}
+	if decompressedSize != nil {
+		if size := decompressedSize.Size(); maxDecompressedSize > 0 && size > maxDecompressedSize {
+			return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
+		}
+	}
+	return nil
 }
 
 func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
