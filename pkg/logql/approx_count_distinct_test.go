@@ -54,6 +54,27 @@ func TestCountDistinctVectorMerge(t *testing.T) {
 	require.Equal(t, uint64(1), byVersion["2"])
 }
 
+func TestCountDistinctProtoRoundTrip(t *testing.T) {
+	original := CountDistinctVector{
+		{
+			T:      123,
+			F:      hyperloglog.New14(),
+			Metric: labels.FromStrings("version", "1"),
+		},
+	}
+	original[0].F.Insert([]byte("aa:bb"))
+	original[0].F.Insert([]byte("cc:dd"))
+
+	proto, err := original.ToProto()
+	require.NoError(t, err)
+	roundTrip, err := CountDistinctVectorFromProto(proto)
+	require.NoError(t, err)
+	require.Len(t, roundTrip, 1)
+	require.Equal(t, original[0].T, roundTrip[0].T)
+	require.Equal(t, original[0].Metric, roundTrip[0].Metric)
+	require.Equal(t, original[0].F.Estimate(), roundTrip[0].F.Estimate())
+}
+
 func TestApproxCountDistinctLocalEval(t *testing.T) {
 	now := time.Unix(100, 0)
 	streams := []logproto.Stream{
@@ -172,4 +193,57 @@ func TestCountDistinctSketchExprReturnsSketches(t *testing.T) {
 	sketches := result.CountDistinctVec()
 	require.Len(t, sketches, 1)
 	require.Equal(t, uint64(1), sketches[0].F.Estimate())
+}
+
+func TestApproxCountDistinctShardedOverlap(t *testing.T) {
+	now := time.Unix(100, 0)
+	streams := []logproto.Stream{
+		{
+			Labels: `{job="devices", version="1", shard="a"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now.Add(-20 * time.Second), Line: `mac="shared"`},
+				{Timestamp: now.Add(-10 * time.Second), Line: `mac="only-a"`},
+			},
+		},
+		{
+			Labels: `{job="devices", version="1", shard="b"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now.Add(-15 * time.Second), Line: `mac="shared"`},
+				{Timestamp: now.Add(-5 * time.Second), Line: `mac="only-b"`},
+			},
+		},
+	}
+
+	q := NewMockQuerier(2, streams)
+	opts := EngineOpts{}
+	regular := NewEngine(opts, q, NoLimits, nil)
+	sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, nil)
+
+	params, err := NewLiteralParams(
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
+		now, now, 0, 0, logproto.FORWARD, 1000, nil, nil,
+	)
+	require.NoError(t, err)
+
+	mapper := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+	_, _, mapped, err := mapper.Parse(params.GetExpression())
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	localRes, err := regular.Query(params).Exec(ctx)
+	require.NoError(t, err)
+
+	shardedRes, err := sharded.Query(ctx, ParamsWithExpressionOverride{
+		Params:             params,
+		ExpressionOverride: mapped.(syntax.SampleExpr),
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	localVec := localRes.Data.(promql.Vector)
+	shardedVec := shardedRes.Data.(promql.Vector)
+	require.Len(t, localVec, 1)
+	require.Len(t, shardedVec, 1)
+	// shared + only-a + only-b = 3 distinct values across shards
+	require.InDelta(t, 3, localVec[0].F, 0.01)
+	require.InDelta(t, localVec[0].F, shardedVec[0].F, 0.01)
 }

@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -78,6 +81,72 @@ func (CountDistinctVector) String() string {
 }
 
 func (CountDistinctVector) Type() promql_parser.ValueType { return CountDistinctVectorType }
+
+// ToProto serializes the vector for frontend/querier transport.
+func (v CountDistinctVector) ToProto() (*logproto.CountDistinctVector, error) {
+	samples := make([]*logproto.CountDistinctSample, len(v))
+	for i, sample := range v {
+		p, err := sample.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		samples[i] = p
+	}
+	return &logproto.CountDistinctVector{Samples: samples}, nil
+}
+
+// ToProto serializes one sketch sample.
+func (s CountDistinctSample) ToProto() (*logproto.CountDistinctSample, error) {
+	metric := make([]*logproto.LabelPair, 0, s.Metric.Len())
+	s.Metric.Range(func(l labels.Label) {
+		metric = append(metric, &logproto.LabelPair{Name: l.Name, Value: l.Value})
+	})
+	hllBytes, err := s.F.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return &logproto.CountDistinctSample{
+		Hyperloglog: hllBytes,
+		TimestampMs: s.T,
+		Metric:      metric,
+	}, nil
+}
+
+// CountDistinctVectorFromProto deserializes a CountDistinctVector.
+func CountDistinctVectorFromProto(proto *logproto.CountDistinctVector) (CountDistinctVector, error) {
+	if proto == nil {
+		return CountDistinctVector{}, nil
+	}
+	out := make(CountDistinctVector, len(proto.Samples))
+	for i, sample := range proto.Samples {
+		s, err := CountDistinctSampleFromProto(sample)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
+// CountDistinctSampleFromProto deserializes one sketch sample.
+func CountDistinctSampleFromProto(proto *logproto.CountDistinctSample) (CountDistinctSample, error) {
+	if proto == nil {
+		return CountDistinctSample{}, fmt.Errorf("nil CountDistinctSample")
+	}
+	hll := hyperloglog.New14()
+	if err := hll.UnmarshalBinary(proto.Hyperloglog); err != nil {
+		return CountDistinctSample{}, err
+	}
+	builder := labels.NewScratchBuilder(len(proto.Metric))
+	for _, pair := range proto.Metric {
+		builder.Add(pair.Name, pair.Value)
+	}
+	return CountDistinctSample{
+		T:      proto.TimestampMs,
+		F:      hll,
+		Metric: builder.Labels(),
+	}, nil
+}
 
 // Estimate converts sketches into a numeric sample vector.
 func (v CountDistinctVector) Estimate() SampleVector {
@@ -202,4 +271,80 @@ func (e *countDistinctStepEvaluator) Error() error {
 
 func (e *countDistinctStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinct")
+}
+
+// CountDistinctMergeExpr concatenates sharded CountDistinctSketchExpr children.
+type CountDistinctMergeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e *CountDistinctMergeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("CountDistinctMerge<%s>", sb.String())
+}
+
+func (e *CountDistinctMergeExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+// CountDistinctEvalExpr merges sharded sketches then estimates.
+type CountDistinctEvalExpr struct {
+	syntax.SampleExpr
+	mergeExpr *CountDistinctMergeExpr
+}
+
+func (e *CountDistinctEvalExpr) String() string {
+	if e.mergeExpr == nil {
+		return "CountDistinctEval<>"
+	}
+	return fmt.Sprintf("CountDistinctEval<%s>", e.mergeExpr.String())
+}
+
+func (e *CountDistinctEvalExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.mergeExpr != nil {
+		e.mergeExpr.Walk(f)
+	}
+}
+
+// CountDistinctVectorStepEvaluator estimates merged sketches into a sample vector.
+type CountDistinctVectorStepEvaluator struct {
+	vec CountDistinctVector
+	done bool
+}
+
+func NewCountDistinctVectorStepEvaluator(vec CountDistinctVector) *CountDistinctVectorStepEvaluator {
+	return &CountDistinctVectorStepEvaluator{vec: vec}
+}
+
+func (e *CountDistinctVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.done {
+		return false, 0, SampleVector{}
+	}
+	e.done = true
+	ts := int64(0)
+	if len(e.vec) > 0 {
+		ts = e.vec[0].T
+	}
+	return true, ts, e.vec.Estimate()
+}
+
+func (*CountDistinctVectorStepEvaluator) Close() error { return nil }
+func (*CountDistinctVectorStepEvaluator) Error() error { return nil }
+func (e *CountDistinctVectorStepEvaluator) Explain(parent Node) {
+	parent.Child("CountDistinctVector")
 }
