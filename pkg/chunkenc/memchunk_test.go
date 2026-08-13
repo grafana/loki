@@ -49,18 +49,7 @@ var (
 	testBlockSize  = 256 * 1024
 	testTargetSize = 1500 * 1024
 	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
-	// sampleIdxLabel tells apart the samples that countAndBytesQueries produce for
-	// one log line. Each query sets it to a different value, so the two samples get
-	// different labels and therefore different sample hashes.
-	sampleIdxLabel = "sample_idx"
-
-	// countAndBytesQueries each yield one sample per log line, so a sample iterator
-	// built from both emits two samples per line.
-	countAndBytesQueries = []string{
-		`count_over_time({app="myapp"} | label_format sample_idx="0" [5m])`,
-		`bytes_over_time({app="myapp"} | label_format sample_idx="1" [5m])`,
-	}
-	countOnlyQueries = []string{countAndBytesQueries[0]}
+	countQuery     = `count_over_time({app="myapp"}[5m])`
 
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
@@ -234,9 +223,8 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "myapp"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "myapp"))
 				require.NoError(t, err)
-				countExtractor := extractors[0]
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -250,59 +238,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
-
-				t.Run("multi-extractor", func(t *testing.T) {
-					extractors, err := getStreamExtractors(countAndBytesQueries, labels.FromStrings("app", "foo"))
-					require.NoError(t, err)
-
-					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
-					idx = 0
-
-					// variadic arguments can't guarantee order, so we're going to store the expected and actual values
-					// and do an ElementsMatch on them.
-					var actualCounts = make([]float64, 0, len(cases))
-					var actualBytes = make([]float64, 0, len(cases))
-
-					var expectedCounts = make([]float64, 0, len(cases))
-					var expectedBytes = make([]float64, 0, len(cases))
-					for _, c := range cases {
-						expectedCounts = append(expectedCounts, 1.)
-						expectedBytes = append(expectedBytes, c.bytes)
-					}
-
-					// 2 extractors, expect 2 samples per original timestamp
-					for sampleIt.Next() {
-						s := sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, sampleIdxLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, sampleIdxLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						idx++
-					}
-
-					require.ElementsMatch(t, expectedCounts, actualCounts)
-					require.ElementsMatch(t, expectedBytes, actualBytes)
-
-					require.NoError(t, sampleIt.Err())
-					require.NoError(t, sampleIt.Close())
-					require.Equal(t, len(cases), idx)
-				})
 
 				t.Run("bounded-iteration", func(t *testing.T) {
 					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
@@ -543,9 +478,7 @@ func TestSerialization(t *testing.T) {
 						}
 						return ex.ForStream(labels.Labels{})
 					}()
-					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
-
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -557,12 +490,6 @@ func TestSerialization(t *testing.T) {
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
-
-						// check that the second extractor is returning samples as well
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, int64(i), s.Timestamp)
-						require.Equal(t, 1., s.Value)
 					}
 					require.NoError(t, sampleIt.Err())
 
@@ -1001,9 +928,8 @@ func BenchmarkRead(b *testing.B) {
 		}
 	}
 
-	extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
-	countExtractor := extractors[0]
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncodings {
 			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
@@ -1148,9 +1074,8 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				b.ResetTimer()
 
-				extractors, err := getStreamExtractors(countOnlyQueries, labels.FromStrings("app", "foo"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 				require.NoError(b, err)
-				countExtractor := extractors[0]
 
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
@@ -1165,62 +1090,19 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-// getStreamExtractors returns one StreamSampleExtractor per query, so a caller
-// can drive a sample iterator that emits one sample per query per log line.
-func getStreamExtractors(queries []string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
-	streamExtractors := make([]log.StreamSampleExtractor, 0, len(queries))
-	for _, query := range queries {
-		expr, err := syntax.ParseSampleExpr(query)
-		if err != nil {
-			return nil, err
-		}
-
-		extractors, err := expr.Extractors()
-		if err != nil {
-			return nil, err
-		}
-		if len(extractors) != 1 {
-			return nil, fmt.Errorf("expected 1 extractor for %q, got %d", query, len(extractors))
-		}
-
-		streamExtractors = append(streamExtractors, extractors[0].ForStream(lbls))
+// getStreamExtractor returns the StreamSampleExtractor a query extracts samples with.
+func getStreamExtractor(query string, lbls labels.Labels) (log.StreamSampleExtractor, error) {
+	expr, err := syntax.ParseSampleExpr(query)
+	if err != nil {
+		return nil, err
 	}
 
-	return streamExtractors, nil
-}
-
-func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
-	for _, j := range []int{20000, 10000, 8000, 5000} {
-		for _, withStructuredMetadata := range []bool{false, true} {
-			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {
-				h := headBlock{}
-
-				var structuredMetadata labels.Labels
-				if withStructuredMetadata {
-					structuredMetadata = labels.FromStrings("foo", "foo")
-				}
-
-				for i := 0; i < j; i++ {
-					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
-						b.Fatal(err)
-					}
-				}
-
-				b.ResetTimer()
-
-				extractors, err := getStreamExtractors(countAndBytesQueries, labels.FromStrings("app", "foo"))
-				require.NoError(b, err)
-				for n := 0; n < b.N; n++ {
-					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
-
-					for iter.Next() {
-						_ = iter.At()
-					}
-					iter.Close()
-				}
-			})
-		}
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
 	}
+
+	return extractor.ForStream(lbls), nil
 }
 
 func TestMemChunk_IteratorBounds(t *testing.T) {
@@ -1484,23 +1366,19 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					ex, err := expr.Extractors()
+					ex, err := expr.Extractor()
 					if err != nil {
 						b.Fatal(err)
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
-						for _, extractor := range ex {
-							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
-						}
 						iters = append(
 							iters,
 							c.SampleIterator(
 								context.Background(),
 								time.Unix(0, 0),
 								time.Now(),
-								streamExtractors...),
+								ex.ForStream(lbs)),
 						)
 					}
 					b.ResetTimer()
@@ -2208,7 +2086,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						expr, err := syntax.ParseSampleExpr(query)
 						require.NoError(t, err)
 
-						extractors, err := expr.Extractors()
+						extractor, err := expr.Extractor()
 						require.NoError(t, err)
 
 						// We will run the test twice so the iterator will be created twice.
@@ -2216,22 +2094,11 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
 
-							streamExtractors := make(
-								[]log.StreamSampleExtractor,
-								0,
-								len(extractors),
-							)
-							for _, extractor := range extractors {
-								streamExtractors = append(
-									streamExtractors,
-									extractor.ForStream(streamLabels),
-								)
-							}
 							it := chk.SampleIterator(
 								ctx,
 								time.Unix(0, 0),
 								time.Unix(0, math.MaxInt64),
-								streamExtractors...)
+								extractor.ForStream(streamLabels))
 
 							var sumValues int
 							var streams []string

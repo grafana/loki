@@ -1084,9 +1084,9 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 func (c *MemChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
 	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
@@ -1114,7 +1114,7 @@ func (c *MemChunk) SampleIterator(
 		lastMax = b.maxt
 		its = append(
 			its,
-			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor),
 		)
 	}
 
@@ -1123,7 +1123,7 @@ func (c *MemChunk) SampleIterator(
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
 	var it iter.SampleIterator
@@ -1229,7 +1229,7 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 
 func (b encBlock) SampleIterator(
 	ctx context.Context,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
@@ -1240,7 +1240,7 @@ func (b encBlock) SampleIterator(
 		b.b,
 		b.format,
 		b.symbolizer,
-		extractors...,
+		extractor,
 	)
 }
 
@@ -1333,7 +1333,7 @@ func unsafeGetBytes(s string) []byte {
 func (hb *headBlock) SampleIterator(
 	ctx context.Context,
 	mint, maxt int64,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
@@ -1346,44 +1346,36 @@ func (hb *headBlock) SampleIterator(
 	var hasher util.SampleHasher
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		for _, extractor := range extractors {
-			stats.AddHeadChunkBytes(int64(len(e.s)))
-			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
-			if !ok || len(samples) == 0 {
-				continue
-			}
-			var (
-				found bool
-				s     *logproto.Series
-			)
-
-			for _, sample := range samples {
-				value := sample.Value
-				lbls := sample.Labels
-
-				lblStr := lbls.String()
-				baseHash := extractor.BaseLabels().Hash()
-				if s, found = series[lblStr]; !found {
-					s = &logproto.Series{
-						Labels:     lblStr,
-						Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-						StreamHash: baseHash,
-					}
-					series[lblStr] = s
-				}
-
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.t,
-					Value:     value,
-					Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
-				})
-			}
-
-			if extractor.ReferencedStructuredMetadata() {
-				setQueryReferencedStructuredMetadata = true
-			}
-		}
+		stats.AddHeadChunkBytes(int64(len(e.s)))
 		stats.AddPostFilterLines(1)
+
+		samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+		if !ok || len(samples) == 0 {
+			continue
+		}
+
+		for _, sample := range samples {
+			lblStr := sample.Labels.String()
+			s, found := series[lblStr]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+					StreamHash: extractor.BaseLabels().Hash(),
+				}
+				series[lblStr] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.t,
+				Value:     sample.Value,
+				Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
+			})
+		}
+
+		if extractor.ReferencedStructuredMetadata() {
+			setQueryReferencedStructuredMetadata = true
+		}
 	}
 
 	if setQueryReferencedStructuredMetadata {
@@ -1789,19 +1781,15 @@ func newSampleIterator(
 	b []byte,
 	format byte,
 	symbolizer *symbolizer,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
-	}
-
-	if len(extractors) > 1 {
-		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
 
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractors[0],
+		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
 		curr:             []logproto.Sample{},
 		currLabels:       []log.LabelsResult{},

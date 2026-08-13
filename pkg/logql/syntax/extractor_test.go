@@ -99,9 +99,30 @@ func Test_Extractor(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseSampleExpr(tc)
 			require.Nil(t, err)
-			extractors, err := expr.Extractors()
+			extractor, err := expr.Extractor()
 			require.Nil(t, err)
-			require.Len(t, extractors, 1)
+			require.NotNil(t, extractor)
+		})
+	}
+}
+
+// Test_Extractor_NilForExprsThatDoNotReadLogs pins the nil half of the Extractor
+// contract. Callers skip reading chunks entirely when they get nil, so a change
+// that returned a real extractor here would make these queries scan the store for
+// samples they never derive from log lines.
+func Test_Extractor_NilForExprsThatDoNotReadLogs(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`vector(0)`,
+		`1 + 1`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc)
+			require.Nil(t, err)
+
+			extractor, err := expr.Extractor()
+			require.Nil(t, err)
+			require.Nil(t, extractor)
 		})
 	}
 }

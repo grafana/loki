@@ -1060,6 +1060,46 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 	require.Equal(t, samples, []float64{1.})
 }
 
+// Test_QuerySampleWithoutExtractor covers sample expressions that produce samples
+// without reading logs. Their Extractor() is nil, so querying them must yield an
+// empty iterator rather than dereferencing it. The query plan arrives over gRPC
+// and decodes into any syntax.SampleExpr, so the ingester cannot rely on its
+// callers to keep these out.
+func Test_QuerySampleWithoutExtractor(t *testing.T) {
+	for _, query := range []string{`vector(0)`, `1 + 1`} {
+		t.Run(query, func(t *testing.T) {
+			for _, deletes := range [][]*logproto.Delete{
+				nil,
+				// A delete makes SetupExtractor wrap the extractor, which would hide a
+				// nil behind a non-nil wrapper.
+				{{Selector: `{log_stream="worker"}`, Start: 0, End: 10 * 1e6}},
+			} {
+				instance := defaultInstance(t)
+
+				it, err := instance.QuerySample(context.TODO(),
+					logql.SelectSampleParams{
+						SampleQueryRequest: &logproto.SampleQueryRequest{
+							Selector: query,
+							Start:    time.Unix(0, 0),
+							End:      time.Unix(0, 110000000),
+							Deletes:  deletes,
+							Plan: &plan.QueryPlan{
+								AST: syntax.MustParseExpr(query),
+							},
+						},
+					},
+				)
+				require.NoError(t, err)
+				require.NotNil(t, it)
+				defer it.Close()
+
+				require.False(t, it.Next())
+				require.NoError(t, it.Err())
+			}
+		})
+	}
+}
+
 type fakeLimits struct {
 	limits map[string]*validation.Limits
 }
