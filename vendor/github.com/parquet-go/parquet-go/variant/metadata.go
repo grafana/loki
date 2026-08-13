@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"unicode/utf8"
 )
 
 // Metadata holds the decoded metadata dictionary for a variant value.
@@ -17,12 +18,17 @@ type Metadata struct {
 //
 // Format: header(1) | dictionary_size(uint) | offsets(dictionary_size+1) | string_data
 //
-// Header bits:
+// Header bits (per the spec's metadata encoding grammar,
+// header = version | sorted_strings << 4 | offset_size_minus_one << 6):
 //
 //	0-3: version (must be 1)
-//	4: sorted_strings
-//	5-6: offset_size_minus_one
-//	7: reserved (must be 0)
+//	4:   sorted_strings
+//	6-7: offset_size_minus_one
+//
+// Like Decode, DecodeMetadata rejects what the spec declares invalid
+// (non-UTF-8 dictionary strings, sizes exceeding the data) and does not
+// validate the unused header bit, per VariantEncoding.md: "Bit 5 (marked R)
+// is reserved; it must be ignored by readers."
 func DecodeMetadata(data []byte) (Metadata, error) {
 	if len(data) == 0 {
 		return Metadata{}, errors.New("variant metadata: empty data")
@@ -33,12 +39,9 @@ func DecodeMetadata(data []byte) (Metadata, error) {
 	if version != 1 {
 		return Metadata{}, fmt.Errorf("variant metadata: unsupported version %d", version)
 	}
-	if header&0x80 != 0 {
-		return Metadata{}, errors.New("variant metadata: reserved bit is set")
-	}
 
 	sorted := (header>>4)&1 == 1
-	offsetSz := offsetSize((header >> 5) & 0x03)
+	offsetSz := offsetSize((header >> 6) & 0x03)
 
 	pos := 1
 	dictSize, n, err := readUint(data[pos:], offsetSz)
@@ -46,6 +49,16 @@ func DecodeMetadata(data []byte) (Metadata, error) {
 		return Metadata{}, fmt.Errorf("variant metadata: reading dictionary_size: %w", err)
 	}
 	pos += n
+
+	// The metadata must contain at least (dictSize+1) offsets; validate
+	// against the input size before allocating to reject corrupt data that
+	// declares an absurdly large dictionary. dictSize < 0 happens only on
+	// 32-bit platforms, where a 4-byte size above math.MaxInt32 overflows
+	// int; the comparison is phrased as <= dictSize rather than
+	// < dictSize+1 so the addition cannot overflow the same way.
+	if remaining := len(data) - pos; dictSize < 0 || remaining/offsetSz <= dictSize {
+		return Metadata{}, fmt.Errorf("variant metadata: dictionary size %d exceeds data", dictSize)
+	}
 
 	// Read (dictSize+1) offsets
 	offsets := make([]int, dictSize+1)
@@ -64,8 +77,14 @@ func DecodeMetadata(data []byte) (Metadata, error) {
 	for i := range dictSize {
 		start := offsets[i]
 		end := offsets[i+1]
-		if start > end || end > len(stringData) {
+		// start < 0 happens only on 32-bit platforms, where a 4-byte
+		// offset above math.MaxInt32 overflows int; without the check the
+		// slice below would panic.
+		if start < 0 || start > end || end > len(stringData) {
 			return Metadata{}, fmt.Errorf("variant metadata: invalid string offset [%d, %d) in data of length %d", start, end, len(stringData))
+		}
+		if !utf8.Valid(stringData[start:end]) {
+			return Metadata{}, fmt.Errorf("variant metadata: dictionary string %d is not valid UTF-8", i)
 		}
 		strings[i] = string(stringData[start:end])
 	}
@@ -130,12 +149,13 @@ func (b *MetadataBuilder) Build() (Metadata, []byte) {
 	size := 1 + offsetSz + (n+1)*offsetSz + totalLen
 	buf := make([]byte, size)
 
-	// Header: version=1, sorted_strings flag, offset_size_minus_one
+	// Header: version=1, sorted_strings flag at bit 4, offset_size_minus_one
+	// at bits 6-7 (per the spec's metadata encoding grammar).
 	sortedBit := byte(0)
 	if sorted {
 		sortedBit = 1
 	}
-	buf[0] = 1 | (sortedBit << 4) | (osc << 5)
+	buf[0] = 1 | (sortedBit << 4) | (osc << 6)
 
 	pos := 1
 	writeUint(buf[pos:], n, offsetSz)
@@ -162,7 +182,10 @@ func (b *MetadataBuilder) Reset() {
 	}
 }
 
-// readUint reads an unsigned integer of the given byte width from data.
+// readUint reads an unsigned integer of the given byte width from data. Note
+// that on 32-bit platforms a 4-byte value above math.MaxInt32 overflows int
+// and is returned negative; callers validating sizes and offsets against the
+// input must guard against negative results before using them.
 func readUint(data []byte, size int) (int, int, error) {
 	if len(data) < size {
 		return 0, 0, errors.New("not enough data")
