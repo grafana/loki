@@ -303,6 +303,19 @@ func RecordRangeAndInstantQueryMetrics(
 		}
 	}
 
+	// Temporary instrumentation: time spent processing streams with the
+	// __stream_shard__ label vs. those without (see shard_timing.go). Only
+	// present on querier-level lines (the tracker is installed in query.Exec).
+	if tracker := shardTrackerFromContext(ctx); tracker != nil {
+		shardedStreams, unshardedStreams, shardedDuration, unshardedDuration := tracker.snapshot()
+		logValues = append(logValues,
+			"sharded_streams", shardedStreams,
+			"sharded_streams_duration", shardedDuration,
+			"unsharded_streams", unshardedStreams,
+			"unsharded_streams_duration", unshardedDuration,
+		)
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)

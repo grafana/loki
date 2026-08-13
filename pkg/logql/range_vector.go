@@ -41,7 +41,8 @@ type RangeVectorIterator interface {
 func newRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+	selRange, step, start, end, offset int64,
+	tracker *shardTimeTracker) (RangeVectorIterator, error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1
@@ -68,6 +69,7 @@ func newRangeVectorIterator(
 			r:        expr,
 			current:  start - step, // first loop iteration will set it to start
 			offset:   offset,
+			tracker:  tracker,
 		}, nil
 	}
 	vectorAggregator, err := aggregator(expr)
@@ -84,6 +86,7 @@ func newRangeVectorIterator(
 		agg:      vectorAggregator,
 		current:  start - step, // first loop iteration will set it to start
 		offset:   offset,
+		tracker:  tracker,
 	}, nil
 }
 
@@ -96,6 +99,7 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+	tracker                              *shardTimeTracker
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
@@ -154,7 +158,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		}
 		// the lower bound of the range is not inclusive
 		if sample.Timestamp <= start {
-			_ = r.iter.Next()
+			trackedNextSample(r.tracker, r.iter, lbs)
 			continue
 		}
 		// adds the sample.
@@ -167,7 +171,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 				var err error
 				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
+					trackedNextSample(r.tracker, r.iter, lbs)
 					continue
 				}
 				r.metrics[lbs] = metric
@@ -182,7 +186,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			F: sample.Value,
 		}
 		series.Floats = append(series.Floats, p)
-		_ = r.iter.Next()
+		trackedNextSample(r.tracker, r.iter, lbs)
 	}
 }
 func (r *batchRangeVectorIterator) At() (int64, StepResult) {
@@ -504,6 +508,7 @@ type streamRangeVectorIterator struct {
 	r                                    *syntax.RangeAggregationExpr
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
+	tracker                              *shardTimeTracker
 }
 
 func (r *streamRangeVectorIterator) Next() bool {
@@ -539,7 +544,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 		}
 		// the lower bound of the range is not inclusive
 		if sample.Timestamp <= start {
-			_ = r.iter.Next()
+			trackedNextSample(r.tracker, r.iter, lbs)
 			continue
 		}
 		// adds the sample.
@@ -552,7 +557,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 				var err error
 				metric, err = promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 				if err != nil {
-					_ = r.iter.Next()
+					trackedNextSample(r.tracker, r.iter, lbs)
 					continue
 				}
 				r.metrics[lbs] = metric
@@ -567,7 +572,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 			F: sample.Value,
 		}
 		rangeAgg.agg(p)
-		_ = r.iter.Next()
+		trackedNextSample(r.tracker, r.iter, lbs)
 	}
 }
 
