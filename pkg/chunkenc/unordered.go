@@ -48,7 +48,7 @@ type HeadBlock interface {
 		ctx context.Context,
 		mint,
 		maxt int64,
-		extractor ...log.StreamSampleExtractor,
+		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
@@ -323,7 +323,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
 	maxt int64,
-	extractor ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	setQueryReferencedStructuredMetadata := false
@@ -342,41 +342,33 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				return fmt.Errorf("symbolizer lookup: %w", err)
 			}
 
-			for _, extractor := range extractor {
-				samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
-				if !ok || len(samples) == 0 {
-					return nil
-				}
-				var (
-					found bool
-					s     *logproto.Series
-				)
-
-				for _, sample := range samples {
-					value := sample.Value
-					lbls := sample.Labels
-
-					lblStr := lbls.String()
-					s, found = series[lblStr]
-					if !found {
-						baseHash := extractor.BaseLabels().Hash()
-						s = &logproto.Series{
-							Labels:     lblStr,
-							Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
-							StreamHash: baseHash,
-						}
-						series[lblStr] = s
-					}
-					s.Samples = append(s.Samples, logproto.Sample{
-						Timestamp: ts,
-						Value:     value,
-						Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
-					})
-				}
-				if extractor.ReferencedStructuredMetadata() {
-					setQueryReferencedStructuredMetadata = true
-				}
+			samples, ok := extractor.ProcessString(ts, line, structuredMetadata)
+			if !ok || len(samples) == 0 {
+				return nil
 			}
+
+			for _, sample := range samples {
+				lblStr := sample.Labels.String()
+				s, found := series[lblStr]
+				if !found {
+					s = &logproto.Series{
+						Labels:     lblStr,
+						Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+						StreamHash: extractor.BaseLabels().Hash(),
+					}
+					series[lblStr] = s
+				}
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: ts,
+					Value:     sample.Value,
+					Hash:      hasher.Hash(lblStr, unsafeGetBytes(line)),
+				})
+			}
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
+
 			statsCtx.AddPostFilterLines(1)
 			return nil
 		},
