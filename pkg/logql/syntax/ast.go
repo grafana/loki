@@ -83,7 +83,10 @@ func (VectorExpr) isLogSelectorExpr()     {}
 // SampleExpr is a LogQL expression filtering logs and returning metric samples
 type SampleExpr interface {
 	Selector() (LogSelectorExpr, error)
-	Extractors() ([]SampleExtractor, error)
+	// Extractor returns the extractor to pull samples out of log lines. It is nil
+	// for expressions that produce samples without reading logs, such as a literal
+	// or a vector.
+	Extractor() (SampleExtractor, error)
 	MatcherGroups() ([]MatcherRange, error)
 
 	Expr
@@ -1570,7 +1573,7 @@ func (e *VectorAggregationExpr) Selector() (LogSelectorExpr, error) {
 	return e.Left.Selector()
 }
 
-func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
+func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -1579,14 +1582,10 @@ func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
 	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
-			ext, err := r.extractor(e.Grouping)
-			if err != nil {
-				return []SampleExtractor{}, err
-			}
-			return []SampleExtractor{ext}, nil
+			return r.extractor(e.Grouping)
 		}
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
 // canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
@@ -2142,8 +2141,8 @@ func (e *LiteralExpr) Accept(v RootVisitor)                   { v.VisitLiteral(e
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
-func (e *LiteralExpr) Extractors() ([]log.SampleExtractor, error) {
-	return []log.SampleExtractor{}, e.err
+func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) {
+	return nil, e.err
 }
 func (e *LiteralExpr) Value() (float64, error) {
 	if e.err != nil {
@@ -2214,11 +2213,11 @@ func (e *LabelReplaceExpr) MatcherGroups() ([]MatcherRange, error) {
 	return e.Left.MatcherGroups()
 }
 
-func (e *LabelReplaceExpr) Extractors() ([]SampleExtractor, error) {
+func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
-		return []SampleExtractor{}, e.err
+		return nil, e.err
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
 func (e *LabelReplaceExpr) Shardable(_ bool) bool {
@@ -2370,7 +2369,7 @@ func (e *VectorExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoo
 func (e *VectorExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
 
-func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
 	e.Walk(func(e Expr) bool {

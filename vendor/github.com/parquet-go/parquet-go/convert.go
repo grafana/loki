@@ -189,6 +189,17 @@ func convertToLevels(repetitionLevels, definitionLevels []byte) conversionFunc {
 		for i := range column {
 			r := column[i].repetitionLevel
 			d := column[i].definitionLevel
+			// Source levels that exceed the lookup-table size can be produced
+			// when maskMissingRowGroupColumns or sibling-fallback synthesizes
+			// values for schemas where source and target disagree on optionality
+			// or nesting depth. Without this guard, the convertedRows reader
+			// panics with "index out of range" inside this hot loop. Treat the
+			// value as null so downstream Reconstruct skips it instead of
+			// dereferencing a placeholder's nil byte-array pointer.
+			if int(r) >= len(repetitionLevels) || int(d) >= len(definitionLevels) {
+				column[i] = Value{}
+				continue
+			}
 			column[i].repetitionLevel = repetitionLevels[r]
 			column[i].definitionLevel = definitionLevels[d]
 		}
