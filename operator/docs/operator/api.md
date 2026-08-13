@@ -1268,7 +1268,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>IngestionRate defines the sample size per second. Units MB.</p>
+<p>IngestionRate defines the maximum data rate per second. Units MB/sec.</p>
 </td>
 </tr>
 <tr>
@@ -1280,8 +1280,9 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>IngestionBurstSize defines the local rate-limited sample size per
-distributor replica. It should be set to the set at least to the
+<p>IngestionBurstSize defines how much data can be sent temporarily exceeding the rate limit. Units MB.
+This limit is applied per-distributor, i.e. if you have more distributors then larger bursts are allowed.
+It should be set to the set at least to the
 maximum logs size expected in a single push request.</p>
 </td>
 </tr>
