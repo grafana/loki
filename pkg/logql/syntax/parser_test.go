@@ -3425,7 +3425,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 
 	sp := extractor.ForStream(labels.EmptyLabels())
 	var (
-		samples []log.ExtractedSample
+		sample  log.ExtractedSample
 		v       float64
 		lbs     log.LabelsResult
 		matches bool
@@ -3436,11 +3436,11 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		samples, matches = sp.Process(0, in, labels.EmptyLabels())
+		sample, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
 
-	v = samples[0].Value
-	lbs = samples[0].Labels
+	v = sample.Value
+	lbs = sample.Labels
 
 	require.True(b, matches)
 	require.Equal(

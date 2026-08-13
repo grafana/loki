@@ -621,10 +621,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -634,10 +634,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -652,10 +652,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.Process(0, line, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.Process(0, line, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
@@ -665,10 +665,10 @@ func Benchmark_Pipeline(b *testing.B) {
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
-			if ok && len(samples) > 0 {
-				resSample = samples[0].Value
-				resLbs = samples[0].Labels
+			sample, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
+			if ok {
+				resSample = sample.Value
+				resLbs = sample.Labels
 				resMatches = true
 			} else {
 				resMatches = false
