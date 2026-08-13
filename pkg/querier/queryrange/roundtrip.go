@@ -986,6 +986,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, routerConfig 
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
+			newApproxCountDistinctFeatureGateMiddleware(limits, cfg.ShardAggregations),
 		}
 
 		if cfg.AlignQueriesWithStep {
@@ -1131,6 +1132,7 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
+			newApproxCountDistinctFeatureGateMiddleware(limits, cfg.ShardAggregations),
 			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.rangeMapper),
 		}

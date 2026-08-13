@@ -344,7 +344,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 
 		req.CachingOptions = queryrangebase.CachingOptions{
-			Disabled: disableCacheReq,
+			Disabled: disableCacheReq || (req.Plan != nil && ExprHasApproxCountDistinct(req.Plan.AST)),
 		}
 
 		return req, nil
@@ -355,7 +355,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 
 		req.CachingOptions = queryrangebase.CachingOptions{
-			Disabled: disableCacheReq,
+			Disabled: disableCacheReq || (req.Plan != nil && ExprHasApproxCountDistinct(req.Plan.AST)),
 		}
 
 		return req, nil

@@ -309,6 +309,9 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			return nil, fmt.Errorf("cannot wrap request: %w", err)
 		}
 	} else {
+		if err := rejectApproxCountDistinctJSONTransport(req); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
 		httpReq, err := f.codec.EncodeRequest(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("cannot convert request to HTTP request: %w", err)
@@ -448,6 +451,20 @@ func (f *Frontend) IsProtobufEncoded() bool {
 
 func (f *Frontend) IsJSONEncoded() bool {
 	return f.cfg.Encoding == EncodingJSON
+}
+
+func rejectApproxCountDistinctJSONTransport(req queryrangebase.Request) error {
+	switch r := req.(type) {
+	case *queryrange.LokiRequest:
+		if r.Plan != nil && queryrange.ExprHasApproxCountDistinct(r.Plan.AST) {
+			return errors.New("approx_count_distinct requires frontend.encoding=protobuf")
+		}
+	case *queryrange.LokiInstantRequest:
+		if r.Plan != nil && queryrange.ExprHasApproxCountDistinct(r.Plan.AST) {
+			return errors.New("approx_count_distinct requires frontend.encoding=protobuf")
+		}
+	}
+	return nil
 }
 
 const stripeSize = 1 << 6
