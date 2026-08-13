@@ -346,6 +346,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			if !ok {
 				return nil
 			}
+			statsCtx.AddPostFilterLines(1)
 
 			lblStr := sample.Labels.String()
 			s, found := series[lblStr]
@@ -367,7 +368,6 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				setQueryReferencedStructuredMetadata = true
 			}
 
-			statsCtx.AddPostFilterLines(1)
 			return nil
 		},
 	)
