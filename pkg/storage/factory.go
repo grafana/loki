@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -346,7 +347,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (chunkclient.Client, error) {
 	var cc congestion.Controller
 	ccCfg := cfg.CongestionControl
 
@@ -375,15 +376,15 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			return nil, err
 		}
 
-		var encoder client.KeyEncoder
+		var encoder chunkclient.KeyEncoder
 		if storeType == bucket.Filesystem {
-			encoder = client.FSEncoder
+			encoder = chunkclient.FSEncoder
 		} else if cfg.CongestionControl.Enabled {
 			// Apply congestion control wrapper for non-filesystem storage
 			c = cc.Wrap(c)
 		}
 
-		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return chunkclient.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	}
 
 	// lookup storeType for named stores
@@ -400,7 +401,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if err != nil {
 				return nil, err
 			}
-			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+			return chunkclient.NewClientWithMaxParallel(c, chunkclient.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
 			c, err := NewObjectClient(name, component, cfg, clientMetrics)
@@ -410,7 +411,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+			return chunkclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeGCS:
 			c, err := NewObjectClient(name, component, cfg, clientMetrics)
@@ -422,7 +423,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			if cfg.CongestionControl.Enabled {
 				c = cc.Wrap(c)
 			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+			return chunkclient.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 		}
 
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
@@ -15,7 +15,7 @@ func NewWorkerManager(
 	cfg Config,
 	grpcClient jobqueue.CompactorClient,
 	schemaConfig config.SchemaConfig,
-	chunkClients map[config.DayTime]client.Client,
+	chunkClients map[config.DayTime]chunkclient.Client,
 	r prometheus.Registerer,
 ) (services.Service, error) {
 	wm := jobqueue.NewWorkerManager(cfg.WorkerConfig, grpcClient, r)
@@ -34,10 +34,10 @@ func NewWorkerManager(
 func initDeletionJobRunner(
 	chunkProcessingConcurrency int,
 	schemaConfig config.SchemaConfig,
-	chunkClients map[config.DayTime]client.Client,
+	chunkClients map[config.DayTime]chunkclient.Client,
 	r prometheus.Registerer,
 ) jobqueue.JobRunner {
-	return deletion.NewJobRunner(chunkProcessingConcurrency, func(table string) (client.Client, error) {
+	return deletion.NewJobRunner(chunkProcessingConcurrency, func(table string) (chunkclient.Client, error) {
 		schemaCfg, ok := SchemaPeriodForTable(schemaConfig, table)
 		if !ok {
 			return nil, errSchemaForTableNotFound

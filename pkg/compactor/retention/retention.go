@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkclient"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -129,11 +130,11 @@ type Marker struct {
 	markerStorageClient client.ObjectClient
 	expiration          ExpirationChecker
 	markerMetrics       *markerMetrics
-	chunkClient         client.Client
+	chunkClient         chunkclient.Client
 	markTimeout         time.Duration
 }
 
-func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient chunkclient.Client, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
 		markerStorageClient: markerStorageClient,
 		expiration:          expiration,
@@ -462,12 +463,12 @@ func (s *Sweeper) Stop() {
 }
 
 type chunkRewriter struct {
-	chunkClient  client.Client
+	chunkClient  chunkclient.Client
 	tableName    string
 	chunkIndexer chunkIndexer
 }
 
-func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
+func newChunkRewriter(chunkClient chunkclient.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
 	return &chunkRewriter{
 		chunkClient:  chunkClient,
 		tableName:    tableName,
