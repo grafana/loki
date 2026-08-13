@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	v3 "github.com/grafana/loki/v3/pkg/logline/internal/v3"
+	v4 "github.com/grafana/loki/v3/pkg/logline/internal/v4"
 )
 
 // ExtractFunc is the signature of an n-gram extraction function. Implementations
@@ -22,6 +23,8 @@ func ExtractorForVersion(version string) (ExtractFunc, error) {
 	switch version {
 	case "v3":
 		return v3.ExtractFeatures, nil
+	case "v4":
+		return v4.ExtractFeatures, nil
 	default:
 		return nil, fmt.Errorf("no extractor registered for index version %q", version)
 	}

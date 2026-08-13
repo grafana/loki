@@ -9,7 +9,7 @@ import (
 // TestExtractorForVersion_AllVersions verifies that the shim returns a
 // working extractor for every supported version.
 func TestExtractorForVersion_AllVersions(t *testing.T) {
-	for _, v := range []string{"v3"} {
+	for _, v := range AllVersions() {
 		t.Run(v, func(t *testing.T) {
 			fn, err := ExtractorForVersion(v)
 			require.NoError(t, err)
