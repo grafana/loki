@@ -100,7 +100,6 @@ type Stat struct {
 	RowCount         int64
 	UncompressedSize int64
 	ShardBucket      uint32
-	HasShardBucket   bool
 }
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.

@@ -39,7 +39,6 @@ func FromRecordBatch(rec arrow.RecordBatch, dest []Stat) (int, error) {
 			for rIdx := range numRows {
 				if !col.IsNull(rIdx) {
 					dest[rIdx].ShardBucket = uint32(int64Col.Value(rIdx))
-					dest[rIdx].HasShardBucket = true
 				}
 			}
 		case "min_timestamp.timestamp":

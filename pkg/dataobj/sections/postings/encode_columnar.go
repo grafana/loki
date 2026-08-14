@@ -148,18 +148,18 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
 
-	hasShardFactor := false
+	hasShardBuckets := false
 	for _, entry := range bloomEntries {
-		hasShardFactor = hasShardFactor || entry.ShardFactor != 0
+		hasShardBuckets = hasShardBuckets || entry.ShardBuckets != 0
 	}
 	for _, entry := range labelEntries {
-		hasShardFactor = hasShardFactor || entry.ShardFactor != 0
+		hasShardBuckets = hasShardBuckets || entry.ShardBuckets != 0
 	}
-	var shardFactorBuilder *dataset.ColumnBuilder
-	if hasShardFactor {
-		shardFactorBuilder, err = numberColumnBuilder(ColumnTypeShardFactor, p.pageSizeHint, p.pageMaxRowCount)
+	var shardBucketsBuilder *dataset.ColumnBuilder
+	if hasShardBuckets {
+		shardBucketsBuilder, err = numberColumnBuilder(ColumnTypeShardBuckets, p.pageSizeHint, p.pageMaxRowCount)
 		if err != nil {
-			return fmt.Errorf("creating shard_factor column: %w", err)
+			return fmt.Errorf("creating shard_buckets column: %w", err)
 		}
 	}
 
@@ -218,8 +218,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range bloomEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindBloom)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
-		if hasShardFactor {
-			_ = shardFactorBuilder.Append(rowIdx, dataset.Int64Value(e.ShardFactor))
+		if hasShardBuckets {
+			_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		}
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
@@ -235,8 +235,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range labelEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindLabel)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
-		if hasShardFactor {
-			_ = shardFactorBuilder.Append(rowIdx, dataset.Int64Value(e.ShardFactor))
+		if hasShardBuckets {
+			_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		}
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
@@ -252,7 +252,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	columnNameIndex, labelValueIndex := uint32(3), uint32(4)
 	minTimestampIndex, maxTimestampIndex := uint32(8), uint32(9)
 	sectionIndex := uint32(2)
-	if hasShardFactor {
+	if hasShardBuckets {
 		columnNameIndex, labelValueIndex = 4, 5
 		minTimestampIndex, maxTimestampIndex = 9, 10
 		sectionIndex = 3
@@ -271,8 +271,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	errs := make([]error, 0, 11)
 	errs = append(errs, encodeColumn(enc, ColumnTypeKind, kindBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
-	if hasShardFactor {
-		errs = append(errs, encodeColumn(enc, ColumnTypeShardFactor, shardFactorBuilder))
+	if hasShardBuckets {
+		errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
 	}
 	errs = append(errs, encodeColumn(enc, ColumnTypeSectionIndex, sectionIndexBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeColumnName, columnNameBuilder))

@@ -20,7 +20,7 @@ type bloomPostingKey struct {
 // bloomPostingEntry holds the aggregated state for a single bloom posting.
 type bloomPostingEntry struct {
 	ObjectPath       string
-	ShardFactor      int64
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	bloomFilter      *bloom.BloomFilter
@@ -115,7 +115,7 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 	}
 
 	entry.bloomFilter.Add([]byte(obs.Value))
-	entry.ShardFactor = obs.ShardFactor
+	entry.ShardBuckets = obs.ShardBuckets
 
 	// Grow bitmap if needed and set the bit for this stream ID.
 	if int(obs.StreamID) >= entry.bitmap.Len() {
@@ -165,7 +165,7 @@ func (a *bloomAggregator) Entries() ([]BloomEntry, error) {
 		}
 		result = append(result, BloomEntry{
 			ObjectPath:       entry.ObjectPath,
-			ShardFactor:      entry.ShardFactor,
+			ShardBuckets:     entry.ShardBuckets,
 			SectionIndex:     entry.SectionIndex,
 			ColumnName:       entry.ColumnName,
 			BloomFilter:      bloomBytes,

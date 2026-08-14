@@ -54,7 +54,6 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Stat 
 
 	if col := getColumn("__shard_bucket__.int64"); col != nil && !col.IsNull(rowIndex) {
 		result.ShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
-		result.HasShardBucket = true
 	}
 
 	if col := getColumn("min_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {

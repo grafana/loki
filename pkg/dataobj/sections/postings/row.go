@@ -28,7 +28,7 @@ func CompareRows(a, b Row) int {
 type Row struct {
 	Kind             PostingKind // KindLabel or KindBloom
 	ObjectPath       string
-	ShardFactor      int64
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string // empty for KindBloom rows
@@ -44,7 +44,7 @@ type Row struct {
 func (r Row) LabelEntry() LabelEntry {
 	return LabelEntry{
 		ObjectPath:       r.ObjectPath,
-		ShardFactor:      r.ShardFactor,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		LabelValue:       r.LabelValue,
@@ -60,7 +60,7 @@ func (r Row) LabelEntry() LabelEntry {
 func (r Row) BloomEntry() BloomEntry {
 	return BloomEntry{
 		ObjectPath:       r.ObjectPath,
-		ShardFactor:      r.ShardFactor,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		BloomFilter:      r.BloomFilter,
@@ -77,7 +77,7 @@ func (e LabelEntry) Row() Row {
 	return Row{
 		Kind:             KindLabel,
 		ObjectPath:       e.ObjectPath,
-		ShardFactor:      e.ShardFactor,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		LabelValue:       e.LabelValue,
@@ -94,7 +94,7 @@ func (e BloomEntry) Row() Row {
 	return Row{
 		Kind:             KindBloom,
 		ObjectPath:       e.ObjectPath,
-		ShardFactor:      e.ShardFactor,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		BloomFilter:      e.BloomFilter,
@@ -144,8 +144,8 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Row {
 		result.ObjectPath = col.(*array.String).Value(rowIndex)
 	}
 
-	if col := getColumn("shard_factor.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.ShardFactor = col.(*array.Int64).Value(rowIndex)
+	if col := getColumn("shard_buckets.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.ShardBuckets = col.(*array.Int64).Value(rowIndex)
 	}
 
 	if col := getColumn("section_index.int64"); col != nil && !col.IsNull(rowIndex) {

@@ -299,14 +299,13 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 	const schema = "label:service_name,label:namespace"
 	base := func() Stat {
 		return Stat{
-			SortSchema:     schema,
-			ShardBucket:    2,
-			HasShardBucket: true,
-			Labels:         map[string]string{"service_name": "svc", "namespace": "ns"},
-			MinTimestamp:   100,
-			MaxTimestamp:   200,
-			ObjectPath:     "objA",
-			SectionIndex:   0,
+			SortSchema:   schema,
+			ShardBucket:  2,
+			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
+			MinTimestamp: 100,
+			MaxTimestamp: 200,
+			ObjectPath:   "objA",
+			SectionIndex: 0,
 		}
 	}
 
@@ -591,9 +590,10 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
 
-	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
-	require.Equal(t, 52, b.EstimatedSize())
+	// 6 * 8 = 48 for numeric fields (SectionIndex, ShardBucket, MinTimestamp,
+	// MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
+	require.Equal(t, 60, b.EstimatedSize())
 }
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.
