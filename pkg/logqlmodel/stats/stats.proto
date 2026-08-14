@@ -30,6 +30,26 @@ message Result {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "index"
   ];
+  // shardedStreams is temporary instrumentation to estimate how much longer a
+  // query would take if stream sharding were disabled. Each entry is a logical
+  // stream (labels with __stream_shard__ removed). Populated per subquery on the
+  // querier and merged at the frontend.
+  repeated ShardedStream shardedStreams = 6 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "shardedStreams"
+  ];
+}
+
+// ShardedStream carries per-logical-stream shard timings for the stream-sharding
+// query-cost analysis. On a single subquery sumDurationNanos == maxDurationNanos.
+// After merging across a parent query's subqueries: sumDurationNanos is T_s (the
+// unsharded read time), maxDurationNanos is M_s (the worst single-subquery share,
+// already on the critical path), and shards is the total shard count.
+message ShardedStream {
+  string stream = 1 [(gogoproto.jsontag) = "stream"];
+  int64 sumDurationNanos = 2 [(gogoproto.jsontag) = "sumDurationNanos"];
+  int64 maxDurationNanos = 3 [(gogoproto.jsontag) = "maxDurationNanos"];
+  int64 shards = 4 [(gogoproto.jsontag) = "shards"];
 }
 
 message Caches {

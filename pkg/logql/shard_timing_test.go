@@ -101,6 +101,78 @@ func TestShardTimeTracker_MetricsLine(t *testing.T) {
 	util_log.Logger = log.NewNopLogger()
 }
 
+func TestStripShard(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`{__stream_shard__="0", app="a"}`, `{app="a"}`},                   // first
+		{`{a="1", __stream_shard__="0", b="2"}`, `{a="1", b="2"}`},         // middle
+		{`{a="1", __stream_shard__="0"}`, `{a="1"}`},                       // last
+		{`{a="1"}`, `{a="1"}`},                                             // no shard label
+	} {
+		require.Equal(t, tc.want, stripShard(tc.in), tc.in)
+	}
+	// All shards of one logical stream must collapse to the same key.
+	require.Equal(t, stripShard(`{__stream_shard__="0", app="a"}`), stripShard(`{__stream_shard__="7", app="a"}`))
+}
+
+func TestShardTimeTracker_PerStreamTop(t *testing.T) {
+	tr := shardTrackerFromContext(withShardTimeTracker(context.Background()))
+	// stream a: 2 shards, 1s + 2s = 3s; stream b: 1 shard, 5s.
+	tr.observe(`{__stream_shard__="0", app="a"}`, time.Second)
+	tr.observe(`{__stream_shard__="1", app="a"}`, 2*time.Second)
+	tr.observe(`{__stream_shard__="0", app="b"}`, 5*time.Second)
+	// an unsharded stream must not appear.
+	tr.observe(`{app="c"}`, 9*time.Second)
+
+	top := tr.perStreamTop(0)
+	require.Len(t, top, 2)
+	// sorted by sum desc: b (5s) then a (3s).
+	require.Equal(t, `{app="b"}`, top[0].Stream)
+	require.Equal(t, int64(5*time.Second), top[0].SumDurationNanos)
+	require.Equal(t, int64(5*time.Second), top[0].MaxDurationNanos)
+	require.Equal(t, int64(1), top[0].Shards)
+	require.Equal(t, `{app="a"}`, top[1].Stream)
+	require.Equal(t, int64(3*time.Second), top[1].SumDurationNanos)
+	require.Equal(t, int64(2), top[1].Shards)
+
+	// top-k truncation keeps the heaviest.
+	require.Len(t, tr.perStreamTop(1), 1)
+	require.Equal(t, `{app="b"}`, tr.perStreamTop(1)[0].Stream)
+}
+
+func TestRecordMetrics_FrontendUnshardedEstimate(t *testing.T) {
+	now := time.Now()
+	params := LiteralParams{
+		queryString: `{app=~".+"}`,
+		direction:   logproto.BACKWARD,
+		end:         now,
+		start:       now.Add(-1 * time.Hour),
+		limit:       1000,
+		step:        time.Minute,
+	}
+	sharded := stats.Result{ShardedStreams: []stats.ShardedStream{
+		{Stream: `{app="a"}`, SumDurationNanos: int64(3 * time.Second), MaxDurationNanos: int64(1 * time.Second), Shards: 3},
+		{Stream: `{app="b"}`, SumDurationNanos: int64(10 * time.Second), MaxDurationNanos: int64(4 * time.Second), Shards: 5},
+	}}
+
+	// Frontend context: estimate is logged, dominated by stream b (10-4=6s > 3-1=2s).
+	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
+	frontendCtx := WithComponentContext(context.Background(), "frontend")
+	RecordRangeAndInstantQueryMetrics(frontendCtx, logger, params, "200", sharded, logqlmodel.Streams{})
+	out := buf.String()
+	require.Contains(t, out, "unsharded_added_estimate=6s")
+	require.Contains(t, out, "unsharded_critical_shards=5")
+	require.Contains(t, out, "sharded_total_duration=13s")
+	require.Contains(t, out, `unsharded_critical_stream="{app=\"b\"}"`)
+
+	// Non-frontend context: no estimate (only meaningful once merged at the frontend).
+	buf.Reset()
+	RecordRangeAndInstantQueryMetrics(context.Background(), logger, params, "200", sharded, logqlmodel.Streams{})
+	require.NotContains(t, buf.String(), "unsharded_added_estimate")
+
+	util_log.Logger = log.NewNopLogger()
+}
+
 func TestShardTimeTracker_LabelsCache(t *testing.T) {
 	tracker := shardTrackerFromContext(withShardTimeTracker(context.Background()))
 

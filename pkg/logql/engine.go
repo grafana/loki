@@ -293,6 +293,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	execTime := time.Since(start)
 	statsCtx.AddQuerierExecTime(execTime)
 	statResult := statsCtx.Result(execTime, queueTime, q.resultLength(data))
+	// Temporary instrumentation: attach per-logical-stream shard timings so the
+	// frontend can estimate query cost without sharding (see shard_timing.go).
+	if tr := shardTrackerFromContext(ctx); tr != nil {
+		statResult.ShardedStreams = tr.perStreamTop(shardStreamsTopK)
+	}
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)

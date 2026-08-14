@@ -316,6 +316,34 @@ func RecordRangeAndInstantQueryMetrics(
 		)
 	}
 
+	// Temporary instrumentation: on the frontend line, estimate how much longer
+	// the query would take if stream sharding were disabled. Per logical stream:
+	// T_s = sum of its shards' time, M_s = worst single-subquery share. Un-sharding
+	// serializes the heaviest stream into one subquery, so the added wall-clock is
+	// max_s(T_s - M_s). Only meaningful once merged across subqueries at the
+	// frontend (at the querier sum == max, so this is 0).
+	if isFrontendContext(ctx) && len(stats.ShardedStreams) > 0 {
+		var (
+			maxAdded int64
+			crit     logql_stats.ShardedStream
+			totalB   int64
+		)
+		for _, s := range stats.ShardedStreams {
+			totalB += s.SumDurationNanos
+			if added := s.SumDurationNanos - s.MaxDurationNanos; added > maxAdded {
+				maxAdded, crit = added, s
+			}
+		}
+		logValues = append(logValues,
+			"unsharded_added_estimate", time.Duration(maxAdded),
+			"unsharded_critical_stream", crit.Stream,
+			"unsharded_critical_total", time.Duration(crit.SumDurationNanos),
+			"unsharded_critical_maxshard", time.Duration(crit.MaxDurationNanos),
+			"unsharded_critical_shards", crit.Shards,
+			"sharded_total_duration", time.Duration(totalB),
+		)
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)

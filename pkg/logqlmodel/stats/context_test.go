@@ -360,6 +360,53 @@ func TestSummaryMerge_EstimatedQueryBytesUsesMax(t *testing.T) {
 	require.Equal(t, int64(2048), s.EstimatedQueryBytes)
 }
 
+func TestResult_MergeShardedStreams(t *testing.T) {
+	// Two subqueries touch overlapping and disjoint logical streams.
+	a := Result{ShardedStreams: []ShardedStream{
+		{Stream: `{app="a"}`, SumDurationNanos: 10, MaxDurationNanos: 10, Shards: 1},
+		{Stream: `{app="b"}`, SumDurationNanos: 5, MaxDurationNanos: 5, Shards: 1},
+	}}
+	b := Result{ShardedStreams: []ShardedStream{
+		{Stream: `{app="a"}`, SumDurationNanos: 30, MaxDurationNanos: 30, Shards: 2},
+		{Stream: `{app="c"}`, SumDurationNanos: 7, MaxDurationNanos: 7, Shards: 1},
+	}}
+
+	a.Merge(b)
+
+	got := map[string]ShardedStream{}
+	for _, s := range a.ShardedStreams {
+		got[s.Stream] = s
+	}
+	// app=a: sum 10+30, max(10,30), shards 1+2.
+	require.Equal(t, int64(40), got[`{app="a"}`].SumDurationNanos)
+	require.Equal(t, int64(30), got[`{app="a"}`].MaxDurationNanos)
+	require.Equal(t, int64(3), got[`{app="a"}`].Shards)
+	// disjoint streams carried over unchanged.
+	require.Equal(t, int64(5), got[`{app="b"}`].SumDurationNanos)
+	require.Equal(t, int64(7), got[`{app="c"}`].SumDurationNanos)
+	require.Len(t, a.ShardedStreams, 3)
+}
+
+func TestResult_MergeShardedStreams_Associative(t *testing.T) {
+	mk := func(sum, max int64) Result {
+		return Result{ShardedStreams: []ShardedStream{{Stream: `{app="a"}`, SumDurationNanos: sum, MaxDurationNanos: max, Shards: 1}}}
+	}
+	// (r1 <- r2) <- r3  vs  r1 <- (r2 <- r3): sum and max must agree.
+	left := mk(1, 1)
+	left.Merge(mk(2, 2))
+	left.Merge(mk(9, 9))
+
+	right := mk(2, 2)
+	right.Merge(mk(9, 9))
+	combined := mk(1, 1)
+	combined.Merge(right)
+
+	require.Equal(t, int64(12), left.ShardedStreams[0].SumDurationNanos)
+	require.Equal(t, int64(9), left.ShardedStreams[0].MaxDurationNanos)
+	require.Equal(t, left.ShardedStreams[0].SumDurationNanos, combined.ShardedStreams[0].SumDurationNanos)
+	require.Equal(t, left.ShardedStreams[0].MaxDurationNanos, combined.ShardedStreams[0].MaxDurationNanos)
+}
+
 func TestReset(t *testing.T) {
 	statsCtx, ctx := NewContext(context.Background())
 	fakeIngesterQuery(ctx)

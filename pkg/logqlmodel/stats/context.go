@@ -354,9 +354,36 @@ func (r *Result) Merge(m Result) {
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
+	r.mergeShardedStreams(m.ShardedStreams)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
 		int(r.Summary.TotalEntriesReturned+m.Summary.TotalEntriesReturned))
+}
+
+// mergeShardedStreams unions the per-logical-stream shard timings by stream key.
+// Durations sum (T_s), max-durations max (M_s), and shard counts sum (W_s). This
+// is what reunites a logical stream's shards across the parallel subqueries of a
+// parent query. Associative and commutative.
+func (r *Result) mergeShardedStreams(m []ShardedStream) {
+	if len(m) == 0 {
+		return
+	}
+	idx := make(map[string]int, len(r.ShardedStreams)+len(m))
+	for i := range r.ShardedStreams {
+		idx[r.ShardedStreams[i].Stream] = i
+	}
+	for _, s := range m {
+		if i, ok := idx[s.Stream]; ok {
+			r.ShardedStreams[i].SumDurationNanos += s.SumDurationNanos
+			if s.MaxDurationNanos > r.ShardedStreams[i].MaxDurationNanos {
+				r.ShardedStreams[i].MaxDurationNanos = s.MaxDurationNanos
+			}
+			r.ShardedStreams[i].Shards += s.Shards
+		} else {
+			idx[s.Stream] = len(r.ShardedStreams)
+			r.ShardedStreams = append(r.ShardedStreams, s)
+		}
+	}
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
