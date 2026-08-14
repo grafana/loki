@@ -295,7 +295,13 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(execTime, queueTime, q.resultLength(data))
 	// Temporary instrumentation: attach per-logical-stream shard timings so the
 	// frontend can estimate query cost without sharding (see shard_timing.go).
-	statResult.ShardedStreams = ShardedStreamsFromContext(ctx)
+	// For a leaf query, attribute the tracker's captured per-stream times. For a
+	// query that dispatches downstream shards, those shards' ShardedStreams are
+	// already merged into statResult via JoinResults, and the outer tracker is
+	// empty (metric) or a single collapsed pass (log) — so don't clobber them.
+	if len(statResult.ShardedStreams) == 0 {
+		statResult.ShardedStreams = ShardedStreamsFromContext(ctx)
+	}
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)
