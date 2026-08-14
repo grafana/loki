@@ -97,8 +97,8 @@ func TestDoLogObjectSort_LocalProfile(t *testing.T) {
 		MaxPageRows:               10000,
 		TargetObjectSize:          1 << 30,   // 1GB
 		TargetSectionSize:         512 << 20, // 512MB
-		BufferSize:                256 << 20, // 256MB
-		SectionStripeMergeLimit:   8,         //
+		BufferSize:                64 << 20,  // 64MB
+		SectionStripeMergeLimit:   8,
 		EstimatedCompressionRatio: 8,
 	}
 	if value := os.Getenv("LOKI_SORT_PROFILE_BUFFER_SIZE"); value != "" {

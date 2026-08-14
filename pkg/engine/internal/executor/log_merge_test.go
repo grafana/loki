@@ -666,6 +666,7 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 		}
 		require.NotEmpty(t, sourceSections)
 
+		// Sort all objects into the proper single-object order.
 		sortArtifacts, err := c.doLogObjectMerge(ctx, &physical.LogMerge{
 			Tenant:      tenant,
 			SortSchema:  sortSchema,
@@ -697,6 +698,8 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 				}
 				opened, err := logs.Open(ctx, section)
 				require.NoError(t, err)
+
+				// Check all the logs sections have stored their physical layout:
 				layout := opened.SortLayout()
 				require.Equal(t, sortSchema, layout.SchemaLabels)
 				require.Equal(t, logs.StreamOrderStableHashV1, layout.StreamOrder)
@@ -706,7 +709,6 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 					ObjectPath:   sortedPath,
 					SectionIndex: int64(sectionIndex),
 				})
-				//fmt.Println("logs section: ", sortedPath, ", sort layout: ", layout)
 			}
 			require.NotEmpty(t, sortedSections)
 			sortedRuns = append(sortedRuns, &compactionv2pb.RunRef{Sections: sortedSections})
@@ -717,15 +719,20 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 				}
 				opened, err := streams.Open(ctx, section)
 				require.NoError(t, err)
+
+				allStreams := []streams.Stream{}
 				for result := range streams.IterSection(ctx, opened) {
 					stream, err := result.Value()
 					require.NoError(t, err)
+
+					allStreams = append(allStreams, stream)
 
 					//fmt.Printf("stream in logs obj: ID(%d), hash(%d), shardBucket(%d), labels(%s)\n", stream.ID, labels.StableHash(stream.Labels), stream.ShardHash, stream.Labels)
 					//expected := int64(promlabels.StableHash(stream.Labels) % uint64(streams.ShardFactor))
 					//require.Equal(t, expected, stream.ShardHash, "labels=%s", stream.Labels.String())
 					observedShards[stream.ShardHash] = struct{}{}
 				}
+				require.True(t, slices.IsSortedFunc(allStreams, logs.CompareForSortOrder))
 			}
 		}
 	}
