@@ -339,12 +339,12 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySizeReader := util.NewSizeReader(r.Body)
+	bodySizeReader := util.NewCountingReader(r.Body)
 	// decompressedSize reflects the decompressed size of the request body. It stays
 	// nil when the body is not decompressed here, either because it is uncompressed
 	// or because ParseProtoReaderWithLimits does the snappy-decoding (and its own
 	// decompressed size check) below.
-	var decompressedSizeReader util.SizeReader
+	var decompressedSizeReader *util.CountingReader
 
 	// Apply compressed size limit
 	body = bodySizeReader
@@ -367,7 +367,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(gzipReader *gzip.Reader) {
 			_ = gzipReader.Close()
 		}(gzipReader)
-		decompressedSizeReader = util.NewSizeReader(gzipReader)
+		decompressedSizeReader = util.NewCountingReader(gzipReader)
 		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
@@ -377,7 +377,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		defer func(flateReader io.ReadCloser) {
 			_ = flateReader.Close()
 		}(flateReader)
-		decompressedSizeReader = util.NewSizeReader(flateReader)
+		decompressedSizeReader = util.NewCountingReader(flateReader)
 		body = decompressedSizeReader
 		if maxDecompressedSize > 0 {
 			body = io.LimitReader(body, maxDecompressedSize+1)
@@ -427,7 +427,7 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 		}
 	}
 
-	pushStats.BodySize = bodySizeReader.Size()
+	pushStats.BodySize = bodySizeReader.N()
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
@@ -441,12 +441,12 @@ func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, maxDecompressedSi
 // decompressed size limit. The readers wrapping the body are limited to max+1 bytes,
 // so a size greater than max means the body was truncated. decompressedSize may be
 // nil, in which case only the compressed size is checked.
-func checkSizeLimits(bodySizeReader, decompressedSizeReader util.SizeReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
-	if size := bodySizeReader.Size(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
+func checkSizeLimits(bodySizeReader, decompressedSizeReader *util.CountingReader, maxRecvMsgSize int, maxDecompressedSize int64) error {
+	if size := bodySizeReader.N(); maxRecvMsgSize > 0 && size > int64(maxRecvMsgSize) {
 		return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageSizeTooLarge, size, maxRecvMsgSize)
 	}
 	if decompressedSizeReader != nil {
-		if size := decompressedSizeReader.Size(); maxDecompressedSize > 0 && size > maxDecompressedSize {
+		if size := decompressedSizeReader.N(); maxDecompressedSize > 0 && size > maxDecompressedSize {
 			return fmt.Errorf(messageSizeLargerErrFmt, util.ErrMessageDecompressedSizeTooLarge, size, maxDecompressedSize)
 		}
 	}

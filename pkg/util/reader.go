@@ -6,28 +6,31 @@ import (
 	"go.uber.org/atomic"
 )
 
-type sizeReader struct {
-	size atomic.Int64
-	r    io.Reader
+// A CountingReader counts the total number of bytes read from an [io.Reader].
+// The count can be reset, useful when used with an [io.ReadSeeker].
+type CountingReader struct {
+	n atomic.Int64
+	r io.Reader
 }
 
-type SizeReader interface {
-	io.Reader
-	Size() int64
+// NewCountingReader returns a new CountingReader.
+func NewCountingReader(r io.Reader) *CountingReader {
+	return &CountingReader{r: r}
 }
 
-// NewSizeReader returns an io.Reader that will have the number of bytes
-// read from r available.
-func NewSizeReader(r io.Reader) SizeReader {
-	return &sizeReader{r: r}
+// N returns the total number of bytes read from the reader.
+func (r *CountingReader) N() int64 {
+	return r.n.Load()
 }
 
-func (v *sizeReader) Read(p []byte) (int, error) {
-	n, err := v.r.Read(p)
-	v.size.Add(int64(n))
+// Read implements the [io.Reader] interface.
+func (r *CountingReader) Read(p []byte) (n int, err error) {
+	n, err = r.r.Read(p)
+	r.n.Add(int64(n))
 	return n, err
 }
 
-func (v *sizeReader) Size() int64 {
-	return v.size.Load()
+// Reset the count to zero.
+func (r *CountingReader) Reset() {
+	r.n.Store(0)
 }
