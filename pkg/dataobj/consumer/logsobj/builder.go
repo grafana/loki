@@ -426,7 +426,7 @@ func (b *Builder) appendRecord(tenant string, streamLabels labels.Labels, record
 
 	record.StreamID = sb.Record(streamLabels, record.Timestamp, size)
 	record.SortKey = sortKey
-	record.ShardHash = int64(streams.ShardBucket(streamLabels))
+	record.ShardBucket = int64(streams.ShardBucket(streamLabels))
 	lb.Append(record)
 
 	// If our logs section has gotten big enough, flush it to the encoder and
@@ -848,7 +848,7 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 
 		// Remap to the new stream ID.
 		collected[i].stream.ID = newID
-		collected[i].stream.ShardHash = int64(collected[i].orderKey.Shard)
+		collected[i].stream.ShardBucket = int64(collected[i].orderKey.Shard)
 	}
 
 	return result.Iter(func(yield func(streams.Stream) bool) error {

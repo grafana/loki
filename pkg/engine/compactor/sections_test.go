@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
@@ -125,10 +124,6 @@ func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Buck
 			StreamOrder:  logs.StreamOrderStableHashV1,
 			ShardCount:   16,
 		}).ID()
-		if !rows[i].HasShard {
-			rows[i].Shard = uint32(labels.StableHash(labels.FromMap(rows[i].Labels)) % uint64(streams.ShardFactor))
-			rows[i].HasShard = true
-		}
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})
 }
@@ -207,10 +202,10 @@ func TestLogSectionRefsFor_AggregatesStatsRows(t *testing.T) {
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "auth"}, Shard: 2, HasShard: true,
+			Labels: map[string]string{"service_name": "auth"}, ShardBucket: 2,
 			MinTimestamp: 500, MaxTimestamp: 1000, RowCount: 3, UncompressedSize: 300},
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "billing"}, Shard: 7, HasShard: true,
+			Labels: map[string]string{"service_name": "billing"}, ShardBucket: 7,
 			MinTimestamp: 100, MaxTimestamp: 900, RowCount: 2, UncompressedSize: 200},
 	})
 
@@ -300,9 +295,9 @@ func TestLogSectionRefsFor_ShardBoundsAvoidFalseOverlap(t *testing.T) {
 
 	buildIndexWithStats(ctx, t, bucket, "acme", path, []stats.Stat{
 		{ObjectPath: "logs/log-0", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "api"}, Shard: 2, HasShard: true, MinTimestamp: 10, MaxTimestamp: 20},
+			Labels: map[string]string{"service_name": "api"}, ShardBucket: 2, MinTimestamp: 10, MaxTimestamp: 20},
 		{ObjectPath: "logs/log-1", SectionIndex: 0, SortSchema: "label:service_name",
-			Labels: map[string]string{"service_name": "api"}, Shard: 7, HasShard: true, MinTimestamp: 10, MaxTimestamp: 20},
+			Labels: map[string]string{"service_name": "api"}, ShardBucket: 7, MinTimestamp: 10, MaxTimestamp: 20},
 	})
 
 	refs, compatible, err := logSectionRefsFor(ctx, bucket, "acme", path, []string{"label:service_name"})
@@ -312,7 +307,7 @@ func TestLogSectionRefsFor_ShardBoundsAvoidFalseOverlap(t *testing.T) {
 	require.True(t, v2.AreObjectsConverged(refs, compareSortKey))
 }
 
-func TestLogSectionRefsFor_MissingOrInvalidShardRequiresMigration(t *testing.T) {
+func TestLogSectionRefsFor_InvalidShardRequiresMigration(t *testing.T) {
 	targetLayout := (logs.SortLayout{
 		SchemaLabels: []string{"label:service_name"},
 		StreamOrder:  logs.StreamOrderStableHashV1,
@@ -324,15 +319,10 @@ func TestLogSectionRefsFor_MissingOrInvalidShardRequiresMigration(t *testing.T) 
 		stat stats.Stat
 	}{
 		{
-			name: "missing",
-			stat: stats.Stat{ObjectPath: "logs/log-0", SortSchema: "label:service_name",
-				PhysicalSortLayout: targetLayout, Labels: map[string]string{"service_name": "api"}},
-		},
-		{
 			name: "out_of_range",
 			stat: stats.Stat{ObjectPath: "logs/log-0", SortSchema: "label:service_name",
 				PhysicalSortLayout: targetLayout, Labels: map[string]string{"service_name": "api"},
-				Shard: streams.ShardFactor, HasShard: true},
+				ShardBucket: streams.ShardFactor},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

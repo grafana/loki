@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -461,6 +462,18 @@ type tenantOverrides map[string][]string
 
 func (m tenantOverrides) SortSchemaLabels(tenant string) []string { return m[tenant] }
 
+func expectedAppOrder(t *testing.T, apps ...string) []string {
+	t.Helper()
+	slices.SortFunc(apps, func(a, b string) int {
+		aKey, err := NewStreamOrderKey(labels.FromStrings("app", a), []string{"label:app"})
+		require.NoError(t, err)
+		bKey, err := NewStreamOrderKey(labels.FromStrings("app", b), []string{"label:app"})
+		require.NoError(t, err)
+		return CompareStreamOrderKey(aKey, bKey)
+	})
+	return apps
+}
+
 func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 	now := time.Date(2025, time.September, 17, 0, 0, 0, 0, time.UTC)
 
@@ -596,7 +609,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 
-		require.Equal(t, []string{"zoo", "middle", "alpha"}, appOrder(t, obj2, "schema-tenant"))
+		require.Equal(t, expectedAppOrder(t, "zoo", "alpha", "middle"), appOrder(t, obj2, "schema-tenant"))
 		timestampsDescWithinGroups(t, obj2, "schema-tenant")
 
 		var allTS []time.Time
@@ -656,7 +669,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				val, err := res.Value()
 				require.NoError(t, err)
 				streamToApp[val.ID] = val.Labels.Get("app")
-				streamToShard[val.ID] = val.ShardHash
+				streamToShard[val.ID] = val.ShardBucket
 			}
 		}
 
@@ -707,7 +720,7 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 		obj2 := copyAndSort(t, cfg, obj1, overrides)
 		obj3 := copyAndSort(t, cfg, obj2, nil)
 
-		require.Equal(t, []string{"zoo", "middle", "alpha"}, appOrder(t, obj3, "t1"),
+		require.Equal(t, expectedAppOrder(t, "zoo", "alpha", "middle"), appOrder(t, obj3, "t1"),
 			"second CopyAndSort must preserve schema sort using persisted metadata")
 		timestampsDescWithinGroups(t, obj3, "t1")
 	})
@@ -760,7 +773,15 @@ func TestBuilder_CopyAndSort_SortSchema(t *testing.T) {
 				}
 			}
 		}
-		require.Equal(t, []pair{{"ns-b", "app-a"}, {"ns-a", "app-z"}, {"ns-b", "app-z"}, {"ns-a", "app-a"}}, got)
+		expected := []pair{{"ns-b", "app-z"}, {"ns-a", "app-z"}, {"ns-a", "app-a"}, {"ns-b", "app-a"}}
+		slices.SortFunc(expected, func(a, b pair) int {
+			aKey, err := NewStreamOrderKey(labels.FromStrings("namespace", a[0], "app", a[1]), []string{"label:namespace", "label:app"})
+			require.NoError(t, err)
+			bKey, err := NewStreamOrderKey(labels.FromStrings("namespace", b[0], "app", b[1]), []string{"label:namespace", "label:app"})
+			require.NoError(t, err)
+			return CompareStreamOrderKey(aKey, bKey)
+		})
+		require.Equal(t, expected, got)
 	})
 
 	t.Run("stream IDs remapped to sort key order", func(t *testing.T) {

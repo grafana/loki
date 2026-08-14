@@ -59,16 +59,9 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		}
 	}
 
-	hasShard := false
-	for _, row := range rows {
-		hasShard = hasShard || row.HasShard
-	}
-	var shardBuilder *dataset.ColumnBuilder
-	if hasShard {
-		shardBuilder, err = numberColumnBuilder(ColumnTypeShard, pageSizeHint, pageMaxRowCount)
-		if err != nil {
-			return fmt.Errorf("creating shard column: %w", err)
-		}
+	shardBucketBuilder, err := numberColumnBuilder(ColumnTypeShardBucket, pageSizeHint, pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard bucket column: %w", err)
 	}
 
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
@@ -113,11 +106,7 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 			}
 			_ = physicalSortLayoutBuilder.Append(i, dataset.BinaryValue([]byte(physicalLayout)))
 		}
-		if hasShard {
-			if r.HasShard {
-				_ = shardBuilder.Append(i, dataset.Int64Value(int64(r.Shard)))
-			}
-		}
+		_ = shardBucketBuilder.Append(i, dataset.Int64Value(int64(r.ShardBucket)))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(r.MinTimestamp))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(r.MaxTimestamp))
 		_ = rowCountBuilder.Append(i, dataset.Int64Value(r.RowCount))
@@ -133,29 +122,25 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 
 	labelColumnOffset := 7
 	minTimestampIndex, maxTimestampIndex := uint32(3), uint32(4)
-	shardIndex := uint32(3)
+	shardBucketIndex := uint32(3)
 	if hasPhysicalLayout {
 		labelColumnOffset++
 		minTimestampIndex++
 		maxTimestampIndex++
-		shardIndex++
+		shardBucketIndex++
 	}
-	if hasShard {
-		labelColumnOffset++
-		minTimestampIndex++
-		maxTimestampIndex++
-	}
+	labelColumnOffset++
+	minTimestampIndex++
+	maxTimestampIndex++
 	columnSorts := make([]*datasetmd.SortInfo_ColumnSort, 0, 1+len(labelKeys)+2)
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 		ColumnIndex: 2, // sort_schema
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
-	if hasShard {
-		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
-			ColumnIndex: shardIndex,
-			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
-		})
-	}
+	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+		ColumnIndex: shardBucketIndex,
+		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+	})
 	for i := range labelKeys {
 		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 			ColumnIndex: uint32(labelColumnOffset + i),
@@ -180,9 +165,7 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	if hasPhysicalLayout {
 		errs = append(errs, encodeColumn(enc, ColumnTypePhysicalSortLayout, physicalSortLayoutBuilder))
 	}
-	if hasShard {
-		errs = append(errs, encodeColumn(enc, ColumnTypeShard, shardBuilder))
-	}
+	errs = append(errs, encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeRowCount, rowCountBuilder))

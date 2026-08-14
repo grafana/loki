@@ -30,9 +30,9 @@ type Record struct {
 	// it only guides the in-memory sort during building.
 	SortKey string
 
-	// ShardHash is labels.StableHash(stream labels) modulo the shard factor. It
-	// is not encoded into LOG sections; it guides schema-layout sorting.
-	ShardHash int64
+	// ShardBucket is derived from labels.StableHash(stream labels). It is not
+	// encoded into LOG sections; it guides schema-layout sorting.
+	ShardBucket int64
 }
 
 type AppendStrategy int

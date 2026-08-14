@@ -106,7 +106,7 @@ type ColumnType int
 const (
 	ColumnTypeInvalid      ColumnType = iota // ColumnTypeInvalid is an invalid column.
 	ColumnTypeStreamID                       // ColumnTypeStreamID is a column containing a set of stream IDs.
-	ColumnTypeShardHash                      // ColumnTypeShardHash contains labels.StableHash(labels) modulo the shard factor.
+	ColumnTypeShardBucket                    // ColumnTypeShardBucket contains the shard bucket derived from labels.StableHash(labels).
 	ColumnTypeMinTimestamp                   // ColumnTypeMinTimestamp is a column containing minimum timestamps per stream.
 	ColumnTypeMaxTimestamp                   // ColumnTypeMaxTimestamp is a column containing maximum timestamps per stream.
 
@@ -122,7 +122,7 @@ const (
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:          "invalid",
 	ColumnTypeStreamID:         "stream_id",
-	ColumnTypeShardHash:        "__shard_hash__",
+	ColumnTypeShardBucket:      "__shard_bucket__",
 	ColumnTypeMinTimestamp:     "min_timestamp",
 	ColumnTypeMaxTimestamp:     "max_timestamp",
 	ColumnTypeLabel:            "label",
@@ -138,8 +138,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeInvalid, nil
 	case "stream_id":
 		return ColumnTypeStreamID, nil
-	case "__shard_hash__":
-		return ColumnTypeShardHash, nil
+	case "__shard_bucket__":
+		return ColumnTypeShardBucket, nil
 	case "min_timestamp":
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":

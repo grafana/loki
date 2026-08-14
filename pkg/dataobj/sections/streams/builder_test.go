@@ -45,7 +45,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(15, 0),
 			Rows:             3,
 			UncompressedSize: 30,
-			ShardHash:        1,
+			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "foo"))),
 		},
 		{
 			ID:               2,
@@ -54,7 +54,7 @@ func Test(t *testing.T) {
 			MaxTimestamp:     time.Unix(100, 0),
 			Rows:             1,
 			UncompressedSize: 20,
-			ShardHash:        10,
+			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
 		},
 	}
 

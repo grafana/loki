@@ -29,7 +29,7 @@ var streamsTestdata = []struct {
 }
 
 func shardForApp(app string) int64 {
-	return int64(labels.StableHash(labels.FromStrings("cluster", "test", "app", app)) % uint64(streams.ShardFactor))
+	return int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", app)))
 }
 
 func TestRowReader(t *testing.T) {

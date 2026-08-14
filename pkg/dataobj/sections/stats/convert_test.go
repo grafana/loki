@@ -24,8 +24,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 		MaxTimestamp:     200,
 		RowCount:         5,
 		UncompressedSize: 50,
-		Shard:            7,
-		HasShard:         true,
+		ShardBucket:      7,
 	})
 	b.Append(stats.Stat{
 		ObjectPath:       "/obj2",
@@ -85,8 +84,7 @@ func TestFromRecordBatch_RoundTrip(t *testing.T) {
 	require.Equal(t, int64(200), r1.MaxTimestamp)
 	require.Equal(t, int64(5), r1.RowCount)
 	require.Equal(t, int64(50), r1.UncompressedSize)
-	require.Equal(t, uint32(7), r1.Shard)
-	require.True(t, r1.HasShard)
+	require.Equal(t, uint32(7), r1.ShardBucket)
 
 	r2, ok := byPath["/obj2"]
 	require.True(t, ok, "expected a row for /obj2")

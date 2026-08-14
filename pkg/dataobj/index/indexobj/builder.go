@@ -211,8 +211,7 @@ func (b *Builder) appendStat(tenantID, objectPath string, sectionIdx int64,
 		UncompressedSize:   uncompressedSize,
 	}
 	if shard != nil {
-		stat.Shard = *shard
-		stat.HasShard = true
+		stat.ShardBucket = *shard
 	}
 	tenantStats.Append(stat)
 

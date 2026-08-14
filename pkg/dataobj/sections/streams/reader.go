@@ -476,7 +476,7 @@ func columnsSchema(cols []*Column) *arrow.Schema {
 var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:          arrow.Null,
 	ColumnTypeStreamID:         arrow.PrimitiveTypes.Int64,
-	ColumnTypeShardHash:        arrow.PrimitiveTypes.Int64,
+	ColumnTypeShardBucket:      arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeLabel:            arrow.BinaryTypes.String,

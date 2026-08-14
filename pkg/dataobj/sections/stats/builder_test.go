@@ -84,6 +84,14 @@ func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 	return all
 }
 
+func requireRowsEqual(t *testing.T, expected, actual arrowtest.Rows) {
+	t.Helper()
+	for _, row := range expected {
+		row["__shard_bucket__.int64"] = int64(0)
+	}
+	require.Equal(t, expected, actual)
+}
+
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
@@ -169,7 +177,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			"service_name.label.utf8": "foo",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
@@ -241,7 +249,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 			"service_name.label.utf8": "gamma",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
@@ -291,7 +299,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestCompare_FullKeyOrder locks the canonical stats sort order
@@ -300,8 +308,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 	base := func() Stat {
 		return Stat{
 			SortSchema:   schema,
-			Shard:        2,
-			HasShard:     true,
+			ShardBucket:  2,
 			Labels:       map[string]string{"service_name": "svc", "namespace": "ns"},
 			MinTimestamp: 100,
 			MaxTimestamp: 200,
@@ -318,7 +325,7 @@ func TestCompare_FullKeyOrder(t *testing.T) {
 		name   string
 		mutate func(*Stat)
 	}{
-		{"shard", func(s *Stat) { s.Shard = 7 }},
+		{"shard bucket", func(s *Stat) { s.ShardBucket = 7 }},
 		{"first sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "zzz", "namespace": "ns"} }},
 		{"second sort label", func(s *Stat) { s.Labels = map[string]string{"service_name": "svc", "namespace": "zz"} }},
 		{"min timestamp", func(s *Stat) { s.MinTimestamp = 999 }},
@@ -408,7 +415,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
@@ -445,7 +452,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_SectionSplitting verifies the mid-accumulation flush pattern using dataobj.Builder:
@@ -542,7 +549,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 			labelColName:              longLabel,
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
@@ -576,7 +583,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 			"service_name.label.utf8": "second",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.
@@ -591,9 +598,10 @@ func TestBuilder_EstimatedSize(t *testing.T) {
 		Labels:     map[string]string{"sch": "svc"}, // key: 3 bytes, value: 3 bytes
 	})
 
-	// 5 * 8 = 40 for int64s (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 52
-	require.Equal(t, 52, b.EstimatedSize())
+	// 6 * 8 = 48 for numeric fields (SectionIndex, ShardBucket, MinTimestamp,
+	// MaxTimestamp, RowCount, UncompressedSize)
+	// + 3 (ObjectPath) + 3 (SortSchema) + 3 (key) + 3 (value) = 60
+	require.Equal(t, 60, b.EstimatedSize())
 }
 
 // TestBuilder_FlushResetsBuilder verifies that a flush resets the builder state.

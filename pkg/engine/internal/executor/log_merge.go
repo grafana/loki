@@ -479,7 +479,7 @@ func (c *Context) buildSortedLogRuns(
 			}
 			record.StreamID = globalID
 			record.SortKey = table.sortKeys[globalID]
-			record.ShardHash = int64(table.shards[globalID])
+			record.ShardBucket = int64(table.shards[globalID])
 			record.Line = slices.Clone(record.Line)
 			record.Metadata = record.Metadata.Copy()
 			logsBuilder.Append(record)
@@ -572,7 +572,7 @@ func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalS
 		table.shards[gid] = e.key.Shard
 		s := e.stream
 		s.ID = gid
-		s.ShardHash = int64(e.key.Shard)
+		s.ShardBucket = int64(e.key.Shard)
 		table.streams[gid] = s
 		globalIDs[s.Labels.String()] = gid
 	}

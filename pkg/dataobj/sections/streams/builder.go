@@ -38,14 +38,14 @@ type Stream struct {
 	// Total number of log records in the stream.
 	Rows int
 
-	// ShardHash is labels.StableHash(Labels) modulo [ShardFactor].
-	ShardHash int64
+	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
+	ShardBucket int64
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
-	s.ShardHash = 0
+	s.ShardBucket = 0
 	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
@@ -158,7 +158,7 @@ func (b *Builder) AppendValue(val Stream) {
 	newStream.Reset()
 
 	newStream.ID = val.ID
-	newStream.ShardHash = val.ShardHash
+	newStream.ShardBucket = val.ShardBucket
 	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
 	newStream.UncompressedSize = val.UncompressedSize
 	newStream.Labels = val.Labels
@@ -195,7 +195,7 @@ func (b *Builder) EstimatedSize() int {
 	var sizeEstimate int
 
 	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * idDeltaSize        // Shard hash
+	sizeEstimate += len(b.ordered) * idDeltaSize        // Shard bucket
 	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
 	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
 	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
@@ -222,6 +222,7 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 
 const shardBits = 4 // N = 16 buckets
 
+// ShardBucket returns the physical shard bucket for streamLabels.
 func ShardBucket(streamLabels labels.Labels) uint64 {
 	fp := labels.StableHash(streamLabels)
 	return fp >> (64 - shardBits)
@@ -235,13 +236,31 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
-	newStream.ShardHash = int64(ShardBucket(streamLabels))
+	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 	newStream.Labels = streamLabels
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
 	b.metrics.streamCount.Inc()
 	return newStream
+}
+
+// StreamID returns the stream ID for the provided streamLabels. If the stream
+// has not been recorded, StreamID returns 0.
+func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
+	hash := labels.StableHash(streamLabels)
+	matches, ok := b.lookup[hash]
+	if !ok {
+		return 0
+	}
+
+	for _, stream := range matches {
+		if labels.Equal(stream.Labels, streamLabels) {
+			return stream.ID
+		}
+	}
+
+	return 0
 }
 
 // Flush flushes the streams section to the provided writer.
@@ -280,9 +299,9 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	shardHashBuilder, err := numberColumnBuilder(ColumnTypeShardHash, b.pageSize, b.pageRowCount)
+	shardBucketBuilder, err := numberColumnBuilder(ColumnTypeShardBucket, b.pageSize, b.pageRowCount)
 	if err != nil {
-		return fmt.Errorf("creating shard hash column: %w", err)
+		return fmt.Errorf("creating shard bucket column: %w", err)
 	}
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
@@ -338,7 +357,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
-		_ = shardHashBuilder.Append(i, dataset.Int64Value(stream.ShardHash))
+		_ = shardBucketBuilder.Append(i, dataset.Int64Value(stream.ShardBucket))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
@@ -383,8 +402,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		}
 	}
 
-	if err := encodeColumn(enc, ColumnTypeShardHash, shardHashBuilder); err != nil {
-		return fmt.Errorf("encoding shard hash column: %w", err)
+	if err := encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder); err != nil {
+		return fmt.Errorf("encoding shard bucket column: %w", err)
 	}
 
 	return nil

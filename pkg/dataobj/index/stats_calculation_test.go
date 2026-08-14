@@ -52,11 +52,7 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 
 func flushAndReadAllStatsTable(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
 	t.Helper()
-	rows := flushAndReadAllStatsTableRaw(t, builder)
-	for _, row := range rows {
-		delete(row, "shard.int64")
-	}
-	return rows
+	return flushAndReadAllStatsTableRaw(t, builder)
 }
 
 func flushAndReadAllStatsTableRaw(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
@@ -140,16 +136,17 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 		"label columns must stay keyed by the bare Prometheus name")
 	require.Equal(t, "c1", actual[0]["cluster.label.utf8"],
 		"label columns must stay keyed by the bare Prometheus name")
+	require.Equal(t, int64(streams.ShardBucket(ctx.streamLabels[1])), actual[0]["__shard_bucket__.int64"])
 }
 
 func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := uint32(labels.StableHash(first) % uint64(streams.ShardFactor))
+	firstShard := uint32(streams.ShardBucket(first))
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if uint32(labels.StableHash(candidate)%uint64(streams.ShardFactor)) != firstShard {
+		if uint32(streams.ShardBucket(candidate)) != firstShard {
 			second = candidate
 			break
 		}
@@ -180,10 +177,10 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	gotShards := make(map[int64]struct{}, len(actual))
 	for _, row := range actual {
 		require.Equal(t, "api", row["service_name.label.utf8"])
-		gotShards[row["shard.int64"].(int64)] = struct{}{}
+		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
 	}
 	require.Contains(t, gotShards, int64(firstShard))
-	require.Contains(t, gotShards, int64(labels.StableHash(second)%uint64(streams.ShardFactor)))
+	require.Contains(t, gotShards, int64(streams.ShardBucket(second)))
 }
 
 func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
@@ -234,6 +231,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[3])),
 		"service_name.label.utf8": "",
 		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
 		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
@@ -245,6 +243,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[1])),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts1,
 		"max_timestamp.timestamp": ts2,
@@ -256,6 +255,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[2])),
 		"service_name.label.utf8": "svcB",
 		"min_timestamp.timestamp": ts3,
 		"max_timestamp.timestamp": ts3,
@@ -286,6 +286,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(streams.ShardBucket(ctx.streamLabels[1])),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts,
 		"max_timestamp.timestamp": ts,

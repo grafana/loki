@@ -264,8 +264,8 @@ func compareRecords(t *testing.T, a, b builderE2EResolvedRecord, sortOrder strin
 	t.Helper()
 
 	if len(schemaLabels) > 0 {
-		aShard := labels.StableHash(a.labels) % uint64(streams.ShardFactor)
-		bShard := labels.StableHash(b.labels) % uint64(streams.ShardFactor)
+		aShard := streams.ShardBucket(a.labels)
+		bShard := streams.ShardBucket(b.labels)
 		if res := cmp.Compare(aShard, bShard); res != 0 {
 			return res
 		}

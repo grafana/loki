@@ -407,7 +407,7 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 			}
 
 			for _, stat := range rows[:n] {
-				if stat.PhysicalSortLayout != targetLayoutID || !stat.HasShard || stat.Shard >= streams.ShardFactor {
+				if stat.PhysicalSortLayout != targetLayoutID || stat.ShardBucket >= streams.ShardFactor {
 					compatible = false
 				}
 
@@ -415,8 +415,8 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant, idxP
 				for i, name := range labelNames {
 					labels[i] = stat.Labels[name]
 				}
-				minKey := sortKey{shard: stat.Shard, labels: labels, timestamp: stat.MaxTimestamp}
-				maxKey := sortKey{shard: stat.Shard, labels: labels, timestamp: stat.MinTimestamp}
+				minKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MaxTimestamp}
+				maxKey := sortKey{shard: stat.ShardBucket, labels: labels, timestamp: stat.MinTimestamp}
 
 				id := sectionID{path: stat.ObjectPath, index: stat.SectionIndex}
 				bounded, ok := bySection[id]

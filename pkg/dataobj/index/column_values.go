@@ -57,7 +57,7 @@ func (c *columnValuesCalculation) ProcessBatch(_ context.Context, calcCtx *logsC
 			}
 			batchErr = calcCtx.builder.ObserveBloomPosting(calcCtx.tenantID, postings.BloomObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardFactor:      int64(streams.ShardFactor),
+				ShardBuckets:     int64(streams.ShardFactor),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       md.Name,
 				Value:            md.Value,

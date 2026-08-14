@@ -330,7 +330,7 @@ func TestIteratorForSchema_AnnotatesMergedRecords(t *testing.T) {
 		record, err := result.Value()
 		require.NoError(t, err)
 		require.Equal(t, sortKeys[record.StreamID], record.SortKey)
-		require.Equal(t, int64(shards[record.StreamID]), record.ShardHash)
+		require.Equal(t, int64(shards[record.StreamID]), record.ShardBucket)
 		count++
 	}
 	require.Equal(t, 2, count)
@@ -338,7 +338,7 @@ func TestIteratorForSchema_AnnotatesMergedRecords(t *testing.T) {
 
 // recOrder compares records by [sortKey ASC, streamID ASC, timestamp DESC].
 func recOrder(a, b logs.Record) int {
-	if r := cmp.Compare(a.ShardHash, b.ShardHash); r != 0 {
+	if r := cmp.Compare(a.ShardBucket, b.ShardBucket); r != 0 {
 		return r
 	}
 	if r := cmp.Compare(a.SortKey, b.SortKey); r != 0 {

@@ -17,7 +17,7 @@ type labelPostingKey struct {
 // labelPostingEntry holds the aggregated state for a single label posting.
 type labelPostingEntry struct {
 	ObjectPath       string
-	ShardFactor      int64
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string
@@ -77,7 +77,7 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	if !ok {
 		entry = &labelPostingEntry{
 			ObjectPath:   obs.ObjectPath,
-			ShardFactor:  obs.ShardFactor,
+			ShardBuckets: obs.ShardBuckets,
 			SectionIndex: obs.SectionIndex,
 			ColumnName:   obs.ColumnName,
 			LabelValue:   obs.LabelValue,
@@ -122,7 +122,7 @@ func (a *labelAggregator) Entries() []LabelEntry {
 	for _, entry := range a.entries {
 		result = append(result, LabelEntry{
 			ObjectPath:       entry.ObjectPath,
-			ShardFactor:      entry.ShardFactor,
+			ShardBuckets:     entry.ShardBuckets,
 			SectionIndex:     entry.SectionIndex,
 			ColumnName:       entry.ColumnName,
 			LabelValue:       entry.LabelValue,

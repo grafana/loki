@@ -159,7 +159,7 @@ func iterator(
 				// sort key so downstream builders (SortSchemaASC) sort correctly.
 				if opts.sortKeys != nil && record.StreamID >= 0 && int(record.StreamID) < len(opts.sortKeys) {
 					record.SortKey = opts.sortKeys[record.StreamID]
-					record.ShardHash = int64(opts.shards[record.StreamID])
+					record.ShardBucket = int64(opts.shards[record.StreamID])
 				}
 				if !yield(record) {
 					return nil

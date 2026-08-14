@@ -63,10 +63,7 @@ func (b *Builder) EstimatedSize() int {
 //   - sum of len(k)+len(v) for all entries in Labels
 func statSize(r Stat) int {
 	total := 5 * 8
-	total += len(r.ObjectPath) + len(r.SortSchema) + len(r.PhysicalSortLayout)
-	if r.HasShard {
-		total += 8
-	}
+	total += len(r.ObjectPath) + len(r.SortSchema) + len(r.PhysicalSortLayout) + 8
 	for k, v := range r.Labels {
 		total += len(k) + len(v)
 	}
@@ -85,14 +82,8 @@ func (b *Builder) Reset() {
 //
 // Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
-	if a.HasShard != b.HasShard {
-		if !a.HasShard {
-			return -1
-		}
-		return 1
-	}
-	if a.HasShard && a.Shard != b.Shard {
-		return cmp.Compare(a.Shard, b.Shard)
+	if a.ShardBucket != b.ShardBucket {
+		return cmp.Compare(a.ShardBucket, b.ShardBucket)
 	}
 	for fqn := range strings.SplitSeq(a.SortSchema, ",") {
 		typ, key, ok := strings.Cut(fqn, ":")

@@ -42,7 +42,7 @@ func sortedSchemaIter(
 					return fmt.Errorf("missing stream ID remap for stream ID %d", oldStreamID)
 				}
 				rec.SortKey = sortKey
-				rec.ShardHash = int64(shards[oldStreamID])
+				rec.ShardBucket = int64(shards[oldStreamID])
 				rec.StreamID = streamID
 				rec.Line = bytes.Clone(rec.Line)
 				rec.Metadata = rec.Metadata.Copy()

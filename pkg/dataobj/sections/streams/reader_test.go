@@ -21,7 +21,7 @@ func TestReader(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(1),
-			"__shard_hash__.int64":    shardForApp("foo"),
+			"__shard_bucket__.int64":  shardForApp("foo"),
 			"app.label.utf8":          "foo",
 			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(10, 0).UTC(),
@@ -31,7 +31,7 @@ func TestReader(t *testing.T) {
 		},
 		{
 			"stream_id.int64":         int64(2),
-			"__shard_hash__.int64":    shardForApp("bar"),
+			"__shard_bucket__.int64":  shardForApp("bar"),
 			"app.label.utf8":          "bar",
 			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
@@ -41,7 +41,7 @@ func TestReader(t *testing.T) {
 		},
 		{
 			"stream_id.int64":         int64(3),
-			"__shard_hash__.int64":    shardForApp("baz"),
+			"__shard_bucket__.int64":  shardForApp("baz"),
 			"app.label.utf8":          "baz",
 			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(25, 0).UTC(),
@@ -84,7 +84,7 @@ func TestReader_Predicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"__shard_hash__.int64":    shardForApp("bar"),
+			"__shard_bucket__.int64":  shardForApp("bar"),
 			"app.label.utf8":          "bar",
 			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),
@@ -123,7 +123,7 @@ func TestReader_InPredicate(t *testing.T) {
 	expect := arrowtest.Rows{
 		{
 			"stream_id.int64":         int64(2),
-			"__shard_hash__.int64":    shardForApp("bar"),
+			"__shard_bucket__.int64":  shardForApp("bar"),
 			"app.label.utf8":          "bar",
 			"cluster.label.utf8":      "test",
 			"min_timestamp.timestamp": time.Unix(5, 0).UTC(),

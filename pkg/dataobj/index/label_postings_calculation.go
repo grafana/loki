@@ -46,7 +46,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			}
 			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
-				ShardFactor:      int64(streams.ShardFactor),
+				ShardBuckets:     int64(streams.ShardFactor),
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,

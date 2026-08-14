@@ -59,9 +59,8 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Stat 
 		}
 	}
 
-	if col := getColumn("shard.int64"); col != nil && !col.IsNull(rowIndex) {
-		result.Shard = uint32(col.(*array.Int64).Value(rowIndex))
-		result.HasShard = true
+	if col := getColumn("__shard_bucket__.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.ShardBucket = uint32(col.(*array.Int64).Value(rowIndex))
 	}
 
 	if col := getColumn("min_timestamp.timestamp"); col != nil && !col.IsNull(rowIndex) {
