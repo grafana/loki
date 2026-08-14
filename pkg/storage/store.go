@@ -534,6 +534,17 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 	return result, nil
 }
 
+func (s *LokiStore) shouldPropagateChunkFetchErrors(ctx context.Context) bool {
+	if s.limits == nil {
+		return false
+	}
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return false
+	}
+	return s.limits.PropagateChunkFetchErrors(userID)
+}
+
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
 func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
@@ -580,6 +591,9 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
+	if s.shouldPropagateChunkFetchErrors(ctx) {
+		ctx = withChunkFetchErrorPropagation(ctx)
+	}
 	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
@@ -637,6 +651,9 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
+	if s.shouldPropagateChunkFetchErrors(ctx) {
+		ctx = withChunkFetchErrorPropagation(ctx)
+	}
 	return newSampleBatchIterator(
 		ctx,
 		s.schemaCfg,

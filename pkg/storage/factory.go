@@ -43,6 +43,7 @@ type StoreLimits interface {
 	stores.StoreLimits
 	indexgateway.Limits
 	CardinalityLimit(string) int
+	PropagateChunkFetchErrors(string) bool
 }
 
 // Storage configs defined as Named stores don't get any defaults as they do not

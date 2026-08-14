@@ -40,6 +40,17 @@ const (
 	statusMatched   = "matched"
 )
 
+type chunkFetchErrorPropagationKey struct{}
+
+func withChunkFetchErrorPropagation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, chunkFetchErrorPropagationKey{}, true)
+}
+
+func propagateChunkFetchErrors(ctx context.Context) bool {
+	propagate, _ := ctx.Value(chunkFetchErrorPropagationKey{}).(bool)
+	return propagate
+}
+
 func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 	buckets := 5
 	if maxBatchSize < buckets {
@@ -741,28 +752,23 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
-			chks, err := fetcher.FetchChunks(ctx, chks)
+			chks, err := fetcher.FetchChunksWithErrors(ctx, chks)
+
+			// Assign before any return. A failed fetch still hands back the chunks
+			// it did get, and leaving them unassigned loses good data.
+			// FetchChunks does not guarantee the order, so assign by key.
+			for _, chk := range chks {
+				index[s.ExternalKey(chk.ChunkRef)].Chunk = chk
+			}
 			if ctx.Err() != nil {
 				errChan <- nil
 				return
 			}
-			if err != nil {
-				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
-				if isInvalidChunkError(err) {
-					level.Error(logger).Log("msg", "checksum of chunks does not match", "err", chunk.ErrInvalidChecksum)
-					errChan <- nil
-					return
-				}
-				errChan <- err
-				return
 
+			if !propagateChunkFetchErrors(ctx) {
+				err = nil
 			}
-			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
-			for _, chk := range chks {
-				index[s.ExternalKey(chk.ChunkRef)].Chunk = chk
-			}
-
-			errChan <- nil
+			errChan <- err
 		}(f, chunks)
 	}
 
@@ -773,16 +779,13 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 		}
 	}
 
-	if lastErr != nil {
-		return lastErr
-	}
-
 	for _, c := range chunks {
 		if c.Chunk.Data != nil {
 			c.IsValid = true
 		}
 	}
-	return nil
+
+	return lastErr
 }
 
 func isInvalidChunkError(err error) bool {

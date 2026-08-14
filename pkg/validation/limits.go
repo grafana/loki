@@ -180,6 +180,9 @@ type Limits struct {
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
+	// Global and per tenant control for propagating chunk fetch errors to queries.
+	PropagateChunkFetchErrors bool `yaml:"propagate_chunk_fetch_errors" json:"propagate_chunk_fetch_errors" category:"experimental"`
+
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
 	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enabled on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple streams are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
@@ -449,6 +452,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
+
+	f.BoolVar(&l.PropagateChunkFetchErrors, "chunk-store.propagate-fetch-errors", false, "Experimental. Propagate chunk fetch errors to queries instead of returning incomplete results.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
@@ -1017,6 +1022,11 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 func (o *Overrides) DeletionMode(userID string) string {
 	return o.getOverridesForUser(userID).DeletionMode
+}
+
+// PropagateChunkFetchErrors reports whether chunk fetch errors should fail a tenant's queries.
+func (o *Overrides) PropagateChunkFetchErrors(userID string) bool {
+	return o.getOverridesForUser(userID).PropagateChunkFetchErrors
 }
 
 func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
