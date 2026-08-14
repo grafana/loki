@@ -257,8 +257,8 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 		flushTenantRequestsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_flush_tenant_requests_total",
-			Help:      "Total number of tenant flush (/flush/tenant) requests, partitioned by tenant and status.",
-		}, []string{"user", "status"}),
+			Help:      "Total number of tenant flush (/flush/tenant) requests, partitioned by status.",
+		}, []string{"status"}),
 		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_flushed_total",

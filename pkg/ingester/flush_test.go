@@ -617,8 +617,8 @@ func TestFlushTenantHandler(t *testing.T) {
 		// expectedFlushes is the number of forced index ships (FlushIndexes calls).
 		expectedFlushes int32
 		// expectedMetricStatus is the status label expected on
-		// loki_ingester_flush_tenant_requests_total for orgID; empty means the
-		// request should not be counted (e.g. no tenant could be resolved).
+		// loki_ingester_flush_tenant_requests_total; empty means the request
+		// should not be counted (e.g. no tenant could be resolved).
 		expectedMetricStatus string
 	}{
 		{
@@ -691,7 +691,7 @@ func TestFlushTenantHandler(t *testing.T) {
 
 			if tc.expectedMetricStatus != "" {
 				require.Equal(t, 1, testutil.CollectAndCount(ing.metrics.flushTenantRequestsTotal))
-				require.Equal(t, float64(1), testutil.ToFloat64(ing.metrics.flushTenantRequestsTotal.WithLabelValues(tc.orgID, tc.expectedMetricStatus)))
+				require.Equal(t, float64(1), testutil.ToFloat64(ing.metrics.flushTenantRequestsTotal.WithLabelValues(tc.expectedMetricStatus)))
 			} else {
 				require.Equal(t, 0, testutil.CollectAndCount(ing.metrics.flushTenantRequestsTotal))
 			}

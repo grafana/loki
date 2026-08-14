@@ -166,7 +166,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := "success"
 	defer func() {
-		i.metrics.flushTenantRequestsTotal.WithLabelValues(tenantID, status).Inc()
+		i.metrics.flushTenantRequestsTotal.WithLabelValues(status).Inc()
 	}()
 
 	var matchers []*labels.Matcher
