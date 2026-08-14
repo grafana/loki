@@ -122,7 +122,7 @@ func buildIndexWithStats(ctx context.Context, t *testing.T, bucket objstore.Buck
 		rows[i].PhysicalSortLayout = (logs.SortLayout{
 			SchemaLabels: schema,
 			StreamOrder:  logs.StreamOrderStableHashV1,
-			ShardCount:   16,
+			ShardCount:   32,
 		}).ID()
 	}
 	buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, stats: rows})

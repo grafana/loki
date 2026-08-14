@@ -288,7 +288,7 @@ func TestCompactTenantLogs_LegacyLayoutSortsEveryObject(t *testing.T) {
 		require.Len(t, node.Runs, 1)
 		require.Len(t, node.Runs[0].Sections, 1)
 		require.Equal(t, compactionv2pb.STREAM_ORDER_STABLE_HASH_V1, node.StreamOrder)
-		require.Equal(t, uint32(16), node.ShardCount)
+		require.Equal(t, uint32(32), node.ShardCount)
 		paths = append(paths, node.Runs[0].Sections[0].ObjectPath)
 	}
 	require.ElementsMatch(t, []string{"logs/a", "logs/b"}, paths)
