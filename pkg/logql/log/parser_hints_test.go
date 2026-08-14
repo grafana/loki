@@ -233,17 +233,15 @@ func Test_ParserHints(t *testing.T) {
 			ex, err := expr.Extractor()
 			require.NoError(t, err)
 
-			res, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
+			sample, ok := ex.ForStream(lbs).Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
 			require.Equal(t, tt.expectOk, ok)
 
-			for _, sample := range res {
-				var lbsResString string
-				if sample.Labels != nil {
-					lbsResString = sample.Labels.String()
-				}
-				require.Equal(t, tt.expectVal, sample.Value)
-				require.Equal(t, tt.expectLbs, lbsResString)
+			var lbsResString string
+			if sample.Labels != nil {
+				lbsResString = sample.Labels.String()
 			}
+			require.Equal(t, tt.expectVal, sample.Value)
+			require.Equal(t, tt.expectLbs, lbsResString)
 		})
 	}
 }

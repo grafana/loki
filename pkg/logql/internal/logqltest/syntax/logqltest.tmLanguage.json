@@ -9,6 +9,7 @@
     { "include": "#eval-range" },
     { "include": "#eval-fallback" },
     { "include": "#expect-annotation" },
+    { "include": "#skip-directive" },
     { "include": "#series-expectation" },
     { "include": "#scalar-expectation" },
     { "include": "#comment" }
@@ -109,6 +110,17 @@
         "2": { "name": "keyword.control.expect.logqltest" },
         "3": { "name": "keyword.other.expect-matcher.logqltest" },
         "4": { "name": "string.unquoted.expect.logqltest" }
+      }
+    },
+
+    "skip-directive": {
+      "comment": "A `skip <what> on \"<stack>\"` directive at the head of an expectation block.",
+      "match": "^[ \\t]*(skip)[ \\t]+(\\S+)[ \\t]+(on)[ \\t]+(\"[^\"]*\")",
+      "captures": {
+        "1": { "name": "keyword.control.skip.logqltest" },
+        "2": { "name": "keyword.other.skip-target.logqltest" },
+        "3": { "name": "keyword.control.skip.logqltest" },
+        "4": { "name": "string.quoted.double.stack.logqltest" }
       }
     },
 

@@ -1550,6 +1550,21 @@ type LokiStackStorageStatus struct {
 	CredentialMode CredentialMode `json:"credentialMode,omitempty"`
 }
 
+// LokiStackNetworkPolicyStatus defines the observed network policy configuration
+type LokiStackNetworkPolicyStatus struct {
+	// RuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	RuleSet NetworkPolicyRuleSet `json:"ruleSet,omitempty"`
+
+	// ObjectStorageAllowedEgressPorts contains the TCP ports allowed for egress to object storage endpoints.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	ObjectStorageAllowedEgressPorts []int32 `json:"objectStorageAllowedEgressPorts,omitempty"`
+}
+
 // LokiStackStatus defines the observed state of LokiStack
 type LokiStackStatus struct {
 	// Components provides summary of all Loki pod status grouped
@@ -1566,11 +1581,11 @@ type LokiStackStatus struct {
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
 
-	// NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.
+	// NetworkPolicyStatus provides details about the applied NetworkPolicies configuration
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	NetworkPolicyRuleSet NetworkPolicyRuleSet `json:"networkPolicyRuleSet,omitempty"`
+	NetworkPolicyStatus LokiStackNetworkPolicyStatus `json:"networkPolicyStatus,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

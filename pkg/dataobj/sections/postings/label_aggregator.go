@@ -17,6 +17,7 @@ type labelPostingKey struct {
 // labelPostingEntry holds the aggregated state for a single label posting.
 type labelPostingEntry struct {
 	ObjectPath       string
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string
@@ -76,6 +77,7 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 	if !ok {
 		entry = &labelPostingEntry{
 			ObjectPath:   obs.ObjectPath,
+			ShardBuckets: obs.ShardBuckets,
 			SectionIndex: obs.SectionIndex,
 			ColumnName:   obs.ColumnName,
 			LabelValue:   obs.LabelValue,
@@ -85,8 +87,8 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 		}
 		a.entries[key] = entry
 
-		// Track size for new entry: 5 int64 fields + string sizes
-		a.estimatedSize += 5*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
+		// Track size for new entry: 6 int64 fields + string sizes
+		a.estimatedSize += 6*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
 	}
 
 	// Grow bitmap if needed and set the bit for this stream ID.
@@ -120,6 +122,7 @@ func (a *labelAggregator) Entries() []LabelEntry {
 	for _, entry := range a.entries {
 		result = append(result, LabelEntry{
 			ObjectPath:       entry.ObjectPath,
+			ShardBuckets:     entry.ShardBuckets,
 			SectionIndex:     entry.SectionIndex,
 			ColumnName:       entry.ColumnName,
 			LabelValue:       entry.LabelValue,
