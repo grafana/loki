@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	yaml "go.yaml.in/yaml/v4"
+	"go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
@@ -366,8 +366,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			storeType = st
 		}
 
-		congestionControlled := ccCfg.Enabled && storeType != bucket.Filesystem
-
 		c, err := newObjectClient(name, component, cfg, clientMetrics, ccCfg.ReplacesInnerRetries(storeType))
 		if err != nil {
 			return nil, err
@@ -377,7 +375,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		if storeType == bucket.Filesystem {
 			encoder = client.FSEncoder
 		}
-		if congestionControlled {
+		if ccCfg.Enabled && storeType != bucket.Filesystem {
 			c = cc.Wrap(c)
 		}
 
