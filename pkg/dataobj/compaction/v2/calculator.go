@@ -88,11 +88,11 @@ func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K]
 	//
 	// When two runs have the same upper bound, the oldest run wins.
 	//
-	// Consider three L0 sections sorted by timestamp rather than service_name.
-	// Services interleave inside each section, so every section spans much of the
+	// Consider three L0 objects sorted by timestamp rather than service_name. The objects may have multiple sections.
+	// Services interleave inside each object, so every object spans much of the
 	// service_name keyspace:
 	//
-	//	Section A0                         Section B0                         Section C0
+	//	Object A0                          Object B0                          Object C0
 	//	----------                         ----------                         ----------
 	//	auth    | T1 | "login"            billing | T4 | "pay"              auth    | T7 | "refresh"
 	//	billing | T2 | "invoice"          auth    | T5 | "logout"           auth    | T8 | "login"
@@ -108,9 +108,9 @@ func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K]
 	//   - C0 starts run 2 for the same reason.
 	//
 	// The result is three overlapping runs. A K-way merge can rewrite them into
-	// sections that are ordered by service_name:
+	// objects that are ordered by service_name:
 	//
-	//	Section X1                         Section Y1                         Section Z1
+	//	Object X1                          Object Y1                          Object Z1
 	//	----------                         ----------                         ----------
 	//	auth | T1 | "login"               auth    | T8 | "login"            billing | T9 | "renew"
 	//	auth | T5 | "logout"              billing | T2 | "invoice"          cart    | T3 | "add"
@@ -120,7 +120,7 @@ func calculateRuns[K any](objects []object[K], compare CompareFunc[K]) []*run[K]
 	//	Max = ["auth", T7]               Max = ["billing", T4]            Max = ["cart", T6]
 	//
 	// A later calculation places X1, Y1, and Z1 in one run. This is why run count
-	// measures locality even when the number of physical sections does not
+	// measures locality even when the number of physical objects does not
 	// change.
 	var runs []*run[K]
 	for _, obj := range objects {

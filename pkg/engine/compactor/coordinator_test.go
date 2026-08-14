@@ -24,8 +24,9 @@ import (
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
-	stats "github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -67,6 +68,35 @@ func (f *fakeRunner) snapshot() []runCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]runCall(nil), f.calls...)
+}
+
+func (f *fakeRunner) assertUniqueObjects(t *testing.T) {
+	// Validate that no object section appears in more than one task
+	for _, call := range f.calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+
+		callObjects := map[string]struct{}{}
+		err = call.plan.Graph().Walk(root, func(n physical.Node) error {
+			switch n.(type) {
+			case *physical.LogMerge:
+				runs := n.(*physical.LogMerge).Runs
+				for _, run := range runs {
+					runObjects := map[string]struct{}{}
+					for _, sectionRef := range run.Sections {
+						runObjects[sectionRef.ObjectPath] = struct{}{}
+					}
+					for obj := range runObjects {
+						_, exists := callObjects[obj]
+						require.False(t, exists, "object %q appears in more than one task", obj)
+						callObjects[obj] = struct{}{}
+					}
+				}
+			}
+			return nil
+		}, dag.PreOrderWalk)
+		require.NoError(t, err)
+	}
 }
 
 // fakeReplacer records each ReplaceIndexPointers invocation and returns
@@ -180,6 +210,7 @@ func TestCompactTenant_RaceLossIsSuccess(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: false, err: nil}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -211,6 +242,7 @@ func TestCompactTenant_HardSwapErrorPropagates(t *testing.T) {
 
 	swapErr := errors.New("bucket: temporary failure")
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: false, err: swapErr}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -240,6 +272,8 @@ func TestCompactTenantLogs_DispatchesLogMergePlans(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
+
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -286,6 +320,7 @@ func TestCompactTenantLogs_NoStatsRowsForTenantIsConverged(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -311,6 +346,7 @@ func TestCompactTenantLogs_InternalObjectOverlapIsConverged(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -337,6 +373,7 @@ func TestCompactTenantLogs_TouchingRunsAreConverged(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -362,6 +399,7 @@ func TestCompactTenantLogs_TerminalBelowFloorSkips(t *testing.T) {
 	})
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 	c.cfg.LogMinCompactionSize = 1 << 30 // 1GiB floor; 30 bytes is below it
@@ -394,6 +432,7 @@ func TestCompactTenantLogs_SwapsToC(t *testing.T) {
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -417,6 +456,7 @@ func TestCompactTenantLogs_SwapErrorFails(t *testing.T) {
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{err: errors.New("boom")}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -433,6 +473,7 @@ func TestCompactTenantLogs_SwapRaceLossConverged(t *testing.T) {
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: false}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -450,6 +491,7 @@ func TestCompactTenantLogs_DryRunSkipsSwap(t *testing.T) {
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 	c.cfg.DryRun = true
@@ -470,6 +512,7 @@ func TestCompactTenantLogs_PartialFailureNoSwap(t *testing.T) {
 	bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 
 	runner := &fakeRunner{failOnCall: 1}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 
@@ -489,6 +532,7 @@ func TestCompactTenantLogs_DeterministicOutputPaths(t *testing.T) {
 	run := func() []metastore.TableOfContentsEntry {
 		bucket := twoRunConvergedBucket(ctx, t, "acme", convergedPath)
 		runner := &fakeRunner{}
+		defer runner.assertUniqueObjects(t)
 		replacer := &fakeReplacer{swapped: true}
 		c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(1*time.Hour)), newFakeLimits("acme"))
 		_, err := c.compactTenantLogs(ctx, "acme", window, entry)
@@ -525,6 +569,7 @@ func TestRunIndexMergePhase_SingleIndexIsNoWork(t *testing.T) {
 		"acme": {{path: "indexes/a", start: window.Add(time.Hour), end: window.Add(2 * time.Hour)}},
 	})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -571,6 +616,7 @@ func TestCompactTenant_TouchingSectionsAreConverged(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	stats, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/b"}})
@@ -601,6 +647,7 @@ func TestCompactTenant_PostingTimestampsDetectOverlap(t *testing.T) {
 	}
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{
@@ -621,6 +668,7 @@ func TestCompactTenant_FailsOnIncompleteDiscovery(t *testing.T) {
 	buildOverlappingPostingsIndex(ctx, t, bucket, "acme", "indexes/a")
 
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 	_, err := c.compactTenant(ctx, "acme", window, []indexEntry{{Path: "indexes/a"}, {Path: "indexes/missing"}})
@@ -652,6 +700,7 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 		},
 	})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -700,6 +749,7 @@ func TestRunLogMergePhase_PerIndexSwaps(t *testing.T) {
 	window := imWindow()
 	bucket := logMergeBucket(ctx, t, window, "acme", []string{"indexes/a", "indexes/b"})
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
 
@@ -726,6 +776,7 @@ func TestRun_CancelDrainsGoroutines(t *testing.T) {
 	window := imWindow()
 	bucket := seededToC(ctx, t, window, "acme")
 	runner := &fakeRunner{}
+	defer runner.assertUniqueObjects(t)
 	replacer := &fakeReplacer{swapped: true}
 
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))

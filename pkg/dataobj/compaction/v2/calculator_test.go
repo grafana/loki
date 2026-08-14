@@ -36,6 +36,57 @@ func key(label string, timestamp int64) testKey {
 	return testKey{labels: []string{label}, timestamp: timestamp}
 }
 
+func TestGroupSectionsByObject(t *testing.T) {
+	sections := []Section[testKey]{
+		testSection("b", 1, key("h", 0), key("i", 0)),
+		testSection("a", 2, key("e", 0), key("f", 0)),
+		testSection("a", 0, key("c", 0), key("d", 0)),
+		testSection("b", 0, key("g", 0), key("h", 0)),
+		testSection("a", 1, key("a", 0), key("z", 0)),
+	}
+	original := append([]Section[testKey](nil), sections...)
+
+	got := groupSectionsByObject(sections, compareTestKey)
+
+	require.Equal(t, []object[testKey]{
+		{
+			path:     "a",
+			sections: []*compactionv2pb.SectionRef{sections[2].Ref, sections[4].Ref, sections[1].Ref},
+			min:      key("a", 0),
+			max:      key("z", 0),
+		},
+		{
+			path:     "b",
+			sections: []*compactionv2pb.SectionRef{sections[3].Ref, sections[0].Ref},
+			min:      key("g", 0),
+			max:      key("i", 0),
+		},
+	}, got)
+	require.Equal(t, original, sections, "grouping must not mutate the input")
+}
+
+func TestGroupSectionsByObject_OrdersTiesByMaxThenPath(t *testing.T) {
+	sections := []Section[testKey]{
+		testSection("z", 0, key("a", 0), key("c", 0)),
+		testSection("b", 0, key("a", 0), key("b", 0)),
+		testSection("a", 0, key("a", 0), key("b", 0)),
+	}
+
+	got := groupSectionsByObject(sections, compareTestKey)
+
+	require.Equal(t, []string{"a", "b", "z"}, []string{got[0].path, got[1].path, got[2].path})
+}
+
+func TestGroupSectionsByObject_Empty(t *testing.T) {
+	require.Empty(t, groupSectionsByObject([]Section[int](nil), cmp.Compare[int]))
+}
+
+func TestGroupSectionsByObject_NilRefPanics(t *testing.T) {
+	require.PanicsWithValue(t, "nil section reference", func() {
+		groupSectionsByObject([]Section[int]{{Min: 1, Max: 2}}, cmp.Compare[int])
+	})
+}
+
 func TestCalculateRuns(t *testing.T) {
 	tests := []struct {
 		name     string
