@@ -84,6 +84,14 @@ func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 	return all
 }
 
+func requireRowsEqual(t *testing.T, expected, actual arrowtest.Rows) {
+	t.Helper()
+	for _, row := range expected {
+		row["__shard_bucket__.int64"] = int64(0)
+	}
+	require.Equal(t, expected, actual)
+}
+
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
@@ -169,7 +177,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			"service_name.label.utf8": "foo",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
@@ -241,7 +249,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 			"service_name.label.utf8": "gamma",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
@@ -291,7 +299,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestCompare_FullKeyOrder locks the canonical stats sort order
@@ -407,7 +415,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
@@ -444,7 +452,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_SectionSplitting verifies the mid-accumulation flush pattern using dataobj.Builder:
@@ -541,7 +549,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 			labelColName:              longLabel,
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
@@ -575,7 +583,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 			"service_name.label.utf8": "second",
 		},
 	}
-	require.Equal(t, expected, actual)
+	requireRowsEqual(t, expected, actual)
 }
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.

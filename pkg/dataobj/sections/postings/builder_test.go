@@ -658,6 +658,7 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/obj",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "prod",

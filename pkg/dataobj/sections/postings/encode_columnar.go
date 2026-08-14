@@ -148,19 +148,9 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating object_path column: %w", err)
 	}
 
-	hasShardBuckets := false
-	for _, entry := range bloomEntries {
-		hasShardBuckets = hasShardBuckets || entry.ShardBuckets != 0
-	}
-	for _, entry := range labelEntries {
-		hasShardBuckets = hasShardBuckets || entry.ShardBuckets != 0
-	}
-	var shardBucketsBuilder *dataset.ColumnBuilder
-	if hasShardBuckets {
-		shardBucketsBuilder, err = numberColumnBuilder(ColumnTypeShardBuckets, p.pageSizeHint, p.pageMaxRowCount)
-		if err != nil {
-			return fmt.Errorf("creating shard_buckets column: %w", err)
-		}
+	shardBucketsBuilder, err := numberColumnBuilder(ColumnTypeShardBuckets, p.pageSizeHint, p.pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard_buckets column: %w", err)
 	}
 
 	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, p.pageSizeHint, p.pageMaxRowCount)
@@ -218,9 +208,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range bloomEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindBloom)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
-		if hasShardBuckets {
-			_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
-		}
+		_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
@@ -235,9 +223,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range labelEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindLabel)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
-		if hasShardBuckets {
-			_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
-		}
+		_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.LabelValue)))
@@ -249,31 +235,21 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		rowIdx++
 	}
 
-	columnNameIndex, labelValueIndex := uint32(3), uint32(4)
-	minTimestampIndex, maxTimestampIndex := uint32(8), uint32(9)
-	sectionIndex := uint32(2)
-	if hasShardBuckets {
-		columnNameIndex, labelValueIndex = 4, 5
-		minTimestampIndex, maxTimestampIndex = 9, 10
-		sectionIndex = 3
-	}
 	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
-		{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // kind
-		{ColumnIndex: columnNameIndex, Direction: datasetmd.SORT_DIRECTION_ASCENDING},
-		{ColumnIndex: labelValueIndex, Direction: datasetmd.SORT_DIRECTION_ASCENDING},
-		{ColumnIndex: minTimestampIndex, Direction: datasetmd.SORT_DIRECTION_ASCENDING},
-		{ColumnIndex: maxTimestampIndex, Direction: datasetmd.SORT_DIRECTION_ASCENDING},
-		{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
-		{ColumnIndex: sectionIndex, Direction: datasetmd.SORT_DIRECTION_ASCENDING},
+		{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // kind
+		{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // column_name
+		{ColumnIndex: 5, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // label_value
+		{ColumnIndex: 9, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // min_timestamp
+		{ColumnIndex: 10, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // max_timestamp
+		{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // object_path
+		{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // section_index
 	}})
 
 	// Encode all columns.
 	errs := make([]error, 0, 11)
 	errs = append(errs, encodeColumn(enc, ColumnTypeKind, kindBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
-	if hasShardBuckets {
-		errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
-	}
+	errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeSectionIndex, sectionIndexBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeColumnName, columnNameBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeLabelValue, labelValueBuilder))
