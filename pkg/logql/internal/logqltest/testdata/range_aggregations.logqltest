@@ -181,6 +181,44 @@ eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) without 
   {app="a"} 2
 eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
   {app="a"} 20
+eval range from 20s to 50s step 10s first_over_time({app="a"} | logfmt | unwrap v [10s]) by (pod) # non-overlapping
+  {pod="1"} 2 4 _ _
+  {pod="2"} _ _ 10 20
+eval range from 20s to 50s step 10s last_over_time({app="a"} | logfmt | unwrap v [10s]) by (pod)  # non-overlapping
+  {pod="1"} 2 4 _ _
+  {pod="2"} _ _ 10 20
+eval range from 60s to 70s step 10s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod) # overlapping
+  {pod="1"} 2 2
+  {pod="2"} 10 10
+eval range from 60s to 70s step 10s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)  # overlapping
+  {pod="1"} 4 4
+  {pod="2"} 20 20
+eval range from 70s to 80s step 10s first_over_time({app="a"} | logfmt | unwrap v [1m] offset 10s) by (pod) # overlapping
+  {pod="1"} 2 2
+  {pod="2"} 10 10
+eval range from 70s to 80s step 10s last_over_time({app="a"} | logfmt | unwrap v [1m] offset 10s) by (pod)  # overlapping
+  {pod="1"} 4 4
+  {pod="2"} 20 20
+
+# first_over_time() / last_over_time() with grouping, selection range narrower than the step: each
+# window only covers the trailing [R] slice, so a stream can carry several samples in one step and
+# have most of them fall in the dead zone before the window.
+clear
+load
+  {app="a", pod="1"} "v=1" @ 10s   # dead zone
+  {app="a", pod="1"} "v=2" @ 15s   # on the window's exclusive lower bound: excluded
+  {app="a", pod="1"} "v=5" @ 16s
+  {app="a", pod="1"} "v=8" @ 19s
+  {app="a", pod="2"} "v=10" @ 30s  # dead zone
+  {app="a", pod="2"} "v=20" @ 36s
+  {app="a", pod="2"} "v=25" @ 39s
+
+eval range from 20s to 40s step 20s first_over_time({app="a"} | logfmt | unwrap v [5s]) by (pod) # non-overlapping
+  {pod="1"} 5 _
+  {pod="2"} _ 20
+eval range from 20s to 40s step 20s last_over_time({app="a"} | logfmt | unwrap v [5s]) by (pod)  # non-overlapping
+  {pod="1"} 8 _
+  {pod="2"} _ 25
 
 # quantile_over_time()
 clear

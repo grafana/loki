@@ -637,8 +637,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeFirstOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
 		if !m.lastOverTimeSharding {
@@ -668,8 +669,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		return &MergeLastOverTimeExpr{
-			downstreams: downstreams,
-			offset:      expr.Left.Offset,
+			downstreams:   downstreams,
+			offset:        expr.Left.Offset,
+			rangeInterval: expr.Left.Interval,
 		}, bytesPerShard, nil
 	default:
 		// don't shard if there's not an appropriate optimization
