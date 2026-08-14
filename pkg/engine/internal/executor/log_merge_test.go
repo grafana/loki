@@ -727,9 +727,6 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 
 					allStreams = append(allStreams, stream)
 
-					//fmt.Printf("stream in logs obj: ID(%d), hash(%d), shardBucket(%d), labels(%s)\n", stream.ID, labels.StableHash(stream.Labels), stream.ShardBucket, stream.Labels)
-					//expected := int64(promlabels.StableHash(stream.Labels) % uint64(streams.ShardFactor))
-					//require.Equal(t, expected, stream.ShardBucket, "labels=%s", stream.Labels.String())
 					observedShards[stream.ShardBucket] = struct{}{}
 				}
 				require.True(t, slices.IsSortedFunc(allStreams, func(a, b streams.Stream) int {
@@ -811,15 +808,24 @@ func TestDoLogObjectMerge_SortThenMergeFourObjects(t *testing.T) {
 			}
 			opened, err := streams.Open(ctx, section)
 			require.NoError(t, err)
+
+			allStreams := []streams.Stream{}
 			for result := range streams.IterSection(ctx, opened) {
 				stream, err := result.Value()
 				require.NoError(t, err)
 
+				allStreams = append(allStreams, stream)
+
 				fmt.Printf("stream in logs obj: ID(%d), hash(%d), shardBucket(%d), labels(%s)\n", stream.ID, labels.StableHash(stream.Labels), stream.ShardBucket, stream.Labels)
-				//expected := int64(promlabels.StableHash(stream.Labels) % uint64(streams.ShardFactor))
-				//require.Equal(t, expected, stream.ShardBucket, "labels=%s", stream.Labels.String())
 				observedShards[stream.ShardBucket] = struct{}{}
 			}
+			require.True(t, slices.IsSortedFunc(allStreams, func(a, b streams.Stream) int {
+				aKey, err := logsobj.NewStreamOrderKey(a.Labels, sortSchema)
+				require.NoError(t, err)
+				bKey, err := logsobj.NewStreamOrderKey(b.Labels, sortSchema)
+				require.NoError(t, err)
+				return logsobj.CompareStreamOrderKey(aKey, bKey)
+			}))
 		}
 	}
 

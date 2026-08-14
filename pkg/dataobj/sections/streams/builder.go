@@ -60,7 +60,7 @@ var streamPool = sync.Pool{
 }
 
 // ShardFactor is the number of shards in the physical log sort layout.
-const ShardFactor uint32 = 16
+const ShardFactor uint32 = 32
 
 // Builder builds a streams section.
 type Builder struct {
@@ -220,7 +220,7 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-const shardBits = 4 // N = 16 buckets
+const shardBits = 5 // N = 32 buckets
 
 // ShardBucket returns the physical shard bucket for streamLabels.
 func ShardBucket(streamLabels labels.Labels) uint64 {
