@@ -221,8 +221,6 @@ func (c *Fetcher) fetchChunks(ctx context.Context, chunks []chunk.Chunk, propaga
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing chunks from storage. Cache decode failures are not propagated
-	// because storage still holds the chunk.
 	var (
 		fromStorage []chunk.Chunk
 		storageErr  error
