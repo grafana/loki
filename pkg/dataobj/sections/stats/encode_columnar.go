@@ -31,7 +31,7 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	// calculation pipeline producing rows with a config-driven schema).
 	labelKeys := schemaLabelNames(rows[0].SortSchema)
 
-	// Build fixed column builders (indices 0-6).
+	// Build fixed column builders.
 	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
@@ -45,6 +45,18 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 	sortSchemaBuilder, err := binaryColumnBuilder(ColumnTypeSortSchema, pageSizeHint, pageMaxRowCount)
 	if err != nil {
 		return fmt.Errorf("creating sort_schema column: %w", err)
+	}
+
+	hasShardBucket := false
+	for _, row := range rows {
+		hasShardBucket = hasShardBucket || row.HasShardBucket
+	}
+	var shardBucketBuilder *dataset.ColumnBuilder
+	if hasShardBucket {
+		shardBucketBuilder, err = numberColumnBuilder(ColumnTypeShardBucket, pageSizeHint, pageMaxRowCount)
+		if err != nil {
+			return fmt.Errorf("creating shard bucket column: %w", err)
+		}
 	}
 
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, pageSizeHint, pageMaxRowCount)
@@ -82,6 +94,11 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		_ = objectPathBuilder.Append(i, dataset.BinaryValue([]byte(r.ObjectPath)))
 		_ = sectionIndexBuilder.Append(i, dataset.Int64Value(r.SectionIndex))
 		_ = sortSchemaBuilder.Append(i, dataset.BinaryValue([]byte(r.SortSchema)))
+		if hasShardBucket {
+			if r.HasShardBucket {
+				_ = shardBucketBuilder.Append(i, dataset.Int64Value(int64(r.ShardBucket)))
+			}
+		}
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(r.MinTimestamp))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(r.MaxTimestamp))
 		_ = rowCountBuilder.Append(i, dataset.Int64Value(r.RowCount))
@@ -95,37 +112,49 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		}
 	}
 
-	// Set sort info: sort_schema (index 2), then dynamic label columns (indices 7+),
-	// then min_timestamp (index 3), then max_timestamp (index 4).
-	// Fixed column indices: object_path=0, section_index=1, sort_schema=2,
-	// min_timestamp=3, max_timestamp=4, row_count=5, uncompressed_size=6.
-	// Label columns: 7, 8, ...
+	labelColumnOffset := 7
+	minTimestampIndex, maxTimestampIndex := uint32(3), uint32(4)
+	shardBucketIndex := uint32(3)
+	if hasShardBucket {
+		labelColumnOffset++
+		minTimestampIndex++
+		maxTimestampIndex++
+	}
 	columnSorts := make([]*datasetmd.SortInfo_ColumnSort, 0, 1+len(labelKeys)+2)
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
 		ColumnIndex: 2, // sort_schema
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
+	if hasShardBucket {
+		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
+			ColumnIndex: shardBucketIndex,
+			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
+		})
+	}
 	for i := range labelKeys {
 		columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
-			ColumnIndex: uint32(7 + i),
+			ColumnIndex: uint32(labelColumnOffset + i),
 			Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 		})
 	}
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
-		ColumnIndex: 3, // min_timestamp
+		ColumnIndex: minTimestampIndex,
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
 	columnSorts = append(columnSorts, &datasetmd.SortInfo_ColumnSort{
-		ColumnIndex: 4, // max_timestamp
+		ColumnIndex: maxTimestampIndex,
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
 	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: columnSorts})
 
 	// Encode fixed columns.
-	errs := make([]error, 0, 7+len(labelKeys))
+	errs := make([]error, 0, labelColumnOffset+len(labelKeys))
 	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeSectionIndex, sectionIndexBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeSortSchema, sortSchemaBuilder))
+	if hasShardBucket {
+		errs = append(errs, encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder))
+	}
 	errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeRowCount, rowCountBuilder))

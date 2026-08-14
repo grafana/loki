@@ -34,6 +34,14 @@ func FromRecordBatch(rec arrow.RecordBatch, dest []Stat) (int, error) {
 					dest[rIdx].SortSchema = strCol.Value(rIdx)
 				}
 			}
+		case "__shard_bucket__.int64":
+			int64Col := col.(*array.Int64)
+			for rIdx := range numRows {
+				if !col.IsNull(rIdx) {
+					dest[rIdx].ShardBucket = uint32(int64Col.Value(rIdx))
+					dest[rIdx].HasShardBucket = true
+				}
+			}
 		case "min_timestamp.timestamp":
 			tsCol := col.(*array.Timestamp)
 			for rIdx := range numRows {

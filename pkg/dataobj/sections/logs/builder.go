@@ -103,6 +103,14 @@ type BuilderOptions struct {
 	// metadata so readers can reconstruct the sort key without re-reading the
 	// tenant overrides.
 	SchemaLabels []string
+
+	// StreamOrder identifies how object-local stream IDs were assigned for a
+	// schema-sorted section.
+	StreamOrder StreamOrder
+
+	// ShardCount is part of the physical sort layout. The current unsharded
+	// layout uses 1.
+	ShardCount uint32
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -329,7 +337,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	// The first two columns of each row are *always* stream ID and timestamp.
 	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
-	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels))
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels, b.opts.StreamOrder, b.opts.ShardCount))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -356,7 +364,7 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	return nil
 }
 
-func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
+func sortInfo(sort SortOrder, schemaLabels []string, streamOrder StreamOrder, shardCount uint32) *datasetmd_v2.SortInfo {
 	switch sort {
 	case SortStreamASC:
 		return &datasetmd_v2.SortInfo{
@@ -379,6 +387,8 @@ func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 		// queries that cannot use the schema sort key.
 		return &datasetmd_v2.SortInfo{
 			SchemaLabels: schemaLabels,
+			StreamOrder:  streamOrderProto(streamOrder),
+			ShardCount:   shardCount,
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
 				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
@@ -386,6 +396,15 @@ func sortInfo(sort SortOrder, schemaLabels []string) *datasetmd_v2.SortInfo {
 		}
 	default:
 		panic("invalid sort order")
+	}
+}
+
+func streamOrderProto(order StreamOrder) datasetmd_v2.StreamOrder {
+	switch order {
+	case StreamOrderStableHashV1:
+		return datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1
+	default:
+		return datasetmd_v2.STREAM_ORDER_UNSPECIFIED
 	}
 }
 

@@ -31,6 +31,7 @@ const (
 	ColumnTypeRowCount                           // "row_count"
 	ColumnTypeUncompressedSize                   // "uncompressed_size"
 	ColumnTypeLabel                              // "label" — dynamic; tag carries label name
+	ColumnTypeShardBucket                        // "__shard_bucket__"
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -43,6 +44,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeRowCount:         "row_count",
 	ColumnTypeUncompressedSize: "uncompressed_size",
 	ColumnTypeLabel:            "label",
+	ColumnTypeShardBucket:      "__shard_bucket__",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -67,6 +69,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeUncompressedSize, nil
 	case "label":
 		return ColumnTypeLabel, nil
+	case "__shard_bucket__":
+		return ColumnTypeShardBucket, nil
 	}
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
@@ -95,6 +99,8 @@ type Stat struct {
 	MaxTimestamp     int64             // UnixNano
 	RowCount         int64
 	UncompressedSize int64
+	ShardBucket      uint32
+	HasShardBucket   bool
 }
 
 // SectionEncoder encodes a batch of sorted Stat rows into a columnar encoder.
