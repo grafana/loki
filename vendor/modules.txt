@@ -971,6 +971,7 @@ github.com/grafana/dskit/kv/memberlist
 github.com/grafana/dskit/limiter
 github.com/grafana/dskit/log
 github.com/grafana/dskit/loser
+github.com/grafana/dskit/metrics
 github.com/grafana/dskit/middleware
 github.com/grafana/dskit/modules
 github.com/grafana/dskit/multierror
