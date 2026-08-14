@@ -407,11 +407,15 @@ func TestIndexSectionRefsFor_UsesFullPostingsBounds(t *testing.T) {
 
 	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
 	require.NoError(t, err)
-	require.Equal(t, []v2.Section[indexSortKey]{
+	require.Equal(t, []indexSectionGroup{
 		{
-			Ref: &compactionv2pb.SectionRef{ObjectPath: path},
-			Min: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
-			Max: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+			sections: []v2.Section[indexSortKey]{
+				{
+					Ref: &compactionv2pb.SectionRef{ObjectPath: path},
+					Min: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "api", minTimestamp: 10, maxTimestamp: 20},
+					Max: indexSortKey{kind: postings.KindLabel, columnName: "service_name", labelValue: "web", minTimestamp: 5, maxTimestamp: 50},
+				},
+			},
 		},
 	}, refs)
 }
@@ -436,9 +440,11 @@ func TestIndexSectionRefsFor_UsesAbsoluteSectionIndexes(t *testing.T) {
 
 	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: path}})
 	require.NoError(t, err)
-	require.Len(t, refs, 2)
-	require.Equal(t, int64(1), refs[0].Ref.SectionIndex)
-	require.Equal(t, int64(2), refs[1].Ref.SectionIndex)
+	require.Len(t, refs, 1)
+	require.Equal(t, "label:service_name", refs[0].sortSchema)
+	require.Len(t, refs[0].sections, 2)
+	require.Equal(t, int64(1), refs[0].sections[0].Ref.SectionIndex)
+	require.Equal(t, int64(2), refs[0].sections[1].Ref.SectionIndex)
 }
 
 func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
@@ -452,4 +458,41 @@ func TestIndexSectionRefsFor_FailsOnUnreadableObject(t *testing.T) {
 	refs, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{{Path: goodPath}, {Path: "indexes/aa/missing"}})
 	require.Error(t, err)
 	require.Nil(t, refs)
+}
+
+func TestIndexSectionRefsFor_GroupsIndexesBySortSchema(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+
+	build := func(path, schema, labelName string) {
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      "acme",
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: "logs/" + path,
+				SortSchema: schema,
+				Labels:     map[string]string{labelName: "api"},
+			}},
+			postings: []postings.Row{{
+				Kind: postings.KindLabel, ObjectPath: "logs/" + path,
+				ColumnName: labelName, LabelValue: "api",
+			}},
+		})
+	}
+	build("indexes/service-a", "label:service_name", "service_name")
+	build("indexes/namespace", "label:namespace", "namespace")
+	build("indexes/service-b", "label:service_name", "service_name")
+
+	groups, err := indexSectionRefsFor(ctx, bucket, "acme", []indexEntry{
+		{Path: "indexes/service-a"},
+		{Path: "indexes/namespace"},
+		{Path: "indexes/service-b"},
+	})
+	require.NoError(t, err)
+	require.Len(t, groups, 2)
+	require.Equal(t, "label:namespace", groups[0].sortSchema)
+	require.Len(t, groups[0].sections, 1)
+	require.Equal(t, "label:service_name", groups[1].sortSchema)
+	require.Len(t, groups[1].sections, 2)
 }

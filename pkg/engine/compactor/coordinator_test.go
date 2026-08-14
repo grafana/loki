@@ -726,6 +726,122 @@ func TestRunIndexMergePhase_MultiIndexSwaps(t *testing.T) {
 	require.Len(t, replacer.snapshot(), 1)
 }
 
+func TestRunIndexMergePhase_SeparatesSortSchemas(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+
+	build := func(path, schema, labelName, minValue, maxValue string) {
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      "acme",
+			path:        path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: path + ".log",
+				SortSchema: schema,
+				Labels:     map[string]string{labelName: "api"},
+			}},
+			postings: []postings.Row{
+				{
+					Kind: postings.KindLabel, ObjectPath: path + ".log",
+					ColumnName: "common", LabelValue: minValue,
+				},
+				{
+					Kind: postings.KindLabel, ObjectPath: path + ".log",
+					ColumnName: "common", LabelValue: maxValue,
+				},
+			},
+		})
+	}
+	build("indexes/service-a", "label:service_name", "service_name", "a", "z")
+	build("indexes/service-b", "label:service_name", "service_name", "b", "y")
+	build("indexes/namespace-a", "label:namespace", "namespace", "a", "z")
+	build("indexes/namespace-b", "label:namespace", "namespace", "b", "y")
+
+	entries := []indexEntry{
+		{Path: "indexes/service-a"},
+		{Path: "indexes/namespace-a"},
+		{Path: "indexes/service-b"},
+		{Path: "indexes/namespace-b"},
+	}
+	runner := &fakeRunner{}
+	replacer := &fakeReplacer{swapped: true}
+	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	_, err := c.compactTenant(ctx, "acme", window, entries)
+	require.NoError(t, err)
+	calls := runner.snapshot()
+	require.Len(t, calls, 2)
+
+	schemaByPath := map[string]string{
+		"indexes/service-a":   "label:service_name",
+		"indexes/service-b":   "label:service_name",
+		"indexes/namespace-a": "label:namespace",
+		"indexes/namespace-b": "label:namespace",
+	}
+	seenSchemas := make(map[string]bool)
+	for _, call := range calls {
+		root, err := call.plan.Root()
+		require.NoError(t, err)
+		node := root.(*physical.IndexMerge)
+		var taskSchema string
+		for _, run := range node.Runs {
+			for _, section := range run.Sections {
+				schema := schemaByPath[section.ObjectPath]
+				if taskSchema == "" {
+					taskSchema = schema
+				}
+				require.Equal(t, taskSchema, schema, "IndexMerge task crossed sort-schema groups")
+			}
+		}
+		seenSchemas[taskSchema] = true
+	}
+	require.Equal(t, map[string]bool{
+		"label:namespace":    true,
+		"label:service_name": true,
+	}, seenSchemas)
+}
+
+func TestRunIndexMergePhase_MultipleConvergedSortSchemasAdvancesToLogMerge(t *testing.T) {
+	ctx := context.Background()
+	window := imWindow()
+	bucket := objstore.NewInMemBucket()
+
+	for _, object := range []struct {
+		path, schema, labelName string
+	}{
+		{"indexes/service", "label:service_name", "service_name"},
+		{"indexes/namespace", "label:namespace", "namespace"},
+	} {
+		buildIndex(ctx, t, bucket, testIndexObject{
+			tenant:      "acme",
+			path:        object.path,
+			sectionSize: 1 << 20,
+			stats: []stats.Stat{{
+				ObjectPath: object.path + ".log",
+				SortSchema: object.schema,
+				Labels:     map[string]string{object.labelName: "api"},
+			}},
+			postings: []postings.Row{{
+				Kind: postings.KindLabel, ObjectPath: object.path + ".log",
+				ColumnName: object.labelName, LabelValue: "api",
+			}},
+		})
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{
+		"acme": {
+			{path: "indexes/service", start: window, end: window.Add(time.Hour)},
+			{path: "indexes/namespace", start: window, end: window.Add(time.Hour)},
+		},
+	})
+
+	runner := &fakeRunner{}
+	c := newTestCoordinator(t, bucket, runner, &fakeReplacer{}, fixedClock(window.Add(time.Hour)), newFakeLimits("acme"))
+
+	require.Equal(t, phaseOutcomeNoWork, c.runIndexMergePhase(ctx, "acme", window))
+	require.Empty(t, runner.snapshot(), "per-schema convergence should allow the loop to advance to LogMerge")
+}
+
 func logMergeBucket(ctx context.Context, t *testing.T, window time.Time, tenant string, paths []string) objstore.Bucket {
 	t.Helper()
 	bucket := objstore.NewInMemBucket()

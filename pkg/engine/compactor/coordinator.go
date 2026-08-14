@@ -532,26 +532,36 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 
 // compactTenant performs one index-compaction pass for a tenant and window.
 func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
-	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
+	groups, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
 	if err != nil {
 		return newCompactionStats(), fmt.Errorf("discover index section bounds: %w", err)
 	}
 
-	runs := v2.CalculateRuns(sections, compareIndexSortKey)
-	inputRuns := len(runs)
+	var (
+		tasks     []*compactionv2pb.TaskSpec
+		inputRuns int
+		converged = true
+	)
+	for _, group := range groups {
+		runs := v2.CalculateRuns(group.sections, compareIndexSortKey)
+		inputRuns += len(runs)
+		if v2.IsConverged(group.sections, compareIndexSortKey) {
+			continue
+		}
+		converged = false
+		tasks = append(tasks, v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)...)
+	}
 	c.metrics.observeIndexInputRuns(inputRuns)
-	converged := v2.IsConverged(sections, compareIndexSortKey)
 	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
 	if converged {
 		level.Debug(c.logger).Log("msg", "index-compaction: window converged, skipping",
-			"tenant", tenant, "window", window, "input_runs", inputRuns)
+			"tenant", tenant, "window", window, "input_runs", inputRuns, "schema_groups", len(groups))
 		return newCompactionStats(), nil
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
 	outputs := make([]string, len(tasks))
 
-	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
+	level.Info(c.logger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", inputRuns, "schema_groups", len(groups))
 	if len(tasks) < 20 {
 		for _, task := range tasks {
 			totalTaskSize := int64(0)
@@ -574,7 +584,6 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	// IndexMerge opens each referenced object whole. Until it reads individual
 	// sections, one object may be repeated across task outputs and deduplicated
 	// by a later pass.
-	// TODO(rfratto): Preserve multiple log sort schemas in one IndexMerge output.
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)

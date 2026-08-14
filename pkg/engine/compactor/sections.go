@@ -57,6 +57,14 @@ type indexSortKey struct {
 	minTimestamp, maxTimestamp int64
 }
 
+// indexSectionGroup contains index sections which all describe logs using the
+// same sort schema. IndexMerge must never combine sections from different
+// groups because its output can only preserve one stats sort schema.
+type indexSectionGroup struct {
+	sortSchema string
+	sections   []v2.Section[indexSortKey]
+}
+
 func compareIndexSortKey(a, b indexSortKey) int {
 	return cmp.Or(
 		cmp.Compare(a.kind, b.kind),
@@ -219,11 +227,12 @@ func readAllIndexPointers(ctx context.Context, reader *indexpointers.Reader, scr
 
 const indexSectionReadConcurrency = 16
 
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]v2.Section[indexSortKey], error) {
+func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexEntry) ([]indexSectionGroup, error) {
 	type sectionRead struct {
 		objectPath   string
 		sectionIndex int64
 		section      *dataobj.Section
+		sortSchema   string
 	}
 
 	var reads []sectionRead
@@ -232,18 +241,27 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 		if err != nil {
 			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
 		}
+		sortSchema, err := indexObjectSortSchema(ctx, obj, tenant)
+		if err != nil {
+			return nil, fmt.Errorf("read sort schema tenant=%s index=%s: %w", tenant, entry.Path, err)
+		}
 		for sectionIndex, section := range obj.Sections() {
 			if postings.CheckSection(section) && section.Tenant == tenant {
 				reads = append(reads, sectionRead{
 					objectPath:   entry.Path,
 					sectionIndex: int64(sectionIndex),
 					section:      section,
+					sortSchema:   sortSchema,
 				})
 			}
 		}
 	}
 
-	results := make([]*v2.Section[indexSortKey], len(reads))
+	type sectionResult struct {
+		sortSchema string
+		ref        *v2.Section[indexSortKey]
+	}
+	results := make([]sectionResult, len(reads))
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(indexSectionReadConcurrency)
 	for i, read := range reads {
@@ -252,7 +270,7 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 			if err != nil {
 				return fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, read.objectPath, read.sectionIndex, err)
 			}
-			results[i] = ref
+			results[i] = sectionResult{sortSchema: read.sortSchema, ref: ref}
 			return nil
 		})
 	}
@@ -260,13 +278,67 @@ func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant str
 		return nil, err
 	}
 
-	refs := make([]v2.Section[indexSortKey], 0, len(results))
-	for _, ref := range results {
-		if ref != nil {
-			refs = append(refs, *ref)
+	sectionsBySchema := make(map[string][]v2.Section[indexSortKey])
+	for _, result := range results {
+		if result.ref != nil {
+			sectionsBySchema[result.sortSchema] = append(sectionsBySchema[result.sortSchema], *result.ref)
 		}
 	}
-	return refs, nil
+
+	schemas := make([]string, 0, len(sectionsBySchema))
+	for schema := range sectionsBySchema {
+		schemas = append(schemas, schema)
+	}
+	slices.Sort(schemas)
+
+	groups := make([]indexSectionGroup, 0, len(schemas))
+	for _, schema := range schemas {
+		groups = append(groups, indexSectionGroup{
+			sortSchema: schema,
+			sections:   sectionsBySchema[schema],
+		})
+	}
+	return groups, nil
+}
+
+// indexObjectSortSchema returns the tenant's single stats sort schema in obj.
+// Indexes without stats rows use the empty schema. A single index containing
+// multiple schemas cannot be safely assigned to one IndexMerge group.
+func indexObjectSortSchema(ctx context.Context, obj *dataobj.Object, tenant string) (string, error) {
+	var (
+		sortSchema string
+		seen       bool
+	)
+	for _, section := range obj.Sections().Filter(stats.CheckSection) {
+		if section.Tenant != tenant {
+			continue
+		}
+		statsSection, err := stats.Open(ctx, section)
+		if err != nil {
+			return "", fmt.Errorf("open stats section: %w", err)
+		}
+		rows := stats.NewRowReader(ctx, statsSection)
+		if !rows.Next() {
+			err := rows.Err()
+			_ = rows.Close()
+			if err != nil && !errors.Is(err, io.EOF) {
+				return "", fmt.Errorf("read stats sort schema: %w", err)
+			}
+			continue
+		}
+		sectionSchema := rows.At().SortSchema
+		if err := rows.Close(); err != nil {
+			return "", fmt.Errorf("close stats sort schema reader: %w", err)
+		}
+		if !seen {
+			sortSchema, seen = sectionSchema, true
+			continue
+		}
+		if sectionSchema != sortSchema {
+			return "", fmt.Errorf("stats sections have mismatched sort schemas %q and %q", sortSchema, sectionSchema)
+		}
+	}
+	return sortSchema, nil
 }
 
 func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {

@@ -595,7 +595,7 @@ func TestDoLogObjectMerge_SortOnlyUploadsStableHashLayout(t *testing.T) {
 		SortSchema:  sortSchema,
 		SortOnly:    true,
 		StreamOrder: compactionv2pb.STREAM_ORDER_STABLE_HASH_V1,
-		ShardCount:  16,
+		ShardCount:  streams.ShardFactor,
 		Runs:        []*compactionv2pb.RunRef{{Sections: sectionRefs}},
 	})
 	require.NoError(t, err)
