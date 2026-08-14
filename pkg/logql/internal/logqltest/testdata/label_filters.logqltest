@@ -60,6 +60,106 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | name="alpha" [1m])
   {app="s", name="alpha"} 4
   {app="m", name="alpha"} 5
 
+# string label filter: an absent label compares equal to an empty value.
+#
+# - A ".*" regular expression keeps an empty value or absent label
+# - A ".+" regular expression discards an empty value or absent label
+clear
+load
+  {app="p"}               "name=alpha" @ 20s [repeat every 20s for 4]
+  {app="p"}               "name="      @ 30s [repeat every 20s for 2]
+  {app="p"}               "other=1"    @ 15s [repeat every 15s for 5]
+  {app="s", name="alpha"} "x"          @ 20s [repeat every 20s for 4]
+  {app="s", name=""}      "x"          @ 30s [repeat every 20s for 2]   # an empty stream label is dropped on write
+  {app="s"}               "x"          @ 12s [repeat every 12s for 6]   # so both lines land in {app="s"}: 2 + 5 = 7
+  {app="m"}               "x"          @ 20s [repeat every 20s for 4] [metadata name="alpha"]
+  {app="m"}               "x"          @ 30s [repeat every 20s for 2] [metadata name=""]
+  {app="m"}               "x"          @ 15s [repeat every 15s for 5]
+
+# parsed field
+eval instant at 60s count_over_time({app="p"} | logfmt | name="" [1m])
+  {app="p"} 2
+  {app="p", other="1"} 4
+eval instant at 60s count_over_time({app="p"} | logfmt --keep-empty | name="" [1m])      # --keep-empty makes "name=" a label with an empty value
+  {app="p", name=""} 2
+  {app="p", other="1"} 4
+eval range from 40s to 80s step 20s count_over_time({app="p"} | logfmt | name="" [1m])   # overlapping
+  {app="p"} 1 2 2
+  {app="p", other="1"} 2 4 4
+eval range from 60s to 180s step 120s count_over_time({app="p"} | logfmt | name="" [1m]) # non-overlapping
+  {app="p"} 2 _
+  {app="p", other="1"} 4 _
+eval instant at 60s count_over_time({app="p"} | logfmt | name!="" [1m])
+  {app="p", name="alpha"} 3
+eval instant at 60s count_over_time({app="p"} | logfmt | name=~".*" [1m])
+  {app="p", name="alpha"} 3
+  {app="p"} 2
+  {app="p", other="1"} 4
+eval instant at 60s count_over_time({app="p"} | logfmt --keep-empty | name=~".*" [1m])
+  {app="p", name="alpha"} 3
+  {app="p", name=""} 2
+  {app="p", other="1"} 4
+eval instant at 60s count_over_time({app="p"} | logfmt | name=~".+" [1m])
+  {app="p", name="alpha"} 3
+eval instant at 60s count_over_time({app="p"} | logfmt --keep-empty | name=~".+" [1m])
+  {app="p", name="alpha"} 3
+# stream label
+eval instant at 60s count_over_time({app="s"} | name="" [1m])
+  {app="s"} 7
+eval range from 40s to 80s step 20s count_over_time({app="s"} | name="" [1m])   # overlapping
+  {app="s"} 4 7 7
+eval range from 60s to 180s step 120s count_over_time({app="s"} | name="" [1m]) # non-overlapping
+  {app="s"} 7 _
+eval instant at 60s count_over_time({app="s"} | name!="" [1m])
+  {app="s", name="alpha"} 3
+eval instant at 60s count_over_time({app="s"} | name=~".*" [1m])
+  {app="s", name="alpha"} 3
+  {app="s"} 7
+eval instant at 60s count_over_time({app="s"} | name=~".+" [1m])
+  {app="s", name="alpha"} 3
+# structured metadata
+eval instant at 60s count_over_time({app="m"} | name="" [1m])
+  {app="m", name=""} 2
+  {app="m"} 4
+eval range from 40s to 80s step 20s count_over_time({app="m"} | name="" [1m])   # overlapping
+  {app="m", name=""} 1 2 2
+  {app="m"} 2 4 4
+eval range from 60s to 180s step 120s count_over_time({app="m"} | name="" [1m]) # non-overlapping
+  {app="m", name=""} 2 _
+  {app="m"} 4 _
+eval instant at 60s count_over_time({app="m"} | name!="" [1m])
+  {app="m", name="alpha"} 3
+eval instant at 60s count_over_time({app="m"} | name=~".*" [1m])
+  {app="m", name="alpha"} 3
+  {app="m", name=""} 2
+  {app="m"} 4
+eval instant at 60s count_over_time({app="m"} | name=~".+" [1m])
+  {app="m", name="alpha"} 3
+
+# string label filter: regexp matching.
+clear
+load
+  {app="a"} "name=alpha"    @ 20s [repeat every 20s for 4]
+  {app="a"} "name=ALPHA"    @ 30s [repeat every 20s for 2]
+  {app="a"} "name=prealpha" @ 15s [repeat every 15s for 5]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | name=~"(?i)alpha" [1m])
+  {app="a", name="alpha"} 3
+  {app="a", name="ALPHA"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | name=~"(?i)alpha" [1m])   # overlapping
+  {app="a", name="alpha"} 2 3 3
+  {app="a", name="ALPHA"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | name=~"(?i)alpha" [1m]) # non-overlapping
+  {app="a", name="alpha"} 3 _
+  {app="a", name="ALPHA"} 2 _
+eval instant at 60s count_over_time({app="a"} | logfmt | name=~"alpha|ALPHA" [1m])
+  {app="a", name="alpha"} 3
+  {app="a", name="ALPHA"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | name=~"al[a-z]*" [1m])
+  {app="a", name="alpha"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | name!~"(?i)alpha" [1m])
+  {app="a", name="prealpha"} 4
+
 # numeric label filter: > >= < <= == !=.
 clear
 load
@@ -115,7 +215,8 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | status >= 500 [1m])
   {app="s", status="500"} 4
   {app="m", status="500"} 5
 
-# A non-numeric value fails the numeric filter with __error__, regardless of the label source.
+# numeric label filter: a non-numeric value fails the numeric filter with __error__,
+# regardless of the label source.
 clear
 load
   {app="b"} "status=oops" @ 20s [repeat every 20s for 3]
@@ -123,6 +224,29 @@ eval instant at 60s count_over_time({app="b"} | logfmt | status > 400 [1m])
   expect fail msg: LabelFilterErr
 eval instant at 60s count_over_time({app="b"} | logfmt | status > 400 | __error__="" [1m])
   expect empty
+
+# string vs numeric equality matcher: a quoted value compares as a string, a bare number as a number.
+clear
+load
+  {app="a"} "code=200"   @ 20s [repeat every 20s for 4]
+  {app="a"} "code=200.0" @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | code = "200" [1m])
+  {app="a", code="200"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | code = "200" [1m])   # overlapping
+  {app="a", code="200"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | code = "200" [1m]) # non-overlapping
+  {app="a", code="200"} 3 _
+# == supports only numbers (no quoted values)
+eval instant at 60s count_over_time({app="a"} | logfmt | code == "200" [1m])
+  expect fail msg: syntax error
+# The bare number converts both values, so 200.0 matches too.
+eval instant at 60s count_over_time({app="a"} | logfmt | code = 200 [1m])
+  {app="a", code="200"} 3
+  {app="a", code="200.0"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | code == 200 [1m])
+  {app="a", code="200"} 3
+  {app="a", code="200.0"} 2
 
 # duration label filter.
 clear
@@ -167,6 +291,146 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | took > 1s [1m])
   {app="s", took="2s"} 4
   {app="m", took="2s"} 5
 
+# duration label filter comparators: = == != > >= < <=.
+clear
+load
+  {app="a"} "took=2s"    @ 20s [repeat every 20s for 4]
+  {app="a"} "took=500ms" @ 30s [repeat every 20s for 2]
+  {app="a"} "took=1h30m" @ 15s [repeat every 15s for 5]
+  {app="a"} "took=1.5s"  @ 55s
+  {app="a"} "other=1"    @ 45s
+
+# =
+eval instant at 60s count_over_time({app="a"} | logfmt | took = 2s [1m])
+  {app="a", took="2s"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took = 2s [1m])   # overlapping
+  {app="a", took="2s"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took = 2s [1m]) # non-overlapping
+  {app="a", took="2s"} 3 _
+# ==
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 90m [1m])
+  {app="a", took="1h30m"} 4
+# !=
+eval instant at 60s count_over_time({app="a"} | logfmt | took != 2s [1m])
+  {app="a", took="500ms"} 2
+  {app="a", took="1h30m"} 4
+  {app="a", took="1.5s"} 1
+# >
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1.5s [1m])
+  {app="a", took="2s"} 3
+  {app="a", took="1h30m"} 4
+# >=
+eval instant at 60s count_over_time({app="a"} | logfmt | took >= 1.5s [1m])
+  {app="a", took="2s"} 3
+  {app="a", took="1h30m"} 4
+  {app="a", took="1.5s"} 1
+# <
+eval instant at 60s count_over_time({app="a"} | logfmt | took < 1s [1m])
+  {app="a", took="500ms"} 2
+# <=
+eval instant at 60s count_over_time({app="a"} | logfmt | took <= 1.5s [1m])
+  {app="a", took="500ms"} 2
+  {app="a", took="1.5s"} 1
+# A line without the label is dropped, and sets no error.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 0s [1m])
+  {app="a", took="2s"} 3
+  {app="a", took="500ms"} 2
+  {app="a", took="1h30m"} 4
+  {app="a", took="1.5s"} 1
+
+# duration label filter units: a value takes ns, us, µs, ms, s, m or h.
+#
+# In this scenario, every "took" duration and queried duration is one hour,
+# so all log streams are expected to match.
+clear
+load
+  {app="a"} "took=3600000000000ns" @ 55s
+  {app="a"} "took=3600000000us"    @ 30s [repeat every 20s for 2]
+  {app="a"} "took=3600000000µs"    @ 8s  [repeat every 8s for 8]
+  {app="a"} "took=3600000ms"       @ 20s [repeat every 20s for 4]
+  {app="a"} "took=3600s"           @ 15s [repeat every 15s for 5]
+  {app="a"} "took=60m"             @ 12s [repeat every 12s for 6]
+  {app="a"} "took=1h"              @ 10s [repeat every 10s for 6]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 1h [1m])
+  {app="a", took="3600000000000ns"} 1
+  {app="a", took="3600000000us"} 2
+  {app="a", took="3600000000µs"} 7
+  {app="a", took="3600000ms"} 3
+  {app="a", took="3600s"} 4
+  {app="a", took="60m"} 5
+  {app="a", took="1h"} 6
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took == 1h [1m])   # overlapping
+  {app="a", took="3600000000000ns"} _ 1 1
+  {app="a", took="3600000000us"} 1 2 2
+  {app="a", took="3600000000µs"} 5 7 6
+  {app="a", took="3600000ms"} 2 3 3
+  {app="a", took="3600s"} 2 4 4
+  {app="a", took="60m"} 3 5 5
+  {app="a", took="1h"} 4 6 4
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took == 1h [1m]) # non-overlapping
+  {app="a", took="3600000000000ns"} 1 _
+  {app="a", took="3600000000us"} 2 _
+  {app="a", took="3600000000µs"} 7 _
+  {app="a", took="3600000ms"} 3 _
+  {app="a", took="3600s"} 4 _
+  {app="a", took="60m"} 5 _
+  {app="a", took="1h"} 6 _
+# The query literal converts the same way, so any spelling of one hour selects the same series.
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 3600s [1m])
+  {app="a", took="3600000000000ns"} 1
+  {app="a", took="3600000000us"} 2
+  {app="a", took="3600000000µs"} 7
+  {app="a", took="3600000ms"} 3
+  {app="a", took="3600s"} 4
+  {app="a", took="60m"} 5
+  {app="a", took="1h"} 6
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 3600000000000ns [1m])
+  {app="a", took="3600000000000ns"} 1
+  {app="a", took="3600000000us"} 2
+  {app="a", took="3600000000µs"} 7
+  {app="a", took="3600000ms"} 3
+  {app="a", took="3600s"} 4
+  {app="a", took="60m"} 5
+  {app="a", took="1h"} 6
+
+# duration label filter units: the query literal also takes the units "d", "w" and "y".
+clear
+load
+  {app="a"} "took=24h"   @ 20s [repeat every 20s for 4]
+  {app="a"} "took=168h"  @ 30s [repeat every 20s for 2]
+  {app="a"} "took=8760h" @ 15s [repeat every 15s for 5]
+  {app="a"} "took=1d"    @ 55s                            # noise: "d" is not a value unit
+
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 1d | __error__="" [1m])
+  {app="a", took="24h"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took == 1d | __error__="" [1m])   # overlapping
+  {app="a", took="24h"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took == 1d | __error__="" [1m]) # non-overlapping
+  {app="a", took="24h"} 3 _
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 1w | __error__="" [1m])
+  {app="a", took="168h"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 1y | __error__="" [1m])
+  {app="a", took="8760h"} 4
+# The same query without the __error__ filter fails: 1d is a valid literal, but not a valid value.
+eval instant at 60s count_over_time({app="a"} | logfmt | took == 1d [1m])
+  expect fail msg: unknown unit
+
+# duration label filter units: a value without a unit fails the conversion.
+clear
+load
+  {app="a"} "took=90" @ 20s [repeat every 20s for 4]
+  {app="a"} "took=2s" @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s [1m])
+  expect fail msg: missing unit in duration
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])
+  {app="a", took="2s"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])   # overlapping
+  {app="a", took="2s"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m]) # non-overlapping
+  {app="a", took="2s"} 2 _
+
 # bytes label filter.
 clear
 load
@@ -209,6 +473,66 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | size > 1MB [1m])
   {app="p", size="3MB"} 3
   {app="s", size="3MB"} 4
   {app="m", size="3MB"} 5
+
+# bytes label filter comparators: = == != > >= < <=.
+clear
+load
+  {app="a"} "size=3MB"    @ 20s [repeat every 20s for 4]
+  {app="a"} "size=500KB"  @ 30s [repeat every 20s for 2]
+  {app="a"} "size=3000KB" @ 15s [repeat every 15s for 5]
+  {app="a"} "size=1.5KiB" @ 55s
+
+# = / ==
+eval instant at 60s count_over_time({app="a"} | logfmt | size = 3MB [1m])
+  {app="a", size="3MB"} 3
+  {app="a", size="3000KB"} 4
+eval instant at 60s count_over_time({app="a"} | logfmt | size == 3000KB [1m])
+  {app="a", size="3MB"} 3
+  {app="a", size="3000KB"} 4
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | size = 3MB [1m])   # overlapping
+  {app="a", size="3MB"} 2 3 3
+  {app="a", size="3000KB"} 2 4 4
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | size = 3MB [1m]) # non-overlapping
+  {app="a", size="3MB"} 3 _
+  {app="a", size="3000KB"} 4 _
+# !=
+eval instant at 60s count_over_time({app="a"} | logfmt | size != 3MB [1m])
+  {app="a", size="500KB"} 2
+  {app="a", size="1.5KiB"} 1
+# >
+eval instant at 60s count_over_time({app="a"} | logfmt | size > 500KB [1m])
+  {app="a", size="3MB"} 3
+  {app="a", size="3000KB"} 4
+# >=
+eval instant at 60s count_over_time({app="a"} | logfmt | size >= 500KB [1m])
+  {app="a", size="3MB"} 3
+  {app="a", size="3000KB"} 4
+  {app="a", size="500KB"} 2
+# <
+eval instant at 60s count_over_time({app="a"} | logfmt | size < 2KiB [1m])
+  {app="a", size="1.5KiB"} 1
+# <=
+eval instant at 60s count_over_time({app="a"} | logfmt | size <= 500KB [1m])
+  {app="a", size="500KB"} 2
+  {app="a", size="1.5KiB"} 1
+
+# bytes label filter units: a value is case insensitive, a query literal is not.
+clear
+load
+  {app="a"} "size=3mb"  @ 20s [repeat every 20s for 4]
+  {app="a"} "size=oops" @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | size > 1MB | __error__="" [1m])
+  {app="a", size="3mb"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | size > 1MB | __error__="" [1m])   # overlapping
+  {app="a", size="3mb"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | size > 1MB | __error__="" [1m]) # non-overlapping
+  {app="a", size="3mb"} 3 _
+eval instant at 60s count_over_time({app="a"} | logfmt | size > 1MB [1m])
+  expect fail msg: LabelFilterErr
+# A lowercase byte literal does not parse: 1mb reads as the duration 1m.
+eval instant at 60s count_over_time({app="a"} | logfmt | size > 1mb [1m])
+  expect fail msg: syntax error
 
 # ip() label filter: matches a label value inside the CIDR range.
 clear
@@ -253,6 +577,130 @@ eval instant at 60s count_over_time({app=~".+"} | logfmt | addr = ip("192.168.0.
   {app="s", addr="192.168.1.5"} 4
   {app="m", addr="192.168.1.5"} 5
 
+# ip() label filter: it reads an address inside a longer value, rather than matching the whole value.
+clear
+load
+  {app="p"}                               `addr="client 10.0.0.7:80"`    @ 20s [repeat every 20s for 4]
+  {app="p"}                               `addr="client 192.168.1.5:80"` @ 30s [repeat every 20s for 2]
+  {app="s", addr="client 10.0.0.7:80"}    "x"                            @ 15s [repeat every 15s for 5]
+  {app="s", addr="client 192.168.1.5:80"} "x"                            @ 30s [repeat every 20s for 2]
+  {app="m"}                               "x"                            @ 12s [repeat every 12s for 6] [metadata addr="client 10.0.0.7:80"]
+  {app="m"}                               "x"                            @ 30s [repeat every 20s for 2] [metadata addr="client 192.168.1.5:80"]
+
+# parsed field
+eval instant at 60s count_over_time({app="p"} | logfmt | addr = ip("10.0.0.0/8") [1m])
+  {app="p", addr="client 10.0.0.7:80"} 3
+eval range from 40s to 80s step 20s count_over_time({app="p"} | logfmt | addr = ip("10.0.0.0/8") [1m])   # overlapping
+  {app="p", addr="client 10.0.0.7:80"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="p"} | logfmt | addr = ip("10.0.0.0/8") [1m]) # non-overlapping
+  {app="p", addr="client 10.0.0.7:80"} 3 _
+eval instant at 60s count_over_time({app="p"} | logfmt | addr != ip("10.0.0.0/8") [1m])
+  {app="p", addr="client 192.168.1.5:80"} 2
+# stream label
+eval instant at 60s count_over_time({app="s"} | addr = ip("10.0.0.0/8") [1m])
+  {app="s", addr="client 10.0.0.7:80"} 4
+eval range from 40s to 80s step 20s count_over_time({app="s"} | addr = ip("10.0.0.0/8") [1m])   # overlapping
+  {app="s", addr="client 10.0.0.7:80"} 2 4 4
+eval range from 60s to 180s step 120s count_over_time({app="s"} | addr = ip("10.0.0.0/8") [1m]) # non-overlapping
+  {app="s", addr="client 10.0.0.7:80"} 4 _
+eval instant at 60s count_over_time({app="s"} | addr != ip("10.0.0.0/8") [1m])
+  {app="s", addr="client 192.168.1.5:80"} 2
+# structured metadata
+eval instant at 60s count_over_time({app="m"} | addr = ip("10.0.0.0/8") [1m])
+  {app="m", addr="client 10.0.0.7:80"} 5
+eval range from 40s to 80s step 20s count_over_time({app="m"} | addr = ip("10.0.0.0/8") [1m])   # overlapping
+  {app="m", addr="client 10.0.0.7:80"} 3 5 5
+eval range from 60s to 180s step 120s count_over_time({app="m"} | addr = ip("10.0.0.0/8") [1m]) # non-overlapping
+  {app="m", addr="client 10.0.0.7:80"} 5 _
+eval instant at 60s count_over_time({app="m"} | addr != ip("10.0.0.0/8") [1m])
+  {app="m", addr="client 192.168.1.5:80"} 2
+# all sources
+eval instant at 60s count_over_time({app=~".+"} | logfmt | addr = ip("10.0.0.0/8") [1m])
+  {app="p", addr="client 10.0.0.7:80"} 3
+  {app="s", addr="client 10.0.0.7:80"} 4
+  {app="m", addr="client 10.0.0.7:80"} 5
+
+# ip() label filter: can match a single address, an address range, and IPv6.
+clear
+load
+  {app="a"} "addr=192.168.1.5" @ 20s [repeat every 20s for 4]
+  {app="a"} "addr=notanip"     @ 15s [repeat every 15s for 5]
+  {app="a"} "addr=2001:db8::1" @ 55s
+  {app="a"} "other=1"          @ 45s                            # noise: no addr label
+
+# single address
+eval instant at 60s count_over_time({app="a"} | logfmt | addr = ip("192.168.1.5") [1m])
+  {app="a", addr="192.168.1.5"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | addr = ip("192.168.1.5") [1m])   # overlapping
+  {app="a", addr="192.168.1.5"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | addr = ip("192.168.1.5") [1m]) # non-overlapping
+  {app="a", addr="192.168.1.5"} 3 _
+eval instant at 60s count_over_time({app="a"} | logfmt | addr = ip("9.9.9.0/24") [1m])
+  expect empty
+# address range
+eval instant at 60s count_over_time({app="a"} | logfmt | addr = ip("192.168.1.1-192.168.1.9") [1m])
+  {app="a", addr="192.168.1.5"} 3
+# IPv6
+eval instant at 60s count_over_time({app="a"} | logfmt | addr = ip("2001:db8::/32") [1m])
+  {app="a", addr="2001:db8::1"} 1
+# != keeps a value that holds no address, and still drops a line without the label.
+eval instant at 60s count_over_time({app="a"} | logfmt | addr != ip("192.168.0.0/16") [1m])
+  {app="a", addr="notanip"} 4
+  {app="a", addr="2001:db8::1"} 1
+# The pattern must be an address, a range or a CIDR.
+eval instant at 60s count_over_time({app="a"} | logfmt | addr = ip("bogus") [1m])
+  expect fail msg: ip: invalid pattern
+
+# ip() label filter: only = and != comparators are supported.
+clear
+load
+  {app="a"} "addr=10.0.0.7" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | addr == ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr =~ ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr !~ ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr > ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr >= ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr < ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+eval instant at 60s count_over_time({app="a"} | logfmt | addr <= ip("10.0.0.0/8") [1m])
+  expect fail msg: syntax error: unexpected ip
+
+# label filter over a line that already carries an error: ip() is the only kind that always keeps it.
+clear
+load
+  {app="a"} `{"addr":"1.2.3.4","took":"2s"}` @ 20s [repeat every 20s for 4]
+  {app="a"} "not json"                       @ 30s [repeat every 20s for 2]
+
+# The parser fails on "not json" and sets __error__ on that line.
+eval instant at 60s count_over_time({app="a"} | json [1m])
+  expect fail msg: JSONParserErr
+# ip() returns true for any errored line, so the error still reaches the result.
+eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m])
+  expect fail msg: JSONParserErr
+eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])
+  {app="a", addr="1.2.3.4", took="2s"} 3
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])   # overlapping
+  {app="a", addr="1.2.3.4", took="2s"} 2 3 3
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m]) # non-overlapping
+  {app="a", addr="1.2.3.4", took="2s"} 3 _
+# A duration, bytes or number filter needs its label. The failed line carries none, so the filter
+# drops it and no __error__ filter is needed.
+eval instant at 60s count_over_time({app="a"} | json | took > 1s [1m])
+  {app="a", addr="1.2.3.4", took="2s"} 3
+# A string filter reads the absent addr as "" and compares it, so the comparison decides. Here ""
+# does not equal "1.2.3.4", so the filter drops the failed line and the error goes away with it.
+eval instant at 60s count_over_time({app="a"} | json | addr="1.2.3.4" [1m])
+  {app="a", addr="1.2.3.4", took="2s"} 3
+# The opposite comparison keeps the failed line, so the error reaches the result again.
+eval instant at 60s count_over_time({app="a"} | json | addr!="1.2.3.4" [1m])
+  expect fail msg: JSONParserErr
+
 # label filter logical operators.
 clear
 load
@@ -283,6 +731,109 @@ eval instant at 60s count_over_time({app="a"} | logfmt | level="error" or (level
   {app="a", code="200", level="error"} 2
   {app="a", code="500", level="error"} 3
   {app="a", code="500", level="info"} 2
+
+# label filter logical operators precedence: and is evaluated before or.
+clear
+load
+  {app="a"} "x=1 y=1 z=1" @ 20s [repeat every 20s for 4]
+  {app="a"} "x=1 y=0 z=0" @ 30s [repeat every 20s for 2]
+  {app="a"} "x=0 y=1 z=1" @ 15s [repeat every 15s for 5]
+  {app="a"} "x=0 y=1 z=0" @ 55s
+
+# An unparenthesized chain groups as x="1" or (y="1" and z="1").
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" and z="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or (y="1" and z="1") [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | x="1" or y="1" and z="1" [1m])   # overlapping
+  {app="a", x="1", y="1", z="1"} 2 3 3
+  {app="a", x="1", y="0", z="0"} 1 2 2
+  {app="a", x="0", y="1", z="1"} 2 4 4
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | x="1" or y="1" and z="1" [1m]) # non-overlapping
+  {app="a", x="1", y="1", z="1"} 3 _
+  {app="a", x="1", y="0", z="0"} 2 _
+  {app="a", x="0", y="1", z="1"} 4 _
+# A comma and a space are and, so they group the same way.
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1", z="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" z="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="1", y="0", z="0"} 2
+  {app="a", x="0", y="1", z="1"} 4
+# A pipe starts a new stage.
+eval instant at 60s count_over_time({app="a"} | logfmt | x="1" or y="1" | z="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="0", y="1", z="1"} 4
+eval instant at 60s count_over_time({app="a"} | logfmt | (x="1" or y="1") and z="1" [1m])
+  {app="a", x="1", y="1", z="1"} 3
+  {app="a", x="0", y="1", z="1"} 4
+
+# label filter or: a match on the left operand skips evaluating the right one.
+clear
+load
+  {app="a"} "lvl=error took=oops" @ 20s [repeat every 20s for 4]
+  {app="a"} "lvl=info took=2s"    @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m])
+  {app="a", lvl="error", took="oops"} 3
+  {app="a", lvl="info", took="2s"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m])   # overlapping
+  {app="a", lvl="error", took="oops"} 2 3 3
+  {app="a", lvl="info", took="2s"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | lvl="error" or took > 1s [1m]) # non-overlapping
+  {app="a", lvl="error", took="oops"} 3 _
+  {app="a", lvl="info", took="2s"} 2 _
+# The same predicates in the other order convert oops first, which fails.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s or lvl="error" [1m])
+  expect fail msg: LabelFilterErr
+# and always runs both operands.
+eval instant at 60s count_over_time({app="a"} | logfmt | lvl="error" and took > 1s [1m])
+  expect fail msg: LabelFilterErr
+
+# label filter errors: the first filter that fails owns __error_details__.
+clear
+load
+  {app="a"} "x=nope y=90" @ 20s [repeat every 20s for 4]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | x > 1s and y > 1s [1m])
+  expect fail msg: invalid duration
+eval instant at 60s count_over_time({app="a"} | logfmt | y > 1s and x > 1s [1m])
+  expect fail msg: missing unit in duration
+
+# __error__ label filter: it drops a line that a later stage failed to process.
+clear
+load
+  {app="a"} "took=oops" @ 20s [repeat every 20s for 4]
+  {app="a"} "took=2s"   @ 30s [repeat every 20s for 2]
+
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s [1m])
+  expect fail msg: LabelFilterErr
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])
+  {app="a", took="2s"} 2
+eval range from 40s to 80s step 20s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m])   # overlapping
+  {app="a", took="2s"} 1 2 2
+eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took > 1s | __error__="" [1m]) # non-overlapping
+  {app="a", took="2s"} 2 _
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="LabelFilterErr" [1m])
+  {app="a", took="2s"} 2
+# A filter that runs before the parser cannot drop the line: no stage has failed yet.
+eval instant at 60s count_over_time({app="a"} | __error__="" | logfmt | took > 1s [1m])
+  expect fail msg: LabelFilterErr
+# Only a filter on __error__ itself suppresses the error.
+eval instant at 60s count_over_time({app="a"} | logfmt | __error_details__="" | took > 1s [1m])
+  expect fail msg: LabelFilterErr
+# A string filter reads __error__, so it keeps the failing line and the error reaches the result.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" [1m])
+  expect fail msg: LabelFilterErr
+# A converting filter cannot read __error__, so the same intent drops every line instead.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])
+  expect empty
 
 # structured metadata label filter: metadata joins the label set without a parser.
 clear
@@ -336,3 +887,46 @@ eval instant at 60s count_over_time({app="a"} | logfmt | tri="m" [1m])
   expect empty
 eval instant at 60s count_over_time({app="a"} | logfmt | tri_extracted="m" [1m])
   expect empty
+
+# label filter after unwrap
+clear
+load
+  {app="p"}              "v=2 lvl=error" @ 20s [repeat every 20s for 4]
+  {app="p"}              "v=9 lvl=info"  @ 30s [repeat every 20s for 2]
+  {app="s", lvl="error"} "v=2"           @ 15s [repeat every 15s for 5]
+  {app="s", lvl="info"}  "v=9"           @ 30s [repeat every 20s for 2]
+  {app="m"}              "v=2"           @ 12s [repeat every 12s for 6] [metadata lvl="error"]
+  {app="m"}              "v=9"           @ 30s [repeat every 20s for 2] [metadata lvl="info"]
+
+# parsed field
+eval instant at 60s sum_over_time({app="p"} | logfmt | unwrap v | lvl="error" [1m])
+  {app="p", lvl="error"} 6
+eval instant at 60s sum_over_time({app="p"} | logfmt | lvl="error" | unwrap v [1m])                   # same filter, but before unwrap
+  {app="p", lvl="error"} 6
+eval range from 40s to 80s step 20s sum_over_time({app="p"} | logfmt | unwrap v | lvl="error" [1m])   # overlapping
+  {app="p", lvl="error"} 4 6 6
+eval range from 60s to 180s step 120s sum_over_time({app="p"} | logfmt | unwrap v | lvl="error" [1m]) # non-overlapping
+  {app="p", lvl="error"} 6 _
+# stream label
+eval instant at 60s sum_over_time({app="s"} | logfmt | unwrap v | lvl="error" [1m])
+  {app="s", lvl="error"} 8
+eval instant at 60s sum_over_time({app="s"} | logfmt | lvl="error" | unwrap v [1m])                   # same filter, but before unwrap
+  {app="s", lvl="error"} 8
+eval range from 40s to 80s step 20s sum_over_time({app="s"} | logfmt | unwrap v | lvl="error" [1m])   # overlapping
+  {app="s", lvl="error"} 4 8 8
+eval range from 60s to 180s step 120s sum_over_time({app="s"} | logfmt | unwrap v | lvl="error" [1m]) # non-overlapping
+  {app="s", lvl="error"} 8 _
+# structured metadata
+eval instant at 60s sum_over_time({app="m"} | logfmt | unwrap v | lvl="error" [1m])
+  {app="m", lvl="error"} 10
+eval instant at 60s sum_over_time({app="m"} | logfmt | lvl="error" | unwrap v [1m])                   # same filter, but before unwrap
+  {app="m", lvl="error"} 10
+eval range from 40s to 80s step 20s sum_over_time({app="m"} | logfmt | unwrap v | lvl="error" [1m])   # overlapping
+  {app="m", lvl="error"} 6 10 10
+eval range from 60s to 180s step 120s sum_over_time({app="m"} | logfmt | unwrap v | lvl="error" [1m]) # non-overlapping
+  {app="m", lvl="error"} 10 _
+# all sources
+eval instant at 60s sum_over_time({app=~".+"} | logfmt | unwrap v | lvl="error" [1m])
+  {app="p", lvl="error"} 6
+  {app="s", lvl="error"} 8
+  {app="m", lvl="error"} 10
