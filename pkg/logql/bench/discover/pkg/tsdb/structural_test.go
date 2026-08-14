@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -158,7 +156,7 @@ func openStructuralIndexes(t *testing.T, paths ...string) []tsdb.Index {
 
 	res := make([]tsdb.Index, 0, len(paths))
 	for _, path := range paths {
-		idx, _, err := tsdb.NewTSDBIndexFromFile(path, indexshipper.IndexReaderModeMmap)
+		idx, _, err := tsdb.NewTSDBIndexFromFile(path, tsdbindex.MmapOptions{})
 		require.NoError(t, err)
 		t.Cleanup(func() {
 			require.NoError(t, idx.Close())

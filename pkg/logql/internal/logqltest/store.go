@@ -51,6 +51,7 @@ func newTestingChunkStore(t *testing.T) *testingChunkStore {
 			CacheLocation:        dir + "/cache",
 			ResyncInterval:       5 * time.Minute,
 			CacheTTL:             24 * time.Hour,
+			IndexReaderMode:      indexshipper.DefaultIndexReaderMode,
 		},
 		FSConfig: local.FSConfig{Directory: dir + "/storage"},
 	}
