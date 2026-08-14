@@ -43,7 +43,7 @@ var (
 		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
 		Name:      "storage_errors_total",
-		Help:      "Storage errors suppressed by the chunk fetcher.",
+		Help:      "Storage errors encountered by the chunk fetcher.",
 	}, []string{"reason"})
 )
 
@@ -140,6 +140,15 @@ func (c *Fetcher) Client() client.Client {
 
 // FetchChunks fetches a set of chunks from cache and store. Note, returned chunks are not in the same order they are passed in
 func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	return c.fetchChunks(ctx, chunks, false)
+}
+
+// FetchChunksWithErrors fetches chunks and returns storage errors to the caller.
+func (c *Fetcher) FetchChunksWithErrors(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+	return c.fetchChunks(ctx, chunks, true)
+}
+
+func (c *Fetcher) fetchChunks(ctx context.Context, chunks []chunk.Chunk, propagateStorageError bool) ([]chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -212,9 +221,8 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing from storage. Keep this error apart from the cache errors above.
-	// A later change that returns an error must return only this one. A cache decode
-	// failure is not fatal, because storage still holds the chunk.
+	// Fetch missing chunks from storage. Cache decode failures are not propagated
+	// because storage still holds the chunk.
 	var (
 		fromStorage []chunk.Chunk
 		storageErr  error
@@ -251,6 +259,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	allChunks := append(fromCache, fromStorage...)
+	if propagateStorageError {
+		return allChunks, storageErr
+	}
 	return allChunks, nil
 }
 
