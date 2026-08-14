@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
@@ -72,11 +73,21 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	}
 
-	// Return 400 if any of the errors in the MultiError are client errors (4xx)
+	// Return a 4xx if any of the errors in the MultiError is a client error.
+	// Retrying cannot help when at least one part of a fanned-out request is
+	// the caller's fault.
 	if ok {
 		for _, e := range me {
 			if isClientError(e, &queryErr, &userErr) {
 				return http.StatusBadRequest, err
+			}
+
+			// Errors that already crossed a gRPC boundary (querier <-> ingester)
+			// would have lost their Go type.
+			//
+			// For those cases, check if the staus code is a 4xx.
+			if code := int(grpcutil.ErrorToStatusCode(e)); code/100 == 4 {
+				return code, err
 			}
 		}
 	}
