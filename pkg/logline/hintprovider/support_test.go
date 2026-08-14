@@ -730,6 +730,11 @@ func TestExtractQueryNgrams(t *testing.T) {
 	t.Run("de-duplicates repeated ngrams", func(t *testing.T) {
 		got, err := ExtractQueryNgrams("aaaaaaa", 3, "v3")
 		require.NoError(t, err)
-		require.Equal(t, []string{"AAA"}, got)
+		// Terms are sliced to the term key width (6), not to ngram_length, so a
+		// 3-gram carries three trailing zero bytes. That is the same key the
+		// builder wrote and the same one FindTerm reconstructs, since it copies
+		// the term into a zero-valued [6]byte either way. See
+		// TestExtractQueryNgrams_ResolvesToBuilderDictKeys.
+		require.Equal(t, []string{"AAA\x00\x00\x00"}, got)
 	})
 }
