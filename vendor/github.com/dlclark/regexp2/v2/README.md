@@ -92,6 +92,17 @@ notEmoji := regexp2.MustCompile(`\P{Emoji}+`)
 
 Valid property names and aliases come from Unicode 17.0.0 [`PropertyAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyAliases.txt). Valid property values and aliases come from Unicode 17.0.0 [`PropertyValueAliases.txt`](https://www.unicode.org/Public/17.0.0/ucd/PropertyValueAliases.txt). The generated tables use Unicode 17.0.0 data from [`DerivedCoreProperties.txt`](https://www.unicode.org/Public/17.0.0/ucd/DerivedCoreProperties.txt), [`emoji/emoji-data.txt`](https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt), [`auxiliary/GraphemeBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/GraphemeBreakProperty.txt), [`auxiliary/WordBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/WordBreakProperty.txt), and [`auxiliary/SentenceBreakProperty.txt`](https://www.unicode.org/Public/17.0.0/ucd/auxiliary/SentenceBreakProperty.txt) for the package-local properties whose data changes more frequently than the Go standard library tables.
 
+## Additional Perl and PCRE syntax
+
+The default mode supports the following syntax:
+
+* `\Q...\E` quotes every character between `\Q` and `\E`. If `\E` is omitted, quoting continues to the end of the pattern. This also works inside character classes.
+* `\R` matches one Unicode newline sequence: CRLF as a single sequence, or LF, VT, FF, CR, NEL, line separator, or paragraph separator.
+* `\X` atomically matches one Unicode 17.0.0 extended grapheme cluster. This includes combining sequences, Hangul syllables, regional-indicator pairs, emoji ZWJ sequences, and Indic conjuncts.
+* A `+` after a quantifier makes it possessive: `*+`, `++`, `?+`, and `{m,n}+`. For example, `a*+` is equivalent to `(?>a*)` and will not give characters back when the remainder of the pattern fails.
+
+`RE2` mode also supports `\Q...\E` and possessive quantifiers, but keeps `\R` and `\X` as literal `R` and `X` identity escapes. `ECMAScript` mode does not enable any of this syntax: `\Q`, `\E`, `\R`, and `\X` retain ECMAScript identity-escape behavior, and possessive quantifiers remain invalid.
+
 ## `regexp` compatibility adapter
 
 The `github.com/dlclark/regexp2/v2/compat` package provides an adapter for callers that want the same `Find*` and `Match*` method signatures as the standard library's `regexp.Regexp`, while still using the `regexp2` engine.
@@ -184,7 +195,11 @@ For pooled buffer cache options, set `n` to `0` to disable pooling, or `-1` to a
 | .NET-style capture groups `(?<name>re)` or `(?'name're)` | yes | yes |
 | comments `(?#comment)` | no | yes |
 | branch numbering reset `(?\|a\|b)` | no | no |
-| possessive match `(?>re)` | no | yes |
+| atomic group `(?>re)` | no | yes |
+| possessive quantifiers `*+`, `++`, `?+`, `{m,n}+` | no | yes |
+| literal quoting `\Q...\E` | yes | yes |
+| Unicode newline sequence `\R` | no | yes (default mode only) |
+| extended grapheme cluster `\X` | no | yes (default mode only) |
 | positive lookahead `(?=re)` | no | yes |
 | negative lookahead `(?!re)` | no | yes |
 | positive lookbehind `(?<=re)` | no | yes |
@@ -203,6 +218,8 @@ The default behavior of `regexp2` is to match the .NET regexp engine, however th
 * change singleline behavior for `$` to only match end of string (like RE2) (see [#24](https://github.com/dlclark/regexp2/issues/24))
 * change the character classes `\d` `\s` and `\w` to match the same characters as RE2. NOTE: if you also use the `ECMAScript` option then this will change the `\s` character class to match ECMAScript instead of RE2.  ECMAScript allows more whitespace characters in `\s` than RE2 (but still fewer than the the default behavior).
 * allow character escape sequences to have defaults. For example, by default `\_` isn't a known character escape and will fail to compile, but in RE2 mode it will match the literal character `_`
+* support RE2-style literal quoting with `\Q...\E`
+* support possessive quantifiers (`*+`, `++`, `?+`, and `{m,n}+`) as a regexp2 extension
  
 ```go
 re := regexp2.MustCompile(`Your RE2-compatible pattern`, regexp2.RE2)
@@ -294,6 +311,8 @@ In this mode the engine attempts to match the [regex engine](https://tc39.es/ecm
 This flag should not be treated as compatibility with C#'s `RegexOptions.ECMAScript`. regexp2's ECMAScript behavior prioritizes ECMAScript specification behavior over matching the C# regex engine's interpretation of that option.
 
 Additionally a Unicode mode is provided which allows parsing of `\u{CodePoint}` syntax only when both `ECMAScript` and `Unicode` are provided.
+
+Perl/PCRE extensions `\Q...\E`, `\R`, `\X`, and possessive quantifiers are intentionally not enabled in this mode. The letter escapes retain the engine's existing ECMAScript identity-escape behavior.
 
 ## Potential bugs
 I've run a battery of tests against regexp2 from various sources and found the debug output matches the .NET engine, but .NET and Go handle strings very differently.  I've attempted to handle these differences, but most of my testing deals with basic ASCII with a little bit of multi-byte Unicode.  There's a chance that there are bugs in the string handling related to character sets with supplementary Unicode chars.  Right-to-Left support is coded, but not well tested either.

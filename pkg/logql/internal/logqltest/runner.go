@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
@@ -122,7 +123,10 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 	}
 
 	t.Run(label, func(t *testing.T) {
-		engine := logql.NewEngine(logql.EngineOpts{}, querier, logql.NoLimits, log.NewNopLogger())
+		// Run query engine with the default config.
+		var opts logql.EngineOpts
+		flagext.DefaultValues(&opts)
+		engine := logql.NewEngine(opts, querier, logql.NoLimits, log.NewNopLogger())
 
 		var start, end, step time.Duration
 		if cmd.instant {
