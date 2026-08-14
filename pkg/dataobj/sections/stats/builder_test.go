@@ -84,14 +84,6 @@ func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
 	return all
 }
 
-func requireRowsEqual(t *testing.T, expected, actual arrowtest.Rows) {
-	t.Helper()
-	for _, row := range expected {
-		row["__shard_bucket__.int64"] = int64(0)
-	}
-	require.Equal(t, expected, actual)
-}
-
 // TestBuilder_Empty verifies that an empty builder produces no sections.
 func TestBuilder_Empty(t *testing.T) {
 	b := NewBuilder(nil, defaultEncoder)
@@ -148,6 +140,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
@@ -158,6 +151,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj3",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(2),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
@@ -168,6 +162,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
@@ -177,7 +172,7 @@ func TestBuilder_RoundTrip(t *testing.T) {
 			"service_name.label.utf8": "foo",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_SortOrder verifies the sort order: label values in sort-schema order,
@@ -200,6 +195,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -210,6 +206,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -220,6 +217,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -230,6 +228,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -240,6 +239,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
@@ -249,7 +249,7 @@ func TestBuilder_SortOrder(t *testing.T) {
 			"service_name.label.utf8": "gamma",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_AllSameServiceName verifies that rows with identical service_name
@@ -270,6 +270,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "a",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -280,6 +281,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "b",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -290,6 +292,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "c",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
@@ -299,7 +302,7 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestCompare_FullKeyOrder locks the canonical stats sort order
@@ -386,6 +389,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -396,6 +400,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objA",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(1),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -406,6 +411,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "objB",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        schema,
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -415,7 +421,7 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_MissingServiceName verifies rows with empty/missing label values sort before non-empty ones.
@@ -433,6 +439,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "obj1",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
@@ -443,6 +450,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 		},
 		{
 			"object_path.utf8":        "obj2",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -452,7 +460,7 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 			"service_name.label.utf8": "svc",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_SectionSplitting verifies the mid-accumulation flush pattern using dataobj.Builder:
@@ -540,6 +548,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        longPath,
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(99),
 			"sort_schema.utf8":        longSchema,
 			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
@@ -549,7 +558,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 			labelColName:              longLabel,
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
@@ -574,6 +583,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	expected := arrowtest.Rows{
 		{
 			"object_path.utf8":        "",
+			"__shard_bucket__.int64":  int64(0),
 			"section_index.int64":     int64(0),
 			"sort_schema.utf8":        "label:service_name",
 			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
@@ -583,7 +593,7 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 			"service_name.label.utf8": "second",
 		},
 	}
-	requireRowsEqual(t, expected, actual)
+	require.Equal(t, expected, actual)
 }
 
 // TestBuilder_EstimatedSize verifies EstimatedSize returns non-zero after appending.

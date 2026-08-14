@@ -3,6 +3,7 @@ package streams
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -53,14 +54,13 @@ func (s *Stream) Reset() {
 	s.Rows = 0
 }
 
+const shardFactor = 32
+
 var streamPool = sync.Pool{
 	New: func() interface{} {
 		return &Stream{}
 	},
 }
-
-// ShardFactor is the number of shards in the physical log sort layout.
-const ShardFactor uint32 = 16
 
 // Builder builds a streams section.
 type Builder struct {
@@ -187,19 +187,20 @@ func (b *Builder) EstimatedSize() int {
 	// 4. Assume (conservative) 2x compression ratio of all label values.
 
 	var (
-		idDeltaSize        = streamio.VarintSize(1)
-		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
-		rowDeltaSize       = streamio.VarintSize(500)
+		idDeltaSize          = streamio.VarintSize(1)
+		shardBucketDeltaSize = streamio.VarintSize(1)
+		timestampDeltaSize   = streamio.VarintSize(int64(time.Second))
+		rowDeltaSize         = streamio.VarintSize(500)
 	)
 
 	var sizeEstimate int
 
-	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * idDeltaSize        // Shard bucket
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += b.currentLabelsSize / 2             // All labels (2x compression ratio)
+	sizeEstimate += len(b.ordered) * idDeltaSize          // ID
+	sizeEstimate += len(b.ordered) * shardBucketDeltaSize // Shard bucket
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Min timestamp
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Max timestamp
+	sizeEstimate += len(b.ordered) * rowDeltaSize         // Rows
+	sizeEstimate += b.currentLabelsSize / 2               // All labels (2x compression ratio)
 
 	return sizeEstimate
 }
@@ -220,10 +221,9 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
-const shardBits = 4 // N = 16 buckets
-
 // ShardBucket returns the physical shard bucket for streamLabels.
 func ShardBucket(streamLabels labels.Labels) uint64 {
+	shardBits := int(math.Log2(shardFactor))
 	fp := labels.StableHash(streamLabels)
 	return fp >> (64 - shardBits)
 }
