@@ -356,7 +356,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset, shardTrackerFromContext(ctx))
+				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
 		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
@@ -381,7 +381,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset, shardTrackerFromContext(ctx))
+		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -642,7 +642,6 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-	tracker *shardTimeTracker,
 ) (StepEvaluator, error) {
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
@@ -651,7 +650,6 @@ func newRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-			tracker,
 		)
 		if err != nil {
 			return nil, err
@@ -704,7 +702,6 @@ func newRangeAggEvaluator(
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-			tracker,
 		)
 		if err != nil {
 			return nil, err
@@ -1434,7 +1431,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 			switch e := variant.(type) {
 			case *syntax.VectorAggregationExpr:
 				if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok {
-					rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset, shardTrackerFromContext(ctx))
+					rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset)
 					if err != nil {
 						return nil, err
 					}
@@ -1452,7 +1449,7 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 					return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
 				}
 			case *syntax.RangeAggregationExpr:
-				variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset, shardTrackerFromContext(ctx))
+				variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset)
 			}
 
 			if err != nil {

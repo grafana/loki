@@ -284,7 +284,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	metadataCtx, ctx := metadata.NewContext(ctx)
 	// Temporary instrumentation: track time spent on __stream_shard__ streams,
 	// reported on the metrics.go line (see shard_timing.go).
-	ctx = withShardTimeTracker(ctx)
+	ctx = WithShardTimeTracker(ctx)
 
 	data, err := q.Eval(ctx)
 
@@ -295,9 +295,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(execTime, queueTime, q.resultLength(data))
 	// Temporary instrumentation: attach per-logical-stream shard timings so the
 	// frontend can estimate query cost without sharding (see shard_timing.go).
-	if tr := shardTrackerFromContext(ctx); tr != nil {
-		statResult.ShardedStreams = tr.perStreamTop(shardStreamsTopK)
-	}
+	statResult.ShardedStreams = ShardedStreamsFromContext(ctx)
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)

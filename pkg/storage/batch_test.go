@@ -1813,3 +1813,47 @@ func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
+
+// Test_sampleBatchIterator_shardTiming is an integration test through the real
+// storage sample path: it drives newSampleBatchIterator over chunks for two
+// physical shards of one logical stream plus an unsharded stream, and asserts
+// the shard-timing tracker installed in ctx (as the engine does) is populated
+// via the WrapSampleIteratorForShardTiming hook in buildIterators. This is the
+// path metric queries take, where labels are still full before source reduction.
+func Test_sampleBatchIterator_shardTiming(t *testing.T) {
+	periodConfig := config.PeriodConfig{From: config.DayTime{Time: 0}, Schema: "v11"}
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+	s := config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}}
+
+	mkChunk := func(lbls string) *LazyChunk {
+		return newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+			Labels: lbls,
+			Entries: []logproto.Entry{
+				{Timestamp: from, Line: "1"},
+				{Timestamp: from.Add(time.Millisecond), Line: "2"},
+			},
+		})
+	}
+	chunks := []*LazyChunk{
+		mkChunk(`{__name__="logs", foo="bar", __stream_shard__="0"}`),
+		mkChunk(`{__name__="logs", foo="bar", __stream_shard__="1"}`),
+		mkChunk(`{__name__="logs", foo="bar"}`), // unsharded; must be ignored
+	}
+
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	require.NoError(t, err)
+
+	ctx := logql.WithShardTimeTracker(context.Background())
+	it, err := newSampleBatchIterator(ctx, s, NilMetrics, chunks, 10, newMatchers(`{foo="bar"}`), from, from.Add(time.Hour), nil, ex)
+	require.NoError(t, err)
+	for it.Next() {
+	}
+	require.NoError(t, it.Close())
+
+	got := logql.ShardedStreamsFromContext(ctx)
+	require.Len(t, got, 1, "two shards of {foo=bar} merge to one logical stream; unsharded stream ignored")
+	require.Equal(t, `{foo="bar"}`, got[0].Stream)
+	require.Equal(t, int64(2), got[0].Shards)
+	require.Greater(t, got[0].SumDurationNanos, int64(0))
+}

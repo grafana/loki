@@ -36,7 +36,7 @@ func TestShardTimeTracker_ReadStreams(t *testing.T) {
 		iter.NewStreamIterator(testStream(`{app="bar"}`, 5)),
 	}, logproto.FORWARD)
 
-	ctx := withShardTimeTracker(context.Background())
+	ctx := WithShardTimeTracker(context.Background())
 	tracker := shardTrackerFromContext(ctx)
 	require.NotNil(t, tracker)
 
@@ -65,7 +65,7 @@ func TestShardTimeTracker_MetricsLine(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	logger := log.NewLogfmtLogger(buf)
 
-	ctx := withShardTimeTracker(context.Background())
+	ctx := WithShardTimeTracker(context.Background())
 	tracker := shardTrackerFromContext(ctx)
 	tracker.observe(`{app="foo", __stream_shard__="1"}`, 250*time.Millisecond)
 	tracker.observe(`{app="bar"}`, 50*time.Millisecond)
@@ -115,7 +115,7 @@ func TestStripShard(t *testing.T) {
 }
 
 func TestShardTimeTracker_PerStreamTop(t *testing.T) {
-	tr := shardTrackerFromContext(withShardTimeTracker(context.Background()))
+	tr := shardTrackerFromContext(WithShardTimeTracker(context.Background()))
 	// stream a: 2 shards, 1s + 2s = 3s; stream b: 1 shard, 5s.
 	tr.observe(`{__stream_shard__="0", app="a"}`, time.Second)
 	tr.observe(`{__stream_shard__="1", app="a"}`, 2*time.Second)
@@ -137,6 +137,39 @@ func TestShardTimeTracker_PerStreamTop(t *testing.T) {
 	// top-k truncation keeps the heaviest.
 	require.Len(t, tr.perStreamTop(1), 1)
 	require.Equal(t, `{app="b"}`, tr.perStreamTop(1)[0].Stream)
+}
+
+func TestWrapSampleIteratorForShardTiming(t *testing.T) {
+	mkSeries := func(lbls string, n int) logproto.Series {
+		samples := make([]logproto.Sample, 0, n)
+		for i := 0; i < n; i++ {
+			samples = append(samples, logproto.Sample{Timestamp: int64(i), Value: 1})
+		}
+		return logproto.Series{Labels: lbls, Samples: samples}
+	}
+	drain := func(it iter.SampleIterator) {
+		for it.Next() {
+		}
+		_ = it.Close()
+	}
+
+	ctx := WithShardTimeTracker(context.Background())
+	tr := shardTrackerFromContext(ctx)
+
+	// Two shards of one logical stream, plus an unsharded stream.
+	drain(WrapSampleIteratorForShardTiming(ctx, iter.NewSeriesIterator(mkSeries(`{app="a", __stream_shard__="0"}`, 5)), `{app="a", __stream_shard__="0"}`))
+	drain(WrapSampleIteratorForShardTiming(ctx, iter.NewSeriesIterator(mkSeries(`{app="a", __stream_shard__="1"}`, 5)), `{app="a", __stream_shard__="1"}`))
+	drain(WrapSampleIteratorForShardTiming(ctx, iter.NewSeriesIterator(mkSeries(`{app="b"}`, 5)), `{app="b"}`))
+
+	top := tr.perStreamTop(0)
+	require.Len(t, top, 1, "only the sharded logical stream is tracked")
+	require.Equal(t, `{app="a"}`, top[0].Stream)
+	require.Equal(t, int64(2), top[0].Shards) // two physical shards merged
+	require.Greater(t, top[0].SumDurationNanos, int64(0))
+
+	// Nil tracker in ctx: passthrough, no wrapping, no panic.
+	plain := WrapSampleIteratorForShardTiming(context.Background(), iter.NewSeriesIterator(mkSeries(`{app="a", __stream_shard__="0"}`, 2)), `{app="a", __stream_shard__="0"}`)
+	drain(plain)
 }
 
 func TestRecordMetrics_FrontendUnshardedEstimate(t *testing.T) {
@@ -174,7 +207,7 @@ func TestRecordMetrics_FrontendUnshardedEstimate(t *testing.T) {
 }
 
 func TestShardTimeTracker_LabelsCache(t *testing.T) {
-	tracker := shardTrackerFromContext(withShardTimeTracker(context.Background()))
+	tracker := shardTrackerFromContext(WithShardTimeTracker(context.Background()))
 
 	// Same labels repeatedly: one distinct stream, durations accumulate.
 	for i := 0; i < 10; i++ {

@@ -72,7 +72,11 @@ type perStreamAgg struct {
 
 type shardTimeTrackerCtxKey struct{}
 
-func withShardTimeTracker(ctx context.Context) context.Context {
+// WithShardTimeTracker installs a shard-timing tracker into ctx. It is exported
+// so the storage layer (which populates it for metric queries via
+// WrapSampleIteratorForShardTiming) and tests can share the same ctx-scoped
+// tracker the engine installs.
+func WithShardTimeTracker(ctx context.Context) context.Context {
 	return context.WithValue(ctx, shardTimeTrackerCtxKey{}, &shardTimeTracker{
 		sharded:   make(map[string]struct{}),
 		unsharded: make(map[string]struct{}),
@@ -83,6 +87,17 @@ func withShardTimeTracker(ctx context.Context) context.Context {
 func shardTrackerFromContext(ctx context.Context) *shardTimeTracker {
 	t, _ := ctx.Value(shardTimeTrackerCtxKey{}).(*shardTimeTracker)
 	return t
+}
+
+// ShardedStreamsFromContext returns the top-K per-logical-stream shard timings
+// accumulated on the tracker in ctx (nil if no tracker). Used by the engine to
+// attach them to query stats.
+func ShardedStreamsFromContext(ctx context.Context) []stats.ShardedStream {
+	tr := shardTrackerFromContext(ctx)
+	if tr == nil {
+		return nil
+	}
+	return tr.perStreamTop(shardStreamsTopK)
 }
 
 // observe attributes elapsed to the sharded or unsharded bucket based on the
@@ -164,15 +179,58 @@ func trackedNextEntry(tr *shardTimeTracker, it iter.EntryIterator) bool {
 	return ok
 }
 
-// trackedNextSample consumes the current sample of a peeking iterator,
-// attributing the pull time to lbs (the labels returned by Peek). tr may be
-// nil.
-func trackedNextSample(tr *shardTimeTracker, it iter.PeekingSampleIterator, lbs string) {
-	if tr == nil {
-		_ = it.Next()
-		return
+// recordSample attributes elapsed to a sharded logical stream. Called from the
+// storage sample-iterator wrapper, where the full physical stream labels are
+// available (metric queries reduce labels at the source, so the range-vector
+// iterators upstream no longer carry __stream_shard__).
+func (t *shardTimeTracker) recordSample(logicalKey, fullLabels string, elapsed time.Duration) {
+	t.mtx.Lock()
+	defer t.mtx.Unlock()
+	t.shardedNanos += elapsed.Nanoseconds()
+	t.sharded[fullLabels] = struct{}{}
+	agg := t.perStream[logicalKey]
+	if agg == nil {
+		agg = &perStreamAgg{shards: make(map[string]struct{})}
+		t.perStream[logicalKey] = agg
 	}
+	agg.durNanos += elapsed.Nanoseconds()
+	agg.shards[fullLabels] = struct{}{}
+}
+
+// shardTimingSampleIterator wraps a per-stream sample iterator, timing each
+// Next() and attributing it to the stream's sharded logical key.
+type shardTimingSampleIterator struct {
+	iter.SampleIterator
+	tracker    *shardTimeTracker
+	logicalKey string
+	fullLabels string
+}
+
+func (s *shardTimingSampleIterator) Next() bool {
 	start := time.Now()
-	_ = it.Next()
-	tr.observe(lbs, time.Since(start))
+	ok := s.SampleIterator.Next()
+	if ok {
+		s.tracker.recordSample(s.logicalKey, s.fullLabels, time.Since(start))
+	}
+	return ok
+}
+
+// WrapSampleIteratorForShardTiming wraps a per-stream sample iterator so its
+// read time is attributed to the stream's sharded logical identity, if this is
+// a query with shard-timing enabled and the stream is sharded. Otherwise it
+// returns it unchanged (zero overhead). streamLabels is the full physical
+// stream label string (including __stream_shard__ when present). Called from
+// the storage sample-iterator builder, which is where the full labels exist
+// before source-side label reduction.
+func WrapSampleIteratorForShardTiming(ctx context.Context, it iter.SampleIterator, streamLabels string) iter.SampleIterator {
+	tr := shardTrackerFromContext(ctx)
+	if tr == nil || !strings.Contains(streamLabels, shardLabel) {
+		return it
+	}
+	return &shardTimingSampleIterator{
+		SampleIterator: it,
+		tracker:        tr,
+		logicalKey:     stripShard(streamLabels),
+		fullLabels:     streamLabels,
+	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -579,21 +580,22 @@ func (it *sampleBatchIterator) buildIterators(
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
+			seriesLabels := labels.NewBuilder(chunks[0][0].Chunk.Metric).
+				Del(model.MetricNameLabel).
+				Labels()
 			extractors := make([]log.StreamSampleExtractor, 0, len(it.extractors))
 			for _, extractor := range it.extractors {
-				extractors = append(
-					extractors,
-					extractor.ForStream(
-						labels.NewBuilder(chunks[0][0].Chunk.Metric).
-							Del(model.MetricNameLabel).
-							Labels(),
-					),
-				)
+				extractors = append(extractors, extractor.ForStream(seriesLabels))
 			}
 			iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
 			if err != nil {
 				return nil, err
 			}
+			// Temporary instrumentation: attribute this stream's sample read time
+			// to its sharded logical identity. Metric queries reduce labels at the
+			// source, so this storage-level hook is where the full physical labels
+			// (incl __stream_shard__) are still available.
+			iterator = logql.WrapSampleIteratorForShardTiming(it.ctx, iterator, seriesLabels.String())
 			result = append(result, iterator)
 		}
 	}
