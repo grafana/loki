@@ -3657,9 +3657,9 @@ The `frontend` block configures the Loki query-frontend.
 [instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
-# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').
 # CLI flag: -frontend.encoding
-[encoding: <string> | default = "json"]
+[encoding: <string> | default = "protobuf"]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
