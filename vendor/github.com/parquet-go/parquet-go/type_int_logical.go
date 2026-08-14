@@ -56,17 +56,41 @@ var unsignedIntTypes = [...]intType{
 }
 
 var signedLogicalIntTypes = [...]format.LogicalType{
-	{Integer: (*format.IntType)(&signedIntTypes[0])},
-	{Integer: (*format.IntType)(&signedIntTypes[1])},
-	{Integer: (*format.IntType)(&signedIntTypes[2])},
-	{Integer: (*format.IntType)(&signedIntTypes[3])},
+	{Value: (*format.IntType)(&signedIntTypes[0])},
+	{Value: (*format.IntType)(&signedIntTypes[1])},
+	{Value: (*format.IntType)(&signedIntTypes[2])},
+	{Value: (*format.IntType)(&signedIntTypes[3])},
 }
 
 var unsignedLogicalIntTypes = [...]format.LogicalType{
-	{Integer: (*format.IntType)(&unsignedIntTypes[0])},
-	{Integer: (*format.IntType)(&unsignedIntTypes[1])},
-	{Integer: (*format.IntType)(&unsignedIntTypes[2])},
-	{Integer: (*format.IntType)(&unsignedIntTypes[3])},
+	{Value: (*format.IntType)(&unsignedIntTypes[0])},
+	{Value: (*format.IntType)(&unsignedIntTypes[1])},
+	{Value: (*format.IntType)(&unsignedIntTypes[2])},
+	{Value: (*format.IntType)(&unsignedIntTypes[3])},
+}
+
+// canonicalIntType maps a decoded IntType onto the instance this package
+// already declares for it. Returning the shared instance rather than a pointer
+// into the file metadata lets LogicalType find it by identity, instead of
+// allocating a new format.LogicalType on every call.
+func canonicalIntType(t *format.IntType) *intType {
+	table := &unsignedIntTypes
+	if t.IsSigned {
+		table = &signedIntTypes
+	}
+	switch t.BitWidth {
+	case 8:
+		return &table[0]
+	case 16:
+		return &table[1]
+	case 32:
+		return &table[2]
+	case 64:
+		return &table[3]
+	default:
+		// Not a bit width the spec allows; keep the value the file carried.
+		return (*intType)(t)
+	}
 }
 
 type intType format.IntType
@@ -143,7 +167,7 @@ func (t *intType) LogicalType() *format.LogicalType {
 	case &unsignedIntTypes[3]:
 		return &unsignedLogicalIntTypes[3]
 	default:
-		return &format.LogicalType{Integer: (*format.IntType)(t)}
+		return &format.LogicalType{Value: (*format.IntType)(t)}
 	}
 }
 

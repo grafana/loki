@@ -142,13 +142,13 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 
 		// Extract AAD parameters from the encryption algorithm.
 		var fileUnique, aadPrefix []byte
-		switch {
-		case cryptoMeta.EncryptionAlgorithm.AesGcmV1 != nil:
-			fileUnique = cryptoMeta.EncryptionAlgorithm.AesGcmV1.AadFileUnique
-			aadPrefix = cryptoMeta.EncryptionAlgorithm.AesGcmV1.AadPrefix
-		case cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1 != nil:
-			fileUnique = cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1.AadFileUnique
-			aadPrefix = cryptoMeta.EncryptionAlgorithm.AesGcmCtrV1.AadPrefix
+		switch algo := cryptoMeta.EncryptionAlgorithm.Value.(type) {
+		case *format.AesGcmV1:
+			fileUnique = algo.AadFileUnique
+			aadPrefix = algo.AadPrefix
+		case *format.AesGcmCtrV1:
+			fileUnique = algo.AadFileUnique
+			aadPrefix = algo.AadPrefix
 		}
 
 		footerKey, err := c.Decryption.Keys.FooterKey(cryptoMeta.KeyMetadata)
@@ -184,15 +184,14 @@ func OpenFile(r io.ReaderAt, size int64, options ...FileOption) (*File, error) {
 			if c.Decryption == nil {
 				return nil, fmt.Errorf("parquet file has a signed footer but no DecryptionConfig was provided")
 			}
-			algo := &f.metadata.EncryptionAlgorithm
 			var fileUnique, aadPrefix []byte
-			switch {
-			case algo.AesGcmV1 != nil:
-				fileUnique = algo.AesGcmV1.AadFileUnique
-				aadPrefix = algo.AesGcmV1.AadPrefix
-			case algo.AesGcmCtrV1 != nil:
-				fileUnique = algo.AesGcmCtrV1.AadFileUnique
-				aadPrefix = algo.AesGcmCtrV1.AadPrefix
+			switch algo := f.metadata.EncryptionAlgorithm.Value.(type) {
+			case *format.AesGcmV1:
+				fileUnique = algo.AadFileUnique
+				aadPrefix = algo.AadPrefix
+			case *format.AesGcmCtrV1:
+				fileUnique = algo.AadFileUnique
+				aadPrefix = algo.AadPrefix
 			}
 			plainFooterBytes := footerData[:pr.BytesRead()]
 			sig := footerData[pr.BytesRead():]
@@ -382,7 +381,36 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 
 	columnIndexes := make([]format.ColumnIndex, numColumnChunks)
 	offsetIndexes := make([]format.OffsetIndex, numColumnChunks)
-	indexBuffer := make([]byte, max(int(columnIndexLength), int(offsetIndexLength)))
+
+	// The column index and the offset index get separate buffers because the
+	// values decoded below alias them: ColumnIndex.MinValues and MaxValues are
+	// sub-slices of the bytes they were decoded from. A single shared buffer
+	// would be overwritten by the offset index read, corrupting the min/max
+	// statistics of every column.
+	var columnIndexBuffer, offsetIndexBuffer []byte
+	if columnIndexOffset > 0 {
+		columnIndexBuffer = make([]byte, columnIndexLength)
+	}
+	if offsetIndexOffset > 0 {
+		offsetIndexBuffer = make([]byte, offsetIndexLength)
+	}
+
+	// One reader and one decoder are reused across every column chunk. Decoding
+	// each chunk with thrift.Unmarshal instead would clone the chunk's bytes and
+	// allocate a reader for it, twice per column chunk.
+	reader := f.protocol.NewReaderFromBytes(nil)
+	decoder := thrift.NewDecoder(reader)
+
+	decode := func(b []byte, v any) error {
+		reader.ResetBytes(b)
+		if err := decoder.Decode(v); err != nil {
+			return err
+		}
+		if n := len(b) - reader.BytesRead(); n != 0 {
+			return fmt.Errorf("unexpected trailing bytes at the end of thrift input: %d", n)
+		}
+		return nil
+	}
 
 	// pageIndexKey returns the AES key used to decrypt this column's
 	// page-index modules, or nil for plaintext columns.  We resolve keys here
@@ -392,19 +420,18 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 		if f.decryption == nil {
 			return nil, nil
 		}
-		switch {
-		case c.CryptoMetadata.EncryptionWithFooterKey != nil:
+		switch crypto := c.CryptoMetadata.Value.(type) {
+		case *format.EncryptionWithFooterKey:
 			return f.decryption.Keys.FooterKey(nil)
-		case c.CryptoMetadata.EncryptionWithColumnKey != nil:
-			colKey := c.CryptoMetadata.EncryptionWithColumnKey
-			return f.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+		case *format.EncryptionWithColumnKey:
+			return f.decryption.Keys.ColumnKey(crypto.PathInSchema, crypto.KeyMetadata)
 		default:
 			return nil, nil
 		}
 	}
 
 	if columnIndexOffset > 0 {
-		columnIndexData := indexBuffer[:columnIndexLength]
+		columnIndexData := columnIndexBuffer
 
 		if cast, ok := f.reader.(interface{ SetColumnIndexSection(offset, length int64) }); ok {
 			cast.SetColumnIndexSection(columnIndexOffset, columnIndexLength)
@@ -437,7 +464,7 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 					}
 					buffer = plain
 				}
-				if err := thrift.Unmarshal(&f.protocol, buffer, &columnIndexes[(i*numColumns)+j]); err != nil {
+				if err := decode(buffer, &columnIndexes[(i*numColumns)+j]); err != nil {
 					return fmt.Errorf("decoding column index: rowGroup=%d columnChunk=%d/%d: %w", i, j, numColumns, err)
 				}
 			}
@@ -449,7 +476,7 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 	}
 
 	if offsetIndexOffset > 0 {
-		offsetIndexData := indexBuffer[:offsetIndexLength]
+		offsetIndexData := offsetIndexBuffer
 
 		if cast, ok := f.reader.(interface{ SetOffsetIndexSection(offset, length int64) }); ok {
 			cast.SetOffsetIndexSection(offsetIndexOffset, offsetIndexLength)
@@ -478,7 +505,7 @@ func (f *File) ReadPageIndex() ([]format.ColumnIndex, []format.OffsetIndex, erro
 					}
 					buffer = plain
 				}
-				if err := thrift.Unmarshal(&f.protocol, buffer, &offsetIndexes[(i*numColumns)+j]); err != nil {
+				if err := decode(buffer, &offsetIndexes[(i*numColumns)+j]); err != nil {
 					return fmt.Errorf("decoding offset index: rowGroup=%d columnChunk=%d/%d: %w", i, j, numColumns, err)
 				}
 			}
@@ -513,17 +540,16 @@ func (f *File) decryptAllColumnMetadata() error {
 				continue
 			}
 			var key []byte
-			switch {
-			case chunk.CryptoMetadata.EncryptionWithFooterKey != nil:
+			switch crypto := chunk.CryptoMetadata.Value.(type) {
+			case *format.EncryptionWithFooterKey:
 				var err error
 				key, err = f.decryption.Keys.FooterKey(nil)
 				if err != nil {
 					return fmt.Errorf("resolving footer key for column metadata: %w", err)
 				}
-			case chunk.CryptoMetadata.EncryptionWithColumnKey != nil:
-				colKey := chunk.CryptoMetadata.EncryptionWithColumnKey
+			case *format.EncryptionWithColumnKey:
 				var err error
-				key, err = f.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+				key, err = f.decryption.Keys.ColumnKey(crypto.PathInSchema, crypto.KeyMetadata)
 				if err != nil {
 					// Only treat an explicit ErrKeyNotFound as non-fatal: the
 					// caller intentionally omitted this column's key.  Any other
@@ -664,16 +690,15 @@ func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowG
 		}
 		if file.decryption != nil {
 			chunk := &rowGroup.Columns[i]
-			switch {
-			case chunk.CryptoMetadata.EncryptionWithFooterKey != nil:
+			switch crypto := chunk.CryptoMetadata.Value.(type) {
+			case *format.EncryptionWithFooterKey:
 				key, err := file.decryption.Keys.FooterKey(nil)
 				if err != nil {
 					return fmt.Errorf("resolving footer key for column %q: %w", columnPathString(columns[i].Path()), err)
 				}
 				fileColumnChunks[i].decryptionKey = key
-			case chunk.CryptoMetadata.EncryptionWithColumnKey != nil:
-				colKey := chunk.CryptoMetadata.EncryptionWithColumnKey
-				key, err := file.decryption.Keys.ColumnKey(colKey.PathInSchema, colKey.KeyMetadata)
+			case *format.EncryptionWithColumnKey:
+				key, err := file.decryption.Keys.ColumnKey(crypto.PathInSchema, crypto.KeyMetadata)
 				switch {
 				case err == nil:
 					fileColumnChunks[i].decryptionKey = key
@@ -685,7 +710,7 @@ func (g *FileRowGroup) init(file *File, columns []*Column, rowGroup *format.RowG
 					// Real error (KMS failure, bad metadata, …) must surface so
 					// the caller learns the cause instead of seeing later
 					// "decode page header" errors masking the missing key.
-					return fmt.Errorf("resolving column key for %q: %w", columnPathString(colKey.PathInSchema), err)
+					return fmt.Errorf("resolving column key for %q: %w", columnPathString(crypto.PathInSchema), err)
 				}
 			}
 		}
@@ -738,6 +763,11 @@ func (g *FileRowGroup) Rows() Rows {
 	}
 	return NewRowGroupRowReader(rowGroup)
 }
+
+// chunkTransparentRowGroup marks FileRowGroup as safe for the chunk-level write
+// fast paths: its Rows() reads the file column chunks in order with no
+// additional semantics.
+func (g *FileRowGroup) chunkTransparentRowGroup() {}
 
 type fileSortingColumn struct {
 	column     *Column

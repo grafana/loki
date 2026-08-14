@@ -37,6 +37,10 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### `frontend.compress_responses` default changed to `true`
+
+The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
+
 ### Breaking change: Removal of LogQL `variants()` queries
 
 The experimental `variants()` LogQL expression is no longer supported.

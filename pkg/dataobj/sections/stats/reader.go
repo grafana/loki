@@ -271,6 +271,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
 	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeSortSchema:       arrow.BinaryTypes.String,
+	ColumnTypeShardBucket:      arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeRowCount:         arrow.PrimitiveTypes.Int64,

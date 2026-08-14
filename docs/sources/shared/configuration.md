@@ -3678,7 +3678,8 @@ The `frontend` block configures the Loki query-frontend.
 [tail_tls_config: <tls_config>]
 
 # Support 'application/vnd.apache.parquet' content type in HTTP responses.
-[support_parquet_encoding: <boolean>]
+# CLI flag: -frontend.support-parquet-encoding
+[support_parquet_encoding: <boolean> | default = false]
 ```
 
 ### frontend_worker

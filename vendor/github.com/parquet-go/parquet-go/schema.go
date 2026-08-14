@@ -385,14 +385,7 @@ func (s *Schema) Reconstruct(value any, row Row) error {
 		v = v.Elem()
 	}
 
-	b := valuesSliceBufferPool.Get(
-		func() *valuesSliceBuffer {
-			return &valuesSliceBuffer{
-				values: make([][]Value, 0, 64),
-			}
-		},
-		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
-	)
+	b := acquireValuesSliceBuffer()
 
 	state := s.lazyLoadState()
 	funcs := s.lazyLoadFuncs()
@@ -431,6 +424,17 @@ func (v *valuesSliceBuffer) release() {
 }
 
 var valuesSliceBufferPool memory.Pool[valuesSliceBuffer]
+
+func acquireValuesSliceBuffer() *valuesSliceBuffer {
+	return valuesSliceBufferPool.Get(
+		func() *valuesSliceBuffer {
+			return &valuesSliceBuffer{
+				values: make([][]Value, 0, 64),
+			}
+		},
+		func(v *valuesSliceBuffer) { v.values = v.values[:0] },
+	)
+}
 
 // Lookup returns the leaf column at the given path.
 //
@@ -1080,7 +1084,15 @@ func makeNodeOf(path []string, t reflect.Type, name string, tags parquetTags, ta
 					if t == reflect.TypeFor[json.RawMessage]() {
 						throwInvalidTag(t, name, option)
 					}
-					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), tags.getListElementNodeTags(), tagReplacements)
+					elementTags := tags.getListElementNodeTags()
+					if elem := t.Elem(); elem.Kind() == reflect.Slice && elem.Elem().Kind() != reflect.Uint8 && !strings.Contains(elementTags.parquet, "list") {
+						// A nested slice under a list is itself a list: recurse the
+						// list option implicitly so any nesting depth is expressible
+						// with a single `list` tag on the field. An explicit
+						// parquet-element tag still takes precedence.
+						elementTags.parquet += ",list"
+					}
+					element := makeNodeOf(append(path, "list", "element"), t.Elem(), t.Name(), elementTags, tagReplacements)
 					setNode(element)
 					setList()
 				default:
