@@ -4,11 +4,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sort"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // Metadata holds the decoded metadata dictionary for a variant value.
+// Sorted reports whether the dictionary strings were stored in
+// lexicographic order (the sorted_strings header bit).
 type Metadata struct {
 	Strings []string
 	Sorted  bool
@@ -60,7 +62,6 @@ func DecodeMetadata(data []byte) (Metadata, error) {
 		return Metadata{}, fmt.Errorf("variant metadata: dictionary size %d exceeds data", dictSize)
 	}
 
-	// Read (dictSize+1) offsets
 	offsets := make([]int, dictSize+1)
 	for i := range offsets {
 		v, n, err := readUint(data[pos:], offsetSz)
@@ -100,14 +101,22 @@ func (m Metadata) Lookup(id int) (string, error) {
 	return m.Strings[id], nil
 }
 
-// MetadataBuilder builds a variant metadata dictionary.
+// MetadataBuilder builds a variant metadata dictionary. Field names are
+// interned into a single contiguous byte buffer so a high-cardinality key
+// set pays for buffer growth rather than a heap string per key.
 type MetadataBuilder struct {
-	strings []string
-	index   map[string]int
+	buf   []byte // concatenated dictionary strings
+	offs  []int  // start offset of each string in buf; end is offs[i+1] or len(buf)
+	index map[string]int
+	// unsorted is set when some entry compares below its predecessor; it is
+	// tracked incrementally by Add so encoding a large dictionary need not
+	// re-compare every entry.
+	unsorted bool
 }
 
-// Add adds a string to the dictionary and returns its index.
-// If the string already exists, the existing index is returned.
+// Add interns s into the dictionary and returns its stable index. The
+// string is copied into the builder's buffer, so callers may reuse the
+// argument's backing memory after Add returns.
 func (b *MetadataBuilder) Add(s string) int {
 	if b.index == nil {
 		b.index = make(map[string]int)
@@ -115,71 +124,114 @@ func (b *MetadataBuilder) Add(s string) int {
 	if idx, ok := b.index[s]; ok {
 		return idx
 	}
-	idx := len(b.strings)
-	b.strings = append(b.strings, s)
-	b.index[s] = idx
+	if n := len(b.offs); n > 0 && !b.unsorted && b.stringAt(n-1) > s {
+		b.unsorted = true
+	}
+	start := len(b.buf)
+	old := unsafe.SliceData(b.buf)
+	b.buf = append(b.buf, s...)
+	idx := len(b.offs)
+	// Record the new start before any reindex so stringAt can bound the
+	// previous last entry (and this one) correctly against the grown slab.
+	b.offs = append(b.offs, start)
+	if idx > 0 && unsafe.SliceData(b.buf) != old {
+		b.reindex()
+	} else {
+		b.index[b.stringAt(idx)] = idx
+	}
 	return idx
+}
+
+// stringAt returns a view of dictionary entry i into the slab. The view is
+// only valid until the next Add that grows the buffer, or Reset.
+func (b *MetadataBuilder) stringAt(i int) string {
+	start := b.offs[i]
+	end := len(b.buf)
+	if i+1 < len(b.offs) {
+		end = b.offs[i+1]
+	}
+	if end == start {
+		return ""
+	}
+	return unsafe.String(unsafe.SliceData(b.buf[start:end]), end-start)
+}
+
+// reindex rebuilds the lookup map after the slab has been reallocated.
+func (b *MetadataBuilder) reindex() {
+	clear(b.index)
+	for i := range b.offs {
+		b.index[b.stringAt(i)] = i
+	}
 }
 
 // Build returns the decoded Metadata and the encoded binary representation.
 // The dictionary indices in the output match those returned by Add, so
-// encoded values referencing those indices remain valid.
+// encoded values referencing those indices remain valid. The returned
+// Metadata owns its strings and remains valid after Reset.
 func (b *MetadataBuilder) Build() (Metadata, []byte) {
-	n := len(b.strings)
-
-	// Check if the strings happen to be sorted
-	sorted := sort.StringsAreSorted(b.strings)
-
-	// Compute string data and offsets
-	offsets := make([]int, n+1)
-	totalLen := 0
-	for i, s := range b.strings {
-		offsets[i] = totalLen
-		totalLen += len(s)
+	strs := make([]string, len(b.offs))
+	for i := range b.offs {
+		strs[i] = string(b.stringAt(i)) // detach from the slab so Reset cannot invalidate
 	}
-	offsets[n] = totalLen
+	return Metadata{Strings: strs, Sorted: !b.unsorted}, b.AppendTo(nil)
+}
 
-	// Determine offset size
+// AppendTo appends the encoded binary representation of the dictionary to
+// dst and returns the extended slice. The dictionary indices in the output
+// match those returned by Add, so encoded values referencing those indices
+// remain valid.
+//
+// The variant format encodes dictionary offsets in at most 4 bytes, so the
+// interned names must total at most math.MaxUint32 bytes; callers growing
+// the dictionary without bound must check Size before encoding (as
+// Builder.Finish and parquet.VariantColumnWriter do).
+func (b *MetadataBuilder) AppendTo(dst []byte) []byte {
+	n := len(b.offs)
+	totalLen := len(b.buf)
+	sortedBit := byte(0)
+	if !b.unsorted {
+		sortedBit = 1
+	}
+
 	maxOffset := max(totalLen, n)
 	osc := offsetSizeCode(maxOffset)
 	offsetSz := offsetSize(osc)
 
-	// Build the binary blob
-	// header(1) + dict_size(offsetSz) + offsets((n+1)*offsetSz) + string_data(totalLen)
+	// Layout: header(1) + dict_size(offsetSz) + offsets((n+1)*offsetSz) +
+	// string_data(totalLen).
 	size := 1 + offsetSz + (n+1)*offsetSz + totalLen
-	buf := make([]byte, size)
+	base := len(dst)
+	dst = append(dst, make([]byte, size)...)
+	out := dst[base:]
 
 	// Header: version=1, sorted_strings flag at bit 4, offset_size_minus_one
 	// at bits 6-7 (per the spec's metadata encoding grammar).
-	sortedBit := byte(0)
-	if sorted {
-		sortedBit = 1
-	}
-	buf[0] = 1 | (sortedBit << 4) | (osc << 6)
+	out[0] = 1 | (sortedBit << 4) | (osc << 6)
 
 	pos := 1
-	writeUint(buf[pos:], n, offsetSz)
+	writeUint(out[pos:], n, offsetSz)
 	pos += offsetSz
 
-	for _, off := range offsets {
-		writeUint(buf[pos:], off, offsetSz)
+	for _, off := range b.offs {
+		writeUint(out[pos:], off, offsetSz)
 		pos += offsetSz
 	}
+	writeUint(out[pos:], totalLen, offsetSz)
+	pos += offsetSz
 
-	for _, s := range b.strings {
-		copy(buf[pos:], s)
-		pos += len(s)
-	}
-
-	return Metadata{Strings: b.strings, Sorted: sorted}, buf
+	copy(out[pos:], b.buf)
+	return dst
 }
 
-// Reset clears the builder for reuse.
+// Size returns the total number of bytes of interned dictionary strings.
+func (b *MetadataBuilder) Size() int { return len(b.buf) }
+
+// Reset clears the builder for reuse, retaining the string buffer's capacity.
 func (b *MetadataBuilder) Reset() {
-	b.strings = b.strings[:0]
-	for k := range b.index {
-		delete(b.index, k)
-	}
+	b.buf = b.buf[:0]
+	b.offs = b.offs[:0]
+	b.unsorted = false
+	clear(b.index)
 }
 
 // readUint reads an unsigned integer of the given byte width from data. Note
