@@ -56,6 +56,8 @@ func (s *Stream) Reset() {
 
 const shardFactor = 32
 
+var shardBits = int(math.Log2(shardFactor))
+
 var streamPool = sync.Pool{
 	New: func() interface{} {
 		return &Stream{}
@@ -223,7 +225,6 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 
 // ShardBucket returns the physical shard bucket for streamLabels.
 func ShardBucket(streamLabels labels.Labels) uint64 {
-	shardBits := int(math.Log2(shardFactor))
 	fp := labels.StableHash(streamLabels)
 	return fp >> (64 - shardBits)
 }
