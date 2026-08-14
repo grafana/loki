@@ -164,10 +164,16 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := "success"
+	defer func() {
+		i.metrics.flushTenantRequestsTotal.WithLabelValues(tenantID, status).Inc()
+	}()
+
 	var matchers []*labels.Matcher
 	if streams := r.URL.Query().Get("streams"); streams != "" {
 		matchers, err = syntax.ParseMatchers(streams, true)
 		if err != nil {
+			status = "failure"
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -187,6 +193,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 		fps = append(fps, s.fp)
 		return nil
 	}); err != nil {
+		status = "failure"
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -194,6 +201,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	level.Info(i.logger).Log("msg", "flushing tenant streams", "tenant", tenantID, "streams", len(fps))
 
 	if err := i.flushMatchedStreamsChunks(tenantID, fps); err != nil {
+		status = "failure"
 		level.Error(i.logger).Log("msg", "failed flushing tenant streams", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -202,6 +210,7 @@ func (i *Ingester) FlushTenantHandler(w http.ResponseWriter, r *http.Request) {
 	// Force the in-memory index to be built and shipped so the just-flushed
 	// chunks are referenceable from object storage.
 	if err := i.store.FlushIndexes(ctx); err != nil {
+		status = "failure"
 		level.Error(i.logger).Log("msg", "failed flushing index", "tenant", tenantID, "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -50,6 +50,7 @@ type ingesterMetrics struct {
 	chunkEncodeTime               prometheus.Histogram
 	chunksFlushFailures           prometheus.Counter
 	chunksFlushRequestsTotal      prometheus.Counter
+	flushTenantRequestsTotal      *prometheus.CounterVec
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
 	chunksEncoded                 *prometheus.CounterVec
@@ -253,6 +254,11 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "ingester_chunks_flush_requests_total",
 			Help:      "Total number of flush requests (successful or not).",
 		}),
+		flushTenantRequestsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_flush_tenant_requests_total",
+			Help:      "Total number of tenant flush (/flush/tenant) requests, partitioned by tenant and status.",
+		}, []string{"user", "status"}),
 		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_flushed_total",
