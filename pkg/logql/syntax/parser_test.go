@@ -3271,110 +3271,6 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
-	{
-		in: `variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"}[5m])`,
-		exp: &MultiVariantExpr{
-			logRange: &LogRangeExpr{
-				Left: &MatchersExpr{
-					Mts: []*labels.Matcher{
-						{
-							Name:  "foo",
-							Value: "bar",
-							Type:  labels.MatchEqual,
-						},
-					},
-				},
-				Interval: 5 * time.Minute,
-				Offset:   0,
-				Unwrap:   nil,
-			},
-			variants: []SampleExpr{
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeCount,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-				&RangeAggregationExpr{
-					Left: &LogRangeExpr{
-						Left: &MatchersExpr{
-							Mts: []*labels.Matcher{
-								{
-									Name:  "foo",
-									Value: "bar",
-									Type:  labels.MatchEqual,
-								},
-							},
-						},
-						Interval: 5 * time.Minute,
-						Offset:   0,
-						Unwrap:   nil,
-					},
-					Operation: OpRangeTypeRate,
-					Params:    new(float64),
-					Grouping:  &Grouping{},
-					err:       nil,
-				},
-			},
-		},
-		err: nil,
-	},
 }
 
 func TestParse(t *testing.T) {
@@ -3524,56 +3420,54 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	expr, err := ParseSampleExpr(query)
 	require.Nil(b, err)
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
 	require.Nil(b, err)
 
-	for _, p := range extractors {
-		sp := p.ForStream(labels.EmptyLabels())
-		var (
-			samples []log.ExtractedSample
-			v       float64
-			lbs     log.LabelsResult
-			matches bool
-		)
-		in := []byte(
-			`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
-		)
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			samples, matches = sp.Process(0, in, labels.EmptyLabels())
-		}
-
-		v = samples[0].Value
-		lbs = samples[0].Labels
-
-		require.True(b, matches)
-		require.Equal(
-			b,
-			labels.FromStrings(
-				"caller",
-				"logging.go:66",
-				"duration",
-				"1.5s",
-				"level",
-				"debug",
-				"method",
-				"POST",
-				"msg",
-				"POST /api/prom/api/v1/query_range (200) 1.5s",
-				"path",
-				"/api/prom/api/v1/query_range",
-				"status",
-				"200",
-				"traceID",
-				"a9d4d8a928d8db1",
-				"ts",
-				"2020-10-02T10:10:42.092268913Z",
-			),
-			lbs.Labels(),
-		)
-		require.Equal(b, 1.0, v)
+	sp := extractor.ForStream(labels.EmptyLabels())
+	var (
+		sample  log.ExtractedSample
+		v       float64
+		lbs     log.LabelsResult
+		matches bool
+	)
+	in := []byte(
+		`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
+	)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sample, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
+
+	v = sample.Value
+	lbs = sample.Labels
+
+	require.True(b, matches)
+	require.Equal(
+		b,
+		labels.FromStrings(
+			"caller",
+			"logging.go:66",
+			"duration",
+			"1.5s",
+			"level",
+			"debug",
+			"method",
+			"POST",
+			"msg",
+			"POST /api/prom/api/v1/query_range (200) 1.5s",
+			"path",
+			"/api/prom/api/v1/query_range",
+			"status",
+			"200",
+			"traceID",
+			"a9d4d8a928d8db1",
+			"ts",
+			"2020-10-02T10:10:42.092268913Z",
+		),
+		lbs.Labels(),
+	)
+	require.Equal(b, 1.0, v)
 }
 
 var c []*labels.Matcher
@@ -3780,4 +3674,22 @@ func TestParseSampleExpr_String(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, query, expr.String())
 	})
+}
+
+// TestParseUnreservedWordsAsLabelNames pins that `variants` and `of` are usable
+// as label names. Reserving a word in the grammar makes every query over a
+// stream that uses it as a label fail to parse, and `of` in particular is a
+// tempting name for a future clause.
+func TestParseUnreservedWordsAsLabelNames(t *testing.T) {
+	for _, query := range []string{
+		`{variants="a"}`,
+		`{of="a"}`,
+		`sum by (variants, of) (count_over_time({foo="bar"}[5m]))`,
+		`{foo="bar"} | logfmt | of = "a" | variants = "b"`,
+	} {
+		t.Run(query, func(t *testing.T) {
+			_, err := ParseExpr(query)
+			require.NoError(t, err)
+		})
+	}
 }

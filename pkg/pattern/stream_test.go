@@ -130,6 +130,144 @@ func TestAddStream(t *testing.T) {
 	require.Equal(t, int64(2), res.Series[0].Samples[0].Value)
 }
 
+func TestLazyDrainCreation(t *testing.T) {
+	newTestStream := func(t *testing.T) *stream {
+		t.Helper()
+		lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+		s, err := newStream(
+			model.Fingerprint(labels.StableHash(lbs)),
+			lbs,
+			newIngesterMetrics(nil, "test"),
+			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
+			drain.DefaultConfig(),
+			&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
+			nil,
+			aggregation.NewMetrics(nil),
+			0.99,
+		)
+		require.NoError(t, err)
+		return s
+	}
+
+	entryAt := func(ts int64, line, level string) push.Entry {
+		e := push.Entry{Timestamp: time.Unix(ts, 0), Line: line}
+		if level != "" {
+			e.StructuredMetadata = []logproto.LabelAdapter{
+				{Name: constants.LevelLabel, Value: level},
+			}
+		}
+		return e
+	}
+
+	t.Run("no drains allocated until first push", func(t *testing.T) {
+		s := newTestStream(t)
+		require.Empty(t, s.patterns)
+	})
+
+	t.Run("single level creates exactly one drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", constants.LogLevelInfo),
+			entryAt(2, "ts=2 msg=hello", constants.LogLevelInfo),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelInfo)
+		require.NotNil(t, s.patterns[constants.LogLevelInfo])
+	})
+
+	t.Run("missing level metadata uses unknown drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", ""),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelUnknown)
+	})
+
+	t.Run("unknown custom level falls back to unknown drain", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", "not-a-real-level"),
+		}))
+		require.Len(t, s.patterns, 1)
+		require.Contains(t, s.patterns, constants.LogLevelUnknown)
+		require.NotContains(t, s.patterns, "not-a-real-level")
+	})
+
+	t.Run("all eight log levels create eight drains", func(t *testing.T) {
+		require.Len(t, constants.LogLevels, 8, "test assumes eight known log levels")
+
+		s := newTestStream(t)
+		entries := make([]push.Entry, 0, len(constants.LogLevels)*2)
+		for i, lvl := range constants.LogLevels {
+			// Distinct lines per level so each Drain forms its own cluster.
+			line := fmt.Sprintf("level=%s event=unique_%s value=%d", lvl, lvl, i)
+			entries = append(entries,
+				entryAt(int64(i*2+1), line, lvl),
+				entryAt(int64(i*2+2), line, lvl),
+			)
+		}
+		require.NoError(t, s.Push(context.Background(), entries))
+
+		require.Len(t, s.patterns, len(constants.LogLevels))
+		for _, lvl := range constants.LogLevels {
+			require.Contains(t, s.patterns, lvl, "expected drain for level %q", lvl)
+			require.NotEmpty(t, s.patterns[lvl].Clusters(), "expected trained clusters for level %q", lvl)
+		}
+
+		it, err := s.Iterator(context.Background(), model.Earliest, model.Latest, model.Time(time.Second))
+		require.NoError(t, err)
+		res, err := iter.ReadAll(it)
+		require.NoError(t, err)
+		require.Len(t, res.Series, len(constants.LogLevels),
+			"iterator should return one series per level that was trained")
+
+		seenLevels := make(map[string]struct{}, len(res.Series))
+		for _, series := range res.Series {
+			seenLevels[series.Level] = struct{}{}
+			require.Equal(t, int64(2), series.Samples[0].Value,
+				"each level was pushed twice with the same line")
+		}
+		for _, lvl := range constants.LogLevels {
+			require.Contains(t, seenLevels, lvl)
+		}
+	})
+
+	t.Run("repeated pushes for existing levels do not allocate more drains", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "ts=1 msg=hello", constants.LogLevelError),
+			entryAt(2, "ts=2 msg=world", constants.LogLevelWarn),
+		}))
+		require.Len(t, s.patterns, 2)
+		firstError, firstWarn := s.patterns[constants.LogLevelError], s.patterns[constants.LogLevelWarn]
+
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(3, "ts=3 msg=hello", constants.LogLevelError),
+			entryAt(4, "ts=4 msg=world", constants.LogLevelWarn),
+		}))
+		require.Len(t, s.patterns, 2)
+		require.Same(t, firstError, s.patterns[constants.LogLevelError])
+		require.Same(t, firstWarn, s.patterns[constants.LogLevelWarn])
+	})
+
+	t.Run("patterns stay isolated across levels", func(t *testing.T) {
+		s := newTestStream(t)
+		require.NoError(t, s.Push(context.Background(), []push.Entry{
+			entryAt(1, "aaaa bbbb cccc dddd", constants.LogLevelInfo),
+			entryAt(2, "wwww xxxx yyyy zzzz", constants.LogLevelError),
+		}))
+
+		infoClusters := s.patterns[constants.LogLevelInfo].Clusters()
+		errorClusters := s.patterns[constants.LogLevelError].Clusters()
+		require.Len(t, infoClusters, 1)
+		require.Len(t, errorClusters, 1)
+		require.NotEqual(t, infoClusters[0].String(), errorClusters[0].String())
+	})
+}
+
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
 	mockWriter := &mockEntryWriter{}
@@ -176,6 +314,50 @@ func TestPruneStream(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Series))
 	require.Equal(t, int64(1), res.Series[0].Samples[0].Value)
+}
+
+// TestPruneStreamMultipleClustersInSameLevel guards against a regression where
+// totalClusters was tallied once per cluster processed (an intermediate,
+// partially-pruned snapshot) instead of once per level after all of that
+// level's clusters were pruned. With a single cluster the two approaches
+// happen to agree, which is why TestPruneStream didn't catch it: two or more
+// clusters in the same level aging out together is required to tell them
+// apart.
+func TestPruneStreamMultipleClustersInSameLevel(t *testing.T) {
+	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	stream, err := newStream(
+		model.Fingerprint(labels.StableHash(lbs)),
+		lbs,
+		newIngesterMetrics(nil, "test"),
+		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drain.DefaultConfig(),
+		&fakeLimits{patternRateThreshold: 1.0, persistenceGranularity: time.Hour},
+		mockWriter,
+		aggregation.NewMetrics(nil),
+		0.99,
+	)
+	require.NoError(t, err)
+
+	// Two distinct patterns produce two distinct clusters in the same
+	// ("unknown") level, both old enough to be pruned away in one sweep.
+	err = stream.Push(context.Background(), []push.Entry{
+		{Timestamp: time.Unix(20, 0), Line: "aaaa bbbb cccc dddd"},
+		{Timestamp: time.Unix(20, 0), Line: "wwww xxxx yyyy zzzz"},
+	})
+	require.NoError(t, err)
+
+	clusters := 0
+	for _, p := range stream.patterns {
+		clusters += len(p.Clusters())
+	}
+	require.Equal(t, 2, clusters, "expected 2 distinct clusters before pruning")
+
+	require.True(t, stream.prune(time.Hour),
+		"stream has zero clusters left in every level; prune() should report it as empty")
 }
 
 func TestStreamPruneFiltersLowVolumePatterns(t *testing.T) {

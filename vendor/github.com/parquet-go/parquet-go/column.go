@@ -210,6 +210,7 @@ func (c *Column) forEachLeaf(do func(*Column)) {
 
 func openColumns(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex) (*Column, error) {
 	cl := columnLoader{}
+	cl.reserve(metadata, columnIndexes, offsetIndexes)
 
 	c, err := cl.open(file, metadata, columnIndexes, offsetIndexes, nil)
 	if err != nil {
@@ -282,14 +283,104 @@ type columnLoader struct {
 	schemaIndex         int
 	columnOrderIndex    int
 	rowGroupColumnIndex int
+
+	// The shape of the column tree is fully determined by the schema, so its
+	// parts are allocated once here and handed out in slices as the tree is
+	// built. A file with C schema elements, L of them leaves, and R row groups
+	// used to cost C + 2*(C-1) + 3*L allocations; it now costs six.
+	columns     []Column
+	children    []*Column
+	fields      []Field
+	chunks      []*format.ColumnChunk
+	columnIndex []*format.ColumnIndex
+	offsetIndex []*format.OffsetIndex
+	// paths backs every column's path. A column's path is its parent's path
+	// plus its own name, so the segments across the whole tree sum to a size
+	// the schema determines up front.
+	paths []string
+}
+
+func (cl *columnLoader) reserve(metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex) {
+	numColumns := len(metadata.Schema)
+	if numColumns == 0 {
+		return
+	}
+	// Walk the schema in its depth-first order to count leaves and to sum the
+	// path lengths: a node at depth d has a path of d+1 names, and remaining
+	// tracks how many children are still open at each ancestor level, so its
+	// length is the current depth.
+	numLeaves := 0
+	pathSegments := 0
+	// remaining tracks the open-children counts per ancestor level; its cap
+	// keeps the common shallow schema on the stack, a deeper one grows to heap.
+	remaining := make([]int32, 0, 16)
+	for i := range metadata.Schema {
+		pathSegments += len(remaining) + 1
+		if isLeafSchemaElement(&metadata.Schema[i]) {
+			numLeaves++
+		}
+		if n := metadata.Schema[i].NumChildren; n.Valid && n.V > 0 {
+			remaining = append(remaining, n.V)
+		} else {
+			// A leaf closes itself and any ancestors whose last child it was.
+			for len(remaining) > 0 {
+				remaining[len(remaining)-1]--
+				if remaining[len(remaining)-1] > 0 {
+					break
+				}
+				remaining = remaining[:len(remaining)-1]
+			}
+		}
+	}
+	numRowGroups := len(metadata.RowGroups)
+
+	cl.columns = make([]Column, numColumns)
+	// Every column but the root is a child of exactly one group, and appears
+	// once in that group's fields.
+	cl.children = make([]*Column, numColumns-1)
+	cl.fields = make([]Field, numColumns-1)
+	cl.paths = make([]string, pathSegments)
+
+	if n := numLeaves * numRowGroups; n > 0 {
+		cl.chunks = make([]*format.ColumnChunk, n)
+		if len(columnIndexes) > 0 {
+			cl.columnIndex = make([]*format.ColumnIndex, n)
+		}
+		if len(offsetIndexes) > 0 {
+			cl.offsetIndex = make([]*format.OffsetIndex, n)
+		}
+	}
+}
+
+// allocate cuts the first n elements off the front of the slab and returns them
+// with their capacity clamped, so that appending to the result cannot reach into
+// the rest of the slab.
+//
+// The caller must have reserved room for n; a slab shorter than that is a
+// programming error and panics. Every slab is sized from the schema, and the
+// only value the schema does not bound is a group's NumChildren, which open
+// checks against the children slab before allocating from it.
+func allocate[T any](slab *[]T, n int) []T {
+	taken := (*slab)[:n:n]
+	*slab = (*slab)[n:]
+	return taken
 }
 
 func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIndexes []format.ColumnIndex, offsetIndexes []format.OffsetIndex, path []string) (*Column, error) {
-	c := &Column{
-		file:   file,
-		schema: &metadata.Schema[cl.schemaIndex],
+	if cl.schemaIndex >= len(cl.columns) {
+		return nil, fmt.Errorf("column schema index %d is out of range: %d >= %d",
+			cl.schemaIndex, cl.schemaIndex, len(cl.columns))
 	}
-	c.path = columnPath(path).append(c.schema.Name)
+	c := &cl.columns[cl.schemaIndex]
+	c.file = file
+	c.schema = &metadata.Schema[cl.schemaIndex]
+
+	// A column's path is its parent's path plus its own name, cut from the
+	// shared slab rather than concatenated into a fresh slice per column.
+	p := allocate(&cl.paths, len(path)+1)
+	copy(p, path)
+	p[len(path)] = c.schema.Name
+	c.path = columnPath(p)
 
 	cl.schemaIndex++
 	numChildren := 0
@@ -309,32 +400,32 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 		rowGroupColumnIndex := cl.rowGroupColumnIndex
 		cl.rowGroupColumnIndex++
 
-		c.chunks = make([]*format.ColumnChunk, 0, len(rowGroups))
-		c.columnIndex = make([]*format.ColumnIndex, 0, len(rowGroups))
-		c.offsetIndex = make([]*format.OffsetIndex, 0, len(rowGroups))
+		c.chunks = allocate(&cl.chunks, len(rowGroups))
 
 		for i, rowGroup := range rowGroups {
 			if rowGroupColumnIndex >= len(rowGroup.Columns) {
 				return nil, fmt.Errorf("row group at index %d does not have enough columns", i)
 			}
-			c.chunks = append(c.chunks, &rowGroup.Columns[rowGroupColumnIndex])
+			c.chunks[i] = &rowGroup.Columns[rowGroupColumnIndex]
 		}
 
 		if len(columnIndexes) > 0 {
+			c.columnIndex = allocate(&cl.columnIndex, len(rowGroups))
 			for i := range rowGroups {
 				if rowGroupColumnIndex >= len(columnIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough column index pages", i)
 				}
-				c.columnIndex = append(c.columnIndex, &columnIndexes[rowGroupColumnIndex])
+				c.columnIndex[i] = &columnIndexes[rowGroupColumnIndex]
 			}
 		}
 
 		if len(offsetIndexes) > 0 {
+			c.offsetIndex = allocate(&cl.offsetIndex, len(rowGroups))
 			for i := range rowGroups {
 				if rowGroupColumnIndex >= len(offsetIndexes) {
 					return nil, fmt.Errorf("row group at index %d does not have enough offset index pages", i)
 				}
-				c.offsetIndex = append(c.offsetIndex, &offsetIndexes[rowGroupColumnIndex])
+				c.offsetIndex[i] = &offsetIndexes[rowGroupColumnIndex]
 			}
 		}
 
@@ -351,6 +442,17 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 			// the page headers to determine which compression and encodings are
 			// applied.
 			for _, encoding := range c.chunks[0].MetaData.Encoding {
+				// BIT_PACKED appears in the encodings list when the
+				// deprecated bit-packed encoding was used for repetition
+				// or definition levels. Encodings.md: "Note that the
+				// BIT_PACKED encoding method is only supported for
+				// encoding repetition and definition levels." It is never
+				// a data page encoding, so it must not be reported as the
+				// column encoding (it would make schemas derived from
+				// this file unwritable).
+				if encoding == format.BitPacked {
+					continue
+				}
 				if c.encoding == nil {
 					c.encoding = LookupEncoding(encoding)
 				}
@@ -366,21 +468,37 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 	}
 
 	c.typ = &groupType{}
-	if lt := c.schema.LogicalType; lt.Valid && lt.V.Map != nil {
+	switch c.schema.LogicalType.Value.(type) {
+	case *format.MapType:
 		c.typ = &mapType{}
-	} else if lt.Valid && lt.V.List != nil {
+	case *format.ListType:
 		c.typ = &listType{}
-	} else if lt.Valid && lt.V.Variant != nil {
+	case *format.VariantType:
 		c.typ = &variantType{}
-	} else if ct := c.schema.ConvertedType; ct.Valid {
-		switch ct.V {
-		case deprecated.Map:
-			c.typ = &mapType{}
-		case deprecated.List:
-			c.typ = &listType{}
+	default:
+		// Fall back on the deprecated converted type when the schema element
+		// carries no logical type annotation we recognize.
+		if ct := c.schema.ConvertedType; ct.Valid {
+			switch ct.V {
+			case deprecated.Map:
+				c.typ = &mapType{}
+			case deprecated.List:
+				c.typ = &listType{}
+			}
 		}
 	}
-	c.columns = make([]*Column, numChildren)
+	// Bound NumChildren by what the children slab has left rather than by the
+	// schema elements that remain. Only the slab bounds the total across every
+	// group: a schema where each group's claim fits the elements after it can
+	// still claim more children in total than the schema has to give.
+	if numChildren > len(cl.children) {
+		return nil, fmt.Errorf("column %q declares %d children but only %d schema elements are left to be children",
+			c.schema.Name, numChildren, len(cl.children))
+	}
+
+	// Reserve this group's children before recursing, so that a child's own
+	// children are cut from the slab after ours rather than overlapping them.
+	c.columns = allocate(&cl.children, numChildren)
 
 	for i := range c.columns {
 		if cl.schemaIndex >= len(metadata.Schema) {
@@ -395,7 +513,7 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 		}
 	}
 
-	c.fields = make([]Field, len(c.columns))
+	c.fields = allocate(&cl.fields, len(c.columns))
 	for i, column := range c.columns {
 		c.fields[i] = column
 	}
@@ -414,66 +532,63 @@ func isLeafSchemaElement(element *format.SchemaElement) bool {
 }
 
 func schemaElementTypeOf(s *format.SchemaElement) Type {
-	if s.LogicalType.Valid {
-		lt := &s.LogicalType.V
-		// A logical type exists, the Type interface implementations in this
-		// package are all based on the logical parquet types declared in the
-		// format sub-package so we can return them directly via a pointer type
-		// conversion.
-		switch {
-		case lt.UTF8 != nil:
-			return (*stringType)(lt.UTF8)
-		case lt.Map != nil:
-			return (*mapType)(lt.Map)
-		case lt.List != nil:
-			return (*listType)(lt.List)
-		case lt.Enum != nil:
-			return (*enumType)(lt.Enum)
-		case lt.Decimal != nil:
-			// A parquet decimal can be one of several different physical types.
-			if s.Type.Valid {
-				var typ Type
-				switch kind := Kind(s.Type.V); kind {
-				case Int32:
-					typ = Int32Type
-				case Int64:
-					typ = Int64Type
-				case ByteArray:
-					typ = ByteArrayType
-				case FixedLenByteArray:
-					if !s.TypeLength.Valid {
-						panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
-					}
-					typ = FixedLenByteArrayType(int(s.TypeLength.V))
-				default:
-					panic("DECIMAL must be of type INT32, INT64, BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
+	// A logical type exists, the Type interface implementations in this
+	// package are all based on the logical parquet types declared in the
+	// format sub-package so we can return them directly via a pointer type
+	// conversion.
+	switch lt := s.LogicalType.Value.(type) {
+	case *format.StringType:
+		return (*stringType)(lt)
+	case *format.MapType:
+		return (*mapType)(lt)
+	case *format.ListType:
+		return (*listType)(lt)
+	case *format.EnumType:
+		return (*enumType)(lt)
+	case *format.DecimalType:
+		// A parquet decimal can be one of several different physical types.
+		if s.Type.Valid {
+			var typ Type
+			switch kind := Kind(s.Type.V); kind {
+			case Int32:
+				typ = Int32Type
+			case Int64:
+				typ = Int64Type
+			case ByteArray:
+				typ = ByteArrayType
+			case FixedLenByteArray:
+				if !s.TypeLength.Valid {
+					panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 				}
-				return &decimalType{
-					decimal: *lt.Decimal,
-					Type:    typ,
-				}
+				typ = FixedLenByteArrayType(int(s.TypeLength.V))
+			default:
+				panic("DECIMAL must be of type INT32, INT64, BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
 			}
-		case lt.Date != nil:
-			return (*dateType)(lt.Date)
-		case lt.Time != nil:
-			return (*timeType)(lt.Time)
-		case lt.Timestamp != nil:
-			return (*timestampType)(lt.Timestamp)
-		case lt.Integer != nil:
-			return (*intType)(lt.Integer)
-		case lt.Unknown != nil:
-			return (*nullType)(lt.Unknown)
-		case lt.Json != nil:
-			return (*jsonType)(lt.Json)
-		case lt.Bson != nil:
-			return (*bsonType)(lt.Bson)
-		case lt.UUID != nil:
-			return (*uuidType)(lt.UUID)
-		case lt.Geometry != nil:
-			return (*geometryType)(lt.Geometry)
-		case lt.Geography != nil:
-			return (*geographyType)(lt.Geography)
+			return &decimalType{
+				decimal: *lt,
+				Type:    typ,
+			}
 		}
+	case *format.DateType:
+		return (*dateType)(lt)
+	case *format.TimeType:
+		return canonicalTimeType(lt)
+	case *format.TimestampType:
+		return canonicalTimestampType(lt)
+	case *format.IntType:
+		return canonicalIntType(lt)
+	case *format.NullType:
+		return (*nullType)(lt)
+	case *format.JsonType:
+		return (*jsonType)(lt)
+	case *format.BsonType:
+		return (*bsonType)(lt)
+	case *format.UUIDType:
+		return (*uuidType)(lt)
+	case *format.GeometryType:
+		return (*geometryType)(lt)
+	case *format.GeographyType:
+		return (*geographyType)(lt)
 	}
 
 	if s.ConvertedType.Valid {
@@ -768,6 +883,12 @@ func (c *Column) decodeDataPage(header DataPageHeader, numValues int, repetition
 		return nil, err
 	}
 
+	if !isDictionaryEncoding(pageEncoding) {
+		if err := checkPageDataCapacity(pageKind, c.Type().Length(), numValues, values); err != nil {
+			return nil, err
+		}
+	}
+
 	newPage := pageType.NewPage(c.Index(), numValues, values)
 	switch {
 	case c.maxRepetitionLevel > 0:
@@ -865,7 +986,35 @@ func (c *Column) decodeDictionary(header DictionaryPageHeader, page *buffer[byte
 	if err != nil {
 		return nil, err
 	}
+	if err := checkPageDataCapacity(pageType.Kind(), pageType.Length(), numValues, values); err != nil {
+		return nil, err
+	}
 	return pageType.NewDictionary(int(c.index), numValues, values), nil
+}
+
+// check data buffer has enough capacity for the nubmer of values & value type
+func checkPageDataCapacity(kind Kind, typeLength, numValues int, values encoding.Values) error {
+	n := int64(numValues)
+	var need int64
+	switch kind {
+	case Boolean: // bit packed
+		need = (n + 7) / 8
+	case Int32, Float:
+		need = 4 * n
+	case Int64, Double:
+		need = 8 * n
+	case Int96:
+		need = 12 * n
+	case FixedLenByteArray:
+		need = int64(typeLength) * n
+	default:
+		return nil
+	}
+	data, _ := values.Data()
+	if int64(cap(data)) < need {
+		return fmt.Errorf("page header declares %d values requiring %d bytes but decoded buffer holds only %d: %w", numValues, need, cap(data), ErrCorrupted)
+	}
+	return nil
 }
 
 var _ Node = (*Column)(nil)

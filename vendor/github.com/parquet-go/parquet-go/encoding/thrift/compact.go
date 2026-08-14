@@ -16,7 +16,7 @@ import (
 // https://github.com/apache/thrift/blob/master/doc/specs/thrift-compact-protocol.md#integer-encoding
 type CompactProtocol struct{}
 
-func (p *CompactProtocol) NewReaderFromBytes(b []byte) Reader {
+func (p *CompactProtocol) NewReaderFromBytes(b []byte) BytesReader {
 	return &compactBytesReader{protocol: p, data: b}
 }
 
@@ -372,12 +372,29 @@ type compactBytesReader struct {
 	offset   int
 }
 
+func (r *compactBytesReader) ResetBytes(b []byte) {
+	r.data = b
+	r.offset = 0
+}
+
 func (r *compactBytesReader) Protocol() Protocol {
 	return r.protocol
 }
 
 func (r *compactBytesReader) Reader() io.Reader {
 	return bytes.NewReader(r.data[r.offset:])
+}
+
+// Discard advances the reader past the next n bytes, reporting how many
+// bytes were discarded. Unlike reading through Reader(), it moves the
+// reader's own offset, which skip operations rely on.
+func (r *compactBytesReader) Discard(n int) (int, error) {
+	if remain := len(r.data) - r.offset; remain < n {
+		r.offset = len(r.data)
+		return remain, io.ErrUnexpectedEOF
+	}
+	r.offset += n
+	return n, nil
 }
 
 func (r *compactBytesReader) ReadBool() (bool, error) {

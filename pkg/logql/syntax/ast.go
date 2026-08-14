@@ -62,7 +62,6 @@ func (LogfmtExpressionParserExpr) isExpr() {}
 func (LogRangeExpr) isExpr()               {}
 func (OffsetExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
 func (UnwrapExpr) isExpr()                 {} //nolint:unused // sealed-interface marker
-func (MultiVariantExpr) isExpr()           {}
 
 // LogSelectorExpr is a expression filtering and returning logs.
 type LogSelectorExpr interface {
@@ -84,7 +83,10 @@ func (VectorExpr) isLogSelectorExpr()     {}
 // SampleExpr is a LogQL expression filtering logs and returning metric samples
 type SampleExpr interface {
 	Selector() (LogSelectorExpr, error)
-	Extractors() ([]SampleExtractor, error)
+	// Extractor returns the extractor to pull samples out of log lines. It is nil
+	// for expressions that produce samples without reading logs, such as a literal
+	// or a vector.
+	Extractor() (SampleExtractor, error)
 	MatcherGroups() ([]MatcherRange, error)
 
 	Expr
@@ -97,7 +99,6 @@ func (VectorAggregationExpr) isSampleExpr() {}
 func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
 func (LabelReplaceExpr) isSampleExpr()      {}
-func (MultiVariantExpr) isSampleExpr()      {}
 
 // StageExpr is an expression defining a single step into a log pipeline
 type StageExpr interface {
@@ -1313,10 +1314,6 @@ const (
 
 	// probabilistic aggregations
 	OpTypeApproxTopK = "approx_topk"
-
-	// variants
-	OpVariants = "variants"
-	VariantsOf = "of"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1576,7 +1573,7 @@ func (e *VectorAggregationExpr) Selector() (LogSelectorExpr, error) {
 	return e.Left.Selector()
 }
 
-func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
+func (e *VectorAggregationExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
 		return nil, e.err
 	}
@@ -1585,14 +1582,10 @@ func (e *VectorAggregationExpr) Extractors() ([]SampleExtractor, error) {
 	if r, ok := e.Left.(*RangeAggregationExpr); ok && canInjectVectorGrouping(e.Operation, r.Operation) {
 		// if the range vec operation has no grouping we can push down the vec one.
 		if r.Grouping == nil {
-			ext, err := r.extractor(e.Grouping)
-			if err != nil {
-				return []SampleExtractor{}, err
-			}
-			return []SampleExtractor{ext}, nil
+			return r.extractor(e.Grouping)
 		}
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
 // canInjectVectorGrouping tells if a vector operation can inject grouping into the nested range vector.
@@ -2148,8 +2141,8 @@ func (e *LiteralExpr) Accept(v RootVisitor)                   { v.VisitLiteral(e
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *LiteralExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
-func (e *LiteralExpr) Extractors() ([]log.SampleExtractor, error) {
-	return []log.SampleExtractor{}, e.err
+func (e *LiteralExpr) Extractor() (log.SampleExtractor, error) {
+	return nil, e.err
 }
 func (e *LiteralExpr) Value() (float64, error) {
 	if e.err != nil {
@@ -2220,11 +2213,11 @@ func (e *LabelReplaceExpr) MatcherGroups() ([]MatcherRange, error) {
 	return e.Left.MatcherGroups()
 }
 
-func (e *LabelReplaceExpr) Extractors() ([]SampleExtractor, error) {
+func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
 	if e.err != nil {
-		return []SampleExtractor{}, e.err
+		return nil, e.err
 	}
-	return e.Left.Extractors()
+	return e.Left.Extractor()
 }
 
 func (e *LabelReplaceExpr) Shardable(_ bool) bool {
@@ -2376,7 +2369,7 @@ func (e *VectorExpr) Pipeline() (log.Pipeline, error)        { return log.NewNoo
 func (e *VectorExpr) Matchers() []*labels.Matcher            { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error) { return nil, e.err }
 
-func (e *VectorExpr) Extractors() ([]log.SampleExtractor, error) { return []log.SampleExtractor{}, nil }
+func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
 	e.Walk(func(e Expr) bool {
@@ -2482,182 +2475,4 @@ func groupingReducesLabels(grp *Grouping) bool {
 	}
 
 	return false
-}
-
-// VariantsExpr is a LogQL expression that can produce multiple streams, defined by a set of variants,
-// over a single log selector.
-//
-//sumtype:decl
-type VariantsExpr interface {
-	Extractors() ([]SampleExtractor, error)
-	Interval() time.Duration
-	LogRange() *LogRangeExpr
-	MatcherGroups() ([]MatcherRange, error)
-	Matchers() []*labels.Matcher
-	Offset() time.Duration
-	SetVariant(i int, e SampleExpr) error
-	Variants() []SampleExpr
-	Selector() (LogSelectorExpr, error)
-	Expr
-}
-
-type MultiVariantExpr struct {
-	logRange *LogRangeExpr
-	variants []SampleExpr
-	err      error
-}
-
-func NewMultiVariantExpr(
-	logRange *LogRangeExpr,
-	variants []SampleExpr,
-) MultiVariantExpr {
-	return MultiVariantExpr{
-		logRange: logRange,
-		variants: variants,
-	}
-}
-
-func (m *MultiVariantExpr) LogRange() *LogRangeExpr {
-	return m.logRange
-}
-
-func (m *MultiVariantExpr) SetLogSelector(e *LogRangeExpr) {
-	m.logRange = e
-}
-
-func (m *MultiVariantExpr) Matchers() []*labels.Matcher {
-	return m.logRange.Left.Matchers()
-}
-
-func (m *MultiVariantExpr) Interval() time.Duration {
-	return m.logRange.Interval
-}
-
-func (m *MultiVariantExpr) Offset() time.Duration {
-	return m.logRange.Offset
-}
-
-func (m *MultiVariantExpr) Variants() []SampleExpr {
-	return m.variants
-}
-
-func (m *MultiVariantExpr) AddVariant(v SampleExpr) {
-	m.variants = append(m.variants, v)
-}
-
-func (m *MultiVariantExpr) SetVariant(i int, v SampleExpr) error {
-	if i >= len(m.variants) {
-		return fmt.Errorf("variant index out of range")
-	}
-
-	m.variants[i] = v
-	return nil
-}
-
-func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
-	if !m.logRange.Shardable(topLevel) {
-		return false
-	}
-
-	for _, v := range m.variants {
-		if !v.Shardable(topLevel) {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (m *MultiVariantExpr) Walk(f WalkFn) {
-	if !f(m) {
-		return
-	}
-
-	if m.logRange != nil {
-		m.logRange.Walk(f)
-	}
-
-	for _, v := range m.variants {
-		v.Walk(f)
-	}
-}
-
-func (m *MultiVariantExpr) String() string {
-	var sb strings.Builder
-	sb.WriteString(OpVariants)
-	sb.WriteString("(")
-	for i, v := range m.variants {
-		sb.WriteString(v.String())
-		if i+1 != len(m.variants) {
-			sb.WriteString(", ")
-		}
-	}
-	sb.WriteString(") ")
-
-	sb.WriteString(VariantsOf)
-	sb.WriteString(" (")
-	sb.WriteString(m.logRange.String())
-	sb.WriteString(")")
-
-	return sb.String()
-}
-
-func (m *MultiVariantExpr) Accept(v RootVisitor) {
-	v.VisitVariants(m)
-}
-
-// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
-func (m *MultiVariantExpr) Pretty(level int) string {
-	s := Indent(level)
-
-	s += OpVariants + "(\n"
-
-	variants := make([]string, 0, len(m.variants))
-	for _, v := range m.variants {
-		variants = append(variants, v.Pretty(level+1))
-	}
-
-	for i, v := range variants {
-		s += v
-		// LogQL doesn't allow `,` at the end of last argument.
-		if i < len(variants)-1 {
-			s += ","
-		}
-		s += "\n"
-	}
-
-	s += Indent(level) + ") of (\n"
-	s += m.logRange.Pretty(level + 1)
-	s += Indent(level) + "\n)"
-
-	return s
-}
-
-func (m *MultiVariantExpr) MatcherGroups() ([]MatcherRange, error) {
-	xs := m.Matchers()
-	if len(xs) > 0 {
-		return []MatcherRange{
-			{
-				Matchers: xs,
-				Interval: m.Interval(),
-				Offset:   m.Offset(),
-			},
-		}, nil
-	}
-	return nil, nil
-}
-
-func (m *MultiVariantExpr) Selector() (LogSelectorExpr, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-
-	return m.logRange.Left, nil
-}
-
-func newVariantsExpr(variants []SampleExpr, logRange *LogRangeExpr) VariantsExpr {
-	return &MultiVariantExpr{
-		variants: variants,
-		logRange: logRange,
-	}
 }
