@@ -3,6 +3,7 @@ package format
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/encoding/thrift"
@@ -103,13 +104,13 @@ type SizeStatistics struct {
 	//
 	// This field may be omitted if max_repetition_level is 0 without loss
 	// of information.
-	RepetitionLevelHistogram []int64 `thrift:"2,optional"`
+	RepetitionLevelHistogram thrift.Slice[int64] `thrift:"2,optional"`
 
 	// Same as repetition_level_histogram except for definition levels.
 	//
 	// This field may be omitted if max_definition_level is 0 or 1 without
 	// loss of information.
-	DefinitionLevelHistogram []int64 `thrift:"3,optional"`
+	DefinitionLevelHistogram thrift.Slice[int64] `thrift:"3,optional"`
 }
 
 // Bounding box for GEOMETRY or GEOGRAPHY type in the representation of min/max
@@ -130,7 +131,7 @@ type GeospatialStatistics struct {
 	// A bounding box of geospatial instances
 	BBox BoundingBox `thrift:"1,optional"`
 	// Geospatial type codes of all instances, or an empty list if not known
-	GeoSpatialTypes []int32 `thrift:"2,optional"`
+	GeoSpatialTypes thrift.Slice[int32] `thrift:"2,optional"`
 }
 
 // Statistics per row group and per page.
@@ -181,6 +182,14 @@ func (*EnumType) String() string    { return "ENUM" }
 func (*DateType) String() string    { return "DATE" }
 func (*Float16Type) String() string { return "FLOAT16" }
 
+func (*StringType) FieldID() int16  { return 1 }
+func (*MapType) FieldID() int16     { return 2 }
+func (*ListType) FieldID() int16    { return 3 }
+func (*EnumType) FieldID() int16    { return 4 }
+func (*DateType) FieldID() int16    { return 6 }
+func (*UUIDType) FieldID() int16    { return 14 }
+func (*Float16Type) FieldID() int16 { return 15 }
+
 // Logical type to annotate a column that is always null.
 //
 // Sometimes when discovering the schema of existing data, values are always
@@ -189,6 +198,7 @@ func (*Float16Type) String() string { return "FLOAT16" }
 type NullType struct{}
 
 func (*NullType) String() string { return "NULL" }
+func (*NullType) FieldID() int16 { return 11 }
 
 // Decimal logical type annotation
 //
@@ -206,6 +216,8 @@ func (t *DecimalType) String() string {
 	return fmt.Sprintf("DECIMAL(%d,%d)", t.Precision, t.Scale)
 }
 
+func (*DecimalType) FieldID() int16 { return 5 }
+
 // Time units for logical types.
 type MilliSeconds struct{}
 type MicroSeconds struct{}
@@ -215,23 +227,44 @@ func (*MilliSeconds) String() string { return "MILLIS" }
 func (*MicroSeconds) String() string { return "MICROS" }
 func (*NanoSeconds) String() string  { return "NANOS" }
 
-type TimeUnit struct { // union
-	Millis *MilliSeconds `thrift:"1"`
-	Micros *MicroSeconds `thrift:"2"`
-	Nanos  *NanoSeconds  `thrift:"3"`
+func (*MilliSeconds) FieldID() int16 { return 1 }
+func (*MicroSeconds) FieldID() int16 { return 2 }
+func (*NanoSeconds) FieldID() int16  { return 3 }
+
+// Duration returns the precision of the time unit. It is the length of one
+// step, so a value stored in this unit is that many of these durations since
+// the epoch or midnight.
+func (*MilliSeconds) Duration() time.Duration { return time.Millisecond }
+func (*MicroSeconds) Duration() time.Duration { return time.Microsecond }
+func (*NanoSeconds) Duration() time.Duration  { return time.Nanosecond }
+
+// TimeUnitValue is the set of time units a TimeUnit union may hold. Duration is
+// intrinsic to a unit (like its name) and closes the interface: types that are
+// not time units, though they satisfy thrift.UnionMember and String, do not
+// have a Duration and so cannot be mistaken for a member here.
+type TimeUnitValue interface {
+	thrift.UnionMember
+	String() string
+	Duration() time.Duration
 }
 
+var timeUnitMembers = []thrift.UnionMember{
+	(*MilliSeconds)(nil),
+	(*MicroSeconds)(nil),
+	(*NanoSeconds)(nil),
+}
+
+type TimeUnit struct { // union
+	Value TimeUnitValue
+}
+
+func (*TimeUnit) UnionMembers() []thrift.UnionMember { return timeUnitMembers }
+
 func (u *TimeUnit) String() string {
-	switch {
-	case u.Millis != nil:
-		return u.Millis.String()
-	case u.Micros != nil:
-		return u.Micros.String()
-	case u.Nanos != nil:
-		return u.Nanos.String()
-	default:
+	if u.Value == nil {
 		return ""
 	}
+	return u.Value.String()
 }
 
 // Timestamp logical type annotation
@@ -246,6 +279,8 @@ func (t *TimestampType) String() string {
 	return fmt.Sprintf("TIMESTAMP(isAdjustedToUTC=%t,unit=%s)", t.IsAdjustedToUTC, &t.Unit)
 }
 
+func (*TimestampType) FieldID() int16 { return 8 }
+
 // Time logical type annotation
 //
 // Allowed for physical types: INT32 (millis), INT64 (micros, nanos)
@@ -257,6 +292,8 @@ type TimeType struct {
 func (t *TimeType) String() string {
 	return fmt.Sprintf("TIME(isAdjustedToUTC=%t,unit=%s)", t.IsAdjustedToUTC, &t.Unit)
 }
+
+func (*TimeType) FieldID() int16 { return 7 }
 
 // Integer logical type annotation
 //
@@ -272,6 +309,8 @@ func (t *IntType) String() string {
 	return fmt.Sprintf("INT(%d,%t)", t.BitWidth, t.IsSigned)
 }
 
+func (*IntType) FieldID() int16 { return 10 }
+
 // Embedded JSON logical type annotation
 //
 // Allowed for physical types: BINARY
@@ -279,12 +318,16 @@ type JsonType struct{}
 
 func (t *JsonType) String() string { return "JSON" }
 
+func (*JsonType) FieldID() int16 { return 12 }
+
 // Embedded BSON logical type annotation
 //
 // Allowed for physical types: BINARY
 type BsonType struct{}
 
 func (t *BsonType) String() string { return "BSON" }
+
+func (*BsonType) FieldID() int16 { return 13 }
 
 // Embedded Variant logical type annotation
 //
@@ -305,6 +348,8 @@ type VariantType struct {
 }
 
 func (*VariantType) String() string { return "VARIANT" }
+
+func (*VariantType) FieldID() int16 { return 16 }
 
 // Edge interpolation algorithm for Geography logical type
 type EdgeInterpolationAlgorithm int32
@@ -389,6 +434,8 @@ func (t *GeometryType) String() string {
 	return fmt.Sprintf("GEOMETRY(%q)", crs)
 }
 
+func (*GeometryType) FieldID() int16 { return 17 }
+
 const GeographyDefaultCRS = defaultCRS
 
 // Embedded Geography logical type annotation
@@ -419,78 +466,53 @@ func (t *GeographyType) String() string {
 	return fmt.Sprintf("GEOGRAPHY(%q, %s)", crs, t.Algorithm)
 }
 
+func (*GeographyType) FieldID() int16 { return 18 }
+
 // LogicalType annotations to replace ConvertedType.
 //
 // To maintain compatibility, implementations using LogicalType for a
 // SchemaElement must also set the corresponding ConvertedType (if any)
 // from the following table.
-type LogicalType struct { // union
-	UTF8    *StringType  `thrift:"1"` // use ConvertedType UTF8
-	Map     *MapType     `thrift:"2"` // use ConvertedType Map
-	List    *ListType    `thrift:"3"` // use ConvertedType List
-	Enum    *EnumType    `thrift:"4"` // use ConvertedType Enum
-	Decimal *DecimalType `thrift:"5"` // use ConvertedType Decimal + SchemaElement.{Scale, Precision}
-	Date    *DateType    `thrift:"6"` // use ConvertedType Date
-
-	// use ConvertedType TimeMicros for Time{IsAdjustedToUTC: *, Unit: Micros}
-	// use ConvertedType TimeMillis for Time{IsAdjustedToUTC: *, Unit: Millis}
-	Time *TimeType `thrift:"7"`
-
-	// use ConvertedType TimestampMicros for Timestamp{IsAdjustedToUTC: *, Unit: Micros}
-	// use ConvertedType TimestampMillis for Timestamp{IsAdjustedToUTC: *, Unit: Millis}
-	Timestamp *TimestampType `thrift:"8"`
-
-	// 9: reserved for Interval
-	Integer   *IntType       `thrift:"10"` // use ConvertedType Int* or Uint*
-	Unknown   *NullType      `thrift:"11"` // no compatible ConvertedType
-	Json      *JsonType      `thrift:"12"` // use ConvertedType JSON
-	Bson      *BsonType      `thrift:"13"` // use ConvertedType BSON
-	UUID      *UUIDType      `thrift:"14"` // no compatible ConvertedType
-	Float16   *Float16Type   `thrift:"15"` // no compatible ConvertedType
-	Variant   *VariantType   `thrift:"16"` // no compatible ConvertedType
-	Geometry  *GeometryType  `thrift:"17"` // no compatible ConvertedType
-	Geography *GeographyType `thrift:"18"` // no compatible ConvertedType
+// LogicalTypeValue is the set of annotations a LogicalType union may hold. The
+// FieldID method carries each member's thrift field id; see the member list in
+// logicalTypeMembers for the full id mapping.
+type LogicalTypeValue interface {
+	thrift.UnionMember
+	String() string
 }
 
+var logicalTypeMembers = []thrift.UnionMember{
+	(*StringType)(nil),    // 1: use ConvertedType UTF8
+	(*MapType)(nil),       // 2: use ConvertedType Map
+	(*ListType)(nil),      // 3: use ConvertedType List
+	(*EnumType)(nil),      // 4: use ConvertedType Enum
+	(*DecimalType)(nil),   // 5: use ConvertedType Decimal + SchemaElement.{Scale, Precision}
+	(*DateType)(nil),      // 6: use ConvertedType Date
+	(*TimeType)(nil),      // 7: use ConvertedType TimeMicros or TimeMillis
+	(*TimestampType)(nil), // 8: use ConvertedType TimestampMicros or TimestampMillis
+	// 9: reserved for Interval
+	(*IntType)(nil),       // 10: use ConvertedType Int* or Uint*
+	(*NullType)(nil),      // 11: no compatible ConvertedType
+	(*JsonType)(nil),      // 12: use ConvertedType JSON
+	(*BsonType)(nil),      // 13: use ConvertedType BSON
+	(*UUIDType)(nil),      // 14: no compatible ConvertedType
+	(*Float16Type)(nil),   // 15: no compatible ConvertedType
+	(*VariantType)(nil),   // 16: no compatible ConvertedType
+	(*GeometryType)(nil),  // 17: no compatible ConvertedType
+	(*GeographyType)(nil), // 18: no compatible ConvertedType
+}
+
+type LogicalType struct { // union
+	Value LogicalTypeValue
+}
+
+func (*LogicalType) UnionMembers() []thrift.UnionMember { return logicalTypeMembers }
+
 func (t *LogicalType) String() string {
-	switch {
-	case t.UTF8 != nil:
-		return t.UTF8.String()
-	case t.Map != nil:
-		return t.Map.String()
-	case t.List != nil:
-		return t.List.String()
-	case t.Enum != nil:
-		return t.Enum.String()
-	case t.Decimal != nil:
-		return t.Decimal.String()
-	case t.Date != nil:
-		return t.Date.String()
-	case t.Time != nil:
-		return t.Time.String()
-	case t.Timestamp != nil:
-		return t.Timestamp.String()
-	case t.Integer != nil:
-		return t.Integer.String()
-	case t.Unknown != nil:
-		return t.Unknown.String()
-	case t.Json != nil:
-		return t.Json.String()
-	case t.Bson != nil:
-		return t.Bson.String()
-	case t.UUID != nil:
-		return t.UUID.String()
-	case t.Float16 != nil:
-		return t.Float16.String()
-	case t.Variant != nil:
-		return t.Variant.String()
-	case t.Geometry != nil:
-		return t.Geometry.String()
-	case t.Geography != nil:
-		return t.Geography.String()
-	default:
+	if t.Value == nil {
 		return ""
 	}
+	return t.Value.String()
 }
 
 // Represents a element inside a schema definition.
@@ -546,7 +568,7 @@ type SchemaElement struct {
 	//
 	// LogicalType replaces ConvertedType, but ConvertedType is still required
 	// for some logical types to ensure forward-compatibility in format v1.
-	LogicalType thrift.Null[LogicalType] `thrift:"10,optional"`
+	LogicalType LogicalType `thrift:"10,optional"`
 }
 
 // Encodings supported by Parquet. Not all encodings are valid for all types.
@@ -801,27 +823,75 @@ type DataPageHeaderV2 struct {
 // Block-based algorithm type annotation.
 type SplitBlockAlgorithm struct{}
 
+func (*SplitBlockAlgorithm) FieldID() int16 { return 1 }
+
+// BloomFilterAlgorithmValue is the set of algorithms a BloomFilterAlgorithm
+// union may hold.
+type BloomFilterAlgorithmValue interface {
+	thrift.UnionMember
+}
+
+var bloomFilterAlgorithmMembers = []thrift.UnionMember{
+	(*SplitBlockAlgorithm)(nil), // 1
+}
+
 // The algorithm used in Bloom filter.
 type BloomFilterAlgorithm struct { // union
-	Block *SplitBlockAlgorithm `thrift:"1"`
+	Value BloomFilterAlgorithmValue
+}
+
+func (*BloomFilterAlgorithm) UnionMembers() []thrift.UnionMember {
+	return bloomFilterAlgorithmMembers
 }
 
 // Hash strategy type annotation. xxHash is an extremely fast non-cryptographic
 // hash algorithm. It uses 64 bits version of xxHash.
 type XxHash struct{}
 
+func (*XxHash) FieldID() int16 { return 1 }
+
+// BloomFilterHashValue is the set of hash functions a BloomFilterHash union may
+// hold.
+type BloomFilterHashValue interface {
+	thrift.UnionMember
+}
+
+var bloomFilterHashMembers = []thrift.UnionMember{
+	(*XxHash)(nil), // 1
+}
+
 // The hash function used in Bloom filter. This function takes the hash of a
 // column value using plain encoding.
 type BloomFilterHash struct { // union
-	XxHash *XxHash `thrift:"1"`
+	Value BloomFilterHashValue
 }
+
+func (*BloomFilterHash) UnionMembers() []thrift.UnionMember { return bloomFilterHashMembers }
 
 // The compression used in the Bloom filter.
 type BloomFilterUncompressed struct{}
 type BloomFilterGzip struct{}
+
+func (*BloomFilterUncompressed) FieldID() int16 { return 1 }
+func (*BloomFilterGzip) FieldID() int16         { return 2 }
+
+// BloomFilterCompressionValue is the set of compressions a
+// BloomFilterCompression union may hold.
+type BloomFilterCompressionValue interface {
+	thrift.UnionMember
+}
+
+var bloomFilterCompressionMembers = []thrift.UnionMember{
+	(*BloomFilterUncompressed)(nil), // 1
+	(*BloomFilterGzip)(nil),         // 2
+}
+
 type BloomFilterCompression struct { // union
-	Uncompressed *BloomFilterUncompressed `thrift:"1"`
-	GZip         *BloomFilterGzip         `thrift:"2"`
+	Value BloomFilterCompressionValue
+}
+
+func (*BloomFilterCompression) UnionMembers() []thrift.UnionMember {
+	return bloomFilterCompressionMembers
 }
 
 // Bloom filter header is stored at beginning of Bloom filter data of each column
@@ -939,7 +1009,7 @@ type ColumnMetaData struct {
 	TotalCompressedSize int64 `thrift:"7,required"`
 
 	// Optional key/value metadata.
-	KeyValueMetadata []KeyValue `thrift:"8,optional"`
+	KeyValueMetadata thrift.Slice[KeyValue] `thrift:"8,optional"`
 
 	// Byte offset from beginning of file to first data page.
 	DataPageOffset int64 `thrift:"9,required"`
@@ -957,7 +1027,7 @@ type ColumnMetaData struct {
 	// Set of all encodings used for pages in this column chunk.
 	// This information can be used to determine if all data pages are
 	// dictionary encoded for example.
-	EncodingStats []PageEncodingStats `thrift:"13,optional"`
+	EncodingStats thrift.Slice[PageEncodingStats] `thrift:"13,optional"`
 
 	// Byte offset from beginning of file to Bloom filter data.
 	BloomFilterOffset int64 `thrift:"14,optional"`
@@ -983,15 +1053,32 @@ type EncryptionWithFooterKey struct{}
 
 type EncryptionWithColumnKey struct {
 	// Column path in schema.
-	PathInSchema []string `thrift:"1,required"`
+	PathInSchema thrift.Slice[string] `thrift:"1,required"`
 
 	// Retrieval metadata of column encryption key.
 	KeyMetadata []byte `thrift:"2,optional"`
 }
 
-type ColumnCryptoMetaData struct {
-	EncryptionWithFooterKey *EncryptionWithFooterKey `thrift:"1"`
-	EncryptionWithColumnKey *EncryptionWithColumnKey `thrift:"2"`
+func (*EncryptionWithFooterKey) FieldID() int16 { return 1 }
+func (*EncryptionWithColumnKey) FieldID() int16 { return 2 }
+
+// ColumnCryptoMetaDataValue is the set of key references a
+// ColumnCryptoMetaData union may hold.
+type ColumnCryptoMetaDataValue interface {
+	thrift.UnionMember
+}
+
+var columnCryptoMetaDataMembers = []thrift.UnionMember{
+	(*EncryptionWithFooterKey)(nil), // 1
+	(*EncryptionWithColumnKey)(nil), // 2
+}
+
+type ColumnCryptoMetaData struct { // union
+	Value ColumnCryptoMetaDataValue
+}
+
+func (*ColumnCryptoMetaData) UnionMembers() []thrift.UnionMember {
+	return columnCryptoMetaDataMembers
 }
 
 type ColumnChunk struct {
@@ -1039,7 +1126,7 @@ type RowGroup struct {
 
 	// If set, specifies a sort ordering of the rows in this RowGroup.
 	// The sorting columns can be a subset of all the columns.
-	SortingColumns []SortingColumn `thrift:"4,optional"`
+	SortingColumns thrift.Slice[SortingColumn] `thrift:"4,optional"`
 
 	// Byte offset from beginning of file to first page (data or dictionary)
 	// in this row group
@@ -1056,19 +1143,37 @@ type RowGroup struct {
 	Ordinal int16 `thrift:"7,optional,writezero"`
 }
 
+// Reset clears r in place, retaining allocated capacity for reuse. Elements
+// of the retained slices are recursively cleared so that values from a
+// previous thrift decode cannot leak into the next one (the decoder only
+// writes fields present in its input).
 func (r *RowGroup) Reset() {
-	r.FileOffset = 0
-	r.NumRows = 0
-	r.TotalByteSize = 0
-	r.SortingColumns = r.SortingColumns[:0]
+	for i := range r.Columns {
+		r.Columns[i].Reset()
+	}
 	r.Columns = r.Columns[:0]
-	r.Ordinal = 0
 	r.TotalByteSize = 0
+	r.NumRows = 0
+	clear(r.SortingColumns)
+	r.SortingColumns = r.SortingColumns[:0]
+	r.FileOffset = 0
 	r.TotalCompressedSize = 0
+	r.Ordinal = 0
 }
 
 // Empty struct to signal the order defined by the physical or logical type.
 type TypeDefinedOrder struct{}
+
+func (*TypeDefinedOrder) FieldID() int16 { return 1 }
+
+// ColumnOrderValue is the set of orderings a ColumnOrder union may hold.
+type ColumnOrderValue interface {
+	thrift.UnionMember
+}
+
+var columnOrderMembers = []thrift.UnionMember{
+	(*TypeDefinedOrder)(nil), // 1
+}
 
 // Union to specify the order used for the min_value and max_value fields for a
 // column. This union takes the role of an enhanced enum that allows rich
@@ -1126,8 +1231,10 @@ type ColumnOrder struct { // union
 	//     - If the min is +0, the row group may contain -0 values as well.
 	//     - If the max is -0, the row group may contain +0 values as well.
 	//     - When looking for NaN values, min and max should be ignored.
-	TypeOrder *TypeDefinedOrder `thrift:"1"`
+	Value ColumnOrderValue
 }
+
+func (*ColumnOrder) UnionMembers() []thrift.UnionMember { return columnOrderMembers }
 
 type PageLocation struct {
 	// Offset of the page in the file.
@@ -1145,13 +1252,13 @@ type PageLocation struct {
 type OffsetIndex struct {
 	// PageLocations, ordered by increasing PageLocation.offset. It is required
 	// that page_locations[i].first_row_index < page_locations[i+1].first_row_index.
-	PageLocations []PageLocation `thrift:"1,required"`
+	PageLocations thrift.Slice[PageLocation] `thrift:"1,required"`
 
 	// Unencoded/uncompressed size for BYTE_ARRAY types.
 	//
 	// See documention for unencoded_byte_array_data_bytes in SizeStatistics for
 	// more details on this field.
-	UnencodedByteArrayDataBytes []int64 `thrift:"2,optional"`
+	UnencodedByteArrayDataBytes thrift.Slice[int64] `thrift:"2,optional"`
 }
 
 func (o *OffsetIndex) Reset() {
@@ -1172,7 +1279,7 @@ type ColumnIndex struct {
 	// have to set the corresponding entries in min_values and max_values to
 	// byte[0], so that all lists have the same length. If false, the
 	// corresponding entries in min_values and max_values must be valid.
-	NullPages []bool `thrift:"1,required"`
+	NullPages thrift.Slice[bool] `thrift:"1,required"`
 
 	// Two lists containing lower and upper bounds for the values of each page
 	// determined by the ColumnOrder of the column. These may be the actual
@@ -1182,8 +1289,8 @@ type ColumnIndex struct {
 	// Such more compact values must still be valid values within the column's
 	// logical type. Readers must make sure that list entries are populated before
 	// using them by inspecting null_pages.
-	MinValues [][]byte `thrift:"2,required"`
-	MaxValues [][]byte `thrift:"3,required"`
+	MinValues thrift.Slice[[]byte] `thrift:"2,required"`
+	MaxValues thrift.Slice[[]byte] `thrift:"3,required"`
 
 	// Stores whether both min_values and max_values are ordered and if so, in
 	// which direction. This allows readers to perform binary searches in both
@@ -1195,7 +1302,7 @@ type ColumnIndex struct {
 	// The writezero tag satisfies spec:
 	// "Writers SHOULD always write this field even if no null values are present or the column is not nullable."
 	// https://github.com/apache/parquet-format/blob/apache-parquet-format-2.12.0/src/main/thrift/parquet.thrift#L1197-L1198
-	NullCounts []int64 `thrift:"5,optional,writezero"`
+	NullCounts thrift.Slice[int64] `thrift:"5,optional,writezero"`
 
 	// Contains repetition level histograms for each page
 	// concatenated together.  The repetition_level_histogram field on
@@ -1207,10 +1314,10 @@ type ColumnIndex struct {
 	// Element 0 is the first element of the histogram for the first page.
 	// Element (max_repetition_level + 1) is the first element of the histogram
 	// for the second page.
-	RepetitionLevelHistogram []int64 `thrift:"6,optional"`
+	RepetitionLevelHistogram thrift.Slice[int64] `thrift:"6,optional"`
 
 	// Same as repetition_level_histograms except for definitions levels.
-	DefinitionLevelHistogram []int64 `thrift:"7,optional"`
+	DefinitionLevelHistogram thrift.Slice[int64] `thrift:"7,optional"`
 }
 
 func (c *ColumnIndex) Reset() {
@@ -1253,9 +1360,26 @@ type AesGcmCtrV1 struct {
 	SupplyAadPrefix bool `thrift:"3,optional"`
 }
 
+func (*AesGcmV1) FieldID() int16    { return 1 }
+func (*AesGcmCtrV1) FieldID() int16 { return 2 }
+
+// EncryptionAlgorithmValue is the set of algorithms an EncryptionAlgorithm
+// union may hold.
+type EncryptionAlgorithmValue interface {
+	thrift.UnionMember
+}
+
+var encryptionAlgorithmMembers = []thrift.UnionMember{
+	(*AesGcmV1)(nil),    // 1
+	(*AesGcmCtrV1)(nil), // 2
+}
+
 type EncryptionAlgorithm struct { // union
-	AesGcmV1    *AesGcmV1    `thrift:"1"`
-	AesGcmCtrV1 *AesGcmCtrV1 `thrift:"2"`
+	Value EncryptionAlgorithmValue
+}
+
+func (*EncryptionAlgorithm) UnionMembers() []thrift.UnionMember {
+	return encryptionAlgorithmMembers
 }
 
 // Description for file metadata.
@@ -1278,7 +1402,7 @@ type FileMetaData struct {
 	RowGroups thrift.Slice[RowGroup] `thrift:"4,required"`
 
 	// Optional key/value metadata.
-	KeyValueMetadata []KeyValue `thrift:"5,optional"`
+	KeyValueMetadata thrift.Slice[KeyValue] `thrift:"5,optional"`
 
 	// String for application that wrote this file.  This should be in the format
 	// <Application> version <App Version> (build <App Build Hash>).
@@ -1299,7 +1423,7 @@ type FileMetaData struct {
 	//
 	// The obsolete min and max fields in the Statistics object are always sorted
 	// by signed comparison regardless of column_orders.
-	ColumnOrders []ColumnOrder `thrift:"7,optional"`
+	ColumnOrders thrift.Slice[ColumnOrder] `thrift:"7,optional"`
 
 	// Encryption algorithm. This field is set only in encrypted files
 	// with plaintext footer. Files with encrypted footer store algorithm id

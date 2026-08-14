@@ -58,11 +58,11 @@ func (b *Builder) EstimatedSize() int {
 }
 
 // statSize is the per-row size heuristic:
-//   - 5 int64 columns × 8 bytes = 40 bytes (SectionIndex, MinTimestamp, MaxTimestamp, RowCount, UncompressedSize)
-//   - len(ObjectPath) + len(SortSchema) bytes for fixed string columns
+//   - 6 int64 columns × 8 bytes = 48 bytes
+//   - fixed string columns
 //   - sum of len(k)+len(v) for all entries in Labels
 func statSize(r Stat) int {
-	total := 5 * 8
+	total := 6 * 8
 	total += len(r.ObjectPath) + len(r.SortSchema)
 	for k, v := range r.Labels {
 		total += len(k) + len(v)
@@ -82,6 +82,9 @@ func (b *Builder) Reset() {
 //
 // Both rows must share the same SortSchema.
 func Compare(a, b Stat) int {
+	if a.ShardBucket != b.ShardBucket {
+		return cmp.Compare(a.ShardBucket, b.ShardBucket)
+	}
 	for fqn := range strings.SplitSeq(a.SortSchema, ",") {
 		typ, key, ok := strings.Cut(fqn, ":")
 		if !ok || typ != "label" || key == "" {

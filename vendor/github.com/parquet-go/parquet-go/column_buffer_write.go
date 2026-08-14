@@ -12,6 +12,7 @@ import (
 
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/format"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -34,7 +35,7 @@ type writeRowsFunc func(columns []ColumnBuffer, levels columnLevels, rows sparse
 func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath, tagReplacements []StructTagOption) writeRowsFunc {
 	if leaf, exists := schema.Lookup(path...); exists {
 		logicalType := leaf.Node.Type().LogicalType()
-		if logicalType != nil && logicalType.Json != nil {
+		if logicalTypeIs[*format.JsonType](logicalType) {
 			return writeRowsFuncOfJSON(t, schema, path)
 		}
 	}
@@ -923,8 +924,8 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagRep
 	col, _ := schema.Lookup(path...)
 	unit := Nanosecond.TimeUnit()
 	lt := col.Node.Type().LogicalType()
-	if lt != nil && lt.Timestamp != nil {
-		unit = lt.Timestamp.Unit
+	if ts, ok := logicalTypeOf[*format.TimestampType](lt); ok {
+		unit = ts.Unit
 	}
 
 	// Check if the column is optional
@@ -953,12 +954,12 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath, tagRep
 		defer wideIntBufPool.Put(buf)
 
 		times := rows.TimeArray()
-		switch {
-		case unit.Millis != nil:
+		switch unit.Value.(type) {
+		case *format.MilliSeconds:
 			for i := range n {
 				buf.values[i] = times.Index(i).UnixMilli()
 			}
-		case unit.Micros != nil:
+		case *format.MicroSeconds:
 			for i := range n {
 				buf.values[i] = times.Index(i).UnixMicro()
 			}

@@ -146,28 +146,26 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Ser
 	for _, stream := range in {
 		exs := ex.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels())
+			sample, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels())
 			if !ok {
 				continue
 			}
 
-			for _, sample := range samples {
-				lbs := sample.Labels.String()
-				s, found := resBySeries[lbs]
-				if !found {
-					s = &logproto.Series{
-						Labels:     lbs,
-						StreamHash: exs.BaseLabels().Hash(),
-					}
-					resBySeries[lbs] = s
+			lbs := sample.Labels.String()
+			s, found := resBySeries[lbs]
+			if !found {
+				s = &logproto.Series{
+					Labels:     lbs,
+					StreamHash: exs.BaseLabels().Hash(),
 				}
-
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.Timestamp.UnixNano(),
-					Value:     sample.Value,
-					Hash:      xxhash.Sum64([]byte(e.Line)),
-				})
+				resBySeries[lbs] = s
 			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.Timestamp.UnixNano(),
+				Value:     sample.Value,
+				Hash:      xxhash.Sum64([]byte(e.Line)),
+			})
 		}
 	}
 

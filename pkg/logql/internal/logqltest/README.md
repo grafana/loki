@@ -126,6 +126,30 @@ eval instant at 60s sort(count_over_time({app=~"a|b"}[1m]))
 
 `expect ordered` is instant-only; use distinct, non-`NaN` values so the order is unambiguous.
 
+### Skipping value comparison on one stack
+
+Every query runs on multiple [execution stacks](#execution-stacks). When one stack returns values that
+legitimately differ skip its value check while keeping every other stack exact:
+
+```
+eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) by (pod)
+  skip values-comparison on "query-frontend + query-scheduler (sharding)"
+  {pod="1"} 3
+  {pod="2"} 15
+```
+
+- `<stack>` is the exact stack name, in double quotes.
+- The named stack still runs the query, must not error, and is still checked for series count,
+  sample count, and timestamps. Only the float value comparison is skipped.
+
+## Execution stacks
+
+Each `eval` runs on multiple execution stacks:
+
+- `direct` — the query runs straight through `logql.Engine` over the chunk store.
+- `query-frontend + query-scheduler (no sharding)` — a real frontend, scheduler, and querier loop.
+- `query-frontend + query-scheduler (sharding)` — the same loop with query sharding on.
+
 ## Example
 
 ```

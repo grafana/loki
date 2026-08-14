@@ -80,12 +80,12 @@ func encodeInSections[E any](entries []E, target int, sizeOf func(E) int, emit f
 
 // bloomEntrySize estimates the encoded size of one bloom entry.
 func bloomEntrySize(e BloomEntry) int {
-	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.BloomFilter) + len(e.StreamIDBitmap)
+	return 6*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.BloomFilter) + len(e.StreamIDBitmap)
 }
 
 // labelEntrySize estimates the encoded size of one label entry.
 func labelEntrySize(e LabelEntry) int {
-	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
+	return 6*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
 }
 
 // trimTrailingZeros returns b with trailing zero bytes removed. Stream-ID
@@ -121,7 +121,7 @@ func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, b
 // encodeColumns encodes bloom and label entries into the provided columnar
 // encoder. Bloom entries (Kind=0) first, label entries (Kind=1) second.
 func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *columnar.Encoder) error {
-	// Build column builders for all 10 columns.
+	// Build column builders for all 11 columns.
 
 	// kind is a 2-value flag (0=bloom, 1=label). With sorted rows (blooms first,
 	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
@@ -146,6 +146,11 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, p.pageSizeHint, p.pageMaxRowCount, false)
 	if err != nil {
 		return fmt.Errorf("creating object_path column: %w", err)
+	}
+
+	shardBucketsBuilder, err := numberColumnBuilder(ColumnTypeShardBuckets, p.pageSizeHint, p.pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard_buckets column: %w", err)
 	}
 
 	sectionIndexBuilder, err := numberColumnBuilder(ColumnTypeSectionIndex, p.pageSizeHint, p.pageMaxRowCount)
@@ -203,6 +208,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range bloomEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindBloom)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
+		_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
@@ -217,6 +223,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	for _, e := range labelEntries {
 		_ = kindBuilder.Append(rowIdx, dataset.Int64Value(int64(KindLabel)))
 		_ = objectPathBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ObjectPath)))
+		_ = shardBucketsBuilder.Append(rowIdx, dataset.Int64Value(e.ShardBuckets))
 		_ = sectionIndexBuilder.Append(rowIdx, dataset.Int64Value(e.SectionIndex))
 		_ = columnNameBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.ColumnName)))
 		_ = labelValueBuilder.Append(rowIdx, dataset.BinaryValue([]byte(e.LabelValue)))
@@ -228,22 +235,21 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		rowIdx++
 	}
 
-	enc.SetSortInfo(&datasetmd.SortInfo{
-		ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
-			{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // kind
-			{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // column_name
-			{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // label_value
-			{ColumnIndex: 8, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // min_timestamp
-			{ColumnIndex: 9, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // max_timestamp
-			{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // object_path
-			{ColumnIndex: 2, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // section_index
-		},
-	})
+	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: []*datasetmd.SortInfo_ColumnSort{
+		{ColumnIndex: 0, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // kind
+		{ColumnIndex: 4, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // column_name
+		{ColumnIndex: 5, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // label_value
+		{ColumnIndex: 9, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // min_timestamp
+		{ColumnIndex: 10, Direction: datasetmd.SORT_DIRECTION_ASCENDING}, // max_timestamp
+		{ColumnIndex: 1, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // object_path
+		{ColumnIndex: 3, Direction: datasetmd.SORT_DIRECTION_ASCENDING},  // section_index
+	}})
 
 	// Encode all columns.
-	errs := make([]error, 0, 10)
+	errs := make([]error, 0, 11)
 	errs = append(errs, encodeColumn(enc, ColumnTypeKind, kindBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeSectionIndex, sectionIndexBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeColumnName, columnNameBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeLabelValue, labelValueBuilder))
