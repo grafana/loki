@@ -171,38 +171,43 @@ load
   {app="a", pod="2"} "v=20" @ 50s
   {app="a", pod="1"} "noise" @ 25s
 
+# first_over_time() by()
 eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
   {pod="1"} 2
   {pod="2"} 10
-eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
-  {pod="1"} 4
-  {pod="2"} 20
-eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
-  {app="a"} 2
-eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
-  {app="a"} 20
 eval range from 20s to 50s step 10s first_over_time({app="a"} | logfmt | unwrap v [10s]) by (pod) # non-overlapping
-  {pod="1"} 2 4 _ _
-  {pod="2"} _ _ 10 20
-eval range from 20s to 50s step 10s last_over_time({app="a"} | logfmt | unwrap v [10s]) by (pod)  # non-overlapping
   {pod="1"} 2 4 _ _
   {pod="2"} _ _ 10 20
 eval range from 60s to 70s step 10s first_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod) # overlapping
   {pod="1"} 2 2
   {pod="2"} 10 10
+# last_over_time() by()
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)
+  {pod="1"} 4
+  {pod="2"} 20
+eval range from 20s to 50s step 10s last_over_time({app="a"} | logfmt | unwrap v [10s]) by (pod)  # non-overlapping
+  {pod="1"} 2 4 _ _
+  {pod="2"} _ _ 10 20
 eval range from 60s to 70s step 10s last_over_time({app="a"} | logfmt | unwrap v [1m]) by (pod)  # overlapping
   {pod="1"} 4 4
   {pod="2"} 20 20
+# first_over_time() without()
+eval instant at 60s first_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 2
 eval range from 70s to 80s step 10s first_over_time({app="a"} | logfmt | unwrap v [1m] offset 10s) by (pod) # overlapping
   {pod="1"} 2 2
   {pod="2"} 10 10
+# last_over_time() without()
+eval instant at 60s last_over_time({app="a"} | logfmt | unwrap v [1m]) without (pod)
+  {app="a"} 20
 eval range from 70s to 80s step 10s last_over_time({app="a"} | logfmt | unwrap v [1m] offset 10s) by (pod)  # overlapping
   {pod="1"} 4 4
   {pod="2"} 20 20
 
-# first_over_time() / last_over_time() with grouping, selection range narrower than the step: each
-# window only covers the trailing [R] slice, so a stream can carry several samples in one step and
-# have most of them fall in the dead zone before the window.
+# first_over_time() / last_over_time() with grouping, range vector interval narrower than the step.
+#
+# In this scenario, each range vector selector only covers the trailing 5s of a 20s step, so a stream
+# can carry several samples in one step and have most of them fall in the dead zone before the window.
 clear
 load
   {app="a", pod="1"} "v=1" @ 10s   # dead zone
