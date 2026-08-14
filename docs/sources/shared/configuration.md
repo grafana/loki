@@ -4789,6 +4789,11 @@ discover_generic_fields:
 # CLI flag: -compactor.deletion-mode
 [deletion_mode: <string> | default = "filter-and-delete"]
 
+# Experimental. Propagate chunk fetch errors to queries instead of returning
+# incomplete results.
+# CLI flag: -chunk-store.propagate-fetch-errors
+[propagate_chunk_fetch_errors: <boolean> | default = false]
+
 # Retention period to apply to stored data, only applies if retention_enabled is
 # true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s
 # disables retention. In previous releases, Loki did not properly honor a zero
