@@ -229,6 +229,34 @@ RETURN %11
 	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
 }
 
+func Test_simplifyRegexPass_LabelFallbackNegate(t *testing.T) {
+	// A non-message regex that cannot be simplified must be anchored, keeping
+	// the negated operation.
+	id, err := semconv.ParseFQN("utf8.label.foo")
+	require.NoError(t, err)
+
+	orig := &BinOp{
+		Left:  &ColumnRef{Ref: id.ColumnRef()},
+		Op:    types.BinaryOpNotMatchRe,
+		Right: NewLiteral("foo.*"),
+	}
+
+	var pass simplifyRegexPass
+	instrs, changed, err := pass.simplifyBinop(orig)
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	p, err := convertToPlan(instrs[len(instrs)-1].(Value))
+	require.NoError(t, err)
+
+	expect := strings.TrimSpace(`
+%1 = NOT_MATCH_RE label.foo "^(?:foo.*)$"
+RETURN %1
+`)
+	actual := strings.TrimSpace(p.String())
+	require.Equal(t, expect, actual, "Actual plan:\n%s", actual)
+}
+
 //go:embed testdata/simplifyRegexPass/*.txtar
 var simplifyRegexTests embed.FS
 
