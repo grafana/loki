@@ -132,7 +132,9 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	// Only reported for tenants that have enabled log_otlp_attribute_expansion in their runtime config.
 	d.otlpAttrReporter.Report(logger, tenantID, pushStats.OTLPAttributes)
 
-	d.logPushRequestStreams(r.Context(), logger, tenantID, req.Streams, streamResolver, pushStats, presumedAgentIP)
+	if d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
+		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
+	}
 
 	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
@@ -191,15 +193,11 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	tenantID string,
 	streams []push2.Stream,
 	streamResolver *requestScopedStreamResolver,
 	pushStats *push.Stats,
 	presumedAgentIP string,
 ) {
-	if !d.shouldLogPushRequestStreams(tenantID, presumedAgentIP) {
-		return
-	}
 	for _, s := range streams {
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
