@@ -62,10 +62,7 @@ spec:
         {{- end }}
       labels:
         {{- include "loki.ingesterLabels" . | nindent 8 }}
-        app.kubernetes.io/part-of: memberlist
-        name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
-        rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
-        {{- with merge (dict) .Values.loki.podLabels .Values.ingester.podLabels }}
+        {{- with merge (dict) (dict "app.kubernetes.io/part-of" "memberlist" "name" (printf "%singester-zone-a" (include "loki.prefixIngesterName" .)) "rollout-group" (printf "%singester" (include "loki.prefixRolloutGroup" .))) .Values.loki.podLabels .Values.ingester.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
