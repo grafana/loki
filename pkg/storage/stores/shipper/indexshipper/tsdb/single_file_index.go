@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -25,20 +26,21 @@ import (
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
-// GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
-type GetRawFileReaderFunc func() (io.ReadSeeker, error)
+// GetRawFileReaderFunc returns an io.ReadSeekCloser for reading raw tsdb file from disk.
+// The caller owns the returned reader and must Close it.
+type GetRawFileReaderFunc func() (io.ReadSeekCloser, error)
 
-func OpenShippableTSDB(p string) (shipperindex.Index, error) {
+func OpenShippableTSDB(p string, mode indexshipper.IndexReaderMode) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, mode)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
-	indexFile, err := OpenShippableTSDB(path)
+	indexFile, err := OpenShippableTSDB(path, indexshipper.IndexReaderModeMmap)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +51,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 		}
 	}()
 
-	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(*index.Reader).Version()
+	currVer := indexFile.(*TSDBFile).Index.(*TSDBIndex).reader.(index.Reader).Version()
 	if currVer == desiredVer {
 		return nil, ErrAlreadyOnDesiredVersion
 	}
@@ -78,7 +80,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 	if err != nil {
 		return nil, err
 	}
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, indexshipper.IndexReaderModeMmap)
 }
 
 // nolint
@@ -94,8 +96,8 @@ type TSDBFile struct {
 	getRawFileReader GetRawFileReaderFunc
 }
 
-func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
+func NewShippableTSDBFile(id Identifier, mode indexshipper.IndexReaderMode) (*TSDBFile, error) {
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), mode)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +113,7 @@ func (f *TSDBFile) Close() error {
 	return f.Index.Close()
 }
 
-func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
+func (f *TSDBFile) Reader() (io.ReadSeekCloser, error) {
 	return f.getRawFileReader()
 }
 
@@ -126,15 +128,26 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (*TSDBIndex, GetRawFileReaderFunc, error) {
-	reader, err := index.NewFileReader(location)
+func NewTSDBIndexFromFile(location string, mode indexshipper.IndexReaderMode) (*TSDBIndex, GetRawFileReaderFunc, error) {
+	reader, err := openIndexFileReader(location, mode)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	return NewTSDBIndex(reader), func() (io.ReadSeeker, error) {
+	return NewTSDBIndex(reader), func() (io.ReadSeekCloser, error) {
 		return reader.RawFileReader()
 	}, nil
+}
+
+// openIndexFileReader constructs the configured index.Reader implementation
+// for the given file. An empty mode falls back to the default (mmap).
+func openIndexFileReader(location string, mode indexshipper.IndexReaderMode) (index.Reader, error) {
+	switch mode {
+	case indexshipper.IndexReaderModeStream:
+		return index.NewStreamFileReader(location)
+	default:
+		return index.NewMmapFileReader(location)
+	}
 }
 
 func NewTSDBIndex(reader IndexReader) *TSDBIndex {

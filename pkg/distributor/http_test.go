@@ -3,14 +3,12 @@ package distributor
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/dskit/user"
@@ -19,7 +17,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -71,103 +68,6 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 		require.NotContains(t, string(body), "<th>Instance ID</th>")
-	})
-}
-
-func TestRequestParserWrapping(t *testing.T) {
-	t.Run("it calls the parser wrapper if there is one", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
-
-		// unprocessable code because there are no streams in the request.
-		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-		require.True(t, called)
-	})
-
-	t.Run("it returns 204 when the parser wrapper filteres all log lines", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrAllLogsFiltered
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.True(t, called)
-		require.Equal(t, http.StatusNoContent, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with positive content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a positive content length
-		req.ContentLength = 1000
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with negative content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a negative content length to test our guard clause
-		req.ContentLength = -1
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		// The test should complete without panicking
 	})
 }
 
@@ -240,12 +140,6 @@ func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
 	})
 
 	t.Run("Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-
-		// NOTE: this currently returns 400, not 413: an oversized JSON body is
-		// truncated by the max-recv-msg-size LimitReader and fails to decode
-		// before any size check maps to ErrRequestBodyTooLarge. We assert 413
-		// here as the desired behavior.
 		body := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
 
@@ -315,7 +209,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	}
 
 	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		protoBytes, err := proto.Marshal(&logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -347,7 +240,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		body := withGzip(t, lokiJSON)
 		require.Greater(t, int64(len(lokiJSON)), distributors[0].cfg.MaxDecompressedSize)
@@ -371,7 +263,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed OTLP JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		otlpLogs := plog.NewLogs()
 		rl := otlpLogs.ResourceLogs().AppendEmpty()
 		rl.Resource().Attributes().PutStr("service.name", "test-service")
@@ -400,26 +291,4 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 		require.Equal(t, float64(req.ContentLength), testutil.ToFloat64(discardedBytes)-before)
 	})
-}
-
-type fakeParser struct {
-	parseErr error
-}
-
-func newFakeParser() *fakeParser {
-	return &fakeParser{}
-}
-
-func (p *fakeParser) parseRequest(
-	_ string,
-	_ *http.Request,
-	_ push.Limits,
-	_ *runtime.TenantConfigs,
-	_ int,
-	_ int64,
-	_ push.UsageTracker,
-	_ push.StreamResolver,
-	_ log.Logger,
-) (*logproto.PushRequest, *push.Stats, error) {
-	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
 }

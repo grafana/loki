@@ -1,7 +1,6 @@
 package thrift
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"maps"
@@ -18,8 +17,11 @@ import (
 //
 // As an optimization, the value passed in v may be reused across multiple calls
 // to Unmarshal, allowing the function to reuse objects referenced by pointer
-// fields of struct values. When reusing objects, the application is responsible
-// for resetting the state of v before calling Unmarshal again.
+// fields of struct values: non-nil pointer fields present in the input have
+// their pointed-to value zeroed and decoded in place, and pointer fields
+// absent from the input are set to nil. When reusing objects, the application
+// remains responsible for resetting non-pointer state of v (scalars, strings,
+// and slice lengths) before calling Unmarshal again.
 func Unmarshal(p Protocol, b []byte, v any) error {
 	pr := p.NewReaderFromBytes(slices.Clone(b))
 
@@ -106,6 +108,10 @@ func DecodeFuncOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 	f := seen[t]
 	if f != nil {
 		return f
+	}
+
+	if isUnion(t) {
+		return decodeFuncUnionOf(t, seen)
 	}
 
 	// Check if type implements Value interface first
@@ -247,7 +253,7 @@ func decodeFuncSliceOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 			if flags.Have(Strict) {
 				return &TypeMismatch{item: "list item", Expect: typ, Found: l.Type}
 			}
-			return nil
+			return skipListItems(r, l)
 		}
 
 		size := int(l.Size)
@@ -302,14 +308,14 @@ func decodeFuncMapOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 			if flags.Have(Strict) {
 				return &TypeMismatch{item: "map key", Expect: keyType, Found: m.Key}
 			}
-			return nil
+			return skipMapItems(r, m)
 		}
 
 		if elemType != m.Value {
 			if flags.Have(Strict) {
 				return &TypeMismatch{item: "map value", Expect: elemType, Found: m.Value}
 			}
-			return nil
+			return skipMapItems(r, m)
 		}
 
 		tmpKey := reflect.New(key).Elem()
@@ -363,7 +369,7 @@ func decodeFuncMapAsSetOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 			if flags.Have(Strict) {
 				return &TypeMismatch{item: "list item", Expect: typ, Found: s.Type}
 			}
-			return nil
+			return skipSetItems(r, s)
 		}
 
 		tmp := reflect.New(key).Elem()
@@ -383,21 +389,29 @@ func decodeFuncMapAsSetOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 
 type structDecoder struct {
 	fields   []structDecoderField
-	union    []int
 	minID    int16
-	zero     reflect.Value
 	required []uint64
+	// clears contains the indices (into fields) of pointer-typed and
+	// union-typed fields. Such fields absent from the input are zeroed
+	// after decoding, so that reusing a previously decoded value as the
+	// decode target produces the same result as decoding into a fresh
+	// value. Without this, stale pointers (or stale union members) from a
+	// previous decode would survive, which is invisible for regular
+	// optional fields but corrupts values where "which member is non-nil"
+	// carries meaning.
+	clears []int
 }
 
 func (dec *structDecoder) decode(r Reader, v reflect.Value, flags Flags) error {
 	flags = flags.Only(decodeFlags)
 	coalesceBool := flags.Have(coalesceBoolFields)
 
-	lastField := reflect.Value{}
-	union := len(dec.union) > 0
-	seen := make([]uint64, 1)
-	if len(dec.required) > len(seen) {
-		seen = make([]uint64, len(dec.required))
+	// seen tracks which of the (sparse, id-indexed) fields were observed
+	// in the input; required is sized to the same word count.
+	var seenBuf [4]uint64
+	seen := seenBuf[:]
+	if n := len(dec.required); n > len(seenBuf) {
+		seen = make([]uint64, n)
 	}
 
 	// Inlined readStruct loop to avoid closure overhead
@@ -424,7 +438,19 @@ decodeFields:
 		}
 
 		i := int(f.ID) - int(dec.minID)
-		if i < 0 || i >= len(dec.fields) || dec.fields[i].decode == nil {
+		var field *structDecoderField
+		if i >= 0 && i < len(dec.fields) && dec.fields[i].decode != nil {
+			field = &dec.fields[i]
+		}
+		// Unknown fields and (in non-strict mode) type-mismatched fields
+		// are consumed so the stream stays aligned, and left unseen: they
+		// were not decoded, so they must not satisfy the required check nor
+		// protect a stale pointer from the clearUnseen pass below.
+		// TODO: implement type conversions?
+		if field == nil || (f.Type != field.typ && !(f.Type == TRUE && field.typ == BOOL)) {
+			if field != nil && flags.Have(Strict) {
+				return &TypeMismatch{item: "field value", Expect: field.typ, Found: f.Type}
+			}
 			if err := skip(r, f.Type); err != nil {
 				return with(dontExpectEOF(err), &decodeErrorField{cause: f})
 			}
@@ -432,18 +458,7 @@ decodeFields:
 			numFields++
 			continue decodeFields
 		}
-		field := &dec.fields[i]
 		seen[i/64] |= 1 << (i % 64)
-
-		// TODO: implement type conversions?
-		if f.Type != field.typ && !(f.Type == TRUE && field.typ == BOOL) {
-			if flags.Have(Strict) {
-				return &TypeMismatch{item: "field value", Expect: field.typ, Found: f.Type}
-			}
-			lastFieldID = f.ID
-			numFields++
-			continue decodeFields
-		}
 
 		x := v
 		for _, i := range field.index {
@@ -456,12 +471,6 @@ decodeFields:
 				}
 			}
 		}
-
-		if union {
-			v.Set(dec.zero)
-		}
-
-		lastField = x
 
 		if coalesceBool && (f.Type == TRUE || f.Type == FALSE) {
 			for x.Kind() == reflect.Ptr {
@@ -503,8 +512,26 @@ decodeFields:
 		}
 	}
 
-	if union && lastField.IsValid() {
-		v.FieldByIndex(dec.union).Set(lastField.Addr())
+clearUnseen:
+	for _, i := range dec.clears {
+		if seen[i/64]&(1<<(i%64)) != 0 {
+			continue
+		}
+		x := v
+		for _, j := range dec.fields[i].index {
+			if x.Kind() == reflect.Ptr {
+				if x.IsNil() {
+					continue clearUnseen
+				}
+				x = x.Elem()
+			}
+			x = x.Field(j)
+		}
+		// x is either a pointer field or a union struct; zeroing a union
+		// nils its member interface, marking the union unset.
+		if x.Kind() != reflect.Ptr || !x.IsNil() {
+			x.SetZero()
+		}
 	}
 
 	return nil
@@ -515,29 +542,25 @@ type structDecoderField struct {
 	id     int16
 	flags  Flags
 	typ    Type
+	isPtr  bool
 	decode DecodeFunc
 }
 
 func decodeFuncStructOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
-	dec := &structDecoder{
-		zero: reflect.Zero(t),
-	}
+	dec := &structDecoder{}
 	decode := dec.decode
 	seen[t] = decode
 
 	fields := make([]structDecoderField, 0, t.NumField())
 	forEachStructField(t, nil, func(f structField) {
-		if f.flags.Have(Union) {
-			dec.union = f.index
-		} else {
-			fields = append(fields, structDecoderField{
-				index:  f.index,
-				id:     f.id,
-				flags:  f.flags,
-				typ:    TypeOf(f.typ),
-				decode: decodeFuncStructFieldOf(f, seen),
-			})
-		}
+		fields = append(fields, structDecoderField{
+			index:  f.index,
+			id:     f.id,
+			flags:  f.flags,
+			typ:    TypeOf(f.typ),
+			isPtr:  f.typ.Kind() == reflect.Ptr,
+			decode: decodeFuncStructFieldOf(f, seen),
+		})
 	})
 
 	minID := int16(0)
@@ -554,7 +577,7 @@ func decodeFuncStructOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 
 	dec.fields = make([]structDecoderField, (maxID-minID)+1)
 	dec.minID = minID
-	dec.required = make([]uint64, len(fields)/64+1)
+	dec.required = make([]uint64, (len(dec.fields)+63)/64)
 
 	for _, f := range fields {
 		i := f.id - minID
@@ -565,6 +588,9 @@ func decodeFuncStructOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 		dec.fields[i] = f
 		if f.flags.Have(Required) {
 			dec.required[i/64] |= 1 << (i % 64)
+		}
+		if f.isPtr || f.flags.Have(UnionType) {
+			dec.clears = append(dec.clears, int(i))
 		}
 	}
 
@@ -587,6 +613,11 @@ func decodeFuncPtrOf(t reflect.Type, seen DecodeFuncCache) DecodeFunc {
 	return func(r Reader, v reflect.Value, f Flags) error {
 		if v.IsNil() {
 			v.Set(reflect.New(elem))
+		} else {
+			// Reuse the allocation but not the contents: optional fields
+			// of the pointed-to value that are absent from the input must
+			// not survive from a previous decode.
+			v.Elem().SetZero()
 		}
 		return decode(r, v.Elem(), f)
 	}
@@ -654,13 +685,26 @@ func skipBinary(r Reader) error {
 	if n == 0 {
 		return nil
 	}
-	switch x := r.Reader().(type) {
-	case *bufio.Reader:
-		_, err = x.Discard(int(n))
-	default:
-		_, err = io.CopyN(io.Discard, x, int64(n))
-	}
+	_, err = discard(r, int(n))
 	return dontExpectEOF(err)
+}
+
+type discarder interface{ Discard(int) (int, error) }
+
+// discard advances r past n bytes. The bytes-backed readers implement
+// Discard themselves; their Reader() method returns a throwaway view that
+// does not advance the read offset, so discarding through it would silently
+// desynchronize the stream. Streaming readers discard through the
+// underlying io.Reader when it supports it (*bufio.Reader does).
+func discard(r Reader, n int) (int, error) {
+	if d, ok := r.(discarder); ok {
+		return d.Discard(n)
+	}
+	if d, ok := r.Reader().(discarder); ok {
+		return d.Discard(n)
+	}
+	c, err := io.CopyN(io.Discard, r.Reader(), int64(n))
+	return int(c), err
 }
 
 func skipList(r Reader) error {
@@ -668,12 +712,7 @@ func skipList(r Reader) error {
 	if err != nil {
 		return err
 	}
-	for i := range int(l.Size) {
-		if err := skip(r, l.Type); err != nil {
-			return with(dontExpectEOF(err), &decodeErrorList{cause: l, index: i})
-		}
-	}
-	return nil
+	return skipListItems(r, l)
 }
 
 func skipSet(r Reader) error {
@@ -681,12 +720,7 @@ func skipSet(r Reader) error {
 	if err != nil {
 		return err
 	}
-	for i := range int(s.Size) {
-		if err := skip(r, s.Type); err != nil {
-			return with(dontExpectEOF(err), &decodeErrorSet{cause: s, index: i})
-		}
-	}
-	return nil
+	return skipSetItems(r, s)
 }
 
 func skipMap(r Reader) error {
@@ -694,11 +728,52 @@ func skipMap(r Reader) error {
 	if err != nil {
 		return err
 	}
+	return skipMapItems(r, m)
+}
+
+// skipItem consumes one container element of the given type. Unlike bool
+// fields, whose value compact-protocol encoders coalesce into the field
+// type, bool container elements always occupy one byte.
+func skipItem(r Reader, t Type) error {
+	switch t {
+	case TRUE, FALSE:
+		_, err := r.ReadBool()
+		return err
+	default:
+		return skip(r, t)
+	}
+}
+
+// skipListItems, skipSetItems, and skipMapItems consume the elements of a
+// container whose header has already been read. They are used both by the
+// skip functions above and by the decoders when the elements cannot be
+// decoded into the target type: the payload must still be consumed, or the
+// reader would desynchronize from the stream.
+
+func skipListItems(r Reader, l List) error {
+	for i := range int(l.Size) {
+		if err := skipItem(r, l.Type); err != nil {
+			return with(dontExpectEOF(err), &decodeErrorList{cause: l, index: i})
+		}
+	}
+	return nil
+}
+
+func skipSetItems(r Reader, s Set) error {
+	for i := range int(s.Size) {
+		if err := skipItem(r, s.Type); err != nil {
+			return with(dontExpectEOF(err), &decodeErrorSet{cause: s, index: i})
+		}
+	}
+	return nil
+}
+
+func skipMapItems(r Reader, m Map) error {
 	for i := range int(m.Size) {
-		if err := skip(r, m.Key); err != nil {
+		if err := skipItem(r, m.Key); err != nil {
 			return with(dontExpectEOF(err), &decodeErrorMap{cause: m, index: i})
 		}
-		if err := skip(r, m.Value); err != nil {
+		if err := skipItem(r, m.Value); err != nil {
 			return with(dontExpectEOF(err), &decodeErrorMap{cause: m, index: i})
 		}
 	}

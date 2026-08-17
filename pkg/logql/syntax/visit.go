@@ -8,7 +8,6 @@ type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor
 	StageExprVisitor
-	VariantsExprVisitor
 
 	VisitLogRange(*LogRangeExpr)
 }
@@ -43,10 +42,6 @@ type StageExprVisitor interface {
 	VisitLogfmtParser(*LogfmtParserExpr)
 }
 
-type VariantsExprVisitor interface {
-	VisitVariants(*MultiVariantExpr)
-}
-
 var _ RootVisitor = &DepthFirstTraversal{}
 
 type DepthFirstTraversal struct {
@@ -70,7 +65,6 @@ type DepthFirstTraversal struct {
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
-	VisitVariantsFn               func(v RootVisitor, e *MultiVariantExpr)
 }
 
 // VisitBinOp implements RootVisitor.
@@ -291,21 +285,5 @@ func (v *DepthFirstTraversal) VisitVectorAggregation(e *VectorAggregationExpr) {
 		v.VisitVectorAggregationFn(v, e)
 	} else {
 		e.Left.Accept(v)
-	}
-}
-
-func (v *DepthFirstTraversal) VisitVariants(e *MultiVariantExpr) {
-	if e == nil {
-		return
-	}
-
-	if v.VisitVariantsFn != nil {
-		v.VisitVariantsFn(v, e)
-	} else {
-		e.LogRange().Accept(v)
-		variants := e.Variants()
-		for i := range variants {
-			variants[i].Accept(v)
-		}
 	}
 }

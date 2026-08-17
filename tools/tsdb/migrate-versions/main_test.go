@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -90,7 +91,7 @@ func TestMigrateTables(t *testing.T) {
 		require.NoError(t, err)
 
 		tableName := fmt.Sprintf("%s%d", indexPrefix, i)
-		idx, err := tsdb.NewShippableTSDBFile(id)
+		idx, err := tsdb.NewShippableTSDBFile(id, indexshipper.IndexReaderModeMmap)
 		require.NoError(t, err)
 
 		require.NoError(t, uploadFile(idx, indexStorageClient, tableName, userID))

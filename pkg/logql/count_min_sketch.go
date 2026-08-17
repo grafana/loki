@@ -397,6 +397,10 @@ type CountMinSketchEvalStepEvaluator struct {
 }
 
 func NewCountMinSketchEvalStepEvaluator(ctx context.Context, nextEvFactory SampleEvaluatorFactory, expr *CountMinSketchEvalExpr, params Params) (*CountMinSketchEvalStepEvaluator, error) {
+	// The count-min sketch is only supported for instant queries.
+	if GetRangeType(params) != InstantType {
+		return nil, fmt.Errorf("count min sketches are only supported on instant queries")
+	}
 	return &CountMinSketchEvalStepEvaluator{
 		ctx:           ctx,
 		nextEvFactory: nextEvFactory,

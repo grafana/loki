@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/parquet-go/jsonlite"
 	"github.com/parquet-go/parquet-go/deprecated"
+	"github.com/parquet-go/parquet-go/format"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
 	"github.com/twpayne/go-geom"
@@ -218,15 +219,15 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 	typ := node.Type()
 
 	if logicalType := typ.LogicalType(); logicalType != nil {
-		switch {
-		case logicalType.Timestamp != nil:
+		switch lt := logicalType.Value.(type) {
+		case *format.TimestampType:
 			// TIMESTAMP logical type -> write to int64
-			unit := logicalType.Timestamp.Unit
+			unit := lt.Unit
 			var val int64
-			switch {
-			case unit.Millis != nil:
+			switch unit.Value.(type) {
+			case *format.MilliSeconds:
 				val = t.UnixMilli()
-			case unit.Micros != nil:
+			case *format.MicroSeconds:
 				val = t.UnixMicro()
 			default:
 				val = t.UnixNano()
@@ -234,19 +235,19 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 			col.writeInt64(levels, val)
 			return
 
-		case logicalType.Date != nil:
+		case *format.DateType:
 			// DATE logical type -> write to int32
 			col.writeInt32(levels, int32(daysSinceUnixEpoch(t)))
 			return
 
-		case logicalType.Time != nil:
+		case *format.TimeType:
 			// TIME logical type -> write time of day
-			unit := logicalType.Time.Unit
+			unit := lt.Unit
 			nanos := timeOfDayNanos(t)
-			switch {
-			case unit.Millis != nil:
+			switch unit.Value.(type) {
+			case *format.MilliSeconds:
 				col.writeInt32(levels, int32(nanos/1e6))
-			case unit.Micros != nil:
+			case *format.MicroSeconds:
 				col.writeInt64(levels, nanos/1e3)
 			default:
 				col.writeInt64(levels, nanos)
@@ -281,13 +282,13 @@ func writeTime(col ColumnBuffer, levels columnLevels, t time.Time, node Node) {
 func writeDuration(col ColumnBuffer, levels columnLevels, d time.Duration, node Node) {
 	typ := node.Type()
 
-	if logicalType := typ.LogicalType(); logicalType != nil && logicalType.Time != nil {
+	if lt, ok := logicalTypeOf[*format.TimeType](typ.LogicalType()); ok {
 		// TIME logical type
-		unit := logicalType.Time.Unit
-		switch {
-		case unit.Millis != nil:
+		unit := lt.Unit
+		switch unit.Value.(type) {
+		case *format.MilliSeconds:
 			col.writeInt32(levels, int32(d.Milliseconds()))
-		case unit.Micros != nil:
+		case *format.MicroSeconds:
 			col.writeInt64(levels, d.Microseconds())
 		default:
 			col.writeInt64(levels, d.Nanoseconds())
@@ -808,9 +809,8 @@ func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc
 
 		case reflect.Float32:
 			typ := node.Type()
-			logicalType := typ.LogicalType()
-			if logicalType != nil && logicalType.Decimal != nil {
-				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+			if decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType()); ok {
+				decimalValue(col, levels, typ, value, decimal.Scale)
 				return
 			}
 			col.writeFloat(levels, float32(value.Float()))
@@ -818,9 +818,8 @@ func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc
 
 		case reflect.Float64:
 			typ := node.Type()
-			logicalType := typ.LogicalType()
-			if logicalType != nil && logicalType.Decimal != nil {
-				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+			if decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType()); ok {
+				decimalValue(col, levels, typ, value, decimal.Scale)
 				return
 			}
 
@@ -834,8 +833,7 @@ func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc
 				writeJSONNumber(col, levels, json.Number(v), node)
 			default:
 				typ := node.Type()
-				logicalType := typ.LogicalType()
-				if logicalType != nil && logicalType.UUID != nil {
+				if logicalTypeIs[*format.UUIDType](typ.LogicalType()) {
 					writeUUID(col, levels, v, typ)
 					return
 				}
@@ -972,15 +970,15 @@ func numberToByteArray(data any) []byte {
 
 func writeBigFloat(col ColumnBuffer, levels columnLevels, f *big.Float, node Node) {
 	typ := node.Type()
-	logicalType := typ.LogicalType()
-	if logicalType == nil || logicalType.Decimal == nil {
+	decimal, ok := logicalTypeOf[*format.DecimalType](typ.LogicalType())
+	if !ok {
 		panic("writeBigFloat requires a decimal logical type")
 	}
 
-	scale := int(logicalType.Decimal.Scale)
+	scale := int(decimal.Scale)
 	// Compute minimum precision needed: decimal precision * log2(10) ≈ precision * 3.32
 	// We use precision * 4 + 64 for safety margin
-	minPrec := uint(logicalType.Decimal.Precision)*4 + 64
+	minPrec := uint(decimal.Precision)*4 + 64
 	prec := max(f.Prec(), minPrec)
 	scaleFactor := new(big.Float).SetPrec(prec)
 	scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))

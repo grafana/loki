@@ -304,6 +304,13 @@ type DecodeOptions struct {
 	// Instead, we provision up to MaxInitLen, fill that up, and start appending after that.
 	MaxInitLen int
 
+	// MaxBytesLen is used in a few places
+	//   - the maximum number of bytes read at a time
+	//   - maximum size of []byte directly or indirectly created
+	//
+	// If unset, infer from MaxInitLen, typically as max(4096, maxInitLen)
+	MaxBytesLen int
+
 	// ReaderBufferSize is the size of the buffer used when reading.
 	//
 	// if > 0, we use a smart buffer internally for performance purposes.
@@ -419,6 +426,10 @@ type DecodeOptions struct {
 	ValidateUnicode bool
 }
 
+func (d *DecodeOptions) maxBytes2Read() int {
+	return max(d.MaxBytesLen, d.MaxInitLen, 4096)
+}
+
 // ----------------------------------------
 
 type decoderBase struct {
@@ -478,7 +489,8 @@ type decoderBase struct {
 }
 
 func (d *decoderBase) maxInitLen() uint {
-	return uint(max(1024, d.h.MaxInitLen))
+	const minVal = 0 // 1024
+	return uint(max(minVal, d.h.MaxInitLen))
 }
 
 func (d *decoderBase) naked() *fauxUnion {
@@ -883,6 +895,11 @@ func decInferLen(clen int, maxlen, unit uint) (n uint) {
 	}
 	return min(uint(clen), maxlen)
 }
+
+// // assume clen and maxlen are > 0
+// func decInferNumBytes(clen uint, maxlen uint) (u uint) {
+// 	return min(clen, maxlen)
+// }
 
 type Decoder struct {
 	decoderI

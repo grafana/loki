@@ -332,6 +332,9 @@ type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in first_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeFirstOverTimeExpr) String() string {
@@ -366,6 +369,9 @@ type MergeLastOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
 	offset      time.Duration
+
+	// rangeInterval is the range vector's own interval, e.g. the 1m in last_over_time(...[1m]).
+	rangeInterval time.Duration
 }
 
 func (e MergeLastOverTimeExpr) String() string {
@@ -637,7 +643,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *MergeLastOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -672,7 +678,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset, e.rangeInterval), nil
 	case *CountMinSketchEvalExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -710,15 +716,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
-}
-
-func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
-	_ context.Context,
-	_ syntax.VariantsExpr,
-	_ Params,
-) (StepEvaluator, error) {
-	// TODO(twhitney): does the downstream evaluator need to handle variants?
-	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
 }
 
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr

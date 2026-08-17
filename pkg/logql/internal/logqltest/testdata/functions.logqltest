@@ -129,3 +129,43 @@ eval instant at 60s label_replace(count_over_time({app="a"} | logfmt [1m]), "out
 # Without the parser the metadata value is the only loser, so it keeps `k_extracted`.
 eval instant at 60s label_replace(count_over_time({app="a"} [1m]), "out", "$1", "k_extracted", "(.*)")
   {app="a", k="s", k_extracted="m", out="m"} 3
+
+# approx_topk() selects the top k series by value, like topk(), but estimates the
+# values with a count-min sketch. approx_topk() is supported only for instant queries.
+#
+# In this scenario, the log streams are few and distinct, so they never collide in the
+# sketch: the counts are exact and match topk().
+clear
+load
+  {app="foo", pod="a"} "xbar"  @ 10s [repeat every 10s for 18]
+  {app="foo", pod="a"} "noise" @ 15s [repeat every 10s for 18]
+  {app="foo", pod="b"} "xbar"  @ 5s  [repeat every 5s  for 36]
+  {app="foo", pod="b"} "noise" @ 7s  [repeat every 5s  for 36]
+  {app="bar", pod="a"} "xbar"  @ 4s  [repeat every 4s  for 45]
+  {app="bar", pod="a"} "noise" @ 2s  [repeat every 4s  for 45]
+  {app="bar", pod="b"} "xbar"  @ 2s  [repeat every 2s  for 90]
+  {app="bar", pod="b"} "noise" @ 1s  [repeat every 2s  for 90]
+  {app="noise"} "noise" @ 0s [repeat every 10s for 19]
+
+eval instant at 60s approx_topk(2, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  {app="bar", pod="b"} 30
+  {app="bar", pod="a"} 15
+eval instant at 60s approx_topk(1, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  {app="bar", pod="b"} 30
+# k above the series count returns them all.
+eval instant at 60s approx_topk(10, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  {app="bar", pod="b"} 30
+  {app="bar", pod="a"} 15
+  {app="foo", pod="b"} 12
+  {app="foo", pod="a"} 6
+# approx_topk() is supported only for instant queries.
+eval range from 20s to 60s step 20s approx_topk(2, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  expect fail msg: only supported on instant queries
+# approx_topk() forbids grouping (unlike topk).
+eval instant at 60s approx_topk(2, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))) by (app)
+  expect fail msg: grouping not allowed
+# k must be an integer greater than 0.
+eval instant at 60s approx_topk(1.5, sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  expect fail msg: invalid parameter
+eval instant at 60s approx_topk(sum by (app, pod) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])))
+  expect fail msg: parameter required

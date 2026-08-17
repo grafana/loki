@@ -3657,9 +3657,9 @@ The `frontend` block configures the Loki query-frontend.
 [instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
-# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').
 # CLI flag: -frontend.encoding
-[encoding: <string> | default = "json"]
+[encoding: <string> | default = "protobuf"]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -3678,7 +3678,8 @@ The `frontend` block configures the Loki query-frontend.
 [tail_tls_config: <tls_config>]
 
 # Support 'application/vnd.apache.parquet' content type in HTTP responses.
-[support_parquet_encoding: <boolean>]
+# CLI flag: -frontend.support-parquet-encoding
+[support_parquet_encoding: <boolean> | default = false]
 ```
 
 ### frontend_worker
@@ -3876,6 +3877,17 @@ backoff_config:
 # ConnectTimeout > 0.
 # CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
+
+# After a duration of this time if the client doesn't see any activity it pings
+# the server to see if the transport is still alive. This also determines the
+# socket's TCP_USER_TIMEOUT together with keepalive-timeout.
+# CLI flag: -<prefix>.keepalive-time
+[keepalive_time: <duration> | default = 20s]
+
+# After having pinged for keepalive check, the client waits for a duration of
+# this time and if no activity is seen even after that the connection is closed.
+# CLI flag: -<prefix>.keepalive-timeout
+[keepalive_timeout: <duration> | default = 10s]
 
 cluster_validation:
   # Primary cluster validation label.
@@ -4473,12 +4485,6 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # disable.
 # CLI flag: -limits.simulated-push-latency
 [simulated_push_latency: <duration> | default = 0s]
-
-# Enable experimental support for running multiple query variants over the same
-# underlying data. For example, running both a rate() and count_over_time()
-# query over the same range selector.
-# CLI flag: -limits.enable-multi-variant-queries
-[enable_multi_variant_queries: <boolean> | default = false]
 
 # Experimental: Detect fields from stream labels, structured metadata, or
 # json/logfmt formatted log line and put them into structured metadata of the
@@ -6864,6 +6870,12 @@ tsdb_shipper:
   # to fail queries faster when storage is degraded.
   # CLI flag: -tsdb.shipper.download-timeout
   [download_timeout: <duration> | default = 1m]
+
+  # Experimental. Implementation used to read TSDB index files off disk.
+  # Supported values: mmap (memory-map the file, the historical default) or
+  # stream (experimental, not yet fully implemented).
+  # CLI flag: -tsdb.shipper.index-reader-mode
+  [index_reader_mode: <string> | default = "mmap"]
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate

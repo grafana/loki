@@ -51,6 +51,7 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindLabel),
 			"object_path.utf8":        "/tenant/abc/obj1",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(0),
 			"column_name.utf8":        "env",
 			"label_value.utf8":        "value1",
@@ -117,6 +118,7 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 		{
 			"kind.int64":              int64(KindBloom),
 			"object_path.utf8":        "/tenant/abc/obj2",
+			"shard_buckets.int64":     int64(0),
 			"section_index.int64":     int64(1),
 			"column_name.utf8":        "service_name",
 			"label_value.utf8":        nil,

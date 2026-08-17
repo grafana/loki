@@ -104,3 +104,4 @@ limits_config:
   ruler_enable_wal_replay: "This setting is removed. The ruler now always wipes its remote-write WAL on startup, so there is nothing to replay."
   per_tenant_override_config: "This setting is removed in favor of runtime_config.file"
   per_tenant_override_period: "This setting is removed in favor of runtime_config.period"
+  enable_multi_variant_queries: "This setting is removed. LogQL no longer supports variants() queries."

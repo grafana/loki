@@ -19,7 +19,11 @@ import (
 
 // epoch is the base time the script's relative timestamps are added to. Timestamps in a
 // script (`@ 10s`, `eval instant at 60s`) are durations offset from this base.
-var epoch = time.Unix(0, 0).UTC()
+//
+// A realistic base, not Unix(0,0): the query-range HTTP codec sends times as integer nanoseconds,
+// and loghttp.parseTimestamp reads any value with 10 or fewer digits as seconds. Times near
+// Unix(0,0) have <= 10 digits and are misread as seconds; a 2026 base keeps them at 19 digits.
+var epoch = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 var (
 	// reInstant and reRange match the remainder of an `eval instant`/`eval range` line (after the
@@ -32,6 +36,9 @@ var (
 	reAt       = regexp.MustCompile(`^\s*@\s*(\S+)`)
 	reRepeat   = regexp.MustCompile(`^\s*\[repeat every\s+(\S+)\s+for\s+(\d+)\]`)
 	reMetadata = regexp.MustCompile(`^\s*\[metadata\s+(.*?)\]`)
+
+	// reSkip matches a `skip <what> on "<stack>"` directive in an expectation block.
+	reSkip = regexp.MustCompile(`^skip\s+(\S+)\s+on\s+"([^"]+)"$`)
 
 	// reMetadataKeyValue scans the key="value" pairs inside an already-extracted metadata block; it
 	// is intentionally not anchored.
@@ -202,6 +209,14 @@ type evalCmd struct {
 	query            string
 }
 
+// getTimeRange returns the query's [start, end] range and step.
+func (c evalCmd) getTimeRange() (start, end, step time.Duration) {
+	if c.instant {
+		return c.ts, c.ts, 0
+	}
+	return c.start, c.end, c.step
+}
+
 func parseEval(line string) (evalCmd, error) {
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "eval"))
 	switch {
@@ -269,6 +284,11 @@ type expectations struct {
 	ordered  bool // when set, series are compared positionally (for sort/sort_desc); instant only
 	scalar   *float64
 	series   []expectedSeries
+
+	// isValueComparisonSkipped holds the execution stacks (by name) whose result values are not
+	// compared, set by a `skip values-comparison on "<stack>"` directive. The stack still runs and
+	// must not error; only the value/series comparison is skipped.
+	isValueComparisonSkipped map[string]bool
 }
 
 // validate ensures an eval asserts exactly one result kind: series, a scalar, `expect empty`,
@@ -345,6 +365,22 @@ func (p *expectationsParser) parse(line string) error {
 		// Reject unrecognized `expect` annotations rather than silently skipping them,
 		// which would let a script assert something the harness never actually checks.
 		return fmt.Errorf("unsupported expect annotation %q", line)
+	case strings.HasPrefix(line, "skip "):
+		m := reSkip.FindStringSubmatch(line)
+		if m == nil {
+			return fmt.Errorf(`invalid skip directive %q (use: skip <what> on "<stack>")`, line)
+		}
+		what, stack := m[1], m[2]
+		if what != "values-comparison" {
+			return fmt.Errorf("unsupported skip target %q (only %q)", what, "values-comparison")
+		}
+		if !isKnownStackName(stack) {
+			return fmt.Errorf("unknown stack %q in skip directive (known: %s)", stack, strings.Join(stackNames, ", "))
+		}
+		if p.exp.isValueComparisonSkipped == nil {
+			p.exp.isValueComparisonSkipped = map[string]bool{}
+		}
+		p.exp.isValueComparisonSkipped[stack] = true
 	case strings.HasPrefix(line, "{"):
 		lbls, samples, err := parseSeriesLine(line)
 		if err != nil {

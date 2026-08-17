@@ -28,6 +28,7 @@ func CompareRows(a, b Row) int {
 type Row struct {
 	Kind             PostingKind // KindLabel or KindBloom
 	ObjectPath       string
+	ShardBuckets     int64
 	SectionIndex     int64
 	ColumnName       string
 	LabelValue       string // empty for KindBloom rows
@@ -43,6 +44,7 @@ type Row struct {
 func (r Row) LabelEntry() LabelEntry {
 	return LabelEntry{
 		ObjectPath:       r.ObjectPath,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		LabelValue:       r.LabelValue,
@@ -58,6 +60,7 @@ func (r Row) LabelEntry() LabelEntry {
 func (r Row) BloomEntry() BloomEntry {
 	return BloomEntry{
 		ObjectPath:       r.ObjectPath,
+		ShardBuckets:     r.ShardBuckets,
 		SectionIndex:     r.SectionIndex,
 		ColumnName:       r.ColumnName,
 		BloomFilter:      r.BloomFilter,
@@ -74,6 +77,7 @@ func (e LabelEntry) Row() Row {
 	return Row{
 		Kind:             KindLabel,
 		ObjectPath:       e.ObjectPath,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		LabelValue:       e.LabelValue,
@@ -90,6 +94,7 @@ func (e BloomEntry) Row() Row {
 	return Row{
 		Kind:             KindBloom,
 		ObjectPath:       e.ObjectPath,
+		ShardBuckets:     e.ShardBuckets,
 		SectionIndex:     e.SectionIndex,
 		ColumnName:       e.ColumnName,
 		BloomFilter:      e.BloomFilter,
@@ -137,6 +142,10 @@ func DecodeRow(batch arrow.RecordBatch, columns ColumnIndex, rowIndex int) Row {
 
 	if col := getColumn("object_path.utf8"); col != nil && !col.IsNull(rowIndex) {
 		result.ObjectPath = col.(*array.String).Value(rowIndex)
+	}
+
+	if col := getColumn("shard_buckets.int64"); col != nil && !col.IsNull(rowIndex) {
+		result.ShardBuckets = col.(*array.Int64).Value(rowIndex)
 	}
 
 	if col := getColumn("section_index.int64"); col != nil && !col.IsNull(rowIndex) {

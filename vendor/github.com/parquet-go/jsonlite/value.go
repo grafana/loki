@@ -229,6 +229,15 @@ func (v *Value) Lookup(k string) *Value {
 	}
 	fields := unsafe.Slice((*field)(parsed.p), parsed.len())
 	hashes := fields[0].k
+	if len(hashes) == 0 {
+		// Small object: no hash index was built, linear scan the keys.
+		for i := 1; i < len(fields); i++ {
+			if fields[i].k == k {
+				return &fields[i].v
+			}
+		}
+		return nil
+	}
 	refkey := byte(maphash.String(hashseed, k))
 	offset := 0
 	for {
