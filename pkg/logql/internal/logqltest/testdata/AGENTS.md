@@ -42,6 +42,14 @@ eval range from 40s to 60s step 20s <query>   # last step == the instant above
    overlapping (`step ≤ [R]`), and non-overlapping (`step > [R]`). Also add an empty window that
    emits an output gap (`_`). Describe these at the language level (window overlap), not engine
    internals.
+   Mark the shape with a trailing `# overlapping` / `# non-overlapping` on the `eval` line itself,
+   never a full-line comment above it. When one shape covers several evals, tag each of them, and
+   align the `#` across the evals of one scenario:
+
+   ```
+   eval range from 40s to 60s step 20s bytes_over_time({app="a"}[1m])  # overlapping
+   eval range from 60s to 130s step 70s bytes_over_time({app="a"}[1m]) # non-overlapping
+   ```
 
 5. **Test both grouping keywords.** When a function takes `by` or `without`, test both.
    `by(l)` keeps only `l`; `without(l)` keeps the rest. Both combine samples across the streams in a
@@ -113,6 +121,9 @@ forms), and plain common words used the same way every time — one term per con
 Keep them terse and mostly **inline** — let the DSL and expected values carry the meaning; comment
 only what they can't show, and prefer a trailing `# …` on the relevant line over a separate line.
 
+- **Name a function as `<func>()`,** always, everywhere in a comment: `count_over_time()`, `rate()`,
+  `label_replace()`. The trailing `()` marks it as a function, so prose reads unambiguously —
+  `rate() doesn't allow grouping`, not `rate doesn't allow grouping`.
 - **Section header:** start every scenario's lead comment with the function name, e.g.
   `# count_over_time()` or `# stddev_over_time() / stdvar_over_time() with grouping`. When a scenario
   shows several behaviors, write `# <func>() edge cases:` and one `-` bullet per behavior, each a
@@ -120,8 +131,9 @@ only what they can't show, and prefer a trailing `# …` on the relevant line ov
 - **Inline derivation on the result line** when the value isn't obvious — the formula
   (`{app="a"} 2.6   # (0.4 x 2) + (0.6 x 3) = 2.6`) or the per-step window math
   (`{app="a"} 2 3   # (−30s,30s]={1,2,3}→2, (0s,60s]={1,2,3,4,5}→3`).
-- **Inline tag on a range eval** for its window shape (`… count_over_time(…[1m])  # overlapping`),
-  and on a `load` line for what it contributes (`{app="a"} "ccc" @ 40s   # 3 bytes`).
+- **Inline tag on a range eval** for its window shape — `# overlapping` or `# non-overlapping`, on
+  the `eval` line, never as a full-line comment above it (see checklist item 4) — and on a `load`
+  line for what it contributes (`{app="a"} "ccc" @ 40s   # 3 bytes`).
 - **Explain a mechanism** (grouping, `_extracted` precedence, …) **once**, in the first scenario that
   needs it — not per scenario.
 - Never restate the query; no line-by-line narration.
