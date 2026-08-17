@@ -40,6 +40,38 @@ func Test_RowReader_Open_Prefetch(t *testing.T) {
 	}
 }
 
+func Test_RowReader_LazyDownloadTarget(t *testing.T) {
+	dset, columns := buildTestDataset(t)
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: false})
+	defer r.Close()
+
+	require.NoError(t, r.Open(t.Context()))
+	require.Equal(t, defaultDownloadTargetSize, r.dl.targetSize)
+
+	// Force the target below a single page so only P1 pages for the current
+	// read range are downloaded.
+	r.dl.targetSize = 1
+
+	n, err := r.Read(t.Context(), make([]Row, 1))
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	var cached, total int
+	for _, col := range r.dl.allColumns {
+		rc := col.(*readerColumn)
+		require.NotEmpty(t, rc.pages)
+		for _, page := range rc.pages {
+			total++
+			if page.data != nil {
+				cached++
+			}
+		}
+	}
+
+	require.Greater(t, cached, 0, "expected the current read range to download pages")
+	require.Less(t, cached, total, "expected the download target to leave later pages uncached")
+}
+
 func Test_Reader_ReadAll(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns})
