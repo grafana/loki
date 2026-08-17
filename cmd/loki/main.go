@@ -56,9 +56,17 @@ func main() {
 		fmt.Println(version.Print("loki"))
 		os.Exit(0)
 	}
+	// list-targets should not require a config file: it only lists the
+	// available targets, which does not depend on the configuration.
+	// See https://github.com/grafana/loki/issues/23734
 	if err := cfg.DynamicUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
-		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
-		os.Exit(1)
+		if !loki.ShouldListTargets(os.Args[1:]) {
+			fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
+			os.Exit(1)
+		}
+		// -list-targets does not need a configuration file, so we ignore the
+		// config parsing failure and use the defaults.
+		config.ListTargets = true
 	}
 
 	// Set the global OTLP config which is needed in per tenant otlp config
