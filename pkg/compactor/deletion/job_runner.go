@@ -20,13 +20,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-type GetChunkClientForTableFunc func(table string) (client.Client, error)
+type GetChunkClientForTableFunc func(table string) (chunkstore.Client, error)
 
 type Chunk interface {
 	GetFrom() model.Time

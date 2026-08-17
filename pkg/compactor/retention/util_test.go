@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -259,7 +260,7 @@ func tablesInInterval(from, through model.Time) (res []string) {
 }
 
 type testStore struct {
-	chunkClient  client.Client
+	chunkClient  chunkstore.Client
 	objectClient client.ObjectClient
 	t            testing.TB
 	tables       map[string]*table
@@ -390,7 +391,7 @@ func newTestStore(t testing.TB) *testStore {
 	require.NoError(t, schemaCfg.Validate())
 
 	return &testStore{
-		chunkClient:  client.NewClient(newTestObjectClient(chunkDir), client.FSEncoder, schemaCfg),
+		chunkClient:  chunkstore.NewClient(newTestObjectClient(chunkDir), chunkstore.FSEncoder, schemaCfg),
 		t:            t,
 		objectClient: newTestObjectClient(workdir),
 		tables:       map[string]*table{},

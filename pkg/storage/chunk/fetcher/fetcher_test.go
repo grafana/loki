@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
@@ -175,7 +175,7 @@ func Test(t *testing.T) {
 			sc := config.SchemaConfig{
 				Configs: s.GetSchemaConfigs(),
 			}
-			chunkClient := client.NewClientWithMaxParallel(s, nil, 1, sc)
+			chunkClient := chunkstore.NewClientWithMaxParallel(s, nil, 1, sc)
 
 			// Prepare l1 cache
 			keys := make([]string, 0, len(test.l1Start))
@@ -275,7 +275,7 @@ func BenchmarkFetch(b *testing.B) {
 	sc := config.SchemaConfig{
 		Configs: s.GetSchemaConfigs(),
 	}
-	chunkClient := client.NewClientWithMaxParallel(s, nil, 1, sc)
+	chunkClient := chunkstore.NewClientWithMaxParallel(s, nil, 1, sc)
 
 	// Prepare l1 cache
 	keys := make([]string, 0, len(test.l1Start))

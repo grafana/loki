@@ -78,6 +78,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -1760,7 +1761,7 @@ func (t *Loki) initCompactorWorkerMode() (services.Service, error) {
 		return nil, err
 	}
 
-	chunkClients := make(map[config.DayTime]client.Client)
+	chunkClients := make(map[config.DayTime]chunkstore.Client)
 	for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
 		if !config.IsObjectStorageIndex(periodConfig.IndexType) {
 			continue

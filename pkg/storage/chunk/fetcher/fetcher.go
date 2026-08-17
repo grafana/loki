@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/chunkstore"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -46,7 +46,7 @@ const chunkDecodeParallelism = 16
 // chunks from the cache, in parallel.
 type Fetcher struct {
 	schema     config.SchemaConfig
-	storage    client.Client
+	storage    chunkstore.Client
 	cache      cache.Cache
 	cachel2    cache.Cache
 	cacheStubs bool
@@ -72,7 +72,7 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage chunkstore.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:                           schema,
 		storage:                          storage,
@@ -120,7 +120,7 @@ func (c *Fetcher) Cache() cache.Cache {
 	return c.cache
 }
 
-func (c *Fetcher) Client() client.Client {
+func (c *Fetcher) Client() chunkstore.Client {
 	return c.storage
 }
 
