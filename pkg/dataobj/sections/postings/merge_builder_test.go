@@ -59,6 +59,8 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(4096),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  int64(0),
+			"max_shard_bucket.int64":  int64(0),
 		},
 	}
 
@@ -126,6 +128,8 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(8192),
 			"min_timestamp.timestamp": timeVal,
 			"max_timestamp.timestamp": timeVal,
+			"min_shard_bucket.int64":  nil,
+			"max_shard_bucket.int64":  nil,
 		},
 	}
 

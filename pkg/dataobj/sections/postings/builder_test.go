@@ -47,9 +47,9 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 7, Timestamp: ts, UncompressedSize: 0})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 15, Timestamp: ts, UncompressedSize: 0})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 3, Timestamp: ts, UncompressedSize: 4096, ShardBucket: 2})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 7, Timestamp: ts, UncompressedSize: 0, ShardBucket: 7})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/tenant/abc/obj1", ShardBuckets: 16, SectionIndex: 0, ColumnName: "env", LabelValue: "value1", StreamID: 15, Timestamp: ts, UncompressedSize: 0, ShardBucket: 4})
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
@@ -70,6 +70,8 @@ func TestBuilder_LabelPostingRoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(4096),
 			"min_timestamp.timestamp": ts,
 			"max_timestamp.timestamp": ts,
+			"min_shard_bucket.int64":  int64(2),
+			"max_shard_bucket.int64":  int64(7),
 		},
 	}
 
@@ -121,6 +123,8 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 			"uncompressed_size.int64": int64(8192),
 			"min_timestamp.timestamp": ts,
 			"max_timestamp.timestamp": ts,
+			"min_shard_bucket.int64":  nil,
+			"max_shard_bucket.int64":  nil,
 		},
 	}
 
@@ -641,9 +645,9 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 	midTs := time.Unix(0, 200).UTC()
 	maxTs := time.Unix(0, 300).UTC()
 
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: minTs, UncompressedSize: 100})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 5, Timestamp: midTs, UncompressedSize: 200})
-	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 10, Timestamp: maxTs, UncompressedSize: 300})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 1, Timestamp: minTs, UncompressedSize: 100, ShardBucket: 1})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 5, Timestamp: midTs, UncompressedSize: 200, ShardBucket: 5})
+	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "env", LabelValue: "prod", StreamID: 10, Timestamp: maxTs, UncompressedSize: 300, ShardBucket: 3})
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
@@ -666,6 +670,8 @@ func TestBuilder_ObserveLabelPosting(t *testing.T) {
 			"uncompressed_size.int64": int64(600),
 			"min_timestamp.timestamp": minTs,
 			"max_timestamp.timestamp": maxTs,
+			"min_shard_bucket.int64":  int64(1),
+			"max_shard_bucket.int64":  int64(5),
 		},
 	}
 
