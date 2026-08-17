@@ -2,11 +2,11 @@
 title: TSDB index format
 menuTitle: TSDB index format
 description: Describes the on-disk binary layout of the Loki TSDB index and links to the specification of each format version.
-weight: 150
+weight: 700
 ---
 # TSDB index format
 
-Loki stores its [TSDB](../tsdb/) index as a single immutable file per index period. The file layout derives from the Prometheus TSDB index, but Loki extends it with log-specific data such as per-chunk size and entry counts, a series fingerprint, and a fingerprint offsets table used for sharding.
+Loki stores its [TSDB](../../operations/storage/tsdb/) index as a single immutable file per index period. The file layout derives from the Prometheus TSDB index, but Loki extends it with log-specific data such as per-chunk size and entry counts, a series fingerprint, and a fingerprint offsets table used for sharding.
 
 The first five bytes of every index file identify the format:
 
