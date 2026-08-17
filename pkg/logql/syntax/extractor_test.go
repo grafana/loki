@@ -126,3 +126,23 @@ func Test_Extractor_NilForExprsThatDoNotReadLogs(t *testing.T) {
 		})
 	}
 }
+
+// Test_Extractor_DoesNotMutateGroupingInPlace ensure the expression groups
+// are not mutated in place. A VectorAggregationExpr's Grouping can be shared
+// with another expression evaluated concurrently (e.g. the sum/count legs of
+// a sharded avg_over_time), so extractor() must sort a private copy.
+func Test_Extractor_DoesNotMutateGroupingInPlace(t *testing.T) {
+	t.Parallel()
+
+	expr, err := ParseSampleExpr(`sum by (c, a) (sum_over_time({job="mysql"} | unwrap bytes [5m]))`)
+	require.NoError(t, err)
+
+	vecAgg, ok := expr.(*VectorAggregationExpr)
+	require.True(t, ok, "expected a VectorAggregationExpr, got %T", expr)
+	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
+
+	_, err = expr.Extractor()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
+}

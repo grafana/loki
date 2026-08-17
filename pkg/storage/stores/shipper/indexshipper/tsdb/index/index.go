@@ -1434,31 +1434,6 @@ type nopCloserReadSeeker struct{ io.ReadSeeker }
 
 func (nopCloserReadSeeker) Close() error { return nil }
 
-// Range marks a byte range.
-type Range struct {
-	Start, End int64
-}
-
-// PostingsRanges returns a new map of byte range in the underlying index file
-// for all postings lists.
-func (r *ByteSliceReader) PostingsRanges() (map[labels.Label]Range, error) {
-	m := map[labels.Label]Range{}
-	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
-		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
-		if d.Err() != nil {
-			return d.Err()
-		}
-		m[labels.Label{Name: string(name), Value: string(value)}] = Range{
-			Start: int64(off) + 4,
-			End:   int64(off) + 4 + int64(d.Len()),
-		}
-		return nil
-	}); err != nil {
-		return nil, errors.Wrap(err, "read postings table")
-	}
-	return m, nil
-}
-
 type Symbols struct {
 	bs  ByteSlice
 	off int
@@ -1651,13 +1626,9 @@ func (r *ByteSliceReader) Checksum() uint32 {
 }
 
 // Symbols returns an iterator over the symbols that exist within the index.
+// Only used in tests.
 func (r *ByteSliceReader) Symbols() StringIter {
 	return r.symbols.Iter()
-}
-
-// SymbolTableSize returns the symbol table size in bytes.
-func (r *ByteSliceReader) SymbolTableSize() uint64 {
-	return uint64(r.symbols.Size())
 }
 
 // LabelValues returns value tuples that exist for the given label name.

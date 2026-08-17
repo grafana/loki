@@ -1499,6 +1499,11 @@ func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e
 //   - Grouping without empty label set: <operation> without () (<expr>) => Grouping{Without: true, Groups: []}
 //   - Grouping without label set: <operation> without (<labels...>) (<expr>) => Grouping{Without: true, Groups: [<labels...>]}
 type Grouping struct {
+	// Groups is in the order the query text wrote it, not sorted.
+	//
+	// A Grouping may be shared by more than one node and access concurrently,
+	// so it's not safe to change or sort Groups in place. A consumer that needs
+	// sorted order must sort its own copy.
 	Groups  []string
 	Without bool
 }
