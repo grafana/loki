@@ -64,9 +64,15 @@ func main() {
 			fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
 			os.Exit(1)
 		}
-		// -list-targets does not need a configuration file, so we ignore the
-		// config parsing failure and use the defaults.
-		config.ListTargets = true
+		// -list-targets does not need a configuration file: create a Loki instance
+		// with default config and list the available targets.
+		t, newErr := loki.New(config.Config)
+		if newErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to create Loki: %v\n", newErr)
+			os.Exit(1)
+		}
+		t.ListTargets()
+		os.Exit(0)
 	}
 
 	// Set the global OTLP config which is needed in per tenant otlp config
