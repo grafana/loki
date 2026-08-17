@@ -7,7 +7,7 @@ ignore ./tools/dev
 require (
 	cloud.google.com/go/storage v1.64.0
 	dario.cat/mergo v1.0.2
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.22.0
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -87,7 +87,7 @@ require (
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0
-	google.golang.org/api v0.292.0
+	google.golang.org/api v0.293.0
 	google.golang.org/grpc v1.83.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
@@ -96,7 +96,7 @@ require (
 require (
 	charm.land/bubbles/v2 v2.1.1
 	charm.land/bubbletea/v2 v2.0.8
-	charm.land/lipgloss/v2 v2.0.5
+	charm.land/lipgloss/v2 v2.0.6
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.23.2
@@ -162,7 +162,7 @@ require (
 
 require (
 	cel.dev/expr v0.25.3 // indirect
-	cloud.google.com/go/auth v0.23.0 // indirect
+	cloud.google.com/go/auth v0.23.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/monitoring v1.30.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
@@ -181,17 +181,17 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.36 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.5.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.4 // indirect
-	github.com/bits-and-blooms/bitset v1.24.6 // indirect
+	github.com/bits-and-blooms/bitset v1.25.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
-	github.com/charmbracelet/ultraviolet v0.0.0-20260803092147-8b693049ce2a // indirect
-	github.com/charmbracelet/x/ansi v0.11.7 // indirect
+	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be // indirect
+	github.com/charmbracelet/x/ansi v0.11.8 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/containerd/containerd/v2 v2.3.3 // indirect
+	github.com/containerd/containerd/v2 v2.3.4 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
@@ -243,14 +243,14 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.158.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.158.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.5.0 // indirect
-	github.com/parquet-go/bitpack v1.0.0 // indirect
-	github.com/parquet-go/jsonlite v1.5.2 // indirect
+	github.com/parquet-go/bitpack v1.0.3 // indirect
+	github.com/parquet-go/jsonlite v1.5.4 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/prometheus/alertmanager v0.33.1 // indirect
-	github.com/prometheus/client_golang/exp v0.0.0-20260805172144-18218bff2edc
+	github.com/prometheus/client_golang/exp v0.0.0-20260812154952-0c5dccd910c0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
@@ -298,7 +298,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
-	golang.org/x/exp v0.0.0-20260727155853-b88d891fe743 // indirect
+	golang.org/x/exp v0.0.0-20260813180055-c1d0aacb2297 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
@@ -362,7 +362,7 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.20 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.21 // indirect
 	github.com/googleapis/gax-go/v2 v2.23.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.12 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -398,7 +398,7 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	github.com/sirupsen/logrus v1.9.4
+	github.com/sirupsen/logrus v1.10.0
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
