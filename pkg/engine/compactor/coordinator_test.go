@@ -71,26 +71,40 @@ func (f *fakeRunner) snapshot() []runCall {
 }
 
 func (f *fakeRunner) assertUniqueObjects(t *testing.T) {
-	// Validate that no object section appears in more than one task
+	t.Helper()
+
+	// An object is one run: many sections of the same path may share a run,
+	// but that path must not appear in any other run or dispatched task.
+	seen := map[string]struct{}{}
 	for _, call := range f.calls {
 		root, err := call.plan.Root()
 		require.NoError(t, err)
 
-		callObjects := map[string]struct{}{}
 		err = call.plan.Graph().Walk(root, func(n physical.Node) error {
-			switch n.(type) {
+			var runs []*compactionv2pb.RunRef
+			switch n := n.(type) {
 			case *physical.LogMerge:
-				runs := n.(*physical.LogMerge).Runs
-				for _, run := range runs {
-					runObjects := map[string]struct{}{}
-					for _, sectionRef := range run.Sections {
-						runObjects[sectionRef.ObjectPath] = struct{}{}
+				runs = n.Runs
+			case *physical.IndexMerge:
+				runs = n.Runs
+			default:
+				return nil
+			}
+			for _, run := range runs {
+				if run == nil {
+					continue
+				}
+				runObjects := map[string]struct{}{}
+				for _, sectionRef := range run.Sections {
+					if sectionRef == nil {
+						continue
 					}
-					for obj := range runObjects {
-						_, exists := callObjects[obj]
-						require.False(t, exists, "object %q appears in more than one task", obj)
-						callObjects[obj] = struct{}{}
-					}
+					runObjects[sectionRef.ObjectPath] = struct{}{}
+				}
+				for obj := range runObjects {
+					_, exists := seen[obj]
+					require.False(t, exists, "object %q appears in more than one task", obj)
+					seen[obj] = struct{}{}
 				}
 			}
 			return nil
