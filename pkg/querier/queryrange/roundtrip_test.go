@@ -1412,6 +1412,7 @@ type fakeLimits struct {
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
 	tsdbShardingStrategy        func(context.Context, string) string
+	blockedQueries              []*validation.BlockedQuery
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1508,7 +1509,7 @@ func (f fakeLimits) QueryTimeout(context.Context, string) time.Duration {
 }
 
 func (f fakeLimits) BlockedQueries(context.Context, string) []*validation.BlockedQuery {
-	return []*validation.BlockedQuery{}
+	return f.blockedQueries
 }
 
 func (f fakeLimits) RequiredLabels(context.Context, string) []string {

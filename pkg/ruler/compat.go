@@ -23,13 +23,17 @@ import (
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/sigv4"
 
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/blocker"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -55,11 +59,13 @@ type RulesLimits interface {
 
 	RulerRemoteEvaluationTimeout(userID string) time.Duration
 	RulerRemoteEvaluationMaxResponseSize(userID string) int64
+
+	BlockedQueries(context.Context, string) []*validation.BlockedQuery
 }
 
 // queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
+func queryFunc(evaluator Evaluator, checker readyChecker, limits blocker.Limits, userID string, logger log.Logger) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		hash := util.HashedQuery(qs)
 		detail := rules.FromOriginContext(ctx)
@@ -71,6 +77,10 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
 		if !checker.isReady(userID) {
 			return nil, errNotReady
+		}
+
+		if blocker.Matches(ctx, limits, logger, userID, qs, queryTypeOf(qs)) {
+			return nil, logqlmodel.ErrBlocked
 		}
 
 		// Extract rule details
@@ -98,6 +108,18 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
 	}
+}
+
+func queryTypeOf(qs string) string {
+	expr, err := syntax.ParseExpr(qs)
+	if err != nil {
+		return "unknown"
+	}
+	qt, err := logql.QueryType(expr)
+	if err != nil || qt == "" {
+		return "unknown"
+	}
+	return qt
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
@@ -151,7 +173,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFn := queryFunc(evaluator, registry, userID, logger)
+		queryFn := queryFunc(evaluator, registry, overrides, userID, logger)
 		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the

@@ -98,15 +98,17 @@ level=debug msg="query blocker tags mismatch: missing or mismatched key" key=fea
 
 ## Scope
 
-Query blocking is enforced by the LogQL query engine when it evaluates a query. This covers:
+Query blocking applies to:
 
 - Range and instant queries sent to the `/loki/api/v1/query` and `/loki/api/v1/query_range` API endpoints.
-- [Alerting and recording rules](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/), in both local and remote rule evaluation modes. Remote evaluation sends the rule's query back through the query frontend and querier, so it is blocked the same way as an API query.
+- [Alerting and recording rules](https://grafana.com/docs/loki/<LOKI_VERSION>/alert/), in both local and remote rule evaluation modes.
+
+Grafana and other clients send queries through the query frontend. Queries sent directly to a querier are not blocked.
 
 Query blocking does **not** apply to:
 
-- Log tailing (the `/loki/api/v1/tail` endpoint). Tailing reads from the ingesters and the store without using the query engine, so no block policy is applied.
-- Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_fields`. These endpoints don't run a LogQL expression through the query engine, so there is nothing for the query blocker to match against.
+- Log tailing (the `/loki/api/v1/tail` endpoint).
+- Metadata endpoints, such as `labels`, `series`, `index/stats`, `index/volume`, and `detected_fields`. These endpoints don't run a LogQL expression, so there is nothing for the query blocker to match against.
 
 {{< admonition type="warning" >}}
 Loki has an experimental next-generation query engine for querying data objects (dataobj/columnar storage), enabled with `query_engine.enable: true`. Queries that are routed to that engine are **not** checked against `blocked_queries` policies at all. This is a known limitation of the experimental engine, not a deferred check; block policies are silently ignored for any query it serves.
