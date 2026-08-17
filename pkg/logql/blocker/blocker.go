@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -23,9 +22,8 @@ type Limits interface {
 }
 
 var queriesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
-	Namespace: constants.Loki,
-	Name:      "blocked_queries",
-	Help:      "count of queries blocked by per-tenant policy",
+	Name: "loki_blocked_queries",
+	Help: "count of queries blocked by per-tenant policy",
 }, []string{"user"})
 
 // Matches returns true if the query matches any of the tenant's query blocker
@@ -53,7 +51,6 @@ func Matches(ctx context.Context, limits Limits, logger log.Logger, tenant, quer
 			}
 		} else {
 			// Use local copies to avoid mutating the shared config object.
-			// This makes Matches safe to be called concurrently.
 			pattern := b.Pattern
 			isRegex := b.Regex
 

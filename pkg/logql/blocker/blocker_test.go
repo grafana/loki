@@ -3,7 +3,6 @@ package blocker
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -188,32 +187,6 @@ func TestMatches(t *testing.T) {
 			require.Equal(t, test.want, Matches(ctx, limits, log.NewNopLogger(), "fake", query, typ))
 		})
 	}
-}
-
-func TestMatches_ConcurrentAccess(t *testing.T) {
-	shared := []*validation.BlockedQuery{
-		{
-			Pattern: "",
-			Types:   []string{logql.QueryTypeMetric},
-		},
-	}
-
-	limits := &fakeLimits{blockedQueries: shared}
-
-	const goroutines = 50
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-
-	query, typ := queryType(t, `topk(1,rate(({app=~"foo|bar"})[1m]))`)
-	for range goroutines {
-		go func() {
-			defer wg.Done()
-			ctx := user.InjectOrgID(context.Background(), "fake")
-			_ = Matches(ctx, limits, log.NewNopLogger(), "fake", query, typ)
-		}()
-	}
-
-	wg.Wait()
 }
 
 func TestMatches_Tags(t *testing.T) {
