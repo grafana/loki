@@ -134,45 +134,100 @@ type openObject struct {
 	logsSec    map[int]*logs.Section
 }
 
-// streamLabels returns the labels of the requested stream IDs. It pushes the IDs down to the reader as
-// a stream-ID predicate, so only the wanted streams are decoded rather than every stream in the section.
-func (o *openObject) streamLabels(ctx context.Context, want map[streamID]struct{}) (map[streamID]labels.Labels, error) {
-	out := make(map[streamID]labels.Labels, len(want))
+// streamLabels returns the labels of the requested stream IDs, decoding only the streams the query needs.
+// It pushes the IDs down to the reader as a stream-ID predicate.
+//
+// When query enables shard-bucket filtering and the object carries the __shard_bucket__ column, it runs a
+// two-phase read. Phase 1 reads only the cheap {stream_id, __shard_bucket__} columns for every wanted ID,
+// so a stream the metastore lists but the section lacks still surfaces as an error. Phase 2 then decodes
+// labels for only the streams whose bucket falls in the shard's range.
+//
+// filtered reports whether that pruning was applied, so the caller keeps the missing-ID error for the
+// streams it did not prune. Objects without the column fall back to the unfiltered read (filtered=false).
+func (o *openObject) streamLabels(ctx context.Context, want map[streamID]struct{}, query readQuery) (out map[streamID]labels.Labels, filtered bool, err error) {
+	out = make(map[streamID]labels.Labels, len(want))
 	if o.streamsSecDO == nil || len(want) == 0 {
-		return out, nil
+		return out, false, nil
 	}
 
 	sec, err := o.streamsSection(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+
+	wantIDs := streamIDsToInt64(slices.Collect(maps.Keys(want)))
+
+	if query.shardBucket != nil {
+		buckets, ok, err := streams.ReadShardBuckets(ctx, sec, wantIDs)
+		if err != nil {
+			return nil, false, err
+		}
+		if ok {
+			// Every listed stream must exist in the section; a missing one is corruption, not pruning.
+			for id := range want {
+				if _, exists := buckets[int64(id)]; !exists {
+					return nil, false, fmt.Errorf("data object streams section is missing stream ID %d listed by the metastore", id)
+				}
+			}
+			inShard := make([]int64, 0, len(buckets))
+			for id, bucket := range buckets {
+				if bucket >= query.shardBucket.from && bucket <= query.shardBucket.to {
+					inShard = append(inShard, id)
+				}
+			}
+			if err := o.readStreamLabels(ctx, sec, inShard, out); err != nil {
+				return nil, false, err
+			}
+			// Phase 1 proved every wanted ID exists, so phase 2 must return every in-shard one. If it
+			// dropped one, fail loud rather than under-count — matching the unfiltered path's guarantee.
+			for _, id := range inShard {
+				if _, ok := out[streamID(id)]; !ok {
+					return nil, false, fmt.Errorf("data object streams section dropped in-shard stream ID %d between the bucket and label reads", id)
+				}
+			}
+			return out, true, nil
+		}
+
+		// No __shard_bucket__ column (object predates the feature): fall back to the unfiltered read.
+	}
+
+	if err := o.readStreamLabels(ctx, sec, wantIDs, out); err != nil {
+		return nil, false, err
+	}
+	return out, false, nil
+}
+
+// readStreamLabels decodes the labels of the given stream IDs into out, pushing the IDs down as a
+// stream-ID predicate so only those streams are read.
+func (o *openObject) readStreamLabels(ctx context.Context, sec *streams.Section, ids []int64, out map[streamID]labels.Labels) error {
+	if len(ids) == 0 {
+		return nil
 	}
 
 	reader := streams.NewRowReader(sec)
 	defer reader.Close()
 
-	ids := streamIDsToInt64(slices.Collect(maps.Keys(want)))
 	if err := reader.MatchStreams(slices.Values(ids)); err != nil {
-		return nil, err
+		return err
 	}
 	if err := reader.Open(ctx); err != nil {
-		return nil, err
+		return err
 	}
 
 	buf := make([]streams.Stream, 1024)
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, err
+			return err
 		}
 		for i := range buf[:n] {
-			// MatchStreams already restricts the read to the wanted stream IDs.
 			out[streamID(buf[i].ID)] = buf[i].Labels
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
 	}
-	return out, nil
+	return nil
 }
 
 // streamsSection opens (and caches) the tenant's streams section, or returns nil if the object has none.

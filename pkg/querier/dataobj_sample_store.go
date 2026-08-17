@@ -31,23 +31,28 @@ import (
 type dataObjSampleStore struct {
 	Store // chunk store; delegate everything except SelectSamples
 
-	bucket  objstore.Bucket
-	ms      metastore.Metastore
-	logger  log.Logger
-	metrics *dataObjMetrics
+	bucket                   objstore.Bucket
+	ms                       metastore.Metastore
+	shardBucketFilterEnabled bool
+	logger                   log.Logger
+	metrics                  *dataObjMetrics
 }
 
 // NewDataObjSampleStore returns a Store that serves stream-first metric queries from data objects in
 // bucket, resolved via ms. Every other Store method — and SelectSamples for any non-stream-first order —
 // is delegated to chunkStore. chunkStore may be nil to exercise the data-object read path in isolation
 // (benchmarks, focused tests), in which case only stream-first SelectSamples works.
-func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, logger log.Logger, reg prometheus.Registerer) Store {
+//
+// When shardBucketFilterEnabled is true, a sharded query prunes streams by their __shard_bucket__ column
+// before decoding labels, falling back to the fingerprint filter for objects that lack the column.
+func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer) Store {
 	return &dataObjSampleStore{
-		Store:   chunkStore,
-		bucket:  bucket,
-		ms:      ms,
-		logger:  logger,
-		metrics: newDataObjMetrics(reg),
+		Store:                    chunkStore,
+		bucket:                   bucket,
+		ms:                       ms,
+		shardBucketFilterEnabled: shardBucketFilterEnabled,
+		logger:                   logger,
+		metrics:                  newDataObjMetrics(reg),
 	}
 }
 
@@ -97,7 +102,7 @@ func (s *dataObjSampleStore) SelectSamples(ctx context.Context, req logql.Select
 	// One capture spans the whole query, so every object-storage read is accounted and attributed to the
 	// component that made it.
 	captureCtx, _ := xcap.NewCapture(ctx, nil)
-	tasks := newDataObjReadPlanner(s.ms, cache).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
+	tasks := newDataObjReadPlanner(s.ms, cache, s.shardBucketFilterEnabled).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
 
 	logsCtx, _ := xcap.StartRegion(captureCtx, logs.RegionRead)
 	reader := newDataObjLogReader(logsCtx, cache, tasks, defaultMaxConcurrency, defaultReadBatchSize, s.metrics)

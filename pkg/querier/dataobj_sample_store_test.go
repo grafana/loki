@@ -65,7 +65,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 		chunk := &recordingSampleStore{}
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, nil) // empty: a real metastore with no objects to resolve
-		store := NewDataObjSampleStore(chunk, bucket, ms, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(chunk, bucket, ms, false, log.NewNopLogger(), nil)
 
 		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start: time.Unix(0, 0),
@@ -99,7 +99,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"} | trace_id="target"[1h])`)
 		require.NoError(t, err)
@@ -301,7 +301,7 @@ func TestDataObjSampleIterator_RecordsAreStreamClustered(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, groups)
-	store := NewDataObjSampleStore(nil, bucket, ms, log.NewNopLogger(), nil)
+	store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[24h])`)
 	require.NoError(t, err)
@@ -481,4 +481,79 @@ func streamIDsOf(ctx context.Context, t *testing.T, obj *dataobj.Object) []int64
 		require.NoError(t, reader.Close())
 	}
 	return ids
+}
+
+// TestDataObjSampleStore_ShardBucketFiltering checks the shard-bucket pruning path: for every shard of
+// several shard counts, the pruned read (flag on) returns exactly what the fingerprint-filtered read
+// (flag off) returns, and the shards together cover every stream exactly once.
+func TestDataObjSampleStore_ShardBucketFiltering(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), dataObjTestTenant)
+
+	// Many distinct streams so their fingerprints populate a spread of shard buckets. One line each; the
+	// per-stream sample count is irrelevant to shard membership.
+	const numStreams = 64
+	var testStreams []logproto.Stream
+	wantAll := map[string]struct{}{}
+	for i := 0; i < numStreams; i++ {
+		lbls := labels.FromStrings("job", "shardtest", "app", fmt.Sprintf("s%02d", i))
+		testStreams = append(testStreams, logproto.Stream{Labels: lbls.String(), Entries: []push.Entry{
+			{Timestamp: time.Unix(int64(10+i), 0), Line: "x"},
+		}})
+		wantAll[lbls.String()] = struct{}{}
+	}
+
+	bucket := objstore.NewInMemBucket()
+	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
+	storeOff := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
+	storeOn := NewDataObjSampleStore(nil, bucket, ms, true, log.NewNopLogger(), nil)
+
+	expr, err := syntax.ParseSampleExpr(`count_over_time({job="shardtest"}[1h])`)
+	require.NoError(t, err)
+
+	query := func(store Store, shards []string) []sampleRow {
+		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    time.Unix(0, 0),
+			End:      time.Unix(1000, 0),
+			Selector: expr.String(),
+			Plan:     &plan.QueryPlan{AST: expr},
+			Order:    logproto.SAMPLE_ORDER_BY_STREAM,
+			Shards:   shards,
+		}}
+		it, err := store.SelectSamples(ctx, params)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, it.Close()) }()
+		return collectSamples(t, it)
+	}
+
+	labelsOf := func(rows []sampleRow) []string {
+		out := make([]string, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, r.labels)
+		}
+		return out
+	}
+
+	// Unsharded: both flags must return every stream once.
+	require.ElementsMatch(t, labelsOf(query(storeOff, nil)), labelsOf(query(storeOn, nil)))
+	require.Len(t, query(storeOn, nil), numStreams)
+
+	// Of = 32 exercises the exact (skip-recheck) path; Of = 64 exercises the over-fetch (recheck) path;
+	// smaller counts exercise multi-bucket exact ranges.
+	for _, of := range []int{2, 4, 8, 32, 64} {
+		seen := map[string]int{}
+		for shard := 0; shard < of; shard++ {
+			shards := []string{fmt.Sprintf("%d_of_%d", shard, of)}
+			off := query(storeOff, shards)
+			on := query(storeOn, shards)
+			require.ElementsMatchf(t, labelsOf(off), labelsOf(on), "of=%d shard=%d: pruned read must match the fingerprint-filtered read", of, shard)
+			for _, l := range labelsOf(on) {
+				seen[l]++
+			}
+		}
+		// The shards partition the streams: every stream appears in exactly one shard.
+		require.Lenf(t, seen, numStreams, "of=%d: shards must together cover every stream", of)
+		for l, c := range seen {
+			require.Equalf(t, 1, c, "of=%d: stream %s appeared in %d shards, want 1", of, l, c)
+		}
+	}
 }

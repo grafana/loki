@@ -124,18 +124,23 @@ type readQuery struct {
 	expr       syntax.SampleExpr
 	shard      *logql.Shard
 	start, end time.Time
+
+	// shardBucket, when non-nil, prunes streams to its bucket range before their labels are decoded. It
+	// is set only when the feature is enabled and the shard restricts streams.
+	shardBucket *shardBucketFilter
 }
 
 // dataObjReadPlanner turns a metric query into the section-read tasks the reader runs. It owns the metastore lookup, reads
 // each object's streams to compute fingerprints and apply the shard filter, and analyses the query
 // expression to decide the column projection and which metadata filters to push down.
 type dataObjReadPlanner struct {
-	ms    metastore.Metastore
-	cache *dataObjCache
+	ms                       metastore.Metastore
+	cache                    *dataObjCache
+	shardBucketFilterEnabled bool
 }
 
-func newDataObjReadPlanner(ms metastore.Metastore, cache *dataObjCache) *dataObjReadPlanner {
-	return &dataObjReadPlanner{ms: ms, cache: cache}
+func newDataObjReadPlanner(ms metastore.Metastore, cache *dataObjCache, shardBucketFilterEnabled bool) *dataObjReadPlanner {
+	return &dataObjReadPlanner{ms: ms, cache: cache, shardBucketFilterEnabled: shardBucketFilterEnabled}
 }
 
 // plan resolves the query's sections and streams the resulting read tasks through a
@@ -159,8 +164,16 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
 			return
 		}
+
+		query := readQuery{expr: expr, shard: shard, start: start, end: end}
+		if p.shardBucketFilterEnabled {
+			if sb, ok := shardBucketRange(shard); ok {
+				query.shardBucket = &sb
+			}
+		}
+
 		streamsCtx, _ := xcap.StartRegion(ctx, dataObjComponentStreamsReader)
-		if err := p.planObjectsRead(streamsCtx, resp.Sections, readQuery{expr: expr, shard: shard, start: start, end: end}, ch); err != nil {
+		if err := p.planObjectsRead(streamsCtx, resp.Sections, query, ch); err != nil {
 			it.setErr(err)
 		}
 	}()
@@ -171,7 +184,7 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 // planObjectsRead groups the resolved sections by object and plans each object's read concurrently
 // (opening an object and reading its streams section is I/O bound), sending each object's tasks to out
 // as soon as that object is planned. It returns the first resolution error, or ctx.Err() if cancelled.
-func (p *dataObjReadPlanner) planObjectsRead(ctx context.Context, sections []*metastore.DataobjSectionDescriptor, q readQuery, out chan<- dataObjReadTask) error {
+func (p *dataObjReadPlanner) planObjectsRead(ctx context.Context, sections []*metastore.DataobjSectionDescriptor, query readQuery, out chan<- dataObjReadTask) error {
 	byObject := map[string][]*metastore.DataobjSectionDescriptor{}
 	for _, d := range sections {
 		byObject[d.ObjectPath] = append(byObject[d.ObjectPath], d)
@@ -181,7 +194,7 @@ func (p *dataObjReadPlanner) planObjectsRead(ctx context.Context, sections []*me
 	g.SetLimit(maxParallelObjectResolves)
 	for path, descs := range byObject {
 		g.Go(func() error {
-			tasks, err := p.planObjectRead(ctx, path, descs, q)
+			tasks, err := p.planObjectRead(ctx, path, descs, query)
 			if err != nil {
 				return err
 			}
@@ -199,7 +212,7 @@ func (p *dataObjReadPlanner) planObjectsRead(ctx context.Context, sections []*me
 }
 
 // planObjectRead reads one object's streams once, then plans the read of each of its logs sections.
-func (p *dataObjReadPlanner) planObjectRead(ctx context.Context, path string, descs []*metastore.DataobjSectionDescriptor, q readQuery) ([]dataObjReadTask, error) {
+func (p *dataObjReadPlanner) planObjectRead(ctx context.Context, path string, descs []*metastore.DataobjSectionDescriptor, query readQuery) ([]dataObjReadTask, error) {
 	obj, err := p.cache.get(ctx, path)
 	if err != nil {
 		return nil, err
@@ -211,14 +224,14 @@ func (p *dataObjReadPlanner) planObjectRead(ctx context.Context, path string, de
 			want[streamID(id)] = struct{}{}
 		}
 	}
-	idLabels, err := obj.streamLabels(ctx, want)
+	idLabels, filtered, err := obj.streamLabels(ctx, want, query)
 	if err != nil {
 		return nil, err
 	}
 
 	var tasks []dataObjReadTask
 	for _, d := range descs {
-		task, ok, err := planSectionRead(d, idLabels, q)
+		task, ok, err := planSectionRead(d, idLabels, query, filtered)
 		if err != nil {
 			return nil, err
 		}
@@ -236,7 +249,7 @@ func (p *dataObjReadPlanner) planObjectRead(ctx context.Context, path string, de
 // It returns an error when the metastore lists a stream ID that the object's streams section does not
 // hold: that is a broken invariant, and dropping the stream would silently under-count the query. This
 // mirrors recordBatch, which fails on an unexpected stream ID rather than under-counting.
-func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[streamID]labels.Labels, q readQuery) (dataObjReadTask, bool, error) {
+func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[streamID]labels.Labels, query readQuery, shardBucketFiltered bool) (dataObjReadTask, bool, error) {
 	var (
 		streamIDs        []streamID
 		labelsByID       = map[streamID]labels.Labels{}
@@ -247,10 +260,18 @@ func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[stre
 		id := streamID(rawID)
 		lbls, ok := idLabels[id]
 		if !ok {
+			if shardBucketFiltered {
+				// The stream was pruned by the shard-bucket predicate; it is out of the shard, not missing.
+				// streamLabels already checked every listed ID exists, so this is not corruption.
+				continue
+			}
 			return dataObjReadTask{}, false, fmt.Errorf("data object %q logs section %d: stream ID %d listed by the metastore is missing from the object's streams section", desc.ObjectPath, desc.SectionIdx, id)
 		}
+
 		fp := labels.StableHash(lbls)
-		if q.shard != nil && !q.shard.Match(model.Fingerprint(fp)) {
+		// The bucket predicate resolves the shard exactly only for a power-of-two shard of 2..<streams.ShardFactor>;
+		// otherwise it over-fetches, so keep the fingerprint recheck. fp is still needed below for the stream hash.
+		if query.shard != nil && !(shardBucketFiltered && query.shardBucket != nil && query.shardBucket.exact) && !query.shard.Match(model.Fingerprint(fp)) {
 			continue
 		}
 		if _, dup := fingerprintsByID[id]; dup {
@@ -268,7 +289,7 @@ func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[stre
 	// Analyse against this section's stream labels only, so the metadata pushdown gate is as narrow as
 	// possible: a key that is a stream label in another section can still be pushed here when it is
 	// structured metadata for this section's streams.
-	projectedColumns, projectedMetadata, predicates := planProjectionsAndPredicates(q.expr, streamLabelNames(labelsByID))
+	projectedColumns, projectedMetadata, predicates := planProjectionsAndPredicates(query.expr, streamLabelNames(labelsByID))
 	return dataObjReadTask{
 		object:            desc.ObjectPath,
 		section:           int(desc.SectionIdx),
@@ -278,8 +299,8 @@ func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[stre
 		projectedColumns:  projectedColumns,
 		projectedMetadata: projectedMetadata,
 		predicates:        predicates,
-		start:             q.start,
-		end:               q.end,
+		start:             query.start,
+		end:               query.end,
 	}, true, nil
 }
 

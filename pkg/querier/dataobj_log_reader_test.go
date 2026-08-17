@@ -73,7 +73,7 @@ func TestDataObjLogReader_MultiObject(t *testing.T) {
 	expr, err := syntax.ParseSampleExpr(`count_over_time({job="t"}[1h])`)
 	require.NoError(t, err)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "job", "t")}
-	tasks := newDataObjReadPlanner(ms, cache).plan(ctx, at(0), at(100), matchers, nil, expr)
+	tasks := newDataObjReadPlanner(ms, cache, false).plan(ctx, at(0), at(100), matchers, nil, expr)
 
 	// A small batch size forces multiple batches per section, exercising the batch boundary.
 	reader := newDataObjAbortReader(newDataObjLogReader(ctx, cache, tasks, defaultMaxConcurrency, 2, nil), tasks)
@@ -131,7 +131,7 @@ func TestDataObjLogReader_ConcurrentSections(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "job", "t")}
 	// Drain the plan first for the section-count assertions, then re-wrap it as a slice iterator so the
 	// reader consumes every task concurrently against the one shared openObject (the race under test).
-	tasks := drainTaskIterator(t, newDataObjReadPlanner(ms, cache).plan(ctx, at(0), at(100), matchers, nil, expr))
+	tasks := drainTaskIterator(t, newDataObjReadPlanner(ms, cache, false).plan(ctx, at(0), at(100), matchers, nil, expr))
 	require.Greater(t, len(tasks), 1, "a tiny section size must split the object into several sections")
 	for _, task := range tasks {
 		require.Equal(t, tasks[0].object, task.object, "every task must read the same object")
@@ -382,7 +382,7 @@ func TestDataObjLogReader_CloseBeforeDrain(t *testing.T) {
 	expr, err := syntax.ParseSampleExpr(`count_over_time({job="t"}[1h])`)
 	require.NoError(t, err)
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "job", "t")}
-	tasks := newDataObjReadPlanner(ms, cache).plan(ctx, at(0), at(100), matchers, nil, expr)
+	tasks := newDataObjReadPlanner(ms, cache, false).plan(ctx, at(0), at(100), matchers, nil, expr)
 	// maxConcurrency=1, batchSize=1: after the consumer reads one record and stops, the running scan
 	// blocks on the batch channel, so Close must cancel it to unwind.
 	reader := newDataObjAbortReader(newDataObjLogReader(ctx, cache, tasks, 1, 1, nil), tasks)
@@ -426,7 +426,7 @@ func TestDataObjLogReader_ResolutionErrorStopsPlanner(t *testing.T) {
 	cache := newDataObjCache(bucket, dataObjTestTenant)
 	expr, err := syntax.ParseSampleExpr(`count_over_time({app="a"}[1h])`)
 	require.NoError(t, err)
-	tasks := newDataObjReadPlanner(ms, cache).plan(ctx, at(0), at(100), matchers, nil, expr)
+	tasks := newDataObjReadPlanner(ms, cache, false).plan(ctx, at(0), at(100), matchers, nil, expr)
 	reader := newDataObjAbortReader(newDataObjLogReader(ctx, cache, tasks, 1, defaultReadBatchSize, nil), tasks)
 
 	var n int

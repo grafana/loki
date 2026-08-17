@@ -5582,6 +5582,12 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# When true, sharded stream-first metric queries prune data-object streams by
+# their shard bucket before decoding labels. Has no effect unless the
+# data-object reader is enabled.
+# CLI flag: -querier.dataobjects-shard-bucket-filtering-enabled
+[dataobjects_shard_bucket_filtering_enabled: <boolean> | default = false]
 ```
 
 ### query_range

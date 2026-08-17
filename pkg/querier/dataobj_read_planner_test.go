@@ -247,7 +247,7 @@ func TestDataObjReadPlanner_Plan(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "cluster", "test")}
 
 	plan := func(bucket objstore.Bucket, ms metastore.Metastore, shard *logql.Shard) []dataObjReadTask {
-		return drainTaskIterator(t, newDataObjReadPlanner(ms, newDataObjCache(bucket, dataObjTestTenant)).
+		return drainTaskIterator(t, newDataObjReadPlanner(ms, newDataObjCache(bucket, dataObjTestTenant), false).
 			plan(ctx, start, end, matchers, shard, expr))
 	}
 
@@ -359,7 +359,7 @@ func TestPlanSectionRead(t *testing.T) {
 			SectionKey: metastore.SectionKey{ObjectPath: "obj", SectionIdx: 0},
 			StreamIDs:  []int64{1},
 		}
-		task, ok, err := planSectionRead(desc, idLabels, q)
+		task, ok, err := planSectionRead(desc, idLabels, q, false)
 		require.NoError(t, err)
 		require.True(t, ok)
 		require.Equal(t, []streamID{1}, task.streamIDs)
@@ -370,9 +370,22 @@ func TestPlanSectionRead(t *testing.T) {
 			SectionKey: metastore.SectionKey{ObjectPath: "obj", SectionIdx: 0},
 			StreamIDs:  []int64{1, 2}, // 2 is not in idLabels
 		}
-		_, ok, err := planSectionRead(desc, idLabels, q)
+		_, ok, err := planSectionRead(desc, idLabels, q, false)
 		require.False(t, ok)
 		require.ErrorContains(t, err, "missing from the object's streams section")
+	})
+
+	t.Run("under shard-bucket filtering, a stream absent from idLabels is pruned, not an error", func(t *testing.T) {
+		// With shardBucketFiltered=true, streamLabels already proved every listed ID exists, so an ID
+		// absent from idLabels was pruned out of the shard's bucket range — skip it, do not error.
+		desc := &metastore.DataobjSectionDescriptor{
+			SectionKey: metastore.SectionKey{ObjectPath: "obj", SectionIdx: 0},
+			StreamIDs:  []int64{1, 2}, // 2 was pruned (out of bucket range), so it is absent from idLabels
+		}
+		task, ok, err := planSectionRead(desc, idLabels, q, true)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, []streamID{1}, task.streamIDs, "only the in-bucket stream is read")
 	})
 }
 

@@ -67,6 +67,11 @@ type Config struct {
 	PerRequestLimitsEnabled   bool             `yaml:"per_request_limits_enabled"`
 	QueryPartitionIngesters   bool             `yaml:"query_partition_ingesters" category:"experimental"`
 
+	// DataObjectsShardBucketFilteringEnabled prunes data-object streams by their __shard_bucket__ column
+	// before decoding labels, for sharded stream-first metric queries. Has no effect unless the v1
+	// data-object reader is enabled.
+	DataObjectsShardBucketFilteringEnabled bool `yaml:"dataobjects_shard_bucket_filtering_enabled" category:"experimental"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 
@@ -94,6 +99,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.BoolVar(&cfg.DataObjectsShardBucketFilteringEnabled, prefix+"dataobjects-shard-bucket-filtering-enabled", false, "When true, sharded stream-first metric queries prune data-object streams by their shard bucket before decoding labels. Has no effect unless the data-object reader is enabled.")
 }
 
 // Validate validates the config.
@@ -165,7 +171,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 	}
 
 	if dataObjBucket != nil && dataObjMetastore != nil {
-		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, logger, reg)
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg)
 	}
 
 	return q, nil

@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -66,7 +67,7 @@ func TestDataObjCache_StreamLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("all requested", func(t *testing.T) {
-		got, err := oo.streamLabels(ctx, wantSet(ids...))
+		got, _, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{})
 		require.NoError(t, err)
 		require.Len(t, got, 3)
 		byLabel := map[string]bool{}
@@ -77,7 +78,7 @@ func TestDataObjCache_StreamLabels(t *testing.T) {
 	})
 
 	t.Run("subset only", func(t *testing.T) {
-		got, err := oo.streamLabels(ctx, wantSet(ids[0], ids[2]))
+		got, _, err := oo.streamLabels(ctx, wantSet(ids[0], ids[2]), readQuery{})
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		require.Contains(t, got, streamID(ids[0]))
@@ -86,15 +87,65 @@ func TestDataObjCache_StreamLabels(t *testing.T) {
 	})
 
 	t.Run("absent id returns nothing for it", func(t *testing.T) {
-		got, err := oo.streamLabels(ctx, wantSet(99999))
+		got, _, err := oo.streamLabels(ctx, wantSet(99999), readQuery{})
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
 
 	t.Run("empty want short-circuits", func(t *testing.T) {
-		got, err := oo.streamLabels(ctx, map[streamID]struct{}{})
+		got, _, err := oo.streamLabels(ctx, map[streamID]struct{}{}, readQuery{})
 		require.NoError(t, err)
 		require.Empty(t, got)
+	})
+}
+
+// TestDataObjCache_StreamLabels_ShardBucketFilter checks the two-phase (pruning) read: it reports
+// filtered=true, prunes streams outside the bucket range, and still errors on a metastore-listed stream
+// that the section lacks.
+func TestDataObjCache_StreamLabels_ShardBucketFilter(t *testing.T) {
+	ctx := context.Background()
+	bucket := objstore.NewInMemBucket()
+	foo, bar, baz := labels.FromStrings("app", "foo"), labels.FromStrings("app", "bar"), labels.FromStrings("app", "baz")
+	ids := buildDataObject(ctx, t, bucket, "obj", []logproto.Stream{
+		{Labels: foo.String(), Entries: []push.Entry{{Timestamp: time.Unix(1, 0), Line: "x"}}},
+		{Labels: bar.String(), Entries: []push.Entry{{Timestamp: time.Unix(2, 0), Line: "y"}}},
+		{Labels: baz.String(), Entries: []push.Entry{{Timestamp: time.Unix(3, 0), Line: "z"}}},
+	})
+	require.Len(t, ids, 3)
+	oo, err := newDataObjCache(bucket, dataObjTestTenant).get(ctx, "obj")
+	require.NoError(t, err)
+
+	allBuckets := &shardBucketFilter{from: 0, to: streams.ShardFactor - 1}
+
+	t.Run("filter covering all buckets returns every stream and reports filtered", func(t *testing.T) {
+		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{shardBucket: allBuckets})
+		require.NoError(t, err)
+		require.True(t, filtered, "the two-phase pruning path must have run, not the fallback")
+		require.Len(t, got, 3)
+	})
+
+	t.Run("filter to one stream's bucket prunes the others", func(t *testing.T) {
+		fooBucket := streams.ShardBucket(foo)
+		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{shardBucket: &shardBucketFilter{from: fooBucket, to: fooBucket}})
+		require.NoError(t, err)
+		require.True(t, filtered)
+		// Exactly the streams whose bucket equals foo's survive.
+		want := map[streamID]struct{}{}
+		for i, l := range []labels.Labels{foo, bar, baz} {
+			if streams.ShardBucket(l) == fooBucket {
+				want[streamID(ids[i])] = struct{}{}
+			}
+		}
+		require.Len(t, got, len(want))
+		for id := range want {
+			require.Contains(t, got, id)
+		}
+	})
+
+	t.Run("a listed stream missing from the section is corruption under filtering", func(t *testing.T) {
+		_, _, err := oo.streamLabels(ctx, wantSet(ids[0], ids[1], ids[2], 99999), readQuery{shardBucket: allBuckets})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "99999")
 	})
 }
 

@@ -436,7 +436,7 @@ func openBenchDataObjStore(b *testing.B, dir string, counters *benchCounters) lo
 	require.NotEmpty(b, metaObjects, "no data objects found in the fixtures; regenerate them")
 
 	bucket := &benchCountingBucket{Bucket: fsBucket, c: counters}
-	return querier.NewDataObjSampleStore(nil, bucket, &benchMetastore{objects: metaObjects}, log.NewNopLogger(), nil)
+	return querier.NewDataObjSampleStore(nil, bucket, &benchMetastore{objects: metaObjects}, false, log.NewNopLogger(), nil)
 }
 
 // benchDataObjDir is the sub-directory of a fixture dir that holds the data objects.
