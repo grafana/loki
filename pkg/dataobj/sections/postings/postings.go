@@ -34,6 +34,8 @@ const (
 	ColumnTypeUncompressedSize                   // "uncompressed_size"
 	ColumnTypeMinTimestamp                       // "min_timestamp"
 	ColumnTypeMaxTimestamp                       // "max_timestamp"
+	ColumnTypeMinShardBucket                     // "min_shard_bucket"
+	ColumnTypeMaxShardBucket                     // "max_shard_bucket"
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -49,6 +51,8 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeUncompressedSize: "uncompressed_size",
 	ColumnTypeMinTimestamp:     "min_timestamp",
 	ColumnTypeMaxTimestamp:     "max_timestamp",
+	ColumnTypeMinShardBucket:   "min_shard_bucket",
+	ColumnTypeMaxShardBucket:   "max_shard_bucket",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -79,6 +83,10 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":
 		return ColumnTypeMaxTimestamp, nil
+	case "min_shard_bucket":
+		return ColumnTypeMinShardBucket, nil
+	case "max_shard_bucket":
+		return ColumnTypeMaxShardBucket, nil
 	}
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
 }
@@ -130,6 +138,9 @@ type LabelEntry struct {
 	MaxTimestamp int64
 	// UncompressedSize is the total uncompressed size in bytes.
 	UncompressedSize int64
+	// MinShardBucket and MaxShardBucket are the minimum and maximum shard buckets observed within this posting.
+	MinShardBucket uint32
+	MaxShardBucket uint32
 }
 
 // BloomEntry represents an aggregated bloom posting entry that can be

@@ -269,6 +269,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMinShardBucket:   arrow.PrimitiveTypes.Int64,
+	ColumnTypeMaxShardBucket:   arrow.PrimitiveTypes.Int64,
 }
 
 func columnToField(col *Column) arrow.Field {

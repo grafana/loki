@@ -121,7 +121,7 @@ func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, b
 // encodeColumns encodes bloom and label entries into the provided columnar
 // encoder. Bloom entries (Kind=0) first, label entries (Kind=1) second.
 func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries []LabelEntry, enc *columnar.Encoder) error {
-	// Build column builders for all 11 columns.
+	// Build column builders for all 13 columns.
 
 	// kind is a 2-value flag (0=bloom, 1=label). With sorted rows (blooms first,
 	// then labels), deltas are almost all zeros — ZSTD compresses these runs very
@@ -202,6 +202,16 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		return fmt.Errorf("creating max_timestamp column: %w", err)
 	}
 
+	minShardBucketBuilder, err := numberColumnBuilder(ColumnTypeMinShardBucket, p.pageSizeHint, p.pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating min_shard_bucket column: %w", err)
+	}
+
+	maxShardBucketBuilder, err := numberColumnBuilder(ColumnTypeMaxShardBucket, p.pageSizeHint, p.pageMaxRowCount)
+	if err != nil {
+		return fmt.Errorf("creating max_shard_bucket column: %w", err)
+	}
+
 	// Populate column builders: bloom entries first (Kind=0), then label entries (Kind=1).
 	rowIdx := 0
 
@@ -217,6 +227,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
+		_ = minShardBucketBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
+		_ = maxShardBucketBuilder.Append(rowIdx, dataset.Value{}) // null for bloom
 		rowIdx++
 	}
 
@@ -232,6 +244,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 		_ = uncompressedSizeBuilder.Append(rowIdx, dataset.Int64Value(e.UncompressedSize))
 		_ = minTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MinTimestamp))
 		_ = maxTimestampBuilder.Append(rowIdx, dataset.Int64Value(e.MaxTimestamp))
+		_ = minShardBucketBuilder.Append(rowIdx, dataset.Int64Value(int64(e.MinShardBucket)))
+		_ = maxShardBucketBuilder.Append(rowIdx, dataset.Int64Value(int64(e.MaxShardBucket)))
 		rowIdx++
 	}
 
@@ -246,7 +260,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	}})
 
 	// Encode all columns.
-	errs := make([]error, 0, 11)
+	errs := make([]error, 0, 13)
 	errs = append(errs, encodeColumn(enc, ColumnTypeKind, kindBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeObjectPath, objectPathBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeShardBuckets, shardBucketsBuilder))
@@ -258,6 +272,8 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 	errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedSize, uncompressedSizeBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
 	errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeMinShardBucket, minShardBucketBuilder))
+	errs = append(errs, encodeColumn(enc, ColumnTypeMaxShardBucket, maxShardBucketBuilder))
 
 	if err := errors.Join(errs...); err != nil {
 		return fmt.Errorf("encoding columns: %w", err)
