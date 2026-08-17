@@ -40,13 +40,24 @@ func makeTestStreamLabels() map[int64]labels.Labels {
 	}
 }
 
+// makeTestShardBuckets creates the shard buckets for each of the provided labels
+func makeTestShardBuckets(testLabels map[int64]labels.Labels) map[int64]uint32 {
+	return map[int64]uint32{
+		1: uint32(streams.ShardBucket(testLabels[1])),
+		2: uint32(streams.ShardBucket(testLabels[2])),
+		3: uint32(streams.ShardBucket(testLabels[3])),
+	}
+}
+
 func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
+	testLabels := makeTestStreamLabels()
 	return &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 }
 
@@ -105,12 +116,16 @@ func readStatsTable(ctx context.Context, r *stats.Reader) (arrow.Table, error) {
 
 func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := labels.FromStrings("service_name", "svcA", "cluster", "c1")
 	ctx := &logsCalculationContext{
 		tenantID:   "tenant-1",
 		objectPath: "test/path/obj1",
 		sectionIdx: 0,
 		streamLabels: map[int64]labels.Labels{
-			1: labels.FromStrings("service_name", "svcA", "cluster", "c1"),
+			1: testLabels,
+		},
+		streamShardBuckets: map[int64]uint32{
+			1: uint32(streams.ShardBucket(testLabels)),
 		},
 		builder: builder,
 	}
@@ -154,6 +169,10 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 		streamLabels: map[int64]labels.Labels{
 			1: first,
 			2: second,
+		},
+		streamShardBuckets: map[int64]uint32{
+			1: uint32(streams.ShardBucket(first)),
+			2: uint32(streams.ShardBucket(second)),
 		},
 		builder: builder,
 	}

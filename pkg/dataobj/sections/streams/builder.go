@@ -228,7 +228,7 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 // ShardBucket returns the physical shard bucket for streamLabels.
 func ShardBucket(streamLabels labels.Labels) uint64 {
 	fp := labels.StableHash(streamLabels)
-	return fp >> (64 - shardBits)
+	return fp>>(64-shardBits) + 1
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
@@ -239,8 +239,8 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
-	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 	newStream.Labels = streamLabels
+	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)

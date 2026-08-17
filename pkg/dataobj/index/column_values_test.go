@@ -49,12 +49,14 @@ func makeColumnValuesStats(metadataColumns []string) logs.Stats {
 
 func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := makeTestStreamLabels()
 	calcCtx := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 
 	calc := &columnValuesCalculation{}
@@ -120,12 +122,14 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 
 func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := makeTestStreamLabels()
 	calcCtx := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 
 	calc := &columnValuesCalculation{}
@@ -170,12 +174,14 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 
 func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := makeTestStreamLabels()
 	calcCtx := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 
 	calc := &columnValuesCalculation{}
@@ -205,12 +211,14 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 
 func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := makeTestStreamLabels()
 	calcCtx := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 
 	calc := &columnValuesCalculation{}
@@ -242,12 +250,14 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 
 func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
+	testLabels := makeTestStreamLabels()
 	calcCtx := &logsCalculationContext{
-		tenantID:     "tenant-1",
-		objectPath:   "test/path/obj1",
-		sectionIdx:   0,
-		streamLabels: makeTestStreamLabels(),
-		builder:      builder,
+		tenantID:           "tenant-1",
+		objectPath:         "test/path/obj1",
+		sectionIdx:         0,
+		streamLabels:       testLabels,
+		streamShardBuckets: makeTestShardBuckets(testLabels),
+		builder:            builder,
 	}
 
 	calc := &columnValuesCalculation{}

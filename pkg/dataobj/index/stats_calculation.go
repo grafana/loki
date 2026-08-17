@@ -14,19 +14,17 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // created for and scoped to each logs section
 type statsCalculation struct {
-	schema       []string                   // schema is the fully-qualified sort schema ("label:<name>")
-	labelKeys    []string                   // labelKeys are the bare Prometheus label names derived from schema
-	aggregates   map[uint64]*statsAggregate // keyed by hash of shard + composite label values
-	streamShards map[int64]uint32
+	schema     []string                   // schema is the fully-qualified sort schema ("label:<name>")
+	labelKeys  []string                   // labelKeys are the bare Prometheus label names derived from schema
+	aggregates map[uint64]*statsAggregate // keyed by hash of shard + composite label values
 }
 
 type statsAggregate struct {
-	shard            uint32
+	shardBucket      uint32
 	labels           map[string]string // all sort schema key-value pairs
 	minTimestamp     time.Time
 	maxTimestamp     time.Time
@@ -48,7 +46,6 @@ func (c *statsCalculation) Prepare(_ context.Context, _ *logsCalculationContext,
 	}
 	c.labelKeys = labelKeys
 	c.aggregates = make(map[uint64]*statsAggregate)
-	c.streamShards = make(map[int64]uint32)
 	return nil
 }
 
@@ -61,16 +58,12 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 	)
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
-		shard, ok := c.streamShards[log.StreamID]
-		if !ok {
-			shard = uint32(streams.ShardBucket(streamLbls))
-			c.streamShards[log.StreamID] = shard
-		}
+		shardBucket := calcCtx.streamShardBuckets[log.StreamID]
 
 		// Build the composite key from the shard and all sort schema keys.
 		// Uses key=value pairs separated by \x00 to avoid ambiguity.
 		buf.Reset()
-		buf.WriteByte(byte(shard))
+		buf.WriteByte(byte(shardBucket))
 		for _, key := range c.labelKeys {
 			buf.WriteByte(0)
 			buf.WriteString(key)
@@ -89,7 +82,7 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 				labelMap[key] = streamLbls.Get(key)
 			}
 			agg = &statsAggregate{
-				shard:        shard,
+				shardBucket:  shardBucket,
 				labels:       labelMap,
 				minTimestamp: log.Timestamp,
 				maxTimestamp: log.Timestamp,
@@ -129,7 +122,7 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 		sorted = append(sorted, agg)
 	}
 	slices.SortFunc(sorted, func(a, b *statsAggregate) int {
-		if n := cmp.Compare(a.shard, b.shard); n != 0 {
+		if n := cmp.Compare(a.shardBucket, b.shardBucket); n != 0 {
 			return n
 		}
 		for _, key := range c.labelKeys {
@@ -146,13 +139,13 @@ func (c *statsCalculation) Flush(_ context.Context, calcCtx *logsCalculationCont
 			calcCtx.tenantID,
 			calcCtx.objectPath,
 			calcCtx.sectionIdx,
+			agg.shardBucket,
 			sortSchema,
 			agg.labels,
 			agg.minTimestamp,
 			agg.maxTimestamp,
 			agg.rowCount,
 			agg.uncompressedSize,
-			agg.shard,
 		)
 		if err != nil {
 			return err

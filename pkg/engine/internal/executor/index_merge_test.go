@@ -610,9 +610,9 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	require.NoError(t, err, "failed to observe log line")
 
 	// Append a stat to get a stats section.
-	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
+	err = builder.AppendStat(tenant, "log-A", 0, 16, "label:service",
 		map[string]string{"service": "api"},
-		ts, ts.Add(time.Second), 10, 1000, 0)
+		ts, ts.Add(time.Second), 10, 1000)
 	require.NoError(t, err, "failed to append stat")
 
 	// Observe a label posting to get a postings section.
@@ -624,6 +624,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 		StreamID:         1,
 		Timestamp:        ts,
 		UncompressedSize: 100,
+		ShardBuckets:     16,
 	})
 
 	// Flush the builder to create the object.
