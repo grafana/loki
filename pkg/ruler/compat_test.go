@@ -12,8 +12,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/util/log"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -98,8 +100,6 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 	require.Error(t, cfg.RemoteWrite.Validate())
 }
 
-// TestNonMetricQuery tests that only metric queries can be executed in the query function,
-// as both alert and recording rules rely on metric queries being run
 func TestNonMetricQuery(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.Nil(t, err)
@@ -109,10 +109,27 @@ func TestNonMetricQuery(t *testing.T) {
 	eval, err := NewLocalEvaluator(engine, log)
 	require.NoError(t, err)
 
-	queryFunc := queryFunc(eval, fakeChecker{}, "fake", log)
+	queryFunc := queryFunc(eval, fakeChecker{}, overrides, "fake", log)
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")
+}
+
+func TestQueryFunc_BlockedQueries(t *testing.T) {
+	defaults := validation.Limits{}
+	defaults.BlockedQueries = []*util_validation.BlockedQuery{
+		{Pattern: `sum(rate({job="nginx"}[1m]))`},
+	}
+	overrides, err := validation.NewOverrides(defaults, nil)
+	require.NoError(t, err)
+
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.Logger)
+	eval, err := NewLocalEvaluator(engine, log.Logger)
+	require.NoError(t, err)
+
+	qf := queryFunc(eval, fakeChecker{}, overrides, "fake", log.Logger)
+	_, err = qf(context.Background(), `sum(rate({job="nginx"}[1m]))`, time.Now())
+	require.ErrorIs(t, err, logqlmodel.ErrBlocked)
 }
 
 type FakeQuerier struct{}

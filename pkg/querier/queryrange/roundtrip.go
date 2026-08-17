@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +19,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/blocker"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -433,6 +436,10 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return nil, errors.New("query plan is empty")
 		}
 
+		if err := r.isQueryBlocked(ctx, op.Query, op.Plan.AST); err != nil {
+			return nil, err
+		}
+
 		switch e := op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			// The error will be handled later.
@@ -487,6 +494,12 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"query", op.Query,
 			"query_hash", queryHash,
 		)
+		if op.Plan == nil {
+			return nil, errors.New("query plan is empty")
+		}
+		if err := r.isQueryBlocked(ctx, op.Query, op.Plan.AST); err != nil {
+			return nil, err
+		}
 		switch op.Plan.AST.(type) {
 		case syntax.SampleExpr:
 			return r.instantMetric.Do(ctx, req)
@@ -559,6 +572,27 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	default:
 		return r.next.Do(ctx, req)
 	}
+}
+
+// isQueryBlocked rejects LogQL queries that match a tenant's blocked_queries policy.
+func (r roundTripper) isQueryBlocked(ctx context.Context, query string, expr syntax.Expr) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	queryType, err := logql.QueryType(expr)
+	if err != nil || queryType == "" {
+		queryType = "unknown"
+	}
+
+	for _, tenantID := range tenantIDs {
+		if blocker.Matches(ctx, r.limits, r.logger, tenantID, query, queryType) {
+			return httpgrpc.Errorf(http.StatusBadRequest, "%s", logqlmodel.ErrBlocked)
+		}
+	}
+
+	return nil
 }
 
 const (

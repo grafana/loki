@@ -1,4 +1,4 @@
-package logql
+package blocker
 
 import (
 	"context"
@@ -12,22 +12,38 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-func TestEngine_ExecWithBlockedQueries(t *testing.T) {
-	limits := &fakeLimits{maxSeries: 10}
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
+type fakeLimits struct {
+	blockedQueries []*validation.BlockedQuery
+}
+
+func (f fakeLimits) BlockedQueries(_ context.Context, _ string) []*validation.BlockedQuery {
+	return f.blockedQueries
+}
+
+func queryType(t *testing.T, q string) (string, string) {
+	t.Helper()
+	params, err := logql.NewLiteralParams(q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+	require.NoError(t, err)
+	typ, err := logql.QueryType(params.GetExpression())
+	require.NoError(t, err)
+	return params.QueryString(), typ
+}
+
+func TestMatches(t *testing.T) {
+	limits := &fakeLimits{}
 
 	defaultQuery := `topk(1,rate(({app=~"foo|bar"})[1m]))`
 	for _, test := range []struct {
-		name        string
-		q           string
-		blocked     []*validation.BlockedQuery
-		expectedErr error
+		name    string
+		q       string
+		blocked []*validation.BlockedQuery
+		want    bool
 	}{
 		{
 			"exact match all types",
@@ -35,7 +51,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: defaultQuery,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"exact match all types with surrounding whitespace trimmed",
@@ -43,40 +59,38 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: fmt.Sprintf("       %s  ", defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"exact match filter type only",
 			`{app=~"foo|bar"} |= "baz"`, []*validation.BlockedQuery{
 				{
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
-					Types:   []string{QueryTypeFilter},
+					Types:   []string{logql.QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"match from multiple patterns",
 			`{app=~"foo|bar"} |= "baz"`, []*validation.BlockedQuery{
-				// won't match
 				{
 					Pattern: `.*"buzz".*`,
 					Regex:   true,
 				},
-				// will match
 				{
 					Pattern: `{app=~"foo|bar"} |= "baz"`,
-					Types:   []string{QueryTypeFilter},
+					Types:   []string{logql.QueryTypeFilter},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"no block: exact match not matching filter type",
 			`{app=~"foo|bar"} | json`, []*validation.BlockedQuery{
 				{
-					Pattern: `{app=~"foo|bar"} | json`, // "limited" query
-					Types:   []string{QueryTypeFilter},
+					Pattern: `{app=~"foo|bar"} | json`,
+					Types:   []string{logql.QueryTypeFilter},
 				},
-			}, nil,
+			}, false,
 		},
 		{
 			"regex match all types",
@@ -85,7 +99,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 					Pattern: ".*foo.*",
 					Regex:   true,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"regex match multiple types",
@@ -93,25 +107,25 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: ".*foo.*",
 					Regex:   true,
-					Types:   []string{QueryTypeFilter, QueryTypeMetric},
+					Types:   []string{logql.QueryTypeFilter, logql.QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"match all queries by type",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Types: []string{QueryTypeFilter, QueryTypeMetric},
+					Types: []string{logql.QueryTypeFilter, logql.QueryTypeMetric},
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"no block: match all queries by type",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Types: []string{QueryTypeLimited},
+					Types: []string{logql.QueryTypeLimited},
 				},
-			}, nil,
+			}, false,
 		},
 		{
 			"regex does not compile",
@@ -119,9 +133,9 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Pattern: "[.*",
 					Regex:   true,
-					Types:   []string{QueryTypeFilter, QueryTypeMetric},
+					Types:   []string{logql.QueryTypeFilter, logql.QueryTypeMetric},
 				},
-			}, nil,
+			}, false,
 		},
 		{
 			"correct FNV32 hash matches",
@@ -129,7 +143,7 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"incorrect FNV32 hash does not match",
@@ -137,99 +151,81 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 				{
 					Hash: util.HashedQuery(defaultQuery) + 1,
 				},
-			}, nil,
+			}, false,
 		},
 		{
 			"non-matching hash does not prevent subsequent pattern from matching",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+					Hash: util.HashedQuery(defaultQuery) + 1,
 				},
 				{
-					Pattern: defaultQuery, // should still be evaluated
+					Pattern: defaultQuery,
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"second hash in list matches when first does not",
 			defaultQuery, []*validation.BlockedQuery{
 				{
-					Hash: util.HashedQuery(defaultQuery) + 1, // does not match
+					Hash: util.HashedQuery(defaultQuery) + 1,
 				},
 				{
-					Hash: util.HashedQuery(defaultQuery), // matches
+					Hash: util.HashedQuery(defaultQuery),
 				},
-			}, logqlmodel.ErrBlocked,
+			}, true,
 		},
 		{
 			"no blocked queries",
-			defaultQuery, []*validation.BlockedQuery{}, nil,
+			defaultQuery, []*validation.BlockedQuery{}, false,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
-			require.NoError(t, err)
-			q := eng.Query(params)
-			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
-
-			if test.expectedErr == nil {
-				require.NoError(t, err)
-				return
-			}
-
-			require.Error(t, err)
-			require.Equal(t, err.Error(), test.expectedErr.Error())
+			query, typ := queryType(t, test.q)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			require.Equal(t, test.want, Matches(ctx, limits, log.NewNopLogger(), "fake", query, typ))
 		})
 	}
 }
 
-func TestEngine_BlockedQueries_ConcurrentAccess(t *testing.T) {
+func TestMatches_ConcurrentAccess(t *testing.T) {
 	shared := []*validation.BlockedQuery{
 		{
-			Pattern: "", // empty → triggers the in-place mutation
-			Types:   []string{QueryTypeMetric},
+			Pattern: "",
+			Types:   []string{logql.QueryTypeMetric},
 		},
 	}
 
-	limits := &fakeLimits{
-		maxSeries:      10,
-		blockedQueries: shared,
-	}
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
+	limits := &fakeLimits{blockedQueries: shared}
 
 	const goroutines = 50
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	queryStr := `topk(1,rate(({app=~"foo|bar"})[1m]))`
+	query, typ := queryType(t, `topk(1,rate(({app=~"foo|bar"})[1m]))`)
 	for range goroutines {
 		go func() {
 			defer wg.Done()
-			params, err := NewLiteralParams(queryStr, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
-			require.NoError(t, err)
-			q := eng.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
-			_, _ = q.Exec(ctx)
+			_ = Matches(ctx, limits, log.NewNopLogger(), "fake", query, typ)
 		}()
 	}
 
 	wg.Wait()
 }
 
-func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
-	limits := &fakeLimits{maxSeries: 10}
-	eng := NewEngine(EngineOpts{}, getLocalQuerier(100000), limits, log.NewNopLogger())
-
+func TestMatches_Tags(t *testing.T) {
+	limits := &fakeLimits{}
 	defaultQuery := `topk(1,rate(({app=~"foo|bar"})[1m]))`
 
 	for _, test := range []struct {
-		name        string
-		q           string
-		tagsHeader  string
-		blocked     []*validation.BlockedQuery
-		expectedErr error
+		name       string
+		q          string
+		tagsHeader string
+		blocked    []*validation.BlockedQuery
+		want       bool
 	}{
 		{
 			name:       "block when tags match and no types",
@@ -237,11 +233,10 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 			tagsHeader: "Source=grafana,Feature=beta",
 			blocked: []*validation.BlockedQuery{
 				{
-					// no pattern specified -> matches all by default
 					Tags: map[string]string{"source": "grafana", "feature": "beta"},
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			want: true,
 		},
 		{
 			name:       "do not block when tags value mismatches",
@@ -254,7 +249,7 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 					Tags:    map[string]string{"feature": "beta"},
 				},
 			},
-			expectedErr: nil,
+			want: false,
 		},
 		{
 			name:       "block when types and tags match",
@@ -264,11 +259,11 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 				{
 					Pattern: ".*",
 					Regex:   true,
-					Types:   []string{QueryTypeMetric},
-					Tags:    map[string]string{"source": "GRAFANA", "feature": "BETA"}, // case-insensitive
+					Types:   []string{logql.QueryTypeMetric},
+					Tags:    map[string]string{"source": "GRAFANA", "feature": "BETA"},
 				},
 			},
-			expectedErr: logqlmodel.ErrBlocked,
+			want: true,
 		},
 		{
 			name:       "do not block when types match but required tag key missing",
@@ -278,34 +273,23 @@ func TestEngine_ExecWithBlockedQueries_Tags(t *testing.T) {
 				{
 					Pattern: ".*",
 					Regex:   true,
-					Types:   []string{QueryTypeMetric},
+					Types:   []string{logql.QueryTypeMetric},
 					Tags:    map[string]string{"feature": "beta"},
 				},
 			},
-			expectedErr: nil,
+			want: false,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			limits.blockedQueries = test.blocked
 
-			params, err := NewLiteralParams(test.q, time.Unix(0, 0), time.Unix(100000, 0), 60*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
-			require.NoError(t, err)
-			q := eng.Query(params)
-
+			query, typ := queryType(t, test.q)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 			if test.tagsHeader != "" {
 				ctx = httpreq.InjectQueryTags(ctx, test.tagsHeader)
 			}
 
-			_, err = q.Exec(ctx)
-
-			if test.expectedErr == nil {
-				require.NoError(t, err)
-				return
-			}
-
-			require.Error(t, err)
-			require.Equal(t, err.Error(), test.expectedErr.Error())
+			require.Equal(t, test.want, Matches(ctx, limits, log.NewNopLogger(), "fake", query, typ))
 		})
 	}
 }

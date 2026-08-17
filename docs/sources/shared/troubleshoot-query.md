@@ -924,7 +924,7 @@ limits_config:
 
 **Properties:**
 
-- Enforced by: Query Engine
+- Enforced by: Query frontend and ruler
 - Retryable: No (unless block is removed)
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes

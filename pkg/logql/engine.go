@@ -33,7 +33,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/server"
@@ -42,10 +41,6 @@ import (
 
 var tracer = otel.Tracer("pkg/logql")
 
-const (
-	DefaultBlockedQueryMessage = "blocked by policy"
-)
-
 var (
 	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",
@@ -53,12 +48,6 @@ var (
 		Help:      "LogQL query timings",
 		Buckets:   prometheus.DefBuckets,
 	}, []string{"query_type"})
-
-	QueriesBlocked = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: constants.Loki,
-		Name:      "blocked_queries",
-		Help:      "Count of queries blocked by per-tenant policy",
-	}, []string{"user"})
 
 	lastEntryMinTime = time.Unix(-100, 0)
 )
@@ -316,10 +305,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
-	if q.checkBlocked(ctx, tenants) {
-		return nil, logqlmodel.ErrBlocked
-	}
-
 	switch e := q.params.GetExpression().(type) {
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
@@ -342,19 +327,6 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
-}
-
-func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
-	blocker := newQueryBlocker(ctx, q)
-
-	for _, tenant := range tenants {
-		if blocker.isBlocked(ctx, tenant) {
-			QueriesBlocked.WithLabelValues(tenant).Inc()
-			return true
-		}
-	}
-
-	return false
 }
 
 // evalSample evaluate a sampleExpr
