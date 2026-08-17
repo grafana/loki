@@ -17,10 +17,6 @@ type Reader interface {
 	// The caller owns the returned reader and must Close it.
 	RawFileReader() (io.ReadSeekCloser, error)
 
-	// PostingsRanges returns the byte range in the underlying index file for
-	// every posting list.
-	PostingsRanges() (map[labels.Label]Range, error)
-
 	// Bounds returns the min/max time range covered by the index.
 	Bounds() (int64, int64)
 

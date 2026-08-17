@@ -91,6 +91,16 @@ func (d *Decbuf) Skip(l int) {
 	d.E = d.r.Skip(l)
 }
 
+// ReadInto reads len(dst) bytes into dst, consuming them. If E is non-nil,
+// this method has no effect.
+func (d *Decbuf) ReadInto(dst []byte) {
+	if d.E != nil {
+		return
+	}
+
+	d.E = d.r.ReadInto(dst)
+}
+
 // SkipUvarintBytes advances the pointer of the underlying BufReader past the
 // next varint-prefixed bytes. If E is non-nil, this method has no effect.
 func (d *Decbuf) SkipUvarintBytes() {
