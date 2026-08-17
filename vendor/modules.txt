@@ -642,8 +642,8 @@ github.com/efficientgo/core/logerrcapture
 github.com/efficientgo/core/merrors
 github.com/efficientgo/core/testutil
 github.com/efficientgo/core/testutil/internal
-# github.com/envoyproxy/go-control-plane/envoy v1.37.0
-## explicit; go 1.24.0
+# github.com/envoyproxy/go-control-plane/envoy v1.39.0
+## explicit; go 1.25.0
 github.com/envoyproxy/go-control-plane/envoy/admin/v3
 github.com/envoyproxy/go-control-plane/envoy/annotations
 github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3
