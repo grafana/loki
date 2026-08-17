@@ -102,13 +102,50 @@ type queryData struct {
 	recorded            bool
 	estimatedQueryBytes int64
 	indexStatsMu        sync.Mutex
-	indexStatsBytesSeen map[indexStatsRequestKey]struct{}
+	indexStatsRanges    []indexStatsRange
 }
 
-type indexStatsRequestKey struct {
+// indexStatsRange is one IndexStats lookup observed on a query. Nested ranges
+// with the same matchers are not separate haystacks: a full-query lookup and
+// later per-split lookups cover the same bytes.
+type indexStatsRange struct {
 	from     model.Time
 	through  model.Time
 	matchers string
+	bytes    int64
+}
+
+func (r indexStatsRange) covers(other indexStatsRange) bool {
+	return r.matchers == other.matchers && r.from <= other.from && r.through >= other.through
+}
+
+// mergeIndexStatsRange keeps the covering set of IndexStats ranges: a range is
+// dropped when a same-matcher range already spans it, and a newly covering
+// range replaces the nested ranges it contains. Remaining (non-overlapping)
+// ranges are summed.
+func mergeIndexStatsRange(ranges []indexStatsRange, next indexStatsRange) []indexStatsRange {
+	for _, existing := range ranges {
+		if existing.covers(next) {
+			return ranges
+		}
+	}
+
+	merged := make([]indexStatsRange, 0, len(ranges)+1)
+	for _, existing := range ranges {
+		if next.covers(existing) {
+			continue
+		}
+		merged = append(merged, existing)
+	}
+	return append(merged, next)
+}
+
+func sumIndexStatsBytes(ranges []indexStatsRange) int64 {
+	var total int64
+	for _, r := range ranges {
+		total += r.bytes
+	}
+	return total
 }
 
 func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, responseBytes uint64) {
@@ -119,22 +156,13 @@ func (d *queryData) recordEstimatedQueryBytes(req *logproto.IndexStatsRequest, r
 	d.indexStatsMu.Lock()
 	defer d.indexStatsMu.Unlock()
 
-	if d.indexStatsBytesSeen == nil {
-		d.indexStatsBytesSeen = make(map[indexStatsRequestKey]struct{})
-	}
-
-	key := indexStatsRequestKey{
+	d.indexStatsRanges = mergeIndexStatsRange(d.indexStatsRanges, indexStatsRange{
 		from:     req.From,
 		through:  req.Through,
 		matchers: req.Matchers,
-	}
-
-	if _, seen := d.indexStatsBytesSeen[key]; seen {
-		return
-	}
-
-	d.indexStatsBytesSeen[key] = struct{}{}
-	d.estimatedQueryBytes += int64(responseBytes)
+		bytes:    int64(responseBytes),
+	})
+	d.estimatedQueryBytes = sumIndexStatsBytes(d.indexStatsRanges)
 }
 
 func IndexStatsContextCollectorMiddleware() queryrangebase.Middleware {
