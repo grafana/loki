@@ -84,6 +84,15 @@ func (p *streamPostings) build(ctx context.Context) error {
 	return nil
 }
 
+// isLabelName reports whether the given name is a label name held in the postings offset table.
+func (p *streamPostings) isLabelName(name string) bool {
+	if name == "" { // in postings, this is where the all-postings entry is stored, not a real label name
+		return false
+	}
+	_, ok := p.postings[name]
+	return ok
+}
+
 // postingsFor returns a merged postings iterator over the series matching the
 // given label name and values.
 // It mirrors ByteSliceReader.Postings.
