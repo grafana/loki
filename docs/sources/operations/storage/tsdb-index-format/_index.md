@@ -80,3 +80,11 @@ The versions differ only in the chunks part of a series entry. Everything else i
 - [Index format v2](./v2/)
 - [Index format v3](./v3/)
 - [Index format v4](./v4/)
+
+## Source code
+
+The format is implemented in [`pkg/storage/stores/shipper/indexshipper/tsdb/index`](https://github.com/grafana/loki/tree/main/pkg/storage/stores/shipper/indexshipper/tsdb/index):
+
+- [`index.go`](https://github.com/grafana/loki/blob/main/pkg/storage/stores/shipper/indexshipper/tsdb/index/index.go) defines the version constants, the `Creator` that writes each section, and the `Decoder` that reads them.
+- [`chunk.go`](https://github.com/grafana/loki/blob/main/pkg/storage/stores/shipper/indexshipper/tsdb/index/chunk.go) defines the chunk meta and the page markers, including the page size constants.
+- [`schema_config.go`](https://github.com/grafana/loki/blob/main/pkg/storage/config/schema_config.go) maps a schema version to an index format in `PeriodConfig.TSDBFormat`.
