@@ -21,9 +21,12 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	var groups []string
-	var without bool
-	var noLabels bool
+
+	var (
+		exprGroups []string
+		without    bool
+		noLabels   bool
+	)
 
 	// TODO(owen-d|cyriltovena): override grouping (i.e. from a parent `sum`)
 	// technically can break the query.
@@ -31,7 +34,7 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 	// the `by (bar)` grouping in the child is ignored in favor of the parent's `by (foo)`
 	for _, grp := range []*Grouping{r.Grouping, override} {
 		if grp != nil {
-			groups = grp.Groups
+			exprGroups = grp.Groups
 			without = grp.Without
 			noLabels = grp.Singleton()
 		}
@@ -43,7 +46,11 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 		noLabels = true
 	}
 
-	sort.Strings(groups)
+	// We can't mutate the expression's groups in place (see Grouping.Groups doc), so we make
+	// our own copy and sort it.
+	sortedGroups := make([]string, len(exprGroups))
+	copy(sortedGroups, exprGroups)
+	sort.Strings(sortedGroups)
 
 	var stages []log.Stage
 	if p, ok := r.Left.Left.(*PipelineExpr); ok {
@@ -68,16 +75,16 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 
 		return log.LabelExtractorWithStages(
 			r.Left.Unwrap.Identifier,
-			convOp, groups, without, noLabels, stages,
+			convOp, sortedGroups, without, noLabels, stages,
 			log.ReduceAndLabelFilter(r.Left.Unwrap.PostFilters),
 		)
 	}
 	// otherwise we extract metrics from the log line.
 	switch r.Operation {
 	case OpRangeTypeRate, OpRangeTypeCount, OpRangeTypeAbsent:
-		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels)
+		return log.NewLineSampleExtractor(log.CountExtractor, stages, sortedGroups, without, noLabels)
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels)
+		return log.NewLineSampleExtractor(log.BytesExtractor, stages, sortedGroups, without, noLabels)
 	default:
 		return nil, fmt.Errorf(UnsupportedErr, r.Operation)
 	}

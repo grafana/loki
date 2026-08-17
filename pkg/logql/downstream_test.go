@@ -61,6 +61,15 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream)`, true, nil},
+		// avg_over_time() by(<unsorted labels>) needs to sort grouping labels
+		// on both side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (c, a)`, true, nil},
+		// avg_over_time() with "unwrap" and without() grouping gets sharded
+		// by adding a filter to ensure the existence of the unwrap field on
+		// right side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream, level)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		// outer sum around a non-additive range aggregation with label
