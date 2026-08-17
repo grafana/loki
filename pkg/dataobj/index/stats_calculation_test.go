@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -42,11 +43,11 @@ func makeTestStreamLabels() map[int64]labels.Labels {
 
 // makeTestShardBuckets creates the shard buckets for each of the provided labels
 func makeTestShardBuckets(testLabels map[int64]labels.Labels) map[int64]uint32 {
-	return map[int64]uint32{
-		1: uint32(streams.ShardBucket(testLabels[1])),
-		2: uint32(streams.ShardBucket(testLabels[2])),
-		3: uint32(streams.ShardBucket(testLabels[3])),
+	buckets := make(map[int64]uint32, len(testLabels))
+	for id, lbls := range testLabels {
+		buckets[id] = streams.ShardBucket(lbls)
 	}
+	return buckets
 }
 
 func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
@@ -66,7 +67,11 @@ func flushAndReadAllStatsTable(t *testing.T, builder *indexobj.Builder) arrowtes
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = closer.Close() })
+	return readAllStatsRows(t, obj)
+}
 
+func readAllStatsRows(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
+	t.Helper()
 	var all arrowtest.Rows
 	for _, s := range obj.Sections() {
 		if !stats.CheckSection(s) {
@@ -125,7 +130,7 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 			1: testLabels,
 		},
 		streamShardBuckets: map[int64]uint32{
-			1: uint32(streams.ShardBucket(testLabels)),
+			1: streams.ShardBucket(testLabels),
 		},
 		builder: builder,
 	}
@@ -152,11 +157,11 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	first := labels.FromStrings("service_name", "api", "instance", "0")
-	firstShard := uint32(streams.ShardBucket(first))
+	firstShard := streams.ShardBucket(first)
 	var second labels.Labels
 	for i := 1; i < 256; i++ {
 		candidate := labels.FromStrings("service_name", "api", "instance", strconv.Itoa(i))
-		if uint32(streams.ShardBucket(candidate)) != firstShard {
+		if streams.ShardBucket(candidate) != firstShard {
 			second = candidate
 			break
 		}
@@ -171,8 +176,8 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 			2: second,
 		},
 		streamShardBuckets: map[int64]uint32{
-			1: uint32(streams.ShardBucket(first)),
-			2: uint32(streams.ShardBucket(second)),
+			1: streams.ShardBucket(first),
+			2: streams.ShardBucket(second),
 		},
 		builder: builder,
 	}
@@ -195,6 +200,19 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	}
 	require.Contains(t, gotShards, int64(firstShard))
 	require.Contains(t, gotShards, int64(streams.ShardBucket(second)))
+}
+
+func TestStatsCalculation_MissingShardBucket(t *testing.T) {
+	builder := newTestIndexBuilder(t)
+	ctx := makeTestCalcContext(builder)
+	ctx.streamShardBuckets = map[int64]uint32{}
+	calc := &statsCalculation{schema: defaultSortSchema}
+
+	require.NoError(t, calc.Prepare(context.Background(), ctx, nil, logs.Stats{}))
+	err := calc.ProcessBatch(context.Background(), ctx, []logs.Record{
+		{StreamID: 1, Timestamp: time.Unix(1, 0).UTC(), Line: []byte("x")},
+	})
+	require.ErrorContains(t, err, "shard bucket not found")
 }
 
 func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {

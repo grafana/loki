@@ -91,7 +91,7 @@ func TestBuilder_BloomPostingRoundTrip(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 500).UTC()
-	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100)
+	b.PrepareBloomColumn("/tenant/abc/obj2", 1, "service_name", 100, 0)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", ShardBuckets: 16, SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 0, Timestamp: ts, UncompressedSize: 8192})
 	require.NoError(t, err)
 	err = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/tenant/abc/obj2", ShardBuckets: 16, SectionIndex: 1, ColumnName: "service_name", Value: "my-service", StreamID: 2, Timestamp: ts, UncompressedSize: 0})
@@ -144,7 +144,7 @@ func TestBuilder_MixedPostings(t *testing.T) {
 
 	ts := time.Unix(0, 100).UTC()
 	ts2 := time.Unix(0, 300).UTC()
-	b.PrepareBloomColumn("/obj1", 0, "col_a", 10)
+	b.PrepareBloomColumn("/obj1", 0, "col_a", 10, 0)
 	err := b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj1", SectionIndex: 0, ColumnName: "col_a", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	require.NoError(t, err)
 
@@ -177,10 +177,10 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	// Prepare and add bloom entries.
-	b.PrepareBloomColumn("", 0, "col_a", 10)
+	b.PrepareBloomColumn("", 0, "col_a", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 50), UncompressedSize: 0})
 
-	b.PrepareBloomColumn("", 0, "col_b", 10)
+	b.PrepareBloomColumn("", 0, "col_b", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col_b", Value: "v", StreamID: 0, Timestamp: time.Unix(0, 10), UncompressedSize: 0})
 
 	// Label entries.
@@ -249,7 +249,7 @@ func TestBuilder_NullableHandling(t *testing.T) {
 
 	ts := time.Unix(0, 0).UTC()
 
-	b.PrepareBloomColumn("", 0, "col", 10)
+	b.PrepareBloomColumn("", 0, "col", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", LabelValue: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
@@ -283,7 +283,7 @@ func TestBuilder_BitmapCorrectness(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 0).UTC()
-	b.PrepareBloomColumn("", 0, "col", 10)
+	b.PrepareBloomColumn("", 0, "col", 10, 0)
 	// Observe stream IDs 0, 3, 7.
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: "col", Value: "v", StreamID: 3, Timestamp: ts, UncompressedSize: 0})
@@ -364,7 +364,7 @@ func TestBuilder_AllBloom(t *testing.T) {
 	ts := time.Unix(0, 0).UTC()
 	for i := range 3 {
 		colName := fmt.Sprintf("col%d", i)
-		b.PrepareBloomColumn("", 0, colName, 10)
+		b.PrepareBloomColumn("", 0, colName, 10, 0)
 		_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "", SectionIndex: 0, ColumnName: colName, Value: "val", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 	}
 
@@ -428,7 +428,7 @@ func TestBuilder_KindColumnRangeStats(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
 
@@ -483,7 +483,7 @@ func TestBuilder_KindColumnPruning(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 1000).UTC()
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: ts}))
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "env", LabelValue: "x", StreamID: 2, Timestamp: ts})
 
@@ -686,7 +686,7 @@ func TestBuilder_ObserveBloomPosting(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 100)
-	b.PrepareBloomColumn("/obj", 0, "service_name", 100)
+	b.PrepareBloomColumn("/obj", 0, "service_name", 100, 0)
 
 	values := []string{"alpha", "beta", "gamma"}
 	for i, v := range values {
@@ -738,7 +738,7 @@ func TestBuilder_MixedObservations(t *testing.T) {
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_b", LabelValue: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	// Add bloom second.
-	b.PrepareBloomColumn("/obj", 0, "col_a", 10)
+	b.PrepareBloomColumn("/obj", 0, "col_a", 10, 0)
 	_ = b.ObserveBloomPosting(BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "col_a", Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0})
 
 	sections := flushAndOpenSections(t, b)
@@ -833,7 +833,7 @@ func TestBuilder_BloomBytes(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 
 	ts := time.Unix(0, 0)
-	b.PrepareBloomColumn("/obj", 0, "col", 50)
+	b.PrepareBloomColumn("/obj", 0, "col", 50, 0)
 
 	values := []string{"foo", "bar", "baz"}
 	for _, v := range values {
@@ -866,7 +866,7 @@ func TestBuilder_BloomBytes(t *testing.T) {
 func mustBuildBloomBytes(t *testing.T, objectPath string, sectionIndex int64, columnName, value string, ts time.Time) []byte {
 	t.Helper()
 	tempBuilder := NewBuilder(nil, 0, 0, 1<<20)
-	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100)
+	tempBuilder.PrepareBloomColumn(objectPath, sectionIndex, columnName, 100, 0)
 	err := tempBuilder.ObserveBloomPosting(BloomObservation{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIndex,
@@ -1037,7 +1037,7 @@ func TestBuilder_SplitsBloomAndLabelIntoSeparateSections(t *testing.T) {
 
 	for i := range 4 {
 		col := fmt.Sprintf("bcol%d", i)
-		b.PrepareBloomColumn("/o", 0, col, 10)
+		b.PrepareBloomColumn("/o", 0, col, 10, 0)
 		require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/o", SectionIndex: 0, ColumnName: col, Value: "v", StreamID: 0, Timestamp: ts, UncompressedSize: 0}))
 	}
 	for _, lv := range []string{"a", "b", "c", "d"} {
@@ -1180,7 +1180,7 @@ func TestBuilder_TimeRange(t *testing.T) {
 	require.Equal(t, base, gotMax)
 
 	// Bloom observation extends the range on both ends.
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 2, Timestamp: base.Add(-time.Hour)}))
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "w", StreamID: 3, Timestamp: base.Add(time.Hour)}))
 
@@ -1200,7 +1200,7 @@ func TestBuilder_TimeRange_BloomOnly(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1024)
 	base := time.Unix(6000, 0).UTC()
 
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 	require.NoError(t, b.ObserveBloomPosting(BloomObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "svc", Value: "v", StreamID: 1, Timestamp: base}))
 
 	gotMin, gotMax := b.TimeRange()
@@ -1215,7 +1215,7 @@ func TestBuilder_TimeRange_PreparedBloomNoObservation(t *testing.T) {
 	// Label observation sets the range.
 	b.ObserveLabelPosting(LabelObservation{ObjectPath: "/a", SectionIndex: 0, ColumnName: "app", LabelValue: "x", StreamID: 1, Timestamp: base})
 	// Prepared-but-unobserved bloom column must not widen the range.
-	b.PrepareBloomColumn("/a", 0, "svc", 16)
+	b.PrepareBloomColumn("/a", 0, "svc", 16, 0)
 
 	gotMin, gotMax := b.TimeRange()
 	require.Equal(t, base, gotMin)

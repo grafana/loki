@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // makeColumnValuesStats creates a logs.Stats with a set of metadata columns
@@ -49,15 +50,7 @@ func makeColumnValuesStats(metadataColumns []string) logs.Stats {
 
 func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	builder := newTestIndexBuilder(t)
-	testLabels := makeTestStreamLabels()
-	calcCtx := &logsCalculationContext{
-		tenantID:           "tenant-1",
-		objectPath:         "test/path/obj1",
-		sectionIdx:         0,
-		streamLabels:       testLabels,
-		streamShardBuckets: makeTestShardBuckets(testLabels),
-		builder:            builder,
-	}
+	calcCtx := makeTestCalcContext(builder)
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id", "span_id"})
@@ -111,6 +104,9 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	})
 	require.NotEqual(t, -1, j, "expected bloom posting for span_id")
 
+	require.Equal(t, int64(streams.ShardFactor), tbl.rows[i]["shard_buckets.int64"])
+	require.Equal(t, int64(streams.ShardFactor), tbl.rows[j]["shard_buckets.int64"])
+
 	// Bloom filter bytes should be non-empty.
 	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][i], "expected non-empty bloom filter for trace_id")
 	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][j], "expected non-empty bloom filter for span_id")
@@ -122,15 +118,7 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 
 func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	builder := newTestIndexBuilder(t)
-	testLabels := makeTestStreamLabels()
-	calcCtx := &logsCalculationContext{
-		tenantID:           "tenant-1",
-		objectPath:         "test/path/obj1",
-		sectionIdx:         0,
-		streamLabels:       testLabels,
-		streamShardBuckets: makeTestShardBuckets(testLabels),
-		builder:            builder,
-	}
+	calcCtx := makeTestCalcContext(builder)
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
@@ -162,6 +150,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
 	row := tbl.rows[i]
+	require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
 	// Timestamps: min=ts1 (10s), max=ts3 (30s) — ts3 is the latest, proving the
 	// third record's timestamp was tracked.
 	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
@@ -174,15 +163,7 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 
 func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	builder := newTestIndexBuilder(t)
-	testLabels := makeTestStreamLabels()
-	calcCtx := &logsCalculationContext{
-		tenantID:           "tenant-1",
-		objectPath:         "test/path/obj1",
-		sectionIdx:         0,
-		streamLabels:       testLabels,
-		streamShardBuckets: makeTestShardBuckets(testLabels),
-		builder:            builder,
-	}
+	calcCtx := makeTestCalcContext(builder)
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
@@ -204,6 +185,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 		"column_name.utf8": "trace_id",
 	})
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
+	require.Equal(t, int64(streams.ShardFactor), tbl.rows[i]["shard_buckets.int64"])
 
 	// Bitmap should have bit 1 set (stream ID 1 has trace_id).
 	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i])
@@ -211,15 +193,7 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 
 func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	builder := newTestIndexBuilder(t)
-	testLabels := makeTestStreamLabels()
-	calcCtx := &logsCalculationContext{
-		tenantID:           "tenant-1",
-		objectPath:         "test/path/obj1",
-		sectionIdx:         0,
-		streamLabels:       testLabels,
-		streamShardBuckets: makeTestShardBuckets(testLabels),
-		builder:            builder,
-	}
+	calcCtx := makeTestCalcContext(builder)
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
@@ -238,6 +212,7 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id even with empty batch")
 
 	row := tbl.rows[i]
+	require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
 	// With the bloom aggregator, an unobserved but prepared column uses sentinel values:
 	// MinTimestamp = math.MaxInt64 and MaxTimestamp = math.MinInt64.
 	// These are stored and read back as time.Time values.
@@ -250,15 +225,7 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 
 func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	builder := newTestIndexBuilder(t)
-	testLabels := makeTestStreamLabels()
-	calcCtx := &logsCalculationContext{
-		tenantID:           "tenant-1",
-		objectPath:         "test/path/obj1",
-		sectionIdx:         0,
-		streamLabels:       testLabels,
-		streamShardBuckets: makeTestShardBuckets(testLabels),
-		builder:            builder,
-	}
+	calcCtx := makeTestCalcContext(builder)
 
 	calc := &columnValuesCalculation{}
 	stat := makeColumnValuesStats([]string{"trace_id"})
@@ -287,6 +254,7 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
 	row := tbl.rows[i]
+	require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
 	// Timestamps should span both batches.
 	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
 	require.Equal(t, ts2.UTC(), row["max_timestamp.timestamp"])

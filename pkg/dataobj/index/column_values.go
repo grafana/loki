@@ -36,7 +36,7 @@ func (c *columnValuesCalculation) Prepare(_ context.Context, calcCtx *logsCalcul
 		c.columnIndexes[column.Name] = column.ColumnIndex
 		calcCtx.builder.PrepareBloomColumn(
 			calcCtx.tenantID, calcCtx.objectPath, calcCtx.sectionIdx,
-			column.Name, uint(column.Cardinality),
+			column.Name, uint(column.Cardinality), int64(streams.ShardFactor),
 		)
 	}
 	return nil

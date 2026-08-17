@@ -100,6 +100,8 @@ func TestBuilder(t *testing.T) {
 				stream, err := res.Value()
 				require.NoError(t, err)
 				require.Equal(t, int64(streams.ShardBucket(stream.Labels)), stream.ShardBucket)
+				require.GreaterOrEqual(t, stream.ShardBucket, int64(0))
+				require.Less(t, stream.ShardBucket, int64(streams.ShardFactor))
 			}
 		}
 	})

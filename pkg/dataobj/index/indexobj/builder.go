@@ -232,10 +232,12 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.
 // Must be called before any ObserveBloomPosting calls for the given (objectPath, sectionIdx, columnName).
+// shardBuckets is stored on the entry immediately so a prepared-but-unobserved
+// column still records the object's shard factor.
 func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int64,
-	columnName string, estimatedCardinality uint) {
+	columnName string, estimatedCardinality uint, shardBuckets int64) {
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality)
+	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
 }
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data

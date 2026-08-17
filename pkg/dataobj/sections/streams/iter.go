@@ -161,6 +161,10 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 		defer labelpool.Put(labelBuilder)
 	}
 
+	// Callers reuse Stream values across rows. Reset so a zero cell in this
+	// row cannot leave a previous row's value in place (decode skips zeros).
+	stream.Reset()
+
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
 			continue

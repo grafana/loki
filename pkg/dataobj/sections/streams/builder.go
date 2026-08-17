@@ -40,6 +40,7 @@ type Stream struct {
 	Rows int
 
 	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
+	// Valid buckets are in [0, ShardFactor).
 	ShardBucket int64
 }
 
@@ -55,7 +56,7 @@ func (s *Stream) Reset() {
 }
 
 // ShardFactor is the number of physical shard buckets derived from
-// labels.StableHash.
+// labels.StableHash. Valid [ShardBucket] values are in [0, ShardFactor).
 const ShardFactor uint32 = 32
 
 var shardBits = int(math.Log2(float64(ShardFactor)))
@@ -226,9 +227,10 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 }
 
 // ShardBucket returns the physical shard bucket for streamLabels.
-func ShardBucket(streamLabels labels.Labels) uint64 {
+// Buckets are 0-based in [0, ShardFactor).
+func ShardBucket(streamLabels labels.Labels) uint32 {
 	fp := labels.StableHash(streamLabels)
-	return fp>>(64-shardBits) + 1
+	return uint32(fp >> (64 - shardBits))
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {

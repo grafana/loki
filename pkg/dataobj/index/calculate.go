@@ -187,7 +187,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			}
 			shardBuckets, ok := shardBucketsByTenant.Load(section.Tenant)
 			if !ok {
-				return fmt.Errorf("stream labels not found for tenant %s", section.Tenant)
+				return fmt.Errorf("shard buckets not found for tenant %s", section.Tenant)
 			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
@@ -239,7 +239,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 				}
 				streamIDLookup[stream.ID] = newStreamID
 				streamLabels[stream.ID] = stream.Labels
-				shardBuckets[stream.ID] = uint32(stream.ShardBucket)
+				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
 				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil

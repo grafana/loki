@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"slices"
@@ -56,14 +57,19 @@ func (c *statsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculat
 		h   = fnv.New64a()
 		buf bytes.Buffer
 	)
+	var shardKey [4]byte
 	for _, log := range batch {
 		streamLbls := calcCtx.streamLabels[log.StreamID]
-		shardBucket := calcCtx.streamShardBuckets[log.StreamID]
+		shardBucket, ok := calcCtx.streamShardBuckets[log.StreamID]
+		if !ok {
+			return fmt.Errorf("shard bucket not found for stream ID %d", log.StreamID)
+		}
 
 		// Build the composite key from the shard and all sort schema keys.
 		// Uses key=value pairs separated by \x00 to avoid ambiguity.
 		buf.Reset()
-		buf.WriteByte(byte(shardBucket))
+		binary.BigEndian.PutUint32(shardKey[:], shardBucket)
+		buf.Write(shardKey[:])
 		for _, key := range c.labelKeys {
 			buf.WriteByte(0)
 			buf.WriteString(key)
