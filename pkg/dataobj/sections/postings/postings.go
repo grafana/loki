@@ -138,8 +138,9 @@ type LabelEntry struct {
 	MaxTimestamp int64
 	// UncompressedSize is the total uncompressed size in bytes.
 	UncompressedSize int64
-	// MinShardBucket and MaxShardBucket are the minimum and maximum shard buckets observed within this posting.
+	// MinShardBucket is the minimum shard bucket observed within ObjectPath & SectionIndex.
 	MinShardBucket uint32
+	// MaxShardBucket is the maximum shard bucket observed within ObjectPath & SectionIndex.
 	MaxShardBucket uint32
 }
 
