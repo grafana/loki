@@ -77,7 +77,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/afero v1.15.0
-	github.com/stretchr/testify v1.11.1
+	github.com/stretchr/testify v1.12.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	go.etcd.io/bbolt v1.5.0
 	go.uber.org/atomic v1.11.0
