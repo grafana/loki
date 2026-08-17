@@ -1322,7 +1322,7 @@ github.com/oschwald/maxminddb-golang/v2
 github.com/oschwald/maxminddb-golang/v2/internal/decoder
 github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors
 github.com/oschwald/maxminddb-golang/v2/mmdbdata
-# github.com/parquet-go/bitpack v1.0.1
+# github.com/parquet-go/bitpack v1.0.3
 ## explicit; go 1.24.0
 github.com/parquet-go/bitpack
 github.com/parquet-go/bitpack/unsafecast

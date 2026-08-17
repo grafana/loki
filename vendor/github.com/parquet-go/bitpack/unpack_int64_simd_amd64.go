@@ -98,28 +98,29 @@ func unpackInt64x8x16x32bits(dst []int64, src []byte, bitWidth uint) {
 	n := (len(dst) / 8) * 8
 	in := unsafe.Pointer(unsafe.SliceData(src))
 	op := unsafe.Pointer(unsafe.SliceData(dst))
-	// See unpackInt64x1to32bits for why the loops walk raw pointers.
+	o := uintptr(0)
+	// See unpackInt64x1to32bits for why the loops walk raw offsets.
 	switch bitWidth {
 	case 8:
 		for range n / 8 {
-			archsimd.LoadUint8x16((*[16]uint8)(in)).ExtendLo4ToUint64().Store((*[4]uint64)(op))
-			archsimd.LoadUint8x16((*[16]uint8)(unsafe.Add(in, 4))).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, 32)))
+			archsimd.LoadUint8x16((*[16]uint8)(in)).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, o)))
+			archsimd.LoadUint8x16((*[16]uint8)(unsafe.Add(in, 4))).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, o+32)))
 			in = unsafe.Add(in, 8)
-			op = unsafe.Add(op, 64)
+			o += 64
 		}
 	case 16:
 		for range n / 8 {
-			archsimd.LoadUint16x8((*[8]uint16)(in)).ExtendLo4ToUint64().Store((*[4]uint64)(op))
-			archsimd.LoadUint16x8((*[8]uint16)(unsafe.Add(in, 8))).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, 32)))
+			archsimd.LoadUint16x8((*[8]uint16)(in)).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, o)))
+			archsimd.LoadUint16x8((*[8]uint16)(unsafe.Add(in, 8))).ExtendLo4ToUint64().Store((*[4]uint64)(unsafe.Add(op, o+32)))
 			in = unsafe.Add(in, 16)
-			op = unsafe.Add(op, 64)
+			o += 64
 		}
 	default:
 		for range n / 8 {
-			archsimd.LoadUint32x4((*[4]uint32)(in)).ExtendToUint64().Store((*[4]uint64)(op))
-			archsimd.LoadUint32x4((*[4]uint32)(unsafe.Add(in, 16))).ExtendToUint64().Store((*[4]uint64)(unsafe.Add(op, 32)))
+			archsimd.LoadUint32x4((*[4]uint32)(in)).ExtendToUint64().Store((*[4]uint64)(unsafe.Add(op, o)))
+			archsimd.LoadUint32x4((*[4]uint32)(unsafe.Add(in, 16))).ExtendToUint64().Store((*[4]uint64)(unsafe.Add(op, o+32)))
 			in = unsafe.Add(in, 32)
-			op = unsafe.Add(op, 64)
+			o += 64
 		}
 	}
 	archsimd.ClearAVXUpperBits()
@@ -144,22 +145,23 @@ func unpackInt64x33to63bits(dst []int64, src []byte, bitWidth uint) {
 		sr1 := archsimd.LoadUint64x4(&m.sr1)
 		sl1 := archsimd.LoadUint64x4(&m.sl1)
 		bitMask := archsimd.BroadcastUint64x4(uint64(1)<<bitWidth - 1)
-		g := (4 * bitWidth) / 8
+		g := uintptr((4 * bitWidth) / 8)
 
-		// See unpackInt64x1to32bits for why the loop walks raw pointers.
+		// See unpackInt64x1to32bits for why the loop walks raw offsets.
 		in := unsafe.Pointer(unsafe.SliceData(src))
 		op := unsafe.Pointer(unsafe.SliceData(dst))
+		o := uintptr(0)
 		for range n / 8 {
 			w0 := archsimd.LoadUint8x32((*[32]uint8)(in)).AsUint32x8()
 			w1 := archsimd.LoadUint8x32((*[32]uint8)(unsafe.Add(in, g))).AsUint32x8()
 			w0.Permute(permLo0).AsUint64x4().ShiftRight(sr0).
 				Or(w0.Permute(permHi0).AsUint64x4().ShiftLeft(sl0)).
-				And(bitMask).Store((*[4]uint64)(op))
+				And(bitMask).Store((*[4]uint64)(unsafe.Add(op, o)))
 			w1.Permute(permLo1).AsUint64x4().ShiftRight(sr1).
 				Or(w1.Permute(permHi1).AsUint64x4().ShiftLeft(sl1)).
-				And(bitMask).Store((*[4]uint64)(unsafe.Add(op, 32)))
+				And(bitMask).Store((*[4]uint64)(unsafe.Add(op, o+32)))
 			in = unsafe.Add(in, bitWidth)
-			op = unsafe.Add(op, 64)
+			o += 64
 		}
 		archsimd.ClearAVXUpperBits()
 	}
@@ -206,18 +208,24 @@ func unpackInt64x1to32bits(dst []int64, src []byte, bitWidth uint) {
 		shift1 := archsimd.LoadUint64x4(&m.shift1)
 		bitMask := archsimd.BroadcastUint64x4(uint64(1)<<bitWidth - 1)
 
-		// The loop walks raw pointers: slice expressions on src and dst keep
-		// enough values live across the vector ops that the loop spills to
-		// the stack and re-checks bounds on every iteration. Every load is in
-		// bounds of the padded src length established by unpackInt64.
+		// The loop walks a raw pointer on the input and a raw offset on the
+		// output: slice expressions on src and dst keep enough values live
+		// across the vector ops that the loop spills to the stack and
+		// re-checks bounds on every iteration. The input cursor may advance
+		// because the padded src length established by unpackInt64 keeps its
+		// final value inside the slice; the output has no padding, so an
+		// advancing cursor would be one-past-end after the last iteration,
+		// which checkptr rejects and the garbage collector may fault on —
+		// the stores index a fixed base pointer instead.
 		in := unsafe.Pointer(unsafe.SliceData(src))
 		op := unsafe.Pointer(unsafe.SliceData(dst))
+		o := uintptr(0)
 		for range n / 8 {
 			w := archsimd.LoadUint8x32((*[32]uint8)(in)).AsUint32x8()
-			w.Permute(perm0).AsUint64x4().ShiftRight(shift0).And(bitMask).Store((*[4]uint64)(op))
-			w.Permute(perm1).AsUint64x4().ShiftRight(shift1).And(bitMask).Store((*[4]uint64)(unsafe.Add(op, 32)))
+			w.Permute(perm0).AsUint64x4().ShiftRight(shift0).And(bitMask).Store((*[4]uint64)(unsafe.Add(op, o)))
+			w.Permute(perm1).AsUint64x4().ShiftRight(shift1).And(bitMask).Store((*[4]uint64)(unsafe.Add(op, o+32)))
 			in = unsafe.Add(in, bitWidth)
-			op = unsafe.Add(op, 64)
+			o += 64
 		}
 		archsimd.ClearAVXUpperBits()
 	}

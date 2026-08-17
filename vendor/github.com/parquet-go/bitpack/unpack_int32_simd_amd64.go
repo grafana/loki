@@ -96,15 +96,16 @@ func unpackInt32x1to16bits(dst []int32, src []byte, bitWidth uint) {
 		sr1 := archsimd.LoadUint32x4(&m.sr1)
 		bitMask := archsimd.BroadcastUint32x4(uint32(1)<<bitWidth - 1)
 
-		// See unpackInt32x17to26bits for why the loop walks raw pointers.
+		// See unpackInt32x17to26bits for why the loop walks raw offsets.
 		in := unsafe.Pointer(unsafe.SliceData(src))
 		op := unsafe.Pointer(unsafe.SliceData(dst))
+		o := uintptr(0)
 		for range n / 8 {
 			w0 := archsimd.LoadUint8x16((*[16]uint8)(in))
-			w0.PermuteOrZero(lo0).AsUint32x4().ShiftRight(sr0).And(bitMask).Store((*[4]uint32)(op))
-			w0.PermuteOrZero(lo1).AsUint32x4().ShiftRight(sr1).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, 16)))
+			w0.PermuteOrZero(lo0).AsUint32x4().ShiftRight(sr0).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o)))
+			w0.PermuteOrZero(lo1).AsUint32x4().ShiftRight(sr1).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o+16)))
 			in = unsafe.Add(in, bitWidth)
-			op = unsafe.Add(op, 32)
+			o += 32
 		}
 	}
 	if n < len(dst) {
@@ -125,21 +126,27 @@ func unpackInt32x17to26bits(dst []int32, src []byte, bitWidth uint) {
 		sr0 := archsimd.LoadUint32x4(&m.sr0)
 		sr1 := archsimd.LoadUint32x4(&m.sr1)
 		bitMask := archsimd.BroadcastUint32x4(uint32(1)<<bitWidth - 1)
-		g := (4 * bitWidth) / 8
+		g := uintptr((4 * bitWidth) / 8)
 
-		// The loop walks raw pointers: slice expressions on src and dst keep
-		// enough values live across the vector ops that the loop spills to
-		// the stack and re-checks bounds on every iteration. Every load is in
-		// bounds of the padded src length established by unpackInt32.
+		// The loop walks a raw pointer on the input and a raw offset on the
+		// output: slice expressions on src and dst keep enough values live
+		// across the vector ops that the loop spills to the stack and
+		// re-checks bounds on every iteration. The input cursor may advance
+		// because the padded src length established by unpackInt32 keeps its
+		// final value inside the slice; the output has no padding, so an
+		// advancing cursor would be one-past-end after the last iteration,
+		// which checkptr rejects and the garbage collector may fault on —
+		// the stores index a fixed base pointer instead.
 		in := unsafe.Pointer(unsafe.SliceData(src))
 		op := unsafe.Pointer(unsafe.SliceData(dst))
+		o := uintptr(0)
 		for range n / 8 {
 			w0 := archsimd.LoadUint8x16((*[16]uint8)(in))
 			w1 := archsimd.LoadUint8x16((*[16]uint8)(unsafe.Add(in, g)))
-			w0.PermuteOrZero(lo0).AsUint32x4().ShiftRight(sr0).And(bitMask).Store((*[4]uint32)(op))
-			w1.PermuteOrZero(lo1).AsUint32x4().ShiftRight(sr1).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, 16)))
+			w0.PermuteOrZero(lo0).AsUint32x4().ShiftRight(sr0).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o)))
+			w1.PermuteOrZero(lo1).AsUint32x4().ShiftRight(sr1).And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o+16)))
 			in = unsafe.Add(in, bitWidth)
-			op = unsafe.Add(op, 32)
+			o += 32
 		}
 	}
 	if n < len(dst) {
@@ -164,22 +171,23 @@ func unpackInt32x27to31bits(dst []int32, src []byte, bitWidth uint) {
 		sl0 := archsimd.LoadUint32x4(&m.sl0)
 		sl1 := archsimd.LoadUint32x4(&m.sl1)
 		bitMask := archsimd.BroadcastUint32x4(uint32(1)<<bitWidth - 1)
-		g := (4 * bitWidth) / 8
+		g := uintptr((4 * bitWidth) / 8)
 
-		// See unpackInt32x17to26bits for why the loop walks raw pointers.
+		// See unpackInt32x17to26bits for why the loop walks raw offsets.
 		in := unsafe.Pointer(unsafe.SliceData(src))
 		op := unsafe.Pointer(unsafe.SliceData(dst))
+		o := uintptr(0)
 		for range n / 8 {
 			w0 := archsimd.LoadUint8x16((*[16]uint8)(in))
 			w1 := archsimd.LoadUint8x16((*[16]uint8)(unsafe.Add(in, g)))
 			w0.PermuteOrZero(lo0).AsUint32x4().ShiftRight(sr0).
 				Or(w0.PermuteOrZero(hi0).AsUint32x4().ShiftLeft(sl0)).
-				And(bitMask).Store((*[4]uint32)(op))
+				And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o)))
 			w1.PermuteOrZero(lo1).AsUint32x4().ShiftRight(sr1).
 				Or(w1.PermuteOrZero(hi1).AsUint32x4().ShiftLeft(sl1)).
-				And(bitMask).Store((*[4]uint32)(unsafe.Add(op, 16)))
+				And(bitMask).Store((*[4]uint32)(unsafe.Add(op, o+16)))
 			in = unsafe.Add(in, bitWidth)
-			op = unsafe.Add(op, 32)
+			o += 32
 		}
 	}
 	if n < len(dst) {

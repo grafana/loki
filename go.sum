@@ -734,8 +734,8 @@ github.com/outscale/osc-sdk-go/v2 v2.34.0 h1:hHH5W9Fmgt6b8nGUmDyu4vVP+zqJ+W0zflz
 github.com/outscale/osc-sdk-go/v2 v2.34.0/go.mod h1:6J8WRznaSIEXXVHhhTXisGJQgvE5fYzbf8hAw7YIGfQ=
 github.com/ovh/go-ovh v1.9.0 h1:6K8VoL3BYjVV3In9tPJUdT7qMx9h0GExN9EXx1r2kKE=
 github.com/ovh/go-ovh v1.9.0/go.mod h1:cTVDnl94z4tl8pP1uZ/8jlVxntjSIf09bNcQ5TJSC7c=
-github.com/parquet-go/bitpack v1.0.1 h1:nU1hqX5qEbn5oGJHgG1BpoCB8M/y132DX4bG6Exc1ww=
-github.com/parquet-go/bitpack v1.0.1/go.mod h1:XnVk9TH+O40eOOmvpAVZ7K2ocQFrQwysLMnc6M/8lgs=
+github.com/parquet-go/bitpack v1.0.3 h1:ZbzJ4Mjzrjp+ZNvY99XsJIxAKL+b04uxIb02+l4HbkE=
+github.com/parquet-go/bitpack v1.0.3/go.mod h1:XnVk9TH+O40eOOmvpAVZ7K2ocQFrQwysLMnc6M/8lgs=
 github.com/parquet-go/jsonlite v1.5.4 h1:VQEIm54NYf/FO4jWgb1E9G7ws8prt6DohiU9eFiXY9c=
 github.com/parquet-go/jsonlite v1.5.4/go.mod h1:hN57TVzxtr04kaax5XwNgCCsh1KE7BT6dvY6X/zNH90=
 github.com/parquet-go/parquet-go v0.32.0 h1:NWDqTUHfrCS4cJP/Fj2HlxvqsrVedWG3sayMkf+znzM=
