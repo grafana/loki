@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -267,6 +268,92 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 }
 
 const testSectionSize = 1 << 20 // large: all of an object's streams land in one logs section
+
+// TestDataObjSampleIterator_RecordsAreStreamClustered documents why the iterator's single last-stream
+// cache is enough: the logs section is sorted by stream, so records arrive in stream-clustered runs. It
+// builds several objects (each a concurrently-scanned section) of many-line streams and checks that,
+// over the drained StreamHash sequence, only a few distinct streams appear within any read batch and
+// consecutive stream changes stay far below the record count — so the last-stream entry serves almost
+// every line even though the concurrent sections interleave their batches.
+func TestDataObjSampleIterator_RecordsAreStreamClustered(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), dataObjTestTenant)
+
+	const (
+		numObjects     = 6
+		streamsPerObj  = 4
+		linesPerStream = 800
+	)
+	var groups [][]logproto.Stream
+	idx := 0
+	for o := 0; o < numObjects; o++ {
+		var group []logproto.Stream
+		for s := 0; s < streamsPerObj; s++ {
+			lbls := labels.FromStrings("cluster", "test", "pod", fmt.Sprintf("pod-%05d", idx))
+			entries := make([]push.Entry, linesPerStream)
+			for j := 0; j < linesPerStream; j++ {
+				entries[j] = push.Entry{Timestamp: time.Unix(int64(j+1), 0), Line: "x"}
+			}
+			group = append(group, logproto.Stream{Labels: lbls.String(), Entries: entries})
+			idx++
+		}
+		groups = append(groups, group)
+	}
+
+	bucket := objstore.NewInMemBucket()
+	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, groups)
+	store := NewDataObjSampleStore(nil, bucket, ms, log.NewNopLogger(), nil)
+
+	expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[24h])`)
+	require.NoError(t, err)
+	params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+		Start:    time.Unix(0, 0),
+		End:      time.Unix(100000, 0),
+		Selector: expr.String(),
+		Plan:     &plan.QueryPlan{AST: expr},
+		Order:    logproto.SAMPLE_ORDER_BY_STREAM,
+	}}
+
+	it, err := store.SelectSamples(ctx, params)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, it.Close()) }()
+
+	var seq []uint64
+	for it.Next() {
+		seq = append(seq, it.StreamHash())
+	}
+	require.NoError(t, it.Err())
+	require.Len(t, seq, numObjects*streamsPerObj*linesPerStream)
+
+	distinct := map[uint64]struct{}{}
+	for _, h := range seq {
+		distinct[h] = struct{}{}
+	}
+	changes := 1 // the first record is a "change" from nothing
+	for i := 1; i < len(seq); i++ {
+		if seq[i] != seq[i-1] {
+			changes++
+		}
+	}
+	maxWin, win := 0, map[uint64]int{}
+	for i, h := range seq {
+		win[h]++
+		if i >= 1024 {
+			old := seq[i-1024]
+			if win[old]--; win[old] == 0 {
+				delete(win, old)
+			}
+		}
+		if len(win) > maxWin {
+			maxWin = len(win)
+		}
+	}
+
+	t.Logf("records=%d distinct=%d streamChanges=%d maxDistinctPer1024=%d", len(seq), len(distinct), changes, maxWin)
+
+	// Records are stream-clustered, so the single last-stream cache (which evicts on every stream change)
+	// still hits on the vast majority of lines: stream changes stay a tiny fraction of the record count.
+	require.Less(t, changes, len(seq)/20, "records are not stream-clustered; the single-entry cache would thrash")
+}
 
 // newTestDataObjMetastore builds one data object per stream group on the bucket — object + postings
 // index + metastore table-of-contents, the way the dataobj-consumer and dataobj-index-builder do —

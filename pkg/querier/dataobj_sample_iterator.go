@@ -31,78 +31,88 @@ type dataObjSampleIterator struct {
 	reader    dataObjRecordReader
 	extractor syntax.SampleExtractor
 
-	// streamExtractors caches the per-stream extractor by fingerprint, since records from different
-	// streams can interleave across concurrently-scanned sections.
-	streamExtractors map[uint64]logqllog.StreamSampleExtractor
+	// The logs section is sorted by stream, so records arrive in stream-clustered runs. A single
+	// last-stream extractor cached entry serves the majority of log lines processed.
+	lastStreamFingerprint uint64
+	lastStreamsLabels     labels.Labels
+	lastExtractor         logqllog.StreamSampleExtractor
+	hasLastExtractor      bool
 
-	currFP      uint64
-	currPending []outSample
-	currPos     int
+	// lastLabels and lastLabelString cache the rendered label string. Process returns a LabelsResult
+	// whose String is memoized but reached through an interface; while the same result recurs — every
+	// line of a constant-label stream, or a repeated grouping value — reuse the string instead of the
+	// per-line interface call. LabelsResult is a pointer, so the comparison is identity.
+	lastLabels      logqllog.LabelsResult
+	lastLabelString string
+
+	// curr is the sample at the current position. Process yields at most one sample per line, so no
+	// pending slice is needed. hasCurr is false before the first Next and once the iterator is exhausted.
+	curr    outSample
+	currFP  uint64
+	hasCurr bool
 }
 
 func newDataObjSampleIterator(reader dataObjRecordReader, extractor syntax.SampleExtractor) *dataObjSampleIterator {
-	return &dataObjSampleIterator{
-		reader:           reader,
-		extractor:        extractor,
-		streamExtractors: map[uint64]logqllog.StreamSampleExtractor{},
-		currPos:          -1,
-	}
+	return &dataObjSampleIterator{reader: reader, extractor: extractor}
 }
 
 func (it *dataObjSampleIterator) Next() bool {
-	for {
-		if it.currPos+1 < len(it.currPending) {
-			it.currPos++
-			return true
-		}
-		if !it.reader.Next() {
-			return false
-		}
+	for it.reader.Next() {
 		rec := it.reader.At()
-		it.currFP = rec.fingerprint
-		it.currPending = it.extract(rec)
-		it.currPos = 0
-		if len(it.currPending) > 0 {
-			return true
+		se := it.streamExtractorFor(rec.fingerprint, rec.streamLabels)
+		es, ok := se.Process(rec.timestamp, rec.line, rec.metadata)
+		if !ok {
+			continue // dropped by the pipeline (e.g. a line filter); try the next record
 		}
+
+		it.currFP = rec.fingerprint
+		it.curr = outSample{
+			sample: logproto.Sample{Timestamp: rec.timestamp, Value: es.Value},
+			labels: it.labelString(es.Labels),
+		}
+		it.hasCurr = true
+		return true
 	}
+
+	it.hasCurr = false
+	return false
 }
 
-func (it *dataObjSampleIterator) extract(rec dataObjLogRecord) []outSample {
-	se := it.streamExtractorFor(rec.fingerprint, rec.streamLabels)
-	out := it.currPending[:0] // reuse: the previous batch is fully consumed
-	es, ok := se.Process(rec.timestamp, rec.line, rec.metadata)
-	if !ok {
-		return out
+// labelString renders a Process result's labels, reusing the cached string while the same LabelsResult
+// recurs. LabelsResult is a pointer, so the comparison is identity, not a value compare.
+func (it *dataObjSampleIterator) labelString(lr logqllog.LabelsResult) string {
+	if lr != it.lastLabels {
+		it.lastLabels = lr
+		it.lastLabelString = lr.String()
 	}
-	return append(out, outSample{
-		sample: logproto.Sample{Timestamp: rec.timestamp, Value: es.Value},
-		labels: es.Labels.String(),
-	})
+	return it.lastLabelString
 }
 
-func (it *dataObjSampleIterator) streamExtractorFor(fp uint64, streamLabels labels.Labels) logqllog.StreamSampleExtractor {
-	if se, ok := it.streamExtractors[fp]; ok {
-		return se
+func (it *dataObjSampleIterator) streamExtractorFor(streamFingerprint uint64, streamLabels labels.Labels) logqllog.StreamSampleExtractor {
+	// Check if the last cached extractor is still valid. The labels.Equal() check guards from fingerprint
+	// collisions.
+	if it.hasLastExtractor && streamFingerprint == it.lastStreamFingerprint && labels.Equal(streamLabels, it.lastStreamsLabels) {
+		return it.lastExtractor
 	}
+
 	lbls := labels.NewBuilder(streamLabels).Del(model.MetricNameLabel).Labels()
 	se := it.extractor.ForStream(lbls)
-	it.streamExtractors[fp] = se
+	it.lastStreamFingerprint, it.lastStreamsLabels, it.lastExtractor, it.hasLastExtractor = streamFingerprint, streamLabels, se, true
 	return se
 }
 
 func (it *dataObjSampleIterator) At() logproto.Sample {
-	if it.currPos < 0 || it.currPos >= len(it.currPending) {
+	if !it.hasCurr {
 		return logproto.Sample{}
 	}
-	return it.currPending[it.currPos].sample
+	return it.curr.sample
 }
 
 func (it *dataObjSampleIterator) Labels() string {
-	if it.currPos < 0 || it.currPos >= len(it.currPending) {
+	if !it.hasCurr {
 		return ""
 	}
-	return it.currPending[it.currPos].labels
+	return it.curr.labels
 }
 
 func (it *dataObjSampleIterator) StreamHash() uint64 { return it.currFP }

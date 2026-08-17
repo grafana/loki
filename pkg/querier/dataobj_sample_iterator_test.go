@@ -2,6 +2,7 @@ package querier
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -125,6 +126,22 @@ func TestDataObjSampleIterator_Next(t *testing.T) {
 			},
 			want: nil,
 		},
+		// Two distinct streams sharing a fingerprint (a StableHash collision) must each report their own
+		// labels: the last-stream cache is keyed on the fingerprint but verified by labels, so the second
+		// record must miss the cache and rebuild rather than reuse the first stream's extractor.
+		"fingerprint collision keeps streams distinct": {
+			query: `count_over_time({app=~".+"}[1m])`,
+			records: []dataObjLogRecord{
+				testLogRecord(1, streamX, 100, "a"),
+				testLogRecord(1, streamY, 200, "b"), // same fingerprint, different labels
+				testLogRecord(1, streamX, 300, "c"),
+			},
+			want: []emittedSample{
+				{streamHash: 1, timestamp: 100, labels: streamX.String(), value: 1},
+				{streamHash: 1, timestamp: 200, labels: streamY.String(), value: 1},
+				{streamHash: 1, timestamp: 300, labels: streamX.String(), value: 1},
+			},
+		},
 	}
 
 	for name, tc := range tests {
@@ -132,6 +149,105 @@ func TestDataObjSampleIterator_Next(t *testing.T) {
 			it := newDataObjSampleIterator(newTestLogReader(tc.records, nil), mustExtractor(t, tc.query))
 			require.Equal(t, tc.want, drainSampleIterator(it))
 			require.NoError(t, it.Err())
+		})
+	}
+}
+
+// BenchmarkDataObjSampleIterator isolates the per-line iterator + extractor cost (a synthetic reader, no
+// object-storage decode), across two axes: normal vs the constant-label fast path (C4), and the record
+// order the iterator sees. Each batch is one stream's rows (the logs section is stream-sorted), so the
+// realistic order is "clustered" (a stream's batches contiguous) or "batch-interleaved" (a stream's
+// batches split apart because the concurrently-scanned sections interleave). It reports ns/op and
+// allocs/op per drained sample set.
+func BenchmarkDataObjSampleIterator(b *testing.B) {
+	const (
+		numStreams = 128
+		perStream  = 3000 // > batchSize, so a stream spans several batches (exposes the last-stream cache)
+		batchSize  = 1024
+	)
+
+	streams := make([]labels.Labels, numStreams)
+	for i := range streams {
+		streams[i] = labels.FromStrings("app", "svc", "pod", fmt.Sprintf("pod-%04d", i))
+	}
+
+	// perStreamBatches[i] is stream i's rows chunked into batches. Each batch holds one stream's rows.
+	perStreamBatches := make([][][]dataObjLogRecord, numStreams)
+	for i := range streams {
+		for start := 0; start < perStream; start += batchSize {
+			end := min(start+batchSize, perStream)
+			batch := make([]dataObjLogRecord, 0, end-start)
+			for j := start; j < end; j++ {
+				batch = append(batch, testLogRecord(uint64(i), streams[i], int64(j), "line"))
+			}
+			perStreamBatches[i] = append(perStreamBatches[i], batch)
+		}
+	}
+
+	buildBatches := func(interleaved bool) [][]dataObjLogRecord {
+		var batches [][]dataObjLogRecord
+		if interleaved {
+			for round := 0; ; round++ { // round-robin batches across streams, mimicking concurrent sections
+				any := false
+				for i := range streams {
+					if round < len(perStreamBatches[i]) {
+						batches = append(batches, perStreamBatches[i][round])
+						any = true
+					}
+				}
+				if !any {
+					break
+				}
+			}
+		} else {
+			for i := range streams { // each stream's batches contiguous
+				batches = append(batches, perStreamBatches[i]...)
+			}
+		}
+		return batches
+	}
+
+	newExtractor := func(b *testing.B, constant bool) syntax.SampleExtractor {
+		// A grouping that resolves to stream labels ("app", "pod") is constant per stream, so the
+		// extractor builds the output labels once; a bare count_over_time keeps the full label set and
+		// rebuilds it per line.
+		query := `count_over_time({app="svc"}[1h])`
+		if constant {
+			query = `sum by (app, pod) (count_over_time({app="svc"}[1h]))`
+		}
+		expr, err := syntax.ParseSampleExpr(query)
+		require.NoError(b, err)
+		ex, err := expr.Extractor()
+		require.NoError(b, err)
+		return ex
+	}
+
+	for _, tc := range []struct {
+		name        string
+		interleaved bool
+		constant    bool
+	}{
+		{"clustered/normal", false, false},
+		{"clustered/constant", false, true},
+		{"batch-interleaved/normal", true, false},
+		{"batch-interleaved/constant", true, true},
+	} {
+		batches := buildBatches(tc.interleaved)
+		b.Run(tc.name, func(b *testing.B) {
+			ex := newExtractor(b, tc.constant)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				it := newDataObjSampleIterator(newTestLogReaderBatches(batches, nil), ex)
+				n := 0
+				for it.Next() {
+					_ = it.At()
+					n++
+				}
+				if n != numStreams*perStream {
+					b.Fatalf("drained %d samples, want %d", n, numStreams*perStream)
+				}
+			}
 		})
 	}
 }
