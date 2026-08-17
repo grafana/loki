@@ -247,6 +247,7 @@ func TestMicroServicesShardTimingStats(t *testing.T) {
 	require.NotEmpty(t, line, "no frontend metrics.go line with shard-timing fields was logged for the query")
 	for _, field := range []string{
 		"unsharded_added_estimate=",
+		"unsharded_added_pct=",
 		"unsharded_critical_stream",
 		"unsharded_critical_total=",
 		"unsharded_critical_maxshard=",

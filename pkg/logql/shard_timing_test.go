@@ -182,10 +182,13 @@ func TestRecordMetrics_FrontendUnshardedEstimate(t *testing.T) {
 		limit:       1000,
 		step:        time.Minute,
 	}
-	sharded := stats.Result{ShardedStreams: []stats.ShardedStream{
-		{Stream: `{app="a"}`, SumDurationNanos: int64(3 * time.Second), MaxDurationNanos: int64(1 * time.Second), Shards: 3},
-		{Stream: `{app="b"}`, SumDurationNanos: int64(10 * time.Second), MaxDurationNanos: int64(4 * time.Second), Shards: 5},
-	}}
+	sharded := stats.Result{
+		Summary: stats.Summary{ExecTime: 12}, // 12s duration -> 6s added = 50%
+		ShardedStreams: []stats.ShardedStream{
+			{Stream: `{app="a"}`, SumDurationNanos: int64(3 * time.Second), MaxDurationNanos: int64(1 * time.Second), Shards: 3},
+			{Stream: `{app="b"}`, SumDurationNanos: int64(10 * time.Second), MaxDurationNanos: int64(4 * time.Second), Shards: 5},
+		},
+	}
 
 	// Frontend context: estimate is logged, dominated by stream b (10-4=6s > 3-1=2s).
 	buf := bytes.NewBufferString("")
@@ -194,6 +197,7 @@ func TestRecordMetrics_FrontendUnshardedEstimate(t *testing.T) {
 	RecordRangeAndInstantQueryMetrics(frontendCtx, logger, params, "200", sharded, logqlmodel.Streams{})
 	out := buf.String()
 	require.Contains(t, out, "unsharded_added_estimate=6s")
+	require.Contains(t, out, "unsharded_added_pct=50")
 	require.Contains(t, out, "unsharded_critical_shards=5")
 	require.Contains(t, out, "sharded_total_duration=13s")
 	require.Contains(t, out, `unsharded_critical_stream="{app=\"b\"}"`)

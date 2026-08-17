@@ -334,8 +334,16 @@ func RecordRangeAndInstantQueryMetrics(
 				maxAdded, crit = added, s
 			}
 		}
+		// unsharded_added_pct expresses the added time as a percentage of the
+		// query's current duration (Summary.ExecTime, the logged "duration"), so
+		// it can be unwrapped directly for per-query percentile analysis.
+		var pct float64
+		if execNanos := stats.Summary.ExecTime * float64(time.Second); execNanos > 0 {
+			pct = 100 * float64(maxAdded) / execNanos
+		}
 		logValues = append(logValues,
 			"unsharded_added_estimate", time.Duration(maxAdded),
+			"unsharded_added_pct", pct,
 			"unsharded_critical_stream", crit.Stream,
 			"unsharded_critical_total", time.Duration(crit.SumDurationNanos),
 			"unsharded_critical_maxshard", time.Duration(crit.MaxDurationNanos),
