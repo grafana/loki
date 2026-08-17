@@ -27,12 +27,17 @@ func (c *labelPostingsCalculation) Prepare(_ context.Context, _ *logsCalculation
 }
 
 func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logsCalculationContext, batch []logs.Record) error {
+	shardBuckets := make(map[int64]uint32)
 	var batchErr error
 	for _, log := range batch {
 		if batchErr != nil {
 			break
 		}
 		streamLbls := calcCtx.streamLabels[log.StreamID]
+		if _, ok := shardBuckets[log.StreamID]; !ok {
+			shardBuckets[log.StreamID] = uint32(streams.ShardBucket(streamLbls))
+		}
+		shardBucket := shardBuckets[log.StreamID]
 		// The uncompressed byte contract is line bytes plus structured metadata
 		// value bytes, matching streams.Stream.UncompressedSize and the stats
 		// calculation so every producer reports the same quantity.
@@ -53,7 +58,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 				StreamID:         log.StreamID,
 				Timestamp:        log.Timestamp,
 				UncompressedSize: uncompressedSize,
-				ShardBucket:      uint32(log.ShardBucket),
+				ShardBucket:      shardBucket,
 			})
 		})
 	}
