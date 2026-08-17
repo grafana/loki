@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash"
 	"math"
@@ -31,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -48,16 +46,10 @@ var testEncodings = []compression.Codec{
 }
 
 var (
-	testBlockSize     = 256 * 1024
-	testTargetSize    = 1500 * 1024
-	testBlockSizes    = []int{64 * 1024, 256 * 1024, 512 * 1024}
-	multiVariantQuery = `variants(
-    count_over_time({app="myapp"} [5m]),
-    bytes_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
-	multiVariantCountOnlyQuery = `variants(
-    count_over_time({app="myapp"} [5m])
-  ) of ({app="foo"} [5m])`
+	testBlockSize  = 256 * 1024
+	testTargetSize = 1500 * 1024
+	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
+	countQuery     = `count_over_time({app="myapp"}[5m])`
 
 	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
@@ -231,9 +223,8 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "myapp"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "myapp"))
 				require.NoError(t, err)
-				countExtractor := extractors[0]
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -247,59 +238,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
-
-				t.Run("multi-extractor", func(t *testing.T) {
-					extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
-					require.NoError(t, err)
-
-					sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
-					idx = 0
-
-					// variadic arguments can't guarantee order, so we're going to store the expected and actual values
-					// and do an ElementsMatch on them.
-					var actualCounts = make([]float64, 0, len(cases))
-					var actualBytes = make([]float64, 0, len(cases))
-
-					var expectedCounts = make([]float64, 0, len(cases))
-					var expectedBytes = make([]float64, 0, len(cases))
-					for _, c := range cases {
-						expectedCounts = append(expectedCounts, 1.)
-						expectedBytes = append(expectedBytes, c.bytes)
-					}
-
-					// 2 extractors, expect 2 samples per original timestamp
-					for sampleIt.Next() {
-						s := sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls := sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, cases[idx].ts, s.Timestamp)
-						require.NotEmpty(t, s.Hash)
-						lbls = sampleIt.Labels()
-						if strings.Contains(lbls, fmt.Sprintf(`%s="0"`, constants.VariantLabel)) {
-							actualCounts = append(actualCounts, s.Value)
-						} else {
-							actualBytes = append(actualBytes, s.Value)
-						}
-
-						idx++
-					}
-
-					require.ElementsMatch(t, expectedCounts, actualCounts)
-					require.ElementsMatch(t, expectedBytes, actualBytes)
-
-					require.NoError(t, sampleIt.Err())
-					require.NoError(t, sampleIt.Close())
-					require.Equal(t, len(cases), idx)
-				})
 
 				t.Run("bounded-iteration", func(t *testing.T) {
 					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
@@ -540,9 +478,7 @@ func TestSerialization(t *testing.T) {
 						}
 						return ex.ForStream(labels.Labels{})
 					}()
-					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
-
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -554,12 +490,6 @@ func TestSerialization(t *testing.T) {
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
-
-						// check that the second extractor is returning samples as well
-						require.True(t, sampleIt.Next())
-						s = sampleIt.At()
-						require.Equal(t, int64(i), s.Timestamp)
-						require.Equal(t, 1., s.Value)
 					}
 					require.NoError(t, sampleIt.Err())
 
@@ -871,6 +801,144 @@ func TestChunkStats(t *testing.T) {
 	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
 }
 
+// TestPostFilterLinesCountsMatchingLinesOnly ensures that post_filter_lines counts
+// only the lines a query keeps: for log and metric queries, in the head block and in
+// cut blocks, across every head block format. Counting every line read reports lines
+// scanned, which makes every filter look like it matched everything.
+func TestPostFilterLinesCountsMatchingLinesOnly(t *testing.T) {
+	const (
+		matching = 3
+		total    = 10
+	)
+
+	var (
+		streamLabels = labels.FromStrings("app", "foo")
+		logQuery     = `{app="foo"} |= "keep"`
+		metricQuery  = `count_over_time({app="foo"} |= "keep" [5m])`
+	)
+
+	line := func(i int) string {
+		if i < matching {
+			return "keep me"
+		}
+		return "drop me"
+	}
+
+	// Returns post_filter_lines alongside total_lines, so a subtest can pin the ratio
+	// between lines read and lines kept. The bug made the two equal, which reads as a
+	// filter that matched everything.
+	countLines := func(t *testing.T, drain func(ctx context.Context)) (postFilter, total int64) {
+		t.Helper()
+		statsCtx, ctx := stats.NewContext(context.Background())
+		drain(ctx)
+		res := statsCtx.Result(0, 0, 0)
+		return res.Summary.TotalPostFilterLines, res.Summary.TotalLinesProcessed
+	}
+
+	for _, format := range allPossibleFormats {
+		for _, cutBlock := range []bool{false, true} {
+			name := fmt.Sprintf("%s/chunk=v%d/cut=%v", format.headBlockFmt, format.chunkFormat, cutBlock)
+			t.Run(name, func(t *testing.T) {
+				chk := newMemChunkWithFormat(format.chunkFormat, compression.None, format.headBlockFmt, testBlockSize, testTargetSize)
+				for i := 0; i < total; i++ {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: line(i)})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				// Cutting moves the entries out of the head block, so the block
+				// iterators are exercised instead.
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				logExpr, err := syntax.ParseLogSelector(logQuery, true)
+				require.NoError(t, err)
+				pipeline, err := logExpr.Pipeline()
+				require.NoError(t, err)
+
+				logLines, logTotal := countLines(t, func(ctx context.Context) {
+					it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, total), logproto.FORWARD, pipeline.ForStream(streamLabels))
+					require.NoError(t, err)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				extractor, err := getStreamExtractor(metricQuery, streamLabels)
+				require.NoError(t, err)
+
+				sampleLines, sampleTotal := countLines(t, func(ctx context.Context) {
+					it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, total), extractor)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				assert.Equal(t, int64(matching), logLines, "log query post_filter_lines")
+				assert.Equal(t, int64(matching), sampleLines, "metric query post_filter_lines")
+				assert.Equal(t, int64(total), logTotal, "log query total_lines")
+				assert.Equal(t, int64(total), sampleTotal, "metric query total_lines")
+			})
+		}
+	}
+}
+
+// TestPostFilterLinesCountsLinesThatProducedSamples asserts on which rejections stop a line
+// from counting.
+func TestPostFilterLinesCountsLinesThatProducedSamples(t *testing.T) {
+	lines := []string{
+		`{"latency":"1"}`,
+		`{"latency":"2"}`,
+		`{"other":"3"}`, // parses, but carries no latency label
+		`not json`,      // fails to parse, so the pipeline sets __error__
+	}
+
+	for _, tc := range []struct {
+		query string
+		want  int64
+	}{
+		// Every line reaches the extractor, including the one that failed to parse.
+		// A parse error is not a rejection: the pipeline sets __error__ and keeps
+		// the line, so it counts.
+		{query: `count_over_time({app="foo"} | json [5m])`, want: 4},
+
+		// Only the two lines carrying latency yield a sample. A missing unwrap label
+		// is a rejection, so those lines do not count even though no filter excluded them.
+		{query: `sum_over_time({app="foo"} | json | unwrap latency [5m])`, want: 2},
+	} {
+		for _, cutBlock := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cut=%v", tc.query, cutBlock), func(t *testing.T) {
+				chk := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+				for i, l := range lines {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: l})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				extractor, err := getStreamExtractor(tc.query, labels.FromStrings("app", "foo"))
+				require.NoError(t, err)
+
+				statsCtx, ctx := stats.NewContext(context.Background())
+				it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, int64(len(lines))), extractor)
+				samples := 0
+				for it.Next() {
+					samples++
+				}
+				require.NoError(t, it.Err())
+				require.NoError(t, it.Close())
+
+				require.Equal(t, int(tc.want), samples, "samples")
+				require.Equal(t, tc.want, statsCtx.Result(0, 0, 0).Summary.TotalPostFilterLines, "post_filter_lines")
+			})
+		}
+	}
+}
+
 func TestIteratorClose(t *testing.T) {
 	for _, f := range allPossibleFormats {
 		for _, enc := range testEncodings {
@@ -998,9 +1066,8 @@ func BenchmarkRead(b *testing.B) {
 		}
 	}
 
-	extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+	countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 	require.NoError(b, err)
-	countExtractor := extractors[0]
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncodings {
 			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
@@ -1145,9 +1212,8 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				b.ResetTimer()
 
-				extractors, err := getMultiVariantExtractors(multiVariantCountOnlyQuery, labels.FromStrings("app", "foo"))
+				countExtractor, err := getStreamExtractor(countQuery, labels.FromStrings("app", "foo"))
 				require.NoError(b, err)
-				countExtractor := extractors[0]
 
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
@@ -1162,62 +1228,19 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	}
 }
 
-func getMultiVariantExtractors(query string, lbls labels.Labels) ([]log.StreamSampleExtractor, error) {
+// getStreamExtractor returns the StreamSampleExtractor a query extracts samples with.
+func getStreamExtractor(query string, lbls labels.Labels) (log.StreamSampleExtractor, error) {
 	expr, err := syntax.ParseSampleExpr(query)
 	if err != nil {
 		return nil, err
 	}
 
-	multiVariantExpr, ok := expr.(*syntax.MultiVariantExpr)
-	if !ok {
-		return nil, errors.New("expected multi-variant expression")
-	}
-
-	extractors, err := multiVariantExpr.Extractors()
+	extractor, err := expr.Extractor()
 	if err != nil {
 		return nil, err
 	}
 
-	streamExtractors := make([]log.StreamSampleExtractor, len(extractors))
-	for i, extractor := range extractors {
-		streamExtractors[i] = extractor.ForStream(lbls)
-	}
-
-	return streamExtractors, nil
-}
-
-func BenchmarkHeadBlockSampleIterator_WithMultipleExtractors(b *testing.B) {
-	for _, j := range []int{20000, 10000, 8000, 5000} {
-		for _, withStructuredMetadata := range []bool{false, true} {
-			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {
-				h := headBlock{}
-
-				var structuredMetadata labels.Labels
-				if withStructuredMetadata {
-					structuredMetadata = labels.FromStrings("foo", "foo")
-				}
-
-				for i := 0; i < j; i++ {
-					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
-						b.Fatal(err)
-					}
-				}
-
-				b.ResetTimer()
-
-				extractors, err := getMultiVariantExtractors(multiVariantQuery, labels.FromStrings("app", "foo"))
-				require.NoError(b, err)
-				for n := 0; n < b.N; n++ {
-					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, extractors...)
-
-					for iter.Next() {
-						_ = iter.At()
-					}
-					iter.Close()
-				}
-			})
-		}
-	}
+	return extractor.ForStream(lbls), nil
 }
 
 func TestMemChunk_IteratorBounds(t *testing.T) {
@@ -1481,23 +1504,19 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					ex, err := expr.Extractors()
+					ex, err := expr.Extractor()
 					if err != nil {
 						b.Fatal(err)
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						streamExtractors := make([]log.StreamSampleExtractor, 0, len(ex))
-						for _, extractor := range ex {
-							streamExtractors = append(streamExtractors, extractor.ForStream(lbs))
-						}
 						iters = append(
 							iters,
 							c.SampleIterator(
 								context.Background(),
 								time.Unix(0, 0),
 								time.Now(),
-								streamExtractors...),
+								ex.ForStream(lbs)),
 						)
 					}
 					b.ResetTimer()
@@ -2205,7 +2224,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						expr, err := syntax.ParseSampleExpr(query)
 						require.NoError(t, err)
 
-						extractors, err := expr.Extractors()
+						extractor, err := expr.Extractor()
 						require.NoError(t, err)
 
 						// We will run the test twice so the iterator will be created twice.
@@ -2213,22 +2232,11 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
 
-							streamExtractors := make(
-								[]log.StreamSampleExtractor,
-								0,
-								len(extractors),
-							)
-							for _, extractor := range extractors {
-								streamExtractors = append(
-									streamExtractors,
-									extractor.ForStream(streamLabels),
-								)
-							}
 							it := chk.SampleIterator(
 								ctx,
 								time.Unix(0, 0),
 								time.Unix(0, math.MaxInt64),
-								streamExtractors...)
+								extractor.ForStream(streamLabels))
 
 							var sumValues int
 							var streams []string

@@ -494,6 +494,8 @@ func (c *Context) AddDecompressedLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
 }
 
+// AddPostFilterLines adds lines that passed the query filters. Call it only after
+// the pipeline or the extractor accepts the line.
 func (c *Context) AddPostFilterLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.PostFilterLines, i)
 }

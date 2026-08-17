@@ -19,9 +19,6 @@ var (
 	ErrUnsupportedSyntaxForInstantQuery = errors.New(
 		"log queries are not supported as an instant query type, please change your query to a range query type",
 	)
-	ErrVariantsUnsupported = errors.New(
-		"multi variant queries are no longer supported",
-	)
 	ErrMaxQueryBytesRead   = errors.New("query would read too many bytes")
 	ErrQuerierTooManyBytes = errors.New("query too large to execute on a single querier")
 	ErrMaxQueryParallelism = errors.New("querying is disabled, please contact your Loki operator")

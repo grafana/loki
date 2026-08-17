@@ -603,28 +603,33 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	// A literal or a vector expression produces samples without reading logs, so its
+	// extractor is nil and there is no chunk worth touching. The plan is
+	// caller-supplied, so guard rather than assume such a request never arrives.
+	//
+	// Guard before SetupExtractor: given deletes it wraps the nil extractor into a
+	// non-nil filtering one, and this check would stop firing.
+	if extractor == nil {
+		return iter.NoopSampleIterator, nil
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
 
-	for i, extractor := range extractors {
-		extractor, err = deletion.SetupExtractor(req, extractor)
+	if s.extractorWrapper != nil &&
+		httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		if s.extractorWrapper != nil &&
-			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
-		}
-
-		extractors[i] = extractor
+		extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	var chunkFilterer chunk.Filterer
@@ -642,7 +647,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		req.Start,
 		req.End,
 		chunkFilterer,
-		extractors...,
+		extractor,
 	)
 }
 

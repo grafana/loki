@@ -3,15 +3,22 @@ package gcp
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
@@ -153,51 +160,76 @@ func TestUpstreamRetryableErrs(t *testing.T) {
 	}
 }
 
-func TestTCPErrs(t *testing.T) {
+func TestIsStorageTimeoutErr(t *testing.T) {
+	clientTimeout := &url.Error{
+		Op:  "Get",
+		URL: "http://example",
+		Err: fmt.Errorf("%w (Client.Timeout exceeded while awaiting headers)", context.DeadlineExceeded),
+	}
+	syscallErr := func(err syscall.Errno) error {
+		return &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", err)}
+	}
 
 	tests := []struct {
-		name           string
-		responseSleep  time.Duration
-		connectSleep   time.Duration
-		clientTimeout  time.Duration
-		serverTimeout  time.Duration
-		connectTimeout time.Duration
-		closeOnNew     bool
-		closeOnActive  bool
-		retryable      bool
+		name      string
+		err       error
+		retryable bool
+	}{
+		{"http client timeout is server-side", clientTimeout, true},
+		{"caller context deadline", &url.Error{Op: "Get", URL: "http://example", Err: context.DeadlineExceeded}, false},
+		{"caller context canceled", context.Canceled, false},
+
+		{"use of closed connection", net.ErrClosed, false},
+		{"connection refused", syscallErr(syscall.ECONNREFUSED), false},
+
+		{"i/o timeout", &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}, true},
+		{"eof (closed before established)", io.EOF, true},
+		{"connection reset (closed after established)", syscallErr(syscall.ECONNRESET), true},
+
+		{"gcs request timeout", &googleapi.Error{Code: http.StatusRequestTimeout}, true},
+		{"gcs gateway timeout", &googleapi.Error{Code: http.StatusGatewayTimeout}, true},
+		{"gcs internal error is not a timeout", &googleapi.Error{Code: http.StatusInternalServerError}, false},
+
+		{"unclassified error", errors.New("boom"), false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.retryable, IsStorageTimeoutErr(tc.err))
+		})
+	}
+}
+
+func TestTCPErrs(t *testing.T) {
+	const ctxTimeout = 100 * time.Millisecond
+
+	tests := []struct {
+		name string
+		// server behaviour (exactly one is set per case)
+		hangResponse  bool // accepts the request but never replies
+		hangConnect   bool // accepts the connection but never reads the request
+		closeOnActive bool // drops the connection after reading the request
+
+		ctxTimeout time.Duration
+		retryable  bool
 	}{
 		{
-			name:          "request took longer than client timeout, not retryable",
-			responseSleep: time.Millisecond * 20,
-			clientTimeout: time.Millisecond * 10,
-			retryable:     false,
+			// the caller's context deadline fires while awaiting the response: client-side, not retryable
+			name:         "context deadline while awaiting response, not retryable",
+			hangResponse: true,
+			ctxTimeout:   ctxTimeout,
+			retryable:    false,
 		},
 		{
-			name:          "client timeout exceeded on connect, not retryable",
-			connectSleep:  time.Millisecond * 20,
-			clientTimeout: time.Millisecond * 10,
-			retryable:     false,
+			// the caller's context deadline fires while the server is silent on connect: client-side, not retryable
+			name:        "context deadline while connecting, not retryable",
+			hangConnect: true,
+			ctxTimeout:  ctxTimeout,
+			retryable:   false,
 		},
 		{
-			// there are retryable because it's a server-side timeout
-			name:           "transport connect timeout exceeded, retryable",
-			connectSleep:   time.Millisecond * 40,
-			connectTimeout: time.Millisecond * 20,
-			// even though the client timeout is set, the connect timeout will be hit first
-			clientTimeout: time.Millisecond * 100,
-			retryable:     true,
-		},
-		{
-			name:          "connection is closed server-side before being established",
-			connectSleep:  time.Millisecond * 10,
-			clientTimeout: time.Millisecond * 100,
-			closeOnNew:    true,
-			retryable:     true,
-		},
-		{
-			name:          "connection is closed server-side after being established",
-			connectSleep:  time.Millisecond * 10,
-			clientTimeout: time.Millisecond * 100,
+			// the server drops the connection: a reset is a server-side issue, retryable
+			name:          "connection reset server-side, retryable",
 			closeOnActive: true,
 			retryable:     true,
 		},
@@ -205,14 +237,18 @@ func TestTCPErrs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			server := fakeSleepingServer(t, tc.responseSleep, tc.connectSleep, tc.closeOnNew, tc.closeOnActive)
-			ctx, cancelFunc := context.WithTimeout(context.Background(), tc.clientTimeout)
-			defer t.Cleanup(cancelFunc)
+			server := fakeSleepingServer(t, tc.hangResponse, tc.hangConnect, tc.closeOnActive)
 
-			client := http.DefaultClient
-			transport := http.DefaultTransport.(*http.Transport).Clone()
-			client.Transport = transport
-			client.Timeout = tc.connectTimeout
+			ctx := context.Background()
+			if tc.ctxTimeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, tc.ctxTimeout)
+				t.Cleanup(cancel)
+			}
+
+			// A plain-HTTP transport is required so the client speaks to the
+			// plain-HTTP fake server; the default GCS transport would attempt TLS.
+			client := &http.Client{Transport: http.DefaultTransport.(*http.Transport).Clone()}
 
 			cli, err := newGCSObjectClient(ctx, GCSConfig{
 				BucketName:    "test-bucket",
@@ -244,25 +280,27 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 	return server
 }
 
-func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
+func fakeSleepingServer(t *testing.T, hangResponse, hangConnect, closeOnActive bool) *httptest.Server {
+	release := make(chan struct{})
+
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
-		// sleep on response to mimic server overload
-		time.Sleep(responseSleep)
+		if hangResponse {
+			<-release
+		}
 	}))
 	server.Config.ConnState = func(conn net.Conn, state http.ConnState) {
-		// sleep on initial connection attempt to mimic server non-responsiveness
-		if state == http.StateNew {
-			time.Sleep(connectSleep)
-			if closeOnNew {
-				require.NoError(t, conn.Close())
-			}
+		if state == http.StateNew && hangConnect {
+			<-release
 		}
 
-		if closeOnActive && state != http.StateClosed {
-			require.NoError(t, conn.Close())
+		if state == http.StateActive && closeOnActive {
+			_ = conn.Close()
 		}
 	}
-	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		close(release)
+		server.Close()
+	})
 	server.Start()
 	return server
 }

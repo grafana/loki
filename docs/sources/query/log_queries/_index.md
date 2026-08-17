@@ -233,7 +233,7 @@ We support multiple **value** types which are automatically inferred from the qu
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
-> The string type is the only one that can filter out a log line with a label `__error__`.
+> The string type is the only one that can test the `__error__` label, as in `| __error__=""`. The other comparison operators convert the label value before they compare it, and cannot read `__error__`, so a predicate such as `| __error__ > 0` matches no log line at all.
 
 Using Duration, Number and Bytes will convert the label value prior to comparison and support the following comparators:
 
@@ -246,31 +246,28 @@ For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
 If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
 
-You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
+You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma or a space. Loki evaluates `and` before `or`. Label filters can be place anywhere in a log pipeline.
 
 This means that all the following expressions are equivalent:
 
 ```logql
 | duration >= 20ms or size == 20KB and method!~"2.."
-| duration >= 20ms or size == 20KB | method!~"2.."
 | duration >= 20ms or size == 20KB , method!~"2.."
 | duration >= 20ms or size == 20KB  method!~"2.."
-
+| duration >= 20ms or (size == 20KB and method!~"2..")
 ```
 
-The precedence for evaluation of multiple predicates is left to right. You can wrap predicates with parenthesis to force a different precedence.
-
-These examples are equivalent:
+Wrap predicates with parenthesis to force a different grouping:
 
 ```logql
-| duration >= 20ms or method="GET" and size <= 20KB
-| ((duration >= 20ms or method="GET") and size <= 20KB)
+| (duration >= 20ms or size == 20KB) and method!~"2.."
 ```
 
-To evaluate the logical `and` first, use parenthesis, as in this example:
+A `|` starts a new pipeline stage rather than another predicate, so it applies to the whole expression before it. The following expressions are equivalent:
 
 ```logql
-| duration >= 20ms or (method="GET" and size <= 20KB)
+| duration >= 20ms or size == 20KB | method!~"2.."
+| (duration >= 20ms or size == 20KB) and method!~"2.."
 ```
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.

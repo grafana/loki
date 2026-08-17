@@ -129,6 +129,7 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 		"label columns must stay keyed by the bare Prometheus name")
 	require.Equal(t, "c1", actual[0]["cluster.label.utf8"],
 		"label columns must stay keyed by the bare Prometheus name")
+	require.Equal(t, int64(0), actual[0]["__shard_bucket__.int64"])
 }
 
 func TestStatsCalculation_RejectsUnsupportedSortKey(t *testing.T) {
@@ -176,6 +177,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(0),
 		"service_name.label.utf8": "",
 		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
 		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
@@ -187,6 +189,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(0),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts1,
 		"max_timestamp.timestamp": ts2,
@@ -198,6 +201,7 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(0),
 		"service_name.label.utf8": "svcB",
 		"min_timestamp.timestamp": ts3,
 		"max_timestamp.timestamp": ts3,
@@ -228,6 +232,7 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 		"object_path.utf8":        "test/path/obj1",
 		"section_index.int64":     int64(0),
 		"sort_schema.utf8":        "label:service_name",
+		"__shard_bucket__.int64":  int64(0),
 		"service_name.label.utf8": "svcA",
 		"min_timestamp.timestamp": ts,
 		"max_timestamp.timestamp": ts,

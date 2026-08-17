@@ -64,6 +64,15 @@ func TestMappingEquivalence(t *testing.T) {
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream)`, true, nil},
+		// avg_over_time() by(<unsorted labels>) needs to sort grouping labels
+		// on both side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (c, a)`, true, nil},
+		// avg_over_time() with "unwrap" and without() grouping gets sharded
+		// by adding a filter to ensure the existence of the unwrap field on
+		// right side of the legs the avg_over_time() gets decomposed to
+		// (sum_over_time() / count_over_time).
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream, level)`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
 		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		// outer sum around a non-additive range aggregation with label
@@ -99,10 +108,17 @@ func TestMappingEquivalence(t *testing.T) {
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardFirstOverTime}},
+		// window wider than step: the range vector selector overlaps across steps, so a
+		// grouped, sharded first/last_over_time must reuse the same picked sample across
+		// several consecutive output steps instead of matching it to a single one.
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [5s]) by (a)`, false, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [5s] offset 2s) by (a)`, false, []string{ShardFirstOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
 		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s] offset -2s) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [5s]) by (a)`, false, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [5s] offset 2s) by (a)`, false, []string{ShardLastOverTime}},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.

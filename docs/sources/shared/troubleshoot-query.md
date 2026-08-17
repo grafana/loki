@@ -898,6 +898,8 @@ These errors occur when queries are administratively blocked.
 
 The query matches a configured block rule. Administrators create tenant policies and rate limiting rules to block specific queries or query patterns to protect the cluster from expensive or problematic queries.
 
+Refer to [Block unwanted queries](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/blocking-queries/) for details on how to configure and troubleshoot these policies.
+
 **Resolution:**
 
 * **Check with your Loki administrator** about blocked queries and to review policy settings.
@@ -954,13 +956,13 @@ Query parallelism is set to 0, effectively disabling queries for the tenant.
 - HTTP status: 400 Bad Request
 - Configurable per tenant: Yes
 
-### Error: Multi variant queries no longer supported
+### Error: Parse error on a `variants()` query
 
-Multi variant queries were an experimental feature that ran multiple query variants over the same underlying data. For example, running both a `rate()` and a `count_over_time()` query over the same range selector. The feature was removed.
+Multi variant queries were an experimental feature that ran multiple query variants over the same underlying data. For example, running both a `rate()` and a `count_over_time()` query over the same range selector. The feature was removed, and `variants()` is no longer part of LogQL.
 
 **Error message:**
 
-`multi variant queries are no longer supported`
+A parse error, for example `parse error at line 1, col 1: syntax error: unexpected IDENTIFIER`.
 
 **Cause:**
 
@@ -972,7 +974,7 @@ The query uses a `variants()` expression.
 
 **Properties:**
 
-- Enforced by: Query Engine
+- Enforced by: Query Frontend
 - Retryable: No
 - HTTP status: 400 Bad Request
 - Configurable per tenant: No
