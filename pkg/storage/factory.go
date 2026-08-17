@@ -34,7 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -251,6 +250,11 @@ func (ns *NamedStores) Validate() error {
 	return ns.populateStoreType()
 }
 
+func (ns *NamedStores) LookupStoreType(name string) (string, bool) {
+	st, ok := ns.storeType[name]
+	return st, ok
+}
+
 func (ns *NamedStores) Exists(name string) bool {
 	_, ok := ns.storeType[name]
 	return ok
@@ -348,87 +352,31 @@ func (cfg *Config) Validate() error {
 
 // NewChunkClient makes a new chunk.Client of the desired types.
 func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
-	var cc congestion.Controller
-	ccCfg := cfg.CongestionControl
+	storeType := name
+	if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); cfg.UseThanosObjstore && ok {
+		storeType = st
+	} else if st, ok := cfg.NamedStores.LookupStoreType(name); !cfg.UseThanosObjstore && ok {
+		storeType = st
+	}
 
-	if ccCfg.Enabled {
-		cc = congestion.NewController(
+	c, err := NewObjectClient(name, component, cfg, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	if storeType == types.StorageTypeFileSystem {
+		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
+
+	if ccCfg := cfg.CongestionControl; ccCfg.Enabled {
+		cc := congestion.NewController(
 			ccCfg,
 			logger,
 			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
 		)
+		c = cc.Wrap(c)
 	}
-
-	var storeType = name
-
-	if cfg.UseThanosObjstore {
-		// Check if this is a named store and get its type
-		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
-			storeType = st
-		}
-
-		var (
-			c   client.ObjectClient
-			err error
-		)
-		c, err = NewObjectClient(name, component, cfg, clientMetrics)
-		if err != nil {
-			return nil, err
-		}
-
-		var encoder client.KeyEncoder
-		if storeType == bucket.Filesystem {
-			encoder = client.FSEncoder
-		} else if cfg.CongestionControl.Enabled {
-			// Apply congestion control wrapper for non-filesystem storage
-			c = cc.Wrap(c)
-		}
-
-		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-	}
-
-	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
-		storeType = nsType
-	}
-
-	switch true {
-
-	case util.StringsContain(types.SupportedStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeFileSystem:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeGCS:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			// TODO(dannyk): expand congestion control to all other object clients
-			// this switch statement can be simplified; all the branches like this one are alike
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-		}
-
-	}
-
-	return nil, fmt.Errorf("unrecognized chunk client type %s, choose one of: %s", name, strings.Join(types.SupportedStorageTypes, ", "))
+	return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 }
 
 type ClientMetrics struct {
