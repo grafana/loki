@@ -92,6 +92,16 @@ func TestBuilder(t *testing.T) {
 
 		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
 		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
+
+		for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+			streamSec, err := streams.Open(t.Context(), sec)
+			require.NoError(t, err)
+			for res := range streams.IterSection(t.Context(), streamSec) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				require.Equal(t, int64(streams.ShardBucket(stream.Labels)), stream.ShardBucket)
+			}
+		}
 	})
 }
 

@@ -612,7 +612,7 @@ func buildSourceWithLegacySections(t *testing.T, bucket objstore.Bucket, tenant,
 	// Append a stat to get a stats section.
 	err = builder.AppendStat(tenant, "log-A", 0, "label:service",
 		map[string]string{"service": "api"},
-		ts, ts.Add(time.Second), 10, 1000)
+		ts, ts.Add(time.Second), 10, 1000, 0)
 	require.NoError(t, err, "failed to append stat")
 
 	// Observe a label posting to get a postings section.

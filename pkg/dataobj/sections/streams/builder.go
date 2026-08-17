@@ -54,9 +54,11 @@ func (s *Stream) Reset() {
 	s.Rows = 0
 }
 
-const shardFactor = 32
+// ShardFactor is the number of physical shard buckets derived from
+// labels.StableHash.
+const ShardFactor uint32 = 32
 
-var shardBits = int(math.Log2(shardFactor))
+var shardBits = int(math.Log2(float64(ShardFactor)))
 
 var streamPool = sync.Pool{
 	New: func() interface{} {

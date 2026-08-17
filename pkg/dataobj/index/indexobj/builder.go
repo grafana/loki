@@ -157,7 +157,8 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64,
+	shard uint32) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -175,6 +176,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 		MaxTimestamp:     maxTs.UnixNano(),
 		RowCount:         int64(rows),
 		UncompressedSize: uncompressedSize,
+		ShardBucket:      shard,
 	})
 
 	postAppendSizeEstimate := tenantStats.EstimatedSize()
