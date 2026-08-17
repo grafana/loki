@@ -482,7 +482,27 @@ func newOrLineFilterExpr(left, right *LineFilterExpr) *LineFilterExpr {
 	}
 
 	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
-		left.Or = right
+		// The left hand may already carry an Or chain. If we simply replace left.Or
+		// we would overwrite existing filters. Instead, we need to find the tail of
+		// the Or chain (if any) and add the right hand to it.
+		//
+		// To be clear, we don't enter this case just with or-ed strings. A string
+		// can continue an "or" chain in the grammar, so a chain of strings builds
+		// its whole tail in one pass, and left.Or is nil here.
+		//
+		// The case where this can happen is when there's ip() involved. ip() cannot
+		// continue a chain in the grammar. The parser attaches operands one at a time
+		// instead, so left already carries a chain by the second attach.
+		//
+		// For example, given the linter filter `ip("a") or ip("b") or ip("c")`, it
+		// reaches this branch twice:
+		// - First with left=`ip("a")`, right=`ip("b")`
+		// - Then with left=`ip("a") or ip("b")`, right=`ip("c")`
+		tail := left
+		for tail.Or != nil {
+			tail = tail.Or
+		}
+		tail.Or = right
 		right.IsOrChild = true
 		return left
 	}
@@ -608,28 +628,14 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 		var next log.Filterer
 		var err error
 		if curr.Or != nil {
-			next, err = newOrFilter(curr)
-			if err != nil {
-				return nil, err
-			}
-			acc = append(acc, next)
+			next, err = newOrLineFilter(curr)
 		} else {
-			switch curr.Op {
-			case OpFilterIP:
-				next, err := log.NewIPLineFilter(curr.Match, curr.Ty)
-				if err != nil {
-					return nil, err
-				}
-				acc = append(acc, next)
-			default:
-				next, err = log.NewFilter(curr.Match, curr.Ty)
-				if err != nil {
-					return nil, err
-				}
-
-				acc = append(acc, next)
-			}
+			next, err = newLineFilterer(curr.LineFilter)
 		}
+		if err != nil {
+			return nil, err
+		}
+		acc = append(acc, next)
 	}
 
 	if len(acc) == 1 {
@@ -645,14 +651,26 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	return log.NewAndFilters(acc), nil
 }
 
-func newOrFilter(f *LineFilterExpr) (log.Filterer, error) {
-	orFilter, err := log.NewFilter(f.Match, f.Ty)
+// newLineFilterer returns the Filterer for a single line filter node.
+func newLineFilterer(f LineFilter) (log.Filterer, error) {
+	switch f.Op {
+	case "":
+		return log.NewFilter(f.Match, f.Ty)
+	case OpFilterIP:
+		return log.NewIPLineFilter(f.Match, f.Ty)
+	default:
+		return nil, fmt.Errorf("unknown line filter op %q", f.Op)
+	}
+}
+
+func newOrLineFilter(f *LineFilterExpr) (log.Filterer, error) {
+	orFilter, err := newLineFilterer(f.LineFilter)
 	if err != nil {
 		return nil, err
 	}
 
 	for or := f.Or; or != nil; or = or.Or {
-		filter, err := log.NewFilter(or.Match, or.Ty)
+		filter, err := newLineFilterer(or.LineFilter)
 		if err != nil {
 			return nil, err
 		}
