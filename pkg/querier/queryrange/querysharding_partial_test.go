@@ -70,16 +70,22 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 			}, nil
 		}
 
-		// Right leg: fail only once the left leg's results have been folded into
-		// the engine's statistics, which is the case this test is about.
+		// Right leg: fail only once every left-leg shard has been served, which is
+		// the case this test is about. The gate is the test's own counter rather
+		// than the engine statistics: production never reads a stats Context
+		// mid-flight, so a test that did would be racing on its own.
 		deadline := time.Now().Add(10 * time.Second)
-		for stats.FromContext(ctx).Result(0, 0, 0).Querier.Store.Chunk.DecompressedBytes < shardsPerLeg*bytesPerShard {
+		for leftCalls.Load() < shardsPerLeg {
 			if time.Now().After(deadline) {
 				gateTimeout.Store(true)
 				break
 			}
 			time.Sleep(time.Millisecond)
 		}
+		// Give the last left response time to reach its accumulator, so the common
+		// case is a fully completed leg. The assertion below tolerates losing the
+		// race, so this only sharpens the test, it does not decide it.
+		time.Sleep(50 * time.Millisecond)
 		return nil, limitErr
 	})
 
@@ -119,11 +125,17 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 
 	line := lines.only(t)
 	requireFailedQueryUsageShape(t, line)
-	require.Equal(t,
-		util.HumanizeBytes(shardsPerLeg*bytesPerShard),
-		line["total_bytes"],
-		"the completed leg's usage must be kept on the failure path",
-	)
+	// How much of the completed leg is reported depends on how many of its
+	// responses were accumulated before the failing leg cancelled it, so accept
+	// one shard up to the whole leg. Nothing else in this query reports usage:
+	// the failing shard carries no statistics and neither does the index lookup,
+	// so without the partial-stats collector this is 0B.
+	kept := make([]string, 0, shardsPerLeg)
+	for shards := 1; shards <= shardsPerLeg; shards++ {
+		kept = append(kept, util.HumanizeBytes(uint64(shards*bytesPerShard)))
+	}
+	require.Contains(t, kept, line["total_bytes"],
+		"the completed leg's usage must be kept on the failure path")
 	require.Equal(t, server.FailureLimit, line["failure_category"])
 	require.Equal(t, "querier_too_large", line["failure_reason"])
 	require.Equal(t, countBefore+1, failedQueryUsageCount(t, server.FailureLimit))

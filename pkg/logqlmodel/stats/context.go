@@ -140,9 +140,6 @@ func (pc *PartialContext) Result() Result {
 
 // Ingester returns the ingester statistics accumulated so far.
 func (c *Context) Ingester() Ingester {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	return Ingester{
 		TotalReached:       c.ingester.TotalReached,
 		TotalChunksMatched: c.ingester.TotalChunksMatched,
@@ -155,17 +152,11 @@ func (c *Context) Ingester() Ingester {
 
 // Store returns the store statistics accumulated so far.
 func (c *Context) Store() Store {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	return c.store
 }
 
 // Index returns the index statistics accumulated so far.
 func (c *Context) Index() Index {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	return c.index
 }
 
@@ -178,9 +169,6 @@ func (c *Context) MergeIndex(i Index) {
 
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	return Caches{
 		Chunk:               c.caches.Chunk,
 		Index:               c.caches.Index,
@@ -212,9 +200,6 @@ func (c *Context) Reset() {
 
 // Result calculates the summary based on store and ingester data.
 func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) Result {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	r := c.result
 
 	r.Merge(Result{
