@@ -122,7 +122,8 @@ func (r indexStatsRange) covers(other indexStatsRange) bool {
 // mergeIndexStatsRange keeps the covering set of IndexStats ranges: a range is
 // dropped when a same-matcher range already spans it, and a newly covering
 // range replaces the nested ranges it contains. Remaining (non-overlapping)
-// ranges are summed.
+// ranges are summed. Compaction is in place so append can grow the slice
+// instead of allocating a copy on every insert.
 func mergeIndexStatsRange(ranges []indexStatsRange, next indexStatsRange) []indexStatsRange {
 	for _, existing := range ranges {
 		if existing.covers(next) {
@@ -130,14 +131,15 @@ func mergeIndexStatsRange(ranges []indexStatsRange, next indexStatsRange) []inde
 		}
 	}
 
-	merged := make([]indexStatsRange, 0, len(ranges)+1)
+	n := 0
 	for _, existing := range ranges {
 		if next.covers(existing) {
 			continue
 		}
-		merged = append(merged, existing)
+		ranges[n] = existing
+		n++
 	}
-	return append(merged, next)
+	return append(ranges[:n], next)
 }
 
 func sumIndexStatsBytes(ranges []indexStatsRange) int64 {
