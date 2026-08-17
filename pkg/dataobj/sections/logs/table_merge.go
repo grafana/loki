@@ -73,7 +73,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			Dataset: t,
 			Columns: dsetColumns,
 
-			// The table is in memory, so don't prefetch.
+			// Download pages lazily; the table is already in memory.
 			Prefetch: false,
 		})
 		if err := r.Open(context.Background()); err != nil {
