@@ -6,7 +6,7 @@ weight: 700
 ---
 # TSDB index format
 
-Loki stores its [TSDB](../../operations/storage/tsdb/) index as a single immutable file per index period. The file layout derives from the Prometheus TSDB index, but Loki extends it with log-specific data such as per-chunk size and entry counts, a series fingerprint, and a fingerprint offsets table used for sharding.
+Loki stores its [TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) index as a single immutable file per index period. The file layout derives from the Prometheus TSDB index, but Loki extends it with log-specific data such as per-chunk size and entry counts, a series fingerprint, and a fingerprint offsets table used for sharding.
 
 The first five bytes of every index file identify the format:
 
@@ -20,11 +20,11 @@ The first five bytes of every index file identify the format:
 
 Loki reads and writes three versions. Which version is written depends on the schema version of the period configuration:
 
-| Index format | Schema version | Added                                                                     |
-| ------------ | -------------- | ------------------------------------------------------------------------- |
-| [v2](./v2/)  | `v9` - `v12`   | Loki's initial TSDB format.                                               |
-| [v3](./v3/)  | `v13`          | Chunk page markers, which allow paging through the chunks of a series.    |
-| [v4](./v4/)  | `v14`          | Per-chunk ingestion timestamp, which allows retention based on ingestion. |
+| Index format                                                                        | Schema version | Added                                                                     |
+| ----------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------- |
+| [v2](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v2/)  | `v9` - `v12`   | Loki's initial TSDB format.                                               |
+| [v3](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v3/)  | `v13`          | Chunk page markers, which allow paging through the chunks of a series.    |
+| [v4](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v4/)  | `v14`          | Per-chunk ingestion timestamp, which allows retention based on ingestion. |
 
 Readers reject any other version. All three versions are readable by the same Loki binary, so periods with different schema versions coexist and no data migration is required when you change the schema. To rewrite existing index files into another version, use the `tools/tsdb/migrate-versions` tool.
 
@@ -77,9 +77,9 @@ The versions differ only in the chunks part of a series entry. Everything else i
 
 ## Version specifications
 
-- [Index format v2](./v2/)
-- [Index format v3](./v3/)
-- [Index format v4](./v4/)
+- [Index format v2](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v2/)
+- [Index format v3](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v3/)
+- [Index format v4](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/v4/)
 
 ## Source code
 
