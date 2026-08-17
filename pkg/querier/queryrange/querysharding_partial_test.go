@@ -45,7 +45,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 		gateTimeout atomic.Bool
 	)
 
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		if _, ok := req.(*logproto.IndexStatsRequest); ok {
 			return &IndexStatsResponse{
 				Response: &logproto.IndexStatsResponse{Bytes: 1 << 40},
