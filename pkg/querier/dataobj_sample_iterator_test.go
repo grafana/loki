@@ -188,14 +188,14 @@ func BenchmarkDataObjSampleIterator(b *testing.B) {
 		var batches [][]dataObjLogRecord
 		if interleaved {
 			for round := 0; ; round++ { // round-robin batches across streams, mimicking concurrent sections
-				any := false
+				added := false
 				for i := range streams {
 					if round < len(perStreamBatches[i]) {
 						batches = append(batches, perStreamBatches[i][round])
-						any = true
+						added = true
 					}
 				}
-				if !any {
+				if !added {
 					break
 				}
 			}
