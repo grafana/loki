@@ -28,11 +28,10 @@ type streamSymbols struct {
 // capturing the sparse offset table.
 func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int) (*streamSymbols, error) {
 	decbuf := factory.NewDecbufAtChecked(ctx, off, castagnoliTable)
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
-		_ = decbuf.Close()
 		return nil, err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	size := decbuf.Be32int()
 	if err := decbuf.Err(); err != nil {
@@ -63,10 +62,10 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	}
 
 	decbuf := s.factory.NewDecbufAtUnchecked(context.Background(), s.off)
+	defer func() { _ = decbuf.Close() }()
 	if err := decbuf.Err(); err != nil {
 		return "", err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	// Use sparse offset table to jump right to the start of the bucket the symbol is in.
 	decbuf.ResetAt(s.offsets[int(n/symbolFactor)])
