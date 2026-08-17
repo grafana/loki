@@ -22,13 +22,6 @@ func seriesOffset(id storage.SeriesRef) int {
 	return int(id) * 16
 }
 
-// maxSeriesForwardSkip bounds how far a seriesScan will read-and-discard
-// forward rather than repositioning the file.
-// Discarding drains the read-ahead buffer and then refills it, one read syscall
-// per bufferful, so past a buffer's worth of bytes a seek is the cheaper way to
-// get there.
-const maxSeriesForwardSkip = streamenc.ReaderBufferSize
-
 // seriesScan reads series records for a single pass over a postings list.
 // It is how StreamReader reads the postings list.
 // A seriesScan is not safe for concurrent use.
@@ -67,7 +60,7 @@ func (sc *seriesScan) Close() error {
 // Backwards steps are always a reposition, so out-of-order refs stay correct
 // and merely incur the cost of ResetAt.
 func (sc *seriesScan) seek(offset int) {
-	if distance := offset - sc.decbuf.Offset(); distance >= 0 && distance <= maxSeriesForwardSkip {
+	if distance := offset - sc.decbuf.Offset(); distance >= 0 && distance <= streamenc.ReaderBufferSize {
 		sc.decbuf.Skip(distance)
 		return
 	}
