@@ -141,10 +141,9 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 			record.Timestamp = time.Unix(0, columnValue.Int64())
 
 		case ColumnTypeMetadata:
-			if columnValue.IsZero() {
-				// An empty metadata value is absent for this key.
-				continue
-			}
+			// A nil value (absent metadata) is already skipped above. A non-nil but empty value is an
+			// explicit empty label such as `name=""`, which the chunk path keeps as a distinct label, so
+			// surface it here too rather than dropping it.
 			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
