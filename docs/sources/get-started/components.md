@@ -273,7 +273,7 @@ This cache is only applicable when using single store TSDB.
 The **query scheduler** is an **optional service** providing more [advanced queuing functionality](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-fairness/) than the [query frontend](#query-frontend).
 When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
-The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag, or the `scheduler_address` field in the [`frontend_worker`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#frontend_worker) YAML block) in order to allow them to connect to the query scheduler.
+The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag, or the `scheduler_address` field in the [`frontend_worker`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#frontend_worker) YAML block) in order to allow them to connect to the query scheduler. As an alternative to a static address, query schedulers can register themselves in a hash ring so that queriers and query frontends discover them automatically. For more information, refer to [Scale Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/scalability/#scheduler-discovery-using-a-ring).
 
 Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
 
@@ -337,7 +337,7 @@ This component is disabled by default and must be enabled in your [Loki config f
 ## Bloom Planner
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -350,7 +350,7 @@ This service is also used to apply blooms retention.
 ## Bloom Builder
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
@@ -364,7 +364,7 @@ The service is stateless and horizontally scalable.
 ## Bloom Gateway
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+This feature is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available.
 No SLA is provided.
 {{< /admonition >}}
 
