@@ -130,6 +130,8 @@ func (m *ZipkinConfig) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for TimestampTraceIds
+
 	if len(errors) > 0 {
 		return ZipkinConfigMultiError(errors)
 	}
