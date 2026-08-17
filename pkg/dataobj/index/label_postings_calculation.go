@@ -51,7 +51,6 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 				StreamID:         log.StreamID,
 				Timestamp:        log.Timestamp,
 				UncompressedSize: uncompressedSize,
-				ShardBucket:      uint32(log.ShardBucket),
 			})
 		})
 	}
