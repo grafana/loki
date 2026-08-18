@@ -10,8 +10,13 @@
 //
 // # Version compatibility
 //
+// Read this. The package documentation states it at length; the short form is
+// that this package is to ccgo what the runtime package is to Go, and that its
+// version numbers therefore do not mean what semver says they mean.
+//
 // The API of this package, in particular the bits that directly support the
-// ccgo compiler, may change in a way that is not backward compatible. If you
+// ccgo compiler, may change in a way that is not backward compatible, and that
+// can happen in a release that bumps only the patch or the minor number. If you
 // have generated some Go code from C you should stick to the version of this
 // package that you used at that time and was tested with your payload. The
 // correct way to upgrade to a newer version of this package is to first
@@ -20,15 +25,22 @@
 //
 // If you use C to Go translated code provided by others, stick to the version
 // of libc that translated code shows in its go.mod file and do not upgrade the
-// dependency just because a newer libc is tagged.Vgq
+// dependency just because a newer libc is tagged.
 //
-// This is if course unfortunate. However, it's somewhat similar to C code
+// This is of course unfortunate. However, it's somewhat similar to C code
 // linked with a specific version of, say GNU libc. When such code asking for
 // glibc5 is run on a system with glibc6, or vice versa, it will fail.
 //
 // As a particular example, if your project imports modernc.org/sqlite you
 // should use the same libc version as seen in the go.mod file of the sqlite
 // package.
+//
+// Such a mismatch used to show up as behaviour that quietly differed. Since
+// LongjmpRetval became a struct, so that a region recovering a longjmp can tell
+// whether it was the one targeted, it can also show up as code that refuses to
+// compile. That is deliberate: the alternative to the build failing is a program
+// that resumes at the wrong setjmp, and there is no way to fix that while
+// keeping the old shape of the value.
 //
 // tl;dr: It is not always possible to fix ccgo bugs and/or improve performance
 // of the ccgo transpiled code without occasionally making incompatible changes
@@ -454,12 +466,28 @@ func (tls *TLS) Close() {
 	}
 }
 
+// PushJumpBuffer arms jb, which stays armed until the matching PopJumpBuffer or
+// until a Longjmp targets it. C keeps every jump buffer of a live frame valid, so
+// more than one can be armed at a time and they need not be left in the order they
+// were armed in.
 func (tls *TLS) PushJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = append(tls.jumpBuffers, jb)
 }
 
-type LongjmpRetval int32
+// LongjmpRetval is what Longjmp panics with. A panic unwinds through every setjmp
+// region between the longjmp and its target, so a recovering region must compare
+// JumpBuffer with its own and re-panic unless they are equal: recovering a longjmp
+// aimed past it would resume at the wrong setjmp.
+type LongjmpRetval struct {
+	// JumpBuffer is the buffer the longjmp targeted, already disarmed.
+	JumpBuffer uintptr
+	// Val is what setjmp must appear to return, never zero.
+	Val int32
+}
 
+// PopJumpBuffer disarms jb, which must be the most recently armed buffer still
+// armed. Regions leave in the order they were entered, so anything else is a bug
+// in the generated code rather than in the C being translated.
 func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	n := len(tls.jumpBuffers)
 	if n == 0 || tls.jumpBuffers[n-1] != jb {
@@ -469,12 +497,26 @@ func (tls *TLS) PopJumpBuffer(jb uintptr) {
 	tls.jumpBuffers = tls.jumpBuffers[:n-1]
 }
 
+// Longjmp disarms jb and panics with a LongjmpRetval naming it. jb need not be the
+// most recently armed buffer: C allows jumping past regions entered after the one
+// being jumped to, and those regions disarm their own buffers as the panic unwinds
+// through them. Of two regions sharing a buffer the innermost one is disarmed,
+// which is the one C resumes at.
 func (tls *TLS) Longjmp(jb uintptr, val int32) {
-	tls.PopJumpBuffer(jb)
+	i := len(tls.jumpBuffers) - 1
+	for ; i >= 0 && tls.jumpBuffers[i] != jb; i-- {
+	}
+	if i < 0 {
+		// Jumping to a buffer no setjmp armed, or to one whose region has been
+		// left already, which C leaves undefined.
+		panic(todo("unsupported setjmp/longjmp usage"))
+	}
+
+	tls.jumpBuffers = append(tls.jumpBuffers[:i], tls.jumpBuffers[i+1:]...)
 	if val == 0 {
 		val = 1
 	}
-	panic(LongjmpRetval(val))
+	panic(LongjmpRetval{JumpBuffer: jb, Val: val})
 }
 
 // ============================================================================
