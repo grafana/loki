@@ -202,11 +202,11 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	innerOptions := dataset.RowReaderOptions{
-		Dataset:      dset,
-		Columns:      dset.Columns(),
-		Predicates:   preds,
-		Prefetch:     true,
-		StatsTracker: r.opts.StatsTracker,
+		Dataset:           dset,
+		Columns:           dset.Columns(),
+		Predicates:        preds,
+		PrefetchAllOnOpen: true,
+		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)

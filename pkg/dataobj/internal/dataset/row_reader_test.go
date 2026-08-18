@@ -24,7 +24,7 @@ import (
 
 func Test_RowReader_Open_Prefetch(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: true})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: true})
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))
@@ -42,7 +42,7 @@ func Test_RowReader_Open_Prefetch(t *testing.T) {
 
 func Test_RowReader_LazyDownloadTarget(t *testing.T) {
 	dset, columns := buildTestDataset(t)
-	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, Prefetch: false})
+	r := NewRowReader(RowReaderOptions{Dataset: dset, Columns: columns, PrefetchAllOnOpen: false})
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))

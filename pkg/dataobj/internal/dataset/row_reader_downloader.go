@@ -46,8 +46,8 @@ import (
 //     This excludes any page that is outside of the dataset ranges passed to
 //     [newReaderDownloader] and [rowReaderDownloader.Reset].
 //
-// The rowReaderDownloader targets [defaultDownloadTargetSize] bytes of cached
-// pages when [RowReaderOptions.Prefetch] is false. A target of 0 is unlimited.
+// The rowReaderDownloader targets [defaultTargetDownloadedBytes] bytes of cached
+// pages when [RowReaderOptions.PrefetchAllOnOpen] is false. A target of 0 is unlimited.
 //
 // Batches of pages to download are built in four steps:
 //
@@ -105,7 +105,7 @@ type rowReaderDownloader struct {
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
-// [RowReaderOptions.Prefetch] is false.
+// [RowReaderOptions.PrefetchAllOnOpen] is false.
 const defaultTargetDownloadedBytes = 16 << 20 // 16 MB
 
 // newReaderDataset creates a new readerDataset wrapping around an inner

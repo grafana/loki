@@ -74,7 +74,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts *
 			Columns: dsetColumns,
 
 			// Download pages lazily; the table is already in memory.
-			Prefetch: false,
+			PrefetchAllOnOpen: false,
 		})
 		if err := r.Open(context.Background()); err != nil {
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)

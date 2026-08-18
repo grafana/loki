@@ -99,9 +99,9 @@ func iterator(
 		}
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  ds,
-			Columns:  columns,
-			Prefetch: false,
+			Dataset:           ds,
+			Columns:           columns,
+			PrefetchAllOnOpen: false,
 		})
 		if err := r.Open(ctx); err != nil {
 			return nil, fmt.Errorf("opening dataset row reader: %w", err)

@@ -33,14 +33,14 @@ type RowReaderOptions struct {
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
-	// Prefetch controls when pages are downloaded.
+	// PrefetchAllOnOpen controls when pages are downloaded.
 	//
 	// If true, all pages are downloaded when the reader is opened.
 	// If false, pages are downloaded lazily as they are read, targeting
-	// [defaultDownloadTargetSize] bytes of cached pages at a time. Pages
+	// [defaultTargetDownloadedBytes] bytes of cached pages at a time. Pages
 	// required for the current read range are always downloaded even if they
 	// exceed the target.
-	Prefetch bool
+	PrefetchAllOnOpen bool
 
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker RowReaderStatsTracker
@@ -497,7 +497,7 @@ func (r *RowReader) init(ctx context.Context) error {
 }
 
 func (r *RowReader) prefetchPages(ctx context.Context) error {
-	if !r.opts.Prefetch {
+	if !r.opts.PrefetchAllOnOpen {
 		return nil
 	}
 	return r.dl.Prefetch(ctx)
@@ -579,7 +579,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	}
 
 	r.dl.targetSize = defaultTargetDownloadedBytes
-	if r.opts.Prefetch {
+	if r.opts.PrefetchAllOnOpen {
 		r.dl.targetSize = 0
 	}
 
