@@ -578,7 +578,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.Reset(r.opts.Dataset)
 	}
 
-	r.dl.targetSize = defaultTargetCachedBytes
+	r.dl.targetSize = defaultTargetDownloadedBytes
 	if r.opts.Prefetch {
 		r.dl.targetSize = 0
 	}

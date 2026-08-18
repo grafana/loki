@@ -97,14 +97,16 @@ type rowReaderDownloader struct {
 	readRange rangeset.Range // Current range being read.
 	rangeMask rangeset.Set   // Inverse of dsetRanges: ranges to _exclude_ from download.
 
-	// targetSize is the target number of cached page bytes. 0 means unlimited.
+	// targetSize is the target number of compressed page bytes held in-memory. 0 means unlimited.
 	// P1 pages are always downloaded even if they exceed the target.
+	// It can be used to efficiently read pages from object storage in batches
+	// without downloading an entire section at once.
 	targetSize int
 }
 
-// defaultTargetCachedBytes is the target size in bytes of compressed pages to be cached when
+// defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
 // [RowReaderOptions.Prefetch] is false.
-const defaultTargetCachedBytes = 16 << 20 // 16 MB
+const defaultTargetDownloadedBytes = 16 << 20 // 16 MB
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
 // Dataset. The resulting Dataset only wraps around the provided columns.
