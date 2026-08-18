@@ -148,6 +148,7 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 //
 // The labelBuilder argument is used to reuse label builder between calls to decodeRow.
 // If labelBuilder is nil, a builder is picked up from the pool and returned to the pool after use.
+// If labelBuilder is not nil, it is Reset before use.
 //
 // The reuseLabelsBuffer argument controls whether the internal buffer used by the labelBuilder
 // to build the labels is to be reused. Setting it to true would overwrite the previous labels
