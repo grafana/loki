@@ -23,9 +23,16 @@ type Run interface {
 	Size() uint64
 }
 
-// CalculateRuns sorts sections in place and groups them into strict runs. It panics if a section has a nil Ref.
+// CalculateRuns groups sections into N disjoint, contiguous runs based on the Min and Max sort keys.
+// Sections of the same object are treated as one indivisible unit and always land in the same run.
+// It panics if a section has a nil Ref.
 func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
-	calculated := calculateRuns(sections, compare)
+	if len(sections) == 0 {
+		return nil
+	}
+	groups := groupSectionsByObject(sections, compare)
+	calculated := calculateRuns(groups, compare)
+
 	runs := make([]Run, len(calculated))
 	for i, run := range calculated {
 		runs[i] = run
@@ -33,24 +40,22 @@ func CalculateRuns[K any](sections []Section[K], compare CompareFunc[K]) []Run {
 	return runs
 }
 
-// IsConverged reports whether sections have no positive overlap. Touching
-// sections remain separate runs because their stable order is unknown, but
-// rewriting them cannot remove that ambiguity, so run count alone does not
-// prevent convergence. It does not mutate sections.
+// IsConverged reports whether a set of sections have no positive
+// overlap. Touching bounds are considered converged because rewriting cannot remove their
+// ambiguity. It does not mutate sections.
 func IsConverged[K any](sections []Section[K], compare CompareFunc[K]) bool {
-	sections = append([]Section[K](nil), sections...)
-	sortSections(sections, compare)
-	if len(sections) <= 1 {
+	objects := groupSectionsByObject(sections, compare)
+	if len(objects) <= 1 {
 		return true
 	}
 
-	maxKey := sections[0].Max
-	for _, section := range sections[1:] {
-		if compare(maxKey, section.Min) > 0 {
+	maxKey := objects[0].max
+	for _, obj := range objects[1:] {
+		if compare(maxKey, obj.min) > 0 {
 			return false
 		}
-		if compare(section.Max, maxKey) > 0 {
-			maxKey = section.Max
+		if compare(obj.max, maxKey) > 0 {
+			maxKey = obj.max
 		}
 	}
 	return true
