@@ -115,7 +115,6 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				labelBuilder.Reset()
 				if err := decodeRow(section.Columns(), row, &stream, cfg.symbolizer, &labelBuilder, cfg.reuseLabelsBuffer); err != nil {
 					return err
 				}
@@ -148,6 +147,7 @@ func (s *Section) makeDataset() (*columnar.Dataset, error) {
 //
 // The labelBuilder argument is used to reuse label builder between calls to decodeRow.
 // If labelBuilder is nil, a builder is picked up from the pool and returned to the pool after use.
+// If labelBuilder is not nil, it is Reset before use.
 //
 // The reuseLabelsBuffer argument controls whether the internal buffer used by the labelBuilder
 // to build the labels is to be reused. Setting it to true would overwrite the previous labels
@@ -160,6 +160,12 @@ func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symboliz
 		labelBuilder = labelpool.Get()
 		defer labelpool.Put(labelBuilder)
 	}
+
+	// Callers reuse Stream values across rows. Reset so a zero cell in this
+	// row cannot leave a previous row's value in place (decode skips zeros).
+	stream.Reset()
+	// Callers reuse label builder across rows when passed in. Explicitly Reset it so it cannot leak values between rows.
+	labelBuilder.Reset()
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
