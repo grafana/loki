@@ -511,21 +511,70 @@ eval range from 60s to 180s step 120s count_over_time({app="a"} | logfmt | took 
 # bytes label filter.
 clear
 load
-  {app="p"}               "size=3MB"       @ 20s [repeat every 20s for 4]
-  {app="p"}               "size=500KB"     @ 30s [repeat every 20s for 2]
+  {app="p"}               "size=3MB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=500KB"    @ 30s [repeat every 20s for 2]
+  {app="p"}               "size=2048KiB"  @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2MiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2GB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2GiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2TB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2TiB"     @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2PB"      @ 20s [repeat every 20s for 4]
+  {app="p"}               "size=2PiB"     @ 20s [repeat every 20s for 4]
   {app="j"}               `{"size":"3MB"}` @ 20s [repeat every 20s for 4]
-  {app="s", size="3MB"}   "x"              @ 15s [repeat every 15s for 5]
-  {app="s", size="500KB"} "x"              @ 30s [repeat every 20s for 2]
-  {app="m"}               "x"              @ 12s [repeat every 12s for 6] [metadata size="3MB"]
-  {app="m"}               "x"              @ 30s [repeat every 20s for 2] [metadata size="500KB"]
+  {app="s", size="3MB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="500KB"}     "x"         @ 30s [repeat every 20s for 2]
+  {app="s", size="500KiB"}    "x"         @ 30s [repeat every 20s for 2]
+  {app="s", size="2MiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2GB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2GiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2TB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2TiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2PB"}       "x"         @ 15s [repeat every 15s for 5]
+  {app="s", size="2PiB"}      "x"         @ 15s [repeat every 15s for 5]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="3MB"]
+  {app="m"}               "x"             @ 30s [repeat every 20s for 2] [metadata size="500KB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2048KiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2MiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2GB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2GiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2TB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2TiB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2PB"]
+  {app="m"}               "x"             @ 12s [repeat every 12s for 6] [metadata size="2PiB"]
 
 # parsed field
+# every supported unit is a valid query literal, not just MB: KiB, MiB, GB, GiB, TB, TiB, PB, PiB.
 eval instant at 60s count_over_time({app="p"} | logfmt | size > 1MB [1m])
   {app="p", size="3MB"} 3
+  {app="p", size="2048KiB"} 3
+  {app="p", size="2MiB"} 3
+  {app="p", size="2GB"} 3
+  {app="p", size="2GiB"} 3
+  {app="p", size="2TB"} 3
+  {app="p", size="2TiB"} 3
+  {app="p", size="2PB"} 3
+  {app="p", size="2PiB"} 3
 eval range from 40s to 80s step 20s count_over_time({app="p"} | logfmt | size > 1MB [1m])   # overlapping
   {app="p", size="3MB"} 2 3 3
+  {app="p", size="2048KiB"} 2 3 3
+  {app="p", size="2MiB"} 2 3 3
+  {app="p", size="2GB"} 2 3 3
+  {app="p", size="2GiB"} 2 3 3
+  {app="p", size="2TB"} 2 3 3
+  {app="p", size="2TiB"} 2 3 3
+  {app="p", size="2PB"} 2 3 3
+  {app="p", size="2PiB"} 2 3 3
 eval range from 60s to 180s step 120s count_over_time({app="p"} | logfmt | size > 1MB [1m]) # non-overlapping
   {app="p", size="3MB"} 3 _
+  {app="p", size="2048KiB"} 3 _
+  {app="p", size="2MiB"} 3 _
+  {app="p", size="2GB"} 3 _
+  {app="p", size="2GiB"} 3 _
+  {app="p", size="2TB"} 3 _
+  {app="p", size="2TiB"} 3 _
+  {app="p", size="2PB"} 3 _
+  {app="p", size="2PiB"} 3 _
 eval instant at 60s count_over_time({app="p"} | logfmt | size < 1MB [1m])
   {app="p", size="500KB"} 2
 eval instant at 60s count_over_time({app="j"} | json | size > 1MB [1m])
@@ -533,26 +582,95 @@ eval instant at 60s count_over_time({app="j"} | json | size > 1MB [1m])
 # stream label
 eval instant at 60s count_over_time({app="s"} | size > 1MB [1m])
   {app="s", size="3MB"} 4
+  {app="s", size="2MiB"} 4
+  {app="s", size="2GB"} 4
+  {app="s", size="2GiB"} 4
+  {app="s", size="2TB"} 4
+  {app="s", size="2TiB"} 4
+  {app="s", size="2PB"} 4
+  {app="s", size="2PiB"} 4
 eval range from 40s to 80s step 20s count_over_time({app="s"} | size > 1MB [1m])   # overlapping
   {app="s", size="3MB"} 2 4 4
+  {app="s", size="2MiB"} 2 4 4
+  {app="s", size="2GB"} 2 4 4
+  {app="s", size="2GiB"} 2 4 4
+  {app="s", size="2TB"} 2 4 4
+  {app="s", size="2TiB"} 2 4 4
+  {app="s", size="2PB"} 2 4 4
+  {app="s", size="2PiB"} 2 4 4
 eval range from 60s to 180s step 120s count_over_time({app="s"} | size > 1MB [1m]) # non-overlapping
   {app="s", size="3MB"} 4 _
+  {app="s", size="2MiB"} 4 _
+  {app="s", size="2GB"} 4 _
+  {app="s", size="2GiB"} 4 _
+  {app="s", size="2TB"} 4 _
+  {app="s", size="2TiB"} 4 _
+  {app="s", size="2PB"} 4 _
+  {app="s", size="2PiB"} 4 _
 eval instant at 60s count_over_time({app="s"} | size < 1MB [1m])
   {app="s", size="500KB"} 2
+  {app="s", size="500KiB"} 2
 # structured metadata
 eval instant at 60s count_over_time({app="m"} | size > 1MB [1m])
   {app="m", size="3MB"} 5
+  {app="m", size="2048KiB"} 5
+  {app="m", size="2MiB"} 5
+  {app="m", size="2GB"} 5
+  {app="m", size="2GiB"} 5
+  {app="m", size="2TB"} 5
+  {app="m", size="2TiB"} 5
+  {app="m", size="2PB"} 5
+  {app="m", size="2PiB"} 5
 eval range from 40s to 80s step 20s count_over_time({app="m"} | size > 1MB [1m])   # overlapping
   {app="m", size="3MB"} 3 5 5
+  {app="m", size="2048KiB"} 3 5 5
+  {app="m", size="2MiB"} 3 5 5
+  {app="m", size="2GB"} 3 5 5
+  {app="m", size="2GiB"} 3 5 5
+  {app="m", size="2TB"} 3 5 5
+  {app="m", size="2TiB"} 3 5 5
+  {app="m", size="2PB"} 3 5 5
+  {app="m", size="2PiB"} 3 5 5
 eval range from 60s to 180s step 120s count_over_time({app="m"} | size > 1MB [1m]) # non-overlapping
   {app="m", size="3MB"} 5 _
+  {app="m", size="2048KiB"} 5 _
+  {app="m", size="2MiB"} 5 _
+  {app="m", size="2GB"} 5 _
+  {app="m", size="2GiB"} 5 _
+  {app="m", size="2TB"} 5 _
+  {app="m", size="2TiB"} 5 _
+  {app="m", size="2PB"} 5 _
+  {app="m", size="2PiB"} 5 _
 eval instant at 60s count_over_time({app="m"} | size < 1MB [1m])
   {app="m", size="500KB"} 2
 # {app=~".+"} selects the match from every source at once; the sources repeat at different cadences.
 eval instant at 60s count_over_time({app=~".+"} | logfmt | size > 1MB [1m])
   {app="p", size="3MB"} 3
+  {app="p", size="2048KiB"} 3
+  {app="p", size="2MiB"} 3
+  {app="p", size="2GB"} 3
+  {app="p", size="2GiB"} 3
+  {app="p", size="2TB"} 3
+  {app="p", size="2TiB"} 3
+  {app="p", size="2PB"} 3
+  {app="p", size="2PiB"} 3
   {app="s", size="3MB"} 4
+  {app="s", size="2MiB"} 4
+  {app="s", size="2GB"} 4
+  {app="s", size="2GiB"} 4
+  {app="s", size="2TB"} 4
+  {app="s", size="2TiB"} 4
+  {app="s", size="2PB"} 4
+  {app="s", size="2PiB"} 4
   {app="m", size="3MB"} 5
+  {app="m", size="2048KiB"} 5
+  {app="m", size="2MiB"} 5
+  {app="m", size="2GB"} 5
+  {app="m", size="2GiB"} 5
+  {app="m", size="2TB"} 5
+  {app="m", size="2TiB"} 5
+  {app="m", size="2PB"} 5
+  {app="m", size="2PiB"} 5
 
 # bytes label filter comparators: = == != > >= < <=.
 clear

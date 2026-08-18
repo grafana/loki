@@ -19,6 +19,22 @@ eval instant at 60s 10 % 3
   1
 eval instant at 60s 1+1--1
   3
+# Binary, octal, and integer hex numbers are not supported as scalar literals.
+eval instant at 60s 0b1010
+  expect fail msg: unable to parse literal as a float
+eval instant at 60s 0o17
+  expect fail msg: unable to parse literal as a float
+eval instant at 60s 0x1A
+  expect fail msg: unable to parse literal as a float
+# Hex floats are supported: they always have a 'p' exponent.
+eval instant at 60s 0x1p3
+  8
+eval instant at 60s 0X1p3
+  8
+eval instant at 60s 0x1P3
+  8
+eval instant at 60s 0x1.8p3
+  12
 # Division and modulo return NaN for a zero divisor, regardless of dividend sign.
 eval instant at 60s 10 / 0
   NaN
