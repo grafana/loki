@@ -181,9 +181,7 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 	if len(filterPushRequestStreamsIPs) > 0 {
 		// If there are filter IPs, we want to log if the presumed agent IP is in the list,
 		// this would also then exclude any requests that don't have a presumed agent IP.
-		if !slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP) {
-			return false
-		}
+		return slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP)
 	}
 	return true
 }
