@@ -737,6 +737,7 @@ func runAllBufReaderTypes(t *testing.T, caseName string, bytes []byte, testFn fu
 		_ = diskFactory.Close()
 	})
 	diskDecBuf := diskFactory.NewRawDecbuf(context.Background())
+	t.Cleanup(func() { _ = diskDecBuf.Close() })
 	require.NoError(t, diskDecBuf.Err())
 
 	name := caseName
