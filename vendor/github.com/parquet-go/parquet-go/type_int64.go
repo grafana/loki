@@ -10,7 +10,7 @@ import (
 
 type int64Type struct{}
 
-var int64LogicalType = format.LogicalType{Integer: &format.IntType{
+var int64LogicalType = format.LogicalType{Value: &format.IntType{
 	BitWidth: 64,
 	IsSigned: true,
 }}

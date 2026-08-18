@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.yaml.in/yaml/v4"
+	yaml "go.yaml.in/yaml/v4"
 
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
@@ -33,7 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
 	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -250,6 +250,11 @@ func (ns *NamedStores) Validate() error {
 	return ns.populateStoreType()
 }
 
+func (ns *NamedStores) LookupStoreType(name string) (string, bool) {
+	st, ok := ns.storeType[name]
+	return st, ok
+}
+
 func (ns *NamedStores) Exists(name string) bool {
 	_, ok := ns.storeType[name]
 	return ok
@@ -347,89 +352,38 @@ func (cfg *Config) Validate() error {
 
 // NewChunkClient makes a new chunk.Client of the desired types.
 func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
-	var cc congestion.Controller
+	storeType := name
+	if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); cfg.UseThanosObjstore && ok {
+		storeType = st
+	} else if st, ok := cfg.NamedStores.LookupStoreType(name); !cfg.UseThanosObjstore && ok {
+		storeType = st
+	}
+
 	ccCfg := cfg.CongestionControl
+	if cfg.UseThanosObjstore && congestionControlReplacesThanosRetries(ccCfg, storeType) {
+		if err := cfg.ObjectStore.DisableRetries(name); err != nil {
+			return nil, fmt.Errorf("disable object-store retries: %w", err)
+		}
+	}
+
+	c, err := NewObjectClient(name, component, cfg, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	if storeType == types.StorageTypeFileSystem {
+		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
 
 	if ccCfg.Enabled {
-		cc = congestion.NewController(
+		cc := congestion.NewController(
 			ccCfg,
 			logger,
 			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
 		)
+		c = cc.Wrap(c)
 	}
-
-	var storeType = name
-
-	if cfg.UseThanosObjstore {
-		// Check if this is a named store and get its type
-		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
-			storeType = st
-		}
-
-		if congestionControlReplacesThanosRetries(ccCfg, storeType) {
-			if err := cfg.ObjectStore.DisableRetries(name); err != nil {
-				return nil, fmt.Errorf("disable object-store retries: %w", err)
-			}
-		}
-
-		c, err := NewObjectClient(name, component, cfg, clientMetrics)
-		if err != nil {
-			return nil, err
-		}
-
-		var encoder client.KeyEncoder
-		if storeType == bucket.Filesystem {
-			encoder = client.FSEncoder
-		}
-		if ccCfg.Enabled && storeType != bucket.Filesystem {
-			c = cc.Wrap(c)
-		}
-
-		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-	}
-
-	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
-		storeType = nsType
-	}
-
-	switch true {
-
-	case util.StringsContain(types.SupportedStorageTypes, storeType):
-		switch storeType {
-		case types.StorageTypeFileSystem:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-
-		case types.StorageTypeGCS:
-			c, err := NewObjectClient(name, component, cfg, clientMetrics)
-			if err != nil {
-				return nil, err
-			}
-			// TODO(dannyk): expand congestion control to all other object clients
-			// this switch statement can be simplified; all the branches like this one are alike
-			if cfg.CongestionControl.Enabled {
-				c = cc.Wrap(c)
-			}
-			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-		}
-
-	}
-
-	return nil, fmt.Errorf("unrecognized chunk client type %s, choose one of: %s", name, strings.Join(types.SupportedStorageTypes, ", "))
+	return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 }
 
 func congestionControlReplacesThanosRetries(cfg congestion.Config, storeType string) bool {
@@ -460,7 +414,17 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
+		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
+		if err != nil {
+			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
+			var blankConfig bucket.ConfigWithNamedStores
+			blankConfig.RegisterFlags(&flag.FlagSet{}) // Get defaults
+			blankConfig.NamedStores.Validate()         // Set `storeType` to empty map.
+			if reflect.DeepEqual(&cfg.ObjectStore, &blankConfig) {
+				return nil, fmt.Errorf("when use_thanos_objstore is true, config must be specified in the object_store section: %w", err)
+			}
+		}
+		return c, err
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)

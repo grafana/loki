@@ -3657,9 +3657,9 @@ The `frontend` block configures the Loki query-frontend.
 [instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
-# querier. Can be 'json' or 'protobuf' (defaults to 'json').
+# querier. Can be 'json' or 'protobuf' (defaults to 'protobuf').
 # CLI flag: -frontend.encoding
-[encoding: <string> | default = "json"]
+[encoding: <string> | default = "protobuf"]
 
 # Compress HTTP responses.
 # CLI flag: -querier.compress-http-responses
@@ -3678,7 +3678,8 @@ The `frontend` block configures the Loki query-frontend.
 [tail_tls_config: <tls_config>]
 
 # Support 'application/vnd.apache.parquet' content type in HTTP responses.
-[support_parquet_encoding: <boolean>]
+# CLI flag: -frontend.support-parquet-encoding
+[support_parquet_encoding: <boolean> | default = false]
 ```
 
 ### frontend_worker
@@ -6869,6 +6870,12 @@ tsdb_shipper:
   # to fail queries faster when storage is degraded.
   # CLI flag: -tsdb.shipper.download-timeout
   [download_timeout: <duration> | default = 1m]
+
+  # Experimental. Implementation used to read TSDB index files off disk.
+  # Supported values: mmap (memory-map the file, the historical default) or
+  # stream (experimental, not yet fully implemented).
+  # CLI flag: -tsdb.shipper.index-reader-mode
+  [index_reader_mode: <string> | default = "mmap"]
 
   index_gateway_client:
     # The grpc_client block configures the gRPC client used to communicate

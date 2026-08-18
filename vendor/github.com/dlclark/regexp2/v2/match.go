@@ -44,8 +44,9 @@ type Group struct {
 type Capture struct {
 	// the original string
 	text *matchText
-	// RuneIndex is the position in the underlying rune slice where the first character of
-	// captured substring was found. Even if you pass in a string this will be in Runes.
+	// RuneIndex is the rune index in the original input where the capture starts.
+	// For string input this counts runes from the start of that string, not of
+	// any internally sliced decode buffer.
 	RuneIndex int
 	// RuneLength is the number of runes in the captured substring.
 	RuneLength int
@@ -55,24 +56,46 @@ type matchText struct {
 	runes            []rune
 	input            string
 	hasStringInput   bool
+	runeOffset       int // original-string rune index of runes[0]
+	byteOffset       int // original-string byte index of runes[0]
 	byteOffsets      []int
 	byteOffsetsReady bool
 }
 
-// String returns the captured text as a String
+// String returns the captured text. For string input it is a slice of the
+// original haystack: it does not allocate and keeps the original string alive.
 func (c *Capture) String() string {
-	return string(c.text.runes[c.RuneIndex : c.RuneIndex+c.RuneLength])
+	if c.text == nil {
+		return ""
+	}
+	if c.text.hasStringInput {
+		start, length := c.ByteRange()
+		return c.text.input[start : start+length]
+	}
+	start := c.runeSliceIndex()
+	return string(c.text.runes[start : start+c.RuneLength])
 }
 
 // Runes returns the captured text as a rune slice
 func (c *Capture) Runes() []rune {
-	return c.text.runes[c.RuneIndex : c.RuneIndex+c.RuneLength]
+	if c.text == nil {
+		return nil
+	}
+	start := c.runeSliceIndex()
+	return c.text.runes[start : start+c.RuneLength]
+}
+
+func (c *Capture) runeSliceIndex() int {
+	if c.text == nil {
+		return c.RuneIndex
+	}
+	return c.RuneIndex - c.text.runeOffset
 }
 
 // ByteRange returns the UTF-8 byte index and byte length of the captured
-// substring. The first call lazily caches byte offsets on shared match text,
-// so it is not safe to call concurrently with ByteRange on another capture
-// from the same match until the cache has been initialized.
+// substring. Matches returned to callers have offsets computed when the match
+// is tidied, so concurrent ByteRange/String on captures of the same match is
+// then safe. Internal match objects may still initialize the cache on first use.
 func (c *Capture) ByteRange() (index, length int) {
 	if c.text == nil {
 		return c.RuneIndex, c.RuneLength
@@ -85,24 +108,40 @@ func newMatchText(r []rune) *matchText {
 }
 
 func newStringMatchText(input string, r []rune) *matchText {
-	return &matchText{runes: r, input: input, hasStringInput: true}
+	return newStringMatchTextAt(input, r, 0, 0)
+}
+
+func newStringMatchTextAt(input string, r []rune, runeOffset, byteOffset int) *matchText {
+	return &matchText{
+		runes:          r,
+		input:          input,
+		hasStringInput: true,
+		runeOffset:     runeOffset,
+		byteOffset:     byteOffset,
+	}
+}
+
+func (t *matchText) ensureByteOffsets() {
+	if t == nil || t.byteOffsetsReady {
+		return
+	}
+	t.byteOffsets = t.buildByteOffsets()
+	t.byteOffsetsReady = true
 }
 
 func (t *matchText) byteRange(runeIndex, runeLength int) (int, int) {
-	if !t.byteOffsetsReady {
-		t.byteOffsets = t.buildByteOffsets()
-		t.byteOffsetsReady = true
-	}
+	localRuneIndex := runeIndex - t.runeOffset
+	t.ensureByteOffsets()
 	if t.byteOffsets == nil {
-		return runeIndex, runeLength
+		return t.byteOffset + localRuneIndex, runeLength
 	}
-	byteIndex := t.byteOffsets[runeIndex]
-	return byteIndex, t.byteOffsets[runeIndex+runeLength] - byteIndex
+	byteIndex := t.byteOffsets[localRuneIndex]
+	return t.byteOffset + byteIndex, t.byteOffsets[localRuneIndex+runeLength] - byteIndex
 }
 
 func (t *matchText) buildByteOffsets() []int {
 	if t.hasStringInput {
-		return stringByteOffsets(t.input)
+		return stringByteOffsets(t.input[t.byteOffset:])
 	}
 	return runeByteOffsets(t.runes)
 }
@@ -199,6 +238,9 @@ func (m *Match) tidy(textpos int) {
 	m.capcount = m.matchcount[0]
 	//copy our root capture to the list
 	m.Captures = []Capture{m.Capture}
+	if m.text != nil && m.text.hasStringInput {
+		m.text.ensureByteOffsets()
+	}
 
 	if m.balancing {
 		// The idea here is that we want to compact all of our unbalanced captures.  To do that we
@@ -415,6 +457,9 @@ func newCapture(text *matchText, runeIndex, runeLength int) Capture {
 }
 
 func setCaptureFields(c *Capture, runeIndex, runeLength int) {
+	if c.text != nil {
+		runeIndex += c.text.runeOffset
+	}
 	c.RuneIndex = runeIndex
 	c.RuneLength = runeLength
 }

@@ -666,7 +666,8 @@ func reconstructFuncOfRepeated(columnIndex uint16, node Node) (uint16, reconstru
 			return nil
 		}
 
-		values := make([][]Value, len(columns))
+		b := acquireValuesSliceBuffer()
+		values := b.reserve(len(columns))
 		column := columns[0]
 		n := 0
 
@@ -701,6 +702,7 @@ func reconstructFuncOfRepeated(columnIndex uint16, node Node) (uint16, reconstru
 			}
 
 			if err := reconstruct(value.Index(i), levels, values); err != nil {
+				b.release()
 				return err
 			}
 
@@ -711,6 +713,7 @@ func reconstructFuncOfRepeated(columnIndex uint16, node Node) (uint16, reconstru
 			levels.repetitionLevel = levels.repetitionDepth
 		}
 
+		b.release()
 		return nil
 	}
 }
@@ -761,7 +764,8 @@ func reconstructFuncOfMap(columnIndex uint16, node Node) (uint16, reconstructFun
 			return nil
 		}
 
-		values := make([][]Value, len(columns))
+		b := acquireValuesSliceBuffer()
+		values := b.reserve(len(columns))
 		column := columns[0]
 		t := value.Type()
 		if t.Kind() == reflect.Interface {
@@ -808,6 +812,7 @@ func reconstructFuncOfMap(columnIndex uint16, node Node) (uint16, reconstructFun
 			}
 
 			if err := reconstruct(elem, levels, values); err != nil {
+				b.release()
 				return err
 			}
 
@@ -832,6 +837,7 @@ func reconstructFuncOfMap(columnIndex uint16, node Node) (uint16, reconstructFun
 			levels.repetitionLevel = levels.repetitionDepth
 		}
 
+		b.release()
 		return nil
 	}
 }

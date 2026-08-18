@@ -15,25 +15,27 @@ const (
 type PrimitiveType byte
 
 const (
-	PrimitiveNull         PrimitiveType = 0
-	PrimitiveTrue         PrimitiveType = 1
-	PrimitiveFalse        PrimitiveType = 2
-	PrimitiveInt8         PrimitiveType = 3
-	PrimitiveInt16        PrimitiveType = 4
-	PrimitiveInt32        PrimitiveType = 5
-	PrimitiveInt64        PrimitiveType = 6
-	PrimitiveDouble       PrimitiveType = 7
-	PrimitiveDecimal4     PrimitiveType = 8
-	PrimitiveDecimal8     PrimitiveType = 9
-	PrimitiveDecimal16    PrimitiveType = 10
-	PrimitiveDate         PrimitiveType = 11
-	PrimitiveTimestamp    PrimitiveType = 12
-	PrimitiveTimestampNTZ PrimitiveType = 13
-	PrimitiveFloat        PrimitiveType = 14
-	PrimitiveBinary       PrimitiveType = 15
-	PrimitiveString       PrimitiveType = 16
-	PrimitiveTime         PrimitiveType = 17
-	PrimitiveUUID         PrimitiveType = 20
+	PrimitiveNull              PrimitiveType = 0
+	PrimitiveTrue              PrimitiveType = 1
+	PrimitiveFalse             PrimitiveType = 2
+	PrimitiveInt8              PrimitiveType = 3
+	PrimitiveInt16             PrimitiveType = 4
+	PrimitiveInt32             PrimitiveType = 5
+	PrimitiveInt64             PrimitiveType = 6
+	PrimitiveDouble            PrimitiveType = 7
+	PrimitiveDecimal4          PrimitiveType = 8
+	PrimitiveDecimal8          PrimitiveType = 9
+	PrimitiveDecimal16         PrimitiveType = 10
+	PrimitiveDate              PrimitiveType = 11
+	PrimitiveTimestamp         PrimitiveType = 12
+	PrimitiveTimestampNTZ      PrimitiveType = 13
+	PrimitiveFloat             PrimitiveType = 14
+	PrimitiveBinary            PrimitiveType = 15
+	PrimitiveString            PrimitiveType = 16
+	PrimitiveTime              PrimitiveType = 17
+	PrimitiveTimestampNanos    PrimitiveType = 18
+	PrimitiveTimestampNTZNanos PrimitiveType = 19
+	PrimitiveUUID              PrimitiveType = 20
 )
 
 // primitiveSize returns the byte size of a primitive value's data portion,
@@ -48,7 +50,8 @@ func primitiveSize(p PrimitiveType) int {
 		return 2
 	case PrimitiveInt32, PrimitiveFloat, PrimitiveDate:
 		return 4
-	case PrimitiveInt64, PrimitiveDouble, PrimitiveTimestamp, PrimitiveTimestampNTZ, PrimitiveTime:
+	case PrimitiveInt64, PrimitiveDouble, PrimitiveTimestamp, PrimitiveTimestampNTZ, PrimitiveTime,
+		PrimitiveTimestampNanos, PrimitiveTimestampNTZNanos:
 		return 8
 	case PrimitiveDecimal4:
 		return 5 // 1 scale + 4 value

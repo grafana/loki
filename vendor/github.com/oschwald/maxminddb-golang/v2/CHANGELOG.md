@@ -1,5 +1,56 @@
 # Changes
 
+## Unreleased
+
+- Deprecated the legacy `mmdbdata.Unmarshaler` callback,
+  `UnmarshalMaxMindDB(*mmdbdata.Decoder) error`. It remains supported throughout
+  v2, but new handwritten decoders should implement
+  `mmdbdata.CursorUnmarshaler` so nested decoding can return a proven successor
+  without rescanning the value. When a type implements both interfaces, the
+  cursor callback takes precedence. Removal is planned for v3. GitHub #224.
+  Legacy callbacks must not retain the supplied decoder or its iterators after
+  returning; decoder instances may now be pooled and reused.
+- Added the optional `maxminddb-gen` command for reproducible generation of
+  reflection-free decoders for application-owned types, together with cursor
+  primitives that avoid rescanning completely consumed containers and a
+  pool-free cursor unmarshaling interface whose opaque successor supports
+  single-pass nested custom decoding. The command discovers exported structs in
+  its input source file and writes a matching
+  `<source>_maxminddb.go` file by default while preserving build constraints and
+  recognized filename build suffixes. Generated struct decoders use lightweight
+  counted map traversal and compact pointer-string fast paths. Output-path
+  migrations ignore superseded generated methods while analyzing replacements,
+  MaxMind tag validation remains isolated from unrelated tags, and output
+  replacement requires an exact generated ownership marker.
+- Fixed valid four-byte data pointers whose ignored high address bits produce
+  control values 29 through 31 so they are not misread as extended value sizes.
+- Fixed the string cache so overlapping string encodings that share a payload
+  offset remain distinct and cannot return the wrong cached string or map key.
+- Fixed nested struct fields containing a non-map value so decoding reports the
+  correct type error at the field offset instead of retrying from the record
+  root.
+- Reduced IPv4 and IPv6 lookup time for databases with 28-bit search-tree
+  records.
+- Reduced allocations when recurring decoded strings share a primary cache
+  slot.
+- Reduced struct decoding time by using compact field-name fingerprints before
+  falling back to full string hashing.
+- Rejected impossible or malformed large container sizes before allocating
+  destination maps and slices, while reducing preflight overhead for common
+  strings and booleans and avoiding preflight when caller-provided slice
+  capacity already prevents an allocation.
+- Kept readers reachable through memory-mapped lookup, decode, and iteration
+  operations so runtime cleanup cannot unmap active data.
+- Reduced opening memory by decoding metadata without a string cache and added
+  `DisableStringCache` for readers that favor lower memory over repeated-decode
+  allocation savings.
+- Released decoder-owned data and cache references when a reader is closed.
+- Rejected invalid `netip.Addr` lookup values.
+- Made verification reject invalid UTF-8 strings and made empty-value filtering
+  reject pointer-to-pointer records consistently with other decoder paths.
+- Corrected cold-cache and concurrent-lookup benchmarks so they measure steady
+  cache misses and lookup work rather than warm caches and goroutine setup.
+
 ## 2.4.1 - 2026-06-28
 
 - Fixed `Result.Decode` and `Result.DecodePath` after `Reader.Close` so stale

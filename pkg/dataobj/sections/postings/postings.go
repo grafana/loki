@@ -25,6 +25,7 @@ const (
 	ColumnTypeInvalid          ColumnType = iota // ColumnTypeInvalid is an invalid column type.
 	ColumnTypeKind                               // "kind"
 	ColumnTypeObjectPath                         // "object_path"
+	ColumnTypeShardBuckets                       // "shard_buckets"
 	ColumnTypeSectionIndex                       // "section_index"
 	ColumnTypeColumnName                         // "column_name"
 	ColumnTypeLabelValue                         // "label_value"
@@ -39,6 +40,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:          "invalid",
 	ColumnTypeKind:             "kind",
 	ColumnTypeObjectPath:       "object_path",
+	ColumnTypeShardBuckets:     "shard_buckets",
 	ColumnTypeSectionIndex:     "section_index",
 	ColumnTypeColumnName:       "column_name",
 	ColumnTypeLabelValue:       "label_value",
@@ -59,6 +61,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeKind, nil
 	case "object_path":
 		return ColumnTypeObjectPath, nil
+	case "shard_buckets":
+		return ColumnTypeShardBuckets, nil
 	case "section_index":
 		return ColumnTypeSectionIndex, nil
 	case "column_name":
@@ -110,6 +114,8 @@ const (
 type LabelEntry struct {
 	// ObjectPath is the path of the data object that originated this posting.
 	ObjectPath string
+	// ShardBuckets is the number of shard buckets used by ObjectPath.
+	ShardBuckets int64
 	// SectionIndex is the index of the logs section within ObjectPath.
 	SectionIndex int64
 	// ColumnName is the name of the labels column being indexed.
@@ -132,6 +138,8 @@ type LabelEntry struct {
 type BloomEntry struct {
 	// ObjectPath is the path of the data object that originated this posting.
 	ObjectPath string
+	// ShardBuckets is the number of shard buckets used by ObjectPath.
+	ShardBuckets int64
 	// SectionIndex is the index of the logs section within ObjectPath.
 	SectionIndex int64
 	// ColumnName is the name of the metadata column being indexed.

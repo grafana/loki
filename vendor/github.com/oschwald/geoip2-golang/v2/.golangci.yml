@@ -16,6 +16,7 @@ linters:
     - gochecknoglobals
     - gocognit
     - godox
+    - gomodguard
     - gosmopolitan
     - inamedparam
     - interfacebloat
@@ -153,6 +154,13 @@ linters:
       check-exported: true
   exclusions:
     warn-unused: true
+    rules:
+      - linters:
+          - recvcheck
+        path: models.go
+        # Generated unmarshaling must mutate pointer receivers, while the
+        # existing model inspection methods intentionally use values.
+        text: 'methods of ".*" use pointer receiver and non-pointer receiver'
 formatters:
   enable:
     - gci

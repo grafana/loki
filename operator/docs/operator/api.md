@@ -1935,6 +1935,50 @@ issues. There can be multiple warning conditions active at a time.</p>
 </tr></tbody>
 </table>
 
+## LokiStackNetworkPolicyStatus { #loki-grafana-com-v1-LokiStackNetworkPolicyStatus }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+</p>
+<div>
+<p>LokiStackNetworkPolicyStatus defines the observed network policy configuration</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ruleSet</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
+NetworkPolicyRuleSet
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>objectStorageAllowedEgressPorts</code><br/>
+<em>
+[]int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ObjectStorageAllowedEgressPorts contains the TCP ports allowed for egress to object storage endpoints.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## LokiStackSizeType { #loki-grafana-com-v1-LokiStackSizeType }
 (<code>string</code> alias)
 <p>
@@ -2233,16 +2277,16 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
-<code>networkPolicyRuleSet</code><br/>
+<code>networkPolicyStatus</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-NetworkPolicyRuleSet">
-NetworkPolicyRuleSet
+<a href="#loki-grafana-com-v1-LokiStackNetworkPolicyStatus">
+LokiStackNetworkPolicyStatus
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>NetworkPolicyRuleSet indicates which NetworkPolicies ruleset was applied by the operator for this LokiStack.</p>
+<p>NetworkPolicyStatus provides details about the applied NetworkPolicies configuration</p>
 </td>
 </tr>
 <tr>
@@ -2630,7 +2674,7 @@ NetworkPolicyRuleSet
 ## NetworkPolicyRuleSet { #loki-grafana-com-v1-NetworkPolicyRuleSet }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackNetworkPolicyStatus">LokiStackNetworkPolicyStatus</a>, <a href="#loki-grafana-com-v1-NetworkPoliciesSpec">NetworkPoliciesSpec</a>)
 </p>
 <div>
 <p>NetworkPolicyRuleSet is the type of network policy rule set to use</p>
