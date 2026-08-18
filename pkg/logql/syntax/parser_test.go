@@ -2821,6 +2821,109 @@ var ParseTestCases = []struct {
 		err: logqlmodel.NewParseError(`unexpected literal for right leg of logical/set binary operation (or): 1.000000`, 0, 0),
 	},
 	{
+		// bool is only valid on comparison operators.
+		in:  `count_over_time({foo="bar"}[5m]) + bool count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`bool modifier can only be used on comparison operators`, 0, 0),
+	},
+	{
+		in:  `count_over_time({foo="bar"}[5m]) and bool count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`bool modifier can only be used on comparison operators`, 0, 0),
+	},
+	{
+		// group_left/group_right are not allowed on and/or/unless.
+		in:  `count_over_time({foo="bar"}[5m]) and on (foo) group_left count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`no grouping allowed for "and" operation`, 0, 0),
+	},
+	{
+		in:  `count_over_time({foo="bar"}[5m]) or on (foo) group_right count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`no grouping allowed for "or" operation`, 0, 0),
+	},
+	{
+		in:  `count_over_time({foo="bar"}[5m]) unless on (foo) group_left (bar) count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`no grouping allowed for "unless" operation`, 0, 0),
+	},
+	{
+		// A label may occur in both on(...)/ignoring(...) and group_left(...)/group_right(...).
+		// It's redundant when combined with on(...) (the label is already guaranteed equal on
+		// both sides), but it's not incorrect, so it's not rejected.
+		in: `count_over_time({foo="bar"}[5m]) == on (foo) group_left (foo) count_over_time({foo="bar"}[5m])`,
+		exp: mustNewBinOpExpr(OpTypeCmpEQ, &BinOpOptions{
+			VectorMatching: &VectorMatching{Card: CardManyToOne, Include: []string{"foo"}, On: true, MatchingLabels: []string{"foo"}},
+		},
+			newRangeAggregationExpr(
+				newLogRange(newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}), 5*time.Minute, nil, nil),
+				OpRangeTypeCount, nil, nil,
+			),
+			newRangeAggregationExpr(
+				newLogRange(newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}), 5*time.Minute, nil, nil),
+				OpRangeTypeCount, nil, nil,
+			),
+		),
+	},
+	{
+		// Unlike the on(...) case above, this isn't redundant: ignoring(foo) excludes foo
+		// from the matching guarantee, so group_left(foo) is a genuine value transfer here.
+		// It's simply never validated either way.
+		in: `count_over_time({foo="bar"}[5m]) == ignoring (foo) group_left (foo) count_over_time({foo="bar"}[5m])`,
+		exp: mustNewBinOpExpr(OpTypeCmpEQ, &BinOpOptions{
+			VectorMatching: &VectorMatching{Card: CardManyToOne, Include: []string{"foo"}, On: false, MatchingLabels: []string{"foo"}},
+		},
+			newRangeAggregationExpr(
+				newLogRange(newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}), 5*time.Minute, nil, nil),
+				OpRangeTypeCount, nil, nil,
+			),
+			newRangeAggregationExpr(
+				newLogRange(newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}), 5*time.Minute, nil, nil),
+				OpRangeTypeCount, nil, nil,
+			),
+		),
+	},
+	{
+		// vector matching modifiers are rejected next to a scalar operand, but only when
+		// explicit matching labels are given.
+		in:  `1 + on (foo) count_over_time({foo="bar"}[5m])`,
+		err: logqlmodel.NewParseError(`vector matching only allowed between instant vectors`, 0, 0),
+	},
+	{
+		in:  `count_over_time({foo="bar"}[5m]) + on (foo) 1`,
+		err: logqlmodel.NewParseError(`vector matching only allowed between instant vectors`, 0, 0),
+	},
+	{
+		in:  `1 + on (foo) 1`,
+		err: logqlmodel.NewParseError(`vector matching only allowed between instant vectors`, 0, 0),
+	},
+	{
+		in:  `1 + ignoring (foo) 1`,
+		err: logqlmodel.NewParseError(`vector matching only allowed between instant vectors`, 0, 0),
+	},
+	{
+		// the rule applies to comparison operators too, not just arithmetic.
+		in:  `count_over_time({foo="bar"}[5m]) == on (foo) 1`,
+		err: logqlmodel.NewParseError(`vector matching only allowed between instant vectors`, 0, 0),
+	},
+	{
+		// an empty on()/ignoring() label list is not "matching labels", so it stays legal next
+		// to a scalar operand, even combined with group_left/group_right.
+		in:  `1 + on () 1`,
+		exp: &LiteralExpr{Val: 2},
+	},
+	{
+		in:  `1 + ignoring () 1`,
+		exp: &LiteralExpr{Val: 2},
+	},
+	{
+		in: `count_over_time({foo="bar"}[5m]) + on () group_left (baz) 1`,
+		exp: mustNewBinOpExpr(OpTypeAdd, &BinOpOptions{
+			VectorMatching: &VectorMatching{Card: CardManyToOne, Include: []string{"baz"}, On: true},
+		},
+			newRangeAggregationExpr(
+				newLogRange(newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "foo", Value: "bar"}}), 5*time.Minute, nil, nil),
+				OpRangeTypeCount, nil, nil,
+			),
+			mustNewLiteralExpr("1", false),
+		),
+	},
+	{
 		in: `count_over_time({ foo ="bar" }[12m]) > count_over_time({ foo = "bar" }[12m])`,
 		exp: &BinOpExpr{
 			Op: OpTypeGT,
