@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -80,6 +81,12 @@ type ClientConfig struct {
 	// MinShuffleShardSize is the minimum number of index gateway instances included in the
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
+
+	// MaxInFlightRequests is the maximum number of concurrent in-flight requests this client
+	// will send to the index gateway pool. Once reached, new requests are rejected immediately
+	// instead of retrying across every pool member, to avoid amplifying load when all Index
+	// Gateway replicas are shedding. A value of 0 disables the limit.
+	MaxInFlightRequests int `yaml:"max_in_flight_requests"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -97,6 +104,7 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 2048, "Maximum number of in-flight requests this client will send to the index gateway pool at once. Requests beyond this limit are rejected immediately instead of retrying across every pool member, to avoid amplifying load when all Index Gateway replicas are shedding. A value of 0 disables the limit.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -108,12 +116,15 @@ type GatewayClient struct {
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 	retriesHistogram                  *prometheus.HistogramVec
+	inFlightCapRejections             prometheus.Counter
 	dnsProvider                       discovery.DNS
 	pool                              *client.Pool
 	ring                              ring.ReadRing
 	limits                            Limits
 	buckets                           []time.Duration
 	done                              chan struct{}
+
+	inFlightRequests atomic.Int64
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
@@ -155,6 +166,22 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		}
 	}
 
+	inFlightCapRejections := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "index_gateway_request_rejected_total",
+		Help:      "Total number of index gateway requests rejected because the client-side in-flight request cap was reached, to avoid retry amplification when replicas are shedding load.",
+	})
+	if r != nil {
+		err := r.Register(inFlightCapRejections)
+		if err != nil {
+			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
+			if !ok {
+				return nil, err
+			}
+			inFlightCapRejections = alreadyErr.ExistingCollector.(prometheus.Counter)
+		}
+	}
+
 	buckets := make([]time.Duration, len(cfg.TimeBasedShardingBuckets))
 	for i := range len(buckets) {
 		b, err := time.ParseDuration(cfg.TimeBasedShardingBuckets[i])
@@ -172,6 +199,7 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		retriesHistogram:                  retries,
+		inFlightCapRejections:             inFlightCapRejections,
 		ring:                              cfg.Ring,
 		limits:                            limits,
 		buckets:                           buckets,
@@ -387,6 +415,16 @@ func (s *GatewayClient) poolDo(
 	filterServerList func([]string) []string,
 	maxRetries int, // -1 for unlimited retries, 0 to disable retries
 ) error {
+	// Check-then-increment is racy: concurrent callers can briefly push the true in-flight
+	// count past MaxInFlightRequests. Accepted tradeoff — this is a soft limit to blunt
+	// retry-amplification storms, not a hard resource cap, so exactness isn't required.
+	if s.cfg.MaxInFlightRequests > 0 && s.inFlightRequests.Load() >= int64(s.cfg.MaxInFlightRequests) {
+		s.inFlightCapRejections.Inc()
+		return errors.New("index gateway pool at capacity, rejecting request to avoid retry amplification")
+	}
+	s.inFlightRequests.Add(1)
+	defer s.inFlightRequests.Add(-1)
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")

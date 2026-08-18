@@ -477,6 +477,73 @@ func Test_jumpHashShuffleSharding(t *testing.T) {
 
 }
 
+func TestPoolDo_RejectsWhenAtInFlightCap(t *testing.T) {
+	client := &GatewayClient{
+		cfg:                   ClientConfig{MaxInFlightRequests: 2},
+		inFlightCapRejections: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_rejections"}),
+		logger:                log.NewNopLogger(),
+	}
+	client.inFlightRequests.Store(2)
+
+	// No tenant ID injected into the context, so if the cap check did not run first,
+	// poolDo would instead fail with a tenant ID lookup error.
+	err := client.poolDo(context.Background(), func(logproto.IndexGatewayClient) error {
+		return nil
+	}, func(addrs []string) []string { return addrs }, 0)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "index gateway pool at capacity")
+	require.NotContains(t, err.Error(), "tenant ID")
+}
+
+func TestPoolDo_DecrementsInFlightAfterSuccess(t *testing.T) {
+	_, _, client := createSimpleGatewayClient(t, []string{"0.0.0.0", "1.1.1.1"})
+	client.cfg.MaxInFlightRequests = 10
+
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+	err := client.poolDo(ctx, func(c logproto.IndexGatewayClient) error {
+		_, err := c.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		return err
+	}, func(addrs []string) []string { return addrs }, -1)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(0), client.inFlightRequests.Load())
+}
+
+func TestPoolDo_DecrementsInFlightAfterCallbackError(t *testing.T) {
+	addrs := []string{"0.0.0.0", "1.1.1.1"}
+	logger, _, client := createSimpleGatewayClient(t, addrs)
+	client.cfg.MaxInFlightRequests = 10
+	configurePool(t, client, logger, len(addrs)) // every address returns an error
+
+	ctx := user.InjectOrgID(context.Background(), "tenant-123")
+	err := client.poolDo(ctx, func(c logproto.IndexGatewayClient) error {
+		_, err := c.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		return err
+	}, func(addrs []string) []string { return addrs }, 0) // no retries
+
+	require.Error(t, err)
+	require.Equal(t, int64(0), client.inFlightRequests.Load())
+}
+
+func TestPoolDo_ZeroMeansUnlimited(t *testing.T) {
+	client := &GatewayClient{
+		cfg:                   ClientConfig{MaxInFlightRequests: 0},
+		inFlightCapRejections: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_rejections_unlimited"}),
+		logger:                log.NewNopLogger(),
+	}
+	client.inFlightRequests.Store(999999)
+
+	// No tenant ID injected, so the cap check being bypassed surfaces as a tenant ID
+	// lookup error rather than the "at capacity" rejection.
+	err := client.poolDo(context.Background(), func(logproto.IndexGatewayClient) error {
+		return nil
+	}, func(addrs []string) []string { return addrs }, 0)
+
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "at capacity")
+}
+
 func Test_addressesForQueryEndTime(t *testing.T) {
 	// Use the current time as reference and create relative times
 	now := time.Date(2025, time.September, 11, 0, 0, 0, 0, time.UTC)
