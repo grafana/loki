@@ -212,18 +212,21 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 
-	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
+	// These configs do not have defaults in the flagset so default values must be Set before registering
+	// the flags to be documented correctly.
 	_ = cfg.IndexobjBuilder.TargetPageSize.Set("128KB")
 	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("512MB")
 	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("512MB")
 	_ = cfg.IndexobjBuilder.BufferSize.Set("128MB")
+	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 
-	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
+	// These flags do not have defaults in the flagset so default values must be Set before registering
+	// the flags to be documented correctly.
 	_ = cfg.LogsobjBuilder.TargetPageSize.Set("1MB")
 	_ = cfg.LogsobjBuilder.TargetObjectSize.Set("512MB")
 	_ = cfg.LogsobjBuilder.TargetSectionSize.Set("512MB")
 	_ = cfg.LogsobjBuilder.BufferSize.Set("128MB")
-
+	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
 }
 
 // RegisterFlagsWithPrefix registers the worker config flags using prefix
