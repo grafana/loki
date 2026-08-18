@@ -17,6 +17,7 @@ var postingsListBufferPool = pool.New(64, 16<<20, 2, func(sz int) interface{} {
 })
 
 // getPostingsListBuffer returns a buffer of exactly n bytes.
+// Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
 func getPostingsListBuffer(n int) []byte {
 	return postingsListBufferPool.Get(n).([]byte)[:n]
 }
@@ -282,6 +283,8 @@ func (p *streamPostings) readPostingsList(postingsOffset uint64) (Postings, erro
 	}
 
 	buf := getPostingsListBuffer(4 * n)
+	// We may be reusing a dirty buffer.
+	// ReadInfo either fills the entire buffer (erasing all accessible stale data) or errors (in which case we abort).
 	decbuf.ReadInto(buf)
 	if err := decbuf.Err(); err != nil {
 		postingsListBufferPool.Put(buf)
