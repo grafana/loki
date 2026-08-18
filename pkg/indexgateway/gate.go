@@ -2,11 +2,11 @@ package indexgateway
 
 import (
 	"errors"
+	"net/http"
 
 	"github.com/grafana/dskit/gate"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // newQueryGate builds the admission control gate shared by all index gateway
@@ -20,12 +20,9 @@ func newQueryGate(cfg Config, reg prometheus.Registerer) gate.Gate {
 	return gate.NewTimeoutGate(cfg.MaxConcurrentQueueTimeout, g)
 }
 
-// mapGateError converts a gate queue timeout into a retryable gRPC
-// Unavailable status. All other errors, including context cancellation while
-// queued, pass through unchanged.
 func mapGateError(err error) error {
 	if errors.Is(err, gate.ErrGateTimeout) {
-		return status.Error(codes.Unavailable, "the index gateway is at its concurrent request limit; retry another replica")
+		return httpgrpc.Error(http.StatusServiceUnavailable, "the index gateway is at its concurrent request limit; retry another replica")
 	}
 	return err
 }

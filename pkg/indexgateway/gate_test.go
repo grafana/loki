@@ -3,18 +3,18 @@ package indexgateway
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/gate"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -45,13 +45,19 @@ func TestNewQueryGate_RejectsAfterQueueTimeout(t *testing.T) {
 }
 
 func TestMapGateError(t *testing.T) {
-	err := mapGateError(gate.ErrGateTimeout)
-	s, ok := status.FromError(err)
-	require.True(t, ok)
-	require.Equal(t, codes.Unavailable, s.Code())
+	requireShedError(t, mapGateError(gate.ErrGateTimeout))
 
 	sentinel := errors.New("boom")
 	require.Equal(t, sentinel, mapGateError(sentinel))
+}
+
+// requireShedError asserts that err is the gate's load-shed error, which
+// carries an HTTP 503 status through gRPC.
+func requireShedError(t *testing.T, err error) {
+	t.Helper()
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	require.True(t, ok, "expected an httpgrpc error, got %v", err)
+	require.Equal(t, int32(http.StatusServiceUnavailable), resp.Code)
 }
 
 // gatedRPCs invokes each IndexGateway RPC with a minimal valid request. Every
@@ -102,7 +108,7 @@ func newGatedGateway(t *testing.T, cfg Config) *Gateway {
 	return gw
 }
 
-func TestQueryGate_SaturatedRPCsReturnUnavailable(t *testing.T) {
+func TestQueryGate_SaturatedRPCsShedLoad(t *testing.T) {
 	for name, call := range gatedRPCs {
 		t.Run(name, func(t *testing.T) {
 			gw := newGatedGateway(t, Config{
@@ -114,10 +120,7 @@ func TestQueryGate_SaturatedRPCsReturnUnavailable(t *testing.T) {
 			require.NoError(t, gw.queryGate.Start(ctx))
 			defer gw.queryGate.Done()
 
-			err := call(ctx, gw)
-			s, ok := status.FromError(err)
-			require.True(t, ok, "expected a gRPC status error, got %v", err)
-			require.Equal(t, codes.Unavailable, s.Code())
+			requireShedError(t, call(ctx, gw))
 		})
 	}
 }
