@@ -6,6 +6,7 @@
 package streamenc
 
 import (
+	"math/rand"
 	"os"
 	"path"
 	"testing"
@@ -118,7 +119,9 @@ func TestReaders_ResetAt(t *testing.T) {
 		require.Equal(t, []byte("0"), readAfterResetToLastByte, "read after reset to last byte")
 
 		require.NoError(t, r.ResetAt(20))
+		require.Equal(t, 20, r.Offset())
 		require.ErrorIs(t, r.ResetAt(21), ErrInvalidSize)
+		require.Equal(t, 20, r.Offset())
 	})
 }
 
@@ -145,7 +148,7 @@ func TestReaders_Skip(t *testing.T) {
 		require.NoError(t, r.Skip(5))
 		require.Equal(t, 0, r.Len())
 		require.ErrorIs(t, r.Skip(1), ErrInvalidSize)
-
+		require.Equal(t, 20, r.Offset())
 	})
 }
 
@@ -207,18 +210,7 @@ func TestReaders_Position(t *testing.T) {
 
 func TestReaders_CreationWithEmptyContents(t *testing.T) {
 	t.Run("FileReader", func(t *testing.T) {
-		dir := t.TempDir()
-		filePath := path.Join(dir, "test-file")
-		require.NoError(t, os.WriteFile(filePath, nil, 0700))
-
-		f, err := os.Open(filePath)
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, f.Close())
-		})
-
-		r, err := NewFileReader(f, 0, 0, &filepool.SingleFilePoolNoopCloser{})
-		require.NoError(t, err)
+		r := newTestFileReader(t, nil, 0, 0)
 		require.ErrorIs(t, r.Skip(1), ErrInvalidSize)
 		require.ErrorIs(t, r.ResetAt(1), ErrInvalidSize)
 	})
@@ -228,39 +220,154 @@ func testReaders(t *testing.T, test func(t *testing.T, r *FileReader)) {
 	testReaderContents := []byte("abcdefghij1234567890")
 
 	t.Run("FileReaderWithZeroOffset", func(t *testing.T) {
-		dir := t.TempDir()
-		filePath := path.Join(dir, "test-file")
-		require.NoError(t, os.WriteFile(filePath, testReaderContents, 0700))
-
-		f, err := os.Open(filePath)
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, f.Close())
-		})
-
-		r, err := NewFileReader(f, 0, len(testReaderContents), &filepool.SingleFilePoolNoopCloser{})
-		require.NoError(t, err)
-
+		r := newTestFileReader(t, testReaderContents, 0, len(testReaderContents))
 		test(t, r)
 	})
 
 	t.Run("FileReaderWithNonZeroOffset", func(t *testing.T) {
 		offsetBytes := []byte("ABCDE")
 		fileBytes := append(offsetBytes, testReaderContents...)
-
-		dir := t.TempDir()
-		filePath := path.Join(dir, "test-file")
-		require.NoError(t, os.WriteFile(filePath, fileBytes, 0700))
-
-		f, err := os.Open(filePath)
-		require.NoError(t, err)
-		t.Cleanup(func() {
-			require.NoError(t, f.Close())
-		})
-
-		r, err := NewFileReader(f, len(offsetBytes), len(testReaderContents), &filepool.SingleFilePoolNoopCloser{})
-		require.NoError(t, err)
-
+		r := newTestFileReader(t, fileBytes, len(offsetBytes), len(testReaderContents))
 		test(t, r)
 	})
+}
+
+func newTestFileReader(t *testing.T, fileBytes []byte, base, length int) *FileReader {
+	t.Helper()
+
+	filePath := path.Join(t.TempDir(), "test-file")
+	require.NoError(t, os.WriteFile(filePath, fileBytes, 0600))
+	f, err := os.Open(filePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, f.Close()) })
+
+	r, err := NewFileReader(f, base, length, &filepool.SingleFilePoolNoopCloser{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if r.buf != nil {
+			require.NoError(t, r.Close())
+		}
+	})
+	return r
+}
+
+func generateTestData(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i*7 + i/251)
+	}
+	return b
+}
+
+func newTestFileReaderWithGeneratedData(t *testing.T, base, length int) (*FileReader, []byte) {
+	t.Helper()
+
+	content := generateTestData(length)
+	fileBytes := make([]byte, base+length+64)
+	for i := range fileBytes[:base] {
+		fileBytes[i] = 0xaa
+	}
+	copy(fileBytes[base:], content)
+	for i := base + length; i < len(fileBytes); i++ {
+		fileBytes[i] = 0xbb
+	}
+
+	return newTestFileReader(t, fileBytes, base, length), content
+}
+
+func requireBufferInvariant(t *testing.T, r *FileReader, content []byte) {
+	t.Helper()
+
+	require.GreaterOrEqual(t, r.r, 0)
+	require.LessOrEqual(t, r.r, r.n)
+	require.LessOrEqual(t, r.n, len(r.buf))
+	require.GreaterOrEqual(t, r.off, r.r)
+
+	bufferStart := r.off - r.r
+	require.Equal(t, content[bufferStart:r.off], r.buf[:r.r])
+	end := min(r.off+r.Buffered(), len(content))
+	if end > r.off {
+		require.Equal(t, content[r.off:end], r.buf[r.r:r.r+end-r.off])
+	}
+}
+
+func TestFileReader_BufferInvariant(t *testing.T) {
+	const length = 10*ReaderBufferSize + 613
+	r, content := newTestFileReaderWithGeneratedData(t, 17, length)
+	rng := rand.New(rand.NewSource(20260826))
+
+	pickOffset := func() int {
+		if rng.Intn(2) != 0 {
+			return rng.Intn(length + 1)
+		}
+		edge := rng.Intn(length/ReaderBufferSize+1)*ReaderBufferSize + rng.Intn(5) - 2
+		return max(0, min(edge, length))
+	}
+
+	// Take random actions, asserting that the invariant holds after each action
+	for i := range 20000 {
+		switch rng.Intn(5) {
+		case 0:
+			// ResetAt to a random offset
+			off := pickOffset()
+			require.NoError(t, r.ResetAt(off), "iteration %d", i)
+			require.Equal(t, off, r.Offset(), "iteration %d", i)
+		case 1:
+			// Skip a random number of bytes forwards
+			before := r.Offset()
+			l := rng.Intn(r.Len() + 1)
+			require.NoError(t, r.Skip(l), "iteration %d", i)
+			require.Equal(t, before+l, r.Offset(), "iteration %d", i)
+		case 2:
+			// Peek a random number of bytes ahead
+			n := 1 + rng.Intn(ReaderBufferSize)
+			off := r.Offset()
+			got, err := r.Peek(n)
+			require.NoError(t, err, "iteration %d", i)
+			require.Equal(t, off, r.Offset(), "iteration %d", i)
+			want := min(n, len(content)-off)
+			require.GreaterOrEqual(t, len(got), want, "iteration %d", i)
+			require.Equal(t, content[off:off+want], got[:want], "iteration %d", i)
+		case 3:
+			// ReadInto a random number of bytes into a byte buffer
+			if r.Len() == 0 {
+				continue
+			}
+			n := 1 + rng.Intn(min(r.Len(), 2*ReaderBufferSize))
+			off := r.Offset()
+			buf := make([]byte, n)
+			require.NoError(t, r.ReadInto(buf), "iteration %d", i)
+			require.Equal(t, content[off:off+n], buf, "iteration %d", i)
+			require.Equal(t, off+n, r.Offset(), "iteration %d", i)
+		case 4:
+			// Reset the reader
+			require.NoError(t, r.Reset(), "iteration %d", i)
+			require.Zero(t, r.Offset(), "iteration %d", i)
+		}
+		requireBufferInvariant(t, r, content)
+	}
+}
+
+func TestFileReader_PeekBeyondBufferSize(t *testing.T) {
+	r, content := newTestFileReaderWithGeneratedData(t, 0, 4*ReaderBufferSize)
+	_, err := r.Peek(r.Size() + 1)
+	require.ErrorIs(t, err, ErrInvalidSize)
+	require.Zero(t, r.Offset())
+
+	got, err := r.Peek(r.Size())
+	require.NoError(t, err)
+	require.Equal(t, content[:r.Size()], got)
+}
+
+func TestFileReader_ReadIntoPastEOF(t *testing.T) {
+	const length = 3*ReaderBufferSize + 137
+	content := generateTestData(length)
+	r := newTestFileReader(t, content, 0, length)
+	require.NoError(t, r.Skip(5))
+
+	buf := make([]byte, length)
+	err := r.ReadInto(buf)
+	require.ErrorIs(t, err, ErrInvalidSize)
+	require.Equal(t, content[5:], buf[:length-5])
+	require.Equal(t, length, r.Offset())
 }
