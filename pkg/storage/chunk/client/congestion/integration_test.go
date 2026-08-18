@@ -81,12 +81,10 @@ func newCongestionControlledS3(t *testing.T, handler http.HandlerFunc) congestio
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	// disableRetries=true mirrors how the storage factory wires the client when
-	// congestion control replaces the retries of the object-store client (see
-	// Config.ReplacesInnerRetries): the object-store client must not retry, so
-	// the AIMD controller is solely in charge of retries/back-off. This also keeps
-	// the observed request count == the controller's attempt count.
-	adapter, err := bucket.NewObjectClient(context.Background(), bucket.S3, bucket.ConfigWithNamedStores{
+	// Mirror how the storage factory configures the client when congestion control
+	// replaces the object-store retries. The AIMD controller must be solely in
+	// charge of retries and back-off.
+	storeCfg := bucket.ConfigWithNamedStores{
 		Config: bucket.Config{
 			S3: s3.Config{
 				Endpoint:        srv.Listener.Addr().String(),
@@ -97,7 +95,10 @@ func newCongestionControlledS3(t *testing.T, handler http.HandlerFunc) congestio
 				Insecure:        true,
 			},
 		},
-	}, "test", hedging.Config{}, true, log.NewNopLogger())
+	}
+	require.NoError(t, storeCfg.DisableRetries(bucket.S3))
+
+	adapter, err := bucket.NewObjectClient(context.Background(), bucket.S3, storeCfg, "test", hedging.Config{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	cfg := congestion.Config{

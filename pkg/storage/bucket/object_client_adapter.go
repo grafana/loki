@@ -30,7 +30,7 @@ type ObjectClientAdapter struct {
 	storeType string
 }
 
-func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, logger log.Logger) (*ObjectClientAdapter, error) {
 	var (
 		storeType = backend
 		storeCfg  = cfg.Config
@@ -41,12 +41,6 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		// override config with values from named store config
 		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend); err != nil {
 			return nil, err
-		}
-	}
-
-	if disableRetries {
-		if err := storeCfg.disableRetries(storeType); err != nil {
-			return nil, fmt.Errorf("create bucket: %w", err)
 		}
 	}
 

@@ -115,7 +115,7 @@ func TestObjectClientAdapter_List(t *testing.T) {
 			Config: Config{
 				Filesystem: config,
 			},
-		}, "test", hedging.Config{}, false, log.NewNopLogger())
+		}, "test", hedging.Config{}, log.NewNopLogger())
 		require.NoError(t, err)
 
 		storageObj, storageCommonPref, err := client.List(context.Background(), tt.prefix, tt.delimiter)
@@ -149,7 +149,7 @@ func TestObjectClientAdapter_IsBackendFilesystem(t *testing.T) {
 		Config: Config{
 			Filesystem: filesystem.Config{Directory: t.TempDir()},
 		},
-	}, "test", hedging.Config{}, false, log.NewNopLogger())
+	}, "test", hedging.Config{}, log.NewNopLogger())
 	require.NoError(t, err)
 	require.True(t, client.IsBackendFilesystem())
 
@@ -202,7 +202,7 @@ func TestObjectClientAdapter_ClientReusesConnections(t *testing.T) {
 	// Configure hedging on, since the bug where this went wrong only happened when hedging was enabled.
 	// However we don't actually want any hedged requests so use At=time.Hour.
 	client, err := NewObjectClient(context.Background(), S3, ConfigWithNamedStores{Config: cfg}, "test",
-		hedging.Config{At: time.Hour, UpTo: 2, MaxPerSecond: 100}, false, log.NewNopLogger())
+		hedging.Config{At: time.Hour, UpTo: 2, MaxPerSecond: 100}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	for range rounds {
@@ -245,7 +245,7 @@ func TestObjectClientAdapter_IsRetryableErr_S3Minio(t *testing.T) {
 				BucketName: "test",
 			},
 		},
-	}, "test", hedging.Config{}, false, log.NewNopLogger())
+	}, "test", hedging.Config{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	require.True(t, c.IsRetryableErr(minio.ErrorResponse{Code: "SlowDown", StatusCode: http.StatusServiceUnavailable}))

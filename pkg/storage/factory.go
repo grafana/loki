@@ -366,7 +366,13 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			storeType = st
 		}
 
-		c, err := newObjectClient(name, component, cfg, clientMetrics, ccCfg.ReplacesInnerRetries(storeType))
+		if congestionControlReplacesThanosRetries(ccCfg, storeType) {
+			if err := cfg.ObjectStore.DisableRetries(name); err != nil {
+				return nil, fmt.Errorf("disable object-store retries: %w", err)
+			}
+		}
+
+		c, err := NewObjectClient(name, component, cfg, clientMetrics)
 		if err != nil {
 			return nil, err
 		}
@@ -426,6 +432,17 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 	return nil, fmt.Errorf("unrecognized chunk client type %s, choose one of: %s", name, strings.Join(types.SupportedStorageTypes, ", "))
 }
 
+func congestionControlReplacesThanosRetries(cfg congestion.Config, storeType string) bool {
+	if storeType != bucket.S3 && storeType != bucket.GCS {
+		return false
+	}
+
+	return cfg.Enabled &&
+		strings.EqualFold(cfg.Controller.Strategy, congestion.StrategyAIMD) &&
+		strings.EqualFold(cfg.Retry.Strategy, congestion.RetryStrategyLimited) &&
+		cfg.Retry.Limit > 0
+}
+
 type ClientMetrics struct {
 	AzureMetrics azure.BlobStorageMetrics
 }
@@ -442,17 +459,8 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	return newObjectClient(name, component, cfg, clientMetrics, false)
-}
-
-// newObjectClient is NewObjectClient with control over the retries of the object-store
-// client.
-//
-// Set disableRetries only when a replacement retrier wraps the returned client. Only
-// NewChunkClient does this, so the exported NewObjectClient keeps the retries.
-func newObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics, disableRetries bool) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, disableRetries, util_log.Logger)
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
 	}
 
 	actual, err := internalNewObjectClient(name, cfg, clientMetrics)

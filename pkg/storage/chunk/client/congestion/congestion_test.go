@@ -66,9 +66,6 @@ func TestCombinedConstruction(t *testing.T) {
 	m.Unregister()
 }
 
-// This test guards the Controller.Strategy term of Config.ReplacesInnerRetries. Without
-// that term, the storage factory disables the retries of the object-store client behind
-// a pass-through controller.
 func TestNoopControllerWrapIsPassThrough(t *testing.T) {
 	cfg := Config{
 		Enabled: true,
@@ -87,19 +84,6 @@ func TestNoopControllerWrapIsPassThrough(t *testing.T) {
 	inner := newMockObjectClient(maxFailer{max: 0})
 	require.Same(t, inner, ctrl.Wrap(inner), "NoopController.Wrap must return the inner client unwrapped")
 
-	require.False(t, cfg.ReplacesInnerRetries("s3"), "a pass-through controller does not replace the inner client's retries")
-}
-
-func TestReplacesInnerRetries_StoreType(t *testing.T) {
-	cfg := Config{
-		Enabled:    true,
-		Controller: ControllerConfig{Strategy: StrategyAIMD},
-		Retry:      RetrierConfig{Strategy: RetryStrategyLimited, Limit: 2},
-	}
-	require.True(t, cfg.ReplacesInnerRetries("s3"))
-	require.True(t, cfg.ReplacesInnerRetries("gcs"))
-	require.False(t, cfg.ReplacesInnerRetries("azure"))
-	require.False(t, cfg.ReplacesInnerRetries("swift"))
 }
 
 func TestHedgerConstruction(t *testing.T) {

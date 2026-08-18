@@ -91,6 +91,33 @@ func limitedRetrier() congestion.RetrierConfig {
 	return congestion.RetrierConfig{Strategy: congestion.RetryStrategyLimited, Limit: 2}
 }
 
+func TestCongestionControlReplacesThanosRetries(t *testing.T) {
+	enabled := congestion.Config{
+		Enabled:    true,
+		Controller: aimdController(),
+		Retry:      limitedRetrier(),
+	}
+
+	tests := map[string]struct {
+		cfg       congestion.Config
+		storeType string
+		expected  bool
+	}{
+		"s3":                {cfg: enabled, storeType: bucket.S3, expected: true},
+		"gcs":               {cfg: enabled, storeType: bucket.GCS, expected: true},
+		"unsupported store": {cfg: enabled, storeType: bucket.Azure, expected: false},
+		"disabled":          {cfg: congestion.Config{}, storeType: bucket.S3, expected: false},
+		"no controller":     {cfg: congestion.Config{Enabled: true, Retry: limitedRetrier()}, storeType: bucket.S3, expected: false},
+		"no retrier":        {cfg: congestion.Config{Enabled: true, Controller: aimdController()}, storeType: bucket.S3, expected: false},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, test.expected, congestionControlReplacesThanosRetries(test.cfg, test.storeType))
+		})
+	}
+}
+
 func chunkFixture(from string) (config.SchemaConfig, config.PeriodConfig, chunk.Chunk, string) {
 	periodCfg := config.PeriodConfig{
 		From:       config.DayTime{Time: timeToModelTime(parseDate(from))},
@@ -134,8 +161,8 @@ func TestNewChunkClient_ThanosCongestionControl_DisablesInnerRetries(t *testing.
 	require.EqualValues(t, 3, serverGets.Load())
 }
 
-// This test fails if disableRetries moves to the exported constructor. The other
-// callers of NewObjectClient have no replacement retrier.
+// Other callers of NewObjectClient have no replacement retrier, so the exported
+// constructor must keep the object-store retries.
 func TestNewObjectClient_ThanosKeepsInnerRetries(t *testing.T) {
 	t.Parallel()
 
@@ -176,9 +203,8 @@ func TestNewChunkClient_ThanosCongestionControl_NamedStore(t *testing.T) {
 	require.EqualValues(t, 3, serverGets.Load())
 }
 
-// This test guards the Retry.Strategy term of Config.ReplacesInnerRetries. If the count
-// drops to 1, no retrier remains, and Fetcher.FetchChunks returns partial results with
-// a nil error.
+// If the count drops to 1, no retrier remains, and Fetcher.FetchChunks returns
+// partial results with a nil error.
 func TestNewChunkClient_ThanosCongestionControl_TwoFlagKeepsInnerRetries(t *testing.T) {
 	schemaCfg, periodCfg, c, key := chunkFixture("2026-01-04")
 	srv, serverGets := newThrottlingS3(t, key)
@@ -195,7 +221,6 @@ func TestNewChunkClient_ThanosCongestionControl_TwoFlagKeepsInnerRetries(t *test
 	require.EqualValues(t, 10, serverGets.Load())
 }
 
-// This test guards the Controller.Strategy term of Config.ReplacesInnerRetries.
 func TestNewChunkClient_ThanosCongestionControl_NonAIMDKeepsInnerRetries(t *testing.T) {
 	schemaCfg, periodCfg, c, key := chunkFixture("2026-01-05")
 	srv, serverGets := newThrottlingS3(t, key)

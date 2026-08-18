@@ -7,7 +7,6 @@ import (
 	"github.com/go-kit/log/level"
 )
 
-// Config.ReplacesInnerRetries compares against these values.
 const (
 	StrategyAIMD         = "aimd"
 	RetryStrategyLimited = "limited"
