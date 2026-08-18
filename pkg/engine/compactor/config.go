@@ -93,10 +93,10 @@ type Config struct {
 
 	// IndexobjBuilder controls index object construction parameters (page sizes,
 	// target object/section sizes, etc.) used by the compactor worker when
-	// merging postings + stats sections into a new index object.
+	// merging postings and stats sections into a new index object.
 	IndexobjBuilder logsobj.BuilderBaseConfig `yaml:"indexobj_builder" category:"experimental"`
 
-	// LogsobjBuilder controls index object construction parameters (page sizes,
+	// LogsobjBuilder controls log object construction parameters (page sizes,
 	// target object/section sizes, etc.) used by the compactor worker when
 	// merging streams and logs sections into a new logs object.
 	LogsobjBuilder logsobj.BuilderBaseConfig `yaml:"logsobj_builder" category:"experimental"`
@@ -212,17 +212,18 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: HTTP path the embedded compaction scheduler listens on for worker frame traffic.")
 	cfg.Worker.RegisterFlagsWithPrefix(prefix+"worker.", f)
 
+	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 	_ = cfg.IndexobjBuilder.TargetPageSize.Set("128KB")
 	_ = cfg.IndexobjBuilder.TargetObjectSize.Set("512MB")
 	_ = cfg.IndexobjBuilder.TargetSectionSize.Set("512MB")
 	_ = cfg.IndexobjBuilder.BufferSize.Set("128MB")
-	cfg.IndexobjBuilder.RegisterFlagsWithPrefix(prefix+"indexobj-builder.", f)
 
+	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
 	_ = cfg.LogsobjBuilder.TargetPageSize.Set("1MB")
 	_ = cfg.LogsobjBuilder.TargetObjectSize.Set("512MB")
 	_ = cfg.LogsobjBuilder.TargetSectionSize.Set("512MB")
 	_ = cfg.LogsobjBuilder.BufferSize.Set("128MB")
-	cfg.LogsobjBuilder.RegisterFlagsWithPrefix(prefix+"logsobj-builder.", f)
+
 }
 
 // RegisterFlagsWithPrefix registers the worker config flags using prefix
