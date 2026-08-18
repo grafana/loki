@@ -649,7 +649,12 @@ func (t *Loki) Run(opts RunOpts) error {
 	sm.AddListener(services.NewManagerListener(healthy, stopped, serviceFailed))
 
 	// Setup signal handler. If signal arrives, we stop the manager, which stops all the services.
-	t.SignalHandler = signals.NewHandler(t.Server.Log)
+	var signalReceivers []signals.SignalReceiver
+	if queryStatsShutdownPushReceiver := newQueryStatsShutdownPushReceiver(t.Cfg.Worker, prometheus.DefaultGatherer, util_log.Logger); queryStatsShutdownPushReceiver != nil {
+		signalReceivers = append(signalReceivers, queryStatsShutdownPushReceiver)
+	}
+
+	t.SignalHandler = signals.NewHandler(t.Server.Log, signalReceivers...)
 	go func() {
 		t.SignalHandler.Loop()
 		shutdownRequested.Store(true)
