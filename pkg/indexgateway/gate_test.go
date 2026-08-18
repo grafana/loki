@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/grafana/dskit/gate"
@@ -30,18 +31,20 @@ func TestNewQueryGate_DisabledAdmitsEverything(t *testing.T) {
 }
 
 func TestNewQueryGate_RejectsAfterQueueTimeout(t *testing.T) {
-	g := newQueryGate(Config{
-		MaxConcurrent:             1,
-		MaxConcurrentQueueTimeout: 10 * time.Millisecond,
-	}, prometheus.NewRegistry())
+	synctest.Test(t, func(t *testing.T) {
+		g := newQueryGate(Config{
+			MaxConcurrent:             1,
+			MaxConcurrentQueueTimeout: 10 * time.Millisecond,
+		}, prometheus.NewRegistry())
 
-	require.NoError(t, g.Start(context.Background()))
+		require.NoError(t, g.Start(context.Background()))
 
-	err := g.Start(context.Background())
-	require.ErrorIs(t, err, gate.ErrGateTimeout)
+		err := g.Start(context.Background())
+		require.ErrorIs(t, err, gate.ErrGateTimeout)
 
-	g.Done()
-	require.NoError(t, g.Start(context.Background()))
+		g.Done()
+		require.NoError(t, g.Start(context.Background()))
+	})
 }
 
 func TestMapGateError(t *testing.T) {
@@ -111,16 +114,18 @@ func newGatedGateway(t *testing.T, cfg Config) *Gateway {
 func TestQueryGate_SaturatedRPCsShedLoad(t *testing.T) {
 	for name, call := range gatedRPCs {
 		t.Run(name, func(t *testing.T) {
-			gw := newGatedGateway(t, Config{
-				MaxConcurrent:             1,
-				MaxConcurrentQueueTimeout: 50 * time.Millisecond,
+			synctest.Test(t, func(t *testing.T) {
+				gw := newGatedGateway(t, Config{
+					MaxConcurrent:             1,
+					MaxConcurrentQueueTimeout: 50 * time.Millisecond,
+				})
+
+				ctx := user.InjectOrgID(context.Background(), "test")
+				require.NoError(t, gw.queryGate.Start(ctx))
+				defer gw.queryGate.Done()
+
+				requireShedError(t, call(ctx, gw))
 			})
-
-			ctx := user.InjectOrgID(context.Background(), "test")
-			require.NoError(t, gw.queryGate.Start(ctx))
-			defer gw.queryGate.Done()
-
-			requireShedError(t, call(ctx, gw))
 		})
 	}
 }
@@ -184,25 +189,33 @@ func TestQueryGate_ValidationRejectsBeforeGate(t *testing.T) {
 }
 
 func TestQueryGate_CanceledWhileQueuedReturnsContextError(t *testing.T) {
-	gw := newGatedGateway(t, Config{
-		MaxConcurrent:             1,
-		MaxConcurrentQueueTimeout: time.Minute,
-	})
+	synctest.Test(t, func(t *testing.T) {
+		gw := newGatedGateway(t, Config{
+			MaxConcurrent:             1,
+			MaxConcurrentQueueTimeout: time.Minute,
+		})
 
-	ctx := user.InjectOrgID(context.Background(), "test")
-	require.NoError(t, gw.queryGate.Start(ctx))
+		ctx := user.InjectOrgID(context.Background(), "test")
+		require.NoError(t, gw.queryGate.Start(ctx))
 
-	cctx, cancel := context.WithCancel(ctx)
-	go func() {
-		time.Sleep(20 * time.Millisecond)
+		cctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := gw.GetStats(cctx, &logproto.IndexStatsRequest{Matchers: `{app="foo"}`})
+			errCh <- err
+		}()
+
+		// Returns once GetStats is durably blocked waiting for a slot.
+		synctest.Wait()
 		cancel()
-	}()
 
-	_, err := gw.GetStats(cctx, &logproto.IndexStatsRequest{Matchers: `{app="foo"}`})
-	require.ErrorIs(t, err, context.Canceled)
+		require.ErrorIs(t, <-errCh, context.Canceled)
 
-	gw.queryGate.Done()
-	require.NoError(t, gw.queryGate.Start(ctx))
+		gw.queryGate.Done()
+		require.NoError(t, gw.queryGate.Start(ctx))
+	})
 }
 
 type panickingQuerier struct {
