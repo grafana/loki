@@ -227,7 +227,7 @@ For example with `cluster="namespace"` the cluster is the label identifier, the 
 We support multiple **value** types which are automatically inferred from the query input.
 
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
-- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison.
+- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". The query literal accepts the time units "ns", "us" (or "µs"), "ms", "s", "m", "h", "d", "w" and "y". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m", and only accepts "ns", "us" (or "µs"), "ms", "s", "m" and "h". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison, for example to convert a "d", "w" or "y" value to one of those accepted units first.
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
 - **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5KiB" or "20B". Valid bytes units are "B", "kB", "MB", "GB", "TB", "KB", "KiB", "MiB", "GiB", "TiB".
 
@@ -244,7 +244,7 @@ Using Duration, Number and Bytes will convert the label value prior to compariso
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../#pipeline-errors) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](../query_reference/#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma or a space. Loki evaluates `and` before `or`. Label filters can be place anywhere in a log pipeline.
 
