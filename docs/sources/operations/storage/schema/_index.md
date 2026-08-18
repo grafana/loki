@@ -77,7 +77,7 @@ schema_config:
         period: 24h
         prefix: loki_ops_index_
       object_store: gcs
-      schema: v12
+      schema: v13
       store: tsdb
     - from: "2022-01-20"
       index:
