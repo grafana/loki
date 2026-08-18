@@ -18,42 +18,28 @@ const queryStatsBytesProcessedMetricName = "loki_logql_querystats_bytes_processe
 
 var errMetricFamilyNotFound = errors.New("metric family not found")
 
-type queryStatsShutdownPushReceiver struct {
-	cfg      worker.Config
-	gatherer prometheus.Gatherer
-	logger   log.Logger
-}
-
-func newQueryStatsShutdownPushReceiver(cfg worker.Config, gatherer prometheus.Gatherer, logger log.Logger) *queryStatsShutdownPushReceiver {
+func flushShutdownQueryStats(cfg worker.Config, gatherer prometheus.Gatherer, logger log.Logger) {
 	if cfg.ShutdownQueryStatsPushGatewayURL == "" {
-		return nil
+		return
 	}
 
-	return &queryStatsShutdownPushReceiver{
-		cfg:      cfg,
-		gatherer: gatherer,
-		logger:   logger,
-	}
-}
-
-func (r *queryStatsShutdownPushReceiver) Stop() error {
-	metricFamily, err := gatherMetricFamily(r.gatherer, queryStatsBytesProcessedMetricName)
+	metricFamily, err := gatherMetricFamily(gatherer, queryStatsBytesProcessedMetricName)
 	if err != nil {
 		if errors.Is(err, errMetricFamilyNotFound) {
-			level.Debug(r.logger).Log("msg", "skipping shutdown query-stats push because metric family is not present", "metric", queryStatsBytesProcessedMetricName)
-			return nil
+			level.Debug(logger).Log("msg", "skipping shutdown query-stats push because metric family is not present", "metric", queryStatsBytesProcessedMetricName)
+			return
 		}
 
-		level.Warn(r.logger).Log("msg", "failed to gather shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "err", err)
-		return nil
+		level.Warn(logger).Log("msg", "failed to gather shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "err", err)
+		return
 	}
 
-	jobName := r.cfg.ShutdownQueryStatsPushJobName
-	pusher := push.New(r.cfg.ShutdownQueryStatsPushGatewayURL, jobName).
+	jobName := cfg.ShutdownQueryStatsPushJobName
+	pusher := push.New(cfg.ShutdownQueryStatsPushGatewayURL, jobName).
 		Gatherer(metricFamilyGatherer{metricFamily: metricFamily}).
 		Grouping("component", "querier")
 
-	querierID := r.cfg.QuerierID
+	querierID := cfg.QuerierID
 	if querierID == "" {
 		hostname, hostnameErr := os.Hostname()
 		if hostnameErr == nil && hostname != "" {
@@ -64,16 +50,15 @@ func (r *queryStatsShutdownPushReceiver) Stop() error {
 		pusher = pusher.Grouping("instance", querierID)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), r.cfg.ShutdownQueryStatsPushTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownQueryStatsPushTimeout)
 	defer cancel()
 
 	if err := pusher.PushContext(ctx); err != nil {
-		level.Warn(r.logger).Log("msg", "failed to push shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "url", r.cfg.ShutdownQueryStatsPushGatewayURL, "err", err)
-		return nil
+		level.Warn(logger).Log("msg", "failed to push shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "url", cfg.ShutdownQueryStatsPushGatewayURL, "err", err)
+		return
 	}
 
-	level.Info(r.logger).Log("msg", "pushed shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "url", r.cfg.ShutdownQueryStatsPushGatewayURL)
-	return nil
+	level.Info(logger).Log("msg", "pushed shutdown query-stats metric", "metric", queryStatsBytesProcessedMetricName, "url", cfg.ShutdownQueryStatsPushGatewayURL)
 }
 
 type metricFamilyGatherer struct {

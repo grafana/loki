@@ -15,14 +15,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/worker"
 )
 
-func TestNewQueryStatsShutdownPushReceiver(t *testing.T) {
-	t.Run("returns nil when URL is empty", func(t *testing.T) {
-		receiver := newQueryStatsShutdownPushReceiver(worker.Config{}, prometheus.DefaultGatherer, log.NewNopLogger())
-		require.Nil(t, receiver)
+func TestFlushShutdownQueryStats(t *testing.T) {
+	t.Run("returns immediately when URL is empty", func(t *testing.T) {
+		flushShutdownQueryStats(worker.Config{}, prometheus.DefaultGatherer, log.NewNopLogger())
 	})
-}
 
-func TestQueryStatsShutdownPushReceiver_Stop(t *testing.T) {
 	t.Run("pushes query-stats metric", func(t *testing.T) {
 		var (
 			requestCount  atomic.Int64
@@ -49,15 +46,14 @@ func TestQueryStatsShutdownPushReceiver_Stop(t *testing.T) {
 		reg.MustRegister(queryStats)
 		queryStats.WithLabelValues("tenant-a").Add(123)
 
-		receiver := newQueryStatsShutdownPushReceiver(worker.Config{
+		cfg := worker.Config{
 			QuerierID:                        "querier-1",
 			ShutdownQueryStatsPushGatewayURL: server.URL,
 			ShutdownQueryStatsPushJobName:    "loki-querier-shutdown",
 			ShutdownQueryStatsPushTimeout:    time.Second,
-		}, reg, log.NewNopLogger())
+		}
 
-		require.NotNil(t, receiver)
-		require.NoError(t, receiver.Stop())
+		flushShutdownQueryStats(cfg, reg, log.NewNopLogger())
 		require.EqualValues(t, 1, requestCount.Load())
 		require.Equal(t, http.MethodPut, requestMethod.Load().(string))
 		require.True(t, strings.Contains(requestPath.Load().(string), "/metrics/job/loki-querier-shutdown"))
@@ -74,14 +70,13 @@ func TestQueryStatsShutdownPushReceiver_Stop(t *testing.T) {
 		}))
 		defer server.Close()
 
-		receiver := newQueryStatsShutdownPushReceiver(worker.Config{
+		cfg := worker.Config{
 			ShutdownQueryStatsPushGatewayURL: server.URL,
 			ShutdownQueryStatsPushJobName:    "loki-querier-shutdown",
 			ShutdownQueryStatsPushTimeout:    time.Second,
-		}, prometheus.NewRegistry(), log.NewNopLogger())
+		}
 
-		require.NotNil(t, receiver)
-		require.NoError(t, receiver.Stop())
+		flushShutdownQueryStats(cfg, prometheus.NewRegistry(), log.NewNopLogger())
 		require.EqualValues(t, 0, requestCount.Load())
 	})
 }
