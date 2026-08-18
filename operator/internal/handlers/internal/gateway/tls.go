@@ -57,6 +57,9 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Missing certificate or key in %s. Please provide both certificate and key.", gatewayTLSValidationContext.description),
 			Reason:  gatewayTLSValidationContext.invalidReason,
+			// Requeue: false, unlike the ConfigMap/Secret lookups below, because
+			// fixing this requires editing the LokiStack spec itself, which is
+			// already watched and will trigger its own reconcile.
 			Requeue: false,
 		}
 	}
@@ -115,7 +118,10 @@ func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid configmap %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
 			Reason:  vctx.invalidReason,
-			Requeue: false,
+			// Requeue: there is no Watch on this ConfigMap by name, so without
+			// requeuing, fixing its contents (e.g. adding the missing key) would
+			// never retrigger reconciliation. Mirrors tenant_secrets.go.
+			Requeue: true,
 		}
 	}
 
@@ -141,7 +147,10 @@ func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid secret %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
 			Reason:  vctx.invalidReason,
-			Requeue: false,
+			// Requeue: there is no Watch on this Secret by name, so without
+			// requeuing, fixing its contents (e.g. adding the missing key) would
+			// never retrigger reconciliation. Mirrors tenant_secrets.go.
+			Requeue: true,
 		}
 	}
 
