@@ -30,7 +30,7 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)](../boltdb-shipper/)
+  - [Single Store (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/)
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
@@ -168,7 +168,7 @@ read/write capacity units and autoscaling.
 
 | DynamoDB            | Active table                            | Inactive table                       |
 | ------------------- | --------------------------------------- | ------------------------------------ |
-| Capacity mode       | `enable_ondemand_throughput_mode` | `enable_inactive_throughput_on_demand_mode` |
+| Capacity mode       | `enable_ondemand_throughput_mode`       | `enable_inactive_throughput_on_demand_mode` |
 | Read capacity unit  | `provisioned_read_throughput`           | `inactive_read_throughput`           |
 | Write capacity unit | `provisioned_write_throughput`          | `inactive_write_throughput`          |
 | Autoscaling         | Enabled (if configured)                 | Always disabled                      |
