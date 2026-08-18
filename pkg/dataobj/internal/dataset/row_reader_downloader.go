@@ -102,9 +102,9 @@ type rowReaderDownloader struct {
 	targetSize int
 }
 
-// defaultDownloadTargetSize is the target size of cached pages when
+// defaultTargetCachedBytes is the target size in bytes of compressed pages to be cached when
 // [RowReaderOptions.Prefetch] is false.
-const defaultDownloadTargetSize = 64 << 20
+const defaultTargetCachedBytes = 16 << 20 // 16 MB
 
 // newReaderDataset creates a new readerDataset wrapping around an inner
 // Dataset. The resulting Dataset only wraps around the provided columns.

@@ -577,10 +577,10 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 	} else {
 		r.dl.Reset(r.opts.Dataset)
 	}
+
+	r.dl.targetSize = defaultTargetCachedBytes
 	if r.opts.Prefetch {
 		r.dl.targetSize = 0
-	} else {
-		r.dl.targetSize = defaultDownloadTargetSize
 	}
 
 	mask := bitmask.New(len(r.opts.Columns))

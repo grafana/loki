@@ -46,7 +46,7 @@ func Test_RowReader_LazyDownloadTarget(t *testing.T) {
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))
-	require.Equal(t, defaultDownloadTargetSize, r.dl.targetSize)
+	require.Equal(t, defaultTargetCachedBytes, r.dl.targetSize)
 
 	// Force the target below a single page so only P1 pages for the current
 	// read range are downloaded.
@@ -56,20 +56,21 @@ func Test_RowReader_LazyDownloadTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
 
-	var cached, total int
+	var pagesCached, totalPages int
 	for _, col := range r.dl.allColumns {
 		rc := col.(*readerColumn)
 		require.NotEmpty(t, rc.pages)
 		for _, page := range rc.pages {
-			total++
+			totalPages++
 			if page.data != nil {
-				cached++
+				pagesCached++
 			}
 		}
 	}
 
-	require.Greater(t, cached, 0, "expected the current read range to download pages")
-	require.Less(t, cached, total, "expected the download target to leave later pages uncached")
+	require.Greater(t, totalPages, len(columns), "expected more than one page per column")
+	require.Greater(t, pagesCached, 0, "expected the current read range to download pages")
+	require.Less(t, pagesCached, totalPages, "expected the download target to leave later pages uncached")
 }
 
 func Test_Reader_ReadAll(t *testing.T) {
