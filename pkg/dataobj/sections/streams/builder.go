@@ -3,7 +3,6 @@ package streams
 import (
 	"errors"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -17,6 +16,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+)
+
+const (
+	// ShardBits is the number of high labels.StableHash(labels) bits that select a stream's shard bucket.
+	// Changing it is a storage-format break, not a tunable: the query side reads it to map shards to
+	// buckets, and the exact fast path trusts stored bucket values without re-verifying them, so a change
+	// would mis-read every object written with the old value.
+	ShardBits = 5
+	// ShardFactor is the number of physical shard buckets, 2^ShardBits.
+	ShardFactor = 1 << ShardBits
 )
 
 // A Stream is an individual stream within a data object.
@@ -54,12 +63,6 @@ func (s *Stream) Reset() {
 	s.UncompressedSize = 0
 	s.Rows = 0
 }
-
-// ShardFactor is the number of physical shard buckets derived from
-// labels.StableHash. Valid [ShardBucket] values are in [0, ShardFactor).
-const ShardFactor uint32 = 32
-
-var shardBits = int(math.Log2(float64(ShardFactor)))
 
 var streamPool = sync.Pool{
 	New: func() interface{} {
@@ -230,7 +233,7 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 // Buckets are 0-based in [0, ShardFactor).
 func ShardBucket(streamLabels labels.Labels) uint32 {
 	fp := labels.StableHash(streamLabels)
-	return uint32(fp >> (64 - shardBits))
+	return uint32(fp >> (64 - ShardBits))
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
