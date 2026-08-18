@@ -74,7 +74,7 @@ See the [IBM Cloud Object Storage section](https://grafana.com/docs/loki/<LOKI_V
 
 ## Index Format
 
-For the on-disk layout of the TSDB index, see [TSDB index format](../../reference/tsdb-index-format/).
+For the on-disk layout of the TSDB index, see [TSDB index format](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/tsdb-index-format/).
 
 ## Chunk Format
 
