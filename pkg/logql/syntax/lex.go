@@ -380,7 +380,7 @@ func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 
 func isBytesSizeRune(r rune) bool {
 	// Accept: B, kB, MB, GB, TB, PB, KB, KiB, MiB, GiB, TiB, PiB
-	// Do not accept: EB, ZB, YB, PiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
+	// Do not accept: EB, ZB, YB, EiB, ZiB and YiB. They are not supported since the value migh not be represented in an uint64
 	switch r {
 	case 'B', 'i', 'k', 'K', 'M', 'G', 'T', 'P':
 		return true

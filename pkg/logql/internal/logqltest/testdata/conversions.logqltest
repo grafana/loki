@@ -4,6 +4,13 @@ load
   {unit="kb"}    "b=1KB"      @ 10s [repeat every 10s for 18]
   {unit="kib"}   "b=1KiB"     @ 10s [repeat every 10s for 18]
   {unit="mb"}    "b=1MB"      @ 10s [repeat every 10s for 18]
+  {unit="mib"}   "b=1MiB"     @ 10s [repeat every 10s for 18]
+  {unit="gb"}    "b=1GB"      @ 10s [repeat every 10s for 18]
+  {unit="gib"}   "b=1GiB"     @ 10s [repeat every 10s for 18]
+  {unit="tb"}    "b=1TB"      @ 10s [repeat every 10s for 18]
+  {unit="tib"}   "b=1TiB"     @ 10s [repeat every 10s for 18]
+  {unit="pb"}    "b=1PB"      @ 10s [repeat every 10s for 18]
+  {unit="pib"}   "b=1PiB"     @ 10s [repeat every 10s for 18]
   {unit="dec"}   "b=1.5KB"    @ 10s [repeat every 10s for 18]
   {unit="bare"}  "b=1024"     @ 10s [repeat every 10s for 18]
   {unit="mixed"} "b=2Kb"      @ 10s [repeat every 10s for 18]
@@ -17,6 +24,13 @@ eval instant at 120s max_over_time({unit=~".+"} | logfmt | unwrap bytes(b) [1m])
   {unit="kb"}    1000
   {unit="kib"}   1024
   {unit="mb"}    1000000
+  {unit="mib"}   1048576
+  {unit="gb"}    1000000000
+  {unit="gib"}   1073741824
+  {unit="tb"}    1000000000000
+  {unit="tib"}   1099511627776
+  {unit="pb"}    1000000000000000
+  {unit="pib"}   1125899906842624
   {unit="dec"}   1500
   {unit="bare"}  1024
   {unit="mixed"} 2000
@@ -26,6 +40,13 @@ eval range from 60s to 180s step 60s max_over_time({unit=~".+"} | logfmt | unwra
   {unit="kb"}    1000 1000 1000
   {unit="kib"}   1024 1024 1024
   {unit="mb"}    1000000 1000000 1000000
+  {unit="mib"}   1048576 1048576 1048576
+  {unit="gb"}    1000000000 1000000000 1000000000
+  {unit="gib"}   1073741824 1073741824 1073741824
+  {unit="tb"}    1000000000000 1000000000000 1000000000000
+  {unit="tib"}   1099511627776 1099511627776 1099511627776
+  {unit="pb"}    1000000000000000 1000000000000000 1000000000000000
+  {unit="pib"}   1125899906842624 1125899906842624 1125899906842624
   {unit="dec"}   1500 1500 1500
   {unit="bare"}  1024 1024 1024
   {unit="mixed"} 2000 2000 2000

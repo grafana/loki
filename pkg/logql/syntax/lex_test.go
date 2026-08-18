@@ -102,8 +102,11 @@ func TestLex(t *testing.T) {
 		{`123.45`, []int{NUMBER}},
 		{`-123.45`, []int{SUB, NUMBER}},
 		{`123KB`, []int{BYTES}},
+		{`123PB`, []int{BYTES}},
+		{`123PiB`, []int{BYTES}},
 		// Skip -123KB: Negative bytes are explicitly not supported in the Lexer.
 		{`123ms`, []int{DURATION}},
+		{`1e6`, []int{NUMBER}},
 		{`-123ms`, []int{DURATION}},
 		{`34 + - 123`, []int{NUMBER, ADD, SUB, NUMBER}},
 		{`34 + -123`, []int{NUMBER, ADD, SUB, NUMBER}},
@@ -114,6 +117,9 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} | logfmt | bytes  < 1B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
 		{`0b01`, []int{NUMBER}},
 		{`0b10`, []int{NUMBER}},
+		{`0x1A`, []int{NUMBER}},
+		{`0x1p3`, []int{NUMBER}},
+		{`0x1P3`, []int{NUMBER}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
