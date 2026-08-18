@@ -19,6 +19,7 @@ package credentials
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -100,7 +101,7 @@ func NewSTSClientGrants(stsEndpoint string, getClientGrantsTokenExpiry func() (*
 	}), nil
 }
 
-func getClientGrantsCredentials(clnt *http.Client, endpoint string,
+func getClientGrantsCredentials(ctx context.Context, clnt *http.Client, endpoint string,
 	getClientGrantsTokenExpiry func() (*ClientGrantsToken, error),
 ) (AssumeRoleWithClientGrantsResponse, error) {
 	accessToken, err := getClientGrantsTokenExpiry()
@@ -119,7 +120,7 @@ func getClientGrantsCredentials(clnt *http.Client, endpoint string,
 		return AssumeRoleWithClientGrantsResponse{}, err
 	}
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
 		return AssumeRoleWithClientGrantsResponse{}, err
 	}
@@ -179,7 +180,7 @@ func (m *STSClientGrants) RetrieveWithCredContext(cc *CredContext) (Value, error
 		return Value{}, errors.New("STS endpoint unknown")
 	}
 
-	a, err := getClientGrantsCredentials(client, stsEndpoint, m.GetClientGrantsTokenExpiry)
+	a, err := getClientGrantsCredentials(cc.requestContext(), client, stsEndpoint, m.GetClientGrantsTokenExpiry)
 	if err != nil {
 		return Value{}, err
 	}
