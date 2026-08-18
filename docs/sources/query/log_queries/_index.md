@@ -229,7 +229,7 @@ We support multiple **value** types which are automatically inferred from the qu
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
 - **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". The query literal accepts the time units "ns", "us" (or "µs"), "ms", "s", "m", "h", "d", "w" and "y". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m", and only accepts "ns", "us" (or "µs"), "ms", "s", "m" and "h". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison, for example to convert a "d", "w" or "y" value to one of those accepted units first.
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
-- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5KiB" or "20B". Valid bytes units are "B", "kB", "MB", "GB", "TB", "KB", "KiB", "MiB", "GiB", "TiB".
+- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5KiB" or "20B". Valid bytes units are "B", "kB", "MB", "GB", "TB", "PB", "KB", "KiB", "MiB", "GiB", "TiB", "PiB".
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
