@@ -99,7 +99,7 @@ func (s StreamReader) readHeader() (int, error) {
 	}
 	// Construct decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return 0, fmt.Errorf("open header decbuf: %w", err)
 	}
@@ -131,7 +131,7 @@ func (s StreamReader) readTOC() (*TOC, error) {
 	}
 	// Create decbuf
 	decbuf := s.factory.NewRawDecbuf(context.Background())
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, fmt.Errorf("open toc decbuf: %w", err)
 	}
@@ -175,7 +175,7 @@ func (s StreamReader) readTOC() (*TOC, error) {
 // which NewDecbufAtChecked validates while opening.
 func (s StreamReader) readFingerprintOffsetsTable(offset int) (FingerprintOffsets, error) {
 	decbuf := s.factory.NewDecbufAtChecked(context.Background(), offset, castagnoliTable)
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
@@ -209,10 +209,10 @@ func seriesOffset(id storage.SeriesRef) int {
 // a raw Decbuf over the whole file and decode the record ourselves.
 func (s StreamReader) readSeriesRecord(offset int) ([]byte, error) {
 	decbuf := s.factory.NewRawDecbuf(context.Background())
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, fmt.Errorf("open series decbuf: %w", err)
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	if decbuf.ResetAt(offset); decbuf.Err() != nil {
 		return nil, fmt.Errorf("go to start of series record: %w", decbuf.Err())

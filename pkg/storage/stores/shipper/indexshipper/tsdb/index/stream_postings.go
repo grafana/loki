@@ -197,10 +197,10 @@ func (p *streamPostings) labelValuesFor(labelName string) ([]string, error) {
 
 	// Unchecked because we already checked CRC32 at startup
 	decbuf := p.factory.NewDecbufAtUnchecked(context.Background(), p.off)
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
-	defer func() { _ = decbuf.Close() }()
 
 	// The sparse table always retains a name's first and last value, so walking
 	// forward from the first entry until the last value turns up covers every
@@ -258,7 +258,7 @@ func (p *streamPostings) labelNames() []string {
 // validates while opening).
 func (p *streamPostings) readPostingsList(postingsOffset uint64) (Postings, error) {
 	decbuf := p.factory.NewDecbufAtChecked(context.Background(), int(postingsOffset), castagnoliTable)
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func streamPostingsOffsetTable(
 	) error,
 ) error {
 	decbuf := factory.NewDecbufAtChecked(ctx, postingsOffsetTableOffset, castagnoliTable)
-	defer func() { _ = decbuf.Close() }()
+	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
 		return err
 	}
