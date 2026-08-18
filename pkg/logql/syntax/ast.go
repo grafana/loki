@@ -1117,6 +1117,14 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	return m
 }
 
+func mustNewNumericLabelFilter(t log.LabelFilterType, name string, lit *LiteralExpr) log.LabelFilterer {
+	v, err := lit.Value()
+	if err != nil {
+		panic(err)
+	}
+	return log.NewNumericLabelFilter(t, name, v)
+}
+
 type UnwrapExpr struct {
 	Identifier string
 	Operation  string
