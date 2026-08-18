@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -249,7 +248,7 @@ func TestObjectClientAdapter_IsRetryableErr_S3Minio(t *testing.T) {
 	}, "test", hedging.Config{}, false, log.NewNopLogger())
 	require.NoError(t, err)
 
-	require.True(t, c.IsRetryableErr(minio.ErrorResponse{Code: aws.ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable}))
-	require.True(t, c.IsRetryableErr(fmt.Errorf("failed to load chunk: %w", minio.ErrorResponse{Code: aws.ErrCodeSlowDown, StatusCode: http.StatusServiceUnavailable})))
+	require.True(t, c.IsRetryableErr(minio.ErrorResponse{Code: "SlowDown", StatusCode: http.StatusServiceUnavailable}))
+	require.True(t, c.IsRetryableErr(fmt.Errorf("failed to load chunk: %w", minio.ErrorResponse{Code: "SlowDown", StatusCode: http.StatusServiceUnavailable})))
 	require.False(t, c.IsRetryableErr(minio.ErrorResponse{Code: minio.NoSuchKey, StatusCode: http.StatusNotFound}))
 }

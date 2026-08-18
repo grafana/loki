@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -93,9 +93,9 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 
 	switch storeType {
 	case GCS:
-		o.isRetryableErr = gcp.IsRetryableErr
+		o.isRetryableErr = gcs.IsRetryableErr
 	case S3:
-		o.isRetryableErr = aws.IsRetryableErr
+		o.isRetryableErr = s3.IsRetryableErr
 	}
 
 	return o, nil
