@@ -80,12 +80,12 @@ func encodeInSections[E any](entries []E, target int, sizeOf func(E) int, emit f
 
 // bloomEntrySize estimates the encoded size of one bloom entry.
 func bloomEntrySize(e BloomEntry) int {
-	return 6*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.BloomFilter) + len(e.StreamIDBitmap)
+	return 5*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.BloomFilter) + len(e.StreamIDBitmap)
 }
 
 // labelEntrySize estimates the encoded size of one label entry.
 func labelEntrySize(e LabelEntry) int {
-	return 6*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
+	return 7*8 + len(e.ObjectPath) + len(e.ColumnName) + len(e.LabelValue) + len(e.StreamIDBitmap)
 }
 
 // trimTrailingZeros returns b with trailing zero bytes removed. Stream-ID

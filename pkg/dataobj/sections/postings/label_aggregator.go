@@ -91,8 +91,8 @@ func (a *labelAggregator) Observe(obs LabelObservation) {
 		}
 		a.entries[key] = entry
 
-		// Track size for new entry: 6 int64 fields + string sizes
-		a.estimatedSize += 6*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
+		// Track size for new entry: 5 int64 fields + 2 uint32 fields encoded as int64 + string sizes
+		a.estimatedSize += 7*8 + len(obs.ObjectPath) + len(obs.ColumnName) + len(obs.LabelValue)
 	}
 
 	// Grow bitmap if needed and set the bit for this stream ID.
