@@ -204,6 +204,7 @@ func (d *Distributor) logPushRequestStreams(
 			// We just log the error and continue, we need the parsed labels to log the policy.
 			// In this case, the lbs will be empty and the policy will be empty.
 			level.Error(logger).Log("msg", "error parsing labels before logging push request", "err", err)
+			continue
 		}
 
 		logValues := []interface{}{
