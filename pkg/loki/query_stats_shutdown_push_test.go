@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestFlushShutdownQueryStats(t *testing.T) {
-	t.Run("returns immediately when URL is empty", func(t *testing.T) {
+	t.Run("returns immediately when URL is empty", func(_ *testing.T) {
 		flushShutdownQueryStats(worker.Config{}, prometheus.DefaultGatherer, log.NewNopLogger())
 	})
 
