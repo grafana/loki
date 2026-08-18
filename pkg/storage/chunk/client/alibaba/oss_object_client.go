@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,12 +36,12 @@ type OssObjectClient struct {
 
 // OssConfig is config for the OSS Chunk Client.
 type OssConfig struct {
-	Bucket               string `yaml:"bucket"`
-	Endpoint             string `yaml:"endpoint"`
-	AccessKeyID          string `yaml:"access_key_id"`
-	SecretAccessKey      string `yaml:"secret_access_key"`
-	ConnectionTimeoutSec int64  `yaml:"conn_timeout_sec"`
-	ReadWriteTimeoutSec  int64  `yaml:"read_write_timeout_sec"`
+	Bucket               string         `yaml:"bucket"`
+	Endpoint             string         `yaml:"endpoint"`
+	AccessKeyID          string         `yaml:"access_key_id"`
+	SecretAccessKey      flagext.Secret `yaml:"secret_access_key"`
+	ConnectionTimeoutSec int64          `yaml:"conn_timeout_sec"`
+	ReadWriteTimeoutSec  int64          `yaml:"read_write_timeout_sec"`
 }
 
 // RegisterFlags registers flags.
@@ -53,7 +54,7 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Bucket, prefix+"oss.bucketname", "", "Name of OSS bucket.")
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
-	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibabacloud Secret Access Key")
+	f.Var(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "alibabacloud Secret Access Key")
 	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
 	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
 }
@@ -67,7 +68,7 @@ func (cfg *OssConfig) Validate() error {
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
 func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
-	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
+	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey.String(), oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
 	if err != nil {
 		return nil, err
 	}
