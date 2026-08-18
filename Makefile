@@ -22,7 +22,7 @@ TTY_TEST           := $(if $(filter true,$(NONINTERACTIVE)),false,[ -t 0 ])
 CI                 ?= false
 
 # Ensure you run `make update-go-version` after changing this
-GO_VERSION         := 1.26.5
+GO_VERSION         := 1.26.6
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
