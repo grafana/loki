@@ -5,8 +5,22 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/pool"
+
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
+
+// postingsListBufferPool holds reusable []byte buffers for streaming postings lists.
+var postingsListBufferPool = pool.New(64, 16<<20, 2, func(sz int) interface{} {
+	return make([]byte, 0, sz)
+})
+
+// getPostingsListBuffer returns a buffer of exactly n bytes.
+// Buffers are returned dirty, so the caller is expected to overwrite any data in the buffer.
+func getPostingsListBuffer(n int) []byte {
+	return postingsListBufferPool.Get(n).([]byte)[:n]
+}
 
 // streamPostings is StreamReader's equivalent of ByteSliceReader's postings.
 //
@@ -268,12 +282,58 @@ func (p *streamPostings) readPostingsList(postingsOffset uint64) (Postings, erro
 		return nil, err
 	}
 
-	buf := make([]byte, 4*n)
+	buf := getPostingsListBuffer(4 * n)
+	// We may be reusing a dirty buffer.
+	// ReadInfo either fills the entire buffer (erasing all accessible stale data) or errors (in which case we abort).
 	decbuf.ReadInto(buf)
 	if err := decbuf.Err(); err != nil {
+		postingsListBufferPool.Put(buf)
 		return nil, err
 	}
-	return NewBigEndianPostings(buf), nil
+	return newPooledBigEndianPostings(buf), nil
+}
+
+// pooledBigEndianPostings wraps BigEndianPostings so the backing []byte
+// buffer is returned to postingsListBufferPool once iteration drains (Next
+// or Seek returns false).
+// Callers that abandon the iterator mid-scan lose the pool benefit for
+// that buffer but are otherwise unaffected — GC still reclaims it.
+type pooledBigEndianPostings struct {
+	BigEndianPostings
+	buf    []byte // the buffer that we will return to the pool
+	pooled bool   // tracks whether we've already returned the buffer to the pool
+}
+
+func newPooledBigEndianPostings(list []byte) *pooledBigEndianPostings {
+	return &pooledBigEndianPostings{
+		BigEndianPostings: BigEndianPostings{list: list},
+		buf:               list,
+		pooled:            true,
+	}
+}
+
+func (p *pooledBigEndianPostings) Next() bool {
+	ok := p.BigEndianPostings.Next()
+	if !ok {
+		p.release()
+	}
+	return ok
+}
+
+func (p *pooledBigEndianPostings) Seek(x storage.SeriesRef) bool {
+	ok := p.BigEndianPostings.Seek(x)
+	if !ok {
+		p.release()
+	}
+	return ok
+}
+
+func (p *pooledBigEndianPostings) release() {
+	if !p.pooled {
+		return
+	}
+	p.pooled = false
+	postingsListBufferPool.Put(p.buf)
 }
 
 // streamPostingsOffsetTable iterates the postings-offset table, running
