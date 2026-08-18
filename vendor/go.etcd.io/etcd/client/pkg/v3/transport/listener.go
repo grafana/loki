@@ -68,7 +68,7 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 		fallthrough
 	case lnOpts.IsTimeout(), lnOpts.IsSocketOpts():
 		// timeout listener with socket options.
-		ln, err := lnOpts.ListenConfig.Listen(context.TODO(), "tcp", addr)
+		ln, err := newKeepAliveListener(&lnOpts.ListenConfig, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +78,7 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 			writeTimeout: lnOpts.writeTimeout,
 		}
 	case lnOpts.IsTimeout():
-		ln, err := net.Listen("tcp", addr)
+		ln, err := newKeepAliveListener(nil, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +88,7 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 			writeTimeout: lnOpts.writeTimeout,
 		}
 	default:
-		ln, err := net.Listen("tcp", addr)
+		ln, err := newKeepAliveListener(nil, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -100,6 +100,19 @@ func newListener(addr, scheme string, opts ...ListenerOption) (net.Listener, err
 		return lnOpts.Listener, nil
 	}
 	return wrapTLS(scheme, lnOpts.tlsInfo, lnOpts.Listener)
+}
+
+func newKeepAliveListener(cfg *net.ListenConfig, addr string) (ln net.Listener, err error) {
+	if cfg != nil {
+		ln, err = cfg.Listen(context.TODO(), "tcp", addr)
+	} else {
+		ln, err = net.Listen("tcp", addr)
+	}
+	if err != nil {
+		return
+	}
+
+	return NewKeepAliveListener(ln, "tcp", nil)
 }
 
 func wrapTLS(scheme string, tlsinfo *TLSInfo, l net.Listener) (net.Listener, error) {
@@ -152,6 +165,14 @@ type TLSInfo struct {
 	// Note that cipher suites are prioritized in the given order.
 	CipherSuites []uint16
 
+	// MinVersion is the minimum TLS version that is acceptable.
+	// If not set, the minimum version is TLS 1.2.
+	MinVersion uint16
+
+	// MaxVersion is the maximum TLS version that is acceptable.
+	// If not set, the default used by Go is selected (see tls.Config.MaxVersion).
+	MaxVersion uint16
+
 	selfCert bool
 
 	// parseFunc exists to simplify testing. Typically, parseFunc
@@ -159,11 +180,22 @@ type TLSInfo struct {
 	parseFunc func([]byte, []byte) (tls.Certificate, error)
 
 	// AllowedCN is a CN which must be provided by a client.
+	//
+	// Deprecated: use AllowedCNs instead.
 	AllowedCN string
 
 	// AllowedHostname is an IP address or hostname that must match the TLS
 	// certificate provided by a client.
+	//
+	// Deprecated: use AllowedHostnames instead.
 	AllowedHostname string
+
+	// AllowedCNs is a list of acceptable CNs which must be provided by a client.
+	AllowedCNs []string
+
+	// AllowedHostnames is a list of acceptable IP addresses or hostnames that must match the
+	// TLS certificate provided by a client.
+	AllowedHostnames []string
 
 	// Logger logs TLS errors.
 	// If nil, all logs are discarded.
@@ -192,7 +224,7 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 		)
 		return
 	}
-	err = fileutil.TouchDirAll(dirpath)
+	err = fileutil.TouchDirAll(lg, dirpath)
 	if err != nil {
 		if info.Logger != nil {
 			info.Logger.Warn(
@@ -326,8 +358,8 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, selfSignedCertVali
 // Previously,
 // 1. Server has non-empty (*tls.Config).Certificates on client hello
 // 2. Server calls (*tls.Config).GetCertificate iff:
-//    - Server's (*tls.Config).Certificates is not empty, or
-//    - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
+//   - Server's (*tls.Config).Certificates is not empty, or
+//   - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
 //
 // When (*tls.Config).Certificates is always populated on initial handshake,
 // client is expected to provide a valid matching SNI to pass the TLS
@@ -365,8 +397,17 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 		}
 	}
 
+	var minVersion uint16
+	if info.MinVersion != 0 {
+		minVersion = info.MinVersion
+	} else {
+		// Default minimum version is TLS 1.2, previous versions are insecure and deprecated.
+		minVersion = tls.VersionTLS12
+	}
+
 	cfg := &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		MinVersion: minVersion,
+		MaxVersion: info.MaxVersion,
 		ServerName: info.ServerName,
 	}
 
@@ -377,17 +418,50 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 	// Client certificates may be verified by either an exact match on the CN,
 	// or a more general check of the CN and SANs.
 	var verifyCertificate func(*x509.Certificate) bool
+
+	if info.AllowedCN != "" && len(info.AllowedCNs) > 0 {
+		return nil, fmt.Errorf("AllowedCN and AllowedCNs are mutually exclusive (cn=%q, cns=%q)", info.AllowedCN, info.AllowedCNs)
+	}
+	if info.AllowedHostname != "" && len(info.AllowedHostnames) > 0 {
+		return nil, fmt.Errorf("AllowedHostname and AllowedHostnames are mutually exclusive (hostname=%q, hostnames=%q)", info.AllowedHostname, info.AllowedHostnames)
+	}
+	if info.AllowedCN != "" && info.AllowedHostname != "" {
+		return nil, fmt.Errorf("AllowedCN and AllowedHostname are mutually exclusive (cn=%q, hostname=%q)", info.AllowedCN, info.AllowedHostname)
+	}
+	if len(info.AllowedCNs) > 0 && len(info.AllowedHostnames) > 0 {
+		return nil, fmt.Errorf("AllowedCNs and AllowedHostnames are mutually exclusive (cns=%q, hostnames=%q)", info.AllowedCNs, info.AllowedHostnames)
+	}
+
 	if info.AllowedCN != "" {
-		if info.AllowedHostname != "" {
-			return nil, fmt.Errorf("AllowedCN and AllowedHostname are mutually exclusive (cn=%q, hostname=%q)", info.AllowedCN, info.AllowedHostname)
-		}
+		info.Logger.Warn("AllowedCN is deprecated, use AllowedCNs instead")
 		verifyCertificate = func(cert *x509.Certificate) bool {
 			return info.AllowedCN == cert.Subject.CommonName
 		}
 	}
 	if info.AllowedHostname != "" {
+		info.Logger.Warn("AllowedHostname is deprecated, use AllowedHostnames instead")
 		verifyCertificate = func(cert *x509.Certificate) bool {
 			return cert.VerifyHostname(info.AllowedHostname) == nil
+		}
+	}
+	if len(info.AllowedCNs) > 0 {
+		verifyCertificate = func(cert *x509.Certificate) bool {
+			for _, allowedCN := range info.AllowedCNs {
+				if allowedCN == cert.Subject.CommonName {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	if len(info.AllowedHostnames) > 0 {
+		verifyCertificate = func(cert *x509.Certificate) bool {
+			for _, allowedHostname := range info.AllowedHostnames {
+				if cert.VerifyHostname(allowedHostname) == nil {
+					return true
+				}
+			}
+			return false
 		}
 	}
 	if verifyCertificate != nil {
@@ -497,11 +571,6 @@ func (info TLSInfo) ServerConfig() (*tls.Config, error) {
 	// "h2" NextProtos is necessary for enabling HTTP2 for go's HTTP server
 	cfg.NextProtos = []string{"h2"}
 
-	// go1.13 enables TLS 1.3 by default
-	// and in TLS 1.3, cipher suites are not configurable
-	// setting Max TLS version to TLS 1.2 for go 1.13
-	cfg.MaxVersion = tls.VersionTLS12
-
 	return cfg, nil
 }
 
@@ -555,11 +624,6 @@ func (info TLSInfo) ClientConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("cert has non empty Common Name (%s): %s", cn, info.CertFile)
 		}
 	}
-
-	// go1.13 enables TLS 1.3 by default
-	// and in TLS 1.3, cipher suites are not configurable
-	// setting Max TLS version to TLS 1.2 for go 1.13
-	cfg.MaxVersion = tls.VersionTLS12
 
 	return cfg, nil
 }
