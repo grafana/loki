@@ -21,7 +21,6 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
@@ -300,12 +299,6 @@ func (r *walRegistry) getTenantRemoteWriteConfig(tenant string, base RemoteWrite
 	}
 
 	return overrides, nil
-}
-
-// createRelabelConfigs converts the util.RelabelConfig into relabel.Config to allow for
-// more control over json/yaml unmarshaling
-func (r *walRegistry) createRelabelConfigs(tenant string) ([]*relabel.Config, error) {
-	return nil, nil
 }
 
 var errNotReady = errors.New("appender not ready")
