@@ -94,24 +94,6 @@ func BuildOptions(ctx context.Context, log logr.Logger, k k8s.Client, stack *lok
 	return baseDomain, tenants, nil
 }
 
-// passthroughCAValidationContext reuses ReasonInvalidPassthroughConfiguration for both
-// the missing and invalid cases: unlike gateway TLS, passthrough currently has only one
-// Reason for "something is wrong with the passthrough config", and reusing it keeps all
-// passthrough CA failures (nil field, missing ConfigMap/Secret, missing key) consistent
-// with each other and distinct from the gateway-TLS-specific Reasons.
-//
-// requeue is true (unlike gatewayTLSValidationContext) because there is no Watch on the
-// passthrough CA ConfigMap/Secret by name: without requeuing, a LokiStack created before
-// its CA reference exists would stay Degraded indefinitely once the CA is created, since
-// nothing would trigger another reconcile. This mirrors the sibling gateway tenant CA/
-// secret lookups in tenant_secrets.go, which requeue for the same class of failure.
-var passthroughCAValidationContext = valueRefFailure{
-	description:   "passthrough gateway configuration",
-	missingReason: lokiv1.ReasonInvalidPassthroughConfiguration,
-	invalidReason: lokiv1.ReasonInvalidPassthroughConfiguration,
-	requeue:       true,
-}
-
 func validatePassthroughCA(ctx context.Context, k k8s.Client, httpEncryption bool, stack *lokiv1.LokiStack) error {
 	if !httpEncryption {
 		// TODO(JoaoBraveCoding): Discuss with @xperimental if this makes sense or if we should always require

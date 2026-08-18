@@ -23,21 +23,28 @@ const (
 // valueRefFailure describes which part of the LokiStack spec a ConfigMap/Secret
 // reference validation failure came from, both for the human-readable error
 // message (description) and the machine-facing Condition Reason (missingReason,
-// invalidReason). requeue controls whether the reconciler should keep retrying
-// (via controller-runtime's backoff) while the referenced object doesn't exist yet,
-// since there is no explicit Watch on these user-provided ConfigMaps/Secrets by name.
+// invalidReason).
 type valueRefFailure struct {
 	description   string
 	missingReason lokiv1.LokiStackConditionReason
 	invalidReason lokiv1.LokiStackConditionReason
-	requeue       bool
 }
 
 var gatewayTLSValidationContext = valueRefFailure{
 	description:   "gateway TLS configuration",
 	missingReason: lokiv1.ReasonMissingGatewayTLSConfig,
 	invalidReason: lokiv1.ReasonInvalidGatewayTLSConfig,
-	requeue:       false,
+}
+
+// passthroughCAValidationContext reuses ReasonInvalidPassthroughConfiguration for both
+// the missing and invalid cases: unlike gateway TLS, passthrough currently has only one
+// Reason for "something is wrong with the passthrough config", and reusing it keeps all
+// passthrough CA failures (nil field, missing ConfigMap/Secret, missing key) consistent
+// with each other and distinct from the gateway-TLS-specific Reasons.
+var passthroughCAValidationContext = valueRefFailure{
+	description:   "passthrough gateway configuration",
+	missingReason: lokiv1.ReasonMissingPassthroughConfiguration,
+	invalidReason: lokiv1.ReasonInvalidPassthroughConfiguration,
 }
 
 func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) error {
@@ -78,12 +85,12 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 // validateValueRef checks that the ConfigMap or Secret referenced by ref exists and
 // contains the referenced key. vctx describes which part of the LokiStack spec the
 // reference came from, both for the error message text and the Condition Reason.
-func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vctx valueRefFailure, ref *lokiv1.ValueReference) error {
+func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, ref *lokiv1.ValueReference) error {
 	if ref.ConfigMapName != "" {
-		return validateConfigRef(ctx, k, fieldName, namespace, vctx, ref.ConfigMapName, ref.Key)
+		return validateConfigRef(ctx, k, fieldName, namespace, vRefFailure, ref.ConfigMapName, ref.Key)
 	}
 	if ref.SecretName != "" {
-		return validateSecretRef(ctx, k, fieldName, namespace, vctx, ref.SecretName, ref.Key)
+		return validateSecretRef(ctx, k, fieldName, namespace, vRefFailure, ref.SecretName, ref.Key)
 	}
 
 	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
@@ -98,7 +105,7 @@ func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 			return &status.DegradedError{
 				Message: fmt.Sprintf("Missing configmap for field %q in %s: %s", fieldName, vctx.description, name),
 				Reason:  vctx.missingReason,
-				Requeue: vctx.requeue,
+				Requeue: true,
 			}
 		}
 		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field %q in %s", fieldName, vctx.description), "key", objKey.String())
@@ -108,7 +115,7 @@ func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid configmap %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
 			Reason:  vctx.invalidReason,
-			Requeue: vctx.requeue,
+			Requeue: false,
 		}
 	}
 
@@ -124,7 +131,7 @@ func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 			return &status.DegradedError{
 				Message: fmt.Sprintf("Missing secret for field %q in %s: %s", fieldName, vctx.description, name),
 				Reason:  vctx.missingReason,
-				Requeue: vctx.requeue,
+				Requeue: true,
 			}
 		}
 		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field %q in %s", fieldName, vctx.description), "key", objKey.String())
@@ -134,7 +141,7 @@ func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 		return &status.DegradedError{
 			Message: fmt.Sprintf("Invalid secret %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
 			Reason:  vctx.invalidReason,
-			Requeue: vctx.requeue,
+			Requeue: false,
 		}
 	}
 
