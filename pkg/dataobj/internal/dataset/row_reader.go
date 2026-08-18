@@ -578,9 +578,9 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.Reset(r.opts.Dataset)
 	}
 
-	r.dl.targetSize = defaultTargetDownloadedBytes
+	r.dl.targetCompressedBytes = defaultTargetDownloadedBytes
 	if r.opts.PrefetchAllOnOpen {
-		r.dl.targetSize = 0
+		r.dl.targetCompressedBytes = 0
 	}
 
 	mask := bitmask.New(len(r.opts.Columns))

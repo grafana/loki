@@ -46,11 +46,11 @@ func Test_RowReader_LazyDownloadTarget(t *testing.T) {
 	defer r.Close()
 
 	require.NoError(t, r.Open(t.Context()))
-	require.Equal(t, defaultTargetDownloadedBytes, r.dl.targetSize)
+	require.Equal(t, defaultTargetDownloadedBytes, r.dl.targetCompressedBytes)
 
 	// Force the target below a single page so only P1 pages for the current
 	// read range are downloaded.
-	r.dl.targetSize = 1
+	r.dl.targetCompressedBytes = 1
 
 	n, err := r.Read(t.Context(), make([]Row, 1))
 	require.NoError(t, err)

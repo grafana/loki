@@ -97,11 +97,11 @@ type rowReaderDownloader struct {
 	readRange rangeset.Range // Current range being read.
 	rangeMask rangeset.Set   // Inverse of dsetRanges: ranges to _exclude_ from download.
 
-	// targetSize is the target number of compressed page bytes held in-memory. 0 means unlimited.
+	// targetCompressedBytes is the target number of compressed page bytes held in-memory. 0 means unlimited.
 	// P1 pages are always downloaded even if they exceed the target.
 	// It can be used to efficiently read pages from object storage in batches
 	// without downloading an entire section at once.
-	targetSize int
+	targetCompressedBytes int
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
@@ -366,11 +366,11 @@ func (dl *rowReaderDownloader) buildDownloadBatch(ctx context.Context, requestor
 }
 
 func (dl *rowReaderDownloader) targetReached(batchSize int) bool {
-	return dl.targetSize > 0 && batchSize >= dl.targetSize
+	return dl.targetCompressedBytes > 0 && batchSize >= dl.targetCompressedBytes
 }
 
 func (dl *rowReaderDownloader) wouldExceedTarget(batchSize, pageSize int) bool {
-	return dl.targetSize > 0 && batchSize+pageSize > dl.targetSize
+	return dl.targetCompressedBytes > 0 && batchSize+pageSize > dl.targetCompressedBytes
 }
 
 // iterP1Pages returns an iterator over P1 pages in round-robin column order,
