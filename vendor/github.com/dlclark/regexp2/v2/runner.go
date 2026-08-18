@@ -2071,9 +2071,7 @@ func (r *Runner) tidyMatch(quick bool) *Match {
 		m.textpos = r.Runtextpos
 		if m.matchcount[0] > 0 {
 			interval := m.matches[0]
-			// bytes indices aren't used so just use fast path
-			m.RuneIndex = interval[0]
-			m.RuneLength = interval[1]
+			setCaptureFields(&m.Capture, interval[0], interval[1])
 		}
 		return m
 	}
@@ -2243,36 +2241,6 @@ func (r *Runner) initTrackCount() {
 	if r.code != nil {
 		r.runtrackcount = r.code.TrackCount
 	}
-}
-
-// decodeString converts s to []rune using a shared size-classed buffer pool when
-// allowed by the regexp optimization settings. Pooled slices must be returned
-// after the runner is done with them.
-func (r *Runner) decodeString(s string) ([]rune, *[]rune) {
-	buf, pooled := pooledRuneBuffers.get(len(s), r.re.optimizations.MaxCachedRuneBufferLength)
-	n := 0
-	for _, ch := range s {
-		buf[n] = ch
-		n++
-	}
-	return buf[:n], pooled
-}
-
-func (r *Runner) decodeStringWithStart(s string, startAt int) (runes []rune, runeStart int, pooled *[]rune) {
-	buf, pooled := pooledRuneBuffers.get(len(s), r.re.optimizations.MaxCachedRuneBufferLength)
-	n := 0
-	runeStart = -1
-	for strIdx, ch := range s {
-		if startAt >= 0 && strIdx == startAt {
-			runeStart = n
-		}
-		buf[n] = ch
-		n++
-	}
-	if startAt >= 0 && startAt == len(s) {
-		runeStart = n
-	}
-	return buf[:n], runeStart, pooled
 }
 
 // getRunner returns a runner to use for matching re.
