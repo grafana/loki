@@ -134,13 +134,13 @@ type readQuery struct {
 // each object's streams to compute fingerprints and apply the shard filter, and analyses the query
 // expression to decide the column projection and which metadata filters to push down.
 type dataObjReadPlanner struct {
-	ms                       metastore.Metastore
+	resolver                 dataObjSectionsResolver
 	cache                    *dataObjCache
 	shardBucketFilterEnabled bool
 }
 
-func newDataObjReadPlanner(ms metastore.Metastore, cache *dataObjCache, shardBucketFilterEnabled bool) *dataObjReadPlanner {
-	return &dataObjReadPlanner{ms: ms, cache: cache, shardBucketFilterEnabled: shardBucketFilterEnabled}
+func newDataObjReadPlanner(resolver dataObjSectionsResolver, cache *dataObjCache, shardBucketFilterEnabled bool) *dataObjReadPlanner {
+	return &dataObjReadPlanner{resolver: resolver, cache: cache, shardBucketFilterEnabled: shardBucketFilterEnabled}
 }
 
 // plan resolves the query's sections and streams the resulting read tasks through a
@@ -156,10 +156,10 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 		defer close(it.done)
 		defer close(ch)
 
-		// The metastore self-scopes its object-storage reads under a "metastore.Sections" region; the
+		// The resolver self-scopes its object-storage reads (metastore) or its index-gateway calls; the
 		// streams reads (and the object-open head prefetch they trigger) get their own region here, so
 		// each phase's fetched bytes are attributed to the right component.
-		resp, err := p.ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: matchers})
+		sections, err := p.resolver.resolveSections(ctx, start, end, matchers)
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
 			return
@@ -173,7 +173,7 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 		}
 
 		streamsCtx, _ := xcap.StartRegion(ctx, dataObjComponentStreamsReader)
-		if err := p.planObjectsRead(streamsCtx, resp.Sections, query, ch); err != nil {
+		if err := p.planObjectsRead(streamsCtx, sections, query, ch); err != nil {
 			it.setErr(err)
 		}
 	}()

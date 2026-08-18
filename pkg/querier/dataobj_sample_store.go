@@ -32,7 +32,7 @@ type dataObjSampleStore struct {
 	Store // chunk store; delegate everything except SelectSamples
 
 	bucket                   objstore.Bucket
-	ms                       metastore.Metastore
+	resolver                 dataObjSectionsResolver
 	shardBucketFilterEnabled bool
 	logger                   log.Logger
 	metrics                  *dataObjMetrics
@@ -45,11 +45,14 @@ type dataObjSampleStore struct {
 //
 // When shardBucketFilterEnabled is true, a sharded query prunes streams by their __shard_bucket__ column
 // before decoding labels, falling back to the fingerprint filter for objects that lack the column.
-func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer) Store {
+//
+// When sectionsClient is non-nil, sections are resolved by the index-gateway (per 12h window, with the
+// metastore as fallback) instead of locally; otherwise resolution goes straight to the metastore.
+func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, sectionsClient DataObjSectionsGatewayClient, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer) Store {
 	return &dataObjSampleStore{
 		Store:                    chunkStore,
 		bucket:                   bucket,
-		ms:                       ms,
+		resolver:                 newDataObjSectionsResolver(ms, sectionsClient, reg, logger),
 		shardBucketFilterEnabled: shardBucketFilterEnabled,
 		logger:                   logger,
 		metrics:                  newDataObjMetrics(reg),
@@ -102,7 +105,7 @@ func (s *dataObjSampleStore) SelectSamples(ctx context.Context, req logql.Select
 	// One capture spans the whole query, so every object-storage read is accounted and attributed to the
 	// component that made it.
 	captureCtx, _ := xcap.NewCapture(ctx, nil)
-	tasks := newDataObjReadPlanner(s.ms, cache, s.shardBucketFilterEnabled).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
+	tasks := newDataObjReadPlanner(s.resolver, cache, s.shardBucketFilterEnabled).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
 
 	logsCtx, _ := xcap.StartRegion(captureCtx, logs.RegionRead)
 	reader := newDataObjLogReader(logsCtx, cache, tasks, defaultMaxConcurrency, defaultReadBatchSize, s.metrics)

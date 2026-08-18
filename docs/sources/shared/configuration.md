@@ -2577,6 +2577,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.label-results-cache`
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
+- `index-gateway.dataobject-sections.cache`
 - `query-engine.results-cache`
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
@@ -4039,6 +4040,18 @@ ring:
   # Enable using a IPv6 instance address.
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
+
+dataobject_sections:
+  # Enable the data-object section resolution API (ResolveDataObjectSections) on
+  # the index-gateway. Requires data-object storage to be configured.
+  # CLI flag: -index-gateway.dataobject-sections.enabled
+  [enabled: <boolean> | default = false]
+
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
+  # The CLI flags prefix for this block configuration is:
+  # index-gateway.dataobject-sections.cache
+  [cache: <cache_config>]
 ```
 
 ### ingester
@@ -5588,6 +5601,14 @@ engine:
 # data-object reader is enabled.
 # CLI flag: -querier.dataobjects-shard-bucket-filtering-enabled
 [dataobjects_shard_bucket_filtering_enabled: <boolean> | default = false]
+
+# When true, the querier resolves data-object sections through the index-gateway
+# (per 12h window) instead of locally, removing the per-shard resolution
+# redundancy. Falls back to local resolution when the gateway is unavailable.
+# Requires the index-gateway to have
+# -index-gateway.dataobject-sections.enabled=true.
+# CLI flag: -querier.dataobjects-section-resolution-via-index-gateway-enabled
+[dataobjects_section_resolution_via_index_gateway_enabled: <boolean> | default = false]
 ```
 
 ### query_range
@@ -7521,6 +7542,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `frontend.series-results-cache.memcached`
 - `frontend.tail-tls-config`
 - `frontend.volume-results-cache.memcached`
+- `index-gateway.dataobject-sections.cache.memcached`
 - `index-gateway.ring.etcd`
 - `ingest-limits-frontend-client`
 - `ingest-limits-frontend.etcd`

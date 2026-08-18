@@ -575,7 +575,22 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		querierBucket, querierMetastore = store, ms
 	}
 
-	querierImpl, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, querierBucket, querierMetastore, prometheus.DefaultRegisterer)
+	// When enabled, resolve data-object sections through the index-gateway instead of locally.
+	var (
+		dataObjSectionsClient querier.DataObjSectionsGatewayClient
+		dataObjSectionsGWStop func()
+	)
+	if dataObjectsReader && t.Cfg.Querier.DataObjectsSectionResolutionViaIndexGatewayEnabled {
+		gwReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "dataobj-sections"}, prometheus.DefaultRegisterer)
+		gwClient, err := indexgateway.NewGatewayClient(t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig, gwReg, t.Overrides, logger, t.Cfg.MetricsNamespace)
+		if err != nil {
+			return nil, err
+		}
+		dataObjSectionsClient = gwClient
+		dataObjSectionsGWStop = gwClient.Stop
+	}
+
+	querierImpl, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, querierBucket, querierMetastore, dataObjSectionsClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -756,6 +771,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if svc != nil {
 		svc.AddListener(deleteRequestsStoreListener(deleteStore))
+		if dataObjSectionsGWStop != nil {
+			svc.AddListener(newStopListener(dataObjSectionsGWStop))
+		}
 	}
 	return svc, nil
 }
@@ -1921,6 +1939,17 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
+	// Inject the data-object metastore into the index-gateway config so NewIndexGateway can build the
+	// section resolver itself. Building the metastore needs a bucket, which only the module wiring can
+	// construct, so we do it here and hand over the ready metastore.
+	if t.Cfg.IndexGateway.DataObjectSections.Enabled {
+		bucket, err := t.getDataObjBucket("index-gateway")
+		if err != nil {
+			return nil, err
+		}
+		t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
+	}
+
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, nil, bloomQuerier)
 	if err != nil {
 		return nil, err
@@ -2583,7 +2612,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, nil, nil)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

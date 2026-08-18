@@ -1173,7 +1173,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, iq, limits, dg, log.NewNopLogger(), nil, nil, nil)
+	return New(cfg, store, iq, limits, dg, log.NewNopLogger(), nil, nil, nil, nil)
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {

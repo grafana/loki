@@ -72,6 +72,11 @@ type Config struct {
 	// data-object reader is enabled.
 	DataObjectsShardBucketFilteringEnabled bool `yaml:"dataobjects_shard_bucket_filtering_enabled" category:"experimental"`
 
+	// DataObjectsSectionResolutionViaIndexGatewayEnabled resolves data-object sections through the
+	// index-gateway (per 12h window) instead of locally in the querier, removing the per-shard
+	// resolution redundancy. Falls back to local resolution when the gateway is unavailable.
+	DataObjectsSectionResolutionViaIndexGatewayEnabled bool `yaml:"dataobjects_section_resolution_via_index_gateway_enabled" category:"experimental"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 
@@ -100,6 +105,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 	f.BoolVar(&cfg.DataObjectsShardBucketFilteringEnabled, prefix+"dataobjects-shard-bucket-filtering-enabled", false, "When true, sharded stream-first metric queries prune data-object streams by their shard bucket before decoding labels. Has no effect unless the data-object reader is enabled.")
+	f.BoolVar(&cfg.DataObjectsSectionResolutionViaIndexGatewayEnabled, prefix+"dataobjects-section-resolution-via-index-gateway-enabled", false, "When true, the querier resolves data-object sections through the index-gateway (per 12h window) instead of locally, removing the per-shard resolution redundancy. Falls back to local resolution when the gateway is unavailable. Requires the index-gateway to have -index-gateway.dataobject-sections.enabled=true.")
 }
 
 // Validate validates the config.
@@ -160,7 +166,7 @@ type SingleTenantQuerier struct {
 // New makes a new Querier. When dataObjBucket and dataObjMetastore are both non-nil, eligible
 // stream-first metric queries read the data-object-available slice from data objects; pass nil for
 // both to disable that (the default).
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, dataObjSectionsClient DataObjSectionsGatewayClient, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -171,7 +177,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 	}
 
 	if dataObjBucket != nil && dataObjMetastore != nil {
-		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg)
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg)
 	}
 
 	return q, nil

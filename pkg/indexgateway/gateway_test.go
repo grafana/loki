@@ -53,6 +53,16 @@ func TestVolume(t *testing.T) {
 	}}, vol)
 }
 
+func TestNewIndexGateway_DataObjectSectionsEnabledWithoutMetastore(t *testing.T) {
+	// Enabling the feature without an injected metastore is a wiring bug: it must fail startup loudly
+	// rather than silently answer every RPC with Unimplemented and make queriers fall back.
+	_, err := NewIndexGateway(
+		Config{DataObjectSections: DataObjectSectionsConfig{Enabled: true}},
+		mockLimits{}, util_log.Logger, nil, newIngesterQuerierMock(), nil, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no metastore was injected")
+}
+
 type indexQuerierMock struct {
 	IndexQuerier
 	util_test.ExtendedMock

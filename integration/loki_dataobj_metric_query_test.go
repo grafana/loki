@@ -79,10 +79,18 @@ func TestMetricQueryFromDataObjects(t *testing.T) {
 		"-ingester.partition-ring.store=inmemory",
 	}
 
-	// Batch 1: compactor + index-gateway (the querier reads flushed chunks through the gateway).
+	// Batch 1: compactor + index-gateway (the querier reads flushed chunks through the gateway, and
+	// resolves data-object sections through it — the section-resolution feature is enabled here, with
+	// the same flat data-object store layout the querier uses).
 	var (
 		tCompactor    = clu.AddComponent("compactor", "-target=compactor", "-compactor.compaction-interval=1h")
-		tIndexGateway = clu.AddComponent("index-gateway", "-target=index-gateway")
+		tIndexGateway = clu.AddComponent("index-gateway",
+			"-target=index-gateway",
+			"-index-gateway.dataobject-sections.enabled=true",
+			"-dataobj-storage-bucket-prefix=",
+			"-dataobj-metastore.index-storage-prefix=",
+			"-dataobj-metastore.read-postings-sections=true",
+		)
 	)
 	require.NoError(t, clu.Run())
 
@@ -130,6 +138,7 @@ func TestMetricQueryFromDataObjects(t *testing.T) {
 			"-querier.scheduler-address=" + tScheduler.GRPCURL(),
 			"-common.compactor-address=" + tCompactor.HTTPURL(),
 			"-tsdb.shipper.index-gateway-client.server-address=" + tIndexGateway.GRPCURL(),
+			"-querier.dataobjects-section-resolution-via-index-gateway-enabled=true", // resolve sections via the index-gateway above
 		}, dataObjFlags...)...)
 		tFrontend = clu.AddComponent("query-frontend",
 			"-target=query-frontend",
@@ -295,6 +304,24 @@ func TestMetricQueryFromDataObjects(t *testing.T) {
 		require.NoError(t, err, "parsing querier metrics")
 		require.Positivef(t, total, "metric %s must be exported and positive after data-object queries", name)
 	}
+
+	// The section resolution ran on the index-gateway, not locally. The gateway's resolve-duration
+	// histogram must show successful resolutions and no failures.
+	indexGatewayMetrics, err := cliIndexGateway.Metrics()
+	require.NoError(t, err)
+	const gwResolveMetric = "loki_index_gateway_dataobj_sections_resolve_duration_seconds"
+	resolved, err := histogramSampleCountForOutcome(indexGatewayMetrics, gwResolveMetric, "success")
+	require.NoError(t, err, "parsing index-gateway metrics")
+	require.Positive(t, resolved, "the index-gateway should have received and successfully resolved section requests")
+	failed, err := histogramSampleCountForOutcome(indexGatewayMetrics, gwResolveMetric, "error")
+	require.NoError(t, err, "parsing index-gateway metrics")
+	require.Zero(t, failed, "no section resolution on the index-gateway should have failed")
+
+	// The querier's section-resolver client tracked no error outcome (it resolved through the gateway
+	// and never had to record a failed resolution).
+	querierResolveErrors, err := histogramSampleCountForOutcome(querierMetrics, "loki_querier_dataobj_sections_resolve_duration_seconds", "error")
+	require.NoError(t, err, "parsing querier metrics")
+	require.Zero(t, querierResolveErrors, "the querier section resolver should not have recorded any error outcome")
 }
 
 // buildDataObjectsInStore builds one logs data object holding every tenant's streams, indexes it, and

@@ -65,7 +65,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 		chunk := &recordingSampleStore{}
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, nil) // empty: a real metastore with no objects to resolve
-		store := NewDataObjSampleStore(chunk, bucket, ms, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(chunk, bucket, ms, nil, false, log.NewNopLogger(), nil)
 
 		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start: time.Unix(0, 0),
@@ -99,7 +99,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -228,7 +228,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"} | trace_id="target"[1h])`)
 		require.NoError(t, err)
@@ -301,7 +301,7 @@ func TestDataObjSampleIterator_RecordsAreStreamClustered(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, groups)
-	store := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
+	store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[24h])`)
 	require.NoError(t, err)
@@ -504,8 +504,8 @@ func TestDataObjSampleStore_ShardBucketFiltering(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-	storeOff := NewDataObjSampleStore(nil, bucket, ms, false, log.NewNopLogger(), nil)
-	storeOn := NewDataObjSampleStore(nil, bucket, ms, true, log.NewNopLogger(), nil)
+	storeOff := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
+	storeOn := NewDataObjSampleStore(nil, bucket, ms, nil, true, log.NewNopLogger(), nil)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({job="shardtest"}[1h])`)
 	require.NoError(t, err)

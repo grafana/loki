@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +22,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 
@@ -58,6 +61,43 @@ type mockGatewayConn struct {
 	logproto.IndexGatewayClient
 	grpc_health_v1.HealthClient
 	returnErrors bool
+
+	// Per-address behavior for ResolveDataObjectSections routing tests.
+	addr        string
+	resolveRec  *resolveRecorder
+	resolveErr  error
+	resolveResp *logproto.ResolveDataObjectSectionsResponse
+}
+
+// resolveRecorder records, in call order, the gateway addresses ResolveDataObjectSections reached.
+type resolveRecorder struct {
+	mu    sync.Mutex
+	addrs []string
+}
+
+func (r *resolveRecorder) record(addr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.addrs = append(r.addrs, addr)
+}
+
+func (r *resolveRecorder) recorded() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.addrs...)
+}
+
+func (m *mockGatewayConn) ResolveDataObjectSections(_ context.Context, _ *logproto.ResolveDataObjectSectionsRequest, _ ...grpc.CallOption) (*logproto.ResolveDataObjectSectionsResponse, error) {
+	if m.resolveRec != nil {
+		m.resolveRec.record(m.addr)
+	}
+	if m.resolveErr != nil {
+		return nil, m.resolveErr
+	}
+	if m.resolveResp != nil {
+		return m.resolveResp, nil
+	}
+	return &logproto.ResolveDataObjectSectionsResponse{}, nil
 }
 
 func (m *mockGatewayConn) GetChunkRef(context.Context, *logproto.GetChunkRefRequest, ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
@@ -644,5 +684,135 @@ func Test_addressesForQueryEndTime(t *testing.T) {
 				require.Equal(t, tt.want, got)
 			})
 		}
+	})
+}
+
+type resolveBehavior struct {
+	err  error
+	resp *logproto.ResolveDataObjectSectionsResponse
+}
+
+// newResolveTestClient builds a SimpleMode GatewayClient whose pool returns a per-address mock conn.
+// Capacity sharding is disabled, so poolDoConsistent walks the full jump-hash-ordered address set.
+func newResolveTestClient(t *testing.T, addrs []string, rec *resolveRecorder, behavior map[string]resolveBehavior) *GatewayClient {
+	t.Helper()
+	logger := log.NewNopLogger()
+	o, _ := validation.NewOverrides(validation.Limits{}, nil)
+	client, err := NewGatewayClient(ClientConfig{Mode: "simple", Address: "1.1.1.1"}, prometheus.NewRegistry(), o, logger, constants.Loki)
+	require.NoError(t, err)
+	t.Cleanup(client.Stop)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), client.pool))
+	client.dnsProvider = newMockDNSProvider(addrs)
+	client.limits = mockLimits{maxCapacity: 1.0} // no capacity sharding: use the full ordered set
+
+	pool := dskitclient.NewPool(
+		"test",
+		dskitclient.PoolConfig{CheckInterval: time.Hour},
+		func() ([]string, error) { return addrs, nil },
+		dskitclient.PoolAddrFunc(func(addr string) (dskitclient.PoolClient, error) {
+			b := behavior[addr]
+			return &mockGatewayConn{addr: addr, resolveRec: rec, resolveErr: b.err, resolveResp: b.resp}, nil
+		}),
+		nil, logger,
+	)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), pool))
+	client.pool = pool
+	return client
+}
+
+func TestGatewayClient_ResolveDataObjectSections(t *testing.T) {
+	addrs := []string{"0.0.0.0", "1.1.1.1", "2.2.2.2", "3.3.3.3"}
+	const tenant = "tenant-1"
+	req := &logproto.ResolveDataObjectSectionsRequest{From: 12345}
+	order := consistentAddrsOrder(tenant, uint64(req.From), addrs)
+	primary, second := order[0], order[1]
+	ctx := user.InjectOrgID(context.Background(), tenant)
+
+	t.Run("tries only the primary on success", func(t *testing.T) {
+		rec := &resolveRecorder{}
+		client := newResolveTestClient(t, addrs, rec, nil)
+		_, err := client.ResolveDataObjectSections(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []string{primary}, rec.recorded())
+	})
+
+	t.Run("fails over to the next gateway on a transient error", func(t *testing.T) {
+		rec := &resolveRecorder{}
+		want := &logproto.ResolveDataObjectSectionsResponse{Objects: []logproto.ResolvedDataObject{{ObjectPath: "obj"}}}
+		client := newResolveTestClient(t, addrs, rec, map[string]resolveBehavior{
+			primary: {err: errors.New("transient")},
+			second:  {resp: want},
+		})
+		got, err := client.ResolveDataObjectSections(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []string{primary, second}, rec.recorded())
+		require.True(t, want.Equal(got))
+	})
+
+	t.Run("does not fail over on Unimplemented", func(t *testing.T) {
+		rec := &resolveRecorder{}
+		client := newResolveTestClient(t, addrs, rec, map[string]resolveBehavior{
+			primary: {err: status.Error(codes.Unimplemented, "disabled")},
+		})
+		_, err := client.ResolveDataObjectSections(ctx, req)
+		require.Equal(t, codes.Unimplemented, status.Code(err))
+		require.Equal(t, []string{primary}, rec.recorded())
+	})
+
+	t.Run("does not fail over on InvalidArgument", func(t *testing.T) {
+		rec := &resolveRecorder{}
+		client := newResolveTestClient(t, addrs, rec, map[string]resolveBehavior{
+			primary: {err: status.Error(codes.InvalidArgument, "unaligned")},
+		})
+		_, err := client.ResolveDataObjectSections(ctx, req)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		require.Equal(t, []string{primary}, rec.recorded())
+	})
+
+	t.Run("does not fail over once the context is cancelled", func(t *testing.T) {
+		rec := &resolveRecorder{}
+		client := newResolveTestClient(t, addrs, rec, map[string]resolveBehavior{
+			primary: {err: context.Canceled},
+			second:  {resp: &logproto.ResolveDataObjectSectionsResponse{}},
+		})
+		cctx, cancel := context.WithCancel(ctx)
+		cancel()
+		_, err := client.ResolveDataObjectSections(cctx, req)
+		require.Error(t, err)
+		require.Equal(t, []string{primary}, rec.recorded()) // did not retry against `second`
+	})
+}
+
+func TestConsistentAddrsOrder(t *testing.T) {
+	addrs := []string{"c", "a", "b", "d"}
+
+	t.Run("deterministic and permutation", func(t *testing.T) {
+		got := consistentAddrsOrder("tenant", 100, addrs)
+		require.Equal(t, got, consistentAddrsOrder("tenant", 100, addrs))
+		require.ElementsMatch(t, addrs, got) // every address present exactly once
+	})
+
+	t.Run("input order does not matter", func(t *testing.T) {
+		require.Equal(t,
+			consistentAddrsOrder("tenant", 100, []string{"a", "b", "c", "d"}),
+			consistentAddrsOrder("tenant", 100, []string{"d", "c", "b", "a"}),
+		)
+	})
+
+	t.Run("same routingKey keeps the same primary, different keys can differ", func(t *testing.T) {
+		p1 := consistentAddrsOrder("tenant", 100, addrs)[0]
+		require.Equal(t, p1, consistentAddrsOrder("tenant", 100, addrs)[0])
+
+		// Across many windows the primary is not pinned to a single gateway.
+		seen := map[string]struct{}{}
+		for k := uint64(0); k < 64; k++ {
+			seen[consistentAddrsOrder("tenant", k, addrs)[0]] = struct{}{}
+		}
+		require.Greater(t, len(seen), 1, "expected windows to spread across gateways")
+	})
+
+	t.Run("empty and single", func(t *testing.T) {
+		require.Empty(t, consistentAddrsOrder("tenant", 1, nil))
+		require.Equal(t, []string{"only"}, consistentAddrsOrder("tenant", 1, []string{"only"}))
 	})
 }
