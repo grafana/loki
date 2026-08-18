@@ -115,7 +115,6 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				labelBuilder.Reset()
 				if err := decodeRow(section.Columns(), row, &stream, cfg.symbolizer, &labelBuilder, cfg.reuseLabelsBuffer); err != nil {
 					return err
 				}
