@@ -20,7 +20,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
@@ -132,7 +131,7 @@ func TestCongestionControl_S3Throttling_RetriesThenExceeds(t *testing.T) {
 	ctrl := newCongestionControlledS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if isChunkGet(r) {
 			serverGets.Inc()
-			writeS3Error(w, http.StatusServiceUnavailable, aws.ErrCodeSlowDown, "Please reduce your request rate.")
+			writeS3Error(w, http.StatusServiceUnavailable, "SlowDown", "Please reduce your request rate.")
 			return
 		}
 		// Any other minio bookkeeping request (bucket location, etc.).
@@ -156,7 +155,7 @@ func TestCongestionControl_S3Throttling_RecoversAfterRetry(t *testing.T) {
 	ctrl := newCongestionControlledS3(t, func(w http.ResponseWriter, r *http.Request) {
 		if isChunkGet(r) {
 			if serverGets.Inc() <= 2 {
-				writeS3Error(w, http.StatusServiceUnavailable, aws.ErrCodeSlowDown, "Please reduce your request rate.")
+				writeS3Error(w, http.StatusServiceUnavailable, "SlowDown", "Please reduce your request rate.")
 				return
 			}
 			writeS3Object(w, []byte(body))

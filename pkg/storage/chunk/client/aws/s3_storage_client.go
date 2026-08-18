@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	"github.com/minio/minio-go/v7"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	amnet "k8s.io/apimachinery/pkg/util/net"
@@ -46,18 +45,14 @@ const (
 	SignatureVersionV4 = "v4"
 )
 
-// S3 error codes returned by S3-compatible object stores on the wire, surfaced
-// via smithy.APIError.ErrorCode() (AWS SDK) or minio.ErrorResponse.Code
-// (thanos/minio). Neither the AWS SDK nor minio-go export a complete, matching
-// set of these, so we define the ones we care about here.
+// S3 error codes returned by the AWS SDK as smithy.APIError values.
 const (
-	ErrCodeRequestTimeout           = "RequestTimeout"           // 400
-	ErrCodeTooManyRequests          = "TooManyRequests"          // 429
-	ErrCodeTooManyRequestsException = "TooManyRequestsException" // 429
-	ErrCodeInternalError            = "InternalError"            // 500
-	ErrCodeNotImplemented           = "NotImplemented"           // 501
-	ErrCodeServiceUnavailable       = "ServiceUnavailable"       // 503
-	ErrCodeSlowDown                 = "SlowDown"                 // 503
+	errCodeRequestTimeout           = "RequestTimeout"           // 400
+	errCodeTooManyRequestsException = "TooManyRequestsException" // 429
+	errCodeInternalError            = "InternalError"            // 500
+	errCodeNotImplemented           = "NotImplemented"           // 501
+	errCodeServiceUnavailable       = "ServiceUnavailable"       // 503
+	errCodeSlowDown                 = "SlowDown"                 // 503
 )
 
 var (
@@ -668,8 +663,8 @@ func isContextErr(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func IsStorageTimeoutErr(err error) bool {
+// isStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func isStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -698,7 +693,7 @@ func IsStorageTimeoutErr(err error) bool {
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
 		switch apiError.ErrorCode() {
-		case "RequestTimeout":
+		case errCodeRequestTimeout:
 			return true
 		default:
 			return false
@@ -707,54 +702,37 @@ func IsStorageTimeoutErr(err error) bool {
 	return false
 }
 
-// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func IsStorageThrottledErr(err error) bool {
-	// The AWS SDK client returns smithy.APIError.
+// isStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func isStorageThrottledErr(err error) bool {
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
 		return isRetryableS3ErrorCode(apiError.ErrorCode())
 	}
-
-	// When use_thanos_objstore is enabled the S3 client is backed by minio-go,
-	// which returns minio.ErrorResponse rather than smithy.APIError. Without this
-	// branch S3 throttling (e.g. "SlowDown") is treated as non-retryable, so
-	// congestion control never backs off or retries and the throttle is surfaced
-	// immediately as a failed chunk download. Fall back to the HTTP status code
-	// for responses whose Code we don't explicitly enumerate (including an empty
-	// Code): treat 429 and any 5xx as retryable.
-	var merr minio.ErrorResponse
-	if errors.As(err, &merr) {
-		return isRetryableS3ErrorCode(merr.Code) ||
-			merr.StatusCode == http.StatusTooManyRequests ||
-			merr.StatusCode >= http.StatusInternalServerError
-	}
-
 	return false
 }
 
-// isRetryableS3ErrorCode reports whether an S3 error code represents a retryable
-// server-side throttling or transient condition. The codes are shared by the AWS
-// SDK (smithy.APIError) and the minio-go thanos client (minio.ErrorResponse).
+// isRetryableS3ErrorCode reports whether an AWS S3 error code represents a
+// retryable server-side throttling or transient condition.
 func isRetryableS3ErrorCode(code string) bool {
 	switch code {
-	case ErrCodeRequestTimeout,
-		ErrCodeTooManyRequests, ErrCodeTooManyRequestsException,
-		ErrCodeInternalError,
-		ErrCodeNotImplemented,
-		ErrCodeServiceUnavailable,
-		ErrCodeSlowDown:
+	case errCodeRequestTimeout,
+		errCodeTooManyRequestsException,
+		errCodeInternalError,
+		errCodeNotImplemented,
+		errCodeServiceUnavailable,
+		errCodeSlowDown:
 		return true
 	default:
 		return false
 	}
 }
 
-func IsRetryableErr(err error) bool {
-	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+func isRetryableErr(err error) bool {
+	return isStorageTimeoutErr(err) || isStorageThrottledErr(err)
 }
 
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
-	return IsRetryableErr(err)
+	return isRetryableErr(err)
 }
 
 // rewriteKey modifies the object key based on a delimiter
