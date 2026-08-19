@@ -132,8 +132,8 @@ func prepareStreamingRequest(req *http.Request, sessionToken string, dataLen int
 		for k := range req.Trailer {
 			req.Header.Add("X-Amz-Trailer", strings.ToLower(k))
 		}
-		req.TransferEncoding = []string{"aws-chunked"}
 	}
+	setAwsChunkedContentEncoding(req)
 
 	if sessionToken != "" {
 		req.Header.Set("X-Amz-Security-Token", sessionToken)
