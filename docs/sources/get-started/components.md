@@ -226,10 +226,12 @@ slow process.
 
 ### Filesystem support
 
-While ingesters do support writing to the filesystem through BoltDB, this only
-works in single-process mode as [queriers](#querier) need access to the same
-back-end store and BoltDB only allows one process to have a lock on the DB at a
-given time.
+Ingesters can flush chunks to the filesystem when Loki uses TSDB as the index
+store. TSDB ships its index files to object storage, including a filesystem
+object store, so [queriers](#querier) running in a separate process can read
+the same data, as long as every process can reach the same directory. This
+differs from the deprecated, non-shipped BoltDB index store, which only allows
+one process to hold a lock on the database file at a time.
 
 ## Query frontend
 
