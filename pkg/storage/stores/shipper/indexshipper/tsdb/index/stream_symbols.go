@@ -8,6 +8,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
+// Constant taken from thanos https://github.com/thanos-io/thanos/pull/3557.
+// Research has not been done into whether this is the best number for Loki's indexes.
 const labelValueSymbolsCacheSize = 1024
 
 // streamSymbols is StreamReader's equivalent of Symbols.
