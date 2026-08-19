@@ -260,6 +260,7 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeInvalid:          arrow.Null,
 	ColumnTypeKind:             arrow.PrimitiveTypes.Int64,
 	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
+	ColumnTypeShardBuckets:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
 	ColumnTypeColumnName:       arrow.BinaryTypes.String,
 	ColumnTypeLabelValue:       arrow.BinaryTypes.String,
@@ -268,6 +269,8 @@ var columnDatatypes = map[ColumnType]arrow.DataType{
 	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
 	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
 	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
+	ColumnTypeMinShardBucket:   arrow.PrimitiveTypes.Int64,
+	ColumnTypeMaxShardBucket:   arrow.PrimitiveTypes.Int64,
 }
 
 func columnToField(col *Column) arrow.Field {

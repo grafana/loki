@@ -88,6 +88,79 @@ eval instant at 60s count_over_time({app="a"} |= ip("10.0.0.0/8") [1m])
 eval instant at 60s count_over_time({app="a"} |= ip("notanip") [1m])
   expect fail msg: ip: invalid pattern
 
+# ip() line filter with "or" operator.
+clear
+load
+  {app="net"} "src 192.168.1.10 ok" @ 20s [repeat every 20s for 4]
+  {app="net"} "src 10.0.0.9 ok"     @ 25s [repeat every 20s for 2]
+  {app="net"} "src 172.16.5.5 ok"   @ 30s
+  {app="net"} "src 8.8.8.8 ok"      @ 35s
+  {app="txt"} "no ip here"          @ 50s
+  {app="txt"} "special no ip"       @ 55s
+
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 5
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])   # overlapping
+  {app="net"} 3 5 5
+eval range from 60s to 180s step 120s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m]) # non-overlapping
+  {app="net"} 5 _
+# |= a substring or ip range.
+eval instant at 60s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 1 1
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 1 1
+# |= three operands chain: substring at the end.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 5
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 3 5 5
+  {app="txt"} _ 1 1
+# |= three operands chain: substring both at the start and at the end.
+eval instant at 60s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") or "no ip here" [1m])
+  {app="net"} 2
+  {app="txt"} 2
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= "special" or ip("10.0.0.0/8") or "no ip here" [1m])
+  {app="net"} 1 2 2
+  {app="txt"} _ 2 2
+# |= four operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or ip("172.16.0.0/12") or "special" [1m])
+  {app="net"} 6
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} |= ip("192.168.1.0/24") or ip("10.0.0.0/8") or ip("172.16.0.0/12") or "special" [1m])
+  {app="net"} 4 6 6
+  {app="txt"} _ 1 1
+# != two operands.
+eval instant at 60s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 2
+  {app="txt"} 2
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") [1m])
+  {app="net"} 2 2 2
+  {app="txt"} _ 2 2
+# != three operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2
+  {app="txt"} 1
+eval range from 40s to 80s step 20s count_over_time({app=~"net|txt"} != ip("192.168.1.0/24") or ip("10.0.0.0/8") or "special" [1m])
+  {app="net"} 2 2 2
+  {app="txt"} _ 1 1
+# |~ does not support ip(), even when it's included in a or operands chain.
+eval instant at 60s count_over_time({app=~"net|txt"} |~ ip("192.168.1.0/24") or "special" [1m])
+  expect fail msg: ip: invalid operation
+eval instant at 60s count_over_time({app=~"net|txt"} |~ "special" or ip("192.168.1.0/24") [1m])
+  expect fail msg: ip: invalid operation
+# An invalid ip() pattern fails at parse time, with or without or.
+eval instant at 60s count_over_time({app=~"net|txt"} |= ip("") or "special" [1m])
+  expect fail msg: ip: invalid pattern
+
 # or-chained filters: a positive filter keeps a line that matches any operand; a negative filter
 # drops a line that matches any operand. Each operand inherits the match type of the primary filter.
 clear

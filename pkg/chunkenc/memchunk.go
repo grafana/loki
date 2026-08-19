@@ -1347,12 +1347,12 @@ func (hb *headBlock) SampleIterator(
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		stats.AddPostFilterLines(1)
 
 		sample, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
 		if !ok {
 			continue
 		}
+		stats.AddPostFilterLines(1)
 
 		lblStr := sample.Labels.String()
 		s, found := series[lblStr]
@@ -1805,12 +1805,11 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		e.stats.AddPostFilterLines(1)
-
 		sample, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
 		if !ok {
 			continue
 		}
+		e.stats.AddPostFilterLines(1)
 
 		lblString := sample.Labels.String()
 		e.currLabels = sample.Labels

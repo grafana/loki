@@ -18,6 +18,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
+const (
+	// ShardBits is the number of high labels.StableHash(labels) bits that select a stream's shard bucket.
+	// Changing it is a storage-format break, not a tunable: the query side reads it to map shards to
+	// buckets, and the exact fast path trusts stored bucket values without re-verifying them, so a change
+	// would mis-read every object written with the old value.
+	ShardBits = 5
+	// ShardFactor is the number of physical shard buckets, 2^ShardBits.
+	ShardFactor = 1 << ShardBits
+)
+
 // A Stream is an individual stream within a data object.
 type Stream struct {
 	// ID to uniquely represent a stream in a data object. Valid IDs start at 1.
@@ -37,11 +47,16 @@ type Stream struct {
 
 	// Total number of log records in the stream.
 	Rows int
+
+	// ShardBucket is derived from the high bits of labels.StableHash(Labels).
+	// Valid buckets are in [0, ShardFactor).
+	ShardBucket int64
 }
 
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
+	s.ShardBucket = 0
 	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
@@ -151,6 +166,7 @@ func (b *Builder) AppendValue(val Stream) {
 	newStream.Reset()
 
 	newStream.ID = val.ID
+	newStream.ShardBucket = val.ShardBucket
 	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
 	newStream.UncompressedSize = val.UncompressedSize
 	newStream.Labels = val.Labels
@@ -179,18 +195,20 @@ func (b *Builder) EstimatedSize() int {
 	// 4. Assume (conservative) 2x compression ratio of all label values.
 
 	var (
-		idDeltaSize        = streamio.VarintSize(1)
-		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
-		rowDeltaSize       = streamio.VarintSize(500)
+		idDeltaSize          = streamio.VarintSize(1)
+		shardBucketDeltaSize = streamio.VarintSize(1)
+		timestampDeltaSize   = streamio.VarintSize(int64(time.Second))
+		rowDeltaSize         = streamio.VarintSize(500)
 	)
 
 	var sizeEstimate int
 
-	sizeEstimate += len(b.ordered) * idDeltaSize        // ID
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Min timestamp
-	sizeEstimate += len(b.ordered) * timestampDeltaSize // Max timestamp
-	sizeEstimate += len(b.ordered) * rowDeltaSize       // Rows
-	sizeEstimate += b.currentLabelsSize / 2             // All labels (2x compression ratio)
+	sizeEstimate += len(b.ordered) * idDeltaSize          // ID
+	sizeEstimate += len(b.ordered) * shardBucketDeltaSize // Shard bucket
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Min timestamp
+	sizeEstimate += len(b.ordered) * timestampDeltaSize   // Max timestamp
+	sizeEstimate += len(b.ordered) * rowDeltaSize         // Rows
+	sizeEstimate += b.currentLabelsSize / 2               // All labels (2x compression ratio)
 
 	return sizeEstimate
 }
@@ -211,6 +229,13 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 	return b.addStream(hash, streamLabels)
 }
 
+// ShardBucket returns the physical shard bucket for streamLabels.
+// Buckets are 0-based in [0, ShardFactor).
+func ShardBucket(streamLabels labels.Labels) uint32 {
+	fp := labels.StableHash(streamLabels)
+	return uint32(fp >> (64 - ShardBits))
+}
+
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	streamLabels.Range(func(l labels.Label) {
 		b.currentLabelsSize += len(l.Value)
@@ -220,6 +245,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream.Reset()
 	newStream.ID = b.lastID.Add(1)
 	newStream.Labels = streamLabels
+	newStream.ShardBucket = int64(ShardBucket(streamLabels))
 
 	b.lookup[hash] = append(b.lookup[hash], newStream)
 	b.ordered = append(b.ordered, newStream)
@@ -281,6 +307,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
+	shardBucketBuilder, err := numberColumnBuilder(ColumnTypeShardBucket, b.pageSize, b.pageRowCount)
+	if err != nil {
+		return fmt.Errorf("creating shard bucket column: %w", err)
+	}
 	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
@@ -335,6 +365,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	for i, stream := range b.ordered {
 		// Append only fails if the rows are out-of-order, which can't happen here.
 		_ = idBuilder.Append(i, dataset.Int64Value(stream.ID))
+		_ = shardBucketBuilder.Append(i, dataset.Int64Value(stream.ShardBucket))
 		_ = minTimestampBuilder.Append(i, dataset.Int64Value(stream.MinTimestamp.UnixNano()))
 		_ = maxTimestampBuilder.Append(i, dataset.Int64Value(stream.MaxTimestamp.UnixNano()))
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
@@ -377,6 +408,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
+	}
+
+	if err := encodeColumn(enc, ColumnTypeShardBucket, shardBucketBuilder); err != nil {
+		return fmt.Errorf("encoding shard bucket column: %w", err)
 	}
 
 	return nil

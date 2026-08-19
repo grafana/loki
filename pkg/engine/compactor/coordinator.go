@@ -399,10 +399,6 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	// IndexMerge opens each referenced object whole. Until it reads individual
-	// sections, one object may be repeated across task outputs and deduplicated
-	// by a later pass.
-	// TODO(rfratto): Preserve multiple log sort schemas in one IndexMerge output.
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)

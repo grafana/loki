@@ -33,17 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
-var testEncodings = []compression.Codec{
-	compression.None,
-	compression.GZIP,
-	compression.LZ4_64k,
-	compression.LZ4_256k,
-	compression.LZ4_1M,
-	compression.LZ4_4M,
-	compression.Snappy,
-	compression.Flate,
-	compression.Zstd,
-}
+var testEncodings = compression.Codecs()
 
 var (
 	testBlockSize  = 256 * 1024
@@ -799,6 +789,144 @@ func TestChunkStats(t *testing.T) {
 
 	require.Equal(t, int64(expectedSize), s.TotalDecompressedBytes())
 	require.Equal(t, int64(inserted), s.TotalDecompressedLines())
+}
+
+// TestPostFilterLinesCountsMatchingLinesOnly ensures that post_filter_lines counts
+// only the lines a query keeps: for log and metric queries, in the head block and in
+// cut blocks, across every head block format. Counting every line read reports lines
+// scanned, which makes every filter look like it matched everything.
+func TestPostFilterLinesCountsMatchingLinesOnly(t *testing.T) {
+	const (
+		matching = 3
+		total    = 10
+	)
+
+	var (
+		streamLabels = labels.FromStrings("app", "foo")
+		logQuery     = `{app="foo"} |= "keep"`
+		metricQuery  = `count_over_time({app="foo"} |= "keep" [5m])`
+	)
+
+	line := func(i int) string {
+		if i < matching {
+			return "keep me"
+		}
+		return "drop me"
+	}
+
+	// Returns post_filter_lines alongside total_lines, so a subtest can pin the ratio
+	// between lines read and lines kept. The bug made the two equal, which reads as a
+	// filter that matched everything.
+	countLines := func(t *testing.T, drain func(ctx context.Context)) (postFilter, total int64) {
+		t.Helper()
+		statsCtx, ctx := stats.NewContext(context.Background())
+		drain(ctx)
+		res := statsCtx.Result(0, 0, 0)
+		return res.Summary.TotalPostFilterLines, res.Summary.TotalLinesProcessed
+	}
+
+	for _, format := range allPossibleFormats {
+		for _, cutBlock := range []bool{false, true} {
+			name := fmt.Sprintf("%s/chunk=v%d/cut=%v", format.headBlockFmt, format.chunkFormat, cutBlock)
+			t.Run(name, func(t *testing.T) {
+				chk := newMemChunkWithFormat(format.chunkFormat, compression.None, format.headBlockFmt, testBlockSize, testTargetSize)
+				for i := 0; i < total; i++ {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: line(i)})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				// Cutting moves the entries out of the head block, so the block
+				// iterators are exercised instead.
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				logExpr, err := syntax.ParseLogSelector(logQuery, true)
+				require.NoError(t, err)
+				pipeline, err := logExpr.Pipeline()
+				require.NoError(t, err)
+
+				logLines, logTotal := countLines(t, func(ctx context.Context) {
+					it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, total), logproto.FORWARD, pipeline.ForStream(streamLabels))
+					require.NoError(t, err)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				extractor, err := getStreamExtractor(metricQuery, streamLabels)
+				require.NoError(t, err)
+
+				sampleLines, sampleTotal := countLines(t, func(ctx context.Context) {
+					it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, total), extractor)
+					for it.Next() { //nolint:revive
+					}
+					require.NoError(t, it.Err())
+					require.NoError(t, it.Close())
+				})
+
+				assert.Equal(t, int64(matching), logLines, "log query post_filter_lines")
+				assert.Equal(t, int64(matching), sampleLines, "metric query post_filter_lines")
+				assert.Equal(t, int64(total), logTotal, "log query total_lines")
+				assert.Equal(t, int64(total), sampleTotal, "metric query total_lines")
+			})
+		}
+	}
+}
+
+// TestPostFilterLinesCountsLinesThatProducedSamples asserts on which rejections stop a line
+// from counting.
+func TestPostFilterLinesCountsLinesThatProducedSamples(t *testing.T) {
+	lines := []string{
+		`{"latency":"1"}`,
+		`{"latency":"2"}`,
+		`{"other":"3"}`, // parses, but carries no latency label
+		`not json`,      // fails to parse, so the pipeline sets __error__
+	}
+
+	for _, tc := range []struct {
+		query string
+		want  int64
+	}{
+		// Every line reaches the extractor, including the one that failed to parse.
+		// A parse error is not a rejection: the pipeline sets __error__ and keeps
+		// the line, so it counts.
+		{query: `count_over_time({app="foo"} | json [5m])`, want: 4},
+
+		// Only the two lines carrying latency yield a sample. A missing unwrap label
+		// is a rejection, so those lines do not count even though no filter excluded them.
+		{query: `sum_over_time({app="foo"} | json | unwrap latency [5m])`, want: 2},
+	} {
+		for _, cutBlock := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cut=%v", tc.query, cutBlock), func(t *testing.T) {
+				chk := newMemChunkWithFormat(ChunkFormatV4, compression.None, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+				for i, l := range lines {
+					dup, err := chk.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: l})
+					require.False(t, dup)
+					require.NoError(t, err)
+				}
+				if cutBlock {
+					require.NoError(t, chk.cut())
+				}
+
+				extractor, err := getStreamExtractor(tc.query, labels.FromStrings("app", "foo"))
+				require.NoError(t, err)
+
+				statsCtx, ctx := stats.NewContext(context.Background())
+				it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, int64(len(lines))), extractor)
+				samples := 0
+				for it.Next() {
+					samples++
+				}
+				require.NoError(t, it.Err())
+				require.NoError(t, it.Close())
+
+				require.Equal(t, int(tc.want), samples, "samples")
+				require.Equal(t, tc.want, statsCtx.Result(0, 0, 0).Summary.TotalPostFilterLines, "post_filter_lines")
+			})
+		}
+	}
 }
 
 func TestIteratorClose(t *testing.T) {
