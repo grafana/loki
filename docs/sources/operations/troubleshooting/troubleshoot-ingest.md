@@ -774,6 +774,43 @@ The WAL has become corrupted, possibly due to:
 Loki prioritizes availability over complete data recovery. The replication factor provides redundancy if one ingester loses WAL data. Recovered data may be incomplete if corruption is severe.
 {{< /admonition >}}
 
+### Error: WAL replay stopped by memory backpressure
+
+**Error message:**
+
+`WAL replay could not free enough memory to finish, so this ingester is starting with an incomplete WAL`
+
+**Metric:** `loki_ingester_wal_replay_backpressure_failures_total`
+
+**Cause:**
+
+The WAL is intact, but a replay-triggered flush could not bring memory back below `-ingester.wal-replay-memory-ceiling`, so the ingester gave up on the rest of the replay and became active with an incomplete view of its streams. Common reasons a flush stops draining:
+
+- Object storage is slow or unavailable
+- Immediate flush operations keep failing and being re-enqueued
+- `chunk_retain_period` is holding on to freshly flushed chunks
+
+**Resolution:**
+
+Unlike WAL corruption, this requires administrator action.
+
+* **Monitor for backpressure failures**:
+
+   ```promql
+   increase(loki_ingester_wal_replay_backpressure_failures_total[5m]) > 0
+   ```
+
+* **Give the replay more headroom**: raise `-ingester.wal-replay-memory-ceiling`.
+
+* **Unblock flushing**: check object storage availability and latency, and review `chunk_retain_period`.
+
+**Properties:**
+
+- Enforced by: Ingester (on startup)
+- Retryable: N/A (Loki continues starting with an incomplete WAL)
+- HTTP status: N/A (occurs during startup, not request handling)
+- Configurable per tenant: No
+
 ## Network and connectivity errors
 
 These errors occur due to network issues or service unavailability.

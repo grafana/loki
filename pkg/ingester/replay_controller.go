@@ -118,6 +118,23 @@ func (c *replayController) flush() int64 {
 	return c.totalSubtracted.Load() - subtractedBefore
 }
 
+// ReplayBackpressureError is returned by WithBackPressure when a replay-triggered
+// flush can no longer bring the in-memory byte count below the replay memory
+// ceiling. The WAL itself is intact; the ingester simply cannot make room to
+// finish replaying it, so the remedy is to raise ReplayMemoryCeiling or to
+// unblock flushing rather than to investigate WAL corruption.
+type ReplayBackpressureError struct {
+	InUse   int64
+	Ceiling int64
+}
+
+func (e *ReplayBackpressureError) Error() string {
+	return fmt.Sprintf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
+		humanize.Bytes(uint64(e.InUse)),
+		humanize.Bytes(uint64(e.Ceiling)),
+	)
+}
+
 // WithBackPressure is expected to call replayController.Add in the passed function to increase the managed byte count.
 // It will call the function as long as there is expected room before the memory cap and will then flush data intermittently
 // when needed.
@@ -138,10 +155,10 @@ func (c *replayController) WithBackPressure(fn func() error) error {
 		// our own flush legitimately has nothing to do and we should simply exit
 		// the loop rather than report a spurious no-progress error.
 		if c.Flush() == 0 && c.Cur() > ceiling {
-			return fmt.Errorf("WAL replay flush made no progress: %s in use, ceiling %s; cannot recover",
-				humanize.Bytes(uint64(c.currentBytes.Load())),
-				humanize.Bytes(uint64(ceiling)),
-			)
+			return &ReplayBackpressureError{
+				InUse:   c.currentBytes.Load(),
+				Ceiling: int64(ceiling),
+			}
 		}
 	}
 
