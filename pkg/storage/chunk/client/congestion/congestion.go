@@ -11,7 +11,7 @@ func NewController(cfg Config, logger log.Logger, metrics *Metrics) Controller {
 	logger = log.With(logger, "component", "congestion_control")
 
 	return newController(cfg, logger).
-		withRetrier(newRetrier(cfg, logger)).
+		withRetrier(newRetrier(cfg, logger, metrics)).
 		withHedger(newHedger(cfg, logger)).
 		withMetrics(metrics)
 }
@@ -27,11 +27,11 @@ func newController(cfg Config, logger log.Logger) Controller {
 	}
 }
 
-func newRetrier(cfg Config, logger log.Logger) Retrier {
+func newRetrier(cfg Config, logger log.Logger, metrics *Metrics) Retrier {
 	start := strings.ToLower(cfg.Retry.Strategy)
 	switch start {
 	case "limited":
-		return NewLimitedRetrier(cfg).withLogger(logger)
+		return NewLimitedRetrier(cfg, metrics).withLogger(logger)
 	default:
 		level.Warn(logger).Log("msg", "unrecognized retried strategy in config, using noop", "strategy", start)
 		return NewNoopRetrier(cfg).withLogger(logger)
