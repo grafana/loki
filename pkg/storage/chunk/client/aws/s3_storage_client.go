@@ -50,7 +50,6 @@ const (
 	errCodeRequestTimeout           = "RequestTimeout"           // 400
 	errCodeTooManyRequestsException = "TooManyRequestsException" // 429
 	errCodeInternalError            = "InternalError"            // 500
-	errCodeNotImplemented           = "NotImplemented"           // 501
 	errCodeServiceUnavailable       = "ServiceUnavailable"       // 503
 	errCodeSlowDown                 = "SlowDown"                 // 503
 )
@@ -718,7 +717,6 @@ func isRetryableS3ErrorCode(code string) bool {
 	case errCodeRequestTimeout,
 		errCodeTooManyRequestsException,
 		errCodeInternalError,
-		errCodeNotImplemented,
 		errCodeServiceUnavailable,
 		errCodeSlowDown:
 		return true

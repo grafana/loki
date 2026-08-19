@@ -106,11 +106,6 @@ func TestIsRetryableErr(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "IsStorageThrottledErr - 5xx",
-			err:      &smithy.GenericAPIError{Code: errCodeNotImplemented},
-			expected: true,
-		},
-		{
 			name:     "IsStorageTimeoutErr - Request Timeout",
 			err:      &smithy.GenericAPIError{Code: errCodeRequestTimeout},
 			expected: true,

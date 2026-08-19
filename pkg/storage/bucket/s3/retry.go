@@ -17,7 +17,6 @@ const (
 	errCodeTooManyRequests          = "TooManyRequests"
 	errCodeTooManyRequestsException = "TooManyRequestsException"
 	errCodeInternalError            = "InternalError"
-	errCodeNotImplemented           = "NotImplemented"
 	errCodeServiceUnavailable       = "ServiceUnavailable"
 	errCodeSlowDown                 = "SlowDown"
 )
@@ -69,7 +68,6 @@ func isRetryableS3ErrorCode(code string) bool {
 		errCodeTooManyRequests,
 		errCodeTooManyRequestsException,
 		errCodeInternalError,
-		errCodeNotImplemented,
 		errCodeServiceUnavailable,
 		errCodeSlowDown:
 		return true
