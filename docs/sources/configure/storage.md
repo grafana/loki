@@ -130,6 +130,9 @@ This storage type for indexes is deprecated and may be removed in future major v
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
+
+For a more detailed reference on schema configuration, including required values and the recommended settings for new installs, refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
+
 For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
