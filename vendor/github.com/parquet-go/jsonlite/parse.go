@@ -3,7 +3,6 @@ package jsonlite
 import (
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"iter"
 	"strings"
 	"sync"
@@ -123,6 +122,10 @@ func nextToken(s string) (token, rest string, ok bool) {
 type parser struct {
 	values []Value
 	fields []field
+	// tags is the block object hash indexes are bump-allocated from. Unlike
+	// values and fields it is not scratch: the completed objects alias it, so
+	// it is handed off at the end of the parse rather than reused.
+	tags []byte
 	// high-water marks: the largest lengths reached during this parse,
 	// so putParser only clears entries that were actually written.
 	maxValues int
@@ -147,6 +150,10 @@ func putParser(p *parser) {
 	clear(p.fields[:min(p.maxFields, cap(p.fields))])
 	p.values = p.values[:0]
 	p.fields = p.fields[:0]
+	// The tag block is aliased by the objects this parse produced, so it must
+	// be released rather than reused: writing into it again would mutate the
+	// strings those objects already hold.
+	p.tags = nil
 	p.maxValues = 0
 	p.maxFields = 0
 	parserPool.Put(p)
@@ -334,8 +341,14 @@ func parseArray(start, json string, maxDepth int, p *parser) (Value, string, err
 
 // smallObjectFields is the field count at or below which objects skip
 // building the 1-byte hash index; Lookup falls back to a linear key scan,
-// which is faster than hashing at these sizes and saves the hash allocation
-// and per-key maphash calls at parse time.
+// which is faster than hashing at these sizes and saves the tag bytes and
+// per-key hashKey calls at parse time.
+//
+// The crossover is where a linear scan reaches the indexed lookup's flat
+// floor, and it is set by the tag scan and its extra indirection rather than
+// by the hash: making hashKey 2.5x cheaper does not move it. Measured with
+// BenchmarkThreshParseLookup, indexing costs 12-16% at 6 fields, 5-10% at 8,
+// and starts paying by 12.
 const smallObjectFields = 8
 
 func parseObject(start, json string, maxDepth int, p *parser) (Value, string, error) {
@@ -385,9 +398,9 @@ func parseObject(start, json string, maxDepth int, p *parser) (Value, string, er
 
 			fields := result[1:]
 			if n > smallObjectFields {
-				hashes := make([]byte, n)
+				hashes := p.allocTags(n)
 				for i := range fields {
-					hashes[i] = byte(maphash.String(hashseed, fields[i].k))
+					hashes[i] = hashKey(fields[i].k)
 				}
 				result[0].k = unsafe.String(unsafe.SliceData(hashes), n)
 			}

@@ -55,7 +55,7 @@ require (
 	github.com/klauspost/compress v1.19.2
 	github.com/klauspost/pgzip v1.2.6
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.2.1
+	github.com/minio/minio-go/v7 v7.3.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/moby/moby/v2 v2.0.0-beta.21
@@ -244,7 +244,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.158.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.5.0 // indirect
 	github.com/parquet-go/bitpack v1.0.3 // indirect
-	github.com/parquet-go/jsonlite v1.5.4 // indirect
+	github.com/parquet-go/jsonlite v1.5.5 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 // indirect
