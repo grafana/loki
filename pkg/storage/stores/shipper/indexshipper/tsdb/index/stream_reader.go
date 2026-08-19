@@ -41,9 +41,32 @@ type StreamReader struct {
 	decoder            *Decoder
 }
 
+const DefaultMaxIdleFileHandles = 16
+
+// StreamOptions selects the streaming reader and tunes it.
+type StreamOptions struct {
+	// MaxIdleFileHandles is the number of idle file handles the reader keeps
+	// open for its index file.
+	// Zero disables pooling entirely: every read opens and closes the file.
+	MaxIdleFileHandles uint
+}
+
+func DefaultStreamOptions() StreamOptions {
+	return StreamOptions{MaxIdleFileHandles: DefaultMaxIdleFileHandles}
+}
+
+// OpenReader implements ReaderOptions.
+func (o StreamOptions) OpenReader(path string) (Reader, error) {
+	r, err := NewStreamFileReader(path, o)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // NewStreamFileReader constructs a StreamReader against the given index file.
-func NewStreamFileReader(path string) (*StreamReader, error) {
-	factory, err := streamenc.NewFilePoolDecbufFactory(path, 0, filepool.NewFilePoolMetrics(nil))
+func NewStreamFileReader(path string, opts StreamOptions) (*StreamReader, error) {
+	factory, err := streamenc.NewFilePoolDecbufFactory(path, opts.MaxIdleFileHandles, filepool.NewFilePoolMetrics(nil))
 	if err != nil {
 		return nil, fmt.Errorf("index file decbuf factory: %w", err)
 	}
