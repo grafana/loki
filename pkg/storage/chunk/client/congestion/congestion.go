@@ -7,6 +7,11 @@ import (
 	"github.com/go-kit/log/level"
 )
 
+const (
+	StrategyAIMD         = "aimd"
+	RetryStrategyLimited = "limited"
+)
+
 func NewController(cfg Config, logger log.Logger, metrics *Metrics) Controller {
 	logger = log.With(logger, "component", "congestion_control")
 
@@ -19,7 +24,7 @@ func NewController(cfg Config, logger log.Logger, metrics *Metrics) Controller {
 func newController(cfg Config, logger log.Logger) Controller {
 	start := strings.ToLower(cfg.Controller.Strategy)
 	switch start {
-	case "aimd":
+	case StrategyAIMD:
 		return NewAIMDController(cfg).withLogger(logger)
 	default:
 		level.Warn(logger).Log("msg", "unrecognized congestion control strategy in config, using noop", "strategy", start)
@@ -30,7 +35,7 @@ func newController(cfg Config, logger log.Logger) Controller {
 func newRetrier(cfg Config, logger log.Logger, metrics *Metrics) Retrier {
 	start := strings.ToLower(cfg.Retry.Strategy)
 	switch start {
-	case "limited":
+	case RetryStrategyLimited:
 		return NewLimitedRetrier(cfg, metrics).withLogger(logger)
 	default:
 		level.Warn(logger).Log("msg", "unrecognized retried strategy in config, using noop", "strategy", start)

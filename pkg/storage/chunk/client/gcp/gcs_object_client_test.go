@@ -154,8 +154,8 @@ func TestUpstreamRetryableErrs(t *testing.T) {
 			require.NoError(t, err)
 
 			_, _, err = cli.GetObject(ctx, "foo")
-			require.Equal(t, tc.isThrottledErr, IsStorageThrottledErr(err))
-			require.Equal(t, tc.isTimeoutErr, IsStorageTimeoutErr(err))
+			require.Equal(t, tc.isThrottledErr, isStorageThrottledErr(err))
+			require.Equal(t, tc.isTimeoutErr, isStorageTimeoutErr(err))
 		})
 	}
 }
@@ -195,7 +195,7 @@ func TestIsStorageTimeoutErr(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.retryable, IsStorageTimeoutErr(tc.err))
+			require.Equal(t, tc.retryable, isStorageTimeoutErr(tc.err))
 		})
 	}
 }
@@ -265,7 +265,7 @@ func TestTCPErrs(t *testing.T) {
 
 			_, _, err = cli.GetObject(ctx, "foo")
 			require.Error(t, err)
-			require.Equal(t, tc.retryable, IsStorageTimeoutErr(err))
+			require.Equal(t, tc.retryable, isStorageTimeoutErr(err))
 		})
 	}
 }
