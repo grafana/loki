@@ -237,6 +237,8 @@ func (b *Builder) buildersFor(tenant string) (*streams.Builder, *logs.Builder) {
 			EstimatedCompressionRatio: b.cfg.EstimatedCompressionRatio,
 			SortOrder:                 logs.SortSchemaASC,
 			SchemaLabels:              b.schemaLabelsFor(tenant),
+			StreamOrder:               logs.StreamOrderStableHashV1,
+			ShardCount:                streams.ShardFactor,
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -313,7 +315,8 @@ func (b *Builder) Append(tenant string, stream logproto.Stream, recTime time.Tim
 // Callers are expected to poll [Builder.IsFull] before appending and
 // to flush the builder once it reports full. Appending entries to a full
 // builder is permitted.
-// The SortKey & StreamID fields of the given record are ignored and re-calculated.
+// The SortKey, ShardBucket, StreamHash, and StreamID fields of the given
+// record are ignored and re-calculated.
 func (b *Builder) AppendRecord(tenant string, ls labels.Labels, record logs.Record, ingestionTime time.Time) error {
 	b.metrics.appends.Inc()
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -336,11 +339,15 @@ func (b *Builder) appendAll(tenant string, ls labels.Labels, recordTime time.Tim
 	if err != nil {
 		return err
 	}
+	streamHash := labels.StableHash(ls)
+	streamShard := streams.ShardBucket(ls)
 
 	sb, lb := b.buildersFor(tenant)
 
 	for entry, size := range entriesIter {
 		entry.SortKey = streamSortKey
+		entry.ShardBucket = streamShard
+		entry.StreamHash = streamHash
 		entry.StreamID = sb.Record(ls, entry.Timestamp, size)
 
 		lb.Append(entry)
@@ -527,7 +534,7 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			return nil, nil, err
 		}
 
-		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap.sortKeys, streamRemap.ids)
+		iter, iterErr := sortedSchemaIter(ctx, sections, streamRemap.shards, streamRemap.sortKeys, streamRemap.hashes, streamRemap.ids)
 		if iterErr != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", iterErr)
 		}
@@ -540,6 +547,8 @@ func (b *Builder) CopyAndSort(ctx context.Context, obj *dataobj.Object) (*dataob
 			AppendStrategy:   logs.AppendOrdered,
 			SortOrder:        logs.SortSchemaASC,
 			SchemaLabels:     schemaLabels,
+			StreamOrder:      logs.StreamOrderStableHashV1,
+			ShardCount:       streams.ShardFactor,
 		})
 		lb.SetTenant(tenant)
 
@@ -652,24 +661,26 @@ func (b *Builder) buildStreamSection(ctx context.Context, tenant string, iter re
 }
 
 type streamIDRemap struct {
+	shards   []uint32
 	sortKeys []string
+	hashes   []uint64
 	ids      []int64
 }
 
 type streamWithSortKey struct {
-	stream  streams.Stream
-	sortKey string
+	stream   streams.Stream
+	orderKey StreamOrderKey
 }
 
-// sortAndRemapStreams orders the streams by the sort key and reassigns
-// stream IDs in sort key order. It returns an iterator over the remapped
-// streams and a mapping from old stream IDs to new stream IDs.
+// sortAndRemapStreams orders the streams by the globally stable stream order
+// and reassigns stream IDs in that order. It returns an iterator over the
+// remapped streams and a mapping from old stream IDs to new stream IDs.
 //
 // Stream IDs are originally assigned in the order streams are first recorded.
-// After sort key ordering, streams are clustered by sort key, but their
-// original IDs may no longer be monotonic in that order.
+// After ordering, streams are clustered by [shard_bucket, sort-schema, hash],
+// but their original IDs may no longer be monotonic in that order.
 //
-// Reassigning IDs in sort-key order makes the persisted sort metadata
+// Reassigning IDs in stream-order makes the persisted sort metadata
 // [streamID ASC, timestamp DESC] match the physical row order and improves
 // compression and pruning at query time.
 //
@@ -678,7 +689,9 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 	var (
 		collected = make([]streamWithSortKey, 0, numStreams)
 		remap     = streamIDRemap{
+			shards:   make([]uint32, numStreams+1),
 			sortKeys: make([]string, numStreams+1),
+			hashes:   make([]uint64, numStreams+1),
 			ids:      make([]int64, numStreams+1),
 		}
 	)
@@ -688,18 +701,18 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
-		k, err := ComputeSortKey(stream.Labels, schemaLabels)
+		k, err := NewStreamOrderKey(stream.Labels, schemaLabels)
 		if err != nil {
 			return nil, streamIDRemap{}, err
 		}
 		collected = append(collected, streamWithSortKey{
-			stream:  stream,
-			sortKey: k,
+			stream:   stream,
+			orderKey: k,
 		})
 	}
 
 	slices.SortFunc(collected, func(a, b streamWithSortKey) int {
-		if res := cmp.Compare(a.sortKey, b.sortKey); res != 0 {
+		if res := CompareStreamOrderKey(a.orderKey, b.orderKey); res != 0 {
 			return res
 		}
 		return cmp.Compare(a.stream.ID, b.stream.ID)
@@ -716,7 +729,9 @@ func sortAndRemapStreams(iter result.Seq[streams.Stream], tenant string, schemaL
 			return nil, streamIDRemap{}, fmt.Errorf("duplicate stream id for tenant %s: old id %d maps to both %d and %d", tenant, oldID, prevNewID, newID)
 		}
 
-		remap.sortKeys[oldID] = collected[i].sortKey
+		remap.shards[oldID] = collected[i].orderKey.Shard
+		remap.sortKeys[oldID] = collected[i].orderKey.SchemaKey
+		remap.hashes[oldID] = collected[i].orderKey.Hash
 		remap.ids[oldID] = newID
 
 		// Remap to the new stream ID.

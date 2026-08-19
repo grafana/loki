@@ -205,10 +205,11 @@ func (seq *DatasetSequence) Close() {
 }
 
 // CompareForSortSchema returns a comparison function for k-way merge using
-// schema-based sort order: [sortKey ASC, streamID ASC, timestamp DESC].
-// sortKeys maps streamID to its pre-computed sort key.
+// schema-based sort order: [shard ASC, sortKey ASC, hash ASC, streamID ASC, timestamp DESC].
+// shards, sortKeys, and hashes map streamID to the corresponding sort component.
+// An empty hashes slice skips the hash comparison.
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForSortSchema(shards []uint32, sortKeys []string, hashes []uint64) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -232,10 +233,24 @@ func CompareForSortSchema(sortKeys []string) func(result.Result[dataset.Row], re
 			return true
 		}
 
+		if len(shards) > 0 {
+			aShard := shards[aStreamID]
+			bShard := shards[bStreamID]
+			if res := cmp.Compare(aShard, bShard); res != 0 {
+				return res < 0
+			}
+		}
 		aKey := sortKeys[aStreamID]
 		bKey := sortKeys[bStreamID]
 		if res := cmp.Compare(aKey, bKey); res != 0 {
 			return res < 0
+		}
+		if len(hashes) > 0 {
+			aHash := hashes[aStreamID]
+			bHash := hashes[bStreamID]
+			if res := cmp.Compare(aHash, bHash); res != 0 {
+				return res < 0
+			}
 		}
 		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 			return res < 0
