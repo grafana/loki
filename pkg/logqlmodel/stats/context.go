@@ -36,7 +36,8 @@ type (
 )
 
 const (
-	statsKey ctxKeyType = "stats"
+	statsKey        ctxKeyType = "stats"
+	partialStatsKey ctxKeyType = "partial-stats"
 )
 
 // Context is the statistics context. It is passed through the query path and accumulates statistics.
@@ -98,6 +99,43 @@ func FromContext(ctx context.Context) *Context {
 		return &Context{}
 	}
 	return v
+}
+
+// PartialContext accumulates statistics from sub-queries that completed before
+// the overall query failed. It has its own context key so that the nested stats
+// Contexts opened deeper in the query path do not shadow it.
+type PartialContext struct {
+	mtx    sync.Mutex
+	result Result
+}
+
+func NewPartialContext(ctx context.Context) (*PartialContext, context.Context) {
+	pc := &PartialContext{}
+	ctx = context.WithValue(ctx, partialStatsKey, pc)
+	return pc, ctx
+}
+
+func PartialFromContext(ctx context.Context) (*PartialContext, bool) {
+	v, ok := ctx.Value(partialStatsKey).(*PartialContext)
+	return v, ok
+}
+
+// JoinPartial merges res into the PartialContext installed in ctx, and is a
+// no-op if there is none, so fan-out sites can call it unconditionally.
+func JoinPartial(ctx context.Context, res Result) {
+	pc, ok := PartialFromContext(ctx)
+	if !ok {
+		return
+	}
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	pc.result.Merge(res)
+}
+
+func (pc *PartialContext) Result() Result {
+	pc.mtx.Lock()
+	defer pc.mtx.Unlock()
+	return pc.result
 }
 
 // Ingester returns the ingester statistics accumulated so far.
@@ -456,6 +494,8 @@ func (c *Context) AddDecompressedLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
 }
 
+// AddPostFilterLines adds lines that passed the query filters. Call it only after
+// the pipeline or the extractor accepts the line.
 func (c *Context) AddPostFilterLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.PostFilterLines, i)
 }

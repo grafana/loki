@@ -53,6 +53,15 @@ kafka:
 ```
 
 Equivalently, use the CLI flag `-kafka.sasl-mechanism`.
+### `frontend.encoding` default changed to `protobuf`
+
+The default value of `-frontend.encoding` / `frontend.encoding` changed from `json` to `protobuf`. This only affects the internal request/response encoding between the query-frontend, query-scheduler, and querier. Client-facing APIs are unchanged, and no persisted state uses this setting, so no data migration is required.
+
+Schedulers and queriers already accept both encodings, so mixed frontends during a rolling upgrade are safe. To keep the previous behavior, set `frontend.encoding: json` explicitly.
+
+### `frontend.compress_responses` default changed to `true`
+
+The default value of `frontend.compress_responses` changed to `true`. A bug in Loki 3.4.0 unintentionally switched it to `false`. If you don't want the query-frontend to compress HTTP responses, set `frontend.compress_responses` to `false` explicitly.
 
 ### Breaking change: Removal of LogQL `variants()` queries
 
@@ -79,7 +88,7 @@ stopping new v14 writes first, because earlier binaries cannot read v14 indexes.
 
 ### Breaking change: Thanos storage clients are used by default
 
-The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos based object store clients by default if not otherwise explicitly specified.
+The default value of `storage_config.use_thanos_objstore` changed from `false` to `true`, enabling the Thanos-based object store clients by default if not otherwise explicitly specified.
 
 Please refer to [Migrate to Thanos storage clients](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) for how to migrate your configuration.
 
@@ -102,6 +111,20 @@ As a result, the following have been removed:
 
 ### Breaking change: Removal of various deprecated configuration options
 
+- The per-tenant ruler remote write settings have been removed in favor of `limits_config.ruler_remote_write_config`:
+  - `limits_config.ruler_remote_write_url`
+  - `limits_config.ruler_remote_write_timeout`
+  - `limits_config.ruler_remote_write_headers`
+  - `limits_config.ruler_remote_write_relabel_configs`
+  - `limits_config.ruler_remote_write_queue_capacity`
+  - `limits_config.ruler_remote_write_queue_min_shards`
+  - `limits_config.ruler_remote_write_queue_max_shards`
+  - `limits_config.ruler_remote_write_queue_max_samples_per_send`
+  - `limits_config.ruler_remote_write_queue_batch_send_deadline`
+  - `limits_config.ruler_remote_write_queue_min_backoff`
+  - `limits_config.ruler_remote_write_queue_max_backoff`
+  - `limits_config.ruler_remote_write_queue_retry_on_ratelimit`
+  - `limits_config.ruler_remote_write_sigv4_config`
 - The single remote-write `client` setting (`ruler.remote_write.client` in the yaml file) has been removed in favor of the `clients` map (`ruler.remote_write.clients`), which allows configuring one or more remote-write clients keyed by an id. When upgrading, move your existing `client` configuration under `clients` with a chosen key.
 - The settings `-limits.per-user-override-config` (`limits_config.per_tenant_override_config`) and `-limits.per-user-override-period` (`limits_config.per_tenant_override_period`) have been removed in favor of `-runtime-config.file` (`runtime_config.file`) and `-runtime-config.reload-period` (`runtime_config.period`) respectively.
 - The per-tenant setting `unordered_writes` has been removed. Loki now always allows unordered writes.
@@ -482,7 +505,7 @@ period_config:
 ```
 
 {{< admonition type="note" >}}
-`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
+`path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on legacy indexes.
 {{< /admonition >}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
@@ -605,7 +628,7 @@ All of these are cached to the `results_cache` which is configured in the `query
 #### Write dedupe cache is deprecated
 
 Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) and boltdb-shipper).
-If you using a [legacy index type](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage), consider migrating to TSDB (recommended).
+If you are using a legacy index type, you must migrate to TSDB to use Loki 4.0.
 
 #### Embedded cache metric changes
 

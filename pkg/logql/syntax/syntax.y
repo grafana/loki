@@ -341,13 +341,13 @@ bytesFilter:
     ;
 
 numberFilter:
-      IDENTIFIER GT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1,  $3.Val)}
-    | IDENTIFIER GTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1,$3.Val)}
-    | IDENTIFIER LT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3.Val)}
-    | IDENTIFIER LTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3.Val)}
-    | IDENTIFIER NEQ literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3.Val)}
-    | IDENTIFIER EQ literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
-    | IDENTIFIER CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
+      IDENTIFIER GT literalExpr      { $$ = mustNewNumericLabelFilter(log.LabelFilterGreaterThan, $1, $3)}
+    | IDENTIFIER GTE literalExpr     { $$ = mustNewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3)}
+    | IDENTIFIER LT literalExpr      { $$ = mustNewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3)}
+    | IDENTIFIER LTE literalExpr     { $$ = mustNewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3)}
+    | IDENTIFIER NEQ literalExpr     { $$ = mustNewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3)}
+    | IDENTIFIER EQ literalExpr      { $$ = mustNewNumericLabelFilter(log.LabelFilterEqual, $1, $3)}
+    | IDENTIFIER CMP_EQ literalExpr  { $$ = mustNewNumericLabelFilter(log.LabelFilterEqual, $1, $3)}
     ;
 
 namedMatcher:

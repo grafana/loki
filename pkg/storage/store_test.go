@@ -68,6 +68,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 			ResyncInterval:         1 * time.Minute,
 			IngesterDBRetainPeriod: 1 * time.Minute,
 			IngesterName:           "ingester-1",
+			IndexReaderMode:        indexshipper.DefaultIndexReaderMode,
 			Mode:                   indexshipper.ModeReadWrite,
 		},
 		MaxChunkBatchSize: 10,
@@ -997,12 +998,12 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
 
-func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) ([]lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) ProcessString(ts int64, line string, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.ProcessString(ts, line, lbs)
 }

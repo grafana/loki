@@ -31,17 +31,20 @@ type SampleExtractor interface {
 	ForStream(labels labels.Labels) StreamSampleExtractor
 }
 
-// StreamSampleExtractor extracts samples for a log line.
+// StreamSampleExtractor extracts at most one sample from a log line.
 // A StreamSampleExtractor never mutates the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
-	ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool)
+	// Process extracts the sample for a log line. It returns the zero sample and
+	// false when it extracts none. A true result always carries non-nil Labels.
+	Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool)
+	// ProcessString extracts the sample for a log line. It returns the zero sample
+	// and false when it extracts none. A true result always carries non-nil Labels.
+	ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool)
 	ReferencedStructuredMetadata() bool
 }
 
-// ExtractedSample represents a single sample extracted from a log line,
-// including its value and associated labels.
+// ExtractedSample is the sample a StreamSampleExtractor derives from a log line.
 type ExtractedSample struct {
 	Value  float64
 	Labels LabelsResult
@@ -99,28 +102,24 @@ func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
 	return l.builder.referencedStructuredMetadata
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
 
 	// short circuit.
 	if l.Stage == NoopStage {
-		value := l.LineExtractor(line)
-		labels := l.builder.GroupedLabels()
-		return []ExtractedSample{{Value: value, Labels: labels}}, true
+		return ExtractedSample{Value: l.LineExtractor(line), Labels: l.builder.GroupedLabels()}, true
 	}
 
 	line, ok := l.Stage.Process(ts, line, l.builder)
 	if !ok {
-		return nil, false
+		return ExtractedSample{}, false
 	}
 
-	value := l.LineExtractor(line)
-	labels := l.builder.GroupedLabels()
-	return []ExtractedSample{{Value: value, Labels: labels}}, true
+	return ExtractedSample{Value: l.LineExtractor(line), Labels: l.builder.GroupedLabels()}, true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
@@ -199,13 +198,13 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
 	l.builder.Add(StructuredMetadataLabel, structuredMetadata)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
-		return nil, false
+		return ExtractedSample{}, false
 	}
 	// convert the label value.
 	var v float64
@@ -213,7 +212,7 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 	if stringValue == "" {
 		// NOTE: It's totally fine for log line to not have this particular label.
 		// See Issue: https://github.com/grafana/loki/issues/6713
-		return nil, false
+		return ExtractedSample{}, false
 	}
 
 	var err error
@@ -225,12 +224,12 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMe
 
 	// post filters
 	if _, ok = l.postFilter.Process(ts, line, l.builder); !ok {
-		return nil, false
+		return ExtractedSample{}, false
 	}
-	return []ExtractedSample{{Value: v, Labels: l.builder.GroupedLabels()}}, true
+	return ExtractedSample{Value: v, Labels: l.builder.GroupedLabels()}, true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
 	return l.Process(ts, unsafeGetBytes(line), structuredMetadata)
 }
@@ -283,7 +282,7 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -291,14 +290,14 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 
 		_, _, matches := filter.pipeline.Process(ts, line, structuredMetadata)
 		if matches { // When the filter matches, don't run the next step
-			return nil, false
+			return ExtractedSample{}, false
 		}
 	}
 
 	return sp.extractor.Process(ts, line, structuredMetadata)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) ([]ExtractedSample, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (ExtractedSample, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -306,7 +305,7 @@ func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structu
 
 		_, _, matches := filter.pipeline.ProcessString(ts, line, structuredMetadata)
 		if matches { // When the filter matches, don't run the next step
-			return nil, false
+			return ExtractedSample{}, false
 		}
 	}
 

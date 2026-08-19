@@ -50,10 +50,10 @@ Both Grafana Loki and Alloy expose a `/metrics` endpoint that expose Prometheus 
 
 All components of Loki expose the following metrics:
 
-| Metric Name                        | Metric Type | Description                                                                                                                  |
+| Metric Name                        | Metric Type |Description                                                              |
 | ---------------------------------- | ----------- | ----------------------------------------------------------------------- |
 | `loki_internal_log_messages_total` | Counter     | Total number of log messages created by Loki itself.                    |
-| `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                       |
+| `loki_request_duration_seconds`    | Histogram   | Time, in seconds, spent serving HTTP requests. Use the `_count` and `_bucket` suffixes to derive request rate and latency percentiles. |
 
 For a deeper look at which metrics are most important for detecting negative trends and abnormal behavior, refer to [Key metrics for monitoring Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/metrics/).
 
@@ -84,10 +84,13 @@ Loki emits a `metrics.go` log line from the Querier, Query frontend and Ruler co
 
 Example log
 
-`level=info ts=2024-03-11T13:44:10.322919331Z caller=metrics.go:143 component=frontend org_id=mycompany latency=fast query="sum(count_over_time({kind=\"auditing\"} | json | user_userId =`` [1m]))" query_type=metric range_type=range length=10m0s start_delta=10m10.322900424s end_delta=10.322900663s step=1s duration=47.61044ms status=200 limit=100 returned_lines=0 throughput=9.8MB total_bytes=467kB total_entries=1 queue_time=0s subqueries=2 cache_chunk_req=1 cache_chunk_hit=1 cache_chunk_bytes_stored=0 cache_chunk_bytes_fetched=14394 cache_index_req=19 cache_index_hit=19 cache_result_req=1 cache_result_hit=1`
+`level=info ts=2026-08-14T13:44:10.322919331Z caller=metrics.go:285 component=frontend org_id=mycompany latency=fast query="sum(count_over_time({kind=\"auditing\"} | json | user_userId =`` [1m]))" query_hash=3897857977 query_type=metric range_type=range length=10m0s start_delta=10m10.322900424s end_delta=10.322900663s step=1s duration=47.61044ms status=200 limit=100 returned_lines=0 throughput=9.8MB total_bytes=467kB total_lines=8734 post_filter_lines=1 total_entries=1 queue_time=0s splits=2 shards=0 cache_chunk_req=1 cache_chunk_hit=1 cache_chunk_bytes_fetched=14394 cache_index_req=19 cache_index_hit=19 cache_result_req=1 cache_result_hit=1`
 
-You can use the query-frontend `metrics.go` lines to understand a query’s overall performance. The `metrics.go` line output by the Queriers contains the same information as the Query frontend but is often more helpful in understanding and troubleshooting query performance. This is largely because it can tell you how the querier spent its time executing the subquery. Here are the most useful stats:
+This example is shortened. A real `metrics.go` line contains many more fields, including per-ingester, index, and cache timing statistics.
 
+You can use the query-frontend `metrics.go` lines to understand a query’s overall performance. The `metrics.go` line output by the Queriers contains the same information as the Query frontend but is often more helpful in understanding and troubleshooting query performance. This is largely because it can tell you how the querier spent its time executing the subquery. Loki also tags each line with a `component` field so you can tell them apart: `component=frontend` for Query Frontend lines, `component=querier` for Querier lines, and `component=ruler` (with an additional `evaluation_mode` field) for Ruler lines. Here are the most useful stats:
+
+- **query_hash**: a hash of the query text; use it to correlate a query's Query Frontend and Querier log lines
 - **total_bytes**: how many total bytes the query processed
 - **duration**: how long the query took to execute
 - **throughput**: total_bytes/duration
@@ -110,3 +113,5 @@ To change the configuration for Loki logging levels, update log_level configurat
 # CLI flag: -log.level
 [log_level: <string> | default = "info"]
 ```
+
+You can also change the log level of a running Loki process at runtime, without restarting it, using the [`/log_level` HTTP endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#change-log-level). This can be useful for temporarily enabling debug logging while troubleshooting an incident. In microservices mode, the `/log_level` endpoint is exposed by each component individually.

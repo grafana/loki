@@ -7,30 +7,29 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+// ReaderOptions selects and configures one of the Reader implementations in this package.
+type ReaderOptions interface {
+	// OpenReader constructs the reader described by these options against the
+	// selected index file.
+	// The caller owns the returned Reader and must Close it.
+	OpenReader(path string) (Reader, error)
+}
+
 // Reader is the read-side interface implemented by every on-disk TSDB index reader.
 type Reader interface {
 	// Version returns the on-disk index format version.
 	Version() int
 
 	// RawFileReader exposes the underlying index file bytes as an
-	// io.ReadSeeker so the indexshipper can upload the raw file.
-	RawFileReader() (io.ReadSeeker, error)
-
-	// PostingsRanges returns the byte range in the underlying index file for
-	// every posting list.
-	PostingsRanges() (map[labels.Label]Range, error)
+	// io.ReadSeekCloser so the indexshipper can upload the raw file.
+	// The caller owns the returned reader and must Close it.
+	RawFileReader() (io.ReadSeekCloser, error)
 
 	// Bounds returns the min/max time range covered by the index.
 	Bounds() (int64, int64)
 
 	// Checksum returns the CRC32 checksum recorded in the index TOC.
 	Checksum() uint32
-
-	// Symbols returns an iterator over the symbol table.
-	Symbols() StringIter
-
-	// SymbolTableSize returns the symbol table size in bytes.
-	SymbolTableSize() uint64
 
 	// LabelValues returns the possible label values for the given label name.
 	LabelValues(name string, matchers ...*labels.Matcher) ([]string, error)

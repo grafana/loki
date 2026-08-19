@@ -131,7 +131,7 @@ func CreateOrUpdateLokiStack(
 	if stack.Spec.NetworkPolicies != nil {
 		networkPolicyRuleSet = stack.Spec.NetworkPolicies.RuleSet
 
-		ports, optErr := networkpolicy.ServicePortToPodPort(ctx, ll, k, objStore)
+		ports, optErr := networkpolicy.DetermineObjectStoragePorts(ctx, ll, k, objStore, stack, fg.OpenShift.Enabled)
 		if optErr != nil {
 			return nil, optErr
 		}
@@ -225,8 +225,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	return &status.LokiStackStatusInfo{
-		Storage:         objStore.CredentialMode,
-		NetworkPolicies: networkPolicyRuleSet,
+		Storage:                    objStore.CredentialMode,
+		NetworkPolicies:            networkPolicyRuleSet,
+		NetworkPolicyObjStorePorts: opts.NetworkPolicyObjStorePorts,
 	}, nil
 }
 

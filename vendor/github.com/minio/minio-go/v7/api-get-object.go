@@ -81,6 +81,8 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 	reqCh := make(chan getRequest)
 	// Create response channel.
 	resCh := make(chan getResponse)
+	// record original range header for stat operation.
+	originalRangeHeader := opts.Header().Get("Range")
 
 	// This routine feeds partial object data as and when the caller reads.
 	go func() {
@@ -115,6 +117,12 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 					httpReader, objectInfo, _, err = c.getObject(gctx, bucketName, objectName, opts)
 					if err != nil {
 						resCh <- getResponse{Error: err}
+						// An unsatisfiable range is recoverable: the caller
+						// may Seek or ReadAt within bounds next, so keep
+						// serving requests instead of ending the stream.
+						if ToErrorResponse(err).Code == InvalidRange {
+							continue
+						}
 						return
 					}
 					etag = objectInfo.ETag
@@ -141,19 +149,35 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 						// it to io.EOF - return unexpected EOF.
 						err = io.ErrUnexpectedEOF
 					}
+					// when doing a readAt, we can't reuse the httpReader for next read action.
+					if req.isReadAt {
+						httpReader.Close()
+						httpReader = nil
+					}
+
+					objectSize := int64(0)
+					// case for ReadFull with range request
+					if !req.isReadAt && req.Offset == 0 {
+						objectSize = objectInfo.Size
+					}
 					// Send back the first response.
 					resCh <- getResponse{
+						ObjectSize: objectSize,
 						objectInfo: objectInfo,
 						Size:       size,
 						Error:      err,
 						didRead:    true,
 					}
 				} else {
-					// First request is a Stat or Seek call.
-					// Only need to run a StatObject until an actual Read or ReadAt request comes through.
+					if originalRangeHeader == "" {
+						// First request is a Seek call.
+						// Only need to run a StatObject until an actual Read request comes through.
 
-					// Remove range header if already set, for stat Operations to get original file size.
-					delete(opts.headers, "Range")
+						// Remove range header if already set, for stat Operations to get original file size.
+						delete(opts.headers, "Range")
+					} else {
+						opts.headers["Range"] = originalRangeHeader
+					}
 					objectInfo, err = c.StatObject(gctx, bucketName, objectName, StatObjectOptions(opts))
 					if err != nil {
 						resCh <- getResponse{
@@ -165,12 +189,17 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 					etag = objectInfo.ETag
 					// Send back the first response.
 					resCh <- getResponse{
+						ObjectSize: objectInfo.Size,
 						objectInfo: objectInfo,
 					}
 				}
 			} else if req.settingObjectInfo { // Request is just to get objectInfo.
 				// Remove range header if already set, for stat Operations to get original file size.
-				delete(opts.headers, "Range")
+				if originalRangeHeader == "" {
+					delete(opts.headers, "Range")
+				} else {
+					opts.headers["Range"] = originalRangeHeader
+				}
 				// Check whether this is snowball
 				// if yes do not use If-Match feature
 				// it doesn't work.
@@ -187,16 +216,22 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 				}
 				// Send back the objectInfo.
 				resCh <- getResponse{
+					ObjectSize: objectInfo.Size,
 					objectInfo: objectInfo,
 				}
 			} else {
+				objectSize := int64(0)
+				renewReader := false
 				// Offset changes fetch the new object at an Offset.
 				// Because the httpReader may not be set by the first
 				// request if it was a stat or seek it must be checked
 				// if the object has been read or not to only initialize
 				// new ones when they haven't been already.
 				// All readAt requests are new requests.
-				if req.DidOffsetChange || !req.beenRead {
+				// A nil httpReader means the previous fetch failed and
+				// left no stream, so a new one must be established
+				// regardless of the offset bookkeeping.
+				if req.DidOffsetChange || !req.beenRead || httpReader == nil {
 					// Check whether this is snowball
 					// if yes do not use If-Match feature
 					// it doesn't work.
@@ -214,16 +249,30 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 					} else if req.Offset > 0 { // Range is set with respect to the offset.
 						opts.SetRange(req.Offset, 0)
 					} else {
-						// Remove range header if already set
-						delete(opts.headers, "Range")
+						if originalRangeHeader == "" {
+							delete(opts.headers, "Range")
+						} else {
+							opts.headers["Range"] = originalRangeHeader
+						}
 					}
 					httpReader, objectInfo, _, err = c.getObject(gctx, bucketName, objectName, opts)
 					if err != nil {
 						resCh <- getResponse{
 							Error: err,
 						}
+						// An unsatisfiable range is recoverable: the caller
+						// may Seek or ReadAt within bounds next, so keep
+						// serving requests instead of ending the stream.
+						if ToErrorResponse(err).Code == InvalidRange {
+							continue
+						}
 						return
 					}
+					// case for ReadFull with range request
+					if !req.isReadAt && req.Offset == 0 {
+						objectSize = objectInfo.Size
+					}
+					renewReader = true
 					totalRead = 0
 				}
 
@@ -250,9 +299,13 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 					// it to io.EOF - return unexpected EOF.
 					err = io.ErrUnexpectedEOF
 				}
-
+				if renewReader && req.isReadAt {
+					httpReader.Close()
+					httpReader = nil
+				}
 				// Reply back how much was read.
 				resCh <- getResponse{
+					ObjectSize: objectSize,
 					Size:       size,
 					Error:      err,
 					didRead:    true,
@@ -281,6 +334,7 @@ type getRequest struct {
 
 // get response message container to reply back for the request.
 type getResponse struct {
+	ObjectSize int64
 	Size       int
 	Error      error
 	didRead    bool       // Lets subsequent calls know whether or not httpReader has been initiated.
@@ -299,6 +353,7 @@ type Object struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	currOffset int64
+	totalSize  int64
 	objectInfo ObjectInfo
 
 	// Ask lower level to initiate data fetching based on currOffset
@@ -356,6 +411,10 @@ func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
 	// Data are ready on the wire, no need to reinitiate connection in lower level
 	o.seekData = false
 
+	if response.ObjectSize != 0 {
+		o.totalSize = response.ObjectSize
+	}
+
 	return response, response.Error
 }
 
@@ -365,7 +424,7 @@ func (o *Object) setOffset(bytesRead int64) error {
 	// Update the currentOffset.
 	o.currOffset += bytesRead
 
-	if o.objectInfo.Size > -1 && o.currOffset >= o.objectInfo.Size {
+	if o.totalSize > -1 && o.currOffset >= o.totalSize {
 		return io.EOF
 	}
 	return nil
@@ -387,6 +446,13 @@ func (o *Object) Read(b []byte) (n int, err error) {
 	if o.prevErr != nil || o.isClosed {
 		return 0, o.prevErr
 	}
+	// If the current offset is at or beyond the known object size, there is
+	// nothing more to read. Return io.EOF directly instead of issuing a range
+	// request from EOF (which the server rejects as an unsatisfiable range).
+	if o.objectInfoSet && o.objectInfo.Size > -1 && o.currOffset >= o.objectInfo.Size {
+		o.prevErr = io.EOF
+		return 0, io.EOF
+	}
 
 	// Create a new request.
 	readReq := getRequest{
@@ -407,6 +473,14 @@ func (o *Object) Read(b []byte) (n int, err error) {
 	// Send and receive from the first request.
 	response, err := o.doGetRequest(readReq)
 	if err != nil && err != io.EOF {
+		// An InvalidRange response to a range generated from a non-zero
+		// read offset means the position is at or past EOF for the object
+		// as it currently exists. Offset zero sends only a caller-supplied
+		// range, whose InvalidRange must surface untranslated.
+		if o.currOffset > 0 && ToErrorResponse(err).Code == InvalidRange {
+			o.prevErr = io.EOF
+			return 0, io.EOF
+		}
 		// Save the error for future calls.
 		o.prevErr = err
 		return response.Size, err
@@ -428,6 +502,8 @@ func (o *Object) Read(b []byte) (n int, err error) {
 }
 
 // Stat returns the ObjectInfo structure describing Object.
+// When requesting a partial object or reading has started,
+// the size returned will reflect the remaining size.
 func (o *Object) Stat() (ObjectInfo, error) {
 	if o == nil {
 		return ObjectInfo{}, errInvalidArgument("Object is nil")
@@ -436,7 +512,24 @@ func (o *Object) Stat() (ObjectInfo, error) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 
-	if o.prevErr != nil && o.prevErr != io.EOF || o.isClosed {
+	if o.prevErr != nil && o.prevErr != io.EOF {
+		return ObjectInfo{}, o.prevErr
+	}
+
+	// When the object info is already known (e.g. the RDMA GET path, whose
+	// payload is delivered out-of-band so the object is created closed, or a
+	// previously completed request) report it, even for a closed object.
+	if o.objectInfoSet {
+		if o.currOffset > o.totalSize {
+			return ObjectInfo{}, io.EOF
+		}
+		if o.currOffset <= o.totalSize {
+			o.objectInfo.Size = o.totalSize - o.currOffset
+		}
+		return o.objectInfo, nil
+	}
+
+	if o.isClosed {
 		return ObjectInfo{}, o.prevErr
 	}
 
@@ -452,7 +545,12 @@ func (o *Object) Stat() (ObjectInfo, error) {
 			return ObjectInfo{}, err
 		}
 	}
-
+	if o.currOffset > o.totalSize {
+		return ObjectInfo{}, io.EOF
+	}
+	if o.currOffset <= o.totalSize {
+		o.objectInfo.Size = o.totalSize - o.currOffset
+	}
 	return o.objectInfo, nil
 }
 
@@ -488,7 +586,7 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 	if o.objectInfoSet {
 		// If offset is negative than we return io.EOF.
 		// If offset is greater than or equal to object size we return io.EOF.
-		if (o.objectInfo.Size > -1 && offset >= o.objectInfo.Size) || offset < 0 {
+		if (o.totalSize > -1 && offset >= o.totalSize) || offset < 0 {
 			return 0, io.EOF
 		}
 	}
@@ -511,6 +609,12 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 	// Send and receive from the first request.
 	response, err := o.doGetRequest(readAtReq)
 	if err != nil && err != io.EOF {
+		// Reading at an offset at or beyond the object size yields
+		// InvalidRange from the server: report io.EOF, matching the
+		// io.ReaderAt contract for reads past the end.
+		if ToErrorResponse(err).Code == InvalidRange {
+			return 0, io.EOF
+		}
 		// Save the error.
 		o.prevErr = err
 		return response.Size, err
@@ -541,9 +645,10 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 // and 2 means relative to the end.
 // Seek returns the new offset and an error, if any.
 //
-// Seeking to a negative offset is an error. Seeking to any positive
-// offset is legal, subsequent io operations succeed until the
-// underlying object is not closed.
+// Seeking to a position before the start of the object is an error.
+// Seeking to the end of the object is legal; the subsequent Read reports
+// io.EOF. When the object size is known, seeking past the end returns
+// io.EOF from Seek itself and leaves the offset unchanged.
 func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 	if o == nil {
 		return 0, errInvalidArgument("Object is nil")
@@ -558,9 +663,11 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 		return 0, o.prevErr
 	}
 
-	// Negative offset is valid for whence of '2'.
-	if offset < 0 && whence != 2 {
-		return 0, errInvalidArgument(fmt.Sprintf("Negative position not allowed for %d", whence))
+	// Negative absolute offsets are invalid for SeekStart. Negative offsets
+	// for SeekCurrent/SeekEnd are valid as long as the computed position is
+	// not before the start of the object (checked after applying whence).
+	if offset < 0 && whence == 0 {
+		return 0, errInvalidArgument("Negative position not allowed for 0")
 	}
 
 	// This is the first request. So before anything else
@@ -588,31 +695,26 @@ func (o *Object) Seek(offset int64, whence int) (n int64, err error) {
 	default:
 		return 0, errInvalidArgument(fmt.Sprintf("Invalid whence %d", whence))
 	case 0:
-		if o.objectInfo.Size > -1 && offset > o.objectInfo.Size {
-			return 0, io.EOF
-		}
 		newOffset = offset
 	case 1:
-		if o.objectInfo.Size > -1 && o.currOffset+offset > o.objectInfo.Size {
-			return 0, io.EOF
-		}
 		newOffset += offset
 	case 2:
 		// If we don't know the object size return an error for io.SeekEnd
-		if o.objectInfo.Size < 0 {
+		if o.totalSize < 0 {
 			return 0, errInvalidArgument("Whence END is not supported when the object size is unknown")
 		}
-		// Seeking to positive offset is valid for whence '2', but
-		// since we are backing a Reader we have reached 'EOF' if
-		// offset is positive.
-		if offset > 0 {
-			return 0, io.EOF
-		}
-		// Seeking to negative position not allowed for whence.
-		if o.objectInfo.Size+offset < 0 {
-			return 0, errInvalidArgument(fmt.Sprintf("Seeking at negative offset not allowed for %d", whence))
-		}
-		newOffset = o.objectInfo.Size + offset
+		newOffset = o.totalSize + offset
+	}
+	// Seeking to a position before the start of the object is not allowed for
+	// any whence.
+	if newOffset < 0 {
+		return 0, errInvalidArgument(fmt.Sprintf("Seeking at negative offset not allowed for %d", whence))
+	}
+	// Seeking past the end of the object is rejected with io.EOF, preserving
+	// long-standing behavior. Seeking to exactly the end is legal and the
+	// subsequent Read reports io.EOF.
+	if o.objectInfo.Size > -1 && newOffset > o.objectInfo.Size {
+		return 0, io.EOF
 	}
 	// Reset the saved error since we successfully seeked, let the Read
 	// and ReadAt decide.
@@ -717,6 +819,19 @@ func (c *Client) getObject(ctx context.Context, bucketName, objectName string, o
 		return nil, ObjectInfo{}, nil, err
 	}
 
+	body := resp.Body
+	if opts.Checksum {
+		if opts.checkSumReader != nil {
+			opts.checkSumReader.SetReader(resp.Body)
+			body = opts.checkSumReader
+		} else if objectStat.ChecksumMode == ChecksumFullObjectMode.String() && opts.headers["Range"] == "" {
+			if hasherReader := c.newChecksumVerifyingReader(objectStat); hasherReader != nil {
+				hasherReader.SetReader(resp.Body)
+				body = hasherReader
+			}
+		}
+	}
+
 	// do not close body here, caller will close
-	return resp.Body, objectStat, resp.Header, nil
+	return body, objectStat, resp.Header, nil
 }

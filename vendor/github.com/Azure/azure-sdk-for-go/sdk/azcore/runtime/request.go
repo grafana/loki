@@ -14,8 +14,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
-	"net/url"
-	"path"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
@@ -43,6 +41,17 @@ func NewRequest(ctx context.Context, httpMethod string, endpoint string) (*polic
 	return exported.NewRequest(ctx, httpMethod, endpoint)
 }
 
+// NewRequestForNextLink creates a new policy.Request with the specified input.
+// This helper is for use in paged operations that use the "next link" pattern.
+//   - endpoint is the service endpoint (e.g. https://contoso.com)
+//   - nextLink the absolute or relative URL to the next page of items
+//
+// When nextLink is an absolute URL, its value is used to create the request to the next page.
+// If nextLink is a relative URL, it will be joined with the specified endpoint.
+func NewRequestForNextLink(ctx context.Context, httpMethod, endpoint, nextLink string) (*policy.Request, error) {
+	return exported.NewRequestForNextLink(ctx, httpMethod, endpoint, nextLink)
+}
+
 // NewRequestFromRequest creates a new policy.Request with an existing *http.Request
 func NewRequestFromRequest(req *http.Request) (*policy.Request, error) {
 	return exported.NewRequestFromRequest(req)
@@ -51,58 +60,14 @@ func NewRequestFromRequest(req *http.Request) (*policy.Request, error) {
 // EncodeQueryParams will parse and encode any query parameters in the specified URL.
 // Any semicolons will automatically be escaped.
 func EncodeQueryParams(u string) (string, error) {
-	before, after, found := strings.Cut(u, "?")
-	if !found {
-		return u, nil
-	}
-	// starting in Go 1.17, url.ParseQuery will reject semicolons in query params.
-	// so, we must escape them first. note that this assumes that semicolons aren't
-	// being used as query param separators which is per the current RFC.
-	// for more info:
-	// https://github.com/golang/go/issues/25192
-	// https://github.com/golang/go/issues/50034
-	qp, err := url.ParseQuery(strings.ReplaceAll(after, ";", "%3B"))
-	if err != nil {
-		return "", err
-	}
-	return before + "?" + qp.Encode(), nil
+	return exported.EncodeQueryParams(u, false)
 }
 
 // JoinPaths concatenates multiple URL path segments into one path,
 // inserting path separation characters as required. JoinPaths will preserve
 // query parameters in the root path
 func JoinPaths(root string, paths ...string) string {
-	if len(paths) == 0 {
-		return root
-	}
-
-	qps := ""
-	if strings.Contains(root, "?") {
-		splitPath := strings.Split(root, "?")
-		root, qps = splitPath[0], splitPath[1]
-	}
-
-	p := path.Join(paths...)
-	// path.Join will remove any trailing slashes.
-	// if one was provided, preserve it.
-	if strings.HasSuffix(paths[len(paths)-1], "/") && !strings.HasSuffix(p, "/") {
-		p += "/"
-	}
-
-	if qps != "" {
-		if strings.Contains(p, "?") {
-			p = p + "&" + qps
-		} else {
-			p = p + "?" + qps
-		}
-	}
-
-	if strings.HasSuffix(root, "/") && strings.HasPrefix(p, "/") {
-		root = root[:len(root)-1]
-	} else if !strings.HasSuffix(root, "/") && !strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "?") {
-		p = "/" + p
-	}
-	return root + p
+	return exported.JoinPaths(root, paths...)
 }
 
 // EncodeByteArray will base-64 encode the byte slice v.

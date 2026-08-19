@@ -1421,6 +1421,11 @@ var ParseTestCases = []struct {
 		},
 	},
 	{
+		// a numeric label filter literal the float parser rejects is a parse error, not a silent 0.
+		in:  `{app="foo"} | logfmt | status_code > 0x10`,
+		err: logqlmodel.NewParseError(`unable to parse literal as a float: strconv.ParseFloat: parsing "0x10": invalid syntax`, 0, 0),
+	},
+	{
 		in: `{app="foo"} |= "bar" | unpack | json | latency >= 250ms or ( status_code < 500 and status_code > 200)`,
 		exp: &PipelineExpr{
 			Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
@@ -3420,56 +3425,54 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	expr, err := ParseSampleExpr(query)
 	require.Nil(b, err)
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
 	require.Nil(b, err)
 
-	for _, p := range extractors {
-		sp := p.ForStream(labels.EmptyLabels())
-		var (
-			samples []log.ExtractedSample
-			v       float64
-			lbs     log.LabelsResult
-			matches bool
-		)
-		in := []byte(
-			`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
-		)
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			samples, matches = sp.Process(0, in, labels.EmptyLabels())
-		}
-
-		v = samples[0].Value
-		lbs = samples[0].Labels
-
-		require.True(b, matches)
-		require.Equal(
-			b,
-			labels.FromStrings(
-				"caller",
-				"logging.go:66",
-				"duration",
-				"1.5s",
-				"level",
-				"debug",
-				"method",
-				"POST",
-				"msg",
-				"POST /api/prom/api/v1/query_range (200) 1.5s",
-				"path",
-				"/api/prom/api/v1/query_range",
-				"status",
-				"200",
-				"traceID",
-				"a9d4d8a928d8db1",
-				"ts",
-				"2020-10-02T10:10:42.092268913Z",
-			),
-			lbs.Labels(),
-		)
-		require.Equal(b, 1.0, v)
+	sp := extractor.ForStream(labels.EmptyLabels())
+	var (
+		sample  log.ExtractedSample
+		v       float64
+		lbs     log.LabelsResult
+		matches bool
+	)
+	in := []byte(
+		`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`,
+	)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sample, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
+
+	v = sample.Value
+	lbs = sample.Labels
+
+	require.True(b, matches)
+	require.Equal(
+		b,
+		labels.FromStrings(
+			"caller",
+			"logging.go:66",
+			"duration",
+			"1.5s",
+			"level",
+			"debug",
+			"method",
+			"POST",
+			"msg",
+			"POST /api/prom/api/v1/query_range (200) 1.5s",
+			"path",
+			"/api/prom/api/v1/query_range",
+			"status",
+			"200",
+			"traceID",
+			"a9d4d8a928d8db1",
+			"ts",
+			"2020-10-02T10:10:42.092268913Z",
+		),
+		lbs.Labels(),
+	)
+	require.Equal(b, 1.0, v)
 }
 
 var c []*labels.Matcher

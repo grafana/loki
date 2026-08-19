@@ -1,5 +1,29 @@
 ## Main
 
+## [0.11.0](https://github.com/grafana/loki/compare/operator/v0.10.2...operator/v0.11.0) (2026-08-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823))
+
+### Features
+
+* **operator:** Enable multi-variant queries ([#21009](https://github.com/grafana/loki/issues/21009)) ([709e318](https://github.com/grafana/loki/commit/709e3184fc7966bc6b8eb8ca661b6b080c1c6e17))
+* **operator:** Support private VPC S3 endpoints in endpoint validation ([#22395](https://github.com/grafana/loki/issues/22395)) ([394caef](https://github.com/grafana/loki/commit/394caeff2f6c8e55dca4be01bc960ac287fbfcb9))
+* **operator:** Watch object storage Services for NetworkPolicy updates and surface ports in status ([#22436](https://github.com/grafana/loki/issues/22436)) ([12822d5](https://github.com/grafana/loki/commit/12822d51087550f56feca44a0f9f1ae4807c2c7e))
+* Remove support for experimental LogQL variants() queries ([#23823](https://github.com/grafana/loki/issues/23823)) ([132e5f9](https://github.com/grafana/loki/commit/132e5f9cce287101a4b813564f1d6b79484b9f02))
+
+
+### Bug Fixes
+
+* **operator:** Move telemetry recording rules to OpenShift bundle ([#22814](https://github.com/grafana/loki/issues/22814)) ([4632368](https://github.com/grafana/loki/commit/4632368c7e4677191d70543cf41a8571d6eb67e3))
+* **operator:** Release leader lease on shutdown so upgrades are faster ([#24042](https://github.com/grafana/loki/issues/24042)) ([ee0d59d](https://github.com/grafana/loki/commit/ee0d59d92d92a1939593e41ddd6aa704b49b592c))
+* **operator:** Use ruler remote_write clients key instead of deprecated client ([#23455](https://github.com/grafana/loki/issues/23455)) ([f5ddb02](https://github.com/grafana/loki/commit/f5ddb02f41478900198178fdb25e67a095a726b9))
+* **security/UNKNOWN/operator:** Update module github.com/klauspost/compress to v1.18.7 [SECURITY] (main) ([#23608](https://github.com/grafana/loki/issues/23608)) ([e1e4e0e](https://github.com/grafana/loki/commit/e1e4e0e4cad5c3e8a0fa40246a1fdfd6988d3fd6))
+* **security/UNKNOWN/operator:** Update module golang.org/x/net to v0.56.0 [SECURITY] (main) ([#23388](https://github.com/grafana/loki/issues/23388)) ([9362a5e](https://github.com/grafana/loki/commit/9362a5ebdc5cbbc6dc74ef45bda15ca1fa226556))
+* **security/UNKNOWN/operator:** Update module golang.org/x/text to v0.39.0 [SECURITY] (main) ([#23389](https://github.com/grafana/loki/issues/23389)) ([50589e1](https://github.com/grafana/loki/commit/50589e15a35f01b5ca1da99080d2b0fa054cab9b))
+
 ## [0.10.2](https://github.com/grafana/loki/compare/operator/v0.10.1...operator/v0.10.2) (2026-06-09)
 
 

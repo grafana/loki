@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -30,6 +31,31 @@ type lokiResult struct {
 type packedResp struct {
 	resp queryrangebase.Response
 	err  error
+}
+
+// joinPartialFromResponses keeps the usage of already-completed responses when
+// a fan-out exits on a failure or a cancellation.
+func joinPartialFromResponses(ctx context.Context, responses []queryrangebase.Response) {
+	for _, r := range responses {
+		if s, ok := statisticsFromResponse(r); ok {
+			stats.JoinPartial(ctx, s)
+		}
+	}
+}
+
+func statisticsFromResponse(resp queryrangebase.Response) (stats.Result, bool) {
+	switch r := resp.(type) {
+	case *LokiResponse:
+		return r.Statistics, true
+	case *LokiPromResponse:
+		return r.Statistics, true
+	case *LokiSeriesResponse:
+		return r.Statistics, true
+	case *LokiLabelNamesResponse:
+		return r.Statistics, true
+	default:
+		return stats.Result{}, false
+	}
 }
 
 type SplitByMetrics struct {
@@ -127,9 +153,18 @@ func (h *splitByInterval) Process(
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			// Keep the usage of the intervals that completed before the
+			// cancellation, and report the cause so a real failure wins over a
+			// generic cancellation.
+			joinPartialFromResponses(ctx, responses)
+			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
+				// Keep the usage of the intervals that completed before the failure.
+				joinPartialFromResponses(ctx, responses)
+				// Cancel the siblings with this failure as the cause, so it is not
+				// lost behind a generic cancellation.
+				cancel(data.err)
 				return nil, data.err
 			}
 

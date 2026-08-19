@@ -122,6 +122,11 @@ type Code struct {
 	QuickCodes        []int              // bool-only code with unobservable captures removed
 	QuickDispatches   []DispatchTable    // lightweight tables targeting QuickCodes
 	CaptureSlotInUse  []bool             // capture slots observable by the pattern itself during quick matches
+	// LeftContextRunes is how many runes before a candidate start matching may
+	// inspect. 0 means none, 1 means a single previous rune (or slack so ^/\A
+	// do not see the candidate as the origin), and -1 means do not slice
+	// (lookbehind or \G).
+	LeftContextRunes int
 }
 
 // DispatchTable maps disjoint character sets to branch indices. Larger tables
