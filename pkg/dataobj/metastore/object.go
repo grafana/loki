@@ -53,6 +53,7 @@ var tracer = otel.Tracer("pkg/dataobj/metastore")
 // ObjectMetastore is a metastore that stores data objects in object storage.
 type ObjectMetastore struct {
 	readPostingsSections bool
+	prefetchBytes        int64
 	bucket               objstore.Bucket
 	parallelism          int
 	logger               log.Logger
@@ -170,6 +171,7 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 
 	store := &ObjectMetastore{
 		readPostingsSections: cfg.ReadPostingsSections,
+		prefetchBytes:        int64(cfg.IndexReadPrefetchBytes),
 		bucket:               b,
 		parallelism:          64,
 		logger:               logger,
@@ -576,6 +578,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 			readerResp, err := m.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
 				IndexPath:       indexEntry.Path,
 				SectionsRequest: req,
+				PrefetchBytes:   m.prefetchBytes,
 			})
 			if err != nil {
 				return fmt.Errorf("get index sections reader: %w", err)
@@ -687,6 +690,7 @@ func hasPostingsSection(obj *dataobj.Object, tenant string) bool {
 func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest) (GetIndexesResponse, error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.GetIndexes")
 	defer span.End()
+	defer prometheus.NewTimer(m.metrics.getIndexesTotalDuration).ObserveDuration()
 
 	resp := GetIndexesResponse{}
 
