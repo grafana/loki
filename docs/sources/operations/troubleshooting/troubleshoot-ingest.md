@@ -687,13 +687,14 @@ Disk space is not limited by Loki configuration; it depends on your infrastructu
 
 **Cause:**
 
-The disk where the WAL is stored has run out of space. When this occurs, Loki continues accepting writes but doesn't log them to the WAL, losing durability guarantees.
+By default, the ingester monitors disk usage on the volume that stores the WAL and rejects new writes once usage reaches 90% of capacity (`-ingester.wal-disk-full-threshold`), so that it never accepts data it cannot persist. This error and the associated log message describe a different, rarer case: the disk still filled up completely, either because this throttling is disabled (threshold set to `0`), or because a write reached the disk in the short window before the check could catch it. In that case, the ingester continues accepting writes but doesn't log them to the WAL, losing durability guarantees for those entries.
 
 **Default configuration:**
 
 - WAL enabled by default
 - WAL location: configured by `-ingester.wal-dir`
 - Checkpoint interval: `ingester.checkpoint-duration` (default: 5 minutes)
+- Disk full throttling threshold: `ingester.wal-disk-full-threshold` (default: 0.9, meaning 90%)
 
 **Resolution:**
 
@@ -704,6 +705,8 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
    ```promql
    loki_ingester_wal_disk_full_failures_total > 0
    ```
+
+   This counter increases both when disk usage crosses the throttling threshold and when a WAL write fails because the disk is completely full. It does not count each individual throttled write, so also watch the gauge `loki_ingester_wal_disk_usage_percent` to see how close the disk is to the threshold.
 
 * **Reduce log volume** to decrease WAL growth.
 
@@ -724,7 +727,7 @@ The disk where the WAL is stored has run out of space. When this occurs, Loki co
 - Configurable per tenant: No
 
 {{< admonition type="note" >}}
-The WAL sacrifices durability for availability - it won't reject writes when the disk is full. After disk space is restored, durability guarantees resume. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
+This section describes the disk becoming completely full. In normal operation, the ingester's disk usage throttle (`-ingester.wal-disk-full-threshold`, default 90%) rejects writes to that ingester before the disk actually fills up, so that durability guarantees are preserved. Because Loki replicates each write to multiple ingesters, a client write can still succeed even while one ingester is throttled. Use metric `loki_ingester_wal_disk_usage_percent` to monitor disk usage.
 {{< /admonition >}}
 
 ### Error: WAL corruption
