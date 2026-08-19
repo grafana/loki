@@ -87,6 +87,24 @@ func (c *Cluster) handleDeleteTopics(creq *clientReq) (kmsg.Response, error) {
 			delete(c.data.treplicas, td.topic)
 			delete(c.data.tcfgs, td.topic)
 			delete(c.data.tnorms, normalizeTopicName(td.topic))
+			// Producer state is per-log and dies with the topic: a
+			// recreated topic rehydrates empty state, accepting any
+			// first sequence (the 2.5+ broker semantics we model).
+			// Transactional REGISTRATIONS survive (the coordinator is
+			// name-keyed on a real broker); endTx re-resolves current
+			// partition data when writing markers.
+			for _, pidinf := range c.pids.ids {
+				delete(pidinf.windows, td.topic)
+			}
+			// Share-partition state is topic-ID-keyed on a real broker
+			// and dies with the topic; kfake keys by name, so clear it
+			// explicitly: a recreated topic starts share consumption
+			// fresh (SPSO per group config, no acquired records).
+			for _, sg := range c.shareGroups.gs {
+				sg.mu.Lock()
+				delete(sg.partitions, td.topic)
+				sg.mu.Unlock()
+			}
 		}
 	}()
 	for _, rt := range req.Topics {
