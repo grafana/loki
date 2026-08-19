@@ -344,7 +344,10 @@ func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
 }
 
 func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
-	delayResponse := 100 * time.Millisecond
+	// Keep the parent request inflight long enough for StopAsync to be observed
+	// on loaded CI runners. StopAsync only cancels the idle-service context;
+	// the service goroutine must then switch Running -> Stopping.
+	delayResponse := time.Second
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	f, _ := setupFrontend(t, cfg, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
@@ -372,18 +375,18 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	// Wait less than delayResponse to make sure we have an inflight request that
-	// already was sent to the scheduler and the service stays in Stopping state
-	// for some time.
-	time.Sleep(delayResponse / 10)
+	// Wait until the parent request is actually inflight so Stopping lasts
+	// until the delayed scheduler response arrives.
+	require.Eventually(t, func() bool {
+		return f.requests.count() >= 1
+	}, delayResponse/2, 2*time.Millisecond)
 
 	f.StopAsync()
 
-	// wait for Stopping state
 	require.Eventually(t, func() bool {
 		t.Log(f.State())
 		return f.State() == services.Stopping
-	}, delayResponse/2, 2*time.Millisecond)
+	}, delayResponse/2, 5*time.Millisecond)
 
 	// send (sub-)request
 	// This request still needs to be able to pass the RoundTripGRCP function,
