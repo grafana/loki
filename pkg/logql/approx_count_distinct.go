@@ -323,7 +323,7 @@ func (e *CountDistinctEvalExpr) Walk(f syntax.WalkFn) {
 
 // CountDistinctVectorStepEvaluator estimates merged sketches into a sample vector.
 type CountDistinctVectorStepEvaluator struct {
-	vec CountDistinctVector
+	vec  CountDistinctVector
 	done bool
 }
 

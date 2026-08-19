@@ -1340,7 +1340,7 @@ const (
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 
-	OpTypeCountMinSketch = "__count_min_sketch__"
+	OpTypeCountMinSketch      = "__count_min_sketch__"
 	OpTypeCountDistinctSketch = "__count_distinct_sketch__"
 
 	// probabilistic aggregations

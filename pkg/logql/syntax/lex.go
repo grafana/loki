@@ -121,7 +121,7 @@ var functionTokens = map[string]int{
 	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
 
-	OpTypeApproxTopK:         APPROX_TOPK,
+	OpTypeApproxTopK:          APPROX_TOPK,
 	OpTypeApproxCountDistinct: APPROX_COUNT_DISTINCT,
 
 	// conversion Op

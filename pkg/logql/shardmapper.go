@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	ShardLastOverTime         = "last_over_time"
-	ShardFirstOverTime        = "first_over_time"
-	ShardQuantileOverTime     = "quantile_over_time"
-	SupportApproxTopk         = "approx_topk"
+	ShardLastOverTime          = "last_over_time"
+	ShardFirstOverTime         = "first_over_time"
+	ShardQuantileOverTime      = "quantile_over_time"
+	SupportApproxTopk          = "approx_topk"
 	SupportApproxCountDistinct = "approx_count_distinct"
 )
 
