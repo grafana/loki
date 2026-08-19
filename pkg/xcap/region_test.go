@@ -21,7 +21,7 @@ func TestRegion_Record(t *testing.T) {
 
 		agg, ok := region.observations[bytesRead.Key()]
 		require.True(t, ok, "observation should exist for statistic")
-		require.Equal(t, int64(1024), agg.Value.(int64))
+		require.Equal(t, int64(1024), agg.Value().(int64))
 		require.Equal(t, 1, agg.Count)
 		require.Equal(t, bytesRead, agg.Statistic)
 	})
@@ -40,7 +40,7 @@ func TestRegion_Record(t *testing.T) {
 
 		agg, ok := region.observations[bytesRead.Key()]
 		require.True(t, ok, "observation should exist for statistic")
-		require.Equal(t, int64(3584), agg.Value.(int64), "values should be summed")
+		require.Equal(t, int64(3584), agg.Value().(int64), "values should be summed")
 		require.Equal(t, 3, agg.Count, "count should be 3")
 	})
 
@@ -72,19 +72,19 @@ func TestRegion_Record(t *testing.T) {
 		// Verify bytes.read aggregation (sum)
 		bytesAgg, ok := region.observations[bytesRead.Key()]
 		require.True(t, ok)
-		require.Equal(t, int64(3584), bytesAgg.Value.(int64))
+		require.Equal(t, int64(3584), bytesAgg.Value().(int64))
 		require.Equal(t, 3, bytesAgg.Count)
 
 		// Verify latency aggregation (min)
 		latencyAgg, ok := region.observations[latency.Key()]
 		require.True(t, ok)
-		require.Equal(t, float64(5.2), latencyAgg.Value.(float64))
+		require.Equal(t, float64(5.2), latencyAgg.Value().(float64))
 		require.Equal(t, 3, latencyAgg.Count)
 
 		// Verify success flag aggregation (max)
 		successAgg, ok := region.observations[success.Key()]
 		require.True(t, ok)
-		require.Equal(t, true, successAgg.Value.(bool))
+		require.Equal(t, true, successAgg.Value().(bool))
 		require.Equal(t, 3, successAgg.Count)
 	})
 
@@ -99,9 +99,8 @@ func TestRegion_Record(t *testing.T) {
 		// Record after End should be ignored
 		region.Record(bytesRead.Observe(2048))
 
-		key := bytesRead.Key()
-		agg := region.observations[key]
-		require.Equal(t, int64(1024), agg.Value.(int64), "value should not change after End")
+		agg := region.observations[bytesRead.Key()]
+		require.Equal(t, int64(1024), agg.Value().(int64), "value should not change after End")
 		require.Equal(t, 1, agg.Count, "count should not change after End")
 	})
 }
