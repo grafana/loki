@@ -232,7 +232,6 @@ func executeDefault(r *Runner) error {
 	if err := r.goTo(0); err != nil {
 		return err
 	}
-
 	for {
 
 		if r.debug {
@@ -254,6 +253,56 @@ func executeDefault(r *Runner) error {
 
 		case syntax.Goto:
 			if err := r.goTo(r.operand(0)); err != nil {
+				return err
+			}
+			continue
+
+		case syntax.Dispatch:
+			// Dispatch only peeks at the next rune. It consumes it after finding a
+			// matching branch, so a failed dispatch leaves the input position alone.
+			if r.forwardchars() < 1 {
+				break
+			}
+			// Pick the next rune in the current execution direction.
+			pos := r.Runtextpos
+			if r.rightToLeft {
+				pos--
+			}
+			ch := r.Runtext[pos]
+			tableIndex := r.operand(0)
+			table := &r.code.Dispatches[tableIndex]
+			branch := -1
+			if ch >= 0 && ch < 128 {
+				if table.ASCII != nil {
+					// Larger dispatches use a direct ASCII branch lookup.
+					branch = int(table.ASCII[ch]) - 1
+				} else {
+					// Smaller dispatches use two compact ASCII bitmasks per set.
+					word := int(ch >> 6)
+					bit := uint64(1) << (ch & 63)
+					for i := range table.Sets {
+						if table.ASCIIMasks[i*2+word]&bit != 0 {
+							branch = i
+							break
+						}
+					}
+				}
+			} else {
+				// Non-ASCII runes fall back to the complete character sets.
+				for i, setIndex := range table.Sets {
+					if r.code.Sets[setIndex].CharIn(ch) {
+						branch = i
+						break
+					}
+				}
+			}
+			if branch < 0 {
+				break
+			}
+			// The selected branch starts with this rune, so consume it and jump
+			// directly to the rest of that branch.
+			r.Runtextpos += r.bump()
+			if err := r.goTo(table.Branches[branch]); err != nil {
 				return err
 			}
 			continue
@@ -685,6 +734,13 @@ func executeDefault(r *Runner) error {
 			r.advance(1)
 			continue
 
+		case syntax.Grapheme:
+			if !r.TryMatchGrapheme(r.rightToLeft) {
+				break
+			}
+			r.advance(0)
+			continue
+
 		case syntax.Ref:
 
 			capnum := r.operand(0)
@@ -1057,6 +1113,22 @@ func (r *Runner) textstart() int {
 
 func (r *Runner) textPos() int {
 	return r.Runtextpos
+}
+
+// TryMatchGrapheme consumes one Unicode extended grapheme cluster in the
+// runner's current direction. It is exported for regexp2cg-generated engines.
+func (r *Runner) TryMatchGrapheme(rightToLeft bool) bool {
+	var boundary int
+	if rightToLeft {
+		boundary = syntax.PreviousGraphemeClusterBoundary(r.Runtext, r.Runtextpos)
+	} else {
+		boundary = syntax.NextGraphemeClusterBoundary(r.Runtext, r.Runtextpos)
+	}
+	if boundary < 0 {
+		return false
+	}
+	r.Runtextpos = boundary
+	return true
 }
 
 // push onto the backtracking stack
@@ -1999,9 +2071,7 @@ func (r *Runner) tidyMatch(quick bool) *Match {
 		m.textpos = r.Runtextpos
 		if m.matchcount[0] > 0 {
 			interval := m.matches[0]
-			// bytes indices aren't used so just use fast path
-			m.RuneIndex = interval[0]
-			m.RuneLength = interval[1]
+			setCaptureFields(&m.Capture, interval[0], interval[1])
 		}
 		return m
 	}
@@ -2171,36 +2241,6 @@ func (r *Runner) initTrackCount() {
 	if r.code != nil {
 		r.runtrackcount = r.code.TrackCount
 	}
-}
-
-// decodeString converts s to []rune using a shared size-classed buffer pool when
-// allowed by the regexp optimization settings. Pooled slices must be returned
-// after the runner is done with them.
-func (r *Runner) decodeString(s string) ([]rune, *[]rune) {
-	buf, pooled := pooledRuneBuffers.get(len(s), r.re.optimizations.MaxCachedRuneBufferLength)
-	n := 0
-	for _, ch := range s {
-		buf[n] = ch
-		n++
-	}
-	return buf[:n], pooled
-}
-
-func (r *Runner) decodeStringWithStart(s string, startAt int) (runes []rune, runeStart int, pooled *[]rune) {
-	buf, pooled := pooledRuneBuffers.get(len(s), r.re.optimizations.MaxCachedRuneBufferLength)
-	n := 0
-	runeStart = -1
-	for strIdx, ch := range s {
-		if startAt >= 0 && strIdx == startAt {
-			runeStart = n
-		}
-		buf[n] = ch
-		n++
-	}
-	if startAt >= 0 && startAt == len(s) {
-		runeStart = n
-	}
-	return buf[:n], runeStart, pooled
 }
 
 // getRunner returns a runner to use for matching re.

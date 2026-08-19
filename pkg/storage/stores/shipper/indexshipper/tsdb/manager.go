@@ -134,7 +134,7 @@ func (m *tsdbManager) Start() error {
 			indices++
 
 			prefixed := NewPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
-			loaded, err := NewShippableTSDBFile(prefixed)
+			loaded, err := NewShippableTSDBFile(prefixed, index.MmapOptions{})
 
 			if err != nil {
 				level.Warn(m.log).Log(
@@ -237,7 +237,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 
 		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dst)
+		loaded, err := NewShippableTSDBFile(dst, index.MmapOptions{})
 		if err != nil {
 			return err
 		}

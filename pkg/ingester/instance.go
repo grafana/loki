@@ -520,28 +520,33 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
-	extractors, err := expr.Extractors()
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	// A literal or a vector expression produces samples without reading logs, so its
+	// extractor is nil and there is no stream worth touching. The plan is
+	// caller-supplied, so guard rather than assume such a request never arrives.
+	//
+	// Guard before SetupExtractor: given deletes it wraps the nil extractor into a
+	// non-nil filtering one, and this check would stop firing.
+	if extractor == nil {
+		return iter.NoopSampleIterator, nil
+	}
+
+	extractor, err = deletion.SetupExtractor(req, extractor)
 	if err != nil {
 		return nil, err
 	}
 
-	for j, extractor := range extractors {
-		extractor, err = deletion.SetupExtractor(req, extractor)
+	if i.extractorWrapper != nil &&
+		httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		if i.extractorWrapper != nil &&
-			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
-			userID, err := tenant.TenantID(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
-		}
-
-		extractors[j] = extractor
+		extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
 	}
 
 	stats := stats.FromContext(ctx)
@@ -561,17 +566,12 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			streamExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
-			for _, extractor := range extractors {
-				streamExtractors = append(streamExtractors, extractor.ForStream(stream.labels))
-			}
-
 			iter, err := stream.SampleIterator(
 				ctx,
 				stats,
 				req.Start,
 				req.End,
-				streamExtractors...,
+				extractor.ForStream(stream.labels),
 			)
 			if err != nil {
 				return err

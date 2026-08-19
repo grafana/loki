@@ -1,3 +1,22 @@
+# Release (2026-08-14)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.8
+  * **Bug Fix**: Restore draining the HTTP response body in `CloseResponseBody` to avoid issues with TCP connection reuse.
+
+# Release (2026-08-07)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.7
+  * **Bug Fix**: Don't serialize unset JSON documents as `nil` in structure members.
+  * **Bug Fix**: Fix a deserialization panic around collection members in recursive shape configs.
+
 # Release (2026-07-31)
 
 ## General Highlights

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/downloads"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -66,14 +67,20 @@ func NewStore(
 func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer) error {
 
-	var err error
+	readerOpts, err := indexShipperCfg.IndexReaderOptions()
+	if err != nil {
+		return err
+	}
+
 	s.indexShipper, err = indexshipper.NewIndexShipper(
 		prefix,
 		indexShipperCfg,
 		objectClient,
 		limits,
 		nil,
-		OpenShippableTSDB,
+		func(p string) (shipperindex.Index, error) {
+			return OpenShippableTSDB(p, readerOpts)
+		},
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,

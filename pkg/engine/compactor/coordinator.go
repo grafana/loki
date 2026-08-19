@@ -362,7 +362,7 @@ func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 		sb := strings.Builder{}
 		sb.WriteString("[")
 		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
 			if i != len(task.Runs)-1 {
 				sb.WriteString(", ")
 			}
@@ -399,10 +399,6 @@ func (c *coordinator) compactTenant(ctx context.Context, tenant string, window t
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	// IndexMerge opens each referenced object whole. Until it reads individual
-	// sections, one object may be repeated across task outputs and deduplicated
-	// by a later pass.
-	// TODO(rfratto): Preserve multiple log sort schemas in one IndexMerge output.
 	g, gctx := errgroup.WithContext(ctx)
 	if c.cfg.MaxRunningCompactionTasks > 0 {
 		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
@@ -489,7 +485,7 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 		sb := strings.Builder{}
 		sb.WriteString("[")
 		for i, run := range task.Runs {
-			sb.WriteString(fmt.Sprintf("%d", len(run.Sections)))
+			fmt.Fprintf(&sb, "%d", len(run.Sections))
 			if i != len(task.Runs)-1 {
 				sb.WriteString(", ")
 			}

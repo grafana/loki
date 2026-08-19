@@ -12,7 +12,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -37,11 +36,6 @@ const (
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
-
-	// defaultBlockSize is used for target block size when cutting partially deleted chunks from a delete request.
-	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
-	// different block size in the new chunk which should be fine.
-	defaultBlockSize = 256 * 1024
 
 	chunkMetasSectionIdx              = 1
 	chunkStructuredMetadataSectionIdx = 2
@@ -1090,9 +1084,9 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 func (c *MemChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
 	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
@@ -1120,7 +1114,7 @@ func (c *MemChunk) SampleIterator(
 		lastMax = b.maxt
 		its = append(
 			its,
-			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor),
 		)
 	}
 
@@ -1129,7 +1123,7 @@ func (c *MemChunk) SampleIterator(
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors...))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
 	}
 
 	var it iter.SampleIterator
@@ -1215,47 +1209,6 @@ func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
 	return newChunk, nil
 }
 
-// Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
-func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
-	if err != nil {
-		return nil, err
-	}
-
-	var newChunk *MemChunk
-	// as close as possible, respect the block/target sizes specified. However,
-	// if the blockSize is not set, use reasonable defaults.
-	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
-	} else {
-		// Using defaultBlockSize for target block size.
-		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
-		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
-	}
-
-	for itr.Next() {
-		entry := itr.At()
-		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)) {
-			continue
-		}
-		if _, err := newChunk.Append(&entry); err != nil {
-			return nil, err
-		}
-	}
-
-	if newChunk.Size() == 0 {
-		return nil, chunk.ErrRewriteNoDataLeft
-	}
-
-	if err := newChunk.Close(); err != nil {
-		return nil, err
-	}
-
-	return newChunk, nil
-}
-
 // encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
 // This may seem roundabout, but the encoding is already a field on the parent MemChunk type. encBlock
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
@@ -1276,7 +1229,7 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 
 func (b encBlock) SampleIterator(
 	ctx context.Context,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
@@ -1287,7 +1240,7 @@ func (b encBlock) SampleIterator(
 		b.b,
 		b.format,
 		b.symbolizer,
-		extractors...,
+		extractor,
 	)
 }
 
@@ -1380,7 +1333,7 @@ func unsafeGetBytes(s string) []byte {
 func (hb *headBlock) SampleIterator(
 	ctx context.Context,
 	mint, maxt int64,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
@@ -1390,46 +1343,37 @@ func (hb *headBlock) SampleIterator(
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
 
+	var hasher util.SampleHasher
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		for _, extractor := range extractors {
-			stats.AddHeadChunkBytes(int64(len(e.s)))
-			samples, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
-			if !ok || len(samples) == 0 {
-				continue
-			}
-			var (
-				found bool
-				s     *logproto.Series
-			)
+		stats.AddHeadChunkBytes(int64(len(e.s)))
 
-			for _, sample := range samples {
-				value := sample.Value
-				lbls := sample.Labels
-
-				lblStr := lbls.String()
-				baseHash := extractor.BaseLabels().Hash()
-				if s, found = series[lblStr]; !found {
-					s = &logproto.Series{
-						Labels:     lblStr,
-						Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-						StreamHash: baseHash,
-					}
-					series[lblStr] = s
-				}
-
-				s.Samples = append(s.Samples, logproto.Sample{
-					Timestamp: e.t,
-					Value:     value,
-					Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-				})
-			}
-
-			if extractor.ReferencedStructuredMetadata() {
-				setQueryReferencedStructuredMetadata = true
-			}
+		sample, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata)
+		if !ok {
+			continue
 		}
 		stats.AddPostFilterLines(1)
+
+		lblStr := sample.Labels.String()
+		s, found := series[lblStr]
+		if !found {
+			s = &logproto.Series{
+				Labels:     lblStr,
+				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+				StreamHash: extractor.BaseLabels().Hash(),
+			}
+			series[lblStr] = s
+		}
+
+		s.Samples = append(s.Samples, logproto.Sample{
+			Timestamp: e.t,
+			Value:     sample.Value,
+			Hash:      hasher.Hash(lblStr, unsafeGetBytes(e.s)),
+		})
+
+		if extractor.ReferencedStructuredMetadata() {
+			setQueryReferencedStructuredMetadata = true
+		}
 	}
 
 	if setQueryReferencedStructuredMetadata {
@@ -1835,22 +1779,16 @@ func newSampleIterator(
 	b []byte,
 	format byte,
 	symbolizer *symbolizer,
-	extractors ...log.StreamSampleExtractor,
+	extractor log.StreamSampleExtractor,
 ) iter.SampleIterator {
-	if len(extractors) == 0 {
+	if extractor == nil {
 		return iter.NoopSampleIterator
-	}
-
-	if len(extractors) > 1 {
-		return newMultiExtractorSampleIterator(ctx, pool, b, format, symbolizer, extractors...)
 	}
 
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractors[0],
+		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
-		curr:             []logproto.Sample{},
-		currLabels:       []log.LabelsResult{},
 	}
 }
 
@@ -1859,49 +1797,29 @@ type sampleBufferedIterator struct {
 
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
+	hasher    util.SampleHasher
 
-	curr       []logproto.Sample
-	currLabels []log.LabelsResult
+	curr       logproto.Sample
+	currLabels log.LabelsResult
 }
 
 func (e *sampleBufferedIterator) Next() bool {
-	// sample at e.curr[0] is the current sample
-	// since there is more than one sample, shift the remaining samples down by one
-	// to make e.curr[1] the new current sample
-	if len(e.curr) > 1 {
-		e.curr = e.curr[1:]
-		e.currLabels = e.currLabels[1:]
-
-		return true
-	}
-
-	// sample at e.curr[0] is the current sample
-	// since there is only one sample (the current one), we need to shift it out
-	// and clear the slice
-	if len(e.curr) == 1 {
-		e.curr = e.curr[:0]
-		e.currLabels = e.currLabels[:0]
-	}
-
 	for e.bufferedIterator.Next() {
-		e.stats.AddPostFilterLines(1)
-
-		samples, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
-		if !ok || len(samples) == 0 {
+		sample, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata)
+		if !ok {
 			continue
 		}
+		e.stats.AddPostFilterLines(1)
 
-		for _, sample := range samples {
-			e.currLabels = append(e.currLabels, sample.Labels)
-
-			// multilple samples from the same line can't have the same line hash or they will be deduplicated
-			// so they must have unique labels, which we'll use to create a unique line hash
-			lblString := sample.Labels.String()
-			e.curr = append(e.curr, logproto.Sample{
-				Timestamp: e.currTs,
-				Value:     sample.Value,
-				Hash:      util.UniqueSampleHash(lblString, e.currLine),
-			})
+		lblString := sample.Labels.String()
+		e.currLabels = sample.Labels
+		e.curr = logproto.Sample{
+			Timestamp: e.currTs,
+			Value:     sample.Value,
+			// Two entries in one stream can share a timestamp and a line but extract
+			// different labels. Without the labels in the hash, the merge iterator drops
+			// one as a duplicate.
+			Hash: e.hasher.Hash(lblString, e.currLine),
 		}
 
 		return true
@@ -1917,12 +1835,12 @@ func (e *sampleBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func (e *sampleBufferedIterator) Labels() string { return e.currLabels[0].String() }
+func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
-	return e.curr[0]
+	return e.curr
 }
 
 // validateBlock validates block by doing following checks:

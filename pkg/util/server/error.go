@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
@@ -17,7 +18,121 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
+
+// Failure categories returned by ClassifyFailure: a bounded set, safe to use as
+// a metric label.
+const (
+	FailureTimeout   = "timeout"
+	FailureCanceled  = "canceled"
+	FailureThrottled = "throttled"
+	FailureLimit     = "limit"
+	FailureSyntax    = "syntax"
+	FailureBlocked   = "blocked"
+	FailureUserError = "user_error"
+	FailureInternal  = "internal"
+	FailureUnknown   = "unknown"
+)
+
+// ClassifyFailure inspects a query error and returns a coarse category from the
+// set above, plus a finer-grained reason. Sentinels are matched first; anything
+// else is bucketed by the status ClientHTTPStatusAndError maps it to, so the
+// classification and the status served to the client cannot drift.
+func ClassifyFailure(err error) (category, reason string) {
+	if err == nil {
+		return "", ""
+	}
+
+	switch {
+	case errors.Is(err, context.Canceled):
+		return FailureCanceled, "client_canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return FailureTimeout, "query_timeout"
+	case errors.Is(err, logqlmodel.ErrMaxQueryBytesRead):
+		return FailureLimit, "max_query_bytes_read"
+	case errors.Is(err, logqlmodel.ErrQuerierTooManyBytes):
+		return FailureLimit, "querier_too_large"
+	case errors.Is(err, logqlmodel.ErrIntervalLimit):
+		return FailureLimit, "interval_limit"
+	case errors.Is(err, logqlmodel.ErrLimit):
+		return FailureLimit, "series_limit"
+	case errors.Is(err, logqlmodel.ErrBlocked):
+		return FailureBlocked, "blocked_by_policy"
+	case errors.Is(err, logqlmodel.ErrParse), errors.Is(err, logqlmodel.ErrParseMatchers):
+		return FailureSyntax, "parse"
+	case errors.Is(err, logqlmodel.ErrPipeline):
+		return FailureSyntax, "pipeline"
+	case errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
+		return FailureSyntax, "unsupported_instant_query"
+	case errors.Is(err, logqlmodel.ErrMaxQueryParallelism):
+		return FailureThrottled, "max_query_parallelism"
+	// The two limits below are also matched by message in reasonForBadRequest,
+	// which must return the same category and reason.
+	case errors.Is(err, logqlmodel.ErrMaxQueryLength):
+		return FailureLimit, "max_query_length"
+	case errors.Is(err, logqlmodel.ErrMaxEntriesLimit):
+		return FailureLimit, "max_entries"
+	case errors.Is(err, user.ErrNoOrgID):
+		return FailureUserError, "no_org_id"
+	}
+
+	status, _ := ClientHTTPStatusAndError(err)
+	switch status {
+	case StatusClientClosedRequest:
+		return FailureCanceled, "client_canceled"
+	case http.StatusGatewayTimeout:
+		return FailureTimeout, "query_timeout"
+	case http.StatusTooManyRequests:
+		return FailureThrottled, "too_many_requests"
+	case http.StatusRequestEntityTooLarge:
+		return FailureLimit, "query_too_large"
+	case http.StatusBadRequest:
+		return reasonForBadRequest(err)
+	default:
+		if status/100 == 5 {
+			return FailureInternal, "downstream_error"
+		}
+		if status/100 == 4 {
+			return FailureUserError, "unknown"
+		}
+		return FailureUnknown, "unknown"
+	}
+}
+
+// reasonForBadRequest refines a generic 400 into a category and reason by
+// matching the stable (pre-format) prefix of a known limit message template. It
+// is a fallback for the same limits raised on the queriers or in the v2 engine,
+// where only the (status, body) pair survives the httpgrpc hop and the sentinel
+// does not, so it must return what the sentinel cases above return.
+func reasonForBadRequest(err error) (category, reason string) {
+	msg := err.Error()
+	switch {
+	case matchesTemplate(msg, validation.ErrMaxEntriesLimit):
+		return FailureLimit, "max_entries"
+	case matchesTemplate(msg, validation.ErrQueryTooLong):
+		return FailureLimit, "max_query_length"
+	default:
+		return FailureUserError, "bad_request"
+	}
+}
+
+// matchesTemplate reports whether msg looks like an instance of the printf-style
+// template tmpl, by looking for the stable text preceding its first format verb.
+func matchesTemplate(msg, tmpl string) bool {
+	prefix := prefixBeforeFormat(tmpl)
+	return prefix != "" && strings.Contains(msg, prefix)
+}
+
+// prefixBeforeFormat returns the portion of a printf-style template before its
+// first format verb. A template starting with a verb yields an empty string,
+// which callers must not match on: it matches every message.
+func prefixBeforeFormat(tmpl string) string {
+	if i := strings.IndexByte(tmpl, '%'); i >= 0 {
+		return strings.TrimRight(tmpl[:i], " ")
+	}
+	return tmpl
+}
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 const StatusClientClosedRequest = 499
@@ -121,7 +236,6 @@ func isClientError(err error, queryErr *storage_errors.QueryError, userErr *User
 		errors.Is(err, logqlmodel.ErrBlocked) ||
 		errors.Is(err, logqlmodel.ErrParseMatchers) ||
 		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery) ||
-		errors.Is(err, logqlmodel.ErrVariantsDisabled) ||
 		errors.Is(err, user.ErrNoOrgID)
 }
 

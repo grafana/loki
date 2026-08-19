@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -66,17 +65,20 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
 
-	// Do not collect stats if the `next` handler returns error.
-	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
+	// Do not collect stats if the `next` handler returns an error: the returned
+	// `response` is nil, so there are no `response.statistics` to collect. A
+	// failed query gets the dedicated usage line instead (see stats_partial_test.go).
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
-		return nil, errors.New("request timedout")
+	_, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, context.DeadlineExceeded
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
+	require.ErrorIs(t, err, context.DeadlineExceeded) // original error is still returned
 	require.Equal(t, false, data.recorded)
+	require.Nil(t, data.statistics)
 }
 
 func Test_StatsHTTP(t *testing.T) {
@@ -275,6 +277,84 @@ func TestStatsCollectorMiddleware_DoesNotOverwriteLargerEstimatedQueryBytes(t *t
 	require.Equal(t, int64(4096), lokiResp.Statistics.Summary.EstimatedQueryBytes)
 }
 
+func TestMergeIndexStatsRange_DoesNotDoubleCountNestedRanges(t *testing.T) {
+	const matchers = `{foo="bar"}`
+	hour := model.Time(time.Hour / time.Millisecond)
+	full := indexStatsRange{from: 0, through: 2 * hour, matchers: matchers, bytes: 1000}
+	firstSplit := indexStatsRange{from: 0, through: hour, matchers: matchers, bytes: 400}
+	secondSplit := indexStatsRange{from: hour, through: 2 * hour, matchers: matchers, bytes: 600}
+	otherMatchers := indexStatsRange{from: 0, through: 2 * hour, matchers: `{baz="qux"}`, bytes: 1000}
+
+	for _, tc := range []struct {
+		name  string
+		input []indexStatsRange
+		want  int64
+	}{
+		{
+			name:  "full range then nested splits matches the covering haystack",
+			input: []indexStatsRange{full, firstSplit, secondSplit},
+			want:  1000,
+		},
+		{
+			name:  "nested splits then covering range replaces the split sum",
+			input: []indexStatsRange{firstSplit, secondSplit, full},
+			want:  1000,
+		},
+		{
+			name:  "non-overlapping splits are summed",
+			input: []indexStatsRange{firstSplit, secondSplit},
+			want:  1000,
+		},
+		{
+			name:  "identical range is recorded once",
+			input: []indexStatsRange{full, full},
+			want:  1000,
+		},
+		{
+			name:  "different matchers are summed",
+			input: []indexStatsRange{full, otherMatchers},
+			want:  2000,
+		},
+		{
+			name:  "nested splits for one matcher do not drop another matcher",
+			input: []indexStatsRange{full, firstSplit, secondSplit, otherMatchers},
+			want:  2000,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var ranges []indexStatsRange
+			for _, next := range tc.input {
+				ranges = mergeIndexStatsRange(ranges, next)
+			}
+			require.Equal(t, tc.want, sumIndexStatsBytes(ranges))
+		})
+	}
+}
+
+func TestQueryData_RecordEstimatedQueryBytes_DoesNotDoubleCountNestedRanges(t *testing.T) {
+	hour := model.Time(time.Hour / time.Millisecond)
+	data := &queryData{}
+	matchers := `{app="loki"}`
+
+	data.recordEstimatedQueryBytes(&logproto.IndexStatsRequest{
+		From:     0,
+		Through:  2 * hour,
+		Matchers: matchers,
+	}, 60<<30)
+	data.recordEstimatedQueryBytes(&logproto.IndexStatsRequest{
+		From:     0,
+		Through:  hour,
+		Matchers: matchers,
+	}, 30<<30)
+	data.recordEstimatedQueryBytes(&logproto.IndexStatsRequest{
+		From:     hour,
+		Through:  2 * hour,
+		Matchers: matchers,
+	}, 30<<30)
+
+	require.Equal(t, int64(60<<30), data.estimatedQueryBytes)
+}
+
 func TestIndexStatsContextCollectorMiddleware_DedupesAcrossCollectorPaths(t *testing.T) {
 	data := &queryData{}
 	ctx := context.WithValue(context.Background(), ctxKey, data)
@@ -323,4 +403,67 @@ func TestIndexStatsContextCollectorMiddleware_DedupesAcrossCollectorPaths(t *tes
 	lokiResp, ok := resp.(*LokiResponse)
 	require.True(t, ok)
 	require.Equal(t, int64(2048), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+}
+
+func TestStatsCollectorMiddleware_DoesNotDoubleCountNestedIndexStatsRanges(t *testing.T) {
+	hour := model.Time(time.Hour / time.Millisecond)
+	matchers := `{foo="bar"}`
+	full := &logproto.IndexStatsRequest{From: 0, Through: 2 * hour, Matchers: matchers}
+	firstSplit := &logproto.IndexStatsRequest{From: 0, Through: hour, Matchers: matchers}
+	secondSplit := &logproto.IndexStatsRequest{From: hour, Through: 2 * hour, Matchers: matchers}
+	bytesByReq := map[indexStatsRange]uint64{
+		{from: full.From, through: full.Through, matchers: matchers}:               1000,
+		{from: firstSplit.From, through: firstSplit.Through, matchers: matchers}:   400,
+		{from: secondSplit.From, through: secondSplit.Through, matchers: matchers}: 600,
+	}
+
+	for _, tc := range []struct {
+		name  string
+		order []*logproto.IndexStatsRequest
+	}{
+		{
+			name:  "full range then per-split stats",
+			order: []*logproto.IndexStatsRequest{full, firstSplit, secondSplit},
+		},
+		{
+			name:  "per-split stats then covering range",
+			order: []*logproto.IndexStatsRequest{firstSplit, secondSplit, full},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := &queryData{}
+			ctx := context.WithValue(context.Background(), ctxKey, data)
+			mw := queryrangebase.MergeMiddlewares(
+				StatsCollectorMiddleware(),
+				IndexStatsContextCollectorMiddleware(),
+			).Wrap(queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				switch r := req.(type) {
+				case *logproto.IndexStatsRequest:
+					bytes, ok := bytesByReq[indexStatsRange{from: r.From, through: r.Through, matchers: r.Matchers}]
+					if !ok {
+						return nil, fmt.Errorf("unexpected index stats range %s %s %s", r.From, r.Through, r.Matchers)
+					}
+					return &IndexStatsResponse{
+						Response: &logproto.IndexStatsResponse{Bytes: bytes},
+					}, nil
+				case *LokiRequest:
+					return &LokiResponse{}, nil
+				default:
+					return nil, fmt.Errorf("unexpected request type %T", req)
+				}
+			}))
+
+			for _, req := range tc.order {
+				_, err := mw.Do(ctx, req)
+				require.NoError(t, err)
+			}
+			require.Equal(t, int64(1000), data.estimatedQueryBytes)
+
+			resp, err := mw.Do(ctx, &LokiRequest{Query: "foo", StartTs: time.Now()})
+			require.NoError(t, err)
+			lokiResp, ok := resp.(*LokiResponse)
+			require.True(t, ok)
+			require.Equal(t, int64(1000), lokiResp.Statistics.Summary.EstimatedQueryBytes)
+		})
+	}
 }

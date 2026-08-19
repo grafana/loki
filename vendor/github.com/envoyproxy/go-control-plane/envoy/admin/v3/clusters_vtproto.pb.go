@@ -396,6 +396,16 @@ func (m *HostHealthStatus) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.FailedDegradedOutlierDetection {
+		i--
+		if m.FailedDegradedOutlierDetection {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x48
+	}
 	if m.ActiveHcTimeout {
 		i--
 		if m.ActiveHcTimeout {
@@ -649,6 +659,9 @@ func (m *HostHealthStatus) SizeVT() (n int) {
 		n += 2
 	}
 	if m.ActiveHcTimeout {
+		n += 2
+	}
+	if m.FailedDegradedOutlierDetection {
 		n += 2
 	}
 	n += len(m.unknownFields)

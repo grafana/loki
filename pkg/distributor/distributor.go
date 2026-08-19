@@ -326,8 +326,6 @@ type Distributor struct {
 	// Rate limited reporter for OTLP resource and scope attribute expansion.
 	otlpAttrReporter *otlpattrs.Reporter
 
-	RequestParserWrapper push.RequestParserWrapper
-
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -661,13 +659,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	return d.PushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+	return d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
 // Push a set of streams.
 // Can modify the input req parameter.
 // The returned error is the last one seen.
-func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(req.Size())
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))

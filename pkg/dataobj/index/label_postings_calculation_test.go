@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -187,6 +188,7 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	// All should be label-kind.
 	for _, row := range tbl.rows {
 		require.Equal(t, int64(postings.KindLabel), row["kind.int64"])
+		require.Equal(t, int64(streams.ShardFactor), row["shard_buckets.int64"])
 		require.NotNil(t, row["label_value.utf8"])
 	}
 

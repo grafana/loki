@@ -1,20 +1,14 @@
 package logqltest
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -31,39 +25,32 @@ const (
 // expected results, in a DSL documented in README.md. Loaded streams are encoded into a real
 // chunk store and each query runs through the production storage read path + logql.Engine, so
 // the full chunk-decode/parsing/extraction pipeline is exercised end-to-end.
+//
+// Every query runs on three execution stacks: the direct querier, and a real query-frontend +
+// query-scheduler + querier loop with sharding off and on.
 func RunScript(t *testing.T, name, script string) {
 	t.Helper()
 
-	var (
-		store          *testingChunkStore
-		querier        logql.Querier
-		streams        = newStreamsParser()
-		streamsChanged = true
-	)
+	streams := newStreamsParser()
+	streamsChanged := true
 
-	// The loaded streams are materialised into a real chunk store, rebuilt whenever the data
-	// changes (after load/clear) and reused across the evals that query it.
-	defer func() {
-		if store != nil {
-			store.close()
-		}
-	}()
-	getQuerier := func() logql.Querier {
+	// Each stack owns everything it needs to run a query, including its store.
+	directStack := newDirectStack(t)
+	frontendWithoutShardingStack, err := newQueryFrontendStack(t, false)
+	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=false)", name)
+	frontendWithSharding, err := newQueryFrontendStack(t, true)
+	require.NoErrorf(t, err, "%s: build query-frontend stack (sharded=true)", name)
+	stacks := []executionStack{directStack, frontendWithoutShardingStack, frontendWithSharding}
+
+	// refreshStreams gives every stack the current data before an eval.
+	refreshStreams := func() {
 		if !streamsChanged {
-			return querier
+			return
 		}
-
-		if store != nil {
-			store.close()
+		for _, s := range stacks {
+			s.setStreams(streams.get())
 		}
-
-		store = newTestingChunkStore(t)
-		store.write(t, streams.get())
-		store.flush(t)
-		querier = store.querier()
 		streamsChanged = false
-
-		return querier
 	}
 
 	lines := strings.Split(script, "\n")
@@ -105,14 +92,17 @@ func RunScript(t *testing.T, name, script string) {
 			if err := exp.validate(); err != nil {
 				t.Fatalf("%s: eval %q: %v", name, cmd.query, err)
 			}
-			runEval(t, name, getQuerier(), cmd, exp)
+			refreshStreams()
+			runEval(t, name, stacks, cmd, exp)
 		default:
 			t.Fatalf("%s: unexpected command %q", name, fields[0])
 		}
 	}
 }
 
-func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp expectations) {
+// runEval runs cmd on each execution stack as its own subtest. A stack that does not support the
+// query skips its subtest (visible in the output) instead of being omitted.
+func runEval(t *testing.T, name string, stacks []executionStack, cmd evalCmd, exp expectations) {
 	t.Helper()
 	label := cmd.query
 	if cmd.instant {
@@ -122,43 +112,43 @@ func runEval(t *testing.T, name string, querier logql.Querier, cmd evalCmd, exp 
 	}
 
 	t.Run(label, func(t *testing.T) {
-		engine := logql.NewEngine(logql.EngineOpts{}, querier, logql.NoLimits, log.NewNopLogger())
-
-		var start, end, step time.Duration
-		if cmd.instant {
-			start, end, step = cmd.ts, cmd.ts, 0
-		} else {
-			start, end, step = cmd.start, cmd.end, cmd.step
+		for _, stack := range stacks {
+			t.Run(stack.name(), func(t *testing.T) {
+				if !stack.isEvalSupported(cmd, exp) {
+					t.Skipf("%s: stack does not support this query", stack.name())
+				}
+				res, err := stack.eval(cmd)
+				assertResult(t, name, cmd, exp, res, err, stack.isQueryShardingSupported(), exp.isValueComparisonSkipped[stack.name()])
+			})
 		}
-
-		ctx := user.InjectOrgID(context.Background(), tenant)
-
-		// Build the params and execute. A failure can surface at either step (parse-time
-		// errors come from NewLiteralParams, evaluation errors from Exec).
-		var res logqlmodel.Result
-		params, err := logql.NewLiteralParams(
-			cmd.query,
-			epoch.Add(start), epoch.Add(end), step, 0,
-			logproto.FORWARD, 1000, nil, nil,
-		)
-		if err == nil {
-			res, err = engine.Query(params).Exec(ctx)
-		}
-
-		if exp.fail {
-			require.Errorf(t, err, "%s: expected query %q to fail", name, cmd.query)
-			switch exp.failKind {
-			case failMsg:
-				require.Contains(t, err.Error(), exp.failText, "%s: failure message", name)
-			case failRegex:
-				require.Regexp(t, exp.failText, err.Error(), "%s: failure regex", name)
-			}
-			return
-		}
-
-		require.NoError(t, err, "%s: query %q", name, cmd.query)
-		require.NoError(t, compareResult(name, cmd, exp, res.Data))
 	})
+}
+
+// assertResult applies exp to a result any execution stack produces. On a fail expectation it
+// checks the error; otherwise it compares the data and, for a sharding stack running a shardable
+// query, asserts the response reported at least two shards.
+func assertResult(t *testing.T, name string, cmd evalCmd, exp expectations, res logqlmodel.Result, err error, queryShardingEnabled, isValueComparisonSkipped bool) {
+	t.Helper()
+
+	if exp.fail {
+		require.Errorf(t, err, "%s: expected query %q to fail", name, cmd.query)
+		switch exp.failKind {
+		case failMsg:
+			require.Contains(t, err.Error(), exp.failText, "%s: failure message", name)
+		case failRegex:
+			require.Regexp(t, exp.failText, err.Error(), "%s: failure regex", name)
+		}
+		return
+	}
+
+	require.NoError(t, err, "%s: query %q", name, cmd.query)
+	require.NoError(t, compareResult(name, cmd, exp, res.Data, isValueComparisonSkipped))
+
+	if queryShardingEnabled && isQueryShardingSupported(cmd.query) {
+		require.GreaterOrEqualf(t, res.Statistics.Summary.Shards, int64(2),
+			"%s: query %q expected to shard (>=2 shards), got %d; list its op in isQueryShardingSupported if it legitimately does not shard",
+			name, cmd.query, res.Statistics.Summary.Shards)
+	}
 }
 
 // parseLoadBlock consumes a load command's indented data lines into p, returning the index of the
@@ -216,13 +206,16 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 // compareResult checks a query result against the expectation, returning a descriptive error on the
 // first mismatch (nil on success). Keeping the comparators pure (error-returning rather than
 // asserting on a *testing.T) lets the tests exercise the failure path directly.
-func compareResult(name string, cmd evalCmd, exp expectations, data any) error {
+//
+// With skipValues true the comparators check result shape only — series count, timestamps, and
+// present/absent samples — and skip float value equality.
+func compareResult(name string, cmd evalCmd, exp expectations, data any, skipValues bool) error {
 	switch v := data.(type) {
 	case promql.Scalar:
 		if exp.empty {
 			return fmt.Errorf("%s: expected an empty result, got scalar %v", name, v.V)
 		}
-		return compareScalar(name, exp, v)
+		return compareScalar(name, exp, v, skipValues)
 	case promql.Vector:
 		if exp.empty {
 			if len(v) != 0 {
@@ -233,7 +226,7 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any) error {
 		if exp.scalar != nil {
 			return fmt.Errorf("%s: expected a scalar, got a vector", name)
 		}
-		return compareVector(name, cmd, exp, v)
+		return compareVector(name, cmd, exp, v, skipValues)
 	case promql.Matrix:
 		if exp.empty {
 			if len(v) != 0 {
@@ -244,23 +237,23 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any) error {
 		if exp.scalar != nil {
 			return fmt.Errorf("%s: expected a scalar, got a matrix", name)
 		}
-		return compareMatrix(name, cmd, exp, v)
+		return compareMatrix(name, cmd, exp, v, skipValues)
 	default:
 		return fmt.Errorf("%s: unsupported result type %T (only metric queries are supported)", name, data)
 	}
 }
 
-func compareScalar(name string, exp expectations, s promql.Scalar) error {
+func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bool) error {
 	if exp.scalar == nil {
 		return fmt.Errorf("%s: scalar result but no scalar value expected", name)
 	}
-	if !floatsEqual(*exp.scalar, s.V) {
+	if !skipValues && !floatsEqual(*exp.scalar, s.V) {
 		return fmt.Errorf("%s: scalar mismatch: want %v, got %v", name, *exp.scalar, s.V)
 	}
 	return nil
 }
 
-func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector) error {
+func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, skipValues bool) error {
 	// Instant results carry a single timestamp: the query's evaluation time.
 	wantTS := epoch.Add(cmd.ts).UnixMilli()
 
@@ -282,7 +275,7 @@ func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector) 
 			if v[i].T != wantTS {
 				return fmt.Errorf("%s: series %s has timestamp %dms, expected %dms", name, v[i].Metric.String(), v[i].T, wantTS)
 			}
-			if !floatsEqual(es.samples[0].value, v[i].F) {
+			if !skipValues && !floatsEqual(es.samples[0].value, v[i].F) {
 				return fmt.Errorf("%s: series %s (position %d) value mismatch: want %v, got %v", name, es.labels, i, es.samples[0].value, v[i].F)
 			}
 		}
@@ -323,14 +316,14 @@ func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector) 
 		if !ok {
 			return fmt.Errorf("%s: missing expected series %s; got %v", name, k, got)
 		}
-		if !floatsEqual(wv, gv) {
+		if !skipValues && !floatsEqual(wv, gv) {
 			return fmt.Errorf("%s: series %s value mismatch: want %v, got %v", name, k, wv, gv)
 		}
 	}
 	return nil
 }
 
-func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) error {
+func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, skipValues bool) error {
 	if exp.ordered {
 		return fmt.Errorf("%s: `expect ordered` is only supported for instant queries", name)
 	}
@@ -398,7 +391,7 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix) 
 			if !has {
 				return fmt.Errorf("%s: series %s missing point at step %d (t=%dms)", name, k, i, ts)
 			}
-			if !floatsEqual(p.value, gv) {
+			if !skipValues && !floatsEqual(p.value, gv) {
 				return fmt.Errorf("%s: series %s step %d value mismatch: want %v, got %v", name, k, i, p.value, gv)
 			}
 		}

@@ -214,8 +214,8 @@ func (in instance) For(
 	for {
 		select {
 		case <-ctx.Done():
-			// Return early if the context is canceled
-			return acc.Result(), ctx.Err()
+			// Report the cancellation cause so a real failure wins over a generic cancellation.
+			return acc.Result(), context.Cause(ctx)
 		case resp, ok := <-ch:
 			if !ok {
 				// Channel closed, we're done

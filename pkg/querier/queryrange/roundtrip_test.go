@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 	valid "github.com/grafana/loki/v3/pkg/validation"
 )
@@ -1018,7 +1019,10 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		},
 	}
 
-	ctx := user.InjectOrgID(context.Background(), "1")
+	// The queryData value statsHTTPMiddleware installs marks this as a real user
+	// query, which is what makes the failed-query usage line eligible.
+	data := &queryData{}
+	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "1")
 
 	called := false
 	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
@@ -1026,9 +1030,30 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		return nil, nil
 	})
 
+	lines := captureFailedQueryUsage(t)
+	countBefore := failedQueryUsageCount(t, server.FailureLimit)
+
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)"), err)
+	// Raised in-process, so it carries the sentinel and is classified by errors.Is.
+	requireSentinelClassification(t, err, logqlmodel.ErrMaxEntriesLimit,
+		server.FailureLimit, "max_entries",
+		http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)")
 	require.False(t, called)
+
+	// Rejected before the middleware chain, but still reported.
+	line := lines.only(t)
+	requireFailedQueryUsageShape(t, line)
+	require.Equal(t, lreq.Query, line["query"])
+	require.Equal(t, fmt.Sprint(util.HashedQuery(lreq.Query)), line["query_hash"])
+	require.Equal(t, logql.QueryTypeLimited, line["query_type"])
+	require.Equal(t, string(logql.RangeType), line["range_type"])
+	require.Equal(t, (6 * time.Hour).String(), line["length"])
+	require.Equal(t, "400", line["status"])
+	require.Equal(t, "0B", line["total_bytes"])
+	require.Equal(t, server.FailureLimit, line["failure_category"])
+	require.Equal(t, "max_entries", line["failure_reason"])
+	require.Equal(t, countBefore+1, failedQueryUsageCount(t, server.FailureLimit))
+	require.False(t, data.recorded)
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
@@ -1411,7 +1436,6 @@ type fakeLimits struct {
 	maxStatsCacheFreshness      time.Duration
 	maxMetadataCacheFreshness   time.Duration
 	volumeEnabled               bool
-	enableMultiVariantQueries   bool
 	tsdbShardingStrategy        func(context.Context, string) string
 }
 
@@ -1549,10 +1573,6 @@ func (f fakeLimits) TSDBShardingStrategy(ctx context.Context, userID string) str
 
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
-}
-
-func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
-	return f.enableMultiVariantQueries
 }
 
 func (f fakeLimits) DebugEngineTasks(_ string) bool {

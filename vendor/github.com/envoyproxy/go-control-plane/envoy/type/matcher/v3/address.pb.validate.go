@@ -92,6 +92,8 @@ func (m *AddressMatcher) validate(all bool) error {
 
 	}
 
+	// no validation rules for InvertMatch
+
 	if len(errors) > 0 {
 		return AddressMatcherMultiError(errors)
 	}

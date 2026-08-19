@@ -394,9 +394,9 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum by (cluster) (
-					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=0_of_2>
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" [5m])),shard=1_of_2>
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats" | json busy="utilization" | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -410,9 +410,9 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum without(busy) (
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -426,9 +426,9 @@ func TestMappingStrings(t *testing.T) {
 				)
 				/
 				sum without(foo,busy) (
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=0_of_2>
 					++
-					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy | busy != "" [5m])),shard=1_of_2>
 				)
 			)`,
 		},
@@ -507,9 +507,9 @@ func TestMappingStrings(t *testing.T) {
 					)
 					/
 					sum without (bar) (
-						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level [5m])), shard=0_of_2>
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level | bar != "" [5m])), shard=0_of_2>
 						++
-						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level [5m])), shard=1_of_2>
+						downstream<sum without (bar) (count_over_time({foo="bar"} | logfmt | drop level | bar != "" [5m])), shard=1_of_2>
 					)
 				)
 			)`,
@@ -1682,8 +1682,15 @@ func TestMapping(t *testing.T) {
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeCount,
 									Left: &syntax.LogRangeExpr{
-										Left: &syntax.MatchersExpr{
-											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										Left: &syntax.PipelineExpr{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											},
+											MultiStages: syntax.MultiStageExpr{
+												&syntax.LabelFilterExpr{
+													LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "bytes", "")),
+												},
+											},
 										},
 										Interval: 5 * time.Minute,
 									},
@@ -1704,8 +1711,15 @@ func TestMapping(t *testing.T) {
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeCount,
 										Left: &syntax.LogRangeExpr{
-											Left: &syntax.MatchersExpr{
-												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											Left: &syntax.PipelineExpr{
+												Left: &syntax.MatchersExpr{
+													Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+												},
+												MultiStages: syntax.MultiStageExpr{
+													&syntax.LabelFilterExpr{
+														LabelFilterer: log.NewStringLabelFilter(mustNewMatcher(labels.MatchNotEqual, "bytes", "")),
+													},
+												},
 											},
 											Interval: 5 * time.Minute,
 										},

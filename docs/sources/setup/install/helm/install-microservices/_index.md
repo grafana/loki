@@ -401,7 +401,7 @@ singleBinary:
 
 {{< /collapse >}}
 
-To configure other storage providers, refer to the [Helm Chart Reference](../reference/).
+To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
 ## Gateway API
 

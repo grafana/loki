@@ -3,23 +3,25 @@ package distributor
 import (
 	"bytes"
 	"compress/gzip"
-	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -71,103 +73,6 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 		require.NotContains(t, string(body), "<th>Instance ID</th>")
-	})
-}
-
-func TestRequestParserWrapping(t *testing.T) {
-	t.Run("it calls the parser wrapper if there is one", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
-
-		// unprocessable code because there are no streams in the request.
-		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
-		require.True(t, called)
-	})
-
-	t.Run("it returns 204 when the parser wrapper filteres all log lines", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		var called bool
-		distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
-			called = true
-			return requestParser
-		}
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrAllLogsFiltered
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.True(t, called)
-		require.Equal(t, http.StatusNoContent, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with positive content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a positive content length
-		req.ContentLength = 1000
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-	})
-
-	t.Run("it handles request body too large error with negative content length", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		limits.RejectOldSamples = false
-		distributors, _ := prepare(t, 1, 3, limits, nil)
-
-		ctx := user.InjectOrgID(context.Background(), "test-user")
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
-		require.NoError(t, err)
-
-		// Set a negative content length to test our guard clause
-		req.ContentLength = -1
-
-		parser := newFakeParser()
-		parser.parseErr = push.ErrRequestBodyTooLarge
-
-		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
-
-		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
-		// The test should complete without panicking
 	})
 }
 
@@ -240,12 +145,6 @@ func TestPushHandlerMaxRecvMsgSize(t *testing.T) {
 	})
 
 	t.Run("Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
-
-		// NOTE: this currently returns 400, not 413: an oversized JSON body is
-		// truncated by the max-recv-msg-size LimitReader and fails to decode
-		// before any size check maps to ErrRequestBodyTooLarge. We assert 413
-		// here as the desired behavior.
 		body := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		require.Greater(t, len(body), distributors[0].cfg.MaxRecvMsgSize)
 
@@ -315,7 +214,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	}
 
 	t.Run("snappy compressed protobuf returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		protoBytes, err := proto.Marshal(&logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -347,7 +245,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed Loki JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		lokiJSON := []byte(`{"streams":[{"stream":{"foo":"bar"},"values":[["1234567890000000000","` + line + `"]]}]}`)
 		body := withGzip(t, lokiJSON)
 		require.Greater(t, int64(len(lokiJSON)), distributors[0].cfg.MaxDecompressedSize)
@@ -371,7 +268,6 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 
 	t.Run("gzip compressed OTLP JSON returns 413", func(t *testing.T) {
-		t.Skip() // Returns HTTP 400
 		otlpLogs := plog.NewLogs()
 		rl := otlpLogs.ResourceLogs().AppendEmpty()
 		rl.Resource().Attributes().PutStr("service.name", "test-service")
@@ -402,24 +298,126 @@ func TestPushHandlerMaxDecompressedSize(t *testing.T) {
 	})
 }
 
-type fakeParser struct {
-	parseErr error
+func TestPushHandlerLogPushRequestStreams(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	d := distributors[0]
+
+	// Capture the log output.
+	out := &concurrency.SyncBuffer{}
+	d.logger = log.NewLogfmtLogger(out)
+
+	labelValues := []string{"bar", "baz"}
+	labels := make([]string, 0, len(labelValues))
+	for _, v := range labelValues {
+		labels = append(labels, fmt.Sprintf("{foo=%q}", v))
+	}
+	b, err := proto.Marshal(makeWriteRequestWithLabels(1, 10, labels, false, false, false))
+	require.NoError(t, err)
+	b = snappy.Encode(nil, b)
+
+	for _, tc := range []struct {
+		name             string
+		cfg              runtime.Config
+		forwardedFor     string
+		expectedLines    int
+		expectedFields   []string
+		unexpectedFields []string
+	}{
+		{
+			name:          "logs nothing when disabled",
+			cfg:           runtime.Config{},
+			expectedLines: 0,
+		},
+		{
+			name:             "logs one line per stream when enabled",
+			cfg:              runtime.Config{LogPushRequestStreams: true},
+			expectedLines:    2,
+			expectedFields:   []string{"level=debug", "org_id=test", "mostRecentLagMs=", "policy="},
+			unexpectedFields: []string{"presumedAgentIp", `streamSizeBytes="0 B"`},
+		},
+		{
+			name:             "logs the first X-Forwarded-For address as the presumed agent IP",
+			cfg:              runtime.Config{LogPushRequestStreams: true},
+			forwardedFor:     "10.0.0.1, 10.0.0.2",
+			expectedLines:    2,
+			expectedFields:   []string{"presumedAgentIp=10.0.0.1"},
+			unexpectedFields: []string{"10.0.0.2"},
+		},
+		{
+			name: "logs when the presumed agent IP is in the filter list",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			forwardedFor:  "10.0.0.1, 10.0.0.2",
+			expectedLines: 2,
+		},
+		{
+			name: "logs nothing when the presumed agent IP is not in the filter list",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			forwardedFor:  "10.0.0.9",
+			expectedLines: 0,
+		},
+		{
+			name: "logs nothing when the filter list is set but there is no presumed agent IP",
+			cfg: runtime.Config{
+				LogPushRequestStreams:       true,
+				FilterPushRequestStreamsIPs: []string{"10.0.0.1"},
+			},
+			expectedLines: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out.Reset()
+
+			d.tenantConfigs, err = runtime.NewTenantConfigs(&fakeTenantConfigProvider{cfg: tc.cfg})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/loki/api/v1/push", bytes.NewReader(b))
+			req = req.WithContext(user.InjectOrgID(t.Context(), "test"))
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			req.Header.Set("Content-Encoding", "snappy")
+			if tc.forwardedFor != "" {
+				req.Header.Set("X-Forwarded-For", tc.forwardedFor)
+			}
+
+			rec := httptest.NewRecorder()
+			d.pushHandler(rec, req, push.ParseLokiRequest, push.HTTPError, constants.Loki)
+			require.Equal(t, http.StatusNoContent, rec.Code)
+
+			// Filter just "push request streams" lines from the output.
+			lines := strings.Split(out.String(), "\n")
+			containsLines := make([]string, 0, len(lines))
+			for _, line := range lines {
+				if strings.Contains(line, "msg=\"push request streams\"") {
+					containsLines = append(containsLines, line)
+				}
+			}
+			require.Len(t, containsLines, tc.expectedLines)
+
+			for i, line := range containsLines {
+				require.Contains(t, line, fmt.Sprintf("foo=\\\"%s\\\"", labelValues[i]))
+				for _, field := range tc.expectedFields {
+					require.Contains(t, line, field)
+				}
+				for _, field := range tc.unexpectedFields {
+					require.NotContains(t, line, field)
+				}
+			}
+		})
+	}
 }
 
-func newFakeParser() *fakeParser {
-	return &fakeParser{}
+type fakeTenantConfigProvider struct {
+	cfg runtime.Config
 }
 
-func (p *fakeParser) parseRequest(
-	_ string,
-	_ *http.Request,
-	_ push.Limits,
-	_ *runtime.TenantConfigs,
-	_ int,
-	_ int64,
-	_ push.UsageTracker,
-	_ push.StreamResolver,
-	_ log.Logger,
-) (*logproto.PushRequest, *push.Stats, error) {
-	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr
+func (p *fakeTenantConfigProvider) TenantConfig(_ string) *runtime.Config {
+	return &p.cfg
 }
