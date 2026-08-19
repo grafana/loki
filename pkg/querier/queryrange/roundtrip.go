@@ -449,7 +449,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+				// Rejected before the middleware chain, so the line is emitted here.
+				logFailedQueryUsageForRejection(ctx, req, err)
+				return nil, err
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {

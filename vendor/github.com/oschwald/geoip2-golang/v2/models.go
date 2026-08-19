@@ -1,5 +1,7 @@
 package geoip2
 
+//go:generate go tool maxminddb-gen $GOFILE
+
 import (
 	"fmt"
 	"net/netip"
@@ -240,9 +242,9 @@ func (c EnterpriseCountryRecord) HasData() bool {
 type EnterpriseTraits struct {
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered ASN
 	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
 	// ConnectionType indicates the connection type. May be Dialup,
@@ -354,10 +356,10 @@ func (c CountryRecord) HasData() bool {
 // CityTraits contains traits data for City database records.
 type CityTraits struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the network prefix for this record. This is the largest
 	// network where all of the fields besides IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnycast is true if the IP address belongs to an anycast network.
 	// See https://en.wikipedia.org/wiki/Anycast
 	IsAnycast bool `json:"is_anycast,omitzero" maxminddb:"is_anycast"`
@@ -374,10 +376,10 @@ func (t CityTraits) HasData() bool {
 // CountryTraits contains traits data for Country database records.
 type CountryTraits struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnycast is true if the IP address belongs to an anycast network.
 	// See https://en.wikipedia.org/wiki/Anycast
 	IsAnycast bool `json:"is_anycast,omitzero" maxminddb:"is_anycast"`
@@ -525,10 +527,10 @@ func (c Country) HasData() bool {
 // Anonymous IP database.
 type AnonymousIP struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IsAnonymous is true if the IP address belongs to any sort of anonymous network.
 	IsAnonymous bool `json:"is_anonymous,omitzero" maxminddb:"is_anonymous"`
 	// IsAnonymousVPN is true if the IP address is registered to an anonymous
@@ -560,10 +562,10 @@ func (a AnonymousIP) HasData() bool {
 // provider identification, and temporal tracking.
 type AnonymousPlus struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// NetworkLastSeen is the last day the network was sighted in anonymized
 	// network analysis.
 	NetworkLastSeen Date `json:"network_last_seen,omitzero" maxminddb:"network_last_seen"`
@@ -608,10 +610,10 @@ func (a AnonymousPlus) HasData() bool {
 // The ASN struct corresponds to the data in the GeoLite2 ASN database.
 type ASN struct {
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered autonomous system number.
 	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
 	// AutonomousSystemNumber for the IP address.
@@ -632,10 +634,10 @@ type ConnectionType struct {
 	// future.
 	ConnectionType string `json:"connection_type,omitzero" maxminddb:"connection_type"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 }
 
 // HasData returns true if any data was found for the IP in the ConnectionType database.
@@ -650,10 +652,10 @@ type Domain struct {
 	// (e.g., "example.com")
 	Domain string `json:"domain,omitzero" maxminddb:"domain"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 }
 
 // HasData returns true if any data was found for the IP in the Domain database.
@@ -666,9 +668,9 @@ func (d Domain) HasData() bool {
 type ISP struct {
 	// Network is the largest network prefix where all fields besides
 	// IPAddress have the same value.
-	Network netip.Prefix `json:"network,omitzero"`
+	Network netip.Prefix `json:"network,omitzero" maxminddb:"-"`
 	// IPAddress is the IP address used during the lookup
-	IPAddress netip.Addr `json:"ip_address,omitzero"`
+	IPAddress netip.Addr `json:"ip_address,omitzero" maxminddb:"-"`
 	// AutonomousSystemOrganization for the registered ASN
 	AutonomousSystemOrganization string `json:"autonomous_system_organization,omitzero" maxminddb:"autonomous_system_organization"` //nolint:lll
 	// ISP is the name of the ISP associated with the IP address

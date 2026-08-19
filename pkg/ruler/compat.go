@@ -21,40 +21,31 @@ import (
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
-	"github.com/prometheus/sigv4"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	rulerconfig "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
-	rulerutil "github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+type RemoteWriteLimits interface {
+	RulerRemoteWriteDisabled(userID string) bool
+	RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig
+}
+
+type RemoteEvaluationLimits interface {
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
+}
 
 // RulesLimits is the one function we need from limits.Overrides, and
 // is here to limit coupling.
 type RulesLimits interface {
 	ruler.RulesLimits
-
-	RulerRemoteWriteDisabled(userID string) bool
-	RulerRemoteWriteURL(userID string) string
-	RulerRemoteWriteTimeout(userID string) time.Duration
-	RulerRemoteWriteHeaders(userID string) map[string]string
-	RulerRemoteWriteRelabelConfigs(userID string) []*rulerutil.RelabelConfig
-	RulerRemoteWriteConfig(userID string, id string) *rulerconfig.RemoteWriteConfig
-	RulerRemoteWriteQueueCapacity(userID string) int
-	RulerRemoteWriteQueueMinShards(userID string) int
-	RulerRemoteWriteQueueMaxShards(userID string) int
-	RulerRemoteWriteQueueMaxSamplesPerSend(userID string) int
-	RulerRemoteWriteQueueBatchSendDeadline(userID string) time.Duration
-	RulerRemoteWriteQueueMinBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
-	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
-	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
-
-	RulerRemoteEvaluationTimeout(userID string) time.Duration
-	RulerRemoteEvaluationMaxResponseSize(userID string) int64
+	RemoteWriteLimits
+	RemoteEvaluationLimits
 }
 
 // queryFunc returns a new query function using the rules.EngineQueryFunc function

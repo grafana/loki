@@ -33,6 +33,13 @@ type stream struct {
 	aggregationMetrics *aggregation.Metrics
 	instanceID         string
 
+	// Fields retained so Drains can be created lazily on first observation
+	// of each detected_level. Most streams only see 1–3 levels
+	drainCfg      *drain.Config
+	drainLimits   drain.Limits
+	guessedFormat string
+	drainMetrics  *drain.Metrics
+
 	lastTS                 int64
 	persistenceGranularity time.Duration
 	sampleInterval         time.Duration
@@ -58,18 +65,6 @@ func newStream(
 		return nil, err
 	}
 
-	patterns := make(map[string]*drain.Drain, len(constants.LogLevels))
-	for _, lvl := range constants.LogLevels {
-		patterns[lvl] = drain.New(instanceID, drainCfg, limits, guessedFormat, &drain.Metrics{
-			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
-			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
-			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
-			LinesSkipped:          linesSkipped,
-			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
-			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
-		})
-	}
-
 	// Get per-tenant persistence granularity (requires casting drainLimits to Limits interface)
 	persistenceGranularity := limits.PersistenceGranularity(instanceID)
 	if persistenceGranularity == 0 {
@@ -77,12 +72,24 @@ func newStream(
 	}
 
 	return &stream{
-		fp:                     fp,
-		labels:                 ls,
-		labelsString:           ls.String(),
-		labelHash:              labels.StableHash(ls),
-		logger:                 logger,
-		patterns:               patterns,
+		fp:           fp,
+		labels:       ls,
+		labelsString: ls.String(),
+		labelHash:    labels.StableHash(ls),
+		logger:       logger,
+		// Drains are created on first Push for each observed level.
+		patterns:      make(map[string]*drain.Drain),
+		drainCfg:      drainCfg,
+		drainLimits:   limits,
+		guessedFormat: guessedFormat,
+		drainMetrics: &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
+			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
+			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
+			LinesSkipped:          linesSkipped,
+			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
+			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
+		},
 		patternWriter:          patternWriter,
 		aggregationMetrics:     aggregationMetrics,
 		instanceID:             instanceID,
@@ -91,6 +98,34 @@ func newStream(
 		patternRateThreshold:   limits.PatternRateThreshold(instanceID),
 		volumeThreshold:        volumeThreshold,
 	}, nil
+}
+
+// getOrCreateDrain returns the Drain for lvl, creating it on first use.
+// Levels outside constants.LogLevels fall back to the unknown Drain so
+// unexpected detected_level values still train somewhere.
+// Caller must hold s.mtx.
+func (s *stream) getOrCreateDrain(lvl string) *drain.Drain {
+	if pattern, ok := s.patterns[lvl]; ok {
+		return pattern
+	}
+	if !isKnownLogLevel(lvl) {
+		lvl = constants.LogLevelUnknown
+		if pattern, ok := s.patterns[lvl]; ok {
+			return pattern
+		}
+	}
+	pattern := drain.New(s.instanceID, s.drainCfg, s.drainLimits, s.guessedFormat, s.drainMetrics)
+	s.patterns[lvl] = pattern
+	return pattern
+}
+
+func isKnownLogLevel(lvl string) bool {
+	for _, known := range constants.LogLevels {
+		if lvl == known {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *stream) Push(
@@ -113,12 +148,7 @@ func (s *stream) Push(
 		s.lastTS = entry.Timestamp.UnixNano()
 
 		//TODO(twhitney): Can we reduce lock contention by locking by level rather than for the entire stream?
-		if pattern, ok := s.patterns[lvl]; ok {
-			pattern.Train(entry.Line, entry.Timestamp.UnixNano())
-		} else {
-			// since we're defaulting the level to unknown above, we should never get here.
-			s.patterns[constants.LogLevelUnknown].Train(entry.Line, entry.Timestamp.UnixNano())
-		}
+		s.getOrCreateDrain(lvl).Train(entry.Line, entry.Timestamp.UnixNano())
 	}
 	return nil
 }

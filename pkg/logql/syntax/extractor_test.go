@@ -99,9 +99,50 @@ func Test_Extractor(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseSampleExpr(tc)
 			require.Nil(t, err)
-			extractors, err := expr.Extractors()
+			extractor, err := expr.Extractor()
 			require.Nil(t, err)
-			require.Len(t, extractors, 1)
+			require.NotNil(t, extractor)
 		})
 	}
+}
+
+// Test_Extractor_NilForExprsThatDoNotReadLogs pins the nil half of the Extractor
+// contract. Callers skip reading chunks entirely when they get nil, so a change
+// that returned a real extractor here would make these queries scan the store for
+// samples they never derive from log lines.
+func Test_Extractor_NilForExprsThatDoNotReadLogs(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []string{
+		`vector(0)`,
+		`1 + 1`,
+	} {
+		t.Run(tc, func(t *testing.T) {
+			expr, err := ParseSampleExpr(tc)
+			require.Nil(t, err)
+
+			extractor, err := expr.Extractor()
+			require.Nil(t, err)
+			require.Nil(t, extractor)
+		})
+	}
+}
+
+// Test_Extractor_DoesNotMutateGroupingInPlace ensure the expression groups
+// are not mutated in place. A VectorAggregationExpr's Grouping can be shared
+// with another expression evaluated concurrently (e.g. the sum/count legs of
+// a sharded avg_over_time), so extractor() must sort a private copy.
+func Test_Extractor_DoesNotMutateGroupingInPlace(t *testing.T) {
+	t.Parallel()
+
+	expr, err := ParseSampleExpr(`sum by (c, a) (sum_over_time({job="mysql"} | unwrap bytes [5m]))`)
+	require.NoError(t, err)
+
+	vecAgg, ok := expr.(*VectorAggregationExpr)
+	require.True(t, ok, "expected a VectorAggregationExpr, got %T", expr)
+	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
+
+	_, err = expr.Extractor()
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"c", "a"}, vecAgg.Grouping.Groups)
 }

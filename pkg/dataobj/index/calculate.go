@@ -53,8 +53,9 @@ type logsCalculationContext struct {
 	// TODO(twhitney): monitor the memory of this. [streamLabels] is passed in from Calculate,
 	// and is thus object scoped. As longs as streams sections stay small enough this shouldn't
 	// be a problem.
-	streamLabels map[int64]labels.Labels // source stream ID -> labels
-	builder      *indexobj.Builder
+	streamLabels       map[int64]labels.Labels // source stream ID -> labels
+	streamShardBuckets map[int64]uint32        // source stream ID -> shard bucket
+	builder            *indexobj.Builder
 }
 
 // These steps are applied to all logs and are unique to a section
@@ -136,12 +137,13 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	streamIDLookupByTenant := sync.Map{}
 	streamLabelsByTenant := sync.Map{}
+	shardBucketsByTenant := sync.Map{}
 
 	// Streams Section: process these first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
 		g.Go(func() error {
 			streamIDLookup := make(map[int64]int64)
-			streamLabels, err := c.processStreamsSection(streamsCtx, section, streamIDLookup)
+			streamLabels, shardBuckets, err := c.processStreamsSection(streamsCtx, section, streamIDLookup)
 			if err != nil {
 				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 			}
@@ -153,6 +155,10 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 
 			_, labelsExist := streamLabelsByTenant.LoadOrStore(section.Tenant, streamLabels)
 			if labelsExist {
+				panic("multiple streams sections for the same tenant within one data object")
+			}
+			_, shardBucketsExist := shardBucketsByTenant.LoadOrStore(section.Tenant, shardBuckets)
+			if shardBucketsExist {
 				panic("multiple streams sections for the same tenant within one data object")
 			}
 			return nil
@@ -179,9 +185,13 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			if !ok {
 				return fmt.Errorf("stream labels not found for tenant %s", section.Tenant)
 			}
+			shardBuckets, ok := shardBucketsByTenant.Load(section.Tenant)
+			if !ok {
+				return fmt.Errorf("shard buckets not found for tenant %s", section.Tenant)
+			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64), streamLabelsVal.(map[int64]labels.Labels)); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64), streamLabelsVal.(map[int64]labels.Labels), shardBuckets.(map[int64]uint32)); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
@@ -195,25 +205,26 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) (map[int64]labels.Labels, error) {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) (map[int64]labels.Labels, map[int64]uint32, error) {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open stream section: %w", err)
+		return nil, nil, fmt.Errorf("failed to open stream section: %w", err)
 	}
 
 	rowReader := streams.NewRowReader(streamSection)
 	defer rowReader.Close()
 
 	if err := rowReader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("failed to open stream row reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to open stream row reader: %w", err)
 	}
 
 	streamBuf := make([]streams.Stream, 8192)
-	streamLabels := map[int64]labels.Labels{}
+	streamLabels := make(map[int64]labels.Labels)
+	shardBuckets := make(map[int64]uint32)
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("failed to read stream section: %w", err)
+			return nil, nil, fmt.Errorf("failed to read stream section: %w", err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
@@ -228,19 +239,20 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 				}
 				streamIDLookup[stream.ID] = newStreamID
 				streamLabels[stream.ID] = stream.Labels
+				shardBuckets[stream.ID] = streams.ShardBucket(stream.Labels)
 				c.uncompressedByTenant[section.Tenant] += uint64(stream.UncompressedSize)
 			}
 			return nil
 		}()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return streamLabels, nil
+	return streamLabels, shardBuckets, nil
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels) error {
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64, streamLabels map[int64]labels.Labels, shardBuckets map[int64]uint32) error {
 	logsBuf := make([]logs.Record, 8192)
 
 	logsSection, err := logs.Open(ctx, section)
@@ -262,12 +274,13 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	}
 
 	calculationContext := &logsCalculationContext{
-		tenantID:       tenantID,
-		objectPath:     objectPath,
-		sectionIdx:     sectionIdx,
-		streamIDLookup: streamIDLookup,
-		streamLabels:   streamLabels,
-		builder:        c.indexobjBuilder,
+		tenantID:           tenantID,
+		objectPath:         objectPath,
+		sectionIdx:         sectionIdx,
+		streamIDLookup:     streamIDLookup,
+		streamLabels:       streamLabels,
+		streamShardBuckets: shardBuckets,
+		builder:            c.indexobjBuilder,
 	}
 
 	// Lock-free steps run without builderMtx held, so they must not touch the

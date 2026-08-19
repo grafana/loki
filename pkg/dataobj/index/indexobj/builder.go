@@ -157,7 +157,7 @@ func (b *Builder) getPostingsBuilderForTenant(tenantID string) *postings.Builder
 
 // AppendStat records a per-sort-key aggregate for a data object section.
 func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
-	sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
+	shardBucket uint32, sortSchema string, labels map[string]string, minTs, maxTs time.Time, rows int, uncompressedSize int64) error {
 	b.metrics.appendsTotal.Inc()
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -169,6 +169,7 @@ func (b *Builder) AppendStat(tenantID, objectPath string, sectionIdx int64,
 	tenantStats.Append(stats.Stat{
 		ObjectPath:       objectPath,
 		SectionIndex:     sectionIdx,
+		ShardBucket:      shardBucket,
 		SortSchema:       sortSchema,
 		Labels:           labels,
 		MinTimestamp:     minTs.UnixNano(),
@@ -231,10 +232,12 @@ func (b *Builder) ObserveLabelPosting(tenantID string, obs postings.LabelObserva
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.
 // Must be called before any ObserveBloomPosting calls for the given (objectPath, sectionIdx, columnName).
+// shardBuckets is stored on the entry immediately so a prepared-but-unobserved
+// column still records the object's shard factor.
 func (b *Builder) PrepareBloomColumn(tenantID, objectPath string, sectionIdx int64,
-	columnName string, estimatedCardinality uint) {
+	columnName string, estimatedCardinality uint, shardBuckets int64) {
 	tenantPostings := b.getPostingsBuilderForTenant(tenantID)
-	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality)
+	tenantPostings.PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
 }
 
 // ObserveBloomPosting records a bloom-filter posting observation for a data
