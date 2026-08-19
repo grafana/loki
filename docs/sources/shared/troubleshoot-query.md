@@ -1074,7 +1074,7 @@ Multi-tenancy is enabled but no tenant ID was provided in the request.
 
 - Enforced by: Loki API
 - Retryable: Yes (with tenant ID)
-- HTTP status: 400 Bad Request
+- HTTP status: 401 Unauthorized
 - Configurable per tenant: No
 
 ### Error: Authentication configuration conflict
