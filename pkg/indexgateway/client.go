@@ -9,7 +9,6 @@ import (
 	"math"
 	"math/rand"
 	"slices"
-	"sync/atomic"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -26,6 +25,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
@@ -86,7 +86,7 @@ type ClientConfig struct {
 	// will send to the index gateway pool. Once reached, new requests are rejected immediately
 	// instead of retrying across every pool member, to avoid amplifying load when all Index
 	// Gateway replicas are shedding. A value of 0 disables the limit.
-	MaxInFlightRequests int `yaml:"max_in_flight_requests"`
+	MaxInFlightRequests int `yaml:"max_in_flight_requests" category:"Experimental"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -104,11 +104,18 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
-	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 2048, "Maximum number of in-flight requests this client will send to the index gateway pool at once. Requests beyond this limit are rejected immediately instead of retrying across every pool member, to avoid amplifying load when all Index Gateway replicas are shedding. A value of 0 disables the limit.")
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 2048, "Experimental: Maximum number of in-flight requests this client will send to the index gateway pool at once. Requests beyond this limit are rejected immediately instead of retrying across every pool member, to avoid amplifying load when all Index Gateway replicas are shedding. A value of 0 disables the limit.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 	i.RegisterFlagsWithPrefix("index-gateway-client", f)
+}
+
+func (i *ClientConfig) Validate() error {
+	if i.MaxInFlightRequests < 0 {
+		return errors.New("max_in_flight_requests must not be negative")
+	}
+	return nil
 }
 
 type GatewayClient struct {

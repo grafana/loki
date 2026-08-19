@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -496,33 +497,45 @@ func TestPoolDo_RejectsWhenAtInFlightCap(t *testing.T) {
 	require.NotContains(t, err.Error(), "tenant ID")
 }
 
-func TestPoolDo_DecrementsInFlightAfterSuccess(t *testing.T) {
+// TestPoolDo_ConcurrentRequestsRespectInFlightCap exercises real concurrent behavior: it
+// holds the single in-flight slot open with a blocked callback and asserts a second,
+// concurrent poolDo call is rejected while the first is still running (and succeeds once
+// released). Asserting on the counter's value alone wouldn't catch a broken/removed
+// increment-decrement, since a no-op counter would also read back to 0 after a successful call.
+func TestPoolDo_ConcurrentRequestsRespectInFlightCap(t *testing.T) {
 	_, _, client := createSimpleGatewayClient(t, []string{"0.0.0.0", "1.1.1.1"})
-	client.cfg.MaxInFlightRequests = 10
+	client.cfg.MaxInFlightRequests = 1
 
 	ctx := user.InjectOrgID(context.Background(), "tenant-123")
-	err := client.poolDo(ctx, func(c logproto.IndexGatewayClient) error {
-		_, err := c.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
-		return err
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	var firstErr error
+	go func() {
+		defer wg.Done()
+		firstErr = client.poolDo(ctx, func(logproto.IndexGatewayClient) error {
+			close(started)
+			<-release
+			return nil
+		}, func(addrs []string) []string { return addrs }, -1)
+	}()
+
+	<-started // the first call now holds the one in-flight slot
+
+	err := client.poolDo(ctx, func(logproto.IndexGatewayClient) error {
+		t.Error("callback should not run while the in-flight cap is already reached")
+		return nil
 	}, func(addrs []string) []string { return addrs }, -1)
-
-	require.NoError(t, err)
-	require.Equal(t, int64(0), client.inFlightRequests.Load())
-}
-
-func TestPoolDo_DecrementsInFlightAfterCallbackError(t *testing.T) {
-	addrs := []string{"0.0.0.0", "1.1.1.1"}
-	logger, _, client := createSimpleGatewayClient(t, addrs)
-	client.cfg.MaxInFlightRequests = 10
-	configurePool(t, client, logger, len(addrs)) // every address returns an error
-
-	ctx := user.InjectOrgID(context.Background(), "tenant-123")
-	err := client.poolDo(ctx, func(c logproto.IndexGatewayClient) error {
-		_, err := c.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
-		return err
-	}, func(addrs []string) []string { return addrs }, 0) // no retries
-
 	require.Error(t, err)
+	require.Contains(t, err.Error(), "index gateway pool at capacity")
+
+	close(release)
+	wg.Wait()
+
+	require.NoError(t, firstErr)
 	require.Equal(t, int64(0), client.inFlightRequests.Load())
 }
 

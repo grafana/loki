@@ -1282,7 +1282,7 @@ dataobj:
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.max-page-rows
-      [max_page_rows: <int> | default = 10000]
+      [max_page_rows: <int> | default = 0]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
@@ -1545,7 +1545,7 @@ dataobj:
     # The maximum row count for pages to use for the data object builder. A
     # value of 0 means no limit.
     # CLI flag: -dataobj-index-builder.max-page-rows
-    [max_page_rows: <int> | default = 10000]
+    [max_page_rows: <int> | default = 0]
 
     # The target maximum size of the encoded object and all of its encoded
     # sections (after compression), to limit memory usage of a builder.
@@ -1709,28 +1709,28 @@ dataobj:
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-page-size
-      [target_page_size: <int> | default = 128KiB]
+      [target_page_size: <int> | default = 2KiB]
 
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj.compaction.indexobj-builder.max-page-rows
-      [max_page_rows: <int> | default = 10000]
+      [max_page_rows: <int> | default = 0]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-builder-memory-limit
-      [target_object_size: <int> | default = 512MiB]
+      [target_object_size: <int> | default = 4MiB]
 
       # The target maximum amount of uncompressed data to hold in sections, for
       # sections that support being limited by size. Uncompressed size is used
       # for consistent I/O and planning.
       # CLI flag: -dataobj.compaction.indexobj-builder.target-section-size
-      [target_section_size: <int> | default = 512MiB]
+      [target_section_size: <int> | default = 2MiB]
 
       # The size of logs to buffer in memory before adding into columnar
       # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj.compaction.indexobj-builder.buffer-size
-      [buffer_size: <int> | default = 128MiB]
+      [buffer_size: <int> | default = 16KiB]
 
       # The maximum number of dataobj section stripes to merge into a section at
       # once. Must be greater than 1.
@@ -1741,45 +1741,6 @@ dataobj:
       # output size from uncompressed buffered records. Only takes effect with
       # ordered append. Set to 0 or 1 to disable.
       # CLI flag: -dataobj.compaction.indexobj-builder.estimated-compression-ratio
-      [estimated_compression_ratio: <int> | default = 8]
-
-    logsobj_builder:
-      # The target maximum amount of uncompressed data to hold in data pages
-      # (for columnar sections). Uncompressed size is used for consistent I/O
-      # and planning.
-      # CLI flag: -dataobj.compaction.logsobj-builder.target-page-size
-      [target_page_size: <int> | default = 1MiB]
-
-      # The maximum row count for pages to use for the data object builder. A
-      # value of 0 means no limit.
-      # CLI flag: -dataobj.compaction.logsobj-builder.max-page-rows
-      [max_page_rows: <int> | default = 10000]
-
-      # The target maximum size of the encoded object and all of its encoded
-      # sections (after compression), to limit memory usage of a builder.
-      # CLI flag: -dataobj.compaction.logsobj-builder.target-builder-memory-limit
-      [target_object_size: <int> | default = 512MiB]
-
-      # The target maximum amount of uncompressed data to hold in sections, for
-      # sections that support being limited by size. Uncompressed size is used
-      # for consistent I/O and planning.
-      # CLI flag: -dataobj.compaction.logsobj-builder.target-section-size
-      [target_section_size: <int> | default = 512MiB]
-
-      # The size of logs to buffer in memory before adding into columnar
-      # builders, used to reduce CPU load of sorting.
-      # CLI flag: -dataobj.compaction.logsobj-builder.buffer-size
-      [buffer_size: <int> | default = 128MiB]
-
-      # The maximum number of dataobj section stripes to merge into a section at
-      # once. Must be greater than 1.
-      # CLI flag: -dataobj.compaction.logsobj-builder.section-stripe-merge-limit
-      [section_stripe_merge_limit: <int> | default = 2]
-
-      # Expected compression ratio for log data, used to estimate compressed
-      # output size from uncompressed buffered records. Only takes effect with
-      # ordered append. Set to 0 or 1 to disable.
-      # CLI flag: -dataobj.compaction.logsobj-builder.estimated-compression-ratio
       [estimated_compression_ratio: <int> | default = 8]
 
   # The prefix to use for the storage bucket.
@@ -6879,11 +6840,13 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.min-shuffle-shard-size
     [min_shuffle_shard_size: <int> | default = 3]
 
-  # Experimental. Number of idle file handles the stream index reader keeps open
-  # per index file. Only applies when -shipper.index-reader-mode=stream. Set to
-  # 0 to disable pooling.
-  # CLI flag: -tsdb.shipper.streaming-index-max-idle-file-handles
-  [streaming_index_max_idle_file_handles: <int> | default = 16]
+    # Experimental: Maximum number of in-flight requests this client will send
+    # to the index gateway pool at once. Requests beyond this limit are rejected
+    # immediately instead of retrying across every pool member, to avoid
+    # amplifying load when all Index Gateway replicas are shedding. A value of 0
+    # disables the limit.
+    # CLI flag: -tsdb.shipper.index-gateway-client.max-in-flight-requests
+    [max_in_flight_requests: <int> | default = 2048]
 
   [ingestername: <string> | default = ""]
 
