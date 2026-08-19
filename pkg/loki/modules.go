@@ -129,6 +129,7 @@ const (
 	RuleEvaluator                = "rule-evaluator"
 	Compactor                    = "compactor"
 	IndexGateway                 = "index-gateway"
+	IndexGatewayMetastore        = "index-gateway-metastore"
 	IndexGatewayRing             = "index-gateway-ring"
 	IndexGatewayInterceptors     = "index-gateway-interceptors"
 	BloomStore                   = "bloom-store"
@@ -1939,17 +1940,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
-	// Inject the data-object metastore into the index-gateway config so NewIndexGateway can build the
-	// section resolver itself. Building the metastore needs a bucket, which only the module wiring can
-	// construct, so we do it here and hand over the ready metastore.
-	if t.Cfg.IndexGateway.DataObjectSections.Enabled {
-		bucket, err := t.getDataObjBucket("index-gateway")
-		if err != nil {
-			return nil, err
-		}
-		t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics)
-	}
-
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, nil, bloomQuerier)
 	if err != nil {
 		return nil, err
@@ -1966,6 +1956,38 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Server.HTTP.Methods("GET").Path("/sync-indexes").Handler(http.HandlerFunc(gateway.SyncIndexStatusHandler))
 
 	return gateway, nil
+}
+
+// initIndexGatewayMetastore builds the data-object metastore behind the index-gateway's section
+// resolution API, plugs in the section cache, and injects the metastore into the index-gateway config.
+//
+// The IndexGateway module depends on this one, so the metastore is ready before the gateway is built,
+// and the gateway (the cache's only user) stops before the returned service releases the cache. It is a
+// no-op when the API is disabled.
+func (t *Loki) initIndexGatewayMetastore() (services.Service, error) {
+	if !t.Cfg.IndexGateway.DataObjectSections.Enabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "index-gateway-metastore")
+
+	bucket, err := t.getDataObjBucket("index-gateway")
+	if err != nil {
+		return nil, err
+	}
+
+	reg := prometheus.DefaultRegisterer
+	sectionsCache, err := cache.New(t.Cfg.IndexGateway.DataObjectSections.Cache, reg, logger, indexgateway.DataObjSectionsCacheType, constants.Loki)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, metastore.WithSectionsCache(metastore.NewSectionsCache(sectionsCache, reg, logger)))
+
+	return services.NewIdleService(nil, func(_ error) error {
+		sectionsCache.Stop()
+		return nil
+	}), nil
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {

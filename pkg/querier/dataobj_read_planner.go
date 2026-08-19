@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -172,7 +173,7 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 			}
 		}
 
-		streamsCtx, _ := xcap.StartRegion(ctx, dataObjComponentStreamsReader)
+		streamsCtx, _ := xcap.StartRegion(ctx, dataobjmetrics.ComponentStreamsReader)
 		if err := p.planObjectsRead(streamsCtx, sections, query, ch); err != nil {
 			it.setErr(err)
 		}

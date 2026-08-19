@@ -63,11 +63,6 @@ type Gateway struct {
 	cfg    Config
 	limits Limits
 	log    log.Logger
-
-	// subservices are the dependencies the gateway runs and monitors (currently the data-object
-	// section resolver's cache). Both are nil when there are no subservices.
-	subservices        *services.Manager
-	subservicesWatcher *services.FailureWatcher
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
@@ -85,68 +80,23 @@ func NewIndexGateway(cfg Config, limits Limits, log log.Logger, r prometheus.Reg
 	}
 
 	// Auto-create the data-object section resolver when enabled. The metastore is injected into the
-	// config by the module wiring (see initIndexGateway), since building it needs a bucket the gateway
-	// itself cannot construct.
+	// config by the module wiring (see initIndexGatewayMetastore), since building it needs a bucket the
+	// gateway itself cannot construct. That module also owns the section cache's lifecycle.
 	if cfg.DataObjectSections.Enabled {
 		if cfg.DataObjectSections.Metastore == nil {
 			// Enabled but no metastore is a wiring bug: without it the gateway would answer every RPC
 			// with Unimplemented and make queriers silently fall back. Fail startup instead.
 			return nil, fmt.Errorf("data-object section resolution is enabled but no metastore was injected")
 		}
-		resolver, err := NewDataObjectSectionsResolver(cfg.DataObjectSections.Metastore, cfg.DataObjectSections, r, log)
-		if err != nil {
-			return nil, err
-		}
-		g.dataObjSections = resolver
+		g.dataObjSections = NewDataObjectSectionsResolver(cfg.DataObjectSections.Metastore, r, log)
 	}
 
-	var subservices []services.Service
-	if g.dataObjSections != nil {
-		subservices = append(subservices, g.dataObjSections.cache)
-	}
-	if len(subservices) > 0 {
-		var err error
-		if g.subservices, err = services.NewManager(subservices...); err != nil {
-			return nil, err
-		}
-		g.subservicesWatcher = services.NewFailureWatcher()
-	}
-
-	g.Service = services.NewBasicService(g.starting, g.running, g.stopping)
+	g.Service = services.NewIdleService(nil, func(_ error) error {
+		g.indexQuerier.Stop()
+		return nil
+	})
 
 	return g, nil
-}
-
-func (g *Gateway) starting(ctx context.Context) error {
-	if g.subservices == nil {
-		return nil
-	}
-	g.subservicesWatcher.WatchManager(g.subservices)
-	if err := services.StartManagerAndAwaitHealthy(ctx, g.subservices); err != nil {
-		return fmt.Errorf("starting index-gateway subservices: %w", err)
-	}
-	return nil
-}
-
-func (g *Gateway) running(ctx context.Context) error {
-	if g.subservices == nil {
-		<-ctx.Done()
-		return nil
-	}
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-g.subservicesWatcher.Chan():
-		return fmt.Errorf("index-gateway subservice failed: %w", err)
-	}
-}
-
-func (g *Gateway) stopping(_ error) error {
-	g.indexQuerier.Stop()
-	if g.subservices == nil {
-		return nil
-	}
-	return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
 }
 
 // ResolveDataObjectSections resolves the data-object sections matching the request's matchers within
@@ -160,12 +110,13 @@ func (g *Gateway) ResolveDataObjectSections(ctx context.Context, req *logproto.R
 		return nil, status.Error(codes.Unimplemented, "data object section resolution is not enabled on this index-gateway")
 	}
 
-	instanceID, err := tenant.TenantID(ctx)
-	if err != nil {
+	// Require a tenant before resolving so a missing org ID fails with a clear error here rather than
+	// deep inside the metastore. The metastore reads the tenant from ctx itself.
+	if _, err := tenant.TenantID(ctx); err != nil {
 		return nil, err
 	}
 
-	return g.dataObjSections.Resolve(ctx, instanceID, req.From, req.Through, req.Matchers)
+	return g.dataObjSections.Resolve(ctx, req.From, req.Through, req.Matchers)
 }
 
 // indexSyncer is implemented by an index store that can trigger an on-demand

@@ -10,65 +10,40 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"golang.org/x/sync/singleflight"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/xcap"
 )
-
-// dataObjectSectionsResolveTimeout bounds the shared singleflight resolution. That work runs on a
-// context detached from the leader's request, so it needs its own upper bound. It is generous: it
-// only guards against a stuck object-store call, not slow-but-progressing resolution.
-const dataObjectSectionsResolveTimeout = 30 * time.Second
 
 // DataObjectSectionsResolver resolves the data-object sections matching a query within a single 12h
 // UTC-aligned window. It is the server-side implementation behind the
 // IndexGateway.ResolveDataObjectSections RPC.
 //
-// It reuses the existing metastore for index access: GetIndexes lists the window's index objects to
-// derive the immutable cache key, and Sections does the expensive postings resolution. Only the
-// Sections result is cached; a singleflight collapses concurrent identical resolutions.
+// It is a thin adapter over metastore.Sections: the metastore lists the window's index objects, caches
+// the resolution, and collapses concurrent identical resolutions with a singleflight. The resolver only
+// validates the window, parses the matchers, and shapes the result into the RPC wire type.
 type DataObjectSectionsResolver struct {
 	metastore metastore.Metastore
-	cache     *dataObjectSectionsCache
-	sf        singleflight.Group
 	logger    log.Logger
 
-	cacheHits prometheus.Counter
-	cacheMiss prometheus.Counter
-	duration  *prometheus.HistogramVec
+	// dataObjMetrics folds this resolve's object-store reads into the index-gateway's per-component
+	// request/byte counters. The metastore records reads against the xcap Capture Resolve installs.
+	dataObjMetrics *dataobjmetrics.Metrics
+	duration       *prometheus.HistogramVec
 }
 
-// NewDataObjectSectionsResolver builds a resolver over ms, constructing its cache from cfg via
-// cache.New (embedded L1 + optional memcached L2, tiered). It keeps the cache type internal to the
-// package so callers only supply the metastore.
-func NewDataObjectSectionsResolver(ms metastore.Metastore, cfg DataObjectSectionsConfig, reg prometheus.Registerer, logger log.Logger) (*DataObjectSectionsResolver, error) {
-	c, err := cache.New(cfg.Cache, reg, logger, dataObjSectionsCacheType, constants.Loki)
-	if err != nil {
-		return nil, err
-	}
-	return newDataObjectSectionsResolver(ms, newDataObjectSectionsCache(c, logger), reg, logger), nil
-}
-
-// newDataObjectSectionsResolver builds a resolver over the given metastore and cache. reg may be nil.
-func newDataObjectSectionsResolver(ms metastore.Metastore, cache *dataObjectSectionsCache, reg prometheus.Registerer, logger log.Logger) *DataObjectSectionsResolver {
+// NewDataObjectSectionsResolver builds a resolver over ms. The section cache and singleflight live in
+// the metastore, so the resolver takes no cache.
+func NewDataObjectSectionsResolver(ms metastore.Metastore, reg prometheus.Registerer, logger log.Logger) *DataObjectSectionsResolver {
 	return &DataObjectSectionsResolver{
-		metastore: ms,
-		cache:     cache,
-		logger:    logger,
-		cacheHits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_index_gateway_dataobj_sections_cache_hits_total",
-			Help: "Data-object section resolutions served from the resolution cache (either layer).",
-		}),
-		cacheMiss: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_index_gateway_dataobj_sections_cache_misses_total",
-			Help: "Data-object section resolutions that had to run the metastore lookup.",
-		}),
+		metastore:      ms,
+		logger:         logger,
+		dataObjMetrics: dataobjmetrics.New(prometheus.WrapRegistererWithPrefix("loki_index_gateway_", reg)),
 		duration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_index_gateway_dataobj_sections_resolve_duration_seconds",
 			Help:                            "Time taken to resolve data-object sections for one window on the index-gateway, including cache lookups.",
@@ -80,10 +55,15 @@ func newDataObjectSectionsResolver(ms metastore.Metastore, cache *dataObjectSect
 }
 
 // Resolve returns the sections matching matchers in the window [from, through). The window must be a
-// single MetastoreWindowSize (12h) UTC-aligned window; an unaligned window is a client bug and
-// returns codes.InvalidArgument.
-func (r *DataObjectSectionsResolver) Resolve(ctx context.Context, tenant string, from, through model.Time, matchers string) (resp *logproto.ResolveDataObjectSectionsResponse, err error) {
+// single MetastoreWindowSize (12h) UTC-aligned window; an unaligned window is a client bug and returns
+// codes.InvalidArgument.
+func (r *DataObjectSectionsResolver) Resolve(ctx context.Context, from, through model.Time, matchers string) (resp *logproto.ResolveDataObjectSectionsResponse, err error) {
+	// One capture spans the whole resolve so every object-storage read the metastore issues is folded
+	// into the index-gateway's per-component request and byte metrics.
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	defer func(start time.Time) {
+		capture.End()
+		r.dataObjMetrics.Record(capture)
 		r.duration.WithLabelValues(resolveOutcome(ctx, err)).Observe(time.Since(start).Seconds())
 	}(time.Now())
 
@@ -107,39 +87,11 @@ func (r *DataObjectSectionsResolver) Resolve(ctx context.Context, tenant string,
 		return &logproto.ResolveDataObjectSectionsResponse{}, nil
 	}
 
-	// GetIndexes is the cheap ToC listing; it runs per request to derive the cache key and to record
-	// the exact index-object set in the cached value for collision detection.
-	indexes, err := r.metastore.GetIndexes(ctx, metastore.GetIndexesRequest{Start: fromT, End: throughT})
+	sections, err := r.metastore.Sections(ctx, metastore.SectionsRequest{Start: fromT, End: throughT, Matchers: parsedMatchers})
 	if err != nil {
-		return nil, fmt.Errorf("listing index objects: %w", err)
+		return nil, fmt.Errorf("resolving sections: %w", err)
 	}
-
-	// The singleflight leader shares its result with all waiters on the same key. Run the shared work
-	// on a context detached from the leader's cancellation, so a leader that disconnects mid-flight
-	// does not fail the waiters (whose own requests are still alive). Detaching drops the deadline, so
-	// bound the work with a fixed timeout to keep a stuck object-store call from hanging the resolution
-	// (and, with it, every waiter) indefinitely.
-	sfKey := dataObjectSectionsCacheKey(tenant, fromT.UnixNano(), stableMatchers(matchers), stableIndexEntries(indexes.Indexes))
-	v, err, _ := r.sf.Do(sfKey, func() (interface{}, error) {
-		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dataObjectSectionsResolveTimeout)
-		defer cancel()
-		if cached, ok := r.cache.get(sfCtx, tenant, from, matchers, indexes.Indexes); ok {
-			r.cacheHits.Inc()
-			return cached, nil
-		}
-		r.cacheMiss.Inc()
-		sections, err := r.metastore.Sections(sfCtx, metastore.SectionsRequest{Start: fromT, End: throughT, Matchers: parsedMatchers})
-		if err != nil {
-			return nil, fmt.Errorf("resolving sections: %w", err)
-		}
-		resp := buildResolveDataObjectSectionsResponse(sections.Sections)
-		r.cache.put(sfCtx, tenant, from, matchers, indexes.Indexes, resp)
-		return resp, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return v.(*logproto.ResolveDataObjectSectionsResponse), nil
+	return buildResolveDataObjectSectionsResponse(sections.Sections), nil
 }
 
 // buildResolveDataObjectSectionsResponse groups the flat section descriptors by object, in a deterministic order so the
@@ -171,8 +123,8 @@ func buildResolveDataObjectSectionsResponse(sections []*metastore.DataobjSection
 // resolveOutcome classifies a Resolve result for the duration metric's "outcome" label. It reports
 // "canceled" only when the caller's context is done (a client cancellation or deadline), so a normal
 // query cancellation does not inflate the "error" series alerts watch. Any other failure — including
-// the internal singleflight guard's own timeout, which fires on a still-live caller context — is a
-// real "error".
+// the metastore's internal singleflight guard timeout, which fires on a still-live caller context — is
+// a real "error".
 func resolveOutcome(ctx context.Context, err error) string {
 	switch {
 	case err == nil:

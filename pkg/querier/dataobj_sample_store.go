@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -35,7 +36,7 @@ type dataObjSampleStore struct {
 	resolver                 dataObjSectionsResolver
 	shardBucketFilterEnabled bool
 	logger                   log.Logger
-	metrics                  *dataObjMetrics
+	metrics                  *dataobjmetrics.Metrics
 }
 
 // NewDataObjSampleStore returns a Store that serves stream-first metric queries from data objects in
@@ -55,7 +56,7 @@ func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastor
 		resolver:                 newDataObjSectionsResolver(ms, sectionsClient, reg, logger),
 		shardBucketFilterEnabled: shardBucketFilterEnabled,
 		logger:                   logger,
-		metrics:                  newDataObjMetrics(reg),
+		metrics:                  dataobjmetrics.New(prometheus.WrapRegistererWithPrefix("loki_querier_", reg)),
 	}
 }
 

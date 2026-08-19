@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
@@ -46,6 +47,10 @@ const (
 
 	// TocPrefix is the prefix under which ToC files are stored in the object storage.
 	TocPrefix = "tocs/"
+
+	// defaultSectionsResolveTimeout bounds one detached singleflight Sections resolution (see Sections).
+	// It only guards a stuck object-store call, so it is generous.
+	defaultSectionsResolveTimeout = 30 * time.Second
 )
 
 var tracer = otel.Tracer("pkg/dataobj/metastore")
@@ -58,6 +63,36 @@ type ObjectMetastore struct {
 	parallelism          int
 	logger               log.Logger
 	metrics              *ObjectMetastoreMetrics
+
+	// sectionsCache caches Sections results; sectionsSingleFlight collapses concurrent identical
+	// resolutions onto one leader.
+	sectionsCache          SectionsCache
+	sectionsSingleFlight   singleflight.Group
+	sectionsResolveTimeout time.Duration
+}
+
+// objectMetastoreOptions holds the optional dependencies applied by ObjectMetastoreOption.
+type objectMetastoreOptions struct {
+	sectionsCache          SectionsCache
+	sectionsResolveTimeout time.Duration
+}
+
+// ObjectMetastoreOption configures an ObjectMetastore at construction.
+type ObjectMetastoreOption func(*objectMetastoreOptions)
+
+// WithSectionsCache plugs a cache for Sections() results (see NewSectionsCache). Without it, or with a
+// nil cache, the metastore uses a no-op cache and recomputes on each call.
+func WithSectionsCache(c SectionsCache) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.sectionsCache = c
+	}
+}
+
+// WithSectionsResolveTimeout overrides defaultSectionsResolveTimeout. A non-positive value keeps the default.
+func WithSectionsResolveTimeout(d time.Duration) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.sectionsResolveTimeout = d
+	}
 }
 
 // SectionKey is a unique identifier for a section of a data object.
@@ -160,7 +195,7 @@ func IterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenan
 	}
 }
 
-func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics) *ObjectMetastore {
+func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metrics *ObjectMetastoreMetrics, opts ...ObjectMetastoreOption) *ObjectMetastore {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -169,13 +204,30 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		b = objstore.NewPrefixedBucket(b, cfg.IndexStoragePrefix)
 	}
 
+	var options objectMetastoreOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	sectionsCache := options.sectionsCache
+	if sectionsCache == nil {
+		sectionsCache = noopSectionsCache{}
+	}
+
+	sectionsResolveTimeout := options.sectionsResolveTimeout
+	if sectionsResolveTimeout <= 0 {
+		sectionsResolveTimeout = defaultSectionsResolveTimeout
+	}
+
 	store := &ObjectMetastore{
-		readPostingsSections: cfg.ReadPostingsSections,
-		prefetchBytes:        int64(cfg.IndexReadPrefetchBytes),
-		bucket:               b,
-		parallelism:          64,
-		logger:               logger,
-		metrics:              metrics,
+		readPostingsSections:   cfg.ReadPostingsSections,
+		prefetchBytes:          int64(cfg.IndexReadPrefetchBytes),
+		bucket:                 b,
+		parallelism:            64,
+		logger:                 logger,
+		metrics:                metrics,
+		sectionsCache:          sectionsCache,
+		sectionsResolveTimeout: sectionsResolveTimeout,
 	}
 
 	return store
@@ -543,10 +595,19 @@ func dedupeAndSortEntries(batches [][]IndexEntry) []IndexEntry {
 	return entries
 }
 
+// Sections resolves the data-object sections matching req. It lists the window's index objects once,
+// then resolves the matching sections. Concurrent identical resolutions collapse onto one singleflight
+// leader that consults the plugged cache first.
+//
+// The shared work runs on a context detached from the caller (context.WithoutCancel), so a caller that
+// cancels mid-flight does not cancel the resolution; waiters on live contexts still get the result.
+// Detaching drops the deadline, so sectionsResolveTimeout bounds a stuck object-store call.
 func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (SectionsResponse, error) {
 	ctx, span := xcap.StartSpan(ctx, tracer, "metastore.Sections")
 	defer span.End()
 
+	// resolvedSectionsTotalDuration times the whole call: listing indexes plus the cache lookup or
+	// resolution. Skipped on the no-index early return and on error, so only successful calls are timed.
 	sectionsTimer := prometheus.NewTimer(m.metrics.resolvedSectionsTotalDuration)
 
 	selector := streamPredicateFromMatchers(req.Start, req.End, req.Matchers...)
@@ -566,6 +627,38 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "no sections resolved", "reason", "no index paths")
 		return SectionsResponse{}, nil
 	}
+
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return SectionsResponse{}, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	key := sectionsCacheKey(tenant, req, indexes.Indexes)
+	v, err, _ := m.sectionsSingleFlight.Do(key, func() (interface{}, error) {
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.sectionsResolveTimeout)
+		defer cancel()
+
+		if cached, ok := m.sectionsCache.Get(sfCtx, tenant, req, indexes.Indexes); ok {
+			return cached, nil
+		}
+		sections, err := m.resolveSections(sfCtx, req, indexes)
+		if err != nil {
+			return nil, err
+		}
+		m.sectionsCache.Put(sfCtx, tenant, req, indexes.Indexes, sections)
+		return sections, nil
+	})
+	if err != nil {
+		return SectionsResponse{}, err
+	}
+	sectionsTimer.ObserveDuration()
+	return SectionsResponse{v.([]*DataobjSectionDescriptor)}, nil
+}
+
+// resolveSections reads every listed index object in parallel and returns the matching section
+// descriptors. It is the uncached inner half of Sections; indexes is the already-listed index set.
+func (m *ObjectMetastore) resolveSections(ctx context.Context, req SectionsRequest, indexes GetIndexesResponse) ([]*DataobjSectionDescriptor, error) {
+	start := time.Now()
 
 	var sections []*DataobjSectionDescriptor
 	sectionsMu := sync.Mutex{}
@@ -606,18 +699,22 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 	}
 
 	if err := g.Wait(); err != nil {
-		return SectionsResponse{}, err
+		return nil, err
 	}
 
-	ratio := float64(len(sections)) / float64(totalSections.Load())
-	m.metrics.streamFilterSections.Observe(float64(totalSections.Load()))
+	// Guard the divide: totalSections is 0 when no reader read any row, and NaN would poison the histogram.
+	total := totalSections.Load()
+	var ratio float64
+	if total > 0 {
+		ratio = float64(len(sections)) / float64(total)
+	}
+	m.metrics.streamFilterSections.Observe(float64(total))
 	m.metrics.resolvedSectionsTotal.Observe(float64(len(sections)))
 	m.metrics.resolvedSectionsRatio.Observe(ratio)
-	duration := sectionsTimer.ObserveDuration()
 
 	level.Debug(utillog.WithContext(ctx, m.logger)).Log(
 		"msg", "resolved sections",
-		"duration", duration,
+		"duration", time.Since(start),
 		"tables", len(indexes.TableOfContentsPaths),
 		"indexes", len(indexes.Indexes),
 		"sections", len(sections),
@@ -627,7 +724,7 @@ func (m *ObjectMetastore) Sections(ctx context.Context, req SectionsRequest) (Se
 		"end", req.End,
 	)
 
-	return SectionsResponse{sections}, nil
+	return sections, nil
 }
 
 func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSectionsReaderRequest) (IndexSectionsReaderResponse, error) {

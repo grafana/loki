@@ -8,7 +8,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
-const dataObjSectionsCacheType = stats.CacheType("dataobj-sections")
+// DataObjSectionsCacheType identifies the section resolution cache for stats grouping. The module wiring
+// (initIndexGatewayMetastore) uses it to build the cache via cache.New.
+const DataObjSectionsCacheType = stats.CacheType("dataobj-sections")
 
 // DataObjectSectionsConfig configures the ResolveDataObjectSections API and its cache.
 type DataObjectSectionsConfig struct {
@@ -21,9 +23,9 @@ type DataObjectSectionsConfig struct {
 	// writes. The embedded cache is on by default; disable it under `embedded_cache`.
 	Cache cache.Config `yaml:"cache"`
 
-	// Metastore is injected at runtime by the module wiring (initIndexGateway), not parsed from YAML.
-	// NewIndexGateway builds the resolver over it. It is nil (and the resolver disabled) unless the
-	// index-gateway was wired with data-object storage.
+	// Metastore is injected at runtime by the module wiring (initIndexGatewayMetastore), not parsed from
+	// YAML. NewIndexGateway builds the resolver over it. The metastore holds the section cache. It is nil
+	// (and the resolver disabled) unless the index-gateway was wired with data-object storage.
 	Metastore metastore.Metastore `yaml:"-"`
 }
 

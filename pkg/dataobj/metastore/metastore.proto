@@ -12,3 +12,35 @@ message ObjectWrittenEvent {
   string earliestRecordTime = 4;
   reserved 1; // tenant
 }
+
+// CachedSections is the value stored in the Sections resolution cache. It carries the resolution
+// inputs (matchers, predicates, window, and the listed index-object set) so a hash-key collision is
+// detected on read and treated as a miss rather than a wrong answer.
+message CachedSections {
+  string matchers = 1;
+  string predicates = 2;
+  int64 startNanos = 3;
+  int64 endNanos = 4;
+  repeated CachedIndexEntry indexes = 5;
+  repeated CachedSectionDescriptor sections = 6;
+}
+
+// CachedIndexEntry is one index object identity (path + covered time range) as stored in the cache.
+message CachedIndexEntry {
+  string path = 1;
+  int64 startNanos = 2;
+  int64 endNanos = 3;
+}
+
+// CachedSectionDescriptor mirrors every DataobjSectionDescriptor field so a cache hit reconstructs the
+// descriptor faithfully for every caller.
+message CachedSectionDescriptor {
+  string objectPath = 1;
+  int64 sectionIdx = 2;
+  repeated int64 streamIds = 3;
+  int64 rowCount = 4;
+  int64 size = 5;
+  int64 startNanos = 6;
+  int64 endNanos = 7;
+  repeated string ambiguousPredicates = 8;
+}

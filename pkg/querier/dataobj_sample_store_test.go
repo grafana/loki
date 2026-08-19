@@ -20,6 +20,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -188,22 +189,28 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		// Ensure metrics are tracked.
 		m := store.(*dataObjSampleStore).metrics
-		require.Positive(t, testutil.ToFloat64(m.fetchedCompressedBytes.WithLabelValues(dataObjComponentMetastore)),
+		require.Positive(t, testutil.ToFloat64(m.FetchedCompressedBytes.WithLabelValues(dataobjmetrics.ComponentMetastore)),
 			"the metastore must report fetched bytes")
-		require.Positive(t, testutil.ToFloat64(m.fetchedCompressedBytes.WithLabelValues(dataObjComponentStreamsReader)),
+		require.Positive(t, testutil.ToFloat64(m.FetchedCompressedBytes.WithLabelValues(dataobjmetrics.ComponentStreamsReader)),
 			"opening the data object must report fetched bytes on the streams reader")
-		require.Positive(t, testutil.ToFloat64(m.processedUncompressedBytes.WithLabelValues(dataObjComponentLogsReader)),
+		require.Positive(t, testutil.ToFloat64(m.ProcessedUncompressedBytes.WithLabelValues(dataobjmetrics.ComponentLogsReader)),
 			"the logs reader must report processed bytes")
 		require.Equal(t,
 			res.Querier.Store.Dataobj.PrePredicateDecompressedBytes+res.Querier.Store.Dataobj.PostPredicateDecompressedBytes,
-			int64(testutil.ToFloat64(m.processedUncompressedBytes.WithLabelValues(dataObjComponentLogsReader))),
+			int64(testutil.ToFloat64(m.ProcessedUncompressedBytes.WithLabelValues(dataobjmetrics.ComponentLogsReader))),
 			"the logs-reader processed metric must match the query-stat processed bytes")
+
+		// The metastore reads index objects from storage, so it must report at least one object-store
+		// request under the metastore component.
+		require.Positive(t, testutil.ToFloat64(m.ObjectStoreRequests.WithLabelValues(dataobjmetrics.ComponentMetastore, dataobjmetrics.OperationGetRange))+
+			testutil.ToFloat64(m.ObjectStoreRequests.WithLabelValues(dataobjmetrics.ComponentMetastore, dataobjmetrics.OperationGet)),
+			"the metastore must report object-store requests")
 
 		// No bytes may land in "other": every read region must map to a known component. This fails
 		// loudly if a region name drifts out of componentForRootRegion's cases.
-		require.Zero(t, testutil.ToFloat64(m.fetchedCompressedBytes.WithLabelValues(dataObjComponentOther)),
+		require.Zero(t, testutil.ToFloat64(m.FetchedCompressedBytes.WithLabelValues(dataobjmetrics.ComponentOther)),
 			"no fetched bytes may fall into the other bucket")
-		require.Zero(t, testutil.ToFloat64(m.processedUncompressedBytes.WithLabelValues(dataObjComponentOther)),
+		require.Zero(t, testutil.ToFloat64(m.ProcessedUncompressedBytes.WithLabelValues(dataobjmetrics.ComponentOther)),
 			"no processed bytes may fall into the other bucket")
 	})
 

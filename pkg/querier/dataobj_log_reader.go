@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -55,7 +56,7 @@ type dataObjLogReader struct {
 	// fetched/processed byte counters; it is nil-safe.
 	capture  *xcap.Capture
 	statsCtx *stats.Context
-	metrics  *dataObjMetrics
+	metrics  *dataobjmetrics.Metrics
 
 	nextBatches chan []dataObjLogRecord
 
@@ -75,7 +76,7 @@ type dataObjLogReader struct {
 // newDataObjLogReader starts scanning the tasks the iterator streams. It owns a cancellable context for
 // its scans and cancels it on Close. It is a pure consumer of the iterator: stopping the background
 // planner that feeds it is the caller's job (see dataObjAbortReader).
-func newDataObjLogReader(ctx context.Context, cache *dataObjCache, tasks *dataObjTaskIterator, maxConcurrency, batchSize int, metrics *dataObjMetrics) *dataObjLogReader {
+func newDataObjLogReader(ctx context.Context, cache *dataObjCache, tasks *dataObjTaskIterator, maxConcurrency, batchSize int, metrics *dataobjmetrics.Metrics) *dataObjLogReader {
 	if maxConcurrency < 1 {
 		maxConcurrency = 1
 	}
@@ -235,7 +236,7 @@ func (r *dataObjLogReader) recordBytesStat() {
 	}
 
 	// Track metrics.
-	r.metrics.record(r.capture)
+	r.metrics.Record(r.capture)
 
 	// Track query stats.
 	primary := xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowBytes)
