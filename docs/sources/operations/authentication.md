@@ -20,12 +20,44 @@ A list of open-source reverse proxies you can use:
 - [Pomerium](https://www.pomerium.com/docs), which has a [guide for securing Grafana](https://www.pomerium.com/docs/guides/grafana)
 
 {{< admonition type="note" >}}
-When using Loki in multi-tenant mode, Loki requires the HTTP header
-`X-Scope-OrgID` to be set to a string identifying the tenant; the responsibility
+Loki runs in multi-tenant mode by default (`auth_enabled: true`). In this mode, Loki requires the HTTP header
+`X-Scope-OrgID` to be set to a string identifying the tenant on every request; the responsibility
 of populating this value should be handled by the authenticating reverse proxy.
+A request that does not include this header fails with an HTTP `401 Unauthorized` error and the message `no org id`.
+To learn how to troubleshoot this error, refer to [No org ID](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-operations/#error-no-org-id).
 For more information, read the [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) documentation.{{< /admonition >}}
 
 For information on configuring authentication for your log shipping agent, see the [Grafana Alloy documentation](https://grafana.com/docs/alloy/latest/).
+
+## Mutual TLS
+
+Loki's HTTP and gRPC servers can require clients to present a valid TLS certificate before a connection is accepted. This is a form of client authentication that Loki supports natively, without a reverse proxy.
+
+Mutual TLS (mTLS) authenticates the client at the transport level. It does not populate `X-Scope-OrgID`, so you still need a reverse proxy, your log shipping agent, or your client to set that header when `auth_enabled: true`.
+
+To require client certificates, you must first enable TLS on the server by setting a certificate and a key, then set a client authentication policy and the certificate authority (CA) that signs your client certificates. For example:
+
+```yaml
+server:
+  http_tls_config:
+    cert_file: /etc/loki/certs/server.crt
+    key_file: /etc/loki/certs/server.key
+    # Reject any client that does not present a certificate signed by this CA.
+    client_auth_type: RequireAndVerifyClientCert
+    client_ca_file: /etc/loki/certs/ca.crt
+```
+
+Use `client_ca_file` for the path to a CA certificate file, or `client_ca` to include the certificate contents directly in the configuration file. The `grpc_tls_config` block accepts the same options for the gRPC server. The equivalent command line flags are `-server.http-tls-client-auth` and `-server.http-tls-ca-path`, plus `-server.grpc-tls-client-auth` and `-server.grpc-tls-ca-path`.
+
+The supported values for `client_auth_type` are:
+
+* `NoClientCert`
+* `RequestClientCert`
+* `RequireAnyClientCert`
+* `VerifyClientCertIfGiven`
+* `RequireAndVerifyClientCert`
+
+Use `RequireAndVerifyClientCert` for the strictest setting. It rejects a client that sends no certificate, and it also rejects a certificate that the CA did not sign. The other values check less. For example, `VerifyClientCertIfGiven` allows a client that sends no certificate at all. For the full list of TLS options, refer to the [server block](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#server) of the configuration reference.
 
 ## Enable basic authentication for Loki using nginx
 
@@ -86,9 +118,18 @@ server {
 }
 ```
 
+{{< admonition type="tip" >}}
+This example expects the client to send the `X-Scope-OrgID` header itself, in addition to the basic authentication credentials. If you run Loki with `auth_enabled: true`, you can instead have nginx set the tenant ID from the authenticated username. Add this line to the `location / {}` block:
+
+```conf
+proxy_set_header X-Scope-OrgID $remote_user;
+```
+
+With this line, nginx overwrites any tenant header sent by the client, so a client cannot read or write the data of another tenant. This requires each username in your password file to match a Loki tenant ID. The Loki Helm chart's gateway uses this same pattern.{{< /admonition >}}
+
 This configuration must be included in your main nginx configuration, for example, by including it in `nginx.conf` like:
 
-```
+```yaml
 include /opt/homebrew/etc/nginx/loki.conf;
 ```
 
