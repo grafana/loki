@@ -47,11 +47,12 @@ type sample struct {
 	latency     time.Duration
 	status      int
 	bytes       int64
-	streams     int64 // input cardinality: index streams matched
-	series      int64 // output cardinality: series in the result
-	usedV2      bool  // query ran (at least partly) on the v2/thor engine, bypassing v1 stream-first
-	streamFirst int64 // v1 sub-evaluations resolved to stream-first order (0 if the build lacks the counter)
-	tsFirst     int64 // v1 sub-evaluations resolved to timestamp-first order
+	streams     int64         // input cardinality: index streams matched
+	series      int64         // output cardinality: series in the result
+	usedV2      bool          // query ran (at least partly) on the v2/thor engine, bypassing v1 stream-first
+	streamFirst int64         // v1 sub-evaluations resolved to stream-first order (0 if the build lacks the counter)
+	tsFirst     int64         // v1 sub-evaluations resolved to timestamp-first order
+	resolveMax  time.Duration // slowest per-subquery data-object section resolution (0 if absent)
 	ok          bool
 }
 
@@ -231,12 +232,13 @@ func runQuery(ctx context.Context, c *http.Client, base, tenant, selector string
 			st := queryStats(body)
 			s.bytes, s.streams, s.series = st.bytes, st.streams, st.series
 			s.usedV2, s.streamFirst, s.tsFirst = st.usedV2, st.streamFirst, st.tsFirst
+			s.resolveMax = st.resolveMax
 		}
 	}
 	if verbose {
-		fmt.Printf("  %-24s eval=%s http=%d lat=%s engine=%s order=%s streams=%d series=%d bytes=%.2fGB\n",
+		fmt.Printf("  %-24s eval=%s http=%d lat=%s engine=%s order=%s streams=%d series=%d bytes=%.2fGB resolve=%s\n",
 			q.name, evalTime.UTC().Format(time.RFC3339), s.status, s.latency.Round(time.Millisecond),
-			engineLabel(boolToInt(s.usedV2), 1), orderLabel(s.streamFirst, s.tsFirst), s.streams, s.series, float64(s.bytes)/1e9)
+			engineLabel(boolToInt(s.usedV2), 1), orderLabel(s.streamFirst, s.tsFirst), s.streams, s.series, float64(s.bytes)/1e9, dstr(s.resolveMax))
 	}
 	return s
 }
@@ -249,6 +251,7 @@ type statsResult struct {
 	usedV2      bool
 	streamFirst int64
 	tsFirst     int64
+	resolveMax  time.Duration
 }
 
 // queryStats extracts, from a query response (zero if absent): bytes processed, the number of streams
@@ -283,13 +286,19 @@ func queryStats(body []byte) statsResult {
 		usedV2:      r.Data.Stats.Querier.Store.QueryUsedV2Engine || r.Data.Stats.Ingester.Store.QueryUsedV2Engine,
 		streamFirst: sm.StreamFirstSubqueries,
 		tsFirst:     sm.TimestampFirstSubqueries,
+		// Section resolution is querier-side and merged as a max across subqueries.
+		resolveMax: time.Duration(r.Data.Stats.Querier.Store.Dataobj.SectionsResolutionMaxTime),
 	}
 }
 
-// engineStat mirrors the store.queryUsedV2Engine marker under stats.querier and stats.ingester.
+// engineStat mirrors the store.queryUsedV2Engine marker and the dataobj section-resolution time under
+// stats.querier and stats.ingester.
 type engineStat struct {
 	Store struct {
 		QueryUsedV2Engine bool `json:"queryUsedV2Engine"`
+		Dataobj           struct {
+			SectionsResolutionMaxTime int64 `json:"sectionsResolutionMaxTime"`
+		} `json:"dataobj"`
 	} `json:"store"`
 }
 
@@ -300,10 +309,11 @@ func report(perType map[string][]sample, dur time.Duration) {
 	}
 	sort.Strings(names)
 
-	fmt.Printf("\n%-26s %6s %6s %9s %9s %9s %9s %12s %11s %8s %6s %6s\n", "query", "count", "errors", "p50", "p90", "p99", "max", "avg_streams", "avg_series", "avg_GB", "engine", "order")
+	fmt.Printf("\n%-26s %6s %6s %9s %9s %9s %9s %12s %11s %8s %6s %6s %11s\n", "query", "count", "errors", "p50", "p90", "p99", "max", "avg_streams", "avg_series", "avg_GB", "engine", "order", "resolve_max")
 	var allLat []time.Duration
 	var allCount, allErr, allOK, anyV2, hasOrder int
 	var allBytes, allStreams, allSeries int64
+	var allResolveMax time.Duration
 	for _, n := range names {
 		ss := perType[n]
 		// Only successful queries feed latency and the averages; a failed query has no stats and a
@@ -311,6 +321,7 @@ func report(perType map[string][]sample, dur time.Duration) {
 		lats := make([]time.Duration, 0, len(ss))
 		var errs, okCount, v2Count int
 		var bytesSum, streamsSum, seriesSum, streamFirstSum, tsFirstSum int64
+		var resolveMax time.Duration
 		for _, s := range ss {
 			if !s.ok {
 				errs++
@@ -327,6 +338,9 @@ func report(perType map[string][]sample, dur time.Duration) {
 			seriesSum += s.series
 			streamFirstSum += s.streamFirst
 			tsFirstSum += s.tsFirst
+			if s.resolveMax > resolveMax {
+				resolveMax = s.resolveMax
+			}
 		}
 		allCount += len(ss)
 		allErr += errs
@@ -336,6 +350,9 @@ func report(perType map[string][]sample, dur time.Duration) {
 		allBytes += bytesSum
 		allStreams += streamsSum
 		allSeries += seriesSum
+		if resolveMax > allResolveMax {
+			allResolveMax = resolveMax
+		}
 		avgGB := 0.0
 		var avgStreams, avgSeries int64
 		if okCount > 0 {
@@ -343,9 +360,9 @@ func report(perType map[string][]sample, dur time.Duration) {
 			avgStreams = streamsSum / int64(okCount)
 			avgSeries = seriesSum / int64(okCount)
 		}
-		fmt.Printf("%-26s %6d %6d %9s %9s %9s %9s %12d %11d %8.2f %6s %6s\n", n, len(ss), errs,
+		fmt.Printf("%-26s %6d %6d %9s %9s %9s %9s %12d %11d %8.2f %6s %6s %11s\n", n, len(ss), errs,
 			pct(lats, 50), pct(lats, 90), pct(lats, 99), pct(lats, 100), avgStreams, avgSeries, avgGB,
-			engineLabel(v2Count, okCount), orderLabel(streamFirstSum, tsFirstSum))
+			engineLabel(v2Count, okCount), orderLabel(streamFirstSum, tsFirstSum), dstr(resolveMax))
 	}
 	qps := float64(allCount) / dur.Seconds()
 	var avgStreamsAll, avgSeriesAll int64
@@ -353,8 +370,8 @@ func report(perType map[string][]sample, dur time.Duration) {
 		avgStreamsAll = allStreams / int64(allOK)
 		avgSeriesAll = allSeries / int64(allOK)
 	}
-	fmt.Printf("\nTOTAL: %d queries, %d errors, %.1f q/s, p50=%s p99=%s, avg %d streams/query -> %d series/query, ~%.1f GB processed total\n",
-		allCount, allErr, qps, pct(allLat, 50), pct(allLat, 99), avgStreamsAll, avgSeriesAll, float64(allBytes)/1e9)
+	fmt.Printf("\nTOTAL: %d queries, %d errors, %.1f q/s, p50=%s p99=%s, avg %d streams/query -> %d series/query, ~%.1f GB processed total, max sections resolve=%s\n",
+		allCount, allErr, qps, pct(allLat, 50), pct(allLat, 99), avgStreamsAll, avgSeriesAll, float64(allBytes)/1e9, dstr(allResolveMax))
 
 	if anyV2 > 0 {
 		fmt.Printf("WARNING: %d queries ran on the v2/thor engine (engine=v2/mix), bypassing v1 stream-first.\n"+
@@ -392,6 +409,14 @@ func orderLabel(streamFirst, tsFirst int64) string {
 	default:
 		return "none"
 	}
+}
+
+// dstr formats a duration for the report, showing "-" for zero (e.g. a query that resolved no sections).
+func dstr(d time.Duration) string {
+	if d == 0 {
+		return "-"
+	}
+	return d.Round(time.Millisecond).String()
 }
 
 func boolToInt(b bool) int {
