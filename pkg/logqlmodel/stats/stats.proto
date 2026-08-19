@@ -242,6 +242,10 @@ message Dataobj {
 
   // Total bytes transferred between tasks via scheduler streams (sources and sinks).
   int64 wireBytesTransferred = 14 [(gogoproto.jsontag) = "wireBytesTransferred"];
+
+  // Longest time spent resolving data-object sections for a single subquery, in nanoseconds. Results
+  // merge it as a max across subqueries, not a sum.
+  int64 sectionsResolutionMaxTime = 15 [(gogoproto.jsontag) = "sectionsResolutionMaxTime"];
 }
 
 message Chunk {

@@ -172,6 +172,8 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 		require.NoError(t, it.Close())
 
 		res := statsData.Result(0, 0, 0)
+		require.Positive(t, res.Querier.Store.Dataobj.SectionsResolutionMaxTime,
+			"section resolution time must be recorded in the query stats")
 		require.Positive(t, res.Querier.Store.Dataobj.PrePredicateDecompressedBytes,
 			"data-object reads must report pre-predicate (stream_id + timestamp) bytes (dropped before the fix)")
 		require.Positive(t, res.Querier.Store.Dataobj.PostPredicateDecompressedBytes,

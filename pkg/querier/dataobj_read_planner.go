@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -160,7 +161,9 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 		// The resolver self-scopes its object-storage reads (metastore) or its index-gateway calls; the
 		// streams reads (and the object-open head prefetch they trigger) get their own region here, so
 		// each phase's fetched bytes are attributed to the right component.
+		resolveStart := time.Now()
 		sections, err := p.resolver.resolveSections(ctx, start, end, matchers)
+		stats.FromContext(ctx).RecordDataobjSectionsResolutionTime(time.Since(resolveStart))
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
 			return

@@ -200,6 +200,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"post_filter_lines", stats.Summary.TotalPostFilterLines,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
+		"dataobj_sections_resolution_max_time", stats.DataobjSectionsResolutionMaxTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,

@@ -302,6 +302,10 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	s.Dataobj.WireBytesTransferred += m.Dataobj.WireBytesTransferred
+	// Section resolution runs per subquery; the interesting figure is the slowest one, not their sum.
+	if m.Dataobj.SectionsResolutionMaxTime > s.Dataobj.SectionsResolutionMaxTime {
+		s.Dataobj.SectionsResolutionMaxTime = m.Dataobj.SectionsResolutionMaxTime
+	}
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -407,6 +411,11 @@ func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
 
 func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+// DataobjSectionsResolutionMaxTime returns the slowest per-subquery data-object section resolution.
+func (r Result) DataobjSectionsResolutionMaxTime() time.Duration {
+	return time.Duration(r.Querier.Store.Dataobj.SectionsResolutionMaxTime)
 }
 
 func (r Result) ChunkRefsFetchTime() time.Duration {
@@ -636,6 +645,20 @@ func (c *Context) IncStreamFirstSubqueries() {
 
 func (c *Context) IncTimestampFirstSubqueries() {
 	atomic.AddInt64(&c.result.Summary.TimestampFirstSubqueries, 1)
+}
+
+// RecordDataobjSectionsResolutionTime records d as the section-resolution time for one subquery, keeping
+// the largest value seen. Results merge it as a max across subqueries.
+func (c *Context) RecordDataobjSectionsResolutionTime(d time.Duration) {
+	for {
+		old := atomic.LoadInt64(&c.store.Dataobj.SectionsResolutionMaxTime)
+		if int64(d) <= old {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.store.Dataobj.SectionsResolutionMaxTime, old, int64(d)) {
+			return
+		}
+	}
 }
 
 func (c *Context) AddPrePredicateDecompressedRows(i int64) {
