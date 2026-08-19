@@ -474,6 +474,10 @@ type DownstreamEvaluator struct {
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
 	if err != nil {
+		// Keep the usage of the shards that completed before the failure.
+		for _, res := range results {
+			stats.JoinPartial(ctx, res.Statistics)
+		}
 		return nil, err
 	}
 
