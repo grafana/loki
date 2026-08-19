@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
@@ -265,6 +266,7 @@ func TestFetchChunks_RecordsSuppressedStorageErrors(t *testing.T) {
 		{name: "not found", client: &storageErrorClient{err: storageErr, notFound: true, retryable: true}, wantReason: storageErrorNotFound},
 		{name: "retryable", client: &storageErrorClient{err: storageErr, retryable: true}, wantReason: storageErrorRetryable},
 		{name: "other", client: &storageErrorClient{err: storageErr}, wantReason: storageErrorOther},
+		{name: "retries exceeded", client: &storageErrorClient{err: congestion.RetriesExceeded}, wantReason: storageErrorRetryable},
 		{name: "canceled", client: &storageErrorClient{err: context.Canceled}},
 		{name: "deadline", client: &storageErrorClient{err: context.DeadlineExceeded}},
 		{name: "no error", client: &storageErrorClient{}},

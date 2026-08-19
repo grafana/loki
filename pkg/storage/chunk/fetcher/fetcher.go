@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -354,6 +355,10 @@ func (c *Fetcher) storageErrorReason(err error) string {
 		return storageErrorNotFound
 	}
 	if c.storage.IsRetryableErr(err) {
+		return storageErrorRetryable
+	}
+
+	if errors.Is(err, congestion.RetriesExceeded) {
 		return storageErrorRetryable
 	}
 	return storageErrorOther
