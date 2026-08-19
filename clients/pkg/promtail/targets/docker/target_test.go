@@ -65,7 +65,7 @@ func Test_DockerTarget(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	entryHandler := fake.New(func() {})
-	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	client, err := client.New(client.WithHost(ts.URL))
 	require.NoError(t, err)
 
 	ps, err := positions.New(logger, positions.Config{
@@ -130,7 +130,7 @@ func doTestPartial(t *testing.T, tty bool) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
 	entryHandler := fake.New(func() {})
-	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	client, err := client.New(client.WithHost(ts.URL))
 	require.NoError(t, err)
 
 	ps, err := positions.New(logger, positions.Config{
