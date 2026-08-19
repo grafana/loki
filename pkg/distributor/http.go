@@ -136,7 +136,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
+	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
