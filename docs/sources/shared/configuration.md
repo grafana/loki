@@ -4791,7 +4791,7 @@ discover_generic_fields:
 
 # Experimental. Propagate chunk fetch errors to queries instead of returning
 # incomplete results.
-# CLI flag: -chunk-store.propagate-fetch-errors
+# CLI flag: -chunk-store.propagate-chunk-fetch-errors
 [propagate_chunk_fetch_errors: <boolean> | default = false]
 
 # Retention period to apply to stored data, only applies if retention_enabled is

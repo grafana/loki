@@ -453,7 +453,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.IngesterQuerySplitDuration.Set("0s")
 	f.Var(&l.IngesterQuerySplitDuration, "querier.split-ingester-queries-by-interval", "Interval to use for time-based splitting when a request is within the `query_ingesters_within` window; defaults to `split-queries-by-interval` by setting to 0.")
 
-	f.BoolVar(&l.PropagateChunkFetchErrors, "chunk-store.propagate-fetch-errors", false, "Experimental. Propagate chunk fetch errors to queries instead of returning incomplete results.")
+	f.BoolVar(&l.PropagateChunkFetchErrors, "chunk-store.propagate-chunk-fetch-errors", false, "Experimental. Propagate chunk fetch errors to queries instead of returning incomplete results.")
 
 	f.StringVar(&l.DeletionMode, "compactor.deletion-mode", "filter-and-delete", "Deletion mode. Can be one of 'disabled', 'filter-only', or 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if retention_enabled is true, then the log entry deletion API endpoints are available.")
 
