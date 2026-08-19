@@ -224,6 +224,15 @@ set of tokens.
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
 
+### Filesystem support
+
+Ingesters can flush chunks to the filesystem when Loki uses TSDB as the index
+store. TSDB ships its index files to object storage, including a filesystem
+object store, so [queriers](#querier) running in a separate process can read
+the same data, as long as every process can reach the same directory. This
+differs from the deprecated, non-shipped BoltDB index store, which only allows
+one process to hold a lock on the database file at a time.
+
 ## Query frontend
 
 The **query frontend** is an **optional service** providing the querier's API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.
