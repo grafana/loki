@@ -32,6 +32,17 @@ message CachedIndexEntry {
   int64 endNanos = 3;
 }
 
+// CachedToC is one 12h Table-of-Contents window as stored in the warm cache: every tenant's index-object
+// entries for that window, unfiltered by time (the reader time-filters at query time).
+message CachedToC {
+  repeated CachedToCTenant tenants = 1;
+}
+
+message CachedToCTenant {
+  string tenant = 1;
+  repeated CachedIndexEntry entries = 2;
+}
+
 // CachedSectionDescriptor mirrors every DataobjSectionDescriptor field so a cache hit reconstructs the
 // descriptor faithfully for every caller.
 message CachedSectionDescriptor {

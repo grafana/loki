@@ -94,5 +94,5 @@ func (cfg *Config) Validate() error {
 	if cfg.Ring.NumTokens != NumTokens {
 		return errors.New("Num tokens must not be changed as it will not take effect")
 	}
-	return nil
+	return cfg.DataObjectSections.Validate()
 }

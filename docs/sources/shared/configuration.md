@@ -1609,6 +1609,13 @@ dataobj:
     # CLI flag: -dataobj-metastore.read-postings-sections
     [read_postings_sections: <boolean> | default = false]
 
+    # Experimental: Bytes to prefetch from the head of each index object when
+    # resolving sections. A larger value serves the file and section metadata
+    # from one read instead of many small range reads. The effective minimum is
+    # 16KiB.
+    # CLI flag: -dataobj-metastore.index-read-prefetch-bytes
+    [index_read_prefetch_bytes: <int> | default = 262144]
+
   compaction:
     # Experimental: Enable dataobj compaction modules (planner and worker
     # targets when selected via -target).
@@ -2578,6 +2585,7 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `index-gateway.dataobject-sections.cache`
+- `index-gateway.dataobject-toc-warmer.cache`
 - `query-engine.results-cache`
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
@@ -4052,6 +4060,28 @@ dataobject_sections:
   # The CLI flags prefix for this block configuration is:
   # index-gateway.dataobject-sections.cache
   [cache: <cache_config>]
+
+  toc_warmer:
+    # Experimental: keep recent data-object Table-of-Contents windows warm in
+    # memory so section resolution serves them from memory instead of reading
+    # them from object storage on the query path.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.enabled
+    [enabled: <boolean> | default = false]
+
+    # How far back from now to keep ToC windows warm.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.warm-window
+    [warm_window: <duration> | default = 72h]
+
+    # How often to refresh the warm snapshot (jittered per instance). The warm
+    # cache TTL is derived from it.
+    # CLI flag: -index-gateway.dataobject-toc-warmer.refresh-interval
+    [refresh_interval: <duration> | default = 1m]
+
+    # The cache_config block configures the cache backend for a specific Loki
+    # component.
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.dataobject-toc-warmer.cache
+    [cache: <cache_config>]
 ```
 
 ### ingester
@@ -7543,6 +7573,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `frontend.tail-tls-config`
 - `frontend.volume-results-cache.memcached`
 - `index-gateway.dataobject-sections.cache.memcached`
+- `index-gateway.dataobject-toc-warmer.cache.memcached`
 - `index-gateway.ring.etcd`
 - `ingest-limits-frontend-client`
 - `ingest-limits-frontend.etcd`

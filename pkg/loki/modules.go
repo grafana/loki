@@ -1982,12 +1982,51 @@ func (t *Loki) initIndexGatewayMetastore() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, metastore.WithSectionsCache(metastore.NewSectionsCache(sectionsCache, reg, logger)))
+	opts := []metastore.ObjectMetastoreOption{metastore.WithSectionsCache(metastore.NewSectionsCache(sectionsCache, reg, logger))}
 
-	return services.NewIdleService(nil, func(_ error) error {
+	// Optional ToC warmer. It shares the metastore config so it prefixes the bucket the same way.
+	var warmer *metastore.TableOfContentsWarmResolver
+	if wc := t.Cfg.IndexGateway.DataObjectSections.Warmer; wc.Enabled {
+		warmer, err = metastore.NewTableOfContentsWarmResolver(wc.TableOfContentsWarmResolverConfig, t.Cfg.DataObj.Metastore, bucket, reg, logger)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, metastore.WithTOCResolver(warmer))
+	}
+
+	t.Cfg.IndexGateway.DataObjectSections.Metastore = metastore.NewObjectMetastore(bucket, t.Cfg.DataObj.Metastore, logger, t.metastoreMetrics, opts...)
+
+	sectionsCacheStopper := services.NewIdleService(nil, func(_ error) error {
 		sectionsCache.Stop()
 		return nil
-	}), nil
+	})
+	if warmer == nil {
+		return sectionsCacheStopper, nil
+	}
+
+	// Run the warmer (which stops its own cache) alongside the section-cache stopper as one service.
+	mgr, err := services.NewManager(warmer, sectionsCacheStopper)
+	if err != nil {
+		return nil, err
+	}
+	watcher := services.NewFailureWatcher()
+	return services.NewBasicService(
+		func(ctx context.Context) error {
+			watcher.WatchManager(mgr)
+			return services.StartManagerAndAwaitHealthy(ctx, mgr)
+		},
+		func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case err := <-watcher.Chan():
+				return err
+			}
+		},
+		func(_ error) error {
+			return services.StopManagerAndAwaitStopped(context.Background(), mgr)
+		},
+	), nil
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {

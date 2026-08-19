@@ -1,7 +1,6 @@
 package metastore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -30,7 +28,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -69,12 +66,17 @@ type ObjectMetastore struct {
 	sectionsCache          SectionsCache
 	sectionsSingleFlight   singleflight.Group
 	sectionsResolveTimeout time.Duration
+
+	// tocResolver lists a window's index objects from its ToC. It is always set: the lazy (read-on-demand)
+	// resolver by default, or a warm resolver via WithTOCResolver.
+	tocResolver TableOfContentsResolver
 }
 
 // objectMetastoreOptions holds the optional dependencies applied by ObjectMetastoreOption.
 type objectMetastoreOptions struct {
 	sectionsCache          SectionsCache
 	sectionsResolveTimeout time.Duration
+	tocResolver            TableOfContentsResolver
 }
 
 // ObjectMetastoreOption configures an ObjectMetastore at construction.
@@ -85,6 +87,14 @@ type ObjectMetastoreOption func(*objectMetastoreOptions)
 func WithSectionsCache(c SectionsCache) ObjectMetastoreOption {
 	return func(o *objectMetastoreOptions) {
 		o.sectionsCache = c
+	}
+}
+
+// WithTOCResolver plugs a Table-of-Contents resolver (see TableOfContentsWarmResolver). Without it the
+// metastore uses TableOfContentsLazyResolver, which reads each ToC on demand.
+func WithTOCResolver(r TableOfContentsResolver) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.tocResolver = r
 	}
 }
 
@@ -219,6 +229,11 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		sectionsResolveTimeout = defaultSectionsResolveTimeout
 	}
 
+	tocResolver := options.tocResolver
+	if tocResolver == nil {
+		tocResolver = NewTableOfContentsLazyResolver(b, logger)
+	}
+
 	store := &ObjectMetastore{
 		readPostingsSections:   cfg.ReadPostingsSections,
 		prefetchBytes:          int64(cfg.IndexReadPrefetchBytes),
@@ -228,6 +243,7 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		metrics:                metrics,
 		sectionsCache:          sectionsCache,
 		sectionsResolveTimeout: sectionsResolveTimeout,
+		tocResolver:            tocResolver,
 	}
 
 	return store
@@ -262,7 +278,7 @@ func (m *ObjectMetastore) streams(ctx context.Context, start, end time.Time, mat
 	}
 
 	// List objects from all stores concurrently
-	entries, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
+	entries, err := m.tocResolver.GetIndexes(ctx, tablePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +306,7 @@ func (m *ObjectMetastore) DataObjects(ctx context.Context, start, end time.Time,
 	}
 
 	// List objects from all tables concurrently
-	entries, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
+	entries, err := m.tocResolver.GetIndexes(ctx, tablePaths, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -406,33 +422,6 @@ func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Match
 }
 
 // listObjectsFromTables concurrently lists objects from multiple metastore files
-func (m *ObjectMetastore) listObjectsFromTables(ctx context.Context, tablePaths []string, start, end time.Time) ([]IndexEntry, error) {
-	objects := make([][]IndexEntry, len(tablePaths))
-	g, ctx := errgroup.WithContext(ctx)
-
-	sStart := scalar.NewTimestampScalar(arrow.Timestamp(start.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-	sEnd := scalar.NewTimestampScalar(arrow.Timestamp(end.UnixNano()), arrow.FixedWidthTypes.Timestamp_ns)
-
-	for i, path := range tablePaths {
-		g.Go(func() error {
-			var err error
-			objects[i], err = m.listObjects(ctx, path, sStart, sEnd)
-			// If the metastore object is not found, it means it's outside of any existing window
-			// and we can safely ignore it.
-			if err != nil && !m.bucket.IsObjNotFoundErr(err) {
-				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
-			}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return dedupeAndSortEntries(objects), nil
-}
-
 func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []string, predicate streams.RowPredicate) ([]*labels.Labels, error) {
 	mu := sync.Mutex{}
 	foundStreams := make(map[uint64][]*labels.Labels, 1024)
@@ -482,38 +471,6 @@ func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *
 		}
 	}
 	streams[key] = append(streams[key], newLabels)
-}
-
-func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, sEnd *scalar.Timestamp) ([]IndexEntry, error) {
-	var buf bytes.Buffer
-	objectReader, err := m.bucket.Get(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	defer objectReader.Close()
-
-	n, err := buf.ReadFrom(objectReader)
-	if err != nil {
-		return nil, fmt.Errorf("reading metastore object: %w", err)
-	}
-	object, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
-	if err != nil {
-		return nil, fmt.Errorf("getting object from reader: %w", err)
-	}
-	var entries []IndexEntry
-
-	err = forEachIndexPointer(ctx, object, sStart, sEnd, func(indexPointer indexpointers.IndexPointer) {
-		entries = append(entries, IndexEntry{
-			Path:  indexPointer.Path,
-			Start: indexPointer.StartTs,
-			End:   indexPointer.EndTs,
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return entries, nil
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
@@ -811,7 +768,7 @@ func (m *ObjectMetastore) GetIndexes(ctx context.Context, req GetIndexesRequest)
 	}
 
 	// List index objects from all tables concurrently
-	indexEntries, err := m.listObjectsFromTables(ctx, resp.TableOfContentsPaths, req.Start, req.End)
+	indexEntries, err := m.tocResolver.GetIndexes(ctx, resp.TableOfContentsPaths, req.Start, req.End)
 	if err != nil {
 		return resp, err
 	}
