@@ -1259,7 +1259,7 @@ msg="error getting cache gen numbers from the store" err="unexpected status code
 
 Loki uses cache generation numbers to invalidate query caches when log deletion requests are processed. The cache generation number loader periodically fetches these numbers from the compactor. When the compactor returns HTTP 403, it means the deletion API is not enabled for the tenant. The loader logs this error and increments the `loki_delete_cache_gen_load_failures_total` metric.
 
-Other non- 403 causes include:
+Other non-403 causes include:
 
 - The compactor is unreachable (network or DNS issues)
 - The compactor is not running or not ready
@@ -1270,7 +1270,7 @@ Other non- 403 causes include:
 - **Check if deletion is intentionally disabled.** If you don't use log deletion for this tenant, these errors are harmless but noisy. You can verify by sending a GET request to the compactor's cache generation number endpoint:
 
    ```bash
-   curl - s - H "X- Scope- OrgID: <tenant>" http://compactor:3100/loki/api/v1/cache/generation_numbers
+   curl -s -H "X-Scope-OrgID: <tenant>" http://compactor:3100/loki/api/v1/cache/generation_numbers
    ```
 
    If the response is `"deletion is not available for this tenant"`, the deletion API is not enabled for the tenant.
@@ -1280,13 +1280,13 @@ Other non- 403 causes include:
    ```yaml
    overrides:
      <tenant>:
-       deletion_mode: filter- and- delete
+       deletion_mode: filter-and-delete
    ```
 
-- **Check compactor connectivity** if the error includes a non- 403 status code or a connection error:
+- **Check compactor connectivity** if the error includes a non-403 status code or a connection error:
 
    ```bash
-   curl - s http://compactor:3100/ready
+   curl -s http://compactor:3100/ready
    ```
 
 - **Verify the compactor address** is correctly configured. Queriers and other components that use the cache generation loader need to reach the compactor:
@@ -1300,7 +1300,7 @@ Other non- 403 causes include:
 
 - Enforced by: Cache generation number loader (`GenNumberLoader`)
 - Retryable: Yes (the loader retries automatically every 5 minutes)
-- HTTP status: N/A (background process, not a request- time error)
+- HTTP status: N/A (background process, not a request-time error)
 - Configurable per tenant: Yes (via `deletion_mode` in tenant overrides)
 
 ## Ring and cluster communication errors
