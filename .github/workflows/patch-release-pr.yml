@@ -8,7 +8,7 @@ env:
   GAR_REPO_SLUG: "loki"
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
-  RELEASE_LIB_REF: "79fc5eab3e11751a7c18b9255202d81aaf031c86"
+  RELEASE_LIB_REF: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   VERSIONING_STRATEGY: "always-bump-patch"
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@79fc5eab3e11751a7c18b9255202d81aaf031c86"
+    uses: "grafana/loki-release/.github/workflows/check.yml@2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
     with:
       build_image: "golang:1.26.6"
       golang_ci_lint_version: "v2.10.1"
-      release_lib_ref: "79fc5eab3e11751a7c18b9255202d81aaf031c86"
+      release_lib_ref: "2a4930bb9e2087b22d41a7162ed87d27f4c499f4"
       skip_validation: false
   create-release-pr:
     needs:
@@ -69,7 +69,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
@@ -96,7 +96,7 @@ jobs:
           --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
           --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
-
+        
       working-directory: "lib"
   dist:
     needs:
@@ -214,7 +214,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -291,7 +291,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -368,7 +368,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -451,7 +451,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -528,7 +528,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -611,7 +611,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -694,7 +694,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -778,7 +778,7 @@ jobs:
       run: |
         mkdir -p images
         mkdir -p plugins
-
+        
         platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -874,7 +874,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -957,7 +957,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -1038,7 +1038,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
@@ -1048,7 +1048,7 @@ jobs:
       name: "get release version"
       run: |
         yarn install
-
+        
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
           yarn exec -- release-please release-pr \
             --consider-all-branches \
@@ -1078,16 +1078,16 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
-
+        
         cat release.json
-
-        if [[ `jq length release.json` -gt 1 ]]; then
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-
-        if [[ `jq length release.json` -eq 0 ]]; then
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(yarn run --silent get-version)"
