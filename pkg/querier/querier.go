@@ -298,7 +298,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
 
-		storeIter, err := q.storeForSampleParams(params).SelectSamples(ctx, params)
+		storeIter, err := q.storeForSampleParams(params, ingesterQueryInterval != nil && !q.cfg.QueryStoreOnly).SelectSamples(ctx, params)
 		if err != nil {
 			return nil, err
 		}
@@ -324,7 +324,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 // oldest to newest: chunks (before data objects existed), data objects (the available window), then
 // chunks again (data objects lag now, so the freshly-flushed slice stays on chunks). Any of the three
 // bands can be empty for a given query; the combiner only reads the bands the query overlaps.
-func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSampleParams) Store {
+func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSampleParams, ingesterQueried bool) Store {
 	// Stream-first is the only path a data-object source can feed; its output ordering matches the
 	// stream-first merge. Everything else stays on the chunk store.
 	if q.dataObjStore == nil || params.Order != logproto.SAMPLE_ORDER_BY_STREAM {
@@ -350,12 +350,14 @@ func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSamplePara
 	dataobjStartTime := model.TimeFromUnixNano(dataobjStart.UnixNano())
 	dataobjEndTime := model.TimeFromUnixNano(dataobjEnd.UnixNano())
 
-	// params.End is the store-side end (= the ingester query start under the bounded split). Clamp the
-	// data-object band to be strictly older than it, so a sample at the exact split boundary falls to
-	// the chunk store (which deduplicates against the ingester) and never to the data-object reader.
-	if storeEnd := model.TimeFromUnixNano(params.End.UnixNano()); dataobjEndTime >= storeEnd {
-		dataobjEndTime = storeEnd - 1
-	}
+	// params.End is the store-side end. When an ingester query abuts it (a recent query, under the
+	// bounded split), it is the store/ingester boundary and the boundary sample must fall to the chunk
+	// store, which deduplicates against the ingester (the data-object reader does not). When no ingester
+	// query abuts it (a historical query), it is the real query end and data objects serve up to it —
+	// carving the boundary to chunks there would pull a whole range-vector lookback of chunks for the
+	// final sample for no dedup benefit.
+	storeEnd := model.TimeFromUnixNano(params.End.UnixNano())
+	dataobjEndTime = dataobjBandEnd(dataobjEndTime, storeEnd, ingesterQueried)
 
 	// Without a configured start (no storage-start-date and no retention) we don't know how far back
 	// data objects go, so we can't route to them. An inverted or empty window is likewise unusable.
@@ -369,6 +371,27 @@ func (q *SingleTenantQuerier) storeForSampleParams(params logql.SelectSamplePara
 		{Store: q.dataObjStore, From: dataobjStartTime},
 		{Store: q.store, From: dataobjEndTime + 1}, // recent band: data objects lag now
 	})
+}
+
+// dataobjBandEnd returns the inclusive upper bound of the data-object band for a store query ending at
+// storeEnd, given the data-object availability upper bound dataobjEnd.
+//
+// When data objects reach past storeEnd (dataobjEnd >= storeEnd) the boundary sample can be served by
+// either store, so ingesterQueried decides: if an ingester query abuts storeEnd, reserve the boundary
+// for the chunk store (storeEnd-1) so it deduplicates against the ingester; otherwise let data objects
+// serve up to storeEnd. Reserving the boundary for chunks when no ingester query abuts it would make
+// the chunk store read a whole range-vector lookback for the final sample for no benefit.
+//
+// When data objects stop before storeEnd (dataobjEnd < storeEnd), the recent slice genuinely lives on
+// chunks regardless, so the band ends at dataobjEnd.
+func dataobjBandEnd(dataobjEnd, storeEnd model.Time, ingesterQueried bool) model.Time {
+	if dataobjEnd < storeEnd {
+		return dataobjEnd
+	}
+	if ingesterQueried {
+		return storeEnd - 1
+	}
+	return storeEnd
 }
 
 func (q *SingleTenantQuerier) isWithinIngesterMaxLookbackPeriod(maxLookback time.Duration, queryEnd time.Time) bool {

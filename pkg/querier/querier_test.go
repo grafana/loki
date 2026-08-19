@@ -1608,7 +1608,9 @@ func TestQuerier_StoreForSampleParams(t *testing.T) {
 	}
 	run := func(t *testing.T, q *SingleTenantQuerier, params logql.SelectSampleParams) {
 		t.Helper()
-		_, err := q.storeForSampleParams(params).SelectSamples(ctx, params)
+		// Every scenario here ends well before now-maxLookback, so no ingester query abuts the store-side
+		// end (ingesterQueried=false).
+		_, err := q.storeForSampleParams(params, false).SelectSamples(ctx, params)
 		require.NoError(t, err)
 	}
 
@@ -1646,24 +1648,25 @@ func TestQuerier_StoreForSampleParams(t *testing.T) {
 		require.Empty(t, dataobj.calls)
 	})
 
-	// assertDisjoint checks the core guarantee: data objects are read, and every data-object read is
-	// strictly older than the query's store-side end (= the ingester query start), so the tiers never
-	// overlap.
+	// assertDisjoint checks that data objects are read and no data-object read extends past the query's
+	// store-side end. For these historical queries the ingester query start is beyond the query end, so
+	// data objects may serve right up to the end (but never past it).
 	assertDisjoint := func(t *testing.T, dataobj *recordingSampleStore, end time.Time) {
 		t.Helper()
 		require.NotEmpty(t, dataobj.calls, "data objects should be read")
 		for _, c := range dataobj.calls {
-			require.True(t, c.end.Before(end),
-				"data-object read end %s must be strictly before the ingester boundary %s", c.end, end)
+			require.False(t, c.end.After(end),
+				"data-object read end %s must not extend past the store-side end %s", c.end, end)
 		}
 	}
 
-	t.Run("range within the window is read from data objects, disjoint from the boundary", func(t *testing.T) {
+	t.Run("historical in-window range is served entirely by data objects", func(t *testing.T) {
 		chunk, dataobj := &recordingSampleStore{}, &recordingSampleStore{}
 		q := newQuerier(chunk, dataobj, cfg(30*24*time.Hour, time.Hour))
 		start, end := now.Add(-6*time.Hour), now.Add(-3*time.Hour)
 		run(t, q, sampleParams(logproto.SAMPLE_ORDER_BY_STREAM, start, end))
 		assertDisjoint(t, dataobj, end)
+		require.Empty(t, chunk.calls, "a historical in-window query must not touch the chunk store")
 	})
 
 	t.Run("range older than the window is split between chunk and data objects", func(t *testing.T) {
