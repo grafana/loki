@@ -3,9 +3,6 @@
 // It is a small primitive shared between the dataobj consumer (which uses it
 // to merge sorted sections during a flush) and the dataobj-compactor executor
 // (which uses it to merge sorted sections from multiple source data objects).
-//
-// The iterator emits records with their original (per-source) StreamIDs.
-// StreamID rewriting is the caller's responsibility.
 package sortmerge
 
 import (
@@ -31,33 +28,32 @@ func Iterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOr
 
 // IteratorForSchema returns an iterator that performs a k-way merge of records
 // from multiple schema-sorted logs sections. The input sections must be sorted
-// by [schema sort key ASC, streamID ASC, timestamp DESC].
+// by [shard ASC, schema sort key ASC, hash ASC, streamID ASC, timestamp DESC].
 //
-// It expects sortKeys to contain a mapping from StreamID to schema sort key.
-func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, sortKeys []string) (result.Seq[logs.Record], error) {
-	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(sortKeys)})
+// shards, sortKeys, and hashes map StreamID to the corresponding sort component.
+func IteratorForSchema(ctx context.Context, sections []*dataobj.Section, shards []uint32, sortKeys []string, hashes []uint64) (result.Seq[logs.Record], error) {
+	return iterator(ctx, sections, iteratorOptions{less: logs.CompareForSortSchema(shards, sortKeys, hashes)})
 }
 
 // IteratorWithStreamRemap performs a k-way merge over logs sections drawn from
-// multiple source objects. Each section's stream IDs are rewritten into a single global space
-// via remaps[i] (the map for sections[i]) before records are compared, so one
-// merge can order records across objects.
-func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, globalSortKeys []string, expectedSchema []string) (result.Seq[logs.Record], error) {
+// multiple source objects. Each section's stream IDs are rewritten into a single
+// global space via remaps[i] (the map for sections[i]) before records are
+// compared. Global IDs must already be assigned in stream-order so that
+// [streamID ASC, timestamp DESC] matches the physical sort contract.
+func IteratorWithStreamRemap(ctx context.Context, sections []*dataobj.Section, remaps []map[int64]int64, expectedSchema []string) (result.Seq[logs.Record], error) {
 	return iterator(ctx, sections, iteratorOptions{
-		less:     logs.CompareForSortSchema(globalSortKeys),
-		remaps:   remaps,
-		sortKeys: globalSortKeys,
-		schema:   expectedSchema,
+		less:   logs.CompareForSortOrder(logs.SortStreamASC),
+		remaps: remaps,
+		schema: expectedSchema,
 	})
 }
 
 // iteratorOptions are options for k-way merge implementation
 type iteratorOptions struct {
 	// required -
-	less     func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
-	remaps   []map[int64]int64
-	sortKeys []string
-	schema   []string
+	less   func(result.Result[dataset.Row], result.Result[dataset.Row]) bool
+	remaps []map[int64]int64
+	schema []string
 }
 
 func iterator(
@@ -127,9 +123,9 @@ func iterator(
 
 	tree := loser.New(sequences, maxValue, sectionSequenceAt, opts.less, sectionSequenceClose)
 
-	// Use interning on remap path, which reads multiple sections
+	// Use interning on the remap path, which reads multiple sections.
 	var sym *symbolizer.Symbolizer
-	if opts.sortKeys != nil {
+	if opts.remaps != nil {
 		sym = symbolizer.New(1024, 100_000)
 	}
 
@@ -147,11 +143,6 @@ func iterator(
 				var record logs.Record
 				if err := logs.DecodeRow(seq.section.Columns(), row, &record, sym); err != nil {
 					return err
-				}
-				// StreamID was rewritten to the global ID in the row; annotate the
-				// sort key so downstream builders (SortSchemaASC) sort correctly.
-				if opts.sortKeys != nil && record.StreamID >= 0 && int(record.StreamID) < len(opts.sortKeys) {
-					record.SortKey = opts.sortKeys[record.StreamID]
 				}
 				if !yield(record) {
 					return nil
