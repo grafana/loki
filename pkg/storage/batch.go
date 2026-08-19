@@ -760,13 +760,10 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 			for _, chk := range chks {
 				index[s.ExternalKey(chk.ChunkRef)].Chunk = chk
 			}
-			if ctx.Err() != nil {
-				errChan <- nil
-				return
-			}
 
 			if !propagateChunkFetchErrors(ctx) {
-				err = nil
+				errChan <- nil
+				return
 			}
 			errChan <- err
 		}(f, chunks)
