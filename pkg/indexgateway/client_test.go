@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -22,9 +23,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/util/discovery"
+	"github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -495,6 +499,15 @@ func TestPoolDo_RejectsWhenAtInFlightCap(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "index gateway pool at capacity")
 	require.NotContains(t, err.Error(), "tenant ID")
+
+	// Client-side shedding must surface as a 503, matching server-side admission-control
+	// shedding, rather than falling through to a generic 500.
+	httpStatus, _ := server.ClientHTTPStatusAndError(err)
+	require.Equal(t, http.StatusServiceUnavailable, httpStatus)
+
+	s, ok := grpcstatus.FromError(err)
+	require.True(t, ok, "expected err to carry a gRPC status")
+	require.Equal(t, codes.Code(http.StatusServiceUnavailable), s.Code())
 }
 
 // TestPoolDo_ConcurrentRequestsRespectInFlightCap exercises real concurrent behavior: it

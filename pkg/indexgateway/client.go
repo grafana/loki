@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"math/rand"
+	"net/http"
 	"slices"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
@@ -34,6 +36,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
+
+// errPoolAtCapacity is returned when the client-side in-flight request cap is reached. It's
+// wrapped as a 503 via httpgrpc, matching how server-side admission-control shedding is
+// surfaced, so clients don't see a client-side rejection as a generic 500.
+var errPoolAtCapacity = httpgrpc.Errorf(http.StatusServiceUnavailable, "index gateway pool at capacity, rejecting request to avoid retry amplification")
 
 // ClientConfig configures the Index Gateway client used to communicate with
 // the Index Gateway server.
@@ -427,7 +434,7 @@ func (s *GatewayClient) poolDo(
 	// retry-amplification storms, not a hard resource cap, so exactness isn't required.
 	if s.cfg.MaxInFlightRequests > 0 && s.inFlightRequests.Load() >= int64(s.cfg.MaxInFlightRequests) {
 		s.inFlightCapRejections.Inc()
-		return errors.New("index gateway pool at capacity, rejecting request to avoid retry amplification")
+		return errPoolAtCapacity
 	}
 	s.inFlightRequests.Add(1)
 	defer s.inFlightRequests.Add(-1)
