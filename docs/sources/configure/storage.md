@@ -169,7 +169,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) documentation.
+For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
 
 ### Provisioning
 
