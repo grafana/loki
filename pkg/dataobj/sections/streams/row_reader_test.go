@@ -62,6 +62,62 @@ func TestRowReader_AddLabelMatcher(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestRowReader_ShardBucketRange(t *testing.T) {
+	// The reader must return exactly the streams whose bucket falls in [From, To], across single-bucket,
+	// multi-bucket, boundary-trimmed, and empty ranges. This checks row filtering; it does not exercise
+	// page pruning, since buildStreamsSection is not sorted by shard bucket.
+	all := []streams.Stream{
+		{1, unixTime(10), unixTime(15), 25, labels.FromStrings("cluster", "test", "app", "foo"), 2, shardForApp("foo")},
+		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},
+		{3, unixTime(25), unixTime(30), 35, labels.FromStrings("cluster", "test", "app", "baz"), 2, shardForApp("baz")},
+	}
+	fb, bb, zb := uint64(shardForApp("foo")), uint64(shardForApp("bar")), uint64(shardForApp("baz"))
+	lo, hi := min(fb, bb, zb), max(fb, bb, zb)
+
+	// A bucket no stream occupies, for the empty-range case.
+	occupied := map[uint64]bool{fb: true, bb: true, zb: true}
+	var emptyBucket uint64
+	for b := uint64(0); ; b++ {
+		if !occupied[b] {
+			emptyBucket = b
+			break
+		}
+	}
+
+	cases := []struct {
+		name     string
+		from, to uint64
+	}{
+		{"single bucket", bb, bb},
+		{"span covering every bucket", lo, hi},
+		{"span trimmed at the top end", lo, hi - 1},
+		{"empty range matches nothing", emptyBucket, emptyBucket},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var want []streams.Stream
+			for _, s := range all {
+				if uint64(s.ShardBucket) >= tc.from && uint64(s.ShardBucket) <= tc.to {
+					want = append(want, s)
+				}
+			}
+
+			sec := buildStreamsSection(t, 1, 0) // Many pages
+			r := streams.NewRowReader(sec)
+			require.NoError(t, r.SetPredicate(streams.ShardBucketRangeRowPredicate{From: tc.from, To: tc.to}))
+
+			actual, err := readAllStreams(context.Background(), r)
+			require.NoError(t, err)
+			if len(want) == 0 {
+				require.Empty(t, actual)
+			} else {
+				require.Equal(t, want, actual)
+			}
+		})
+	}
+}
+
 func TestRowReader_AddLabelFilter(t *testing.T) {
 	expect := []streams.Stream{
 		{2, unixTime(5), unixTime(20), 45, labels.FromStrings("cluster", "test", "app", "bar"), 2, shardForApp("bar")},

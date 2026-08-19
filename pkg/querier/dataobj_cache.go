@@ -135,15 +135,10 @@ type openObject struct {
 }
 
 // streamLabels returns the labels of the requested stream IDs, decoding only the streams the query needs.
-// It pushes the IDs down to the reader as a stream-ID predicate.
 //
-// When query enables shard-bucket filtering and the object carries the __shard_bucket__ column, it runs a
-// two-phase read. Phase 1 reads only the cheap {stream_id, __shard_bucket__} columns for every wanted ID,
-// so a stream the metastore lists but the section lacks still surfaces as an error. Phase 2 then decodes
-// labels for only the streams whose bucket falls in the shard's range.
-//
-// filtered reports whether that pruning was applied, so the caller keeps the missing-ID error for the
-// streams it did not prune. Objects without the column fall back to the unfiltered read (filtered=false).
+// filtered reports whether the read was pruned by shard bucket. planSectionRead relies on it: without
+// pruning it keeps the fingerprint recheck and treats a listed-but-absent stream as corruption, not as
+// out-of-shard.
 func (o *openObject) streamLabels(ctx context.Context, want map[streamID]struct{}, query readQuery) (out map[streamID]labels.Labels, filtered bool, err error) {
 	out = make(map[streamID]labels.Labels, len(want))
 	if o.streamsSecDO == nil || len(want) == 0 {
@@ -156,69 +151,58 @@ func (o *openObject) streamLabels(ctx context.Context, want map[streamID]struct{
 	}
 
 	wantIDs := streamIDsToInt64(slices.Collect(maps.Keys(want)))
-
-	if query.shardBucket != nil {
-		buckets, ok, err := streams.ReadShardBuckets(ctx, sec, wantIDs)
-		if err != nil {
-			return nil, false, err
-		}
-		if ok {
-			// Every listed stream must exist in the section; a missing one is corruption, not pruning.
-			for id := range want {
-				if _, exists := buckets[int64(id)]; !exists {
-					return nil, false, fmt.Errorf("data object streams section is missing stream ID %d listed by the metastore", id)
-				}
-			}
-			inShard := make([]int64, 0, len(buckets))
-			for id, bucket := range buckets {
-				if bucket >= query.shardBucket.from && bucket <= query.shardBucket.to {
-					inShard = append(inShard, id)
-				}
-			}
-			if err := o.readStreamLabels(ctx, sec, inShard, out); err != nil {
-				return nil, false, err
-			}
-			// Phase 1 proved every wanted ID exists, so phase 2 must return every in-shard one. If it
-			// dropped one, fail loud rather than under-count — matching the unfiltered path's guarantee.
-			for _, id := range inShard {
-				if _, ok := out[streamID(id)]; !ok {
-					return nil, false, fmt.Errorf("data object streams section dropped in-shard stream ID %d between the bucket and label reads", id)
-				}
-			}
-			return out, true, nil
-		}
-
-		// No __shard_bucket__ column (object predates the feature): fall back to the unfiltered read.
-	}
-
-	if err := o.readStreamLabels(ctx, sec, wantIDs, out); err != nil {
+	filtered, err = o.readStreamLabels(ctx, sec, wantIDs, query.shardBucket, out)
+	if err != nil {
 		return nil, false, err
 	}
-	return out, false, nil
+	return out, filtered, nil
+}
+
+// sectionHasColumn reports whether the streams section carries a column of the given type. It reads only
+// the already-loaded section metadata, not object storage.
+func sectionHasColumn(sec *streams.Section, t streams.ColumnType) bool {
+	for _, c := range sec.Columns() {
+		if c.Type == t {
+			return true
+		}
+	}
+	return false
 }
 
 // readStreamLabels decodes the labels of the given stream IDs into out, pushing the IDs down as a
 // stream-ID predicate so only those streams are read.
-func (o *openObject) readStreamLabels(ctx context.Context, sec *streams.Section, ids []int64, out map[streamID]labels.Labels) error {
+//
+// When bucketRange is non-nil and the section carries the __shard_bucket__ column, it also pushes a range
+// predicate on that column, dropping out-of-shard streams during the read. When the section is stored
+// sorted by shard bucket the predicate prunes whole pages; otherwise it only filters rows after decode.
+// filtered reports whether the predicate was pushed; it is false when bucketRange is nil or the object
+// predates the column.
+func (o *openObject) readStreamLabels(ctx context.Context, sec *streams.Section, ids []int64, bucketRange *shardBucketFilter, out map[streamID]labels.Labels) (filtered bool, err error) {
 	if len(ids) == 0 {
-		return nil
+		return false, nil
 	}
 
 	reader := streams.NewRowReader(sec)
 	defer reader.Close()
 
 	if err := reader.MatchStreams(slices.Values(ids)); err != nil {
-		return err
+		return false, err
+	}
+	if bucketRange != nil && sectionHasColumn(sec, streams.ColumnTypeShardBucket) {
+		if err := reader.SetPredicate(streams.ShardBucketRangeRowPredicate{From: bucketRange.from, To: bucketRange.to}); err != nil {
+			return false, err
+		}
+		filtered = true
 	}
 	if err := reader.Open(ctx); err != nil {
-		return err
+		return false, err
 	}
 
 	buf := make([]streams.Stream, 1024)
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+			return false, err
 		}
 		for i := range buf[:n] {
 			out[streamID(buf[i].ID)] = buf[i].Labels
@@ -227,7 +211,7 @@ func (o *openObject) readStreamLabels(ctx context.Context, sec *streams.Section,
 			break
 		}
 	}
-	return nil
+	return filtered, nil
 }
 
 // streamsSection opens (and caches) the tenant's streams section, or returns nil if the object has none.

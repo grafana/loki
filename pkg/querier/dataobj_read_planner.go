@@ -265,8 +265,10 @@ func planSectionRead(desc *metastore.DataobjSectionDescriptor, idLabels map[stre
 		lbls, ok := idLabels[id]
 		if !ok {
 			if shardBucketFiltered {
-				// The stream was pruned by the shard-bucket predicate; it is out of the shard, not missing.
-				// streamLabels already checked every listed ID exists, so this is not corruption.
+				// On the shard-filtered read a listed ID absent from the result is treated as out-of-shard:
+				// the bucket predicate dropped it. It could instead be genuinely missing from the section
+				// (metastore/object disagreement), but the single pruned read cannot tell the two apart, so
+				// that corruption is not detected here — a trade-off for dropping the extra existence scan.
 				continue
 			}
 			return dataObjReadTask{}, false, fmt.Errorf("data object %q logs section %d: stream ID %d listed by the metastore is missing from the object's streams section", desc.ObjectPath, desc.SectionIdx, id)

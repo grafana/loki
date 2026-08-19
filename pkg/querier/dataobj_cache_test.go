@@ -67,8 +67,9 @@ func TestDataObjCache_StreamLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("all requested", func(t *testing.T) {
-		got, _, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{})
+		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{})
 		require.NoError(t, err)
+		require.False(t, filtered, "no shard filter, so the read is unfiltered and planSectionRead keeps its checks")
 		require.Len(t, got, 3)
 		byLabel := map[string]bool{}
 		for _, lbls := range got {
@@ -99,9 +100,9 @@ func TestDataObjCache_StreamLabels(t *testing.T) {
 	})
 }
 
-// TestDataObjCache_StreamLabels_ShardBucketFilter checks the two-phase (pruning) read: it reports
-// filtered=true, prunes streams outside the bucket range, and still errors on a metastore-listed stream
-// that the section lacks.
+// TestDataObjCache_StreamLabels_ShardBucketFilter checks the shard-bucket filtered read: it reports
+// filtered=true, drops streams outside the bucket range, and treats a metastore-listed stream the section
+// lacks as out-of-shard rather than an error.
 func TestDataObjCache_StreamLabels_ShardBucketFilter(t *testing.T) {
 	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
@@ -120,7 +121,7 @@ func TestDataObjCache_StreamLabels_ShardBucketFilter(t *testing.T) {
 	t.Run("filter covering all buckets returns every stream and reports filtered", func(t *testing.T) {
 		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{shardBucket: allBuckets})
 		require.NoError(t, err)
-		require.True(t, filtered, "the two-phase pruning path must have run, not the fallback")
+		require.True(t, filtered, "the shard-bucket pruning path must have run, not the fallback")
 		require.Len(t, got, 3)
 	})
 
@@ -142,10 +143,14 @@ func TestDataObjCache_StreamLabels_ShardBucketFilter(t *testing.T) {
 		}
 	})
 
-	t.Run("a listed stream missing from the section is corruption under filtering", func(t *testing.T) {
-		_, _, err := oo.streamLabels(ctx, wantSet(ids[0], ids[1], ids[2], 99999), readQuery{shardBucket: allBuckets})
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "99999")
+	t.Run("a listed stream missing from the section is treated as out-of-shard, not an error", func(t *testing.T) {
+		// The single-phase pruned read no longer verifies every listed stream exists; a missing one is
+		// simply not returned, and planSectionRead treats an absent ID as out-of-shard.
+		got, filtered, err := oo.streamLabels(ctx, wantSet(ids[0], ids[1], ids[2], 99999), readQuery{shardBucket: allBuckets})
+		require.NoError(t, err)
+		require.True(t, filtered)
+		require.Len(t, got, 3) // the three real streams; 99999 is absent
+		require.NotContains(t, got, streamID(99999))
 	})
 }
 
