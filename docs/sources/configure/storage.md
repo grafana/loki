@@ -180,7 +180,7 @@ table_manager:
   index_tables_provisioning:
     # Read/write throughput requirements for the current table
     # (the table which would handle writes/reads for data timestamped at the current time)
-    provisioned_write_throughput: <int> | default = 3000
+    provisioned_write_throughput: <int> | default = 1000
     provisioned_read_throughput: <int> | default = 300
 
     # Read/write throughput requirements for non-current tables
