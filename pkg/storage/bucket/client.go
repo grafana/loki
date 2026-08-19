@@ -204,25 +204,6 @@ func (cfg *ConfigWithNamedStores) DisableRetries(backend string) error {
 	return nil
 }
 
-func (cfg *Config) disableRetries(backend string) error {
-	switch backend {
-	case S3:
-		cfg.S3.MaxRetries = 1
-	case GCS:
-		cfg.GCS.MaxRetries = 1
-	case Azure:
-		cfg.Azure.MaxRetries = 1
-	case Swift:
-		cfg.Swift.MaxRetries = 1
-	case Filesystem, Alibaba, BOS:
-		// do nothing
-	default:
-		return fmt.Errorf("cannot disable retries for backend: %s", backend)
-	}
-
-	return nil
-}
-
 // NewClient creates a new bucket client based on the configured backend
 func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, wrapRT func(http.RoundTripper) http.RoundTripper) (objstore.InstrumentedBucket, error) {
 	var (
