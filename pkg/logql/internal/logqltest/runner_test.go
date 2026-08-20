@@ -11,6 +11,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // TestLogQLScripts runs every declarative `.logqltest` script under testdata/ through the
@@ -224,6 +228,95 @@ func TestComparators_DetectMismatches(t *testing.T) {
 			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, oneSeries(5), nil, false),
 			want: "unsupported result type",
 		},
+		"streams line mismatch": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "b"}}},
+			}, false),
+			want: `stream {app="a"} line 0 mismatch: want "a", got "b"`,
+		},
+		"streams timestamp mismatch": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch.Add(time.Second), Line: "a"}}},
+			}, false),
+			want: fmt.Sprintf(`stream {app="a"} line 0 has timestamp %dms, expected %dms`, epoch.Add(time.Second).UnixMilli(), epoch.UnixMilli()),
+		},
+		"streams missing stream": {
+			err:  compareStreams("n", oneStream("a"), logqlmodel.Streams{}, false),
+			want: `stream count mismatch: want 1, got 0`,
+		},
+		"streams extra stream": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+				{Labels: `{app="b"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "x"}}},
+			}, false),
+			want: `stream count mismatch: want 1, got 2`,
+		},
+		"streams missing stream (count matches)": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="b"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "x"}}},
+			}, false),
+			want: `missing expected stream {app="a"}`,
+		},
+		"streams extra line": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}, {Timestamp: epoch, Line: "extra"}}},
+			}, false),
+			want: `stream {app="a"} has 2 lines, expected 1`,
+		},
+		"streams missing line": {
+			err: compareStreams("n", expectations{streams: []expectedStream{
+				{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "a"}, {ts: time.Second, line: "b"}}},
+			}}, logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+			}, false),
+			want: `stream {app="a"} has 1 lines, expected 2`,
+		},
+		"streams duplicate expected stream": {
+			err: compareStreams("n", expectations{streams: []expectedStream{
+				{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "a"}}},
+				{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "a"}}},
+			}}, logqlmodel.Streams{{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}}}, false),
+			want: `duplicate expected stream {app="a"}`,
+		},
+		"streams duplicate result stream": {
+			err: compareStreams("n", oneStream("a"), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+			}, false),
+			want: `engine returned duplicate stream {app="a"}`,
+		},
+		"vector expected but got streams": {
+			err:  compareResult("n", evalCmd{instant: true, ts: time.Minute}, oneSeries(5), logqlmodel.Streams{}, false),
+			want: "expected series, got log streams",
+		},
+		"streams expected but got vector": {
+			err:  compareVector("n", instantCmd, oneStream("a"), promql.Vector{{Metric: foo, F: 5}}, false),
+			want: "expected log streams, got a vector",
+		},
+		"streams expected but got matrix": {
+			err:  compareMatrix("n", rangeCmd, oneStream("a"), promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}}}}, false),
+			want: "expected log streams, got a matrix",
+		},
+		"streams expected but got scalar": {
+			err:  compareScalar("n", oneStream("a"), promql.Scalar{V: 5}, false),
+			want: "expected log streams, got a scalar",
+		},
+		"series expected but got scalar": {
+			err:  compareScalar("n", oneSeries(5), promql.Scalar{V: 5}, false),
+			want: "expected series, got a scalar",
+		},
+		"scalar expected but got streams": {
+			err: compareStreams("n", scalar(5), logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+			}, false),
+			want: "expected a scalar, got log streams",
+		},
+		"empty expected but non-empty streams": {
+			err: compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{
+				{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+			}, false),
+			want: "expected an empty result, got 1 streams",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.ErrorContains(t, tc.err, tc.want)
@@ -256,6 +349,18 @@ func TestComparators_AcceptMatches(t *testing.T) {
 			{labels: `{app="b"}`, samples: []sample{{present: true, value: 2}}},
 		}},
 		promql.Vector{{Metric: foo, F: 1, T: ts}, {Metric: labels.FromStrings("app", "b"), F: 2, T: ts}}, false))
+
+	// Log streams: matched as a set by label, lines compared in order within each stream.
+	require.NoError(t, compareStreams("n",
+		expectations{streams: []expectedStream{
+			{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "1st"}, {ts: time.Second, line: "2nd"}}},
+			{labels: `{app="b"}`, entries: []expectedLogEntry{{ts: 0, line: "x"}}},
+		}},
+		logqlmodel.Streams{
+			{Labels: `{app="b"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "x"}}},
+			{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "1st"}, {Timestamp: epoch.Add(time.Second), Line: "2nd"}}},
+		}, false))
+	require.NoError(t, compareResult("n", evalCmd{instant: true, ts: time.Minute}, expectations{empty: true}, logqlmodel.Streams{}, false))
 }
 
 func TestComparators_SkipValues(t *testing.T) {
@@ -272,6 +377,8 @@ func TestComparators_SkipValues(t *testing.T) {
 		require.NoError(t, compareScalar("n", scalar(5), promql.Scalar{V: 6}, true))
 		require.NoError(t, compareVector("n", instantCmd, oneSeries(5), promql.Vector{{Metric: foo, F: 6, T: ts}}, true))
 		require.NoError(t, compareMatrix("n", rangeCmd, oneSeries(5), promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 6}}}}, true))
+		require.NoError(t, compareStreams("n", oneStream("a"),
+			logqlmodel.Streams{{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "wrong line"}}}}, true))
 	})
 
 	// The values below are deliberately wrong (6, not 5): the shape check must still fire.
@@ -289,6 +396,15 @@ func TestComparators_SkipValues(t *testing.T) {
 		require.ErrorContains(t, compareMatrix("n", rangeCmd,
 			expectations{series: []expectedSeries{{labels: `{app="a"}`, samples: []sample{{present: false}}}}},
 			promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts, F: 5}}}}, true), "should be empty")
+
+		// Streams: a missing stream, or a missing line within one, still errors even though a
+		// present line's text would have been skipped.
+		require.ErrorContains(t, compareStreams("n", oneStream("a"), logqlmodel.Streams{}, true), "stream count mismatch")
+		require.ErrorContains(t, compareStreams("n", expectations{streams: []expectedStream{
+			{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: "a"}, {ts: time.Second, line: "b"}}},
+		}}, logqlmodel.Streams{
+			{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch, Line: "a"}}},
+		}, true), "has 1 lines, expected 2")
 	})
 
 	t.Run("timestamp mismatches still error", func(t *testing.T) {
@@ -296,7 +412,14 @@ func TestComparators_SkipValues(t *testing.T) {
 			promql.Vector{{Metric: foo, F: 6, T: 1000}}, true), "has timestamp 1000ms")
 		require.ErrorContains(t, compareMatrix("n", rangeCmd, oneSeries(5),
 			promql.Matrix{{Metric: foo, Floats: []promql.FPoint{{T: ts + 1000, F: 6}}}}, true), "unexpected timestamp")
+		require.ErrorContains(t, compareStreams("n", oneStream("a"),
+			logqlmodel.Streams{{Labels: `{app="a"}`, Entries: []push.Entry{{Timestamp: epoch.Add(time.Second), Line: "a"}}}}, true),
+			fmt.Sprintf("has timestamp %dms", epoch.Add(time.Second).UnixMilli()))
 	})
+}
+
+func oneStream(line string) expectations {
+	return expectations{streams: []expectedStream{{labels: `{app="a"}`, entries: []expectedLogEntry{{ts: 0, line: line}}}}}
 }
 
 func TestFloatsEqual(t *testing.T) {

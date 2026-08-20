@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -207,8 +209,10 @@ func consumeBlock(lines []string, i int, fn func(content string)) int {
 // first mismatch (nil on success). Keeping the comparators pure (error-returning rather than
 // asserting on a *testing.T) lets the tests exercise the failure path directly.
 //
-// With skipValues true the comparators check result shape only — series count, timestamps, and
-// present/absent samples — and skip float value equality.
+// Each compare* function below self-guards against every other expectation kind (so it gives a
+// clear "expected X, got Y" error even when called directly, as the tests do). With skipValues
+// true the comparators check result shape only — series count, timestamps, and present/absent
+// samples (or log lines) — and skip value equality.
 func compareResult(name string, cmd evalCmd, exp expectations, data any, skipValues bool) error {
 	switch v := data.(type) {
 	case promql.Scalar:
@@ -223,9 +227,6 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any, skipVal
 			}
 			return nil
 		}
-		if exp.scalar != nil {
-			return fmt.Errorf("%s: expected a scalar, got a vector", name)
-		}
 		return compareVector(name, cmd, exp, v, skipValues)
 	case promql.Matrix:
 		if exp.empty {
@@ -234,16 +235,27 @@ func compareResult(name string, cmd evalCmd, exp expectations, data any, skipVal
 			}
 			return nil
 		}
-		if exp.scalar != nil {
-			return fmt.Errorf("%s: expected a scalar, got a matrix", name)
-		}
 		return compareMatrix(name, cmd, exp, v, skipValues)
+	case logqlmodel.Streams:
+		if exp.empty {
+			if len(v) != 0 {
+				return fmt.Errorf("%s: expected an empty result, got %d streams", name, len(v))
+			}
+			return nil
+		}
+		return compareStreams(name, exp, v, skipValues)
 	default:
-		return fmt.Errorf("%s: unsupported result type %T (only metric queries are supported)", name, data)
+		return fmt.Errorf("%s: unsupported result type %T", name, data)
 	}
 }
 
 func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bool) error {
+	if len(exp.series) > 0 {
+		return fmt.Errorf("%s: expected series, got a scalar", name)
+	}
+	if len(exp.streams) > 0 {
+		return fmt.Errorf("%s: expected log streams, got a scalar", name)
+	}
 	if exp.scalar == nil {
 		return fmt.Errorf("%s: scalar result but no scalar value expected", name)
 	}
@@ -254,6 +266,13 @@ func compareScalar(name string, exp expectations, s promql.Scalar, skipValues bo
 }
 
 func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, skipValues bool) error {
+	if exp.scalar != nil {
+		return fmt.Errorf("%s: expected a scalar, got a vector", name)
+	}
+	if len(exp.streams) > 0 {
+		return fmt.Errorf("%s: expected log streams, got a vector", name)
+	}
+
 	// Instant results carry a single timestamp: the query's evaluation time.
 	wantTS := epoch.Add(cmd.ts).UnixMilli()
 
@@ -324,6 +343,12 @@ func compareVector(name string, cmd evalCmd, exp expectations, v promql.Vector, 
 }
 
 func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, skipValues bool) error {
+	if exp.scalar != nil {
+		return fmt.Errorf("%s: expected a scalar, got a matrix", name)
+	}
+	if len(exp.streams) > 0 {
+		return fmt.Errorf("%s: expected log streams, got a matrix", name)
+	}
 	if exp.ordered {
 		return fmt.Errorf("%s: `expect ordered` is only supported for instant queries", name)
 	}
@@ -397,6 +422,67 @@ func compareMatrix(name string, cmd evalCmd, exp expectations, m promql.Matrix, 
 		}
 	}
 	return nil
+}
+
+// compareStreams checks a log-selection result against the expected streams. Streams are
+// matched as a set keyed by label string (like vector/matrix series); the log lines within a
+// matched stream are compared as an exact, ordered sequence, since a stream's line order is
+// meaningful (chronological, per the query direction) rather than incidental.
+func compareStreams(name string, exp expectations, got logqlmodel.Streams, skipValues bool) error {
+	if exp.scalar != nil {
+		return fmt.Errorf("%s: expected a scalar, got log streams", name)
+	}
+	if len(exp.series) > 0 {
+		return fmt.Errorf("%s: expected series, got log streams", name)
+	}
+
+	want := map[string][]expectedLogEntry{}
+	for _, es := range exp.streams {
+		if _, dup := want[es.labels]; dup {
+			return fmt.Errorf("%s: duplicate expected stream %s", name, es.labels)
+		}
+		want[es.labels] = es.entries
+	}
+
+	gotByLabels := map[string][]push.Entry{}
+	for _, s := range got {
+		if _, dup := gotByLabels[s.Labels]; dup {
+			return fmt.Errorf("%s: engine returned duplicate stream %s", name, s.Labels)
+		}
+		gotByLabels[s.Labels] = s.Entries
+	}
+
+	if len(gotByLabels) != len(want) {
+		return fmt.Errorf("%s: stream count mismatch: want %d, got %d (%v)", name, len(want), len(gotByLabels), streamKeys(gotByLabels))
+	}
+	for lbls, wantEntries := range want {
+		gotEntries, ok := gotByLabels[lbls]
+		if !ok {
+			return fmt.Errorf("%s: missing expected stream %s; got streams %v", name, lbls, streamKeys(gotByLabels))
+		}
+		if len(gotEntries) != len(wantEntries) {
+			return fmt.Errorf("%s: stream %s has %d lines, expected %d", name, lbls, len(gotEntries), len(wantEntries))
+		}
+		for i, we := range wantEntries {
+			ge := gotEntries[i]
+			wantTS := epoch.Add(we.ts).UnixMilli()
+			if gotTS := ge.Timestamp.UnixMilli(); gotTS != wantTS {
+				return fmt.Errorf("%s: stream %s line %d has timestamp %dms, expected %dms", name, lbls, i, gotTS, wantTS)
+			}
+			if !skipValues && ge.Line != we.line {
+				return fmt.Errorf("%s: stream %s line %d mismatch: want %q, got %q", name, lbls, i, we.line, ge.Line)
+			}
+		}
+	}
+	return nil
+}
+
+func streamKeys(m map[string][]push.Entry) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 func floatsEqual(a, b float64) bool {

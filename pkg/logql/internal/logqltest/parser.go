@@ -274,16 +274,17 @@ const (
 )
 
 // expectations is the parsed expected result of an `eval` command: either a failure
-// assertion, a scalar value, an empty-result assertion, or a set of series (for
-// vector/matrix results).
+// assertion, a scalar value, an empty-result assertion, a set of series (for vector/matrix
+// results), or a set of log streams (for log-selection results).
 type expectations struct {
 	fail     bool
 	failKind failMatch
 	failText string
-	empty    bool // when set, the result must contain no series (`expect empty`)
+	empty    bool // when set, the result must contain no series/streams (`expect empty`)
 	ordered  bool // when set, series are compared positionally (for sort/sort_desc); instant only
 	scalar   *float64
 	series   []expectedSeries
+	streams  []expectedStream
 
 	// isValueComparisonSkipped holds the execution stacks (by name) whose result values are not
 	// compared, set by a `skip values-comparison on "<stack>"` directive. The stack still runs and
@@ -291,12 +292,13 @@ type expectations struct {
 	isValueComparisonSkipped map[string]bool
 }
 
-// validate ensures an eval asserts exactly one result kind: series, a scalar, `expect empty`,
-// or `expect fail`. This catches a forgotten expectation block (which would otherwise pass
-// vacuously on an empty result) and contradictory combinations that would be silently ignored.
+// validate ensures an eval asserts exactly one result kind: series, log streams, a scalar,
+// `expect empty`, or `expect fail`. This catches a forgotten expectation block (which would
+// otherwise pass vacuously on an empty result) and contradictory combinations that would be
+// silently ignored.
 func (e expectations) validate() error {
 	kinds := 0
-	for _, set := range []bool{e.fail, e.empty, e.scalar != nil, len(e.series) > 0} {
+	for _, set := range []bool{e.fail, e.empty, e.scalar != nil, len(e.series) > 0, len(e.streams) > 0} {
 		if set {
 			kinds++
 		}
@@ -305,9 +307,9 @@ func (e expectations) validate() error {
 	case e.failKind != failAny && !e.fail:
 		return fmt.Errorf("failure qualifier set without `expect fail`")
 	case kinds == 0:
-		return fmt.Errorf("eval has no expectation: provide series, a scalar, `expect empty`, or `expect fail`")
+		return fmt.Errorf("eval has no expectation: provide series, log streams, a scalar, `expect empty`, or `expect fail`")
 	case kinds > 1:
-		return fmt.Errorf("conflicting expectations: use exactly one of series, a scalar, `expect empty`, or `expect fail`")
+		return fmt.Errorf("conflicting expectations: use exactly one of series, log streams, a scalar, `expect empty`, or `expect fail`")
 	case e.ordered && len(e.series) == 0:
 		return fmt.Errorf("`expect ordered` requires series")
 	}
@@ -321,6 +323,20 @@ type expectedSeries struct {
 	samples []sample
 }
 
+// expectedLogEntry is one expected log line within an expectedStream: its timestamp (as a
+// duration offset from the script epoch) and text.
+type expectedLogEntry struct {
+	ts   time.Duration
+	line string
+}
+
+// expectedStream is one expected output log stream (for a log-selection query): its label set
+// (in `{a="b"}` string form) and its expected log lines, in order.
+type expectedStream struct {
+	labels  string
+	entries []expectedLogEntry
+}
+
 type expectationsParser struct {
 	exp expectations
 }
@@ -330,7 +346,8 @@ func newExpectationsParser() *expectationsParser {
 }
 
 // parse consumes one expectation line: an `expect` annotation (`fail [msg:|regex:]` / `empty` /
-// `ordered`), a `{labels} p0 p1 ...` series line, or a bare scalar value.
+// `ordered`), a `{labels} p0 p1 ...` series line, a `{labels} "line" @ <ts>` log-stream line, or a
+// bare scalar value.
 func (p *expectationsParser) parse(line string) error {
 	switch {
 	case strings.HasPrefix(line, "expect fail"):
@@ -356,7 +373,7 @@ func (p *expectationsParser) parse(line string) error {
 			return fmt.Errorf("unsupported `expect fail` qualifier %q (use `msg:` or `regex:`)", body)
 		}
 	case line == "expect empty":
-		// The result must contain no series.
+		// The result must contain no series or streams.
 		p.exp.empty = true
 	case line == "expect ordered":
 		// Compare the following series positionally rather than as a set (for sort/sort_desc).
@@ -381,6 +398,12 @@ func (p *expectationsParser) parse(line string) error {
 			p.exp.isValueComparisonSkipped = map[string]bool{}
 		}
 		p.exp.isValueComparisonSkipped[stack] = true
+	case strings.HasPrefix(line, "{") && isLogLine(line):
+		lbls, ts, text, err := parseLogLine(line)
+		if err != nil {
+			return err
+		}
+		p.addLogEntry(lbls.String(), ts, text)
 	case strings.HasPrefix(line, "{"):
 		lbls, samples, err := parseSeriesLine(line)
 		if err != nil {
@@ -395,6 +418,19 @@ func (p *expectationsParser) parse(line string) error {
 		p.exp.scalar = &v
 	}
 	return nil
+}
+
+// addLogEntry appends one expected log line to the stream keyed by labels, creating it on first
+// use. Streams are compared as a set (see compareStreams), so a linear scan to find the matching
+// stream is fine for the handful of expected lines a test script ever has.
+func (p *expectationsParser) addLogEntry(labels string, ts time.Duration, line string) {
+	for i := range p.exp.streams {
+		if p.exp.streams[i].labels == labels {
+			p.exp.streams[i].entries = append(p.exp.streams[i].entries, expectedLogEntry{ts: ts, line: line})
+			return
+		}
+	}
+	p.exp.streams = append(p.exp.streams, expectedStream{labels: labels, entries: []expectedLogEntry{{ts: ts, line: line}}})
 }
 
 // get returns the accumulated expectations.
@@ -428,6 +464,54 @@ func parseSeriesLine(line string) (labels.Labels, []sample, error) {
 		return labels.EmptyLabels(), nil, fmt.Errorf("series line %q has no sample values", line)
 	}
 	return lbls, samples, nil
+}
+
+// isLogLine reports whether an expectation line starting with '{' is a log-stream result line
+// (`{labels} "line" @ <ts>`) rather than a numeric series line (`{labels} p0 p1 ...`). The two
+// are unambiguous: no sample token (a float, `_`, `NaN`, `Inf`, or a `x`-expansion) can start
+// with a quote.
+func isLogLine(line string) bool {
+	_, rest, ok := strings.Cut(line, "}")
+	if !ok {
+		return false
+	}
+	rest = strings.TrimSpace(rest)
+	return strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, "`")
+}
+
+// parseLogLine parses an expected log-stream result line: `{labels} "line" @ <ts>` (or a
+// backtick-delimited raw line). Mirrors the `load` line format (selector, quoted line,
+// timestamp), minus the load-only `[repeat ...]` / `[metadata ...]` clauses.
+func parseLogLine(line string) (labels.Labels, time.Duration, string, error) {
+	line = strings.TrimSpace(line)
+	end := strings.IndexByte(line, '}')
+	if end < 0 {
+		return labels.EmptyLabels(), 0, "", fmt.Errorf("unterminated label set")
+	}
+	lbls, err := parseSeriesLabels(line[:end+1])
+	if err != nil {
+		return labels.EmptyLabels(), 0, "", err
+	}
+
+	text, rest, err := splitQuoted(line[end+1:])
+	if err != nil {
+		return labels.EmptyLabels(), 0, "", err
+	}
+
+	m := reAt.FindStringSubmatch(rest)
+	if m == nil {
+		return labels.EmptyLabels(), 0, "", fmt.Errorf("missing '@ <ts>' timestamp")
+	}
+	ts, err := time.ParseDuration(m[1])
+	if err != nil {
+		return labels.EmptyLabels(), 0, "", fmt.Errorf("invalid timestamp %q: %w", m[1], err)
+	}
+	rest = rest[len(m[0]):]
+
+	if leftover := strings.TrimSpace(rest); leftover != "" {
+		return labels.EmptyLabels(), 0, "", fmt.Errorf("unexpected content after log line: %q", leftover)
+	}
+	return lbls, ts, text, nil
 }
 
 func parseSeriesLabels(s string) (labels.Labels, error) {

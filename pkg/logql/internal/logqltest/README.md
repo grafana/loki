@@ -1,10 +1,10 @@
 # LogQL declarative test scripts syntax
 
 The `testdata/*.logqltest` scripts alongside this package are declarative correctness tests for LogQL
-**metric** queries. Each `.logqltest` file loads some log streams and evaluates queries against
-absolute, hand-specified expected results. Scripts are run by `TestLogQLScripts` through the real
-`logql.Engine` over a filesystem-backed chunk store (TSDB index), so the full storage read path and
-parsing/extraction pipeline are exercised end to end.
+**metric and log-selection** queries. Each `.logqltest` file loads some log streams and evaluates
+queries against absolute, hand-specified expected results. Scripts are run by `TestLogQLScripts`
+through the real `logql.Engine` over a filesystem-backed chunk store (TSDB index), so the full
+storage read path and parsing/extraction pipeline are exercised end to end.
 
 The format is adapted from Prometheus' [`promqltest`](https://github.com/prometheus/prometheus/tree/main/promql/promqltest)
 DSL.
@@ -49,7 +49,7 @@ load
 
 ### `eval`
 
-Evaluates a metric query and checks its result.
+Evaluates a query (metric or log-selection) and checks its result.
 
 ```
 eval instant at <time> <logql>
@@ -62,6 +62,8 @@ eval range from <t0> to <t1> step <step> <logql>
 - Times (`<time>`, `<t0>`, `<t1>`, `<step>`) are Go durations offset from the script epoch.
 - Expected results follow on indented lines. The block ends at a blank line, a dedented line,
   or EOF.
+- `<step>` is required by the grammar even for a log-selection query, which has no notion of a
+  step; give it any positive duration.
 
 ## Expected results
 
@@ -69,6 +71,11 @@ eval range from <t0> to <t1> step <step> <logql>
 - **Scalar** (e.g. `1 + 2`): a single line with just the number.
 - **Matrix** (range queries): one line per series, `{labels} <p0> <p1> …`, one point per step
   from `<t0>` to `<t1>`. Use `_` for a step with no point.
+- **Streams** (log-selection queries, e.g. `{app="foo"} |= "bar"`): one line per log entry,
+  `{labels} "<line>" @ <ts>` (or `` `<line>` `` for a raw line). Several lines sharing the same
+  `{labels}` belong to one stream and are checked as an exact, ordered sequence — a stream's line
+  order is meaningful, unlike the set of series in a vector/matrix. Distinct label sets are
+  compared as a set (order-independent), like series.
 
 Point syntax (from promqltest):
 
@@ -86,14 +93,33 @@ An **empty-value label is significant**: `{app="a", age=""}` asserts that `age` 
 empty value (e.g. from a `json` expression whose path is missing, or `logfmt --keep-empty`), which is
 distinct from omitting `age` entirely.
 
-Every `eval` must assert exactly one kind of result — series, a scalar, `expect empty`, or
-`expect fail`; otherwise the harness errors (a forgotten expected block would otherwise pass
-vacuously on an empty result).
+Every `eval` must assert exactly one kind of result — series, log streams, a scalar,
+`expect empty`, or `expect fail`; otherwise the harness errors (a forgotten expected block would
+otherwise pass vacuously on an empty result).
+
+### Log-selection window
+
+A log-selection query's window is **start-inclusive, end-exclusive**: `[t0, t1)` for
+`eval range`, and `[T−30s, T)` for `eval instant at T` (a fixed 30s look-back). This is the
+opposite of a metric range vector's `(start, end]` — a line exactly at `t1` (or at the instant
+`T`) falls **outside** the window:
+
+```
+load
+  {app="foo"} "in range"    @ 10s
+  {app="foo"} "at boundary" @ 20s
+
+eval range from 0 to 20s step 10s {app="foo"}
+  {app="foo"} "in range" @ 10s
+```
+
+A log-selection `eval` always runs in the default `FORWARD` direction with a fixed 1000-line
+limit; direction and limit are not yet configurable from the DSL.
 
 ### Empty results
 
-To assert that a query returns no series — e.g. `absent_over_time` over present data, or a
-comparison whose sides never match — use `expect empty`:
+To assert that a query returns no series or streams — e.g. `absent_over_time` over present data,
+a comparison whose sides never match, or a selector matching no stream — use `expect empty`:
 
 ```
 eval instant at 60s count_over_time({app="missing"}[1m])
@@ -139,8 +165,9 @@ eval instant at 60s quantile_over_time(0.5, {app="a"} | logfmt | unwrap v [1m]) 
 ```
 
 - `<stack>` is the exact stack name, in double quotes.
-- The named stack still runs the query, must not error, and is still checked for series count,
-  sample count, and timestamps. Only the float value comparison is skipped.
+- The named stack still runs the query, must not error, and is still checked for series/stream
+  count, sample/line count, and timestamps. Only the float value comparison (or, for a
+  log-selection query, the log line text) is skipped.
 
 ## Execution stacks
 
@@ -163,9 +190,17 @@ eval instant at 60s sum by (app) (count_over_time({app=~"foo|bar"}[1m]))
 
 eval range from 0 to 60s step 30s count_over_time({app="foo"}[30s])
   {app="foo"} _ 3 3
+
+eval range from 0 to 60s step 30s {app="foo"} |= "status=200"
+  {app="foo"} "level=info status=200" @ 10s
+  {app="foo"} "level=info status=200" @ 20s
+  {app="foo"} "level=info status=200" @ 30s
+  {app="foo"} "level=info status=200" @ 40s
+  {app="foo"} "level=info status=200" @ 50s
 ```
 
 ## Scope
 
-Metric queries only (results of type vector / scalar / matrix). Log queries (streams) are not
-yet supported.
+Metric queries (results of type vector / scalar / matrix) and log-selection queries (results of
+type streams — a stream selector with optional line/label filters, parsers, and formatters).
+Tailing and `expect ordered` for streams are not yet supported.

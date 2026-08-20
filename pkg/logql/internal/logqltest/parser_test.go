@@ -291,10 +291,12 @@ func TestExpectationsParser(t *testing.T) {
 func TestExpectationsValidate(t *testing.T) {
 	scalar := 1.0
 	series := []expectedSeries{{labels: `{a="b"}`, samples: []sample{{present: true, value: 1}}}}
+	streams := []expectedStream{{labels: `{a="b"}`, entries: []expectedLogEntry{{ts: 0, line: "x"}}}}
 
 	// Valid: exactly one result kind (plus ordered alongside series).
 	require.NoError(t, expectations{scalar: &scalar}.validate())
 	require.NoError(t, expectations{series: series}.validate())
+	require.NoError(t, expectations{streams: streams}.validate())
 	require.NoError(t, expectations{empty: true}.validate())
 	require.NoError(t, expectations{fail: true}.validate())
 	require.NoError(t, expectations{ordered: true, series: series}.validate())
@@ -305,9 +307,55 @@ func TestExpectationsValidate(t *testing.T) {
 	require.Error(t, expectations{fail: true, series: series}.validate())
 	require.Error(t, expectations{scalar: &scalar, series: series}.validate())
 	require.Error(t, expectations{empty: true, series: series}.validate())
+	require.Error(t, expectations{series: series, streams: streams}.validate())
 	require.Error(t, expectations{ordered: true}.validate())
 	require.Error(t, expectations{ordered: true, scalar: &scalar}.validate()) // ordered needs series
 	require.Error(t, expectations{failKind: failMsg}.validate())              // qualifier without fail
+}
+
+func TestIsLogLine(t *testing.T) {
+	require.True(t, isLogLine(`{app="foo"} "line" @ 10s`))
+	require.True(t, isLogLine("{app=\"foo\"} `raw line` @ 10s"))
+	require.False(t, isLogLine(`{app="foo"} 1 2 3`))
+	require.False(t, isLogLine(`{app="foo"} _ 5`))
+	require.False(t, isLogLine(`no braces`))
+}
+
+func TestParseLogLine(t *testing.T) {
+	lbls, ts, text, err := parseLogLine(`{app="foo", env="prod"} "hello world" @ 90s`)
+	require.NoError(t, err)
+	require.Equal(t, `{app="foo", env="prod"}`, lbls.String())
+	require.Equal(t, 90*time.Second, ts)
+	require.Equal(t, "hello world", text)
+
+	// A backtick raw line keeps its double quotes.
+	bt := "`"
+	_, _, text, err = parseLogLine(`{app="foo"} ` + bt + `{"a":"b"}` + bt + ` @ 0s`)
+	require.NoError(t, err)
+	require.Equal(t, `{"a":"b"}`, text)
+
+	_, _, _, err = parseLogLine(`{app="foo"} "line"`) // missing timestamp
+	require.Error(t, err)
+
+	_, _, _, err = parseLogLine(`{app="foo"} "line" @ 0s trailing junk`)
+	require.Error(t, err)
+}
+
+func TestExpectationsParser_LogStreams(t *testing.T) {
+	p := newExpectationsParser()
+	require.NoError(t, p.parse(`{app="foo"} "1st" @ 0s`))
+	require.NoError(t, p.parse(`{app="foo"} "2nd" @ 10s`))
+	require.NoError(t, p.parse(`{app="bar"} "x" @ 5s`))
+	exp := p.get()
+
+	require.Len(t, exp.streams, 2)
+	require.Equal(t, `{app="foo"}`, exp.streams[0].labels)
+	require.Equal(t, []expectedLogEntry{{ts: 0, line: "1st"}, {ts: 10 * time.Second, line: "2nd"}}, exp.streams[0].entries)
+	require.Equal(t, `{app="bar"}`, exp.streams[1].labels)
+	require.Equal(t, []expectedLogEntry{{ts: 5 * time.Second, line: "x"}}, exp.streams[1].entries)
+
+	// A malformed log line (missing timestamp) is surfaced, not silently dropped.
+	require.Error(t, newExpectationsParser().parse(`{app="foo"} "no timestamp"`))
 }
 
 func TestParseSeriesLabels(t *testing.T) {
