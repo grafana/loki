@@ -70,6 +70,10 @@ type ObjectMetastore struct {
 	// tocResolver lists a window's index objects from its ToC. It is always set: the lazy (read-on-demand)
 	// resolver by default, or a warm resolver via WithTOCResolver.
 	tocResolver TableOfContentsResolver
+
+	// metadataCache, when set, serves each index object's metadata prefix so opening it does not read the
+	// metadata from object storage on every open. nil disables it.
+	metadataCache dataobj.MetadataCache
 }
 
 // objectMetastoreOptions holds the optional dependencies applied by ObjectMetastoreOption.
@@ -77,6 +81,7 @@ type objectMetastoreOptions struct {
 	sectionsCache          SectionsCache
 	sectionsResolveTimeout time.Duration
 	tocResolver            TableOfContentsResolver
+	metadataCache          dataobj.MetadataCache
 }
 
 // ObjectMetastoreOption configures an ObjectMetastore at construction.
@@ -87,6 +92,14 @@ type ObjectMetastoreOption func(*objectMetastoreOptions)
 func WithSectionsCache(c SectionsCache) ObjectMetastoreOption {
 	return func(o *objectMetastoreOptions) {
 		o.sectionsCache = c
+	}
+}
+
+// WithMetadataCache serves each index object's metadata prefix through cache, avoiding a per-open
+// object-storage read of the metadata. A nil cache disables it.
+func WithMetadataCache(c dataobj.MetadataCache) ObjectMetastoreOption {
+	return func(o *objectMetastoreOptions) {
+		o.metadataCache = c
 	}
 }
 
@@ -244,6 +257,7 @@ func NewObjectMetastore(b objstore.Bucket, cfg Config, logger log.Logger, metric
 		sectionsCache:          sectionsCache,
 		sectionsResolveTimeout: sectionsResolveTimeout,
 		tocResolver:            tocResolver,
+		metadataCache:          options.metadataCache,
 	}
 
 	return store
@@ -431,7 +445,7 @@ func (m *ObjectMetastore) listStreamsFromObjects(ctx context.Context, paths []st
 
 	for _, path := range paths {
 		g.Go(func() error {
-			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0)
+			object, err := dataobj.FromBucket(ctx, m.bucket, path, 0, dataobj.WithMetadataCache(m.metadataCache))
 			if err != nil {
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
@@ -690,7 +704,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 		return IndexSectionsReaderResponse{}, fmt.Errorf("at least one selector is required")
 	}
 
-	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes)
+	idxObj, err := dataobj.FromBucket(ctx, m.bucket, req.IndexPath, req.PrefetchBytes, dataobj.WithMetadataCache(m.metadataCache))
 	if err != nil {
 		return IndexSectionsReaderResponse{}, fmt.Errorf("prepare obj %s: %w", req.IndexPath, err)
 	}

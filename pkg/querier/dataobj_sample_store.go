@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/dataobjmetrics"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -35,8 +36,18 @@ type dataObjSampleStore struct {
 	bucket                   objstore.Bucket
 	resolver                 dataObjSectionsResolver
 	shardBucketFilterEnabled bool
+	metadataCache            dataobj.MetadataCache
 	logger                   log.Logger
 	metrics                  *dataobjmetrics.Metrics
+}
+
+// DataObjSampleStoreOption customizes a dataObjSampleStore.
+type DataObjSampleStoreOption func(*dataObjSampleStore)
+
+// WithDataObjMetadataCache serves each object's metadata prefix through cache, avoiding a per-open
+// object-storage read of the metadata. A nil cache disables it.
+func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjSampleStoreOption {
+	return func(s *dataObjSampleStore) { s.metadataCache = cache }
 }
 
 // NewDataObjSampleStore returns a Store that serves stream-first metric queries from data objects in
@@ -49,8 +60,8 @@ type dataObjSampleStore struct {
 //
 // When sectionsClient is non-nil, sections are resolved by the index-gateway (per 12h window, with the
 // metastore as fallback) instead of locally; otherwise resolution goes straight to the metastore.
-func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, sectionsClient DataObjSectionsGatewayClient, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer) Store {
-	return &dataObjSampleStore{
+func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, sectionsClient DataObjSectionsGatewayClient, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer, opts ...DataObjSampleStoreOption) Store {
+	s := &dataObjSampleStore{
 		Store:                    chunkStore,
 		bucket:                   bucket,
 		resolver:                 newDataObjSectionsResolver(ms, sectionsClient, reg, logger),
@@ -58,6 +69,10 @@ func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastor
 		logger:                   logger,
 		metrics:                  dataobjmetrics.New(prometheus.WrapRegistererWithPrefix("loki_querier_", reg)),
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *dataObjSampleStore) String() string { return "dataobj" }
@@ -102,6 +117,7 @@ func (s *dataObjSampleStore) SelectSamples(ctx context.Context, req logql.Select
 	}
 
 	cache := newDataObjCache(s.bucket, tenantID)
+	cache.metadataCache = s.metadataCache
 
 	// One capture spans the whole query, so every object-storage read is accounted and attributed to the
 	// component that made it.

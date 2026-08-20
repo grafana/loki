@@ -2585,7 +2585,9 @@ The `cache_config` block configures the cache backend for a specific Loki compon
 - `frontend.series-results-cache`
 - `frontend.volume-results-cache`
 - `index-gateway.dataobject-sections.cache`
+- `index-gateway.dataobject-sections.metadata-cache`
 - `index-gateway.dataobject-toc-warmer.cache`
+- `querier.dataobject-metadata-cache`
 - `query-engine.results-cache`
 - `query-engine.task-results-cache`
 - `store.chunks-cache`
@@ -4082,6 +4084,18 @@ dataobject_sections:
     # The CLI flags prefix for this block configuration is:
     # index-gateway.dataobject-toc-warmer.cache
     [cache: <cache_config>]
+
+  # Cache each index object's metadata so section resolution does not read it
+  # from object storage on every open. Has no effect unless
+  # -index-gateway.dataobject-sections.enabled is set.
+  # CLI flag: -index-gateway.dataobject-sections.metadata-cache-enabled
+  [metadata_cache_enabled: <boolean> | default = false]
+
+  # The cache_config block configures the cache backend for a specific Loki
+  # component.
+  # The CLI flags prefix for this block configuration is:
+  # index-gateway.dataobject-sections.metadata-cache
+  [metadata_cache: <cache_config>]
 ```
 
 ### ingester
@@ -5639,6 +5653,18 @@ engine:
 # -index-gateway.dataobject-sections.enabled=true.
 # CLI flag: -querier.dataobjects-section-resolution-via-index-gateway-enabled
 [dataobjects_section_resolution_via_index_gateway_enabled: <boolean> | default = false]
+
+# When true, cache each data object's metadata so the v1 data-object reader does
+# not read it from object storage on every open. Has no effect unless the
+# data-object reader is enabled.
+# CLI flag: -querier.dataobject-metadata-cache-enabled
+[dataobject_metadata_cache_enabled: <boolean> | default = false]
+
+# The cache_config block configures the cache backend for a specific Loki
+# component.
+# The CLI flags prefix for this block configuration is:
+# querier.dataobject-metadata-cache
+[dataobject_metadata_cache: <cache_config>]
 ```
 
 ### query_range
@@ -7573,6 +7599,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `frontend.tail-tls-config`
 - `frontend.volume-results-cache.memcached`
 - `index-gateway.dataobject-sections.cache.memcached`
+- `index-gateway.dataobject-sections.metadata-cache.memcached`
 - `index-gateway.dataobject-toc-warmer.cache.memcached`
 - `index-gateway.ring.etcd`
 - `ingest-limits-frontend-client`
@@ -7584,6 +7611,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `memberlist`
 - `pattern-ingester.client`
 - `pattern-ingester.etcd`
+- `querier.dataobject-metadata-cache.memcached`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
 - `querier.scheduler-grpc-client`

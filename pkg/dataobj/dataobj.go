@@ -93,13 +93,43 @@ type Object struct {
 	tenants  []string
 }
 
+// MetadataCache caches the metadata prefix of data objects, keyed by an opaque key. Data objects are
+// immutable, so a cached entry never goes stale. Implementations must be safe for concurrent use.
+type MetadataCache interface {
+	// GetMetadata returns the metadata prefix for key. On a miss it calls load, stores the result, and
+	// returns it; concurrent calls for the same key should share a single load.
+	//
+	// The returned slice is read-only and may be shared between concurrent callers (a coalesced miss hands
+	// them the same backing array). Callers may retain it but must not mutate it; clone first to modify.
+	GetMetadata(ctx context.Context, key string, load func(ctx context.Context) ([]byte, error)) ([]byte, error)
+}
+
+// OpenOption customizes how an Object is opened.
+type OpenOption func(*openOptions)
+
+type openOptions struct {
+	metadataCache MetadataCache
+}
+
+// WithMetadataCache serves the object's metadata prefix through cache instead of reading it from object
+// storage on every open. A nil cache disables it — pass a nil MetadataCache interface, not a typed-nil
+// concrete value (which would satisfy the interface and panic on use).
+func WithMetadataCache(cache MetadataCache) OpenOption {
+	return func(o *openOptions) { o.metadataCache = cache }
+}
+
 // FromBucket opens an Object from the given storage bucket and path.
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
-func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64) (*Object, error) {
+func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string, prefetchBytes int64, opts ...OpenOption) (*Object, error) {
+	var o openOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	rr := &bucketRangeReader{bucket: bucket, path: path}
 
-	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes}
+	dec := &decoder{rr: rr, prefetchBytes: prefetchBytes, metadataCache: o.metadataCache, metadataKey: path}
 	obj := &Object{rr: rr, dec: dec}
 	if err := obj.init(ctx); err != nil {
 		return nil, err

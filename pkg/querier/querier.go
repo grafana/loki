@@ -28,6 +28,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -43,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
@@ -77,6 +79,13 @@ type Config struct {
 	// resolution redundancy. Falls back to local resolution when the gateway is unavailable.
 	DataObjectsSectionResolutionViaIndexGatewayEnabled bool `yaml:"dataobjects_section_resolution_via_index_gateway_enabled" category:"experimental"`
 
+	// DataObjectMetadataCacheEnabled caches each data object's immutable metadata prefix so the v1
+	// reader does not read it from object storage on every open. Requires the v1 data-object reader.
+	DataObjectMetadataCacheEnabled bool `yaml:"dataobject_metadata_cache_enabled" category:"experimental"`
+
+	// DataObjectMetadataCache configures the cache backend for DataObjectMetadataCacheEnabled.
+	DataObjectMetadataCache cache.Config `yaml:"dataobject_metadata_cache" category:"experimental"`
+
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 
@@ -106,6 +115,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 	f.BoolVar(&cfg.DataObjectsShardBucketFilteringEnabled, prefix+"dataobjects-shard-bucket-filtering-enabled", false, "When true, sharded stream-first metric queries prune data-object streams by their shard bucket before decoding labels. Has no effect unless the data-object reader is enabled.")
 	f.BoolVar(&cfg.DataObjectsSectionResolutionViaIndexGatewayEnabled, prefix+"dataobjects-section-resolution-via-index-gateway-enabled", false, "When true, the querier resolves data-object sections through the index-gateway (per 12h window) instead of locally, removing the per-shard resolution redundancy. Falls back to local resolution when the gateway is unavailable. Requires the index-gateway to have -index-gateway.dataobject-sections.enabled=true.")
+	f.BoolVar(&cfg.DataObjectMetadataCacheEnabled, prefix+"dataobject-metadata-cache-enabled", false, "When true, cache each data object's metadata so the v1 data-object reader does not read it from object storage on every open. Has no effect unless the data-object reader is enabled.")
+	cfg.DataObjectMetadataCache.RegisterFlagsWithPrefix(prefix+"dataobject-metadata-cache.", "", f)
 }
 
 // Validate validates the config.
@@ -166,7 +177,7 @@ type SingleTenantQuerier struct {
 // New makes a new Querier. When dataObjBucket and dataObjMetastore are both non-nil, eligible
 // stream-first metric queries read the data-object-available slice from data objects; pass nil for
 // both to disable that (the default).
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, dataObjSectionsClient DataObjSectionsGatewayClient, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, dataObjBucket objstore.Bucket, dataObjMetastore metastore.Metastore, dataObjSectionsClient DataObjSectionsGatewayClient, dataObjMetadataCache dataobj.MetadataCache, reg prometheus.Registerer) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -177,7 +188,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 	}
 
 	if dataObjBucket != nil && dataObjMetastore != nil {
-		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg)
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg, WithDataObjMetadataCache(dataObjMetadataCache))
 	}
 
 	return q, nil

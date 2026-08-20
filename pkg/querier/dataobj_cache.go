@@ -36,6 +36,10 @@ type dataObjCache struct {
 	bucket objstore.Bucket
 	tenant string
 
+	// metadataCache, when set, serves each object's metadata prefix so opening it does not read the
+	// metadata from object storage. It is shared across queries; nil disables it.
+	metadataCache dataobj.MetadataCache
+
 	mu     sync.Mutex
 	byPath map[string]*openObject
 }
@@ -58,7 +62,7 @@ func (c *dataObjCache) get(ctx context.Context, path string) (*openObject, error
 
 	// Open outside the lock so concurrent opens of different objects don't serialize on the object
 	// storage I/O.
-	obj, err := dataobj.FromBucket(ctx, c.bucket, path, dataObjHeadPrefetchBytes)
+	obj, err := dataobj.FromBucket(ctx, c.bucket, path, dataObjHeadPrefetchBytes, dataobj.WithMetadataCache(c.metadataCache))
 	if err != nil {
 		return nil, err
 	}

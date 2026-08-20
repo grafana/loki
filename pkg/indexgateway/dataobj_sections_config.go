@@ -53,6 +53,13 @@ type DataObjectSectionsConfig struct {
 
 	// Warmer configures the background ToC warmer.
 	Warmer TableOfContentsWarmerConfig `yaml:"toc_warmer"`
+
+	// MetadataCacheEnabled caches each index object's immutable metadata prefix so resolving sections does
+	// not read it from object storage on every open. It has no effect unless Enabled is also set.
+	MetadataCacheEnabled bool `yaml:"metadata_cache_enabled"`
+
+	// MetadataCache configures the cache backend for MetadataCacheEnabled.
+	MetadataCache cache.Config `yaml:"metadata_cache"`
 }
 
 func (cfg *DataObjectSectionsConfig) RegisterFlags(f *flag.FlagSet) {
@@ -62,6 +69,9 @@ func (cfg *DataObjectSectionsConfig) RegisterFlags(f *flag.FlagSet) {
 	// Enable the in-memory cache by default.
 	cfg.Cache.EmbeddedCache.Enabled = true
 	cfg.Warmer.RegisterFlags(f)
+	f.BoolVar(&cfg.MetadataCacheEnabled, "index-gateway.dataobject-sections.metadata-cache-enabled", false,
+		"Cache each index object's metadata so section resolution does not read it from object storage on every open. Has no effect unless -index-gateway.dataobject-sections.enabled is set.")
+	cfg.MetadataCache.RegisterFlagsWithPrefix("index-gateway.dataobject-sections.metadata-cache.", "", f)
 }
 
 // Validate checks the section-resolution settings. The warmer only warms ToCs for this API, so enabling it
