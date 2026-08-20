@@ -1246,7 +1246,7 @@ github.com/moby/moby/v2/pkg/plugins
 github.com/moby/moby/v2/pkg/plugins/transport
 github.com/moby/moby/v2/pkg/pools
 github.com/moby/moby/v2/pkg/tailfile
-# github.com/moby/sys/userns v0.1.0
+# github.com/moby/sys/userns v0.2.0
 ## explicit; go 1.21
 github.com/moby/sys/userns
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
