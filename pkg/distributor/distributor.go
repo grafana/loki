@@ -457,7 +457,7 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
-	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+	ingestLimits := newIngestLimits(limitsFrontendClient, cfg.DeferOTLPAttributeExpansion, registerer)
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
@@ -747,6 +747,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
+	validationContext.deferOTLPExpansion = d.cfg.DeferOTLPAttributeExpansion
 	fieldDetector := newFieldDetector(validationContext)
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
@@ -818,7 +819,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, stream.AccountedSize(d.cfg.DeferOTLPAttributeExpansion), stream.EntryCount(), format)
 				continue
 			}
 
@@ -827,14 +828,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
-					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
+					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, stream.AccountedSize(d.cfg.DeferOTLPAttributeExpansion), stream.EntryCount(), format)
 					continue
 				}
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
-				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
+				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, stream.AccountedSize(d.cfg.DeferOTLPAttributeExpansion), stream.EntryCount(), format)
 
 				// If the status code is 200, return no error.
 				// Note that we still log the error and increment the metrics.
@@ -860,19 +861,24 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			labelNamer := otlptranslator.LabelNamer{}
 
 			// Sanitise each shared attribute set once for the group that owns it, instead of
-			// once for every entry beneath it.
+			// once for every entry beneath it. Only when the attributes will stay on the
+			// group: otherwise they are merged onto each entry below and sanitised there,
+			// which is what preserves today's behaviour exactly — one builder over the
+			// combined set, so a name normalising into a collision still collapses.
 			var sanitizeErr error
-			stream.RewriteSharedAttrs(func(attrs []logproto.LabelAdapter) []logproto.LabelAdapter {
-				if sanitizeErr != nil || len(attrs) == 0 {
-					return attrs
-				}
-				sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, attrs, labelNamer)
-				if err != nil {
-					sanitizeErr = err
-					return attrs
-				}
-				return sanitized
-			})
+			if d.cfg.DeferOTLPAttributeExpansion {
+				stream.RewriteSharedAttrs(func(attrs []logproto.LabelAdapter) []logproto.LabelAdapter {
+					if sanitizeErr != nil || len(attrs) == 0 {
+						return attrs
+					}
+					sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, attrs, labelNamer)
+					if err != nil {
+						sanitizeErr = err
+						return attrs
+					}
+					return sanitized
+				})
+			}
 			if sanitizeErr != nil {
 				return sanitizeErr
 			}
@@ -889,7 +895,15 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 					return false
 				}
 
-				sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, entry.StructuredMetadata, labelNamer)
+				// With the attributes staying on the group, only the entry's own metadata is
+				// sanitised here. Otherwise the effective set is merged and sanitised as one,
+				// which is what the flattened form has always done.
+				toSanitize := entry.StructuredMetadata
+				if !d.cfg.DeferOTLPAttributeExpansion {
+					mdBuf = logproto.AppendEffectiveMetadata(mdBuf[:0], res.Attrs, scope.Attrs, entry)
+					toSanitize = mdBuf
+				}
+				sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, toSanitize, labelNamer)
 				if err != nil {
 					sanitizeErr = err
 					return false
@@ -899,8 +913,13 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 				if shouldDiscoverLevels || shouldDiscoverGenericFields {
 					// Detection reads the entry's effective metadata, so an attribute that
 					// arrived on the resource or the scope is visible to it — which is what
-					// it saw when those attributes were copied onto the entry.
-					mdBuf = logproto.AppendEffectiveMetadata(mdBuf[:0], res.Attrs, scope.Attrs, entry)
+					// it saw when those attributes were copied onto the entry. When they were
+					// just merged above, the entry's own set is already that.
+					if d.cfg.DeferOTLPAttributeExpansion {
+						mdBuf = logproto.AppendEffectiveMetadata(mdBuf[:0], res.Attrs, scope.Attrs, entry)
+					} else {
+						mdBuf = append(mdBuf[:0], entry.StructuredMetadata...)
+					}
 					effective := logproto.FromLabelAdaptersToLabels(mdBuf)
 
 					if shouldDiscoverLevels {
@@ -930,6 +949,12 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 				return sanitizeErr
 			}
 
+			if !d.cfg.DeferOTLPAttributeExpansion {
+				// Every entry now carries what applied to it, so leaving the group's copies in
+				// place would count and write them twice.
+				stream.ClearSharedAttrs()
+			}
+
 			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 			// since Loki will accept out of order writes it doesn't account for separate
 			// pushes with overlapping time ranges having entries with duplicate timestamps
@@ -939,7 +964,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 
 			// The tenant-facing number: what they sent, with a shared attribute set counted
 			// once rather than once for every entry beneath it.
-			streamEntriesSize := stream.UnexpandedSize()
+			streamEntriesSize := stream.AccountedSize(d.cfg.DeferOTLPAttributeExpansion)
 			n := stream.EntryCount()
 			if n == 0 {
 				// Empty stream after validating all the entries
@@ -961,7 +986,9 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			b.lines += n
 
 			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
-			maybeShardStreams(*stream, lbs, streamEntriesSize, policy, shardCfg)
+			// Sharding is sized on the expanded measure whatever the config says, so that
+			// deferring the expansion does not change how traffic spreads across ingesters.
+			maybeShardStreams(*stream, lbs, stream.ExpandedSize(), policy, shardCfg)
 		}
 		return nil
 	}()
@@ -1298,7 +1325,7 @@ func (d *Distributor) trackDiscardedData(
 		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
-		discardedStreamBytes := stream.UnexpandedSize()
+		discardedStreamBytes := stream.AccountedSize(d.cfg.DeferOTLPAttributeExpansion)
 		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stream.EntryCount()))
 		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
 		if d.usageTracker != nil {
@@ -1800,7 +1827,10 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 	return int(math.Ceil(shards))
 }
 
-func calculateStreamSizes(stream logproto.InternalStreamAdapter) (uint64, uint64) {
+// calculateStreamSizes reports the line bytes and the metadata bytes the limits service should
+// meter. The metadata figure counts each shared attribute set the way it will be written, so
+// that what the service records matches what leaves the distributor.
+func calculateStreamSizes(stream logproto.InternalStreamAdapter, deferExpansion bool) (uint64, uint64) {
 	var entriesSize, structuredMetadataSize uint64
 	for i := range stream.ResourceLogs {
 		res := &stream.ResourceLogs[i]
@@ -1811,7 +1841,11 @@ func calculateStreamSizes(stream logproto.InternalStreamAdapter) (uint64, uint64
 				entriesSize += uint64(len(entry.Line))
 				// Everything that applies to the entry, so a resource or scope attribute
 				// counts here just as it did when it sat on the entry itself.
-				structuredMetadataSize += uint64(logproto.EffectiveMetadataSize(res.Attrs, scope.Attrs, entry))
+				if deferExpansion {
+					structuredMetadataSize += uint64(logproto.EffectiveMetadataSize(nil, nil, entry))
+				} else {
+					structuredMetadataSize += uint64(logproto.EffectiveMetadataSize(res.Attrs, scope.Attrs, entry))
+				}
 			}
 		}
 	}

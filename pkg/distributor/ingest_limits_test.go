@@ -235,7 +235,7 @@ func TestIngestLimits_EnforceLimits(t *testing.T) {
 				exceedsLimitsResponse:        test.response,
 				exceedsLimitsResponseErr:     test.responseErr,
 			}
-			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			l := newIngestLimits(&mockClient, false, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			accepted, rejected, err := l.EnforceLimits(ctx, test.tenant, test.streams)
@@ -325,7 +325,7 @@ func TestIngestLimits_ExceedsLimits(t *testing.T) {
 				exceedsLimitsResponse:        test.response,
 				exceedsLimitsResponseErr:     test.responseErr,
 			}
-			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			l := newIngestLimits(&mockClient, false, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			res, err := l.ExceedsLimits(ctx, test.tenant, test.streams)
@@ -391,7 +391,7 @@ func TestIngestLimits_UpdateRates(t *testing.T) {
 				updateRatesResponse:        test.response,
 				updateRatesResponseErr:     test.responseErr,
 			}
-			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			l := newIngestLimits(&mockClient, false, prometheus.NewRegistry())
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			res, err := l.UpdateRates(ctx, test.tenant, test.streams)

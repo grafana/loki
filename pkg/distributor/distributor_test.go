@@ -3107,7 +3107,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 				exceedsLimitsResponse:        test.limitsResponse,
 				exceedsLimitsResponseErr:     test.limitsResponseErr,
 			}
-			l := newIngestLimits(&mockClient, prometheus.NewRegistry())
+			l := newIngestLimits(&mockClient, false, prometheus.NewRegistry())
 			d.ingestLimits = l
 
 			ctx = user.InjectOrgID(context.Background(), test.tenant)

@@ -135,11 +135,16 @@ type ingestLimits struct {
 	client         ingestLimitsFrontendClient
 	requests       *prometheus.CounterVec
 	requestsFailed *prometheus.CounterVec
+
+	// deferOTLPExpansion mirrors the distributor config of the same name, so the sizes
+	// reported to the limits service describe what will actually be written.
+	deferOTLPExpansion bool
 }
 
-func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
+func newIngestLimits(client ingestLimitsFrontendClient, deferOTLPExpansion bool, r prometheus.Registerer) *ingestLimits {
 	return &ingestLimits{
-		client: client,
+		client:             client,
+		deferOTLPExpansion: deferOTLPExpansion,
 		requests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_requests_total",
 			Help: "The total number of requests.",
@@ -200,7 +205,7 @@ func (l *ingestLimits) EnforceLimits(ctx context.Context, tenant string, streams
 // and returned in the results with the reason "ReasonFailed".
 func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams []KeyedStream) ([]*proto.ExceedsLimitsResult, error) {
 	l.requests.WithLabelValues("ExceedsLimits").Inc()
-	req, err := newExceedsLimitsRequest(tenant, streams)
+	req, err := newExceedsLimitsRequest(tenant, streams, l.deferOTLPExpansion)
 	if err != nil {
 		l.requestsFailed.WithLabelValues("ExceedsLimits").Inc()
 		return nil, err
@@ -213,14 +218,14 @@ func (l *ingestLimits) ExceedsLimits(ctx context.Context, tenant string, streams
 	return resp.Results, nil
 }
 
-func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
+func newExceedsLimitsRequest(tenant string, streams []KeyedStream, deferExpansion bool) (*proto.ExceedsLimitsRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream, deferExpansion)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      stream.HashKeyNoShard,
 			TotalSize:       entriesSize + structuredMetadataSize,
@@ -237,7 +242,7 @@ func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.Excee
 // updated rates for all streams. Any streams that could not have rates updated
 // have a rate of zero.
 func (l *ingestLimits) UpdateRates(ctx context.Context, tenant string, streams []segmentedStream) ([]*proto.UpdateRatesResult, error) {
-	req, err := newUpdateRatesRequest(tenant, streams)
+	req, err := newUpdateRatesRequest(tenant, streams, l.deferOTLPExpansion)
 	if err != nil {
 		// We update `UpdateRates` here because we have clients directly calling `UpdateRatesRaw`.
 		l.requests.WithLabelValues("UpdateRates").Inc()
@@ -259,14 +264,14 @@ func (l *ingestLimits) UpdateRatesRaw(ctx context.Context, req *proto.UpdateRate
 	return resp.Results, nil
 }
 
-func newUpdateRatesRequest(tenant string, streams []segmentedStream) (*proto.UpdateRatesRequest, error) {
+func newUpdateRatesRequest(tenant string, streams []segmentedStream, deferExpansion bool) (*proto.UpdateRatesRequest, error) {
 	// The distributor sends the hashes of all streams in the request to the
 	// limits-frontend. The limits-frontend is responsible for deciding if
 	// the request would exceed the tenants limits, and if so, which streams
 	// from the request caused it to exceed its limits.
 	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
 	for _, stream := range streams {
-		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream, deferExpansion)
 		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
 			StreamHash:      stream.SegmentationKeyHash,
 			TotalSize:       entriesSize + structuredMetadataSize,

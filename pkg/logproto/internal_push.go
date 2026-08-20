@@ -87,6 +87,23 @@ func (s *InternalStreamAdapter) ExpandedSize() int {
 	return size
 }
 
+// AccountedSize is the volume attributed to the tenant, counted the way the record will
+// actually be written.
+//
+// When expansion is deferred a shared attribute set counts once, because that is how it will be
+// stored. Otherwise it counts once per entry beneath it, because the record written will carry
+// it that way. Passing the encoding rather than reading a flag keeps this package unaware that a
+// feature flag exists, and means the mapping from config to measure lives in one place.
+//
+// UnexpandedSize and ExpandedSize remain available for callers that need a specific measure
+// regardless of the encoding — stream sharding is one, and tests are another.
+func (s *InternalStreamAdapter) AccountedSize(deferExpansion bool) int {
+	if deferExpansion {
+		return s.UnexpandedSize()
+	}
+	return s.ExpandedSize()
+}
+
 // AppendEffectiveMetadata appends everything that applies to an entry — its own pairs, then
 // its resource's, then its scope's — to dst and returns the result.
 //
@@ -268,6 +285,21 @@ func (s *InternalStreamAdapter) RewriteSharedAttrs(fn func(attrs []push.LabelAda
 		res.Attrs = fn(res.Attrs)
 		for j := range res.ScopeLogs {
 			res.ScopeLogs[j].Attrs = fn(res.ScopeLogs[j].Attrs)
+		}
+	}
+}
+
+// ClearSharedAttrs drops every group's and scope's attributes.
+//
+// It is for the caller that has just resolved those attributes onto each entry: leaving them in
+// place would mean counting and writing them twice. After this the stream carries nothing
+// shared, so the two size measures agree.
+func (s *InternalStreamAdapter) ClearSharedAttrs() {
+	for i := range s.ResourceLogs {
+		res := &s.ResourceLogs[i]
+		res.Attrs = nil
+		for j := range res.ScopeLogs {
+			res.ScopeLogs[j].Attrs = nil
 		}
 	}
 }

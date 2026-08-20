@@ -33,6 +33,11 @@ func NewValidator(l Limits, t push.UsageTracker) (*Validator, error) {
 }
 
 type validationContext struct {
+	// deferOTLPExpansion mirrors the distributor config of the same name. It decides which
+	// size measure the discard reports below are expressed in, so that what is reported
+	// matches what will be written.
+	deferOTLPExpansion bool
+
 	rejectOldSample       bool
 	rejectOldSampleMaxAge int64
 	creationGracePeriod   int64
@@ -173,7 +178,7 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := stream.UnexpandedSize()
+	entriesSize := stream.AccountedSize(vCtx.deferOTLPExpansion)
 	entryCount := stream.EntryCount()
 
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {

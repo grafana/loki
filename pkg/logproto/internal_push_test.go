@@ -494,3 +494,38 @@ func TestSortByTimestampOrdersWithinEachScopeOnly(t *testing.T) {
 	require.Equal(t, int64(20), second[0].Timestamp.UnixNano())
 	require.Equal(t, int64(40), second[1].Timestamp.UnixNano())
 }
+
+func TestAccountedSizeFollowsTheEncoding(t *testing.T) {
+	s := nested([]string{"res", "abc"}, []string{"sc", "de"}, entry("hello"), entry("world"))
+
+	// Deferred: the shared sets are stored once, so they are counted once.
+	require.Equal(t, s.UnexpandedSize(), s.AccountedSize(true))
+
+	// Not deferred: the record written carries them per entry, so they are counted per entry.
+	require.Equal(t, s.ExpandedSize(), s.AccountedSize(false))
+
+	require.Less(t, s.AccountedSize(true), s.AccountedSize(false))
+}
+
+func TestAccountedSizeIsIndifferentWhenNothingIsShared(t *testing.T) {
+	// Every native push looks like this, so the encoding cannot change what a tenant is
+	// charged for.
+	s := FromStream(Stream{Entries: []push.Entry{entry("hello", "own", "1"), entry("bye")}})
+
+	require.Equal(t, s.AccountedSize(true), s.AccountedSize(false))
+}
+
+func TestClearSharedAttrsMakesTheMeasuresAgree(t *testing.T) {
+	s := nested([]string{"res", "abc"}, []string{"sc", "de"}, entry("hello"), entry("world"))
+	require.NotEqual(t, s.UnexpandedSize(), s.ExpandedSize())
+
+	// A caller that has resolved the shared sets onto each entry drops them, leaving a stream
+	// that carries nothing shared — so both measures, and both encodings, agree.
+	s.ClearSharedAttrs()
+
+	require.Equal(t, s.UnexpandedSize(), s.ExpandedSize())
+	require.Equal(t, s.AccountedSize(true), s.AccountedSize(false))
+	require.Empty(t, s.ResourceLogs[0].Attrs)
+	require.Empty(t, s.ResourceLogs[0].ScopeLogs[0].Attrs)
+	require.Equal(t, 2, s.EntryCount(), "clearing attributes must not touch the entries")
+}
