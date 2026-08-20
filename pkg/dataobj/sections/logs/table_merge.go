@@ -204,12 +204,28 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
+// StreamSort is the physical sort tuple for one stream: shard, schema key, hash.
+// A []StreamSort is indexed by stream ID with [0] unused.
+type StreamSort struct {
+	Shard uint32
+	Key   string
+	Hash  uint64
+}
+
+// Compare reports the order of a and b by [shard, key, hash].
+func (a StreamSort) Compare(b StreamSort) int {
+	return cmp.Or(
+		cmp.Compare(a.Shard, b.Shard),
+		cmp.Compare(a.Key, b.Key),
+		cmp.Compare(a.Hash, b.Hash),
+	)
+}
+
 // CompareForSortSchema returns a comparison function for k-way merge using
 // schema-based sort order: [shard ASC, sortKey ASC, hash ASC, streamID ASC, timestamp DESC].
-// shards, sortKeys, and hashes map streamID to the corresponding sort component.
-// An empty hashes slice skips the hash comparison.
+// order maps stream ID to the corresponding sort tuple ([0] unused).
 // math.MaxInt64 is treated as a sentinel (loser-tree maxValue) and always compares greater.
-func CompareForSortSchema(shards []uint32, sortKeys []string, hashes []uint64) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+func CompareForSortSchema(order []StreamSort) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
 	return func(a, b result.Result[dataset.Row]) bool {
 		aVal, aErr := a.Value()
 		bVal, bErr := b.Value()
@@ -233,24 +249,10 @@ func CompareForSortSchema(shards []uint32, sortKeys []string, hashes []uint64) f
 			return true
 		}
 
-		if len(shards) > 0 {
-			aShard := shards[aStreamID]
-			bShard := shards[bStreamID]
-			if res := cmp.Compare(aShard, bShard); res != 0 {
-				return res < 0
-			}
-		}
-		aKey := sortKeys[aStreamID]
-		bKey := sortKeys[bStreamID]
-		if res := cmp.Compare(aKey, bKey); res != 0 {
+		aSort := order[aStreamID]
+		bSort := order[bStreamID]
+		if res := aSort.Compare(bSort); res != 0 {
 			return res < 0
-		}
-		if len(hashes) > 0 {
-			aHash := hashes[aStreamID]
-			bHash := hashes[bStreamID]
-			if res := cmp.Compare(aHash, bHash); res != 0 {
-				return res < 0
-			}
 		}
 		if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 			return res < 0
