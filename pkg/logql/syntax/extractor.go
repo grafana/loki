@@ -89,3 +89,39 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 		return nil, fmt.Errorf(UnsupportedErr, r.Operation)
 	}
 }
+
+func (e *LabelAggregationExpr) Extractor() (log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	if err := e.validate(); err != nil {
+		return nil, err
+	}
+	return distinctValueExtractor(e.Label, e.Left, e.Grouping)
+}
+
+func (e *CountDistinctSketchExpr) Extractor() (log.SampleExtractor, error) {
+	if e.err != nil {
+		return nil, e.err
+	}
+	if err := e.validate(); err != nil {
+		return nil, err
+	}
+	return distinctValueExtractor(e.Label, e.Left, e.Grouping)
+}
+
+func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping) (log.SampleExtractor, error) {
+	groups := grouping.Groups
+	sort.Strings(groups)
+
+	var stages []log.Stage
+	if p, ok := left.Left.(*PipelineExpr); ok {
+		st, err := p.MultiStages.stages()
+		if err != nil {
+			return nil, err
+		}
+		stages = st
+	}
+
+	return log.NewDistinctValueSampleExtractor(label, stages, groups)
+}
