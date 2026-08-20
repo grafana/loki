@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package prometheus // import "go.opentelemetry.io/otel/exporters/prometheus"
+package prometheus
 
 import (
 	"context"
@@ -251,8 +251,11 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 			})
 			continue
 		}
-		// resource attributes + scope attributes + scope name + scope version + scope schema url
-		n := len(c.resourceKeyVals.keys) + 3 + scopeMetrics.Scope.Attributes.Len()
+		// resource attributes + (if enabled) scope fields
+		n := len(c.resourceKeyVals.keys)
+		if !c.disableScopeInfo {
+			n += 3 + scopeMetrics.Scope.Attributes.Len()
+		}
 		kv := keyVals{
 			keys: make([]string, 0, n),
 			vals: make([]string, 0, n),

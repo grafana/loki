@@ -717,17 +717,21 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 func newTestExecutorContext(t *testing.T, bucket objstore.Bucket) *Context {
 	t.Helper()
 
+	testBuilderCfg := logsobj.BuilderBaseConfig{
+		TargetPageSize:          2048,
+		MaxPageRows:             10000,
+		TargetObjectSize:        1 << 22, // 4 MiB
+		TargetSectionSize:       1 << 21, // 2 MiB
+		BufferSize:              2048 * 8,
+		SectionStripeMergeLimit: 2,
+	}
+
 	return &Context{
 		bucket:       bucket,
 		scratchStore: scratch.NewMemory(),
-		indexobjCfg: logsobj.BuilderBaseConfig{
-			TargetPageSize:          2048,
-			MaxPageRows:             10000,
-			TargetObjectSize:        1 << 22, // 4 MiB
-			TargetSectionSize:       1 << 21, // 2 MiB
-			BufferSize:              2048 * 8,
-			SectionStripeMergeLimit: 2,
-		},
+		indexobjCfg:  testBuilderCfg,
+		logsobjCfg:   testBuilderCfg,
+
 		logger: log.NewNopLogger(),
 	}
 }
