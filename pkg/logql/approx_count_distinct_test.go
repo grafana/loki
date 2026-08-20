@@ -55,6 +55,27 @@ func TestCountDistinctVectorMerge(t *testing.T) {
 	require.Equal(t, uint64(1), byVersion["2"])
 }
 
+func TestCountDistinctProtoRoundTrip(t *testing.T) {
+	original := CountDistinctVector{
+		{
+			T:      123,
+			F:      hyperloglog.New14(),
+			Metric: labels.FromStrings("version", "1"),
+		},
+	}
+	original[0].F.Insert([]byte("aa:bb"))
+	original[0].F.Insert([]byte("cc:dd"))
+
+	proto, err := original.ToProto()
+	require.NoError(t, err)
+	roundTrip, err := CountDistinctVectorFromProto(proto)
+	require.NoError(t, err)
+	require.Len(t, roundTrip, 1)
+	require.Equal(t, original[0].T, roundTrip[0].T)
+	require.Equal(t, original[0].Metric, roundTrip[0].Metric)
+	require.Equal(t, original[0].F.Estimate(), roundTrip[0].F.Estimate())
+}
+
 func TestApproxCountDistinctLocalEval(t *testing.T) {
 	now := time.Unix(100, 0)
 	streams := []logproto.Stream{

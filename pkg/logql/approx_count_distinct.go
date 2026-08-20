@@ -13,6 +13,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
@@ -80,6 +81,72 @@ func (CountDistinctVector) String() string {
 }
 
 func (CountDistinctVector) Type() promql_parser.ValueType { return CountDistinctVectorType }
+
+// ToProto serializes the vector for frontend/querier transport.
+func (v CountDistinctVector) ToProto() (*logproto.CountDistinctVector, error) {
+	samples := make([]*logproto.CountDistinctSample, len(v))
+	for i, sample := range v {
+		p, err := sample.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		samples[i] = p
+	}
+	return &logproto.CountDistinctVector{Samples: samples}, nil
+}
+
+// ToProto serializes one sketch sample.
+func (s CountDistinctSample) ToProto() (*logproto.CountDistinctSample, error) {
+	metric := make([]*logproto.LabelPair, 0, s.Metric.Len())
+	s.Metric.Range(func(l labels.Label) {
+		metric = append(metric, &logproto.LabelPair{Name: l.Name, Value: l.Value})
+	})
+	hllBytes, err := s.F.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return &logproto.CountDistinctSample{
+		Hyperloglog: hllBytes,
+		TimestampMs: s.T,
+		Metric:      metric,
+	}, nil
+}
+
+// CountDistinctVectorFromProto deserializes a CountDistinctVector.
+func CountDistinctVectorFromProto(proto *logproto.CountDistinctVector) (CountDistinctVector, error) {
+	if proto == nil {
+		return CountDistinctVector{}, nil
+	}
+	out := make(CountDistinctVector, len(proto.Samples))
+	for i, sample := range proto.Samples {
+		s, err := CountDistinctSampleFromProto(sample)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
+// CountDistinctSampleFromProto deserializes one sketch sample.
+func CountDistinctSampleFromProto(proto *logproto.CountDistinctSample) (CountDistinctSample, error) {
+	if proto == nil {
+		return CountDistinctSample{}, fmt.Errorf("nil CountDistinctSample")
+	}
+	hll := hyperloglog.New14()
+	if err := hll.UnmarshalBinary(proto.Hyperloglog); err != nil {
+		return CountDistinctSample{}, err
+	}
+	builder := labels.NewScratchBuilder(len(proto.Metric))
+	for _, pair := range proto.Metric {
+		builder.Add(pair.Name, pair.Value)
+	}
+	return CountDistinctSample{
+		T:      proto.TimestampMs,
+		F:      hll,
+		Metric: builder.Labels(),
+	}, nil
+}
 
 // Estimate converts sketches into a numeric sample vector.
 func (v CountDistinctVector) Estimate() SampleVector {
