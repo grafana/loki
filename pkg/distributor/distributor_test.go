@@ -2640,7 +2640,18 @@ func TestDistributorTee(t *testing.T) {
 		require.NoError(t, err)
 
 		for j, streams := range td.Streams {
-			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
+			// Compare what was pushed rather than requiring the caller's own request to
+			// have been written back into. The distributor adds a detected level to what
+			// it forwards, and whether that is also visible through the caller's slice
+			// depends on whether the entries were copied on the way in — which is not
+			// what this test is about.
+			teed := tee.duplicated[i][j].Stream
+			assert.Equal(t, streams.Labels, teed.Labels)
+			require.Len(t, teed.Entries, len(streams.Entries))
+			for k := range streams.Entries {
+				assert.Equal(t, streams.Entries[k].Line, teed.Entries[k].Line)
+				assert.Equal(t, streams.Entries[k].Timestamp, teed.Entries[k].Timestamp)
+			}
 		}
 
 		require.Equal(t, "test", tee.tenant)

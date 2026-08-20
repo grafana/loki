@@ -73,7 +73,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 	parse := func(r *http.Request, parser RequestParser, limits *fakeLimits) (*logproto.PushRequest, error) {
 		streamResolver := newMockStreamResolver("fake", limits)
 		data, _, err := ParseRequest(util_log.Logger, "fake", 100<<20, 100<<20, r, limits, nil, parser, NewMockTracker(), streamResolver, "", "loki")
-		return data, err
+		return flattenRequest(data), err
 	}
 
 	t.Run("loki: header adds backfill labels to every stream", func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestParseRequest_BackfillShard(t *testing.T) {
 
 		stats := NewPushStats()
 		streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-		_, err := otlpToLokiPushRequest(context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+		_, err := otlpToLokiPushRequestFlat(context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "reserved")
 	})
@@ -184,7 +184,7 @@ func TestOTLPBackfillLabelsOnCombinedStreams(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 	ctx := InjectBackfillShardContext(context.Background(), testBackfillShard)
 
-	pushReq, err := otlpToLokiPushRequest(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
+	pushReq, err := otlpToLokiPushRequestFlat(ctx, ld, "fake", cfg, nil, []string{}, NewMockTracker(), stats, gokitlog.NewNopLogger(), streamResolver, constants.OTLP)
 	require.NoError(t, err)
 
 	nonEmpty := 0

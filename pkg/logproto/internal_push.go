@@ -287,6 +287,10 @@ func (s *InternalStreamAdapter) ToStream() Stream {
 			for k := range scope.Entries {
 				e := scope.Entries[k]
 				md := make([]push.LabelAdapter, 0, len(e.StructuredMetadata)+len(res.Attrs)+len(scope.Attrs))
+				// Concatenated, not sorted: this is the exact inverse of the nesting, so
+				// it reproduces byte for byte what the flattened form carried before the
+				// attributes were lifted out. Ordering the stored value is sanitisation's
+				// job, downstream, as it always was.
 				e.StructuredMetadata = AppendEffectiveMetadata(md, res.Attrs, scope.Attrs, &scope.Entries[k])
 				out.Entries = append(out.Entries, e)
 			}

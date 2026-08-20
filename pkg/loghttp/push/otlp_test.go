@@ -616,7 +616,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return "others"
 			}
 
-			pushReq, err := otlpToLokiPushRequest(
+			pushReq, err := otlpToLokiPushRequestFlat(
 				context.Background(),
 				tc.generateLogs(),
 				"foo",
@@ -710,7 +710,7 @@ func TestOTLPToLokiPushRequestAttributeExpansionReport(t *testing.T) {
 				return "test-policy"
 			}
 
-			_, err = otlpToLokiPushRequest(
+			_, err = otlpToLokiPushRequestFlat(
 				context.Background(),
 				generateLogs(),
 				"test-user",
@@ -972,7 +972,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq, err := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequestFlat(
 		context.Background(),
 		generateLogs(),
 		"test-user",
@@ -1075,7 +1075,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq, err := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequestFlat(
 		context.Background(),
 		generateLogs(),
 		"test-user",
@@ -1261,7 +1261,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq, err := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequestFlat(
 		context.Background(),
 		generateLogs(),
 		"test-user",

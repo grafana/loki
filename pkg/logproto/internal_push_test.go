@@ -326,3 +326,15 @@ func TestToStreamOrdersEntriesByContainment(t *testing.T) {
 
 	require.Equal(t, []string{"a", "b", "c"}, linesOf(s.ToStream().Entries))
 }
+
+func TestToStreamIsTheExactInverseOfTheNesting(t *testing.T) {
+	// Own pairs first, then the resource's, then the scope's, in that order and unsorted:
+	// that is what the flattened form carried before the attributes were lifted out, and
+	// ordering the stored value is sanitisation's job further down.
+	s := nested([]string{"b", "resource"}, []string{"a", "scope"}, entry("line", "c", "own"))
+
+	got := s.ToStream()
+
+	require.Equal(t, push.LabelsAdapter(pairs("c", "own", "b", "resource", "a", "scope")),
+		got.Entries[0].StructuredMetadata)
+}

@@ -21,8 +21,8 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	push2 "github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -191,7 +191,7 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 func (d *Distributor) logPushRequestStreams(
 	ctx context.Context,
 	logger log.Logger,
-	streams []push2.Stream,
+	streams []logproto.InternalStreamAdapter,
 	streamResolver *requestScopedStreamResolver,
 	pushStats *push.Stats,
 	presumedAgentIP string,

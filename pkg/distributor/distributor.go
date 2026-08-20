@@ -114,6 +114,14 @@ type Config struct {
 	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
 	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings" doc:"description=Default policy stream mappings that are merged with per-tenant mappings."`
 
+	// DeferOTLPAttributeExpansion keeps a stream's OTLP resource and scope attributes
+	// stored once per group on the wire, rather than expanded onto every entry beneath
+	// them. The distributor works on the nested representation either way; this decides
+	// only what it encodes, and therefore what every consumer downstream must be able to
+	// read. Turning it on before the ingesters and every Kafka consumer understand the
+	// internal push format will drop data.
+	DeferOTLPAttributeExpansion bool `yaml:"defer_otlp_attribute_expansion"`
+
 	KafkaEnabled              bool `yaml:"kafka_writes_enabled"`
 	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
 	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
@@ -142,6 +150,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
 	fs.BoolVar(&cfg.IngestLimitsEnabled, "distributor.ingest-limits-enabled", false, "Enable checking limits against the ingest-limits service. Defaults to false.")
 	fs.BoolVar(&cfg.IngestLimitsDryRunEnabled, "distributor.ingest-limits-dry-run-enabled", false, "Enable dry-run mode where limits are checked the ingest-limits service, but not enforced. Defaults to false.")
+	fs.BoolVar(&cfg.DeferOTLPAttributeExpansion, "distributor.defer-otlp-attribute-expansion", false, "Encode push requests with OTLP resource and scope attributes stored once per group instead of expanded onto every entry. Every ingester and Kafka consumer must understand the internal push format before this is enabled. Defaults to false.")
 }
 
 func (cfg *Config) Validate() error {
@@ -659,14 +668,37 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	return d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+
+	// A request arriving on this RPC is in the flat form by definition, so it is wrapped
+	// into the internal one here. Every attribute is already on every entry, so each
+	// stream becomes a single group and scope with nothing shared.
+	internal := &logproto.InternalPushRequest{
+		Streams: make([]logproto.InternalStreamAdapter, 0, len(req.Streams)),
+	}
+	for i := range req.Streams {
+		internal.Streams = append(internal.Streams, logproto.FromStream(req.Streams[i]))
+	}
+
+	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
 // Push a set of streams.
 // Can modify the input req parameter.
 // The returned error is the last one seen.
-func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
+func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
+	requestSize := int64(internalReq.Size())
+
+	// SCAFFOLDING: validation, sharding and the send paths below still work on the flat
+	// form, and are converted in the commit that follows this one. Expanding here keeps
+	// behaviour identical in the meantime — for a native push it is the no-op fast path in
+	// ToStream, and for OTLP it reproduces exactly what the parser used to hand over. This
+	// is the only place the two forms meet, and it goes away next.
+	req := &logproto.PushRequest{
+		Streams: make([]logproto.Stream, 0, len(internalReq.Streams)),
+	}
+	for i := range internalReq.Streams {
+		req.Streams = append(req.Streams, internalReq.Streams[i].ToStream())
+	}
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)

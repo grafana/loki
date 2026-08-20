@@ -3462,6 +3462,13 @@ otlp_config:
 # Default policy stream mappings that are merged with per-tenant mappings.
 [default_policy_stream_mappings: <map of string to list of PriorityStreams>]
 
+# Encode push requests with OTLP resource and scope attributes stored once per
+# group instead of expanded onto every entry. Every ingester and Kafka consumer
+# must understand the internal push format before this is enabled. Defaults to
+# false.
+# CLI flag: -distributor.defer-otlp-attribute-expansion
+[defer_otlp_attribute_expansion: <boolean> | default = false]
+
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
 [kafka_writes_enabled: <boolean> | default = false]
