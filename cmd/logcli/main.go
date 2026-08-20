@@ -459,13 +459,13 @@ func main() {
 			}
 		} else if rangeQuery.ParallelMaxWorkers == 1 {
 			if err := rangeQuery.DoQuery(queryClient, out, *statistics); err != nil {
-				log.Fatalf("Query failed: %s", err)
+				log.Fatalf("Range query failed: %s", err)
 			}
 		} else {
 			// `--limit` doesn't make sense when using parallelism.
 			rangeQuery.Limit = 0
 			if err := rangeQuery.DoQueryParallel(queryClient, out, *statistics); err != nil {
-				log.Fatalf("Query failed: %s", err)
+				log.Fatalf("Range query failed: %s", err)
 			}
 		}
 	case instantQueryCmd.FullCommand():
@@ -486,15 +486,15 @@ func main() {
 		}
 
 		if err := instantQuery.DoQuery(queryClient, out, *statistics); err != nil {
-			log.Fatalf("Query failed: %s", err)
+			log.Fatalf("Instant query failed: %s", err)
 		}
 	case labelsCmd.FullCommand():
 		if err := labelsQuery.DoLabels(queryClient); err != nil {
-			log.Fatalf("labels failed: %s", err)
+			log.Fatalf("Labels query failed: %s", err)
 		}
 	case seriesCmd.FullCommand():
 		if err := seriesQuery.DoSeries(queryClient); err != nil {
-			log.Fatalf("series failed: %s", err)
+			log.Fatalf("Series query failed: %s", err)
 		}
 	case fmtCmd.FullCommand():
 		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
@@ -502,7 +502,7 @@ func main() {
 		}
 	case statsCmd.FullCommand():
 		if err := statsQuery.DoStats(queryClient); err != nil {
-			log.Fatalf("stats failed: %s", err)
+			log.Fatalf("Stats query failed: %s", err)
 		}
 	case volumeCmd.FullCommand(), volumeRangeCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -523,16 +523,16 @@ func main() {
 
 		if cmd == volumeRangeCmd.FullCommand() {
 			if err := index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics); err != nil {
-				log.Fatalf("volume_range failed: %s", err)
+				log.Fatalf("Volume range query failed: %s", err)
 			}
 		} else {
 			if err := index.GetVolume(volumeQuery, queryClient, out, *statistics); err != nil {
-				log.Fatalf("volume failed: %s", err)
+				log.Fatalf("Volume query failed: %s", err)
 			}
 		}
 	case detectedFieldsCmd.FullCommand():
 		if err := detectedFieldsQuery.Do(queryClient, *outputMode); err != nil {
-			log.Fatalf("detected-fields failed: %s", err)
+			log.Fatalf("Detected-fields query failed: %s", err)
 		}
 	case deleteCreateCmd.FullCommand():
 		if err := deleteCreateQuery.CreateQuery(queryClient); err != nil {
