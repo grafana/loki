@@ -79,6 +79,33 @@ func TestCountDistinctMatrixMerge(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestCountDistinctProtoRoundTrip(t *testing.T) {
+	original := CountDistinctMatrix{
+		{
+			{
+				T:      123,
+				F:      hyperloglog.New14(),
+				Metric: labels.FromStrings("version", "1"),
+			},
+		},
+		{},
+	}
+	original[0][0].F.Insert([]byte("aa:bb"))
+	original[0][0].F.Insert([]byte("cc:dd"))
+
+	proto, err := original.ToProto()
+	require.NoError(t, err)
+	require.Len(t, proto.Values, 2)
+	require.Empty(t, proto.Values[1].Samples)
+	roundTrip, err := CountDistinctMatrixFromProto(proto)
+	require.NoError(t, err)
+	require.Len(t, roundTrip, 2)
+	require.Empty(t, roundTrip[1])
+	require.Equal(t, original[0][0].T, roundTrip[0][0].T)
+	require.Equal(t, original[0][0].Metric, roundTrip[0][0].Metric)
+	require.Equal(t, original[0][0].F.Estimate(), roundTrip[0][0].F.Estimate())
+}
+
 func TestApproxCountDistinctEval(t *testing.T) {
 	start := time.Unix(100, 0)
 	end := start.Add(60 * time.Second)

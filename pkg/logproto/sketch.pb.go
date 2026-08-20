@@ -502,6 +502,151 @@ func (m *CountMinSketchVector) GetMetrics() []*Labels {
 	return nil
 }
 
+type CountDistinctMatrix struct {
+	Values []*CountDistinctVector `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+}
+
+func (m *CountDistinctMatrix) Reset()      { *m = CountDistinctMatrix{} }
+func (*CountDistinctMatrix) ProtoMessage() {}
+func (*CountDistinctMatrix) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f9fd40e59b87ff3, []int{7}
+}
+func (m *CountDistinctMatrix) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CountDistinctMatrix) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CountDistinctMatrix.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CountDistinctMatrix) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctMatrix.Merge(m, src)
+}
+func (m *CountDistinctMatrix) XXX_Size() int {
+	return m.Size()
+}
+func (m *CountDistinctMatrix) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctMatrix.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CountDistinctMatrix proto.InternalMessageInfo
+
+func (m *CountDistinctMatrix) GetValues() []*CountDistinctVector {
+	if m != nil {
+		return m.Values
+	}
+	return nil
+}
+
+type CountDistinctVector struct {
+	Samples []*CountDistinctSample `protobuf:"bytes,1,rep,name=samples,proto3" json:"samples,omitempty"`
+}
+
+func (m *CountDistinctVector) Reset()      { *m = CountDistinctVector{} }
+func (*CountDistinctVector) ProtoMessage() {}
+func (*CountDistinctVector) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f9fd40e59b87ff3, []int{8}
+}
+func (m *CountDistinctVector) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CountDistinctVector) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CountDistinctVector.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CountDistinctVector) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctVector.Merge(m, src)
+}
+func (m *CountDistinctVector) XXX_Size() int {
+	return m.Size()
+}
+func (m *CountDistinctVector) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctVector.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CountDistinctVector proto.InternalMessageInfo
+
+func (m *CountDistinctVector) GetSamples() []*CountDistinctSample {
+	if m != nil {
+		return m.Samples
+	}
+	return nil
+}
+
+type CountDistinctSample struct {
+	Hyperloglog []byte       `protobuf:"bytes,1,opt,name=hyperloglog,proto3" json:"hyperloglog,omitempty"`
+	TimestampMs int64        `protobuf:"varint,2,opt,name=timestamp_ms,json=timestampMs,proto3" json:"timestamp_ms,omitempty"`
+	Metric      []*LabelPair `protobuf:"bytes,3,rep,name=metric,proto3" json:"metric,omitempty"`
+}
+
+func (m *CountDistinctSample) Reset()      { *m = CountDistinctSample{} }
+func (*CountDistinctSample) ProtoMessage() {}
+func (*CountDistinctSample) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f9fd40e59b87ff3, []int{9}
+}
+func (m *CountDistinctSample) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CountDistinctSample) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CountDistinctSample.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CountDistinctSample) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CountDistinctSample.Merge(m, src)
+}
+func (m *CountDistinctSample) XXX_Size() int {
+	return m.Size()
+}
+func (m *CountDistinctSample) XXX_DiscardUnknown() {
+	xxx_messageInfo_CountDistinctSample.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CountDistinctSample proto.InternalMessageInfo
+
+func (m *CountDistinctSample) GetHyperloglog() []byte {
+	if m != nil {
+		return m.Hyperloglog
+	}
+	return nil
+}
+
+func (m *CountDistinctSample) GetTimestampMs() int64 {
+	if m != nil {
+		return m.TimestampMs
+	}
+	return 0
+}
+
+func (m *CountDistinctSample) GetMetric() []*LabelPair {
+	if m != nil {
+		return m.Metric
+	}
+	return nil
+}
+
 type Labels struct {
 	Metric []*LabelPair `protobuf:"bytes,1,rep,name=metric,proto3" json:"metric,omitempty"`
 }
@@ -509,7 +654,7 @@ type Labels struct {
 func (m *Labels) Reset()      { *m = Labels{} }
 func (*Labels) ProtoMessage() {}
 func (*Labels) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7f9fd40e59b87ff3, []int{7}
+	return fileDescriptor_7f9fd40e59b87ff3, []int{10}
 }
 func (m *Labels) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -554,7 +699,7 @@ type TopK struct {
 func (m *TopK) Reset()      { *m = TopK{} }
 func (*TopK) ProtoMessage() {}
 func (*TopK) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7f9fd40e59b87ff3, []int{8}
+	return fileDescriptor_7f9fd40e59b87ff3, []int{11}
 }
 func (m *TopK) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -612,7 +757,7 @@ type TopK_Pair struct {
 func (m *TopK_Pair) Reset()      { *m = TopK_Pair{} }
 func (*TopK_Pair) ProtoMessage() {}
 func (*TopK_Pair) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7f9fd40e59b87ff3, []int{8, 0}
+	return fileDescriptor_7f9fd40e59b87ff3, []int{11, 0}
 }
 func (m *TopK_Pair) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -662,7 +807,7 @@ type TopKMatrix struct {
 func (m *TopKMatrix) Reset()      { *m = TopKMatrix{} }
 func (*TopKMatrix) ProtoMessage() {}
 func (*TopKMatrix) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7f9fd40e59b87ff3, []int{9}
+	return fileDescriptor_7f9fd40e59b87ff3, []int{12}
 }
 func (m *TopKMatrix) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -706,7 +851,7 @@ type TopKMatrix_Vector struct {
 func (m *TopKMatrix_Vector) Reset()      { *m = TopKMatrix_Vector{} }
 func (*TopKMatrix_Vector) ProtoMessage() {}
 func (*TopKMatrix_Vector) Descriptor() ([]byte, []int) {
-	return fileDescriptor_7f9fd40e59b87ff3, []int{9, 0}
+	return fileDescriptor_7f9fd40e59b87ff3, []int{12, 0}
 }
 func (m *TopKMatrix_Vector) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -758,6 +903,9 @@ func init() {
 	proto.RegisterType((*TDigest_Centroid)(nil), "logproto.TDigest.Centroid")
 	proto.RegisterType((*CountMinSketch)(nil), "logproto.CountMinSketch")
 	proto.RegisterType((*CountMinSketchVector)(nil), "logproto.CountMinSketchVector")
+	proto.RegisterType((*CountDistinctMatrix)(nil), "logproto.CountDistinctMatrix")
+	proto.RegisterType((*CountDistinctVector)(nil), "logproto.CountDistinctVector")
+	proto.RegisterType((*CountDistinctSample)(nil), "logproto.CountDistinctSample")
 	proto.RegisterType((*Labels)(nil), "logproto.Labels")
 	proto.RegisterType((*TopK)(nil), "logproto.TopK")
 	proto.RegisterType((*TopK_Pair)(nil), "logproto.TopK.Pair")
@@ -768,50 +916,54 @@ func init() {
 func init() { proto.RegisterFile("pkg/logproto/sketch.proto", fileDescriptor_7f9fd40e59b87ff3) }
 
 var fileDescriptor_7f9fd40e59b87ff3 = []byte{
-	// 681 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x41, 0x4f, 0x13, 0x41,
-	0x18, 0xdd, 0xb1, 0xb5, 0x2d, 0x5f, 0x81, 0xe0, 0x48, 0xcc, 0x5a, 0xcc, 0xa6, 0xee, 0x41, 0x08,
-	0xc6, 0xd6, 0x40, 0x24, 0x9c, 0xc1, 0x03, 0x89, 0xa2, 0x38, 0x10, 0x0f, 0x26, 0xc6, 0x2c, 0xdb,
-	0x61, 0x3b, 0xe9, 0xee, 0xce, 0x66, 0x67, 0x0a, 0xe8, 0xc9, 0x5f, 0x60, 0x8c, 0x17, 0xff, 0x82,
-	0x57, 0x7f, 0x82, 0x37, 0x8f, 0x1c, 0x39, 0x4a, 0xb9, 0x78, 0xe4, 0x27, 0x98, 0x9d, 0x99, 0x2d,
-	0xdd, 0x25, 0x8a, 0xa7, 0xce, 0xf7, 0xe6, 0x7d, 0x6f, 0xdf, 0xcc, 0xf7, 0x3a, 0x70, 0x37, 0x19,
-	0x04, 0xdd, 0x90, 0x07, 0x49, 0xca, 0x25, 0xef, 0x8a, 0x01, 0x95, 0x7e, 0xbf, 0xa3, 0x0a, 0xdc,
-	0xc8, 0xe1, 0xd6, 0x42, 0x81, 0x94, 0x2f, 0x34, 0xcd, 0x7d, 0x01, 0xf3, 0xaf, 0x86, 0x5e, 0x2c,
-	0x59, 0x48, 0x77, 0x55, 0xfb, 0xb6, 0x27, 0x53, 0x76, 0x8c, 0xd7, 0xa0, 0x76, 0xe8, 0x85, 0x43,
-	0x2a, 0x6c, 0xd4, 0xae, 0x2c, 0x35, 0x57, 0x9c, 0xce, 0xb8, 0xb1, 0xc8, 0x7f, 0x4d, 0x7d, 0xc9,
-	0x53, 0x62, 0xd8, 0xee, 0x4e, 0x59, 0x4f, 0xef, 0xe3, 0x75, 0xa8, 0x0b, 0x2f, 0x4a, 0xc2, 0xeb,
-	0x05, 0x77, 0x15, 0x8d, 0xe4, 0x74, 0xf7, 0x13, 0x2a, 0x4b, 0x6a, 0x06, 0x7e, 0x00, 0xe8, 0xc0,
-	0x46, 0x6d, 0xb4, 0xd4, 0x5c, 0xb1, 0xff, 0x26, 0x46, 0xd0, 0x01, 0xbe, 0x0f, 0xd3, 0x92, 0x45,
-	0x54, 0x48, 0x2f, 0x4a, 0xde, 0x45, 0xc2, 0xbe, 0xd1, 0x46, 0x4b, 0x15, 0xd2, 0x1c, 0x63, 0xdb,
-	0x02, 0x3f, 0x84, 0x5a, 0x44, 0x65, 0xca, 0x7c, 0xbb, 0xa2, 0xcc, 0xdd, 0xbe, 0xd4, 0x7b, 0xee,
-	0xed, 0xd3, 0x70, 0xc7, 0x63, 0x29, 0x31, 0x14, 0x37, 0x80, 0xd9, 0xe2, 0x47, 0xf0, 0x23, 0xa8,
-	0xcb, 0x1e, 0x0b, 0xa8, 0x90, 0xc6, 0xcf, 0xad, 0xcb, 0xfe, 0xbd, 0xa7, 0x6a, 0x63, 0xcb, 0x22,
-	0x39, 0x07, 0xdf, 0x83, 0x46, 0xaf, 0xa7, 0x87, 0xa5, 0xcc, 0x4c, 0x6f, 0x59, 0x64, 0x8c, 0x6c,
-	0x34, 0xa0, 0xa6, 0x57, 0xee, 0x0f, 0x04, 0x75, 0xd3, 0x8e, 0xe7, 0xa0, 0x12, 0xb1, 0x58, 0xc9,
-	0x23, 0x92, 0x2d, 0x15, 0xe2, 0x1d, 0x2b, 0x81, 0x0c, 0xf1, 0x8e, 0x71, 0x1b, 0x9a, 0x3e, 0x8f,
-	0x92, 0x94, 0x0a, 0xc1, 0x78, 0x6c, 0x57, 0xd4, 0xce, 0x24, 0x84, 0xd7, 0x61, 0x2a, 0x49, 0xb9,
-	0x4f, 0x85, 0xa0, 0x3d, 0xbb, 0xaa, 0x8e, 0xda, 0xba, 0x62, 0xb5, 0xb3, 0x49, 0x63, 0x99, 0x72,
-	0xd6, 0x23, 0x97, 0xe4, 0xd6, 0x1a, 0x34, 0x72, 0x18, 0x63, 0xa8, 0x46, 0xd4, 0xcb, 0xcd, 0xa8,
-	0x35, 0xbe, 0x03, 0xb5, 0x23, 0xca, 0x82, 0xbe, 0x34, 0x86, 0x4c, 0xe5, 0x7e, 0x80, 0xd9, 0x4d,
-	0x3e, 0x8c, 0xe5, 0x36, 0x8b, 0xcd, 0x65, 0xcd, 0xc3, 0xcd, 0x1e, 0x4d, 0x64, 0x5f, 0xb5, 0xcf,
-	0x10, 0x5d, 0x64, 0xe8, 0x11, 0xeb, 0x49, 0x7d, 0x21, 0x33, 0x44, 0x17, 0xb8, 0x05, 0x0d, 0x3f,
-	0xeb, 0xa6, 0xa9, 0x50, 0x93, 0x41, 0x64, 0x5c, 0x67, 0xa7, 0xed, 0xbf, 0x4f, 0x68, 0x1a, 0xf2,
-	0x20, 0xe4, 0x81, 0x5d, 0xcd, 0x2e, 0x92, 0x4c, 0x42, 0xee, 0x57, 0x04, 0xf3, 0xc5, 0x8f, 0x9b,
-	0x30, 0x96, 0x13, 0x81, 0xae, 0x26, 0xe2, 0x71, 0x3e, 0x05, 0x65, 0xa8, 0x90, 0xb0, 0xa2, 0x24,
-	0x31, 0x3c, 0xbc, 0x0c, 0x75, 0x1d, 0x10, 0x61, 0x42, 0x34, 0x57, 0x0a, 0x91, 0x20, 0x39, 0xc1,
-	0x7d, 0x02, 0x35, 0x0d, 0x4d, 0x24, 0x0f, 0x5d, 0x9f, 0xbc, 0xef, 0x08, 0xaa, 0x7b, 0x3c, 0x79,
-	0x86, 0x97, 0xa1, 0xe2, 0x1b, 0xdf, 0xff, 0xb2, 0x96, 0x91, 0xf0, 0x22, 0x54, 0x43, 0x26, 0xb2,
-	0xb9, 0x94, 0xf4, 0x33, 0xa5, 0x8e, 0xd2, 0x57, 0x84, 0xf2, 0x85, 0x56, 0xae, 0x5c, 0x68, 0x6b,
-	0x05, 0xaa, 0x19, 0x3f, 0x1b, 0x16, 0x3d, 0xa4, 0xb1, 0x4e, 0xfb, 0x14, 0xd1, 0x45, 0x86, 0xaa,
-	0xe1, 0x98, 0x04, 0xe8, 0xc2, 0xfd, 0x82, 0x00, 0xb2, 0x2f, 0x99, 0x77, 0x65, 0xb5, 0xf4, 0xae,
-	0x2c, 0x14, 0xfd, 0x68, 0x56, 0xa7, 0xf8, 0xa8, 0xb4, 0x5e, 0x42, 0xcd, 0x4c, 0xce, 0x85, 0xaa,
-	0xe4, 0xc9, 0xc0, 0x9c, 0x7c, 0xb6, 0xd8, 0x4c, 0xd4, 0xde, 0x7f, 0xfc, 0xdf, 0x37, 0xde, 0x9e,
-	0x9c, 0x39, 0xd6, 0xe9, 0x99, 0x63, 0x5d, 0x9c, 0x39, 0xe8, 0xe3, 0xc8, 0x41, 0xdf, 0x46, 0x0e,
-	0xfa, 0x39, 0x72, 0xd0, 0xc9, 0xc8, 0x41, 0xbf, 0x46, 0x0e, 0xfa, 0x3d, 0x72, 0xac, 0x8b, 0x91,
-	0x83, 0x3e, 0x9f, 0x3b, 0xd6, 0xc9, 0xb9, 0x63, 0x9d, 0x9e, 0x3b, 0xd6, 0x9b, 0xc5, 0x80, 0xc9,
-	0xfe, 0x70, 0xbf, 0xe3, 0xf3, 0xa8, 0x1b, 0xa4, 0xde, 0x81, 0x17, 0x7b, 0xdd, 0x90, 0x0f, 0x58,
-	0xf7, 0x70, 0xb5, 0x3b, 0xf9, 0xc6, 0xee, 0xd7, 0xd4, 0xcf, 0xea, 0x9f, 0x00, 0x00, 0x00, 0xff,
-	0xff, 0xab, 0x2f, 0x32, 0x74, 0x9f, 0x05, 0x00, 0x00,
+	// 737 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x55, 0x3f, 0x4f, 0x1b, 0x49,
+	0x14, 0xdf, 0x39, 0xfb, 0x6c, 0xf3, 0x0c, 0x88, 0x1b, 0xd0, 0x69, 0xcf, 0xdc, 0xad, 0x7c, 0x5b,
+	0x04, 0x44, 0x14, 0x3b, 0x02, 0x41, 0xa8, 0x81, 0x02, 0x29, 0x40, 0xc8, 0x80, 0x52, 0x44, 0x8a,
+	0xa2, 0x65, 0x3d, 0xac, 0x47, 0xde, 0x7f, 0xda, 0x19, 0x03, 0x49, 0x95, 0x2e, 0x5d, 0x14, 0xa5,
+	0xc9, 0x57, 0x48, 0x9b, 0x8f, 0x90, 0x2e, 0x25, 0x25, 0x65, 0x30, 0x4d, 0x4a, 0x3e, 0x42, 0xb4,
+	0xb3, 0xb3, 0xc6, 0x3b, 0x16, 0x21, 0x45, 0x2a, 0xcf, 0x7b, 0xf3, 0x7b, 0xbf, 0x79, 0x7f, 0x7e,
+	0xcf, 0x0b, 0xff, 0xc4, 0x3d, 0xaf, 0xed, 0x47, 0x5e, 0x9c, 0x44, 0x22, 0x6a, 0xf3, 0x1e, 0x15,
+	0x6e, 0xb7, 0x25, 0x0d, 0x5c, 0xcb, 0xdd, 0x8d, 0xf9, 0x02, 0x28, 0x3f, 0x64, 0x30, 0x7b, 0x0f,
+	0xe6, 0x9e, 0xf6, 0x9d, 0x50, 0x30, 0x9f, 0x1e, 0xc8, 0xf0, 0x5d, 0x47, 0x24, 0xec, 0x0c, 0xaf,
+	0x41, 0xe5, 0xc4, 0xf1, 0xfb, 0x94, 0x9b, 0xa8, 0x59, 0x5a, 0xac, 0x2f, 0x5b, 0xad, 0x61, 0x60,
+	0x11, 0xff, 0x8c, 0xba, 0x22, 0x4a, 0x88, 0x42, 0xdb, 0xfb, 0x3a, 0x5f, 0x76, 0x8f, 0xd7, 0xa1,
+	0xca, 0x9d, 0x20, 0xf6, 0xef, 0x26, 0x3c, 0x90, 0x30, 0x92, 0xc3, 0xed, 0x77, 0x48, 0xa7, 0xcc,
+	0x10, 0xf8, 0x1e, 0xa0, 0x63, 0x13, 0x35, 0xd1, 0x62, 0x7d, 0xd9, 0xbc, 0x8d, 0x8c, 0xa0, 0x63,
+	0xfc, 0x3f, 0x4c, 0x0a, 0x16, 0x50, 0x2e, 0x9c, 0x20, 0x7e, 0x19, 0x70, 0xf3, 0x8f, 0x26, 0x5a,
+	0x2c, 0x91, 0xfa, 0xd0, 0xb7, 0xcb, 0xf1, 0x7d, 0xa8, 0x04, 0x54, 0x24, 0xcc, 0x35, 0x4b, 0x32,
+	0xb9, 0xd9, 0x1b, 0xbe, 0x1d, 0xe7, 0x88, 0xfa, 0xfb, 0x0e, 0x4b, 0x88, 0x82, 0xd8, 0x1e, 0x4c,
+	0x17, 0x1f, 0xc1, 0x0f, 0xa0, 0x2a, 0x3a, 0xcc, 0xa3, 0x5c, 0xa8, 0x7c, 0xfe, 0xba, 0x89, 0x3f,
+	0xdc, 0x92, 0x17, 0xdb, 0x06, 0xc9, 0x31, 0xf8, 0x5f, 0xa8, 0x75, 0x3a, 0xd9, 0xb0, 0x64, 0x32,
+	0x93, 0xdb, 0x06, 0x19, 0x7a, 0x36, 0x6a, 0x50, 0xc9, 0x4e, 0xf6, 0x17, 0x04, 0x55, 0x15, 0x8e,
+	0x67, 0xa0, 0x14, 0xb0, 0x50, 0xd2, 0x23, 0x92, 0x1e, 0xa5, 0xc7, 0x39, 0x93, 0x04, 0xa9, 0xc7,
+	0x39, 0xc3, 0x4d, 0xa8, 0xbb, 0x51, 0x10, 0x27, 0x94, 0x73, 0x16, 0x85, 0x66, 0x49, 0xde, 0x8c,
+	0xba, 0xf0, 0x3a, 0x4c, 0xc4, 0x49, 0xe4, 0x52, 0xce, 0x69, 0xc7, 0x2c, 0xcb, 0x52, 0x1b, 0x63,
+	0xa9, 0xb6, 0x36, 0x69, 0x28, 0x92, 0x88, 0x75, 0xc8, 0x0d, 0xb8, 0xb1, 0x06, 0xb5, 0xdc, 0x8d,
+	0x31, 0x94, 0x03, 0xea, 0xe4, 0xc9, 0xc8, 0x33, 0xfe, 0x1b, 0x2a, 0xa7, 0x94, 0x79, 0x5d, 0xa1,
+	0x12, 0x52, 0x96, 0xfd, 0x1a, 0xa6, 0x37, 0xa3, 0x7e, 0x28, 0x76, 0x59, 0xa8, 0x9a, 0x35, 0x07,
+	0x7f, 0x76, 0x68, 0x2c, 0xba, 0x32, 0x7c, 0x8a, 0x64, 0x46, 0xea, 0x3d, 0x65, 0x1d, 0x91, 0x35,
+	0x64, 0x8a, 0x64, 0x06, 0x6e, 0x40, 0xcd, 0x4d, 0xa3, 0x69, 0xc2, 0xe5, 0x64, 0x10, 0x19, 0xda,
+	0x69, 0xb5, 0xdd, 0x57, 0x31, 0x4d, 0xfc, 0xc8, 0xf3, 0x23, 0xcf, 0x2c, 0xa7, 0x8d, 0x24, 0xa3,
+	0x2e, 0xfb, 0x23, 0x82, 0xb9, 0xe2, 0xe3, 0x4a, 0x8c, 0xba, 0x22, 0xd0, 0xb8, 0x22, 0x1e, 0xe6,
+	0x53, 0x90, 0x09, 0x15, 0x14, 0x56, 0xa4, 0x24, 0x0a, 0x87, 0x97, 0xa0, 0x9a, 0x09, 0x84, 0x2b,
+	0x11, 0xcd, 0x68, 0x22, 0xe2, 0x24, 0x07, 0xd8, 0x3b, 0x30, 0x2b, 0x59, 0xb6, 0x18, 0x17, 0x2c,
+	0x74, 0x85, 0x5a, 0xba, 0x55, 0x6d, 0xe9, 0xfe, 0xd3, 0x1e, 0xcd, 0xe1, 0xda, 0xce, 0xed, 0x69,
+	0x6c, 0xaa, 0xca, 0x47, 0xfa, 0xca, 0xdd, 0x46, 0xa7, 0x6f, 0xdc, 0x5b, 0xa4, 0x11, 0xaa, 0x85,
+	0xd3, 0x3a, 0x8e, 0xc6, 0x3a, 0xfe, 0xdb, 0x57, 0x6d, 0x15, 0x2a, 0x59, 0xeb, 0x46, 0xc2, 0xd0,
+	0xdd, 0x61, 0x9f, 0x11, 0x94, 0x0f, 0xa3, 0xf8, 0x31, 0x5e, 0x82, 0x92, 0xab, 0xe6, 0xfb, 0xb3,
+	0x11, 0xa6, 0x20, 0xbc, 0x00, 0x65, 0x9f, 0xf1, 0x54, 0xbf, 0x1a, 0x7f, 0xca, 0xd4, 0x92, 0xfc,
+	0x12, 0xa0, 0xb7, 0xa1, 0x34, 0xd6, 0x86, 0xc6, 0x32, 0x94, 0x53, 0x7c, 0x2a, 0x6a, 0x7a, 0x42,
+	0xc3, 0xec, 0x5f, 0x61, 0x82, 0x64, 0x46, 0xea, 0x95, 0x22, 0x56, 0x9b, 0x92, 0x19, 0xf6, 0x07,
+	0x04, 0x90, 0xbe, 0xa4, 0xa4, 0xb0, 0xa2, 0x49, 0x61, 0xbe, 0x98, 0x4f, 0x86, 0x6a, 0x15, 0x85,
+	0xd0, 0x78, 0x02, 0x15, 0x35, 0x7b, 0x1b, 0xca, 0x22, 0x8a, 0x7b, 0xaa, 0xf2, 0xe9, 0x62, 0x30,
+	0x91, 0x77, 0xbf, 0x30, 0xac, 0x8d, 0x17, 0xe7, 0x97, 0x96, 0x71, 0x71, 0x69, 0x19, 0xd7, 0x97,
+	0x16, 0x7a, 0x33, 0xb0, 0xd0, 0xa7, 0x81, 0x85, 0xbe, 0x0e, 0x2c, 0x74, 0x3e, 0xb0, 0xd0, 0xb7,
+	0x81, 0x85, 0xbe, 0x0f, 0x2c, 0xe3, 0x7a, 0x60, 0xa1, 0xf7, 0x57, 0x96, 0x71, 0x7e, 0x65, 0x19,
+	0x17, 0x57, 0x96, 0xf1, 0x7c, 0xc1, 0x63, 0xa2, 0xdb, 0x3f, 0x6a, 0xb9, 0x51, 0xd0, 0xf6, 0x12,
+	0xe7, 0xd8, 0x09, 0x9d, 0xb6, 0x1f, 0xf5, 0x58, 0xfb, 0x64, 0xa5, 0x3d, 0xfa, 0x2d, 0x3a, 0xaa,
+	0xc8, 0x9f, 0x95, 0x1f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x9a, 0x48, 0x0c, 0x4f, 0xc7, 0x06, 0x00,
+	0x00,
 }
 
 func (this *QuantileSketchMatrix) Equal(that interface{}) bool {
@@ -1123,6 +1275,99 @@ func (this *CountMinSketchVector) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *CountDistinctMatrix) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CountDistinctMatrix)
+	if !ok {
+		that2, ok := that.(CountDistinctMatrix)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if !this.Values[i].Equal(that1.Values[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CountDistinctVector) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CountDistinctVector)
+	if !ok {
+		that2, ok := that.(CountDistinctVector)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Samples) != len(that1.Samples) {
+		return false
+	}
+	for i := range this.Samples {
+		if !this.Samples[i].Equal(that1.Samples[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CountDistinctSample) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CountDistinctSample)
+	if !ok {
+		that2, ok := that.(CountDistinctSample)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !bytes.Equal(this.Hyperloglog, that1.Hyperloglog) {
+		return false
+	}
+	if this.TimestampMs != that1.TimestampMs {
+		return false
+	}
+	if len(this.Metric) != len(that1.Metric) {
+		return false
+	}
+	for i := range this.Metric {
+		if !this.Metric[i].Equal(that1.Metric[i]) {
+			return false
+		}
+	}
+	return true
+}
 func (this *Labels) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -1389,6 +1634,44 @@ func (this *CountMinSketchVector) GoString() string {
 	}
 	if this.Metrics != nil {
 		s = append(s, "Metrics: "+fmt.Sprintf("%#v", this.Metrics)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CountDistinctMatrix) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&logproto.CountDistinctMatrix{")
+	if this.Values != nil {
+		s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CountDistinctVector) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&logproto.CountDistinctVector{")
+	if this.Samples != nil {
+		s = append(s, "Samples: "+fmt.Sprintf("%#v", this.Samples)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CountDistinctSample) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&logproto.CountDistinctSample{")
+	s = append(s, "Hyperloglog: "+fmt.Sprintf("%#v", this.Hyperloglog)+",\n")
+	s = append(s, "TimestampMs: "+fmt.Sprintf("%#v", this.TimestampMs)+",\n")
+	if this.Metric != nil {
+		s = append(s, "Metric: "+fmt.Sprintf("%#v", this.Metric)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -1854,6 +2137,129 @@ func (m *CountMinSketchVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *CountDistinctMatrix) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CountDistinctMatrix) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CountDistinctMatrix) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Values[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintSketch(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CountDistinctVector) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CountDistinctVector) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CountDistinctVector) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Samples) > 0 {
+		for iNdEx := len(m.Samples) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Samples[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintSketch(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CountDistinctSample) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CountDistinctSample) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CountDistinctSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Metric) > 0 {
+		for iNdEx := len(m.Metric) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Metric[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintSketch(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if m.TimestampMs != 0 {
+		i = encodeVarintSketch(dAtA, i, uint64(m.TimestampMs))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Hyperloglog) > 0 {
+		i -= len(m.Hyperloglog)
+		copy(dAtA[i:], m.Hyperloglog)
+		i = encodeVarintSketch(dAtA, i, uint64(len(m.Hyperloglog)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *Labels) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -2242,6 +2648,58 @@ func (m *CountMinSketchVector) Size() (n int) {
 	return n
 }
 
+func (m *CountDistinctMatrix) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for _, e := range m.Values {
+			l = e.Size()
+			n += 1 + l + sovSketch(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CountDistinctVector) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Samples) > 0 {
+		for _, e := range m.Samples {
+			l = e.Size()
+			n += 1 + l + sovSketch(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CountDistinctSample) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Hyperloglog)
+	if l > 0 {
+		n += 1 + l + sovSketch(uint64(l))
+	}
+	if m.TimestampMs != 0 {
+		n += 1 + sovSketch(uint64(m.TimestampMs))
+	}
+	if len(m.Metric) > 0 {
+		for _, e := range m.Metric {
+			l = e.Size()
+			n += 1 + l + sovSketch(uint64(l))
+		}
+	}
+	return n
+}
+
 func (m *Labels) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2465,6 +2923,53 @@ func (this *CountMinSketchVector) String() string {
 		`TimestampMs:` + fmt.Sprintf("%v", this.TimestampMs) + `,`,
 		`Sketch:` + strings.Replace(this.Sketch.String(), "CountMinSketch", "CountMinSketch", 1) + `,`,
 		`Metrics:` + repeatedStringForMetrics + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CountDistinctMatrix) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForValues := "[]*CountDistinctVector{"
+	for _, f := range this.Values {
+		repeatedStringForValues += strings.Replace(f.String(), "CountDistinctVector", "CountDistinctVector", 1) + ","
+	}
+	repeatedStringForValues += "}"
+	s := strings.Join([]string{`&CountDistinctMatrix{`,
+		`Values:` + repeatedStringForValues + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CountDistinctVector) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForSamples := "[]*CountDistinctSample{"
+	for _, f := range this.Samples {
+		repeatedStringForSamples += strings.Replace(f.String(), "CountDistinctSample", "CountDistinctSample", 1) + ","
+	}
+	repeatedStringForSamples += "}"
+	s := strings.Join([]string{`&CountDistinctVector{`,
+		`Samples:` + repeatedStringForSamples + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CountDistinctSample) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForMetric := "[]*LabelPair{"
+	for _, f := range this.Metric {
+		repeatedStringForMetric += strings.Replace(fmt.Sprintf("%v", f), "LabelPair", "LabelPair", 1) + ","
+	}
+	repeatedStringForMetric += "}"
+	s := strings.Join([]string{`&CountDistinctSample{`,
+		`Hyperloglog:` + fmt.Sprintf("%v", this.Hyperloglog) + `,`,
+		`TimestampMs:` + fmt.Sprintf("%v", this.TimestampMs) + `,`,
+		`Metric:` + repeatedStringForMetric + `,`,
 		`}`,
 	}, "")
 	return s
@@ -3472,6 +3977,320 @@ func (m *CountMinSketchVector) Unmarshal(dAtA []byte) error {
 			}
 			m.Metrics = append(m.Metrics, &Labels{})
 			if err := m.Metrics[len(m.Metrics)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSketch(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CountDistinctMatrix) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSketch
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CountDistinctMatrix: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CountDistinctMatrix: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSketch
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Values = append(m.Values, &CountDistinctVector{})
+			if err := m.Values[len(m.Values)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSketch(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CountDistinctVector) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSketch
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CountDistinctVector: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CountDistinctVector: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Samples", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSketch
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Samples = append(m.Samples, &CountDistinctSample{})
+			if err := m.Samples[len(m.Samples)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSketch(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CountDistinctSample) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSketch
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CountDistinctSample: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CountDistinctSample: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Hyperloglog", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthSketch
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Hyperloglog = append(m.Hyperloglog[:0], dAtA[iNdEx:postIndex]...)
+			if m.Hyperloglog == nil {
+				m.Hyperloglog = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimestampMs", wireType)
+			}
+			m.TimestampMs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.TimestampMs |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Metric", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthSketch
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Metric = append(m.Metric, &LabelPair{})
+			if err := m.Metric[len(m.Metric)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
