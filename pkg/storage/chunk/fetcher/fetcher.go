@@ -199,9 +199,12 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	// Fetch missing from storage
-	var fromStorage []chunk.Chunk
+	var (
+		fromStorage []chunk.Chunk
+		storageErr  error
+	)
 	if len(missing) > 0 {
-		fromStorage, err = c.storage.GetChunks(ctx, missing)
+		fromStorage, storageErr = c.storage.GetChunks(ctx, missing)
 	}
 
 	// normally these stats would be collected by the cache.statsCollector wrapper, but chunks are written back
@@ -224,8 +227,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	if err != nil {
-		level.Error(log).Log("msg", "failed downloading chunks", "err", err)
+	if storageErr != nil {
+		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+		return nil, storageErr
 	}
 
 	allChunks := append(fromCache, fromStorage...)
