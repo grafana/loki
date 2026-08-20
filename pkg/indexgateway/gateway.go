@@ -415,7 +415,7 @@ func (g *Gateway) boundedShards(
 
 	start := time.Now()
 
-	// 1) for all bounds, get chunk refs
+	// For all bounds, get chunk refs
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
 		return err
@@ -427,39 +427,15 @@ func (g *Gateway) boundedShards(
 		attribute.Int("index_chunks_resolved", ct),
 	))
 
-	filtered := refs
-
-	// 2) filter via blooms if enabled
-	filters := v1.ExtractTestableLabelMatchers(p.Plan().AST)
-	// NOTE(chaudum): Temporarily disable bloom filtering of chunk refs,
-	// as this doubles the load on bloom gateways.
-	// if g.bloomQuerier != nil && len(filters) > 0 {
-	// 	xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-	// 	if err != nil {
-	// 		level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
-	// 	} else {
-	// 		filtered = xs
-	// 	}
-	// 	sp.LogKV(
-	// 		"stage", "queried bloom gateway",
-	// 		"err", err,
-	// 	)
-	// }
-
-	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
-	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
-
 	resp := &logproto.ShardsResponse{}
-
-	// Edge case: if there are no chunks after filtering, we still need to return a single shard
-	if len(filtered) == 0 {
+	if len(refs) == 0 {
+		// Edge case: if there are no chunks, we still need to return a single shard
 		resp.Shards = []logproto.Shard{
 			{
 				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
 				Stats:  &logproto.IndexStatsResponse{},
 			},
 		}
-
 	} else {
 		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
 		if err != nil {
@@ -487,7 +463,6 @@ func (g *Gateway) boundedShards(
 	level.Debug(logger).Log(
 		"msg", "send shards response",
 		"total_chunks", ct,
-		"post_filter_chunks", len(filtered),
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),
@@ -497,23 +472,20 @@ func (g *Gateway) boundedShards(
 		"through", req.Through.Time().String(),
 		"length", req.Through.Time().Sub(req.From.Time()).String(),
 		"end_delta", time.Since(req.Through.Time()).String(),
-		"filters", len(filters),
 	)
 
 	// Populate index statistics for metrics logging
 	resp.Statistics.Index.TotalChunks = int64(ct)
-	resp.Statistics.Index.PostFilterChunks = int64(len(filtered))
 	// compute unique streams matched post-filtering
 	{
 		seen := make(map[model.Fingerprint]struct{}, 1024)
-		for _, ref := range filtered {
+		for _, ref := range refs {
 			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
 		}
 		resp.Statistics.Index.TotalStreams = int64(len(seen))
 	}
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
-	// 3) build shards
 	return server.Send(resp)
 }
 
