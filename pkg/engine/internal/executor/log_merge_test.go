@@ -102,7 +102,15 @@ func buildSourceLogObject(t *testing.T, bucket objstore.Bucket, path string, sor
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, obj))
+	// Ingest CopyAndSorts after Flush so source objects are in StreamOrderKey
+	// order. Compaction only merges pre-sorted objects.
+	sorter, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides(sortSchema))
+	require.NoError(t, err)
+	sorted, sortedCloser, err := sorter.CopyAndSort(context.Background(), obj)
+	require.NoError(t, err)
+	defer sortedCloser.Close()
+
+	require.NoError(t, uploadObjectToBucket(context.Background(), bucket, path, sorted))
 }
 
 func TestCollectLogSources_DedupsAndResolvesLabels(t *testing.T) {
@@ -456,10 +464,9 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	late := early.Add(time.Hour)
 
-	// Both streams have the same schema key, but their local stream ID ordering is
-	// different between objects. The loser tree preserves those source-local
-	// orders; the output CopyAndSort pass must restore ordering after logsobj
-	// deduplicates the repeated full-label streams.
+	// Same schema key, different local stream ID order. Unique-label global IDs
+	// make the tree timestamp-merge each full-label stream instead of treating
+	// the two objects as distinct streams.
 	buildSourceLogObject(t, dataBucket, "objA", sortSchema, map[string][]testStream{
 		tenant: {
 			{labels: `{app="a",instance="1"}`, entries: linesAt(early, 1)},
@@ -505,6 +512,36 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 		}
 	}
 	require.Equal(t, map[int64]int{1: 2, 2: 2}, counts)
+}
+
+func TestDoLogObjectMerge_NoopsOnSortLayoutMismatch(t *testing.T) {
+	ctx := context.Background()
+	dataBucket := objstore.NewInMemBucket()
+	indexBucket := objstore.NewInMemBucket()
+
+	const tenant = "T"
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	buildSourceLogObject(t, dataBucket, "objA", []string{"label:cluster"}, map[string][]testStream{
+		tenant: {{labels: `{app="a",cluster="c"}`, entries: linesAt(base, 2)}},
+	})
+	buildSourceLogObject(t, dataBucket, "objB", []string{"label:app"}, map[string][]testStream{
+		tenant: {{labels: `{app="a"}`, entries: linesAt(base, 2)}},
+	})
+
+	c := newTestExecutorContext(t, indexBucket)
+	c.dataBucket = dataBucket
+	node := &physical.LogMerge{
+		Tenant:     tenant,
+		SortSchema: []string{"label:app"},
+		Runs: []*compactionv2pb.RunRef{
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "objA"}, {ObjectPath: "objB"}}},
+		},
+	}
+
+	arts, err := c.doLogObjectMerge(ctx, node)
+	require.NoError(t, err)
+	require.Empty(t, arts, "mismatched sort layout must no-op the whole task")
 }
 
 func TestDoLogObjectMerge_WritesIndexOverCompactedObjects(t *testing.T) {
