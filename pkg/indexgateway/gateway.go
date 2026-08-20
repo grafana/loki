@@ -427,6 +427,9 @@ func (g *Gateway) boundedShards(
 		attribute.Int("index_chunks_resolved", ct),
 	))
 
+	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
+	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
+
 	resp := &logproto.ShardsResponse{}
 	if len(refs) == 0 {
 		// Edge case: if there are no chunks, we still need to return a single shard
@@ -476,6 +479,7 @@ func (g *Gateway) boundedShards(
 
 	// Populate index statistics for metrics logging
 	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(ct)
 	// compute unique streams matched post-filtering
 	{
 		seen := make(map[model.Fingerprint]struct{}, 1024)
