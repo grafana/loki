@@ -212,7 +212,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -243,7 +243,7 @@ func TestFetchChunks_CacheDecodeIsNotLoggedAsDownloadFailure(t *testing.T) {
 	key := sc.ExternalKey(chunks[0].ChunkRef)
 	require.NoError(t, l1.Store(context.Background(), []string{key}, [][]byte{[]byte("not a chunk")}))
 
-	f, err := New(l1, l2, false, sc, chunkClient, 0, 0)
+	f, err := New(l1, l2, false, sc, chunkClient, 0, 0, false)
 	require.NoError(t, err)
 	t.Cleanup(f.Stop)
 
@@ -274,7 +274,7 @@ func TestFetchChunks_RecordsSuppressedStorageErrors(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0)
+			f, err := New(cache.NewMockCache(), cache.NewMockCache(), false, testSchemaConfig(), test.client, 0, 0, false)
 			require.NoError(t, err)
 			t.Cleanup(f.Stop)
 
@@ -410,7 +410,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback, false)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

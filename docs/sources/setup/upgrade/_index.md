@@ -55,7 +55,7 @@ The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-var
 
 ### Optional chunk fetch error propagation
 
-The new per-tenant `propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
+`chunk_store_config.propagate_chunk_fetch_errors` setting returns chunk fetch errors instead of incomplete query results. The setting is disabled by default.
 
 ### Breaking change: Removal of the `row_shards` schema setting
 

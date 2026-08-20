@@ -28,16 +28,11 @@ func TestFetchLazyChunksPropagatesErrorsWhenEnabled(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			schema := testutils.SchemaConfig("inmemory", "v11", model.Time(0))
-			f, err := fetcher.New(cache.NewMockCache(), cache.NewMockCache(), false, schema, errorChunkClient{err: fetchErr}, 0, 0)
+			f, err := fetcher.New(cache.NewMockCache(), cache.NewMockCache(), false, schema, errorChunkClient{err: fetchErr}, 0, 0, test.propagate)
 			require.NoError(t, err)
 			t.Cleanup(f.Stop)
 
-			ctx := context.Background()
-			if test.propagate {
-				ctx = withChunkFetchErrorPropagation(ctx)
-			}
-
-			err = fetchLazyChunks(ctx, schema, []*LazyChunk{{
+			err = fetchLazyChunks(context.Background(), schema, []*LazyChunk{{
 				Chunk:   chunk.Chunk{ChunkRef: logproto.ChunkRef{UserID: "tenant", Fingerprint: 1, From: 1, Through: 2, Checksum: 3}},
 				Fetcher: f,
 			}})
