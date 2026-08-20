@@ -26,7 +26,7 @@ func parseNested(t *testing.T, ld plog.Logs, cfg OTLPConfig) *logproto.InternalP
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 	req, err := otlpToLokiPushRequest(
 		context.Background(), ld, "fake", cfg, nil, []string{}, NewMockTracker(),
-		NewPushStats(), log.NewNopLogger(), streamResolver, constants.OTLP,
+		NewPushStats(), log.NewNopLogger(), streamResolver, constants.OTLP, true,
 	)
 	require.NoError(t, err)
 	return req
@@ -220,4 +220,67 @@ func TestOTLPNativeShapeHasNothingShared(t *testing.T) {
 	require.Empty(t, stream.ResourceLogs[0].Attrs)
 	require.Empty(t, stream.ResourceLogs[0].ScopeLogs[0].Attrs)
 	require.Equal(t, stream.UnexpandedSize(), stream.ExpandedSize())
+}
+
+// TestOTLPFlagOnlyChangesShapeNotContent is the guarantee this design rests on: with the flag
+// off the parser expands as it always has, and with it on the same input expands back to the
+// same thing. Anything that reads entries therefore cannot tell the difference, which is what
+// makes the flag safe to leave off.
+func TestOTLPFlagOnlyChangesShapeNotContent(t *testing.T) {
+	now := time.Unix(0, time.Now().UnixNano())
+
+	build := func() plog.Logs {
+		ld := plog.NewLogs()
+		for _, host := range []string{"host-1", "host-2"} {
+			rl := ld.ResourceLogs().AppendEmpty()
+			rl.Resource().Attributes().PutStr("service.name", "service-1")
+			rl.Resource().Attributes().PutStr("host.name", host)
+			rl.Resource().Attributes().PutStr("k8s.pod.name", "pod-"+host)
+			for _, scope := range []string{"scope-a", "scope-b"} {
+				sl := rl.ScopeLogs().AppendEmpty()
+				sl.Scope().SetName(scope)
+				sl.Scope().Attributes().PutStr("scope.attr", scope)
+				for i := range 3 {
+					lr := sl.LogRecords().AppendEmpty()
+					lr.Body().SetStr(host + "/" + scope + "/line")
+					lr.SetTimestamp(pcommon.Timestamp(now.Add(time.Duration(i)).UnixNano()))
+					lr.Attributes().PutStr("trace.id", "t")
+				}
+			}
+		}
+		return ld
+	}
+
+	parse := func(deferExpansion bool) *logproto.PushRequest {
+		streamResolver := newMockStreamResolver("fake", &fakeLimits{})
+		req, err := otlpToLokiPushRequest(
+			context.Background(), build(), "fake", DefaultOTLPConfig(defaultGlobalOTLPConfig),
+			nil, []string{}, NewMockTracker(), NewPushStats(), log.NewNopLogger(),
+			streamResolver, constants.OTLP, deferExpansion,
+		)
+		require.NoError(t, err)
+		return flattenRequest(req)
+	}
+
+	off, on := parse(false), parse(true)
+
+	// Stream order comes from a map, so compare by labels.
+	byLabels := func(r *logproto.PushRequest) map[string]logproto.Stream {
+		out := make(map[string]logproto.Stream, len(r.Streams))
+		for _, s := range r.Streams {
+			out[s.Labels] = s
+		}
+		return out
+	}
+
+	offByLabels, onByLabels := byLabels(off), byLabels(on)
+	require.Equal(t, len(offByLabels), len(onByLabels), "the same streams must be produced")
+	require.NotEmpty(t, offByLabels)
+
+	for labels, offStream := range offByLabels {
+		onStream, ok := onByLabels[labels]
+		require.True(t, ok, "stream %s missing with the flag on", labels)
+		require.Equal(t, offStream.Entries, onStream.Entries,
+			"entries for %s differ between the two shapes", labels)
+	}
 }

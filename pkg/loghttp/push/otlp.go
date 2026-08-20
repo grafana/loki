@@ -44,14 +44,14 @@ const (
 	messageSizeLargerErrFmt = "%w than max (%d vs %d)"
 )
 
-func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.InternalPushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, maxDecompressedSize int64, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger, deferExpansion bool) (*logproto.InternalPushRequest, *Stats, error) {
 	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, maxRecvMsgSize, maxDecompressedSize, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
+	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP, deferExpansion)
 	return req, stats, err
 }
 
@@ -139,7 +139,11 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, maxDecompressedSize int64,
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) (*logproto.InternalPushRequest, error) {
+// deferExpansion decides the shape this produces. When false, the resource and scope
+// attributes are copied onto every entry and each stream comes out as a single group with
+// nothing shared — byte for byte what the flattened form has always carried. When true, each
+// attribute set is recorded once on the group that owns it.
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string, deferExpansion bool) (*logproto.InternalPushRequest, error) {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.InternalPushRequest{}, nil
 	}
@@ -333,15 +337,32 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				// This preserves the intent of tracking entry-specific metadata separately without requiring subtraction
 				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
 
-				// The resource and scope attributes are NOT copied onto the entry. They are
-				// recorded once on the group the entry is placed in, and every reader
-				// recovers them through logproto.AppendEffectiveMetadata.
-				pushRequestsByStream[entryLabelsStr].append(
-					i, j,
-					resourceAttributesAsStructuredMetadata,
-					scopeAttributesAsStructuredMetadata,
-					entry, logs.Len(),
-				)
+				if deferExpansion {
+					// The resource and scope attributes are not copied onto the entry. They
+					// are recorded once on the group the entry is placed in, and every reader
+					// recovers them through logproto.AppendEffectiveMetadata.
+					pushRequestsByStream[entryLabelsStr].append(
+						i, j,
+						resourceAttributesAsStructuredMetadata,
+						scopeAttributesAsStructuredMetadata,
+						entry, logs.Len(),
+					)
+				} else {
+					// Copy them onto the entry, as before. Everything then lands in one group
+					// with no shared attributes, so the two size measures agree, containment
+					// order is arrival order, and a time shard sorts the whole stream — all
+					// exactly as they do today.
+					attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
+					if cap(entry.StructuredMetadata) < len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen {
+						structuredMetadata := make(push.LabelsAdapter, 0, len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen)
+						structuredMetadata = append(structuredMetadata, entry.StructuredMetadata...)
+						entry.StructuredMetadata = structuredMetadata
+					}
+					entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
+					entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
+
+					pushRequestsByStream[entryLabelsStr].append(0, 0, nil, nil, entry, logs.Len())
+				}
 				scopeRecords++
 
 				entryRetentionPeriod := streamResolver.RetentionPeriodFor(entryLbs)

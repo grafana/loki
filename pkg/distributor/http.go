@@ -70,7 +70,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	presumedAgentIP := extractPresumedAgentIP(r)
 	req, pushStats, err := push.ParseRequest(logger, tenantID, d.cfg.MaxRecvMsgSize, d.cfg.MaxDecompressedSize, r, d.validator.Limits, d.tenantConfigs,
-		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format)
+		pushRequestParser, d.usageTracker, streamResolver, presumedAgentIP, format, d.cfg.DeferOTLPAttributeExpansion)
 	if err != nil {
 		switch {
 		case errors.Is(err, push.ErrRequestBodyTooLarge):

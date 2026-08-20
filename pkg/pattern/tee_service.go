@@ -85,7 +85,7 @@ type TeeService struct {
 	flushQueue chan clientRequest
 
 	bufMtx *sync.Mutex
-	buf    map[string][]distributor.KeyedStream
+	buf    map[string][]teedStream
 
 	// bufferedBytes is a count of the total number of bytes in buf, and all
 	// client requests in the flushQueue.
@@ -113,7 +113,7 @@ func NewTeeService(
 		ringClient: ringClient,
 		wg:         &sync.WaitGroup{},
 		bufMtx:     &sync.Mutex{},
-		buf:        make(map[string][]distributor.KeyedStream),
+		buf:        make(map[string][]teedStream),
 		flushQueue: make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 		metrics:    newTeeMetrics(reg),
 	}
@@ -194,7 +194,7 @@ func (ts *TeeService) flush() {
 	}
 
 	buffered := ts.buf
-	ts.buf = make(map[string][]distributor.KeyedStream)
+	ts.buf = make(map[string][]teedStream)
 	ts.bufMtx.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
@@ -246,9 +246,21 @@ func (ts *TeeService) flush() {
 	}
 }
 
+// teedStream is one stream buffered for a pattern ingester.
+//
+// It holds the stream already flattened, for two reasons: the pattern ingester's push RPC
+// takes flat entries, and the byte count reserved against MaxBufferedBytes has to be the
+// same number that is later released. Flattening at the point of reservation keeps those
+// two in step; recomputing a size later from a different representation does not.
+type teedStream struct {
+	hashKey uint32
+	stream  logproto.Stream
+	size    int
+}
+
 func (ts *TeeService) batchesForTenant(
 	tenant string,
-	streams []distributor.KeyedStream,
+	streams []teedStream,
 ) map[string]map[string]*logproto.PushRequest {
 	batches := map[string]map[string]*logproto.PushRequest{
 		tenant: make(map[string]*logproto.PushRequest),
@@ -261,9 +273,9 @@ func (ts *TeeService) batchesForTenant(
 	for _, stream := range streams {
 		var descs [1]ring.InstanceDesc
 		replicationSet, err := ts.ringClient.Ring().
-			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+			Get(stream.hashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
-			ts.releaseBufferedBytes(stream.Stream.Size())
+			ts.releaseBufferedBytes(stream.size)
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
@@ -275,9 +287,7 @@ func (ts *TeeService) batchesForTenant(
 			batches[tenant][addr] = batch
 		}
 
-		// The pattern ingester's push RPC takes flat entries, so the attributes are
-		// expanded here.
-		batch.Streams = append(batch.Streams, stream.Stream.ToStream())
+		batch.Streams = append(batch.Streams, stream.stream)
 		ts.metrics.teedStreams.WithLabelValues("batched").Inc()
 	}
 
@@ -473,15 +483,24 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 			continue
 		}
 
+		// Flatten here rather than at batch time: the push RPC needs flat entries anyway,
+		// and reserving against the same value that is later released is what keeps
+		// MaxBufferedBytes enforceable.
+		flat := stream.Stream.ToStream()
+		size := flat.Size()
+
 		// Check that the stream is allowed within the current limit.
-		size := stream.Stream.Size()
 		if !ts.reserveBufferedBytes(size) {
 			ts.metrics.teedStreams.WithLabelValues("dropped").Inc()
 			continue
 		}
 
 		ts.bufMtx.Lock()
-		ts.buf[tenant] = append(ts.buf[tenant], stream)
+		ts.buf[tenant] = append(ts.buf[tenant], teedStream{
+			hashKey: stream.HashKey,
+			stream:  flat,
+			size:    size,
+		})
 		ts.bufMtx.Unlock()
 	}
 }

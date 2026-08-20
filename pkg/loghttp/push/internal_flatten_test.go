@@ -33,8 +33,11 @@ func flattenRequest(req *logproto.InternalPushRequest) *logproto.PushRequest {
 }
 
 // otlpToLokiPushRequestFlat is the OTLP parser followed by that expansion.
+// otlpToLokiPushRequestFlat parses with expansion at the parse site — the flag off — and then
+// flattens. With the flag off the flattening is a no-op, so every expectation written against
+// the old parser becomes a parity check on the new one.
 func otlpToLokiPushRequestFlat(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) (*logproto.PushRequest, error) {
-	req, err := otlpToLokiPushRequest(ctx, ld, userID, otlpConfig, tenantConfigs, discoverServiceName, tracker, stats, logger, streamResolver, format)
+	req, err := otlpToLokiPushRequest(ctx, ld, userID, otlpConfig, tenantConfigs, discoverServiceName, tracker, stats, logger, streamResolver, format, false)
 	if err != nil {
 		return nil, err
 	}

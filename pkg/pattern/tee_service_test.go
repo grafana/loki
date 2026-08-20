@@ -3,6 +3,7 @@ package pattern
 import (
 	"context"
 	"flag"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -239,7 +240,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Len(t, tee.buf, 1)
 		tenantBuf, ok := tee.buf["test"]
 		require.True(t, ok)
-		require.Contains(t, tenantBuf, s1)
+		requireBuffered(t, tenantBuf, s1)
 
 		// Stream should be rejected, more than 1KB.
 		s2 := distributor.KeyedStream{
@@ -260,7 +261,7 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// tenantBuf should contain s1, but not s2.
 		tenantBuf, ok = tee.buf["test"]
 		require.True(t, ok)
-		require.Contains(t, tenantBuf, s1)
+		requireBuffered(t, tenantBuf, s1)
 
 		// Stream should be accepted, total of s1 and s3 is less than 1KB.
 		s3 := distributor.KeyedStream{
@@ -280,8 +281,8 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// tenantBuf should contain s1 and s3.
 		tenantBuf, ok = tee.buf["test"]
 		require.True(t, ok)
-		require.Contains(t, tenantBuf, s1)
-		require.Contains(t, tenantBuf, s3)
+		requireBuffered(t, tenantBuf, s1)
+		requireBuffered(t, tenantBuf, s3)
 
 		// Stream should be rejected, total of s1, s3 and s4 is more than 1KB.
 		s4 := distributor.KeyedStream{
@@ -302,8 +303,8 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// tenantBuf should contain s1 and s3.
 		tenantBuf, ok = tee.buf["test"]
 		require.True(t, ok)
-		require.Contains(t, tenantBuf, s1)
-		require.Contains(t, tenantBuf, s3)
+		requireBuffered(t, tenantBuf, s1)
+		requireBuffered(t, tenantBuf, s3)
 
 		// Flush s1 and s3, s4 should be accepted.
 		tee.flush()
@@ -322,7 +323,27 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// tenantBuf should contain s4.
 		tenantBuf, ok = tee.buf["test"]
 		require.True(t, ok)
-		require.Contains(t, tenantBuf, s4)
+		requireBuffered(t, tenantBuf, s4)
 	})
 
+}
+
+// requireBuffered asserts that the flattened form of want is in the tee's buffer. The buffer
+// holds streams already flattened, so that the byte count reserved against MaxBufferedBytes is
+// the same one later released.
+func requireBuffered(t *testing.T, buffered []teedStream, want distributor.KeyedStream) {
+	t.Helper()
+
+	flat := want.Stream.ToStream()
+	for _, got := range buffered {
+		if got.hashKey != want.HashKey || got.stream.Labels != flat.Labels {
+			continue
+		}
+		if !reflect.DeepEqual(got.stream.Entries, flat.Entries) {
+			continue
+		}
+		require.Equal(t, flat.Size(), got.size, "the reserved size must be the flattened size")
+		return
+	}
+	t.Fatalf("stream %s not found in the tee buffer", flat.Labels)
 }
