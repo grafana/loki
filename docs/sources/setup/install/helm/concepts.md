@@ -18,7 +18,8 @@ This section describes the components installed by the Helm Chart.
 ## 3 methods of deployment
 
 The Loki chart supports three methods of deployment:
-- [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/) 
+
+- [Monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-monolithic/)
 - [Simple Scalable](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-scalable/)
 - [Microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/install-microservices/)
 
@@ -39,6 +40,8 @@ ingester:
   zoneAwareReplication:
     enabled: false
 ```
+
+If you deploy Loki using the jsonnet ([ksonnet](https://github.com/grafana/loki/tree/main/production/ksonnet)) method instead of the Helm chart, refer to [Speed up ingester rollout using zone awareness](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/zone-ingesters/), which describes the equivalent `multi_zone_ingester_*` jsonnet configuration.
 
 ## Pattern ingester
 
@@ -69,6 +72,7 @@ The **overrides exporter** (`overridesExporter`) is an optional component that e
 ## Bloom filters (experimental)
 
 The chart includes experimental support for **bloom filters** through three components:
+
 - `bloomGateway`: Serves bloom filter queries
 - `bloomPlanner`: Plans bloom filter build jobs
 - `bloomBuilder`: Builds bloom filters
@@ -78,6 +82,7 @@ All three are disabled by default (replicas set to 0). Enable bloom filters in t
 ## Monitoring Loki
 
 The Loki Helm chart includes built-in monitoring resources that can be enabled:
+
 - **ServiceMonitor** (`monitoring.serviceMonitor.enabled`): Creates Prometheus Operator ServiceMonitor resources for scraping Loki metrics.
 - **Recording rules** (`monitoring.rules.enabled`): Creates a PrometheusRule resource with loki-mixin recording rules.
 - **Alert rules** (`monitoring.alerts.enabled`): Creates a PrometheusRule resource with alerts such as `LokiRequestErrors`, `LokiRequestPanics`, and `LokiRequestLatency`.
