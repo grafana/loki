@@ -380,6 +380,59 @@ var ParseTestCases = []struct {
 		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
 	},
 	{
+		in: `approx_count_distinct(mac, {foo="bar"} | json [1d]) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left: newPipelineExpr(
+					newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+					MultiStageExpr{newLabelParserExpr(OpParserTypeJSON, "")},
+				),
+				Interval: 24 * time.Hour,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in: `approx_count_distinct(mac, {foo="bar"}[1h] offset 5m) by (version)`,
+		exp: &LabelAggregationExpr{
+			Operation: OpTypeApproxCountDistinct,
+			Label:     "mac",
+			Left: &LogRangeExpr{
+				Left:     newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				Interval: time.Hour,
+				Offset:   5 * time.Minute,
+			},
+			Grouping: &Grouping{Groups: []string{"version"}},
+		},
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d])`,
+		err: logqlmodel.NewParseError("syntax error: unexpected $end, expecting by or without", 1, 44),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) without (version)`,
+		err: logqlmodel.NewParseError("approx_count_distinct requires grouping with by (<labels>)", 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+		err: logqlmodel.NewParseError("approx_count_distinct requires grouping with by (<labels>)", 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"}[1d]) by (mac)`,
+		err: logqlmodel.NewParseError(`cannot group by the counted label "mac"`, 0, 0),
+	},
+	{
+		in:  `approx_count_distinct(mac, {foo="bar"} | unwrap bar [1d]) by (version)`,
+		err: logqlmodel.NewParseError("unwrap is not supported for approx_count_distinct", 0, 0),
+	},
+	{
+		// Old split-parenthesis syntax is not supported.
+		in:  `approx_count_distinct(mac) by (version) ({foo="bar"}[1d])`,
+		err: logqlmodel.NewParseError("syntax error: unexpected ), expecting ,", 1, 26),
+	},
+	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
 		err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 	},
