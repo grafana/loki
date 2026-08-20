@@ -809,13 +809,13 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UI, t.initUI)
-	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing)
-	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing)
+	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing, modules.UserInvisibleModule)
+	mm.RegisterModule(DataObjConsumerPartitionRing, t.initDataObjConsumerPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker)
-	mm.RegisterModule(ScratchStore, t.initScratchStore)
+	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 
