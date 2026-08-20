@@ -705,8 +705,8 @@ github.com/cncf/xds/go/xds/type/v3
 # github.com/coder/quartz v0.3.1
 ## explicit; go 1.23.9
 github.com/coder/quartz
-# github.com/containerd/containerd/v2 v2.2.3
-## explicit; go 1.24.3
+# github.com/containerd/containerd/v2 v2.2.5
+## explicit; go 1.25.0
 github.com/containerd/containerd/v2/pkg/tracing
 # github.com/containerd/errdefs v1.0.0
 ## explicit; go 1.20
@@ -2140,7 +2140,7 @@ go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
 go.etcd.io/etcd/api/v3/versionpb
-# go.etcd.io/etcd/client/pkg/v3 v3.6.12
+# go.etcd.io/etcd/client/pkg/v3 v3.6.14
 ## explicit; go 1.25.0
 go.etcd.io/etcd/client/pkg/v3/fileutil
 go.etcd.io/etcd/client/pkg/v3/logutil
