@@ -86,40 +86,88 @@ func (d *decoder) decodeMetadataFromPrefix(blob []byte) (md *filemd.Metadata, me
 	return md, header.MetadataSize, true
 }
 
-// fetchMetadataPrefix reads the contiguous [0, E) prefix that holds the header, the file metadata, and
-// every section's metadata region, where E is the offset of the first data region. Reading exactly this
-// prefix keeps the cached entry to the metadata alone.
+// fetchMetadataPrefix returns the object prefix to cache, sized to the object's shape (see cacheRegionEnd).
+// The returned prefix becomes the prefetched window on open: metadata inside it is served from memory, and
+// anything beyond it is read from object storage.
 func (d *decoder) fetchMetadataPrefix(ctx context.Context) ([]byte, error) {
 	md, buf, metadataSize, err := d.fetchAndDecodeMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// E = end of the last section metadata region = start of the first data region. Section metadata is
-	// written contiguously right after the file metadata (see encoder.Flush).
-	prefixEnd := int64(8) + int64(metadataSize)
-	for _, sec := range md.Sections {
-		prefixEnd += int64(sec.GetLayout().GetMetadata().GetLength())
+	regionEnd := cacheRegionEnd(md, metadataSize)
+
+	// Return a right-sized copy, not a slice of buf. buf can be far larger than the region (a small streams
+	// region out of the head prefetch window). The copy is both cached and kept as the prefetched window, so
+	// a slice would pin buf's whole backing array.
+	if int64(len(buf)) >= regionEnd {
+		return bytes.Clone(buf[:regionEnd]), nil
 	}
 
-	// Return a right-sized copy, not a slice of buf. The copy is cached and kept as the prefetched window,
-	// so it outlives buf. A slice would pin buf's larger backing array.
-	if int64(len(buf)) >= prefixEnd {
-		return bytes.Clone(buf[:prefixEnd]), nil
-	}
-
-	// The metadata is larger than the prefetch window; read the exact prefix.
-	rc, err := d.rr.ReadRange(ctx, 0, prefixEnd)
+	// The region is larger than the head prefetch; read it exactly.
+	rc, err := d.rr.ReadRange(ctx, 0, regionEnd)
 	if err != nil {
-		return nil, fmt.Errorf("reading metadata prefix: %w", err)
+		return nil, fmt.Errorf("opening metadata region range: %w", err)
 	}
 	defer rc.Close()
 
-	prefix := make([]byte, prefixEnd)
-	if _, err := io.ReadFull(rc, prefix); err != nil {
-		return nil, fmt.Errorf("reading metadata prefix: %w", err)
+	region := make([]byte, regionEnd)
+	if _, err := io.ReadFull(rc, region); err != nil {
+		return nil, fmt.Errorf("reading metadata region body: %w", err)
 	}
-	return prefix, nil
+	return region, nil
+}
+
+// Section kinds this package recognises for choosing the cache region. They are string-matched rather than
+// compared to the section packages' types to avoid an import cycle (those packages import dataobj).
+const (
+	sectionKindLogs    = "logs"
+	sectionKindStreams = "streams"
+)
+
+// cacheRegionEnd returns the end offset of the metadata prefix to cache for this object, chosen from its
+// shape:
+//
+//   - A log object (it has a logs section) caches only up to the last streams section's metadata. The hot
+//     streams-reader reads the streams section, written before the logs sections, so this is a small prefix;
+//     the large logs-metadata tail would be dead weight fetched from the cache on every open.
+//
+//   - Any other object (index/pointers, or an unknown type we cannot classify) caches all metadata, which
+//     its readers read in full: there is no large tail to exclude.
+//
+// Offsets are relative to startOff (the end of the file metadata), matching [sectionReader].
+func cacheRegionEnd(md *filemd.Metadata, metadataSize uint64) int64 {
+	startOff := int64(8) + int64(metadataSize)
+	regionEnd := func(sec *filemd.SectionInfo) int64 {
+		r := sec.GetLayout().GetMetadata()
+		return startOff + int64(r.GetOffset()) + int64(r.GetLength())
+	}
+
+	allEnd := startOff
+	for _, sec := range md.Sections {
+		allEnd = max(allEnd, regionEnd(sec))
+	}
+
+	hasLogs := false
+	streamsEnd := startOff
+	for _, sec := range md.Sections {
+		typ, err := getSectionType(md, sec)
+		if err != nil {
+			// A section we cannot classify: cache everything. The open fails later if the type is invalid.
+			return allEnd
+		}
+		switch typ.Kind {
+		case sectionKindLogs:
+			hasLogs = true
+		case sectionKindStreams:
+			streamsEnd = max(streamsEnd, regionEnd(sec))
+		}
+	}
+
+	if hasLogs {
+		return streamsEnd
+	}
+	return allEnd
 }
 
 // fetchAndDecodeMetadata reads the prefetch window from offset 0 and decodes the file metadata. It returns

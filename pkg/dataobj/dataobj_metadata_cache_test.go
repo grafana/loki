@@ -47,23 +47,26 @@ func (c *fakeMetadataCache) GetMetadata(ctx context.Context, key string, load fu
 	return b, nil
 }
 
-// buildTwoSectionObject returns the raw bytes of an object with two sections. The first section's
-// metadata is larger than the minimum prefetch window, exercising the exact-prefix read path.
-func buildTwoSectionObject(t *testing.T, meta0, data0, meta1, data1 []byte) []byte {
+// sectionSpec describes one section to write into a test object, in append order.
+type sectionSpec struct {
+	kind string
+	meta []byte
+	data []byte
+}
+
+// buildObject returns the raw bytes of an object with the given sections, in order. Section metadata is
+// written before any section data, so a spec with large metadata pushes the metadata region end out.
+func buildObject(t *testing.T, secs ...sectionSpec) []byte {
 	t.Helper()
 	b := dataobj.NewBuilder(nil)
-	require.NoError(t, b.Append(fakeSectionBuilder{
-		SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"},
-		FlushFunc: func(w dataobj.SectionWriter) (int64, error) {
-			return w.WriteSection(&dataobj.WriteSectionOptions{Tenant: "t1"}, data0, meta0)
-		},
-	}))
-	require.NoError(t, b.Append(fakeSectionBuilder{
-		SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "streams"},
-		FlushFunc: func(w dataobj.SectionWriter) (int64, error) {
-			return w.WriteSection(&dataobj.WriteSectionOptions{Tenant: "t1"}, data1, meta1)
-		},
-	}))
+	for _, s := range secs {
+		require.NoError(t, b.Append(fakeSectionBuilder{
+			SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: s.kind},
+			FlushFunc: func(w dataobj.SectionWriter) (int64, error) {
+				return w.WriteSection(&dataobj.WriteSectionOptions{Tenant: "t1"}, s.data, s.meta)
+			},
+		}))
+	}
 
 	obj, closer, err := b.Flush()
 	require.NoError(t, err)
@@ -77,65 +80,109 @@ func buildTwoSectionObject(t *testing.T, meta0, data0, meta1, data1 []byte) []by
 	return raw
 }
 
-func TestFromBucket_MetadataCache(t *testing.T) {
+// TestFromBucket_MetadataCache_LogObject: an object with a logs section is detected as a log object, so the
+// cache stores only up to the streams metadata (written first) and excludes the large logs-metadata tail.
+func TestFromBucket_MetadataCache_LogObject(t *testing.T) {
 	ctx := context.Background()
-	// Section 0 metadata exceeds the 16 KiB minimum prefetch, so the prefix must be read exactly.
-	meta0 := bytes.Repeat([]byte("m"), 20*1024)
-	data0 := []byte("data-of-section-0")
-	meta1 := []byte("meta-1")
-	data1 := []byte("data-1")
-	raw := buildTwoSectionObject(t, meta0, data0, meta1, data1)
+	streamsMeta := []byte("streams-meta")
+	logsMeta := bytes.Repeat([]byte("L"), 40*1024) // large tail that must NOT be cached
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: streamsMeta, data: []byte("streams-data")},
+		sectionSpec{kind: "logs", meta: logsMeta, data: []byte("logs-data")},
+	)
 
 	inmem := objstore.NewInMemBucket()
 	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 	cb := &countingBucket{Bucket: inmem}
 	cache := &fakeMetadataCache{m: map[string][]byte{}}
 
-	// First open is a miss: it loads and caches the metadata prefix.
-	obj1, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	// Miss: caches file+streams only, so the blob excludes the 40 KiB logs metadata.
+	_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
 	require.NoError(t, err)
 	require.Equal(t, 1, cache.loads)
-	require.Len(t, cache.m, 1)
-	require.Len(t, obj1.Sections(), 2)
-	// The cached prefix is smaller than the whole object (it holds no data).
-	require.Less(t, len(cache.m["obj"]), len(raw))
-	require.Greater(t, len(cache.m["obj"]), 20*1024) // covers the large section-0 metadata
-	// The miss reads the 16KiB prefetch, then the exact prefix (metadata exceeds the prefetch here).
+	// The region is file + a tiny streams section, well inside the 16 KiB head prefetch — so it excludes the
+	// 40 KiB logs metadata and needs just the one head read.
+	require.Less(t, len(cache.m["obj"]), 16*1024, "file+streams region fits the head prefetch")
+	require.Equal(t, int64(1), cb.getRanges.Load(), "file+streams fits the head prefetch: one read")
+
+	// Hit: opening reads nothing; the streams metadata is served from the cached region.
+	cb.reset()
+	obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.loads, "second open is a hit")
+	require.Zero(t, cb.getRanges.Load(), "opening from the cache reads nothing")
+
+	streamsSec, logsSec := obj.Sections()[0], obj.Sections()[1]
+	require.Equal(t, "streams", streamsSec.Type.Kind)
+	require.Equal(t, "logs", logsSec.Type.Kind)
+
+	gotStreams := readAll(t, func() (io.ReadCloser, error) {
+		return streamsSec.Reader.MetadataRange(ctx, 0, streamsSec.Reader.MetadataSize())
+	})
+	require.Zero(t, cb.getRanges.Load(), "streams metadata comes from the cached region")
+	require.Equal(t, streamsMeta, gotStreams)
+
+	// The logs metadata is beyond the cached region, so it is read from object storage.
+	gotLogs := readAll(t, func() (io.ReadCloser, error) {
+		return logsSec.Reader.MetadataRange(ctx, 0, logsSec.Reader.MetadataSize())
+	})
+	require.Positive(t, cb.getRanges.Load(), "logs metadata is read from object storage")
+	require.Equal(t, logsMeta, gotLogs)
+}
+
+// TestFromBucket_MetadataCache_IndexObject: an object with no logs section (streams + pointers) is detected
+// as an index object, so the cache stores all metadata, including the large pointers metadata.
+func TestFromBucket_MetadataCache_IndexObject(t *testing.T) {
+	ctx := context.Background()
+	pointersMeta := bytes.Repeat([]byte("P"), 40*1024) // large, but still cached in full for an index object
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: []byte("streams-meta"), data: []byte("streams-data")},
+		sectionSpec{kind: "pointers", meta: pointersMeta, data: []byte("pointers-data")},
+	)
+
+	inmem := objstore.NewInMemBucket()
+	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+	cb := &countingBucket{Bucket: inmem}
+	cache := &fakeMetadataCache{m: map[string][]byte{}}
+
+	// Miss: caches all metadata, so the blob includes the 40 KiB pointers metadata but not the data.
+	_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.loads)
+	require.Greater(t, len(cache.m["obj"]), len(pointersMeta), "cached region includes all section metadata")
+	require.Less(t, len(cache.m["obj"]), len(raw), "cached region excludes the section data")
+	// The region exceeds the 16 KiB head prefetch, so it is read exactly after the head read.
 	require.Equal(t, int64(2), cb.getRanges.Load())
 
-	// Second open is a hit: no reload, and no object-storage read at all to open.
+	// Hit: opening reads nothing; even the pointers metadata is served from the cached region.
 	cb.reset()
-	obj2, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
 	require.NoError(t, err)
-	require.Equal(t, 1, cache.loads, "second open is served from the cache")
-	require.Zero(t, cb.getRanges.Load(), "opening from the metadata cache reads nothing from object storage")
+	require.Equal(t, 1, cache.loads, "second open is a hit")
+	require.Zero(t, cb.getRanges.Load(), "opening from the cache reads nothing")
 
-	sec0 := obj2.Sections()[0]
-	require.Equal(t, "logs", sec0.Type.Kind)
-
-	// Section metadata is served from the cached prefix — still no object-storage read.
-	gotMeta := readAll(t, func() (io.ReadCloser, error) { return sec0.Reader.MetadataRange(ctx, 0, sec0.Reader.MetadataSize()) })
-	require.Zero(t, cb.getRanges.Load(), "section metadata comes from the cached prefix")
-	require.Equal(t, meta0, gotMeta)
-
-	// Section data is beyond the cached prefix, so it does hit object storage and returns correctly.
-	gotData := readAll(t, func() (io.ReadCloser, error) { return sec0.Reader.DataRange(ctx, 0, sec0.Reader.DataSize()) })
-	require.Positive(t, cb.getRanges.Load(), "section data is read from object storage")
-	require.Equal(t, data0, gotData)
+	pointersSec := obj.Sections()[1]
+	require.Equal(t, "pointers", pointersSec.Type.Kind)
+	gotPointers := readAll(t, func() (io.ReadCloser, error) {
+		return pointersSec.Reader.MetadataRange(ctx, 0, pointersSec.Reader.MetadataSize())
+	})
+	require.Zero(t, cb.getRanges.Load(), "all metadata, including pointers, comes from the cached region")
+	require.Equal(t, pointersMeta, gotPointers)
 }
 
 func TestFromBucket_MetadataCache_MatchesUncachedOpen(t *testing.T) {
 	ctx := context.Background()
-	raw := buildTwoSectionObject(t, []byte("meta-0"), []byte("data-0"), []byte("meta-1"), []byte("data-1"))
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: []byte("meta-0"), data: []byte("data-0")},
+		sectionSpec{kind: "logs", meta: []byte("meta-1"), data: []byte("data-1")},
+	)
 
 	inmem := objstore.NewInMemBucket()
 	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
 
-	// Uncached open (metadataDirect path).
-	direct, err := dataobj.FromBucket(ctx, inmem, "obj", 0)
+	direct, err := dataobj.FromBucket(ctx, inmem, "obj", 0) // no cache -> metadataDirect
 	require.NoError(t, err)
 
-	// Cached open, warmed by a first miss.
 	cache := &fakeMetadataCache{m: map[string][]byte{}}
 	_, err = dataobj.FromBucket(ctx, inmem, "obj", 0, dataobj.WithMetadataCache(cache))
 	require.NoError(t, err)
@@ -148,6 +195,15 @@ func TestFromBucket_MetadataCache_MatchesUncachedOpen(t *testing.T) {
 		require.Equal(t, direct.Sections()[i].Type, cached.Sections()[i].Type)
 		require.Equal(t, direct.Sections()[i].Tenant, cached.Sections()[i].Tenant)
 
+		// Metadata: the region sizing is exactly what this feature changes, so compare it directly.
+		wantMeta := readAll(t, func() (io.ReadCloser, error) {
+			return direct.Sections()[i].Reader.MetadataRange(ctx, 0, direct.Sections()[i].Reader.MetadataSize())
+		})
+		gotMeta := readAll(t, func() (io.ReadCloser, error) {
+			return cached.Sections()[i].Reader.MetadataRange(ctx, 0, cached.Sections()[i].Reader.MetadataSize())
+		})
+		require.Equal(t, wantMeta, gotMeta)
+
 		wantData := readAll(t, func() (io.ReadCloser, error) {
 			return direct.Sections()[i].Reader.DataRange(ctx, 0, direct.Sections()[i].Reader.DataSize())
 		})
@@ -158,9 +214,87 @@ func TestFromBucket_MetadataCache_MatchesUncachedOpen(t *testing.T) {
 	}
 }
 
+// TestFromBucket_MetadataCache_LogObjectNoStreams: a log object with no streams section caches only the file
+// metadata (streamsEnd stays at startOff), so no section metadata is cached at all.
+func TestFromBucket_MetadataCache_LogObjectNoStreams(t *testing.T) {
+	ctx := context.Background()
+	logsMeta := bytes.Repeat([]byte("L"), 40*1024)
+	raw := buildObject(t, sectionSpec{kind: "logs", meta: logsMeta, data: []byte("logs-data")})
+
+	inmem := objstore.NewInMemBucket()
+	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+	cb := &countingBucket{Bucket: inmem}
+	cache := &fakeMetadataCache{m: map[string][]byte{}}
+
+	// Miss: caches file metadata only, so the blob excludes the logs metadata; one head read covers it.
+	_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Less(t, len(cache.m["obj"]), len(logsMeta), "no streams section: nothing but file metadata is cached")
+	require.Equal(t, int64(1), cb.getRanges.Load())
+
+	// Hit: opening reads nothing, but the logs metadata is beyond the cached region, so reading it hits storage.
+	cb.reset()
+	obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.loads, "second open is a hit")
+	require.Zero(t, cb.getRanges.Load(), "opening from the cache reads nothing")
+
+	got := readAll(t, func() (io.ReadCloser, error) {
+		return obj.Sections()[0].Reader.MetadataRange(ctx, 0, obj.Sections()[0].Reader.MetadataSize())
+	})
+	require.Positive(t, cb.getRanges.Load(), "logs metadata is beyond the cached region")
+	require.Equal(t, logsMeta, got)
+}
+
+// TestFromBucket_MetadataCache_StreamsStraddlingLogs pins the offset-based, order-independent boundary: a
+// streams section placed AFTER a large logs section must still be covered by the cached region. A boundary
+// that summed streams-metadata lengths (rather than reading layout offsets), or kept only the first streams
+// section, would stop short and read the trailing streams metadata from storage on every hit.
+func TestFromBucket_MetadataCache_StreamsStraddlingLogs(t *testing.T) {
+	ctx := context.Background()
+	logsMeta := bytes.Repeat([]byte("L"), 40*1024) // pushes the second streams section well past the head
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: []byte("s0-meta"), data: []byte("s0-data")},
+		sectionSpec{kind: "logs", meta: logsMeta, data: []byte("logs-data")},
+		sectionSpec{kind: "streams", meta: []byte("s1-meta"), data: []byte("s1-data")},
+	)
+
+	inmem := objstore.NewInMemBucket()
+	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
+	cb := &countingBucket{Bucket: inmem}
+	cache := &fakeMetadataCache{m: map[string][]byte{}}
+
+	// The region reaches the last streams section (past the 40 KiB logs metadata), so the miss reads the head
+	// and then the exact region.
+	_, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Greater(t, len(cache.m["obj"]), len(logsMeta), "region reaches the streams section after the logs tail")
+	require.Equal(t, int64(2), cb.getRanges.Load(), "region exceeds the head prefetch: head read + exact read")
+
+	// Hit: every streams section's metadata — including the one after the logs tail — is served from cache.
+	cb.reset()
+	obj, err := dataobj.FromBucket(ctx, cb, "obj", 0, dataobj.WithMetadataCache(cache))
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.loads, "second open is a hit")
+
+	s0, s1 := obj.Sections()[0], obj.Sections()[2]
+	require.Equal(t, "streams", s0.Type.Kind)
+	require.Equal(t, "streams", s1.Type.Kind)
+	require.Equal(t, []byte("s0-meta"), readAll(t, func() (io.ReadCloser, error) {
+		return s0.Reader.MetadataRange(ctx, 0, s0.Reader.MetadataSize())
+	}))
+	require.Equal(t, []byte("s1-meta"), readAll(t, func() (io.ReadCloser, error) {
+		return s1.Reader.MetadataRange(ctx, 0, s1.Reader.MetadataSize())
+	}))
+	require.Zero(t, cb.getRanges.Load(), "both streams sections' metadata come from the cached region")
+}
+
 func TestFromBucket_MetadataCache_CorruptEntryFallsBack(t *testing.T) {
 	ctx := context.Background()
-	raw := buildTwoSectionObject(t, []byte("meta-0"), []byte("data-0"), []byte("meta-1"), []byte("data-1"))
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: []byte("meta-0"), data: []byte("data-0")},
+		sectionSpec{kind: "logs", meta: []byte("meta-1"), data: []byte("data-1")},
+	)
 
 	inmem := objstore.NewInMemBucket()
 	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
@@ -173,7 +307,6 @@ func TestFromBucket_MetadataCache_CorruptEntryFallsBack(t *testing.T) {
 	require.Len(t, obj.Sections(), 2)
 	require.Positive(t, cb.getRanges.Load(), "the fallback reads from object storage")
 
-	// Data reads correctly via the fallback.
 	sec := obj.Sections()[0]
 	got := readAll(t, func() (io.ReadCloser, error) { return sec.Reader.DataRange(ctx, 0, sec.Reader.DataSize()) })
 	require.Equal(t, []byte("data-0"), got)
@@ -183,7 +316,10 @@ func TestFromBucket_MetadataCache_CorruptEntryFallsBack(t *testing.T) {
 // bytes, so a regression in the shared read/decode helper is caught even if it breaks both paths alike.
 func TestFromBucket_NoCache_ReadsMetadataAndData(t *testing.T) {
 	ctx := context.Background()
-	raw := buildTwoSectionObject(t, []byte("meta-0"), []byte("data-0"), []byte("meta-1"), []byte("data-1"))
+	raw := buildObject(t,
+		sectionSpec{kind: "streams", meta: []byte("meta-0"), data: []byte("data-0")},
+		sectionSpec{kind: "logs", meta: []byte("meta-1"), data: []byte("data-1")},
+	)
 
 	inmem := objstore.NewInMemBucket()
 	require.NoError(t, inmem.Upload(ctx, "obj", bytes.NewReader(raw)))
@@ -193,7 +329,7 @@ func TestFromBucket_NoCache_ReadsMetadataAndData(t *testing.T) {
 	require.Len(t, obj.Sections(), 2)
 
 	sec := obj.Sections()[0]
-	require.Equal(t, "logs", sec.Type.Kind)
+	require.Equal(t, "streams", sec.Type.Kind)
 	require.Equal(t, []byte("meta-0"), readAll(t, func() (io.ReadCloser, error) {
 		return sec.Reader.MetadataRange(ctx, 0, sec.Reader.MetadataSize())
 	}))
