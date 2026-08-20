@@ -806,7 +806,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
-	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing, modules.UserInvisibleModule)
@@ -815,6 +814,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 	mm.RegisterModule(DataObjCompactionPlanner, t.initDataObjCompactionPlanner)
 	mm.RegisterModule(DataObjCompactionWorker, t.initDataObjCompactionWorker)
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
