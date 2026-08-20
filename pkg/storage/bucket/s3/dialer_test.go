@@ -3,7 +3,6 @@ package s3
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"slices"
 	"testing"
@@ -220,41 +219,37 @@ func TestInstrumentedDialContextCountsConnections(t *testing.T) {
 	deadAddr := dead.Addr().String()
 	require.NoError(t, dead.Close())
 
-	for _, shuffle := range []bool{false, true} {
-		t.Run(fmt.Sprintf("shuffle=%t", shuffle), func(t *testing.T) {
-			name := fmt.Sprintf("s3-test-%t", shuffle)
-			dial := instrumentedDialContext((&net.Dialer{}).DialContext, fmt.Sprintf("test-%t", shuffle), shuffle)
+	name := "test"
+	dial := instrumentedDialContextFunc((&net.Dialer{}).DialContext, name)
 
-			// Measured as deltas: go-conntrack registers on the default
-			// registry, so a repeated run starts from a non-zero baseline.
-			base := map[string]float64{}
-			for _, metric := range []string{"attempted", "established", "failed", "closed"} {
-				metric = "net_conntrack_dialer_conn_" + metric + "_total"
-				base[metric] = dialerCounter(t, metric, name)
-			}
-			counter := func(metric string) float64 {
-				metric = "net_conntrack_dialer_conn_" + metric + "_total"
-				return dialerCounter(t, metric, name) - base[metric]
-			}
-
-			conn, err := dial(context.Background(), "tcp", l.Addr().String())
-			require.NoError(t, err)
-
-			assert.Equal(t, 1.0, counter("attempted"))
-			assert.Equal(t, 1.0, counter("established"))
-			assert.Equal(t, 0.0, counter("closed"))
-
-			require.NoError(t, conn.Close())
-			assert.Equal(t, 1.0, counter("closed"))
-
-			_, err = dial(context.Background(), "tcp", deadAddr)
-			require.Error(t, err)
-
-			assert.Equal(t, 2.0, counter("attempted"))
-			assert.Equal(t, 1.0, counter("established"))
-			// Summed across reasons rather than compared exactly: go-conntrack
-			// counts a refused connection under both "refused" and "unknown".
-			assert.GreaterOrEqual(t, counter("failed"), 1.0)
-		})
+	// Measured as deltas: go-conntrack registers on the default
+	// registry, so a repeated run starts from a non-zero baseline.
+	base := map[string]float64{}
+	for _, metric := range []string{"attempted", "established", "failed", "closed"} {
+		metric = "net_conntrack_dialer_conn_" + metric + "_total"
+		base[metric] = dialerCounter(t, metric, name)
 	}
+	counter := func(metric string) float64 {
+		metric = "net_conntrack_dialer_conn_" + metric + "_total"
+		return dialerCounter(t, metric, name) - base[metric]
+	}
+
+	conn, err := dial(context.Background(), "tcp", l.Addr().String())
+	require.NoError(t, err)
+
+	assert.Equal(t, 1.0, counter("attempted"))
+	assert.Equal(t, 1.0, counter("established"))
+	assert.Equal(t, 0.0, counter("closed"))
+
+	require.NoError(t, conn.Close())
+	assert.Equal(t, 1.0, counter("closed"))
+
+	_, err = dial(context.Background(), "tcp", deadAddr)
+	require.Error(t, err)
+
+	assert.Equal(t, 2.0, counter("attempted"))
+	assert.Equal(t, 1.0, counter("established"))
+	// Summed across reasons rather than compared exactly: go-conntrack
+	// counts a refused connection under both "refused" and "unknown".
+	assert.GreaterOrEqual(t, counter("failed"), 1.0)
 }

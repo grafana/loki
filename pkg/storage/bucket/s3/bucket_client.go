@@ -70,7 +70,13 @@ func newS3Config(cfg Config, name string) (s3.Config, error) {
 		if err != nil {
 			return s3.Config{}, err
 		}
-		transport.DialContext = instrumentedDialContext(transport.DialContext, name, cfg.ShuffleAddresses)
+		dialFn := instrumentedDialContextFunc(transport.DialContext, "s3-"+name)
+		if cfg.ShuffleAddresses {
+			d := newShufflingDialer()
+			d.dialContext = dialFn
+			dialFn = d.DialContext
+		}
+		transport.DialContext = dialFn
 		httpCfg.Transport = transport
 	}
 

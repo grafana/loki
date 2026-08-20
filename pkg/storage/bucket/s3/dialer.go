@@ -12,21 +12,15 @@ import (
 
 type dialContextFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
-// instrumentedDialContext adds metrics to dial:
+// instrumentedDialContextFunc adds metrics to dial:
 //
 //   - go-conntrack counts every connection attempted, established, failed and
 //     closed, under net_conntrack_dialer_conn_*_total{dialer_name="s3-<name>"}.
 //   - addressTracker counts how many distinct remote addresses those
 //     connections reached, under loki_s3_dialer_*_addresses{dialer_name=...}.
-//
-// Both sit underneath the shuffling dialer rather than above it, so a dial that
-// walks several addresses is measured per address rather than once for the
-// hostname.
-func instrumentedDialContext(dial dialContextFunc, name string, shuffleAddresses bool) dialContextFunc {
-	dialerName := "s3-" + name
-
+func instrumentedDialContextFunc(dial dialContextFunc, dialerName string) dialContextFunc {
 	tracked := newAddressTracker(dialerName).wrap(dial)
-	dial = conntrack.NewDialContextFunc(
+	return conntrack.NewDialContextFunc(
 		conntrack.DialWithName(dialerName),
 		// Passed as an unnamed func type because go-conntrack takes its own
 		// named one, which dialContextFunc is not assignable to.
@@ -34,14 +28,6 @@ func instrumentedDialContext(dial dialContextFunc, name string, shuffleAddresses
 			return tracked(ctx, network, address)
 		}),
 	)
-
-	if shuffleAddresses {
-		d := newShufflingDialer()
-		d.dialContext = dial
-		dial = d.DialContext
-	}
-
-	return dial
 }
 
 // shufflingDialer spreads connections across all addresses returned from DNS.
