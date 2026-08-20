@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package stdoutlog // import "go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+package stdoutlog
 
 import (
 	"context"

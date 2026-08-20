@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package internal provides internal utilities for the OpenTelemetry prometheus exporter.
-package internal // import "go.opentelemetry.io/otel/exporters/prometheus/internal"
+package internal
 
 // Version is the current release version of the OpenTelemetry prometheus
 // exporter in use.
-const Version = "0.66.0"
+const Version = "0.67.0"
