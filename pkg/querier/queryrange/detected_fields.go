@@ -187,7 +187,7 @@ func makeDownstreamRequest(
 	}
 
 	if err := validateMaxEntriesLimits(ctx, req.LineLimit, limits); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		return nil, err
 	}
 
 	if err := validateMatchers(ctx, limits, expr.Matchers()); err != nil {

@@ -359,6 +359,13 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		storeType = st
 	}
 
+	ccCfg := cfg.CongestionControl
+	if cfg.UseThanosObjstore && congestionControlReplacesThanosRetries(ccCfg, storeType) {
+		if err := cfg.ObjectStore.DisableRetries(name); err != nil {
+			return nil, fmt.Errorf("disable object-store retries: %w", err)
+		}
+	}
+
 	c, err := NewObjectClient(name, component, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
@@ -368,7 +375,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	}
 
-	if ccCfg := cfg.CongestionControl; ccCfg.Enabled {
+	if ccCfg.Enabled {
 		cc := congestion.NewController(
 			ccCfg,
 			logger,
@@ -377,6 +384,17 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		c = cc.Wrap(c)
 	}
 	return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+}
+
+func congestionControlReplacesThanosRetries(cfg congestion.Config, storeType string) bool {
+	if storeType != bucket.S3 && storeType != bucket.GCS {
+		return false
+	}
+
+	return cfg.Enabled &&
+		strings.EqualFold(cfg.Controller.Strategy, congestion.StrategyAIMD) &&
+		strings.EqualFold(cfg.Retry.Strategy, congestion.RetryStrategyLimited) &&
+		cfg.Retry.Limit > 0
 }
 
 type ClientMetrics struct {
@@ -396,7 +414,7 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+		c, err := bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
 		if err != nil {
 			// See if the admin has forgotten to set up any config, e.g. because they didn't realize the default changed.
 			var blankConfig bucket.ConfigWithNamedStores

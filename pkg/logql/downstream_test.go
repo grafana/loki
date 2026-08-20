@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -984,4 +987,40 @@ and
   >
     10`
 	assert.Equal(t, expected, got)
+}
+
+// partialResultDownstreamer returns the results of the shards that completed
+// together with the error of the one that failed, as instance.For does.
+type partialResultDownstreamer struct {
+	results []logqlmodel.Result
+	err     error
+}
+
+func (d partialResultDownstreamer) Downstream(_ context.Context, _ []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
+	return d.results, d.err
+}
+
+// TestDownstreamEvaluator_KeepsCompletedShardUsageOnError covers a single
+// Downstream call where one shard completed and another failed: the completed
+// shard's usage must still reach the partial collector, since the engine drops
+// the results along with the error.
+func TestDownstreamEvaluator_KeepsCompletedShardUsageOnError(t *testing.T) {
+	const shardABytes = 4096
+
+	partial, ctx := stats.NewPartialContext(context.Background())
+
+	ev := DownstreamEvaluator{Downstreamer: partialResultDownstreamer{
+		// Shard A completed; shard B failed and contributed no result.
+		results: []logqlmodel.Result{{
+			Statistics: stats.Result{
+				Querier: stats.Querier{Store: stats.Store{Chunk: stats.Chunk{DecompressedBytes: shardABytes}}},
+			},
+		}},
+		err: errors.New("shard B failed"),
+	}}
+
+	res, err := ev.Downstream(ctx, []DownstreamQuery{{}, {}}, nil)
+	require.Error(t, err)
+	require.Nil(t, res)
+	require.Equal(t, int64(shardABytes), partial.Result().Querier.Store.Chunk.DecompressedBytes)
 }
