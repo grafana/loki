@@ -273,7 +273,7 @@ require (
 	go.opentelemetry.io/collector/consumer v1.64.0 // indirect
 	go.opentelemetry.io/collector/featuregate v1.65.0 // indirect
 	go.opentelemetry.io/collector/internal/componentalias v0.159.0 // indirect
-	go.opentelemetry.io/collector/pipeline v1.64.0 // indirect
+	go.opentelemetry.io/collector/pipeline v1.65.0 // indirect
 	go.opentelemetry.io/collector/processor v1.64.0 // indirect
 	go.opentelemetry.io/contrib/bridges/prometheus v0.70.0 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.45.0 // indirect
