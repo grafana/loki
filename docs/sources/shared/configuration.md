@@ -3402,8 +3402,8 @@ ring:
 [push_worker_count: <int> | default = 256]
 
 # The maximum size of a Push request.
-# CLI flag: -distributor.max-push-size
-[max_push_size: <int> | default = 2147483647]
+# CLI flag: -distributor.max-push-size-bytes
+[max_push_size_bytes: <int> | default = 2147483647]
 
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
