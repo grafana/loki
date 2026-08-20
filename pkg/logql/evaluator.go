@@ -376,6 +376,9 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		}
 		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.LabelAggregationExpr:
+		if GetRangeType(q) != InstantType {
+			return nil, fmt.Errorf("approx_count_distinct is only supported on instant queries")
+		}
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
 				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
@@ -391,7 +394,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, e.Left.Interval, e.Left.Offset)
+		eval, err := newCountDistinctStepEvaluator(iter.NewPeekingSampleIterator(it), q, e.Left.Interval, e.Left.Offset)
+		if err != nil {
+			_ = it.Close()
+			return nil, err
+		}
+		return eval, nil
 	case *syntax.BinOpExpr:
 		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
