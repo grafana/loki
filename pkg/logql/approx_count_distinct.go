@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -274,4 +276,113 @@ func (e *countDistinctSketchEvaluator) Error() error {
 
 func (e *countDistinctSketchEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinct")
+}
+
+// CountDistinctMergeExpr concatenates sharded CountDistinctSketchExpr children.
+type CountDistinctMergeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e *CountDistinctMergeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("CountDistinctMerge<%s>", sb.String())
+}
+
+func (e *CountDistinctMergeExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+// CountDistinctEvalExpr merges sharded sketches then estimates.
+type CountDistinctEvalExpr struct {
+	syntax.SampleExpr
+	mergeExpr *CountDistinctMergeExpr
+}
+
+func (e *CountDistinctEvalExpr) String() string {
+	if e.mergeExpr == nil {
+		return "CountDistinctEval<>"
+	}
+	return fmt.Sprintf("CountDistinctEval<%s>", e.mergeExpr.String())
+}
+
+func (e *CountDistinctEvalExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.mergeExpr != nil {
+		e.mergeExpr.Walk(f)
+	}
+}
+
+// CountDistinctMatrixStepEvaluator steps through a matrix of count-distinct sketches.
+type CountDistinctMatrixStepEvaluator struct {
+	end, ts time.Time
+	step    time.Duration
+	m       CountDistinctMatrix
+}
+
+func NewCountDistinctMatrixStepEvaluator(m CountDistinctMatrix, params Params) *CountDistinctMatrixStepEvaluator {
+	return &CountDistinctMatrixStepEvaluator{
+		end:  params.End(),
+		ts:   params.Start().Add(-params.Step()), // corrected on first Next()
+		step: params.Step(),
+		m:    m,
+	}
+}
+
+func (m *CountDistinctMatrixStepEvaluator) Next() (bool, int64, StepResult) {
+	m.ts = m.ts.Add(m.step)
+	if m.ts.After(m.end) {
+		return false, 0, nil
+	}
+	ts := m.ts.UnixNano() / int64(time.Millisecond)
+	if len(m.m) == 0 {
+		return false, 0, nil
+	}
+	vec := m.m[0]
+	m.m = m.m[1:]
+	return true, ts, vec
+}
+
+func (*CountDistinctMatrixStepEvaluator) Close() error { return nil }
+func (*CountDistinctMatrixStepEvaluator) Error() error { return nil }
+func (e *CountDistinctMatrixStepEvaluator) Explain(parent Node) {
+	parent.Child("CountDistinctMatrix")
+}
+
+// CountDistinctVectorStepEvaluator estimates one sketch vector per step.
+type CountDistinctVectorStepEvaluator struct {
+	inner StepEvaluator
+}
+
+var _ StepEvaluator = NewCountDistinctVectorStepEvaluator(nil)
+
+func NewCountDistinctVectorStepEvaluator(inner StepEvaluator) *CountDistinctVectorStepEvaluator {
+	return &CountDistinctVectorStepEvaluator{inner: inner}
+}
+
+func (e *CountDistinctVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	ok, ts, r := e.inner.Next()
+	if !ok {
+		return false, 0, SampleVector{}
+	}
+	return ok, ts, r.CountDistinctVec().Estimate()
+}
+
+func (*CountDistinctVectorStepEvaluator) Close() error { return nil }
+func (*CountDistinctVectorStepEvaluator) Error() error { return nil }
+func (e *CountDistinctVectorStepEvaluator) Explain(parent Node) {
+	parent.Child("CountDistinctVector")
 }

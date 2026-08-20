@@ -188,6 +188,71 @@ func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
 	}
 }
 
+type CountDistinctAccumulator struct {
+	matrix CountDistinctMatrix
+
+	stats    stats.Result
+	headers  map[string][]string
+	warnings map[string]struct{}
+}
+
+func newCountDistinctAccumulator() *CountDistinctAccumulator {
+	return &CountDistinctAccumulator{
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
+	}
+}
+
+func (a *CountDistinctAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != CountDistinctMatrixType {
+		return fmt.Errorf("unexpected data type: got (%s), want (%s)", res.Data.Type(), CountDistinctMatrixType)
+	}
+	data, ok := res.Data.(CountDistinctMatrix)
+	if !ok {
+		return fmt.Errorf("unexpected type: got (%T), want (CountDistinctMatrix)", res.Data)
+	}
+
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+	metadata.ExtendHeaders(a.headers, res.Headers)
+	for _, w := range res.Warnings {
+		a.warnings[w] = struct{}{}
+	}
+
+	if a.matrix == nil {
+		a.matrix = data
+		return nil
+	}
+
+	var err error
+	a.matrix, err = a.matrix.Merge(data)
+	return err
+}
+
+func (a *CountDistinctAccumulator) Result() []logqlmodel.Result {
+	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
+	for name, vals := range a.headers {
+		headers = append(
+			headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+	warnings := slices.Sorted(maps.Keys(a.warnings))
+	return []logqlmodel.Result{
+		{
+			Data:       a.matrix,
+			Headers:    headers,
+			Warnings:   warnings,
+			Statistics: a.stats,
+		},
+	}
+}
+
 // heap impl for keeping only the top n results across m streams
 // importantly, AccumulatedStreams is _bounded_, so it will only
 // store the top `limit` results across all streams.

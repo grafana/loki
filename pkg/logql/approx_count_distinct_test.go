@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestCountDistinctVectorMerge(t *testing.T) {
@@ -359,4 +360,106 @@ func TestCountDistinctSketchExprRangeSteps(t *testing.T) {
 		estimates = append(estimates, sketches[0].F.Estimate())
 	}
 	require.Equal(t, []uint64{2, 1, 1}, estimates)
+}
+
+func overlapStreams(now time.Time) []logproto.Stream {
+	return []logproto.Stream{
+		{
+			Labels: `{job="devices", version="1", shard="a"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now.Add(-20 * time.Second), Line: `mac="shared"`},
+				{Timestamp: now.Add(-10 * time.Second), Line: `mac="only-a"`},
+			},
+		},
+		{
+			Labels: `{job="devices", version="1", shard="b"}`,
+			Entries: []logproto.Entry{
+				{Timestamp: now.Add(-15 * time.Second), Line: `mac="shared"`},
+				{Timestamp: now.Add(-5 * time.Second), Line: `mac="only-b"`},
+			},
+		},
+	}
+}
+
+func execShardedApproxCountDistinct(t *testing.T, query string, start, end time.Time, step time.Duration) (logqlmodel.Result, logqlmodel.Result) {
+	t.Helper()
+	q := NewMockQuerier(2, overlapStreams(start))
+	opts := EngineOpts{}
+	regular := NewEngine(opts, q, NoLimits, nil)
+	sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, nil)
+
+	params, err := NewLiteralParams(query, start, end, step, 0, logproto.FORWARD, 1000, nil, nil)
+	require.NoError(t, err)
+
+	mapper := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+	_, _, mapped, err := mapper.Parse(params.GetExpression())
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "fake")
+	localRes, err := regular.Query(params).Exec(ctx)
+	require.NoError(t, err)
+
+	shardedRes, err := sharded.Query(ctx, ParamsWithExpressionOverride{
+		Params:             params,
+		ExpressionOverride: mapped.(syntax.SampleExpr),
+	}).Exec(ctx)
+	require.NoError(t, err)
+	return localRes, shardedRes
+}
+
+func TestApproxCountDistinctShardedOverlap(t *testing.T) {
+	now := time.Unix(100, 0)
+	localRes, shardedRes := execShardedApproxCountDistinct(
+		t,
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
+		now, now, 0,
+	)
+
+	localVec := localRes.Data.(promql.Vector)
+	shardedVec := shardedRes.Data.(promql.Vector)
+	require.Len(t, localVec, 1)
+	require.Len(t, shardedVec, 1)
+	// shared + only-a + only-b = 3 distinct values across shards
+	require.InDelta(t, 3, localVec[0].F, 0.01)
+	require.InDelta(t, localVec[0].F, shardedVec[0].F, 0.01)
+}
+
+func TestApproxCountDistinctShardedUngrouped(t *testing.T) {
+	now := time.Unix(100, 0)
+	localRes, shardedRes := execShardedApproxCountDistinct(
+		t,
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by ()`,
+		now, now, 0,
+	)
+
+	localVec := localRes.Data.(promql.Vector)
+	shardedVec := shardedRes.Data.(promql.Vector)
+	require.Len(t, localVec, 1)
+	require.True(t, localVec[0].Metric.IsEmpty())
+	require.InDelta(t, 3, localVec[0].F, 0.01)
+	require.InDelta(t, localVec[0].F, shardedVec[0].F, 0.01)
+}
+
+func TestApproxCountDistinctShardedRange(t *testing.T) {
+	start := time.Unix(100, 0)
+	end := start.Add(30 * time.Second)
+	step := 30 * time.Second
+	localRes, shardedRes := execShardedApproxCountDistinct(
+		t,
+		`approx_count_distinct(mac, {job="devices"} | logfmt [1m]) by (version)`,
+		start, end, step,
+	)
+
+	localMatrix := localRes.Data.(promql.Matrix)
+	shardedMatrix := shardedRes.Data.(promql.Matrix)
+	require.Len(t, localMatrix, 1)
+	require.Len(t, shardedMatrix, 1)
+	require.Equal(t, localMatrix[0].Metric, shardedMatrix[0].Metric)
+	require.Len(t, localMatrix[0].Floats, 2)
+	require.Len(t, shardedMatrix[0].Floats, 2)
+	for i := range localMatrix[0].Floats {
+		require.Equal(t, localMatrix[0].Floats[i].T, shardedMatrix[0].Floats[i].T)
+		require.InDelta(t, localMatrix[0].Floats[i].F, shardedMatrix[0].Floats[i].F, 0.01)
+		require.InDelta(t, 3, localMatrix[0].Floats[i].F, 0.01)
+	}
 }

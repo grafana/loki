@@ -16,29 +16,32 @@ import (
 )
 
 const (
-	ShardLastOverTime     = "last_over_time"
-	ShardFirstOverTime    = "first_over_time"
-	ShardQuantileOverTime = "quantile_over_time"
-	SupportApproxTopk     = "approx_topk"
+	ShardLastOverTime          = "last_over_time"
+	ShardFirstOverTime         = "first_over_time"
+	ShardQuantileOverTime      = "quantile_over_time"
+	SupportApproxTopk          = "approx_topk"
+	SupportApproxCountDistinct = "approx_count_distinct"
 )
 
 type ShardMapper struct {
-	shards                   ShardingStrategy
-	metrics                  *MapperMetrics
-	quantileOverTimeSharding bool
-	lastOverTimeSharding     bool
-	firstOverTimeSharding    bool
-	approxTopkSupport        bool
+	shards                     ShardingStrategy
+	metrics                    *MapperMetrics
+	quantileOverTimeSharding   bool
+	lastOverTimeSharding       bool
+	firstOverTimeSharding      bool
+	approxTopkSupport          bool
+	approxCountDistinctSupport bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
 	mapper := ShardMapper{
-		shards:                   strategy,
-		metrics:                  metrics,
-		quantileOverTimeSharding: false,
-		lastOverTimeSharding:     false,
-		firstOverTimeSharding:    false,
-		approxTopkSupport:        false,
+		shards:                     strategy,
+		metrics:                    metrics,
+		quantileOverTimeSharding:   false,
+		lastOverTimeSharding:       false,
+		firstOverTimeSharding:      false,
+		approxTopkSupport:          false,
+		approxCountDistinctSupport: false,
 	}
 	for _, a := range shardAggregation {
 		switch a {
@@ -50,6 +53,8 @@ func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggr
 			mapper.firstOverTimeSharding = true
 		case SupportApproxTopk:
 			mapper.approxTopkSupport = true
+		case SupportApproxCountDistinct:
+			mapper.approxCountDistinctSupport = true
 		}
 	}
 
@@ -101,6 +106,8 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder, topLevel bool)
 		return m.mapLabelReplaceExpr(e, r, topLevel)
 	case *syntax.RangeAggregationExpr:
 		return m.mapRangeAggregationExpr(e, r, topLevel)
+	case *syntax.LabelAggregationExpr:
+		return m.mapLabelAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
 		return m.mapBinOpExpr(e, r, topLevel)
 	default:
@@ -424,6 +431,47 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 		Grouping:  expr.Grouping,
 		Operation: syntax.OpTypeTopK,
 		Params:    expr.Params,
+	}, bytesPerShard, nil
+}
+
+func (m ShardMapper) mapLabelAggregationExpr(expr *syntax.LabelAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
+	if !m.approxCountDistinctSupport {
+		return nil, 0, fmt.Errorf("approx_count_distinct is not enabled. See -limits.shard_aggregations")
+	}
+
+	// approx_count_distinct(field, range) by (g) ->
+	// CountDistinctEval(
+	//   CountDistinctMerge(
+	//     CountDistinctSketch(field, range)[shard=0] ++ ...
+	//   )
+	// )
+	sketchExpr := syntax.NewCountDistinctSketchFromLabelAggregation(expr)
+
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	downstreams := make([]DownstreamSampleExpr, 0, max(1, len(shards)))
+	if len(shards) == 0 {
+		// Preserve merge-before-estimate even with zero shards.
+		downstreams = append(downstreams, DownstreamSampleExpr{
+			SampleExpr: sketchExpr,
+		})
+	} else {
+		for i := range shards {
+			downstreams = append(downstreams, DownstreamSampleExpr{
+				shard:      &shards[i],
+				SampleExpr: sketchExpr,
+			})
+		}
+		r.Add(len(shards), MetricsKey)
+	}
+
+	return &CountDistinctEvalExpr{
+		mergeExpr: &CountDistinctMergeExpr{
+			downstreams: downstreams,
+		},
 	}, bytesPerShard, nil
 }
 
