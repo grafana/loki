@@ -1151,9 +1151,9 @@ func Test_Reader_ReadWithPredicate_MixedReusedAndNewColumn(t *testing.T) {
 	dset, columns := buildTestDataset(t)
 
 	r := NewRowReader(RowReaderOptions{
-		Dataset:  dset,
-		Columns:  columns,
-		Prefetch: true,
+		Dataset:           dset,
+		Columns:           columns,
+		PrefetchAllOnOpen: true,
 		Predicates: []Predicate{
 			GreaterThanPredicate{Column: columns[3], Value: Int64Value(1980)}, // birth_year
 			AndPredicate{

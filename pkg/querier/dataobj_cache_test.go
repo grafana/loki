@@ -127,7 +127,7 @@ func TestDataObjCache_StreamLabels_ShardBucketFilter(t *testing.T) {
 
 	t.Run("filter to one stream's bucket prunes the others", func(t *testing.T) {
 		fooBucket := streams.ShardBucket(foo)
-		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{shardBucket: &shardBucketFilter{from: fooBucket, to: fooBucket}})
+		got, filtered, err := oo.streamLabels(ctx, wantSet(ids...), readQuery{shardBucket: &shardBucketFilter{from: uint64(fooBucket), to: uint64(fooBucket)}})
 		require.NoError(t, err)
 		require.True(t, filtered)
 		// Exactly the streams whose bucket equals foo's survive.

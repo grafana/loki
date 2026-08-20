@@ -85,10 +85,10 @@ func BenchmarkRowReaderReadAndFilter(b *testing.B) {
 	}
 
 	opts := RowReaderOptions{
-		Dataset:    dset,
-		Columns:    columns,
-		Predicates: predicates,
-		Prefetch:   true,
+		Dataset:           dset,
+		Columns:           columns,
+		Predicates:        predicates,
+		PrefetchAllOnOpen: true,
 	}
 
 	ctx := context.Background()
