@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -179,6 +180,9 @@ type Options struct {
 
 	// private option for testability.
 	skipJitterOffsetting bool
+
+	// private option for testability: replaces the FQDN lookup.
+	fqdn string
 }
 
 // Manager maintains a set of scrape pools and manages start/stop cycles
@@ -307,9 +311,13 @@ func (m *Manager) reload() {
 // setOffsetSeed calculates a global offsetSeed per server relying on extra label set.
 func (m *Manager) setOffsetSeed(labels labels.Labels) error {
 	h := fnv.New64a()
-	hostname, err := osutil.GetFQDN()
-	if err != nil {
-		return err
+	hostname := m.opts.fqdn
+	if hostname == "" {
+		var err error
+		hostname, err = osutil.GetFQDN()
+		if err != nil {
+			return err
+		}
 	}
 	if _, err := fmt.Fprintf(h, "%s%s", hostname, labels.String()); err != nil {
 		return err
@@ -323,9 +331,19 @@ func (m *Manager) Stop() {
 	m.mtxScrape.Lock()
 	defer m.mtxScrape.Unlock()
 
+	// Stop pools in parallel as each stop() blocks until all its scrape
+	// loops have exited, which can take a long time if there'a a lot of
+	// pools with high number of targets.
+	// Limit the number of pools stopping at once to avoid unbounded goroutines.
+	g := new(errgroup.Group)
+	g.SetLimit(runtime.GOMAXPROCS(0))
 	for _, sp := range m.scrapePools {
-		sp.stop()
+		g.Go(func() error {
+			sp.stop()
+			return nil
+		})
 	}
+	_ = g.Wait()
 	close(m.graceShut)
 }
 
@@ -498,7 +516,7 @@ func (m *Manager) TargetsDroppedCounts() map[string]int {
 
 	counts := make(map[string]int, len(m.scrapePools))
 	for tset, sp := range m.scrapePools {
-		counts[tset] = sp.droppedTargetsCount
+		counts[tset] = sp.DroppedTargetsCount()
 	}
 	return counts
 }
