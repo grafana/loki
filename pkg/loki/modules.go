@@ -600,16 +600,19 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		dataObjMetadataCacheStop func()
 	)
 	if dataObjectsReader && t.Cfg.Querier.DataObjectMetadataCacheEnabled {
-		// Scope the metrics by component: the index-gateway registers the same metadata-cache metric names
-		// against the same registerer, so an unscoped registration collides (panics) in single-binary mode.
-		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer)
 		if !cache.IsCacheConfigured(t.Cfg.Querier.DataObjectMetadataCache) {
 			level.Warn(logger).Log("msg", "data-object metadata cache enabled but no cache backend configured; it will do nothing")
 		}
-		c, err := cache.New(t.Cfg.Querier.DataObjectMetadataCache, mcReg, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
+		// cache.New takes the plain registerer, like every other cache: it disambiguates its backend metrics
+		// (including shared dskit metrics such as dns_lookups_total) by the flag prefix. Wrapping it with a
+		// component label would add a label name those shared metrics lack elsewhere and panic on registration.
+		c, err := cache.New(t.Cfg.Querier.DataObjectMetadataCache, prometheus.DefaultRegisterer, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
 		if err != nil {
 			return nil, err
 		}
+		// The metadatacache counters carry no prefix, so scope them by component: the index-gateway registers
+		// the same names, and an unscoped registration collides (panics) in single-binary mode.
+		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "querier"}, prometheus.DefaultRegisterer)
 		mc := metadatacache.New(c, mcReg, logger)
 		dataObjMetadataCache = mc
 		dataObjMetadataCacheStop = mc.Stop
@@ -2015,16 +2018,19 @@ func (t *Loki) initIndexGatewayMetastore() (services.Service, error) {
 	// does not read it from object storage on every open.
 	var metadataCacheStop func()
 	if t.Cfg.IndexGateway.DataObjectSections.MetadataCacheEnabled {
-		// Scope the metrics by component: the querier registers the same metadata-cache metric names against
-		// the same registerer, so an unscoped registration collides (panics) in single-binary mode.
-		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-gateway"}, reg)
 		if !cache.IsCacheConfigured(t.Cfg.IndexGateway.DataObjectSections.MetadataCache) {
 			level.Warn(logger).Log("msg", "data-object metadata cache enabled but no cache backend configured; it will do nothing")
 		}
-		c, err := cache.New(t.Cfg.IndexGateway.DataObjectSections.MetadataCache, mcReg, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
+		// cache.New takes the plain registerer, like every other cache: it disambiguates its backend metrics
+		// (including shared dskit metrics such as dns_lookups_total) by the flag prefix. Wrapping it with a
+		// component label would add a label name those shared metrics lack elsewhere and panic on registration.
+		c, err := cache.New(t.Cfg.IndexGateway.DataObjectSections.MetadataCache, reg, logger, stats.CacheType("dataobj-metadata"), constants.Loki)
 		if err != nil {
 			return nil, err
 		}
+		// The metadatacache counters carry no prefix, so scope them by component: the querier registers the
+		// same names, and an unscoped registration collides (panics) in single-binary mode.
+		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": "index-gateway"}, reg)
 		mc := metadatacache.New(c, mcReg, logger)
 		opts = append(opts, metastore.WithMetadataCache(mc))
 		metadataCacheStop = mc.Stop

@@ -8,10 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // assert the adapter satisfies the dataobj interface.
@@ -185,6 +188,47 @@ func TestCache_CallerCancellationDoesNotAbortSharedLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("blob"), got)
 	require.Equal(t, int64(1), loads.Load())
+}
+
+// newMemcachedCache builds a memcached-backed cache the way cache.New does inside the modules. A memcached
+// backend is required: it pulls in the shared dskit dns_lookups_total metric, keyed only by the flag prefix.
+// The caller owns Stop (the underlying background loop panics if stopped twice).
+func newMemcachedCache(t *testing.T, reg prometheus.Registerer, prefix string) cache.Cache {
+	t.Helper()
+	cfg := cache.Config{
+		Prefix:         prefix,
+		MemcacheClient: cache.MemcachedClientConfig{Addresses: "localhost:11211", UpdateInterval: time.Minute},
+	}
+	c, err := cache.New(cfg, reg, log.NewNopLogger(), stats.CacheType("dataobj-metadata"), "loki")
+	require.NoError(t, err)
+	return c
+}
+
+// TestModuleWiring_NoDuplicateRegistration reproduces the single-binary (-target=all) wiring: several
+// memcached-backed caches share one registry, and the querier and index-gateway each add a metadata cache.
+//
+// cache.New keys its backend metrics (including the shared dns_lookups_total) by the flag prefix, so it must
+// take the plain registerer. Wrapping it with a component label would give dns_lookups_total a label name the
+// sibling caches lack and panic on registration. The metadatacache counters carry no prefix, so those alone
+// are component-scoped. The pre-existing sibling cache makes the mis-wiring observable here.
+func TestModuleWiring_NoDuplicateRegistration(t *testing.T) {
+	reg := prometheus.NewRegistry()
+
+	// A sibling memcached cache (as the querier already has for chunks) registers dns_lookups_total{name=...}
+	// with no component label. This is what a component-wrapped metadata cache would collide with.
+	sibling := newMemcachedCache(t, reg, "querier.chunk-cache.")
+	t.Cleanup(sibling.Stop)
+
+	build := func(component, prefix string) {
+		c := newMemcachedCache(t, reg, prefix)
+		mcReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)
+		t.Cleanup(New(c, mcReg, log.NewNopLogger()).Stop)
+	}
+
+	require.NotPanics(t, func() {
+		build("querier", "querier.dataobject-metadata-cache.")
+		build("index-gateway", "index-gateway.dataobject-sections.metadata-cache.")
+	})
 }
 
 func TestCache_LoadErrorSurfaces(t *testing.T) {
