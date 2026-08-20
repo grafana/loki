@@ -364,6 +364,35 @@ func readCompactedObjectsFromIndex(ctx context.Context, t *testing.T, dataBucket
 	return out
 }
 
+func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
+	ls := labels.FromStrings("app", "auth")
+	other := labels.FromStrings("app", "web")
+	sources := []*logSource{
+		{
+			path: "a",
+			streams: map[int64]streams.Stream{
+				2: {ID: 2, Labels: ls, ShardBucket: int64(streams.ShardBucket(ls))},
+				7: {ID: 7, Labels: other, ShardBucket: int64(streams.ShardBucket(other))},
+			},
+		},
+		{
+			path: "b",
+			streams: map[int64]streams.Stream{
+				5: {ID: 5, Labels: ls.Copy(), ShardBucket: int64(streams.ShardBucket(ls))},
+			},
+		},
+	}
+
+	table, err := buildGlobalStreamTable(sources, []string{"label:app"})
+	require.NoError(t, err)
+
+	a := table.Resolve(0, 2)
+	b := table.Resolve(1, 5)
+	require.Equal(t, a.stream.ID, b.stream.ID, "same labels across objects must share one global ID")
+	require.Equal(t, a, table.ByID(a.stream.ID))
+	require.NotEqual(t, a.stream.ID, table.Resolve(0, 7).stream.ID)
+}
+
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
 	ctx := context.Background()
 	dataBucket := objstore.NewInMemBucket()
