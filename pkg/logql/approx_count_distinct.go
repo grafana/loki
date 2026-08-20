@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
@@ -202,4 +204,80 @@ func (e *countDistinctStepEvaluator) Error() error {
 
 func (e *countDistinctStepEvaluator) Explain(parent Node) {
 	parent.Child("CountDistinct")
+}
+
+// CountDistinctMergeExpr concatenates sharded CountDistinctSketchExpr children.
+type CountDistinctMergeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e *CountDistinctMergeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("CountDistinctMerge<%s>", sb.String())
+}
+
+func (e *CountDistinctMergeExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+// CountDistinctEvalExpr merges sharded sketches then estimates.
+type CountDistinctEvalExpr struct {
+	syntax.SampleExpr
+	mergeExpr *CountDistinctMergeExpr
+}
+
+func (e *CountDistinctEvalExpr) String() string {
+	if e.mergeExpr == nil {
+		return "CountDistinctEval<>"
+	}
+	return fmt.Sprintf("CountDistinctEval<%s>", e.mergeExpr.String())
+}
+
+func (e *CountDistinctEvalExpr) Walk(f syntax.WalkFn) {
+	if !f(e) {
+		return
+	}
+	if e.mergeExpr != nil {
+		e.mergeExpr.Walk(f)
+	}
+}
+
+// CountDistinctVectorStepEvaluator estimates merged sketches into a sample vector.
+type CountDistinctVectorStepEvaluator struct {
+	vec  CountDistinctVector
+	done bool
+}
+
+func NewCountDistinctVectorStepEvaluator(vec CountDistinctVector) *CountDistinctVectorStepEvaluator {
+	return &CountDistinctVectorStepEvaluator{vec: vec}
+}
+
+func (e *CountDistinctVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	if e.done {
+		return false, 0, SampleVector{}
+	}
+	e.done = true
+	ts := int64(0)
+	if len(e.vec) > 0 {
+		ts = e.vec[0].T
+	}
+	return true, ts, e.vec.Estimate()
+}
+
+func (*CountDistinctVectorStepEvaluator) Close() error { return nil }
+func (*CountDistinctVectorStepEvaluator) Error() error { return nil }
+func (e *CountDistinctVectorStepEvaluator) Explain(parent Node) {
+	parent.Child("CountDistinctVector")
 }
