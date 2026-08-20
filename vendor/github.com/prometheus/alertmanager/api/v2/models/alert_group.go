@@ -46,6 +46,10 @@ type AlertGroup struct {
 	// receiver
 	// Required: true
 	Receiver *ReceiverReference `json:"receiver"`
+
+	// route labels
+	// Required: true
+	RouteLabels LabelSet `json:"routeLabels"`
 }
 
 // Validate validates this alert group
@@ -61,6 +65,10 @@ func (m *AlertGroup) Validate(formats strfmt.Registry) error {
 	}
 
 	if err := m.validateReceiver(formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.validateRouteLabels(formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -149,6 +157,30 @@ func (m *AlertGroup) validateReceiver(formats strfmt.Registry) error {
 	return nil
 }
 
+func (m *AlertGroup) validateRouteLabels(formats strfmt.Registry) error {
+
+	if err := validate.Required("routeLabels", "body", m.RouteLabels); err != nil {
+		return err
+	}
+
+	if m.RouteLabels != nil {
+		if err := m.RouteLabels.Validate(formats); err != nil {
+			ve := new(errors.Validation)
+			if stderrors.As(err, &ve) {
+				return ve.ValidateName("routeLabels")
+			}
+			ce := new(errors.CompositeError)
+			if stderrors.As(err, &ce) {
+				return ce.ValidateName("routeLabels")
+			}
+
+			return err
+		}
+	}
+
+	return nil
+}
+
 // ContextValidate validate this alert group based on the context it is used
 func (m *AlertGroup) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	var res []error
@@ -162,6 +194,10 @@ func (m *AlertGroup) ContextValidate(ctx context.Context, formats strfmt.Registr
 	}
 
 	if err := m.contextValidateReceiver(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if err := m.contextValidateRouteLabels(ctx, formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -234,6 +270,24 @@ func (m *AlertGroup) contextValidateReceiver(ctx context.Context, formats strfmt
 
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (m *AlertGroup) contextValidateRouteLabels(ctx context.Context, formats strfmt.Registry) error {
+
+	if err := m.RouteLabels.ContextValidate(ctx, formats); err != nil {
+		ve := new(errors.Validation)
+		if stderrors.As(err, &ve) {
+			return ve.ValidateName("routeLabels")
+		}
+		ce := new(errors.CompositeError)
+		if stderrors.As(err, &ce) {
+			return ce.ValidateName("routeLabels")
+		}
+
+		return err
 	}
 
 	return nil

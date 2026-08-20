@@ -128,7 +128,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.26.7
 	github.com/thanos-io/objstore v0.0.0-20260817070452-e42d91c337ee
 	github.com/tjhop/slog-gokit v0.2.0
-	github.com/twmb/franz-go v1.21.3
+	github.com/twmb/franz-go v1.21.5
 	github.com/twmb/franz-go/pkg/kadm v1.18.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20260515175617-8268a5d078c0
 	github.com/twmb/franz-go/pkg/kmsg v1.13.1
@@ -248,7 +248,7 @@ require (
 	github.com/pires/go-proxyproto v0.15.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20250313105119-ba97887b0a25 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
-	github.com/prometheus/alertmanager v0.33.1 // indirect
+	github.com/prometheus/alertmanager v0.34.0 // indirect
 	github.com/prometheus/client_golang/exp v0.0.0-20260812154952-0c5dccd910c0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
