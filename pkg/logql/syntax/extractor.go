@@ -111,8 +111,11 @@ func (e *CountDistinctSketchExpr) Extractor() (log.SampleExtractor, error) {
 }
 
 func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping) (log.SampleExtractor, error) {
-	groups := grouping.Groups
-	sort.Strings(groups)
+	// We can't mutate the expression's groups in place (see Grouping.Groups doc), so we make
+	// our own copy and sort it.
+	sortedGroups := make([]string, len(grouping.Groups))
+	copy(sortedGroups, grouping.Groups)
+	sort.Strings(sortedGroups)
 
 	var stages []log.Stage
 	if p, ok := left.Left.(*PipelineExpr); ok {
@@ -123,5 +126,5 @@ func distinctValueExtractor(label string, left *LogRangeExpr, grouping *Grouping
 		stages = st
 	}
 
-	return log.NewDistinctValueSampleExtractor(label, stages, groups)
+	return log.NewDistinctValueSampleExtractor(label, stages, sortedGroups)
 }
