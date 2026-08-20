@@ -99,7 +99,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.8
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.23.2
-	github.com/IBM/ibm-cos-sdk-go v1.14.1
+	github.com/IBM/ibm-cos-sdk-go v1.15.0
 	github.com/aliyun/credentials-go v1.4.12
 	github.com/apache/arrow-go/v18 v18.7.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.5
