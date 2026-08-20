@@ -325,107 +325,18 @@ func resolveStreams(ctx context.Context, section *dataobj.Section) (map[int64]st
 	return out, nil
 }
 
-// globalStream is the merge-wide identity of one unique label set.
-type globalStream struct {
-	stream      streams.Stream
-	orderingKey logsobj.StreamOrderKey
-}
-
-func (s globalStream) shard() uint32 { return uint32(s.stream.ShardBucket) }
-
-// globalStreams looks up merge-wide stream metadata by global ID or by
-// (source object, local stream ID). One global ID is assigned per unique
-// label set, in StreamOrderKey order, so a merge by remapped stream ID is
-// [shard, schema, hash, timestamp] and the same stream from two objects
-// timestamp-interleaves.
-type globalStreams struct {
-	byGID   []globalStream    // index = global ID (1..N); [0] unused
-	byLocal []map[int64]int64 // per source object: local stream ID -> global ID
-}
-
-// ByID returns the stream assigned to global ID gid.
-func (g *globalStreams) ByID(gid int64) globalStream {
-	return g.byGID[gid]
-}
-
-// Resolve returns the global stream for a source object's local stream ID.
-func (g *globalStreams) Resolve(sourceIdx int, localID int64) globalStream {
-	return g.ByID(g.byLocal[sourceIdx][localID])
-}
-
-// remap returns the local-to-global ID map for one source object.
-func (g *globalStreams) remap(sourceIdx int) map[int64]int64 {
-	return g.byLocal[sourceIdx]
-}
-
-// buildGlobalStreamTable computes the global stream assignment from all sources.
-func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*globalStreams, error) {
-	type uniqStream struct {
-		key    logsobj.StreamOrderKey
-		stream streams.Stream
+// buildGlobalStreamTable ranks unique label sets across sources into one
+// StreamOrderKey ID space. Same labels in two objects share one ID.
+func buildGlobalStreamTable(sources []*logSource, sortSchema []string) (*logsobj.StreamRanks, error) {
+	maps := make([]map[int64]streams.Stream, 0, len(sources))
+	for _, src := range sources {
+		maps = append(maps, src.streams)
 	}
-	type localStreamRef struct {
-		sourceIdx int
-		localID   int64
-		labelsKey string
-	}
-
-	// Iterate over all the input streams
-	// Extract unique streams & calculate their sorting information (shard, schema & fp)
-	// Keep a list of all seen refs so they can be used to resolve their global ID later.
-	byLabels := make(map[string]*uniqStream)
-	var allRefs []localStreamRef
-	for sourceIdx, src := range sources {
-		for localID, s := range src.streams {
-			key, err := logsobj.NewStreamOrderKey(s.Labels, sortSchema)
-			if err != nil {
-				return nil, fmt.Errorf("computing sort key for object %q: %w", src.path, err)
-			}
-			lk := s.Labels.String()
-			if _, ok := byLabels[lk]; !ok {
-				byLabels[lk] = &uniqStream{key: key, stream: s}
-			}
-			allRefs = append(allRefs, localStreamRef{sourceIdx: sourceIdx, localID: localID, labelsKey: lk})
-		}
-	}
-
-	// Sort the unique streams in order to assign them a new global rank
-	unique := make([]uniqStream, 0, len(byLabels))
-	for _, u := range byLabels {
-		unique = append(unique, *u)
-	}
-	slices.SortFunc(unique, func(a, b uniqStream) int {
-		return logsobj.CompareStreamOrderKey(a.key, b.key)
-	})
-
-	// Build a global streams table that be referenced later
-	table := &globalStreams{
-		byGID:   make([]globalStream, len(unique)+1),
-		byLocal: make([]map[int64]int64, len(sources)),
-	}
-	for i := range table.byLocal {
-		table.byLocal[i] = make(map[int64]int64)
-	}
-
-	// Assign each stream the globally sorted rank via the labels string.
-	// Labels must be used in order to handle hash collisions
-	labelToGid := make(map[string]int64, len(unique))
-	for i, u := range unique {
-		gid := int64(i + 1)
-		labelToGid[u.stream.Labels.String()] = gid
-		s := u.stream
-		s.ID = gid
-		table.byGID[gid] = globalStream{stream: s, orderingKey: u.key}
-	}
-	// Link every ref from every input section to its global rank
-	for _, r := range allRefs {
-		table.byLocal[r.sourceIdx][r.localID] = labelToGid[r.labelsKey]
-	}
-	return table, nil
+	return logsobj.RankStreams(sortSchema, maps...)
 }
 
 // sectionsWithRemaps flattens the sources' logs sections
-func sectionsWithRemaps(sources []*logSource, table *globalStreams) ([]*dataobj.Section, []map[int64]int64) {
+func sectionsWithRemaps(sources []*logSource, table *logsobj.StreamRanks) ([]*dataobj.Section, []map[int64]int64) {
 	var (
 		sections []*dataobj.Section
 		remaps   []map[int64]int64
@@ -433,7 +344,7 @@ func sectionsWithRemaps(sources []*logSource, table *globalStreams) ([]*dataobj.
 	for sourceIdx, src := range sources {
 		for _, sec := range src.logsSections {
 			sections = append(sections, sec)
-			remaps = append(remaps, table.remap(sourceIdx))
+			remaps = append(remaps, table.Remap(sourceIdx))
 		}
 	}
 	return sections, remaps
@@ -445,7 +356,7 @@ func sectionsWithRemaps(sources []*logSource, table *globalStreams) ([]*dataobj.
 type logObjectWriter struct {
 	c     *Context
 	node  *physical.LogMerge
-	table *globalStreams
+	table *logsobj.StreamRanks
 	calc  *dataobjindex.Calculator
 
 	builderMetrics *logsobj.BuilderMetrics
@@ -462,7 +373,7 @@ type fixedSortSchema []string
 
 func (s fixedSortSchema) SortSchemaLabels(string) []string { return s }
 
-func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *globalStreams, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
+func (c *Context) newLogObjectWriter(node *physical.LogMerge, table *logsobj.StreamRanks, calc *dataobjindex.Calculator) (*logObjectWriter, error) {
 	w := &logObjectWriter{
 		c:              c,
 		node:           node,
@@ -498,7 +409,7 @@ func (w *logObjectWriter) startNewObject() error {
 // size, and re-basing stream IDs to 1..M within each object.
 func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 	gs := w.table.ByID(rec.StreamID)
-	if w.logsBuilder.IsFull() && w.haveLast && (gs.orderingKey.SchemaKey != w.lastSchemaKey || gs.shard() != w.lastShard) {
+	if w.logsBuilder.IsFull() && w.haveLast && (gs.Key.SchemaKey != w.lastSchemaKey || gs.Shard() != w.lastShard) {
 		if err := w.finalizeAndUpload(ctx); err != nil {
 			return err
 		}
@@ -507,13 +418,13 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 			return err
 		}
 	}
-	w.lastSchemaKey = gs.orderingKey.SchemaKey
-	w.lastShard = gs.shard()
+	w.lastSchemaKey = gs.Key.SchemaKey
+	w.lastShard = gs.Shard()
 	w.haveLast = true
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.stream.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Stream.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}

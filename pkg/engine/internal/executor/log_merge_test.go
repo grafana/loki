@@ -388,9 +388,9 @@ func TestBuildGlobalStreamTable_SameLabelsShareID(t *testing.T) {
 
 	a := table.Resolve(0, 2)
 	b := table.Resolve(1, 5)
-	require.Equal(t, a.stream.ID, b.stream.ID, "same labels across objects must share one global ID")
-	require.Equal(t, a, table.ByID(a.stream.ID))
-	require.NotEqual(t, a.stream.ID, table.Resolve(0, 7).stream.ID)
+	require.Equal(t, a.Stream.ID, b.Stream.ID, "same labels across objects must share one global ID")
+	require.Equal(t, a, table.ByID(a.Stream.ID))
+	require.NotEqual(t, a.Stream.ID, table.Resolve(0, 7).Stream.ID)
 }
 
 func TestDoLogObjectMerge_MergesAndSplits(t *testing.T) {
