@@ -268,9 +268,12 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		sized(mkRef(7, 10), 25, 1),
 	}
 
-	shards, grps, err := accumulateChunksToShards(&logproto.ShardsRequest{
+	shards, err := accumulateChunksToShards(&logproto.ShardsRequest{
 		TargetBytesPerShard: 100 << 10,
 	}, filtered)
+	require.NoError(t, err)
+
+	grps := chunkGroupsForShards(shards, filtered)
 
 	expectedChks := [][]logproto.ChunkRefWithSizingInfo{
 		filtered[0:3],

@@ -483,16 +483,16 @@ func buildShardsResponse(
 			},
 		}
 	} else {
-		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
+		shards, err := accumulateChunksToShards(req, refs)
 		if err != nil {
 			return nil, err
 		}
 		resp.Shards = shards
 
 		// If the index gateway is configured to precompute chunks, we can return the chunk groups
-		// alongside the shards, otherwise discarding them
+		// alongside the shards, otherwise avoid calculating them.
 		if precomputeChunks {
-			resp.ChunkGroups = chunkGrps
+			resp.ChunkGroups = chunkGroupsForShards(shards, refs)
 		}
 	}
 
@@ -544,7 +544,7 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	filtered []logproto.ChunkRefWithSizingInfo,
-) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
+) ([]logproto.Shard, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
 	filteredM := make(map[model.Fingerprint][]logproto.ChunkRefWithSizingInfo, 1024)
 	for _, ref := range filtered {
@@ -566,21 +566,29 @@ func accumulateChunksToShards(
 	}
 	sort.Sort(collectedSeries)
 
-	shards := collectedSeries.ShardsFor(req.TargetBytesPerShard)
+	return collectedSeries.ShardsFor(req.TargetBytesPerShard), nil
+}
+
+// chunkGroupsForShards buckets the given chunk refs into one group per shard.
+// It expects chunkRefs to be ordered by fingerprint.
+func chunkGroupsForShards(
+	shards []logproto.Shard,
+	chunkRefs []logproto.ChunkRefWithSizingInfo,
+) []logproto.ChunkRefGroup {
 	chkGrps := make([]logproto.ChunkRefGroup, 0, len(shards))
 	for _, s := range shards {
-		from := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint >= uint64(s.Bounds.Min)
+		from := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint >= uint64(s.Bounds.Min)
 		})
-		through := sort.Search(len(filtered), func(i int) bool {
-			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
+		through := sort.Search(len(chunkRefs), func(i int) bool {
+			return chunkRefs[i].Fingerprint > uint64(s.Bounds.Max)
 		})
 		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
-			Refs: refsWithSizingInfoToRefs(filtered[from:through]),
+			Refs: refsWithSizingInfoToRefs(chunkRefs[from:through]),
 		})
 	}
 
-	return shards, chkGrps, nil
+	return chkGrps
 }
 
 func refsWithSizingInfoToRefs(refsWithSizingInfo []logproto.ChunkRefWithSizingInfo) []*logproto.ChunkRef {
