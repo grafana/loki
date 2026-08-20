@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+// The internal representation of a push, in which log entries are nested under the OTLP
+// resource and scope attributes that apply to them rather than each carrying its own copy.
+//
+// Loki expands OTLP resource and scope attributes onto every log entry at the edge of the
+// write path, so a request that arrived carrying one copy of an attribute set leaves the
+// distributor carrying one copy per line. Everything downstream — rate limiting, sharding,
+// Kafka, the write ahead log, the ingester's memory — pays for that duplication. The
+// messages below carry each attribute set once and recover the association by containment:
+// an entry belongs to the scope it is physically inside.
+//
+// WHY THIS LIVES HERE AND NOT IN pkg/push
+//
+//   pkg/push is a separate Go module, github.com/grafana/loki/pkg/push, which clients such
+//   as Alloy vendor in order to encode a push request. Adding an internal message there
+//   would ship it to every one of those clients and make an internal change a public API
+//   change. This representation is never accepted from a client and never returned in a
+//   query response, so it belongs with Loki's other internal messages. It imports
+//   pkg/push/push.proto and reuses EntryAdapter and LabelPairAdapter as its leaf types, so
+//   an entry occupies identical bytes in either representation and no entry has to be
+//   rewritten to move between them.
+//
+// PRECEDENCE
+//
+//   The effective structured metadata of an entry is the enclosing resource's attributes,
+//   then the enclosing scope's attributes, then the entry's own structuredMetadata. The
+//   read path keeps the last pair for a repeated label name, so precedence is
+//   own > scope > resource, which is what the expanded form produced.
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/push/push.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+
+// InternalPushRequest carries a push from the distributor, through Kafka, to the ingester.
+// PushRequest in pkg/push remains the only shape a client may send or receive.
+//
+// Once this representation is rolled out the producer writes nothing else, including for
+// traffic that arrived with no resource or scope attributes at all, so the topic holds two
+// message types only for as long as records written before the rollout remain within
+// retention. A consumer reads those older records by attempting this message first and
+// falling back to PushRequest when the decode fails, which the field numbering of
+// InternalStreamAdapter makes reliable.
+message InternalPushRequest {
+  repeated InternalStreamAdapter streams = 1 [
+    (gogoproto.jsontag) = "streams",
+    (gogoproto.nullable) = false
+  ];
+  // format in which streams are ingested - loki or otlp
+  string format = 2 [(gogoproto.jsontag) = "format"];
+}
+
+// InternalStreamAdapter is one stream: a label set, its hash, and every entry of the stream
+// nested beneath the attributes that apply to it.
+message InternalStreamAdapter {
+  string labels = 1 [(gogoproto.jsontag) = "labels"];
+  // hash contains the original hash of the stream.
+  //
+  // The numbering here is deliberately incompatible with StreamAdapter rather than aligned
+  // with it. hash is a varint at field 2, where StreamAdapter holds its length delimited
+  // entries, and resourceLogs is length delimited at field 3, where StreamAdapter holds its
+  // varint hash. A record of either format therefore fails to decode as the other with a
+  // wire type error, instead of decoding to a stream with no entries and silently
+  // discarding every line. That is what allows a consumer to attempt this message first and
+  // fall back on error, which is how records written before the rollout are read without a
+  // version marker. Adding a varint field 2 to StreamAdapter, or a length delimited field 2
+  // here, would quietly remove the property, so it is worth a test.
+  uint64 hash = 2 [(gogoproto.jsontag) = "-"];
+  // resourceLogs carries every entry of the stream, so a stream that shares nothing still
+  // carries one group whose attribute lists are both empty.
+  //
+  // There is deliberately no flat entry list alongside this one. Keeping both would put
+  // entries in two places depending on their origin, so every consumer, splitter and
+  // materialiser would need two traversals and two code paths. The uniform representation
+  // costs two message headers per stream instead, which measures as four bytes for a small
+  // stream and eight for a large one.
+  //
+  // This field is internal to Loki's OTLP ingest pipeline. Values sent by external clients
+  // are discarded, and it is never returned in query responses.
+  repeated ResourceLogs resourceLogs = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "-"
+  ];
+}
+
+// ResourceLogs holds one OTLP resource's attributes and the scopes that emitted beneath it.
+message ResourceLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated ScopeLogs scopeLogs = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "scopeLogs"
+  ];
+}
+
+// ScopeLogs holds one OTLP instrumentation scope's attributes and the entries it emitted.
+//
+// An entry keeps only the structured metadata it arrived with. Its resource and scope
+// attributes are the ones enclosing it here, which is why no reference or count is needed
+// and why dropping an entry, or moving entries to another shard, cannot associate a line
+// with the wrong resource.
+message ScopeLogs {
+  repeated LabelPairAdapter attrs = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.LabelAdapter",
+    (gogoproto.jsontag) = "attrs"
+  ];
+  repeated EntryAdapter entries = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "entries",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Entry"
+  ];
+}
