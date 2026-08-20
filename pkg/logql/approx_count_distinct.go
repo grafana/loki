@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
@@ -14,28 +15,117 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
+const CountDistinctVectorType = "CountDistinctVector"
+
+// CountDistinctVector is a list of HyperLogLog sketches keyed by metric labels.
+type CountDistinctVector []CountDistinctSample
+
+// CountDistinctSample is one HyperLogLog sketch keyed by metric labels.
+type CountDistinctSample struct {
+	T      int64
+	F      *hyperloglog.Sketch
+	Metric labels.Labels
+}
+
+var countDistinctKeyPool = sync.Pool{
+	New: func() interface{} { return make(map[string]int) },
+}
+
+// Merge unions sketches that share exact grouping labels.
+func (v CountDistinctVector) Merge(right CountDistinctVector) (CountDistinctVector, error) {
+	groups := countDistinctKeyPool.Get().(map[string]int)
+	defer func() {
+		clear(groups)
+		countDistinctKeyPool.Put(groups)
+	}()
+	for i, sample := range v {
+		groups[sample.Metric.String()] = i
+	}
+
+	for _, sample := range right {
+		key := sample.Metric.String()
+		i, ok := groups[key]
+		if !ok {
+			groups[key] = len(v)
+			v = append(v, sample)
+			continue
+		}
+		if err := v[i].F.Merge(sample.F); err != nil {
+			return v, err
+		}
+	}
+	return v, nil
+}
+
+func (CountDistinctVector) SampleVector() promql.Vector {
+	return promql.Vector{}
+}
+
+func (CountDistinctVector) QuantileSketchVec() ProbabilisticQuantileVector {
+	return ProbabilisticQuantileVector{}
+}
+
+func (CountDistinctVector) CountMinSketchVec() CountMinSketchVector {
+	return CountMinSketchVector{}
+}
+
+func (v CountDistinctVector) CountDistinctVec() CountDistinctVector {
+	return v
+}
+
+func (CountDistinctVector) String() string {
+	return "CountDistinctVector()"
+}
+
+func (CountDistinctVector) Type() promql_parser.ValueType { return CountDistinctVectorType }
+
+// Estimate converts sketches into a numeric sample vector.
+func (v CountDistinctVector) Estimate() SampleVector {
+	out := make(promql.Vector, 0, len(v))
+	for _, sample := range v {
+		out = append(out, promql.Sample{
+			T:      sample.T,
+			F:      float64(sample.F.Estimate()),
+			Metric: sample.Metric,
+		})
+	}
+	return SampleVector(out)
+}
+
+// JoinCountDistinctVector materializes an instant sketch vector result.
+func JoinCountDistinctVector(_ bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
+	vec := r.CountDistinctVec()
+	if GetRangeType(params) != InstantType {
+		return nil, fmt.Errorf("approx_count_distinct is only supported on instant queries")
+	}
+	return vec, stepEvaluator.Error()
+}
+
 type countDistinctStepEvaluator struct {
-	it        iter.PeekingSampleIterator
-	params    Params
-	interval  time.Duration
-	offset    time.Duration
-	exhausted bool
-	err       error
+	it         iter.PeekingSampleIterator
+	params     Params
+	interval   time.Duration
+	offset     time.Duration
+	emitSketch bool
+	exhausted  bool
+	err        error
 }
 
 func newCountDistinctStepEvaluator(
 	it iter.PeekingSampleIterator,
 	params Params,
 	interval, offset time.Duration,
+	emitSketch bool,
 ) (StepEvaluator, error) {
 	if GetRangeType(params) != InstantType {
 		return nil, fmt.Errorf("approx_count_distinct is only supported on instant queries")
 	}
 	return &countDistinctStepEvaluator{
-		it:       it,
-		params:   params,
-		interval: interval,
-		offset:   offset,
+		it:         it,
+		params:     params,
+		interval:   interval,
+		offset:     offset,
+		emitSketch: emitSketch,
 	}, nil
 }
 
@@ -86,15 +176,19 @@ func (e *countDistinctStepEvaluator) Next() (bool, int64, StepResult) {
 		_ = e.it.Next()
 	}
 
-	out := make(promql.Vector, 0, len(groups))
+	out := make(CountDistinctVector, 0, len(groups))
 	for _, g := range groups {
-		out = append(out, promql.Sample{
+		out = append(out, CountDistinctSample{
 			T:      ts,
-			F:      float64(g.hll.Estimate()),
+			F:      g.hll,
 			Metric: g.metric,
 		})
 	}
-	return true, ts, SampleVector(out)
+
+	if e.emitSketch {
+		return true, ts, out
+	}
+	return true, ts, out.Estimate()
 }
 
 func (e *countDistinctStepEvaluator) Close() error { return e.it.Close() }
