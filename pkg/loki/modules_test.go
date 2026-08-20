@@ -210,7 +210,7 @@ func TestUIServiceInitialization(t *testing.T) {
 		c, err := New(cfg)
 		require.NoError(t, err)
 
-		services, err := c.ModuleManager.InitModuleServices(All)
+		services, err := c.ModuleManager.InitModuleServices(UI)
 		defer func() {
 			for _, service := range services {
 				service.StopAsync()
