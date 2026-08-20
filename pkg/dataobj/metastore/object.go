@@ -718,6 +718,11 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 	flow := flowStreams
 	if m.readPostingsSections && hasPostingsSection(idxObj, tenant) {
 		flow = flowPostings
+		// Only the postings flow can prune by shard bucket, so the range is honored here alone.
+		var bucketRange *postings.ShardBucketRange
+		if sb := req.SectionsRequest.ShardBucketRange; sb != nil {
+			bucketRange = &postings.ShardBucketRange{From: sb.From, To: sb.To}
+		}
 		reader = newPostingsIndexSectionsReader(
 			m.logger,
 			idxObj,
@@ -726,6 +731,7 @@ func (m *ObjectMetastore) IndexSectionsReader(ctx context.Context, req IndexSect
 			req.SectionsRequest.Matchers,
 			req.SectionsRequest.Predicates,
 			req.BatchSize,
+			bucketRange,
 		)
 	} else {
 		reader = newIndexSectionsReader(

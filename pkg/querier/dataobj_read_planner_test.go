@@ -247,7 +247,7 @@ func TestDataObjReadPlanner_Plan(t *testing.T) {
 	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "cluster", "test")}
 
 	plan := func(bucket objstore.Bucket, ms metastore.Metastore, shard *logql.Shard) []dataObjReadTask {
-		return drainTaskIterator(t, newDataObjReadPlanner(metastoreSectionsResolver{ms: ms}, newDataObjCache(bucket, dataObjTestTenant), false).
+		return drainTaskIterator(t, newDataObjReadPlanner(metastoreSectionsResolver{ms: ms}, newDataObjCache(bucket, dataObjTestTenant), false, false).
 			plan(ctx, start, end, matchers, shard, expr))
 	}
 

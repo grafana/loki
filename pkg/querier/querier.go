@@ -74,6 +74,15 @@ type Config struct {
 	// data-object reader is enabled.
 	DataObjectsShardBucketFilteringEnabled bool `yaml:"dataobjects_shard_bucket_filtering_enabled" category:"experimental"`
 
+	// DataObjectsSectionShardBucketPruningEnabled narrows data-object section resolution to the query
+	// shard's bucket range (postings flow only), so fewer streams are resolved and read. Independent of
+	// DataObjectsShardBucketFilteringEnabled. Has no effect unless the v1 data-object reader is enabled,
+	// and is ignored when resolution is offloaded to the index-gateway.
+	//
+	// Enable only against index objects written with per-stream shard-bucket postings: older index objects
+	// have zeroed min/max shard-bucket columns and would be pruned incorrectly (dropping streams).
+	DataObjectsSectionShardBucketPruningEnabled bool `yaml:"dataobjects_section_shard_bucket_pruning_enabled" category:"experimental"`
+
 	// DataObjectsSectionResolutionViaIndexGatewayEnabled resolves data-object sections through the
 	// index-gateway (per 12h window) instead of locally in the querier, removing the per-shard
 	// resolution redundancy. Falls back to local resolution when the gateway is unavailable.
@@ -114,6 +123,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 	f.BoolVar(&cfg.DataObjectsShardBucketFilteringEnabled, prefix+"dataobjects-shard-bucket-filtering-enabled", false, "When true, sharded stream-first metric queries prune data-object streams by their shard bucket before decoding labels. Has no effect unless the data-object reader is enabled.")
+	f.BoolVar(&cfg.DataObjectsSectionShardBucketPruningEnabled, prefix+"dataobjects-section-shard-bucket-pruning-enabled", false, "When true, sharded stream-first metric queries narrow data-object section resolution to the shard's bucket range using the index postings, so fewer streams are resolved and read. Has no effect unless the data-object reader is enabled, and is ignored when section resolution is offloaded to the index-gateway. Enable only against index objects written with per-stream shard-bucket postings; older index objects would be pruned incorrectly.")
 	f.BoolVar(&cfg.DataObjectsSectionResolutionViaIndexGatewayEnabled, prefix+"dataobjects-section-resolution-via-index-gateway-enabled", false, "When true, the querier resolves data-object sections through the index-gateway (per 12h window) instead of locally, removing the per-shard resolution redundancy. Falls back to local resolution when the gateway is unavailable. Requires the index-gateway to have -index-gateway.dataobject-sections.enabled=true.")
 	f.BoolVar(&cfg.DataObjectMetadataCacheEnabled, prefix+"dataobject-metadata-cache-enabled", false, "When true, cache each data object's metadata so the v1 data-object reader does not read it from object storage on every open. Has no effect unless the data-object reader is enabled.")
 	cfg.DataObjectMetadataCache.RegisterFlagsWithPrefix(prefix+"dataobject-metadata-cache.", "", f)
@@ -188,7 +198,7 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits queri
 	}
 
 	if dataObjBucket != nil && dataObjMetastore != nil {
-		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, logger, reg, WithDataObjMetadataCache(dataObjMetadataCache))
+		q.dataObjStore = NewDataObjSampleStore(store, dataObjBucket, dataObjMetastore, dataObjSectionsClient, cfg.DataObjectsShardBucketFilteringEnabled, cfg.DataObjectsSectionShardBucketPruningEnabled, logger, reg, WithDataObjMetadataCache(dataObjMetadataCache))
 	}
 
 	return q, nil

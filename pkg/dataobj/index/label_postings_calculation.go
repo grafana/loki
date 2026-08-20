@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -33,6 +34,12 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			break
 		}
 		streamLbls := calcCtx.streamLabels[log.StreamID]
+		// A missing bucket would silently write 0 and prune the stream into the
+		// wrong shard, so fail closed like the stats calculation.
+		shardBucket, ok := calcCtx.streamShardBuckets[log.StreamID]
+		if !ok {
+			return fmt.Errorf("shard bucket not found for stream ID %d", log.StreamID)
+		}
 		// The uncompressed byte contract is line bytes plus structured metadata
 		// value bytes, matching streams.Stream.UncompressedSize and the stats
 		// calculation so every producer reports the same quantity.
@@ -47,6 +54,7 @@ func (c *labelPostingsCalculation) ProcessBatch(_ context.Context, calcCtx *logs
 			calcCtx.builder.ObserveLabelPosting(calcCtx.tenantID, postings.LabelObservation{
 				ObjectPath:       calcCtx.objectPath,
 				ShardBuckets:     int64(streams.ShardFactor),
+				ShardBucket:      shardBucket,
 				SectionIndex:     calcCtx.sectionIdx,
 				ColumnName:       lbl.Name,
 				LabelValue:       lbl.Value,

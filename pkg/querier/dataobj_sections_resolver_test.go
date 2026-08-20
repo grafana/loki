@@ -71,7 +71,7 @@ func TestMetastoreSectionsResolver_Passthrough(t *testing.T) {
 	r := metastoreSectionsResolver{ms: &fakeQuerierMetastore{sections: func(metastore.SectionsRequest) (metastore.SectionsResponse, error) {
 		return metastore.SectionsResponse{Sections: want}, nil
 	}}}
-	got, err := r.resolveSections(context.Background(), time.Unix(0, 0), time.Unix(3600, 0), mustMatchers())
+	got, err := r.resolveSections(context.Background(), time.Unix(0, 0), time.Unix(3600, 0), mustMatchers(), nil)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
 }
@@ -91,7 +91,7 @@ func TestIndexGatewaySectionsResolver_resolveSections(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newDataObjSectionsResolver(&fakeQuerierMetastore{}, client, reg, log.NewNopLogger())
 
-		got, err := r.resolveSections(context.Background(), start, end, mustMatchers())
+		got, err := r.resolveSections(context.Background(), start, end, mustMatchers(), nil)
 		require.NoError(t, err)
 
 		// The per-window RPCs fan out concurrently, so requests arrive in any order.
@@ -123,7 +123,7 @@ func TestIndexGatewaySectionsResolver_resolveSections(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newDataObjSectionsResolver(&fakeQuerierMetastore{}, client, reg, log.NewNopLogger())
 
-		got, err := r.resolveSections(context.Background(), start, end, mustMatchers())
+		got, err := r.resolveSections(context.Background(), start, end, mustMatchers(), nil)
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.Equal(t, "obj", got[0].ObjectPath)
@@ -145,7 +145,7 @@ func TestIndexGatewaySectionsResolver_resolveSections(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newDataObjSectionsResolver(ms, client, reg, log.NewNopLogger())
 
-		got, err := r.resolveSections(context.Background(), start, end, mustMatchers())
+		got, err := r.resolveSections(context.Background(), start, end, mustMatchers(), nil)
 		require.NoError(t, err)
 		require.Equal(t, fallbackSections, got)
 
@@ -172,7 +172,7 @@ func TestIndexGatewaySectionsResolver_resolveSections(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newDataObjSectionsResolver(ms, client, reg, log.NewNopLogger())
 
-		got, err := r.resolveSections(context.Background(), start, end, mustMatchers())
+		got, err := r.resolveSections(context.Background(), start, end, mustMatchers(), nil)
 		require.NoError(t, err)
 		require.Equal(t, fallbackSections, got) // exactly the metastore result, not merged with the first window
 
@@ -191,7 +191,7 @@ func TestIndexGatewaySectionsResolver_resolveSections(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		r := newDataObjSectionsResolver(ms, client, reg, log.NewNopLogger())
 
-		_, err := r.resolveSections(context.Background(), start, end, mustMatchers())
+		_, err := r.resolveSections(context.Background(), start, end, mustMatchers(), nil)
 		require.Error(t, err) // gateway failed, then the metastore fallback also failed
 
 		mfm, gerr := dskitmetrics.NewMetricFamilyMapFromGatherer(reg)
@@ -216,7 +216,7 @@ func TestIndexGatewaySectionsResolver_Metrics(t *testing.T) {
 	r := newDataObjSectionsResolver(ms, client, reg, log.NewNopLogger())
 
 	start := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
-	_, err := r.resolveSections(context.Background(), start, start.Add(6*time.Hour), mustMatchers())
+	_, err := r.resolveSections(context.Background(), start, start.Add(6*time.Hour), mustMatchers(), nil)
 	require.NoError(t, err) // the gateway failed but the metastore fallback succeeded
 
 	// The fallback is counted, and the successful (post-fallback) resolution is timed as outcome=success.
@@ -241,7 +241,7 @@ func TestIndexGatewaySectionsResolver_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	start := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
-	_, err := r.resolveSections(ctx, start, start.Add(6*time.Hour), mustMatchers())
+	_, err := r.resolveSections(ctx, start, start.Add(6*time.Hour), mustMatchers(), nil)
 
 	require.Error(t, err)
 	require.False(t, fallbackCalled, "a cancelled query must not trigger the metastore fallback")

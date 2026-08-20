@@ -20,7 +20,9 @@ import (
 
 // dataObjSectionsResolver resolves the data-object sections a metric query must read for [start, end].
 type dataObjSectionsResolver interface {
-	resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error)
+	// bucketRange, when non-nil, narrows resolution to that shard-bucket range (honored only by the
+	// metastore/postings resolver; the index-gateway resolver ignores it).
+	resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, bucketRange *metastore.ShardBucketRange) ([]*metastore.DataobjSectionDescriptor, error)
 }
 
 // metastoreSectionsResolver resolves sections locally via the metastore. This is the default path and
@@ -29,8 +31,8 @@ type metastoreSectionsResolver struct {
 	ms metastore.Metastore
 }
 
-func (r metastoreSectionsResolver) resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
-	resp, err := r.ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: matchers})
+func (r metastoreSectionsResolver) resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, bucketRange *metastore.ShardBucketRange) ([]*metastore.DataobjSectionDescriptor, error) {
+	resp, err := r.ms.Sections(ctx, metastore.SectionsRequest{Start: start, End: end, Matchers: matchers, ShardBucketRange: bucketRange})
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +77,9 @@ func newDataObjSectionsResolver(ms metastore.Metastore, client DataObjSectionsGa
 	return indexGatewaySectionsResolver{client: client, fallback: metastoreResolver, fallbacks: fallbacks, duration: duration, logger: logger}
 }
 
-func (r indexGatewaySectionsResolver) resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher) (out []*metastore.DataobjSectionDescriptor, err error) {
+// bucketRange is ignored on the gateway path: the ResolveDataObjectSections RPC carries no shard, and the
+// gateway resolves once per window shared across shards. It is forwarded only to the metastore fallback.
+func (r indexGatewaySectionsResolver) resolveSections(ctx context.Context, start, end time.Time, matchers []*labels.Matcher, bucketRange *metastore.ShardBucketRange) (out []*metastore.DataobjSectionDescriptor, err error) {
 	if r.duration != nil {
 		defer func(t0 time.Time) {
 			r.duration.WithLabelValues(resolveOutcome(ctx, err)).Observe(time.Since(t0).Seconds())
@@ -120,7 +124,7 @@ func (r indexGatewaySectionsResolver) resolveSections(ctx context.Context, start
 		// parent ctx, not the errgroup's cancelled child.
 		r.fallbacks.Inc()
 		level.Warn(r.logger).Log("msg", "index-gateway section resolution failed; falling back to metastore", "err", err)
-		return r.fallback.resolveSections(ctx, start, end, matchers)
+		return r.fallback.resolveSections(ctx, start, end, matchers, bucketRange)
 	}
 
 	// A data object that straddles a 12h boundary is listed in both windows' ToCs, so the same

@@ -66,7 +66,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 		chunk := &recordingSampleStore{}
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, nil) // empty: a real metastore with no objects to resolve
-		store := NewDataObjSampleStore(chunk, bucket, ms, nil, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(chunk, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 
 		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start: time.Unix(0, 0),
@@ -100,7 +100,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -151,7 +151,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[1h])`)
 		require.NoError(t, err)
@@ -237,7 +237,7 @@ func TestDataObjSampleStore_SelectSamples(t *testing.T) {
 
 		bucket := objstore.NewInMemBucket()
 		ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
+		store := NewDataObjSampleStore(nil, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"} | trace_id="target"[1h])`)
 		require.NoError(t, err)
@@ -310,7 +310,7 @@ func TestDataObjSampleIterator_RecordsAreStreamClustered(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, groups)
-	store := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
+	store := NewDataObjSampleStore(nil, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({cluster="test"}[24h])`)
 	require.NoError(t, err)
@@ -513,8 +513,13 @@ func TestDataObjSampleStore_ShardBucketFiltering(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 	ms := newTestDataObjMetastore(ctx, t, bucket, testSectionSize, [][]logproto.Stream{testStreams})
-	storeOff := NewDataObjSampleStore(nil, bucket, ms, nil, false, log.NewNopLogger(), nil)
-	storeOn := NewDataObjSampleStore(nil, bucket, ms, nil, true, log.NewNopLogger(), nil)
+	storeOff := NewDataObjSampleStore(nil, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
+	storeOn := NewDataObjSampleStore(nil, bucket, ms, nil, true, false, log.NewNopLogger(), nil)
+	// storePrune: resolution-time shard-bucket pruning only (streams-read filter off). It prunes postings to
+	// the shard's bucket at resolution, then the fingerprint recheck exacts it. Must match storeOff. This is
+	// the end-to-end guard for the postings min/max columns being populated (producer) and read (predicate);
+	// if either were broken (e.g. zeroed columns) it would resolve nothing and fail the per-shard match.
+	storePrune := NewDataObjSampleStore(nil, bucket, ms, nil, false, true, log.NewNopLogger(), nil)
 
 	expr, err := syntax.ParseSampleExpr(`count_over_time({job="shardtest"}[1h])`)
 	require.NoError(t, err)
@@ -542,8 +547,9 @@ func TestDataObjSampleStore_ShardBucketFiltering(t *testing.T) {
 		return out
 	}
 
-	// Unsharded: both flags must return every stream once.
+	// Unsharded: no shard, so pruning is a no-op; all three must return every stream once.
 	require.ElementsMatch(t, labelsOf(query(storeOff, nil)), labelsOf(query(storeOn, nil)))
+	require.ElementsMatch(t, labelsOf(query(storeOff, nil)), labelsOf(query(storePrune, nil)))
 	require.Len(t, query(storeOn, nil), numStreams)
 
 	// Of = 32 exercises the exact (skip-recheck) path; Of = 64 exercises the over-fetch (recheck) path;
@@ -554,7 +560,9 @@ func TestDataObjSampleStore_ShardBucketFiltering(t *testing.T) {
 			shards := []string{fmt.Sprintf("%d_of_%d", shard, of)}
 			off := query(storeOff, shards)
 			on := query(storeOn, shards)
+			prune := query(storePrune, shards)
 			require.ElementsMatchf(t, labelsOf(off), labelsOf(on), "of=%d shard=%d: pruned read must match the fingerprint-filtered read", of, shard)
+			require.ElementsMatchf(t, labelsOf(off), labelsOf(prune), "of=%d shard=%d: resolution-time pruning must match the baseline", of, shard)
 			for _, l := range labelsOf(on) {
 				seen[l]++
 			}

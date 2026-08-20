@@ -74,7 +74,7 @@ func newTestingDataObjQuerier(t *testing.T, chunkStore querier.Store, loaded []l
 	require.NoError(t, toc.WriteEntry(ctx, idxPath, timeRanges))
 
 	ms := metastore.NewObjectMetastore(bucket, metastore.Config{ReadPostingsSections: true}, log.NewNopLogger(), metastore.NewObjectMetastoreMetrics(nil))
-	return querier.NewDataObjSampleStore(chunkStore, bucket, ms, nil, false, log.NewNopLogger(), nil)
+	return querier.NewDataObjSampleStore(chunkStore, bucket, ms, nil, false, false, log.NewNopLogger(), nil)
 }
 
 func mustIndexBuilder(t *testing.T, cfg logsobj.BuilderBaseConfig) *indexobj.Builder {

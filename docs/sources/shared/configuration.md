@@ -5646,6 +5646,15 @@ engine:
 # CLI flag: -querier.dataobjects-shard-bucket-filtering-enabled
 [dataobjects_shard_bucket_filtering_enabled: <boolean> | default = false]
 
+# When true, sharded stream-first metric queries narrow data-object section
+# resolution to the shard's bucket range using the index postings, so fewer
+# streams are resolved and read. Has no effect unless the data-object reader is
+# enabled, and is ignored when section resolution is offloaded to the
+# index-gateway. Enable only against index objects written with per-stream
+# shard-bucket postings; older index objects would be pruned incorrectly.
+# CLI flag: -querier.dataobjects-section-shard-bucket-pruning-enabled
+[dataobjects_section_shard_bucket_pruning_enabled: <boolean> | default = false]
+
 # When true, the querier resolves data-object sections through the index-gateway
 # (per 12h window) instead of locally, removing the per-shard resolution
 # redundancy. Falls back to local resolution when the gateway is unavailable.

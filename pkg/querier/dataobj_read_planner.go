@@ -136,13 +136,19 @@ type readQuery struct {
 // each object's streams to compute fingerprints and apply the shard filter, and analyses the query
 // expression to decide the column projection and which metadata filters to push down.
 type dataObjReadPlanner struct {
-	resolver                 dataObjSectionsResolver
-	cache                    *dataObjCache
-	shardBucketFilterEnabled bool
+	resolver                         dataObjSectionsResolver
+	cache                            *dataObjCache
+	shardBucketFilterEnabled         bool
+	sectionShardBucketPruningEnabled bool
 }
 
-func newDataObjReadPlanner(resolver dataObjSectionsResolver, cache *dataObjCache, shardBucketFilterEnabled bool) *dataObjReadPlanner {
-	return &dataObjReadPlanner{resolver: resolver, cache: cache, shardBucketFilterEnabled: shardBucketFilterEnabled}
+func newDataObjReadPlanner(resolver dataObjSectionsResolver, cache *dataObjCache, shardBucketFilterEnabled, sectionShardBucketPruningEnabled bool) *dataObjReadPlanner {
+	return &dataObjReadPlanner{
+		resolver:                         resolver,
+		cache:                            cache,
+		shardBucketFilterEnabled:         shardBucketFilterEnabled,
+		sectionShardBucketPruningEnabled: sectionShardBucketPruningEnabled,
+	}
 }
 
 // plan resolves the query's sections and streams the resulting read tasks through a
@@ -158,11 +164,23 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 		defer close(it.done)
 		defer close(ch)
 
+		// The shard maps to a contiguous bucket range once; both prunes below reuse it.
+		sb, hasBucket := shardBucketRange(shard)
+
 		// The resolver self-scopes its object-storage reads (metastore) or its index-gateway calls; the
 		// streams reads (and the object-open head prefetch they trigger) get their own region here, so
 		// each phase's fetched bytes are attributed to the right component.
+		//
+		// When enabled, narrow resolution to the shard's bucket range: the postings scan returns a superset
+		// of this shard's streams (coarse, per-section), and the streams-read fingerprint recheck below still
+		// enforces exactness. Only the metastore (postings) resolver honors it; the index-gateway ignores it.
+		var bucketRange *metastore.ShardBucketRange
+		if p.sectionShardBucketPruningEnabled && hasBucket {
+			bucketRange = &metastore.ShardBucketRange{From: uint32(sb.from), To: uint32(sb.to)}
+		}
+
 		resolveStart := time.Now()
-		sections, err := p.resolver.resolveSections(ctx, start, end, matchers)
+		sections, err := p.resolver.resolveSections(ctx, start, end, matchers, bucketRange)
 		stats.FromContext(ctx).RecordDataobjSectionsResolutionTime(time.Since(resolveStart))
 		if err != nil {
 			it.setErr(fmt.Errorf("resolving data object sections: %w", err))
@@ -170,10 +188,8 @@ func (p *dataObjReadPlanner) plan(ctx context.Context, start, end time.Time, mat
 		}
 
 		query := readQuery{expr: expr, shard: shard, start: start, end: end}
-		if p.shardBucketFilterEnabled {
-			if sb, ok := shardBucketRange(shard); ok {
-				query.shardBucket = &sb
-			}
+		if p.shardBucketFilterEnabled && hasBucket {
+			query.shardBucket = &sb
 		}
 
 		streamsCtx, _ := xcap.StartRegion(ctx, dataobjmetrics.ComponentStreamsReader)

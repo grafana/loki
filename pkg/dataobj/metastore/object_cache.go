@@ -95,7 +95,7 @@ func (c *sectionsCache) Get(ctx context.Context, tenant string, req SectionsRequ
 	matchers := stableMatchers(req.Matchers)
 	predicates := stableMatchers(req.Predicates)
 	sortedIndexes := stableIndexEntries(indexes)
-	key := hashSectionsCacheKey(tenant, req.Start.UnixNano(), req.End.UnixNano(), matchers, predicates, sortedIndexes)
+	key := hashSectionsCacheKey(tenant, req.Start.UnixNano(), req.End.UnixNano(), matchers, predicates, sortedIndexes, stableShardBucketRange(req.ShardBucketRange))
 
 	_, bufs, _, err := c.cache.Fetch(ctx, []string{key})
 	if err != nil {
@@ -129,7 +129,7 @@ func (c *sectionsCache) Put(ctx context.Context, tenant string, req SectionsRequ
 	matchers := stableMatchers(req.Matchers)
 	predicates := stableMatchers(req.Predicates)
 	sortedIndexes := stableIndexEntries(indexes)
-	key := hashSectionsCacheKey(tenant, req.Start.UnixNano(), req.End.UnixNano(), matchers, predicates, sortedIndexes)
+	key := hashSectionsCacheKey(tenant, req.Start.UnixNano(), req.End.UnixNano(), matchers, predicates, sortedIndexes, stableShardBucketRange(req.ShardBucketRange))
 
 	entry := CachedSections{
 		Matchers:   matchers,
@@ -164,10 +164,20 @@ func sectionsCacheKey(tenant string, req SectionsRequest, indexes []IndexEntry) 
 		stableMatchers(req.Matchers),
 		stableMatchers(req.Predicates),
 		stableIndexEntries(indexes),
+		stableShardBucketRange(req.ShardBucketRange),
 	)
 }
 
-func hashSectionsCacheKey(tenant string, startNanos, endNanos int64, matchers, predicates string, indexes []IndexEntry) string {
+// stableShardBucketRange returns a stable key fragment for a shard-bucket range, or "" when there is no
+// range — which keeps the cache key byte-identical to the pre-feature key (backward compatible).
+func stableShardBucketRange(r *ShardBucketRange) string {
+	if r == nil {
+		return ""
+	}
+	return strconv.FormatUint(uint64(r.From), 10) + "-" + strconv.FormatUint(uint64(r.To), 10)
+}
+
+func hashSectionsCacheKey(tenant string, startNanos, endNanos int64, matchers, predicates string, indexes []IndexEntry, bucketRange string) string {
 	h := xxhash.New()
 	_, _ = h.WriteString(tenant)
 	_, _ = h.WriteString("\x00s")
@@ -182,6 +192,11 @@ func hashSectionsCacheKey(tenant string, startNanos, endNanos int64, matchers, p
 	for _, idx := range indexes {
 		_, _ = h.WriteString(idx.Path)
 		_, _ = h.WriteString("\x00")
+	}
+	// Mixed in only when a shard-bucket range is requested, so the default (no range) keeps the prior key.
+	if bucketRange != "" {
+		_, _ = h.WriteString("\x00b")
+		_, _ = h.WriteString(bucketRange)
 	}
 	return sectionsCacheKeyPrefix + sectionsCacheKeyVersion + ":" + tenant + ":" + strconv.FormatUint(h.Sum64(), 16)
 }

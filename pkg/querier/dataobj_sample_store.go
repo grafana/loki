@@ -33,12 +33,13 @@ import (
 type dataObjSampleStore struct {
 	Store // chunk store; delegate everything except SelectSamples
 
-	bucket                   objstore.Bucket
-	resolver                 dataObjSectionsResolver
-	shardBucketFilterEnabled bool
-	metadataCache            dataobj.MetadataCache
-	logger                   log.Logger
-	metrics                  *dataobjmetrics.Metrics
+	bucket                           objstore.Bucket
+	resolver                         dataObjSectionsResolver
+	shardBucketFilterEnabled         bool
+	sectionShardBucketPruningEnabled bool
+	metadataCache                    dataobj.MetadataCache
+	logger                           log.Logger
+	metrics                          *dataobjmetrics.Metrics
 }
 
 // DataObjSampleStoreOption customizes a dataObjSampleStore.
@@ -58,16 +59,20 @@ func WithDataObjMetadataCache(cache dataobj.MetadataCache) DataObjSampleStoreOpt
 // When shardBucketFilterEnabled is true, a sharded query prunes streams by their __shard_bucket__ column
 // before decoding labels, falling back to the fingerprint filter for objects that lack the column.
 //
+// When sectionShardBucketPruningEnabled is true, a sharded query also narrows section resolution to the
+// shard's bucket range (postings flow only), so fewer streams are resolved and read.
+//
 // When sectionsClient is non-nil, sections are resolved by the index-gateway (per 12h window, with the
 // metastore as fallback) instead of locally; otherwise resolution goes straight to the metastore.
-func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, sectionsClient DataObjSectionsGatewayClient, shardBucketFilterEnabled bool, logger log.Logger, reg prometheus.Registerer, opts ...DataObjSampleStoreOption) Store {
+func NewDataObjSampleStore(chunkStore Store, bucket objstore.Bucket, ms metastore.Metastore, sectionsClient DataObjSectionsGatewayClient, shardBucketFilterEnabled, sectionShardBucketPruningEnabled bool, logger log.Logger, reg prometheus.Registerer, opts ...DataObjSampleStoreOption) Store {
 	s := &dataObjSampleStore{
-		Store:                    chunkStore,
-		bucket:                   bucket,
-		resolver:                 newDataObjSectionsResolver(ms, sectionsClient, reg, logger),
-		shardBucketFilterEnabled: shardBucketFilterEnabled,
-		logger:                   logger,
-		metrics:                  dataobjmetrics.New(prometheus.WrapRegistererWithPrefix("loki_querier_", reg)),
+		Store:                            chunkStore,
+		bucket:                           bucket,
+		resolver:                         newDataObjSectionsResolver(ms, sectionsClient, reg, logger),
+		shardBucketFilterEnabled:         shardBucketFilterEnabled,
+		sectionShardBucketPruningEnabled: sectionShardBucketPruningEnabled,
+		logger:                           logger,
+		metrics:                          dataobjmetrics.New(prometheus.WrapRegistererWithPrefix("loki_querier_", reg)),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -122,7 +127,7 @@ func (s *dataObjSampleStore) SelectSamples(ctx context.Context, req logql.Select
 	// One capture spans the whole query, so every object-storage read is accounted and attributed to the
 	// component that made it.
 	captureCtx, _ := xcap.NewCapture(ctx, nil)
-	tasks := newDataObjReadPlanner(s.resolver, cache, s.shardBucketFilterEnabled).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
+	tasks := newDataObjReadPlanner(s.resolver, cache, s.shardBucketFilterEnabled, s.sectionShardBucketPruningEnabled).plan(captureCtx, req.Start, req.End, matchers, shard, expr)
 
 	logsCtx, _ := xcap.StartRegion(captureCtx, logs.RegionRead)
 	reader := newDataObjLogReader(logsCtx, cache, tasks, defaultMaxConcurrency, defaultReadBatchSize, s.metrics)

@@ -242,6 +242,28 @@ func TestSectionsCacheKey(t *testing.T) {
 		require.NotEqual(t, base, sectionsCacheKey("tenant", req, withNew))
 	})
 
+	t.Run("changes with a shard-bucket range", func(t *testing.T) {
+		// base has no range, so a bucket-scoped result must key differently from the unpruned one.
+		other := req
+		other.ShardBucketRange = &ShardBucketRange{From: 1, To: 2}
+		require.NotEqual(t, base, sectionsCacheKey("tenant", other, indexes))
+	})
+
+	t.Run("different shard-bucket ranges produce different keys", func(t *testing.T) {
+		a, b := req, req
+		a.ShardBucketRange = &ShardBucketRange{From: 1, To: 2}
+		b.ShardBucketRange = &ShardBucketRange{From: 3, To: 4}
+		require.NotEqual(t, sectionsCacheKey("tenant", a, indexes), sectionsCacheKey("tenant", b, indexes))
+	})
+
+	t.Run("bucket-0 range does not collide with no range", func(t *testing.T) {
+		// A real {0,0} range must not hash the same as nil (no pruning); otherwise a pruned bucket-0 result
+		// could be served to an unpruned query.
+		other := req
+		other.ShardBucketRange = &ShardBucketRange{From: 0, To: 0}
+		require.NotEqual(t, base, sectionsCacheKey("tenant", other, indexes))
+	})
+
 	t.Run("is independent of matcher and index order", func(t *testing.T) {
 		reordered := req
 		reordered.Matchers = []*labels.Matcher{
