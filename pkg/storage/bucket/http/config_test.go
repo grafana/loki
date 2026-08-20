@@ -18,8 +18,8 @@ var defaultConfig = Config{
 	InsecureSkipVerify:    false,
 	TLSHandshakeTimeout:   10 * time.Second,
 	ExpectContinueTimeout: 1 * time.Second,
-	MaxIdleConns:          100,
-	MaxIdleConnsPerHost:   100,
+	MaxIdleConns:          150,
+	MaxIdleConnsPerHost:   150,
 	MaxConnsPerHost:       0,
 }
 
