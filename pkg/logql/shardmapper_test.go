@@ -13,6 +13,49 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
+func TestApproxCountDistinctShardMapping(t *testing.T) {
+	t.Run("disabled", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, nil)
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
+		require.NoError(t, err)
+		_, _, err = m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "approx_count_distinct is not enabled")
+	})
+
+	t.Run("zero shards still merge before estimate", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(0)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`approx_count_distinct(mac, {foo="bar"}[5m]) by (version)`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t,
+			removeWhiteSpace(`CountDistinctEval<CountDistinctMerge<downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=<nil>>>>`),
+			removeWhiteSpace(mapped.String()),
+		)
+	})
+
+	t.Run("outer sum maps child to CountDistinctEval first", func(t *testing.T) {
+		m := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxCountDistinct})
+		ast, err := syntax.ParseExpr(`sum(approx_count_distinct(mac, {foo="bar"}[5m]) by (version))`)
+		require.NoError(t, err)
+		mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder(), true)
+		require.NoError(t, err)
+		require.Equal(t,
+			removeWhiteSpace(`sum(
+				CountDistinctEval<
+					CountDistinctMerge<
+						downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=0_of_2>
+						++ downstream<__count_distinct_sketch__(mac,{foo="bar"}[5m])by(version),shard=1_of_2>
+					>
+				>
+			)`),
+			removeWhiteSpace(mapped.String()),
+		)
+		require.NotContains(t, mapped.String(), "sum(approx_count_distinct")
+	})
+}
+
 func TestShardedStringer(t *testing.T) {
 	for _, tc := range []struct {
 		in  syntax.Expr
@@ -116,7 +159,7 @@ func TestMapSampleExpr(t *testing.T) {
 
 func TestMappingStrings(t *testing.T) {
 	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
-	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk, SupportApproxCountDistinct})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -174,6 +217,26 @@ func TestMappingStrings(t *testing.T) {
 				  downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=0_of_2>
 				  ++ downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=1_of_2>
 			        >
+			)`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version)`,
+			out: `CountDistinctEval<
+				CountDistinctMerge<
+				  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
+				  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
+				>
+			>`,
+		},
+		{
+			in: `sum(approx_count_distinct(mac, {foo="bar"} | json [5m]) by (version))`,
+			out: `sum(
+				CountDistinctEval<
+					CountDistinctMerge<
+					  downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=0_of_2>
+					  ++ downstream<__count_distinct_sketch__(mac,{foo="bar"}|json[5m])by(version), shard=1_of_2>
+					>
+				>
 			)`,
 		},
 		{
