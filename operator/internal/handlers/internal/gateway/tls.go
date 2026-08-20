@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -65,19 +66,22 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	}
 
 	if tls.CA != nil {
-		if err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, gatewayTLSValidationContext, tls.CA); err != nil {
+		err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, gatewayTLSValidationContext.description, tls.CA)
+		if err := toDegradedError(err, fieldNameCA, gatewayTLSValidationContext); err != nil {
 			return err
 		}
 	}
 
 	if tls.Certificate != nil {
-		if err := validateValueRef(ctx, k, fieldNameCertificate, stack.Namespace, gatewayTLSValidationContext, tls.Certificate); err != nil {
+		err := validateValueRef(ctx, k, fieldNameCertificate, stack.Namespace, gatewayTLSValidationContext.description, tls.Certificate)
+		if err := toDegradedError(err, fieldNameCertificate, gatewayTLSValidationContext); err != nil {
 			return err
 		}
 	}
 
 	if tls.PrivateKey != nil {
-		if err := validateSecretRef(ctx, k, fieldNameKey, stack.Namespace, gatewayTLSValidationContext, tls.PrivateKey.SecretName, tls.PrivateKey.Key); err != nil {
+		err := validateSecretRef(ctx, k, fieldNameKey, stack.Namespace, gatewayTLSValidationContext.description, tls.PrivateKey.SecretName, tls.PrivateKey.Key)
+		if err := toDegradedError(err, fieldNameKey, gatewayTLSValidationContext); err != nil {
 			return err
 		}
 	}
@@ -85,73 +89,119 @@ func validateTLSConfig(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStac
 	return nil
 }
 
+// refLookupKind identifies why a ConfigMap/Secret reference failed validation.
+type refLookupKind int
+
+const (
+	refMissing refLookupKind = iota
+	refInvalid
+)
+
+// refLookupError reports that a ConfigMap or Secret referenced from the LokiStack
+// spec failed validation. It only carries the raw lookup facts (which kind of
+// resource, its name, and the key that was checked): validateValueRef,
+// validateConfigRef and validateSecretRef are shared by both gateway TLS and
+// passthrough CA validation, which use different messages and Condition Reasons,
+// so turning this into a status.DegradedError is left to the caller via
+// toDegradedError.
+type refLookupError struct {
+	kind         refLookupKind
+	resourceKind string // "configmap" or "secret"
+	name         string
+	key          string
+}
+
+func (e *refLookupError) Error() string {
+	if e.kind == refMissing {
+		return fmt.Sprintf("missing %s: %s", e.resourceKind, e.name)
+	}
+	return fmt.Sprintf("%s %s missing key: %s", e.resourceKind, e.name, e.key)
+}
+
+// requeueOnMissingRef is the Requeue policy for gateway TLS and passthrough CA
+// reference errors. This is false, matching storage CA: the LokiStack controller
+// watches ConfigMaps/Secrets referenced by gateway TLS and passthrough CA (see
+// enqueueForCAConfigMap/enqueueForCASecret), so fixing their contents (e.g.
+// adding a missing key) retriggers reconciliation without requiring
+// requeue-with-backoff.
+const requeueOnMissingRef = false
+
+// toDegradedError converts a refLookupError coming from validateValueRef,
+// validateConfigRef or validateSecretRef into a status.DegradedError, using
+// fieldName and vRefFailure to describe which part of the LokiStack spec the
+// reference came from. Any other error (e.g. a non-NotFound API failure) is
+// returned unchanged, since it isn't something the user can fix by editing the
+// referenced ConfigMap/Secret.
+func toDegradedError(err error, fieldName string, vRefFailure valueRefFailure) error {
+	if err == nil {
+		return nil
+	}
+
+	var refErr *refLookupError
+	if !errors.As(err, &refErr) {
+		return err
+	}
+
+	if refErr.kind == refMissing {
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Missing %s for field %q in %s: %s", refErr.resourceKind, fieldName, vRefFailure.description, refErr.name),
+			Reason:  vRefFailure.missingReason,
+			Requeue: requeueOnMissingRef,
+		}
+	}
+
+	return &status.DegradedError{
+		Message: fmt.Sprintf("Invalid %s %s for field %q in %s, missing key: %s", refErr.resourceKind, refErr.name, fieldName, vRefFailure.description, refErr.key),
+		Reason:  vRefFailure.invalidReason,
+		Requeue: requeueOnMissingRef,
+	}
+}
+
 // validateValueRef checks that the ConfigMap or Secret referenced by ref exists and
-// contains the referenced key. vctx describes which part of the LokiStack spec the
-// reference came from, both for the error message text and the Condition Reason.
-func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, ref *lokiv1.ValueReference) error {
+// contains the referenced key. description is used only to annotate the error
+// message if the lookup itself fails unexpectedly (e.g. a non-NotFound API error).
+func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace, description string, ref *lokiv1.ValueReference) error {
 	if ref.ConfigMapName != "" {
-		return validateConfigRef(ctx, k, fieldName, namespace, vRefFailure, ref.ConfigMapName, ref.Key)
+		return validateConfigRef(ctx, k, fieldName, namespace, description, ref.ConfigMapName, ref.Key)
 	}
 	if ref.SecretName != "" {
-		return validateSecretRef(ctx, k, fieldName, namespace, vRefFailure, ref.SecretName, ref.Key)
+		return validateSecretRef(ctx, k, fieldName, namespace, description, ref.SecretName, ref.Key)
 	}
 
 	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
 }
 
-func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, name, key string) error {
+func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace, description, name, key string) error {
 	var cm corev1.ConfigMap
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := k.Get(ctx, objKey, &cm); err != nil {
 		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for field %q in %s: %s", fieldName, vctx.description, name),
-				Reason:  vctx.missingReason,
-				Requeue: true,
-			}
+			return &refLookupError{kind: refMissing, resourceKind: "configmap", name: name}
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field %q in %s", fieldName, vctx.description), "key", objKey.String())
+		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup configmap for field %q in %s", fieldName, description), "key", objKey.String())
 	}
 
 	if cm.Data[key] == "" && len(cm.BinaryData[key]) == 0 {
-		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid configmap %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
-			Reason:  vctx.invalidReason,
-			// Requeue: there is no Watch on this ConfigMap by name, so without
-			// requeuing, fixing its contents (e.g. adding the missing key) would
-			// never retrigger reconciliation. Mirrors tenant_secrets.go.
-			Requeue: true,
-		}
+		return &refLookupError{kind: refInvalid, resourceKind: "configmap", name: name, key: key}
 	}
 
 	return nil
 }
 
-func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, name, key string) error {
+func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace, description, name, key string) error {
 	var secret corev1.Secret
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
 	if err := k.Get(ctx, objKey, &secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing secret for field %q in %s: %s", fieldName, vctx.description, name),
-				Reason:  vctx.missingReason,
-				Requeue: true,
-			}
+			return &refLookupError{kind: refMissing, resourceKind: "secret", name: name}
 		}
-		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field %q in %s", fieldName, vctx.description), "key", objKey.String())
+		return kverrors.Wrap(err, fmt.Sprintf("failed to lookup secret for field %q in %s", fieldName, description), "key", objKey.String())
 	}
 
 	if len(secret.Data[key]) == 0 {
-		return &status.DegradedError{
-			Message: fmt.Sprintf("Invalid secret %s for field %q in %s, missing key: %s", name, fieldName, vctx.description, key),
-			Reason:  vctx.invalidReason,
-			// Requeue: there is no Watch on this Secret by name, so without
-			// requeuing, fixing its contents (e.g. adding the missing key) would
-			// never retrigger reconciliation. Mirrors tenant_secrets.go.
-			Requeue: true,
-		}
+		return &refLookupError{kind: refInvalid, resourceKind: "secret", name: name, key: key}
 	}
 
 	return nil

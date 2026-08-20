@@ -108,7 +108,8 @@ func validatePassthroughCA(ctx context.Context, k k8s.Client, httpEncryption boo
 			Requeue: false,
 		}
 	}
-	if err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, passthroughCAValidationContext, stack.Spec.Tenants.Passthrough.CA); err != nil {
+	err := validateValueRef(ctx, k, fieldNameCA, stack.Namespace, passthroughCAValidationContext.description, stack.Spec.Tenants.Passthrough.CA)
+	if err := toDegradedError(err, fieldNameCA, passthroughCAValidationContext); err != nil {
 		return err
 	}
 	return nil // CEL rules on ValueReference handle the rest

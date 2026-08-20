@@ -560,7 +560,7 @@ func TestValidatePassthroughCA(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing configmap for field "ca" in passthrough gateway configuration: non-existent-configmap`,
 				Reason:  lokiv1.ReasonMissingPassthroughConfiguration,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -575,7 +575,7 @@ func TestValidatePassthroughCA(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Invalid configmap passthrough-ca-configmap-invalid for field "ca" in passthrough gateway configuration, missing key: ca.crt`,
 				Reason:  lokiv1.ReasonInvalidPassthroughConfiguration,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 		{
@@ -590,7 +590,7 @@ func TestValidatePassthroughCA(t *testing.T) {
 			expError: &status.DegradedError{
 				Message: `Missing secret for field "ca" in passthrough gateway configuration: non-existent-secret`,
 				Reason:  lokiv1.ReasonMissingPassthroughConfiguration,
-				Requeue: true,
+				Requeue: false,
 			},
 		},
 	} {
