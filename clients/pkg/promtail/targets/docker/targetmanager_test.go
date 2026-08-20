@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/network"
 	"github.com/go-kit/log"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery/moby"
@@ -39,7 +40,7 @@ func Test_TargetManager(t *testing.T) {
 					Networks: map[string]*network.EndpointSettings{
 						"foo": {
 							NetworkID: "my_network",
-							IPAddress: "127.0.0.1",
+							IPAddress: netip.MustParseAddr("127.0.0.1"),
 						},
 					},
 				},
@@ -54,10 +55,9 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "json"):
 			w.Header().Set("Content-Type", "application/json")
 			info := container.InspectResponse{
-				ContainerJSONBase: &container.ContainerJSONBase{},
-				Mounts:            []container.MountPoint{},
-				Config:            &container.Config{Tty: false},
-				NetworkSettings:   &container.NetworkSettings{},
+				Mounts:          []container.MountPoint{},
+				Config:          &container.Config{Tty: false},
+				NetworkSettings: &container.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
