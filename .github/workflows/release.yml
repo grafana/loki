@@ -211,6 +211,79 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
+  publishDockerPlugins:
+    needs:
+    - "createRelease"
+    permissions:
+      id-token: "write"
+    runs-on: "ubuntu-x64"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        persist-credentials: false
+        ref: "${{ env.RELEASE_LIB_REF }}"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        persist-credentials: false
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
+    - name: "Login to GAR"
+      uses: "grafana/shared-workflows/actions/login-to-gar@12c87e5aa323694c820c1ff3d8e47e8237e05136"
+      with:
+        registry: "us-docker.pkg.dev"
+    - env:
+        SHA: "${{ needs.createRelease.outputs.sha }}"
+      name: "download and prepare plugins"
+      run: |
+        echo "downloading plugins to $(pwd)/plugins"
+        mkdir -p plugins
+        gcloud artifacts generic download \
+          --project="grafanalabs-dev" \
+          --repository="generic-${{ env.GAR_REPO_SLUG }}-dev" \
+          --location="us" \
+          --package=plugins \
+          --version=$(echo ${SHA} | tr -d '"') \
+          --destination=plugins/
+        mkdir -p "release/clients/cmd/docker-driver"
+    - name: "start local registry for plugins"
+      run: |
+        set -euo pipefail
+        crane_version="v0.21.6"
+        curl -sSL "https://github.com/google/go-containerregistry/releases/download/${crane_version}/go-containerregistry_Linux_x86_64.tar.gz" \
+          | tar -xz crane
+        nohup ./crane registry serve --address localhost:5000 >crane-registry.log 2>&1 &
+        for _ in $(seq 1 30); do
+          curl -sf http://localhost:5000/v2/ >/dev/null && break
+          sleep 1
+        done
+        curl -sf http://localhost:5000/v2/ >/dev/null || { echo "local registry failed to start" >&2; cat crane-registry.log >&2 || true; exit 1; }
+    - name: "publish docker driver"
+      uses: "./lib/actions/push-images"
+      with:
+        buildDir: "release/clients/cmd/docker-driver"
+        imageDir: "plugins"
+        imagePrefix: "localhost:5000"
+        isLatest: "${{ needs.createRelease.outputs.isLatest }}"
+        isPlugin: true
+    - name: "mirror plugins to GAR with crane"
+      run: |
+        set -euo pipefail
+        for repo in $(./crane catalog localhost:5000 --insecure); do
+          for tag in $(./crane ls "localhost:5000/${repo}" --insecure); do
+            layout="$(mktemp -d)"
+            echo "mirroring ${repo}:${tag} to ${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+            ./crane pull --insecure --format=oci "localhost:5000/${repo}:${tag}" "${layout}"
+            ./crane push "${layout}" "${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+          done
+        done
   publishImages:
     needs:
     - "createRelease"
@@ -256,6 +329,7 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
+    - "publishDockerPlugins"
     outputs:
       name: "${{ needs.createRelease.outputs.name }}"
     permissions:
