@@ -91,6 +91,11 @@ func Test(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+func TestShardBucketFromHash(t *testing.T) {
+	ls := labels.FromStrings("app", "auth")
+	require.Equal(t, streams.ShardBucket(ls), streams.ShardBucketFromHash(labels.StableHash(ls)))
+}
+
 func copyLabels(in labels.Labels) labels.Labels {
 	builder := labels.NewScratchBuilder(in.Len())
 
