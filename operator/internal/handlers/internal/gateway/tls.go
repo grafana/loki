@@ -128,7 +128,7 @@ func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace s
 	return nil
 }
 
-func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vctx valueRefFailure, name, key string) error {
+func validateSecretRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, name, key string) error {
 	var secret corev1.Secret
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
