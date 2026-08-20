@@ -1793,7 +1793,7 @@ go.opentelemetry.io/collector/pdata/plog/plogotlp
 go.opentelemetry.io/collector/pdata/pmetric
 go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp
 go.opentelemetry.io/collector/pdata/ptrace
-# go.opentelemetry.io/collector/pdata/pprofile v0.158.0
+# go.opentelemetry.io/collector/pdata/pprofile v0.159.0
 ## explicit; go 1.25.0
 go.opentelemetry.io/collector/pdata/pprofile
 # go.opentelemetry.io/collector/pipeline v1.64.0
