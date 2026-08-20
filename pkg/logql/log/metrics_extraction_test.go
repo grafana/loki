@@ -367,6 +367,13 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 	})
 }
 
+func TestNewDistinctValueSampleExtractorDoesNotMutateGroups(t *testing.T) {
+	groups := []string{"version", "region"}
+	_, err := NewDistinctValueSampleExtractor("mac", nil, groups)
+	require.NoError(t, err)
+	require.Equal(t, []string{"version", "region"}, groups)
+}
+
 func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 	if err != nil {
 		panic(err)

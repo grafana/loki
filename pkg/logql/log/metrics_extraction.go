@@ -244,13 +244,15 @@ func NewDistinctValueSampleExtractor(labelName string, stages []Stage, groups []
 	if labelName == "" {
 		return nil, errors.New("distinct value extractor requires a non-empty label name")
 	}
-	sort.Strings(groups)
+	sortedGroups := make([]string, len(groups))
+	copy(sortedGroups, groups)
+	sort.Strings(sortedGroups)
 	preStage := ReduceStages(stages)
-	hints := NewParserHint(preStage.RequiredLabelNames(), groups, false, false, labelName, stages)
+	hints := NewParserHint(preStage.RequiredLabelNames(), sortedGroups, false, false, labelName, stages)
 	return &distinctValueSampleExtractor{
 		preStage:         preStage,
 		labelName:        labelName,
-		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, false, false),
+		baseBuilder:      NewBaseLabelsBuilderWithGrouping(sortedGroups, hints, false, false),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
 	}, nil
 }

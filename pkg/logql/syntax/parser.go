@@ -211,24 +211,34 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
-		return e.validate()
+		if err := e.validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
 	case *CountDistinctSketchExpr:
 		if e.err != nil {
 			return e.err
 		}
-		return e.validate()
+		if err := e.validate(); err != nil {
+			return err
+		}
+		return validateSampleSelector(e)
 	case *LabelReplaceExpr:
 		if e.err != nil {
 			return e.err
 		}
 		return validateSampleExpr(e.Left)
 	default:
-		selector, err := e.Selector()
-		if err != nil {
-			return err
-		}
-		return validateLogSelectorExpression(selector)
+		return validateSampleSelector(e)
 	}
+}
+
+func validateSampleSelector(expr SampleExpr) error {
+	selector, err := expr.Selector()
+	if err != nil {
+		return err
+	}
+	return validateLogSelectorExpression(selector)
 }
 
 func validateLogSelectorExpression(expr LogSelectorExpr) error {

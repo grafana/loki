@@ -433,6 +433,10 @@ var ParseTestCases = []struct {
 		err: logqlmodel.NewParseError("syntax error: unexpected ), expecting ,", 1, 26),
 	},
 	{
+		in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+		err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+	},
+	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
 		err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 	},
@@ -3604,6 +3608,17 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		},
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
+		},
+		{
+			in: `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+		},
+		{
+			in:  `approx_count_distinct(mac, {}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
+		},
+		{
+			in:  `approx_count_distinct(mac, {foo!="bar"}[1d]) by (version)`,
+			err: logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0),
 		},
 		{
 			in:  `count without (rate({namespace="apps"}[15s]))`,
