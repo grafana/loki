@@ -99,7 +99,7 @@ func validateValueRef(ctx context.Context, k k8s.Client, fieldName, namespace st
 	return kverrors.New("invalid call to validateValueRef configmap and secret not set", "field", fieldName, "ref", ref)
 }
 
-func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vctx valueRefFailure, name, key string) error {
+func validateConfigRef(ctx context.Context, k k8s.Client, fieldName, namespace string, vRefFailure valueRefFailure, name, key string) error {
 	var cm corev1.ConfigMap
 
 	objKey := client.ObjectKey{Name: name, Namespace: namespace}
