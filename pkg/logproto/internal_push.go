@@ -172,6 +172,106 @@ func (s *InternalStreamAdapter) Filter(keep func(res *ResourceLogs, scope *Scope
 	return dropped
 }
 
+// Divide assigns every entry to one of parts and returns those parts, each keeping the
+// nesting of the original.
+//
+// assign is called exactly once per entry, in containment order, with a running index and
+// the entry, so it may accumulate state. An entry assigned an index outside [0, parts) is
+// discarded.
+//
+// A part receives only the groups and scopes that some of its entries came from, carrying
+// the same attributes, so no part holds an empty group. The result always has exactly parts
+// elements, in index order, so a caller can map a part back to what it means — shard 3 must
+// carry the shard label 3 even if shard 2 came out empty.
+func (s *InternalStreamAdapter) Divide(parts int, assign func(idx int, e *push.Entry) int) []InternalStreamAdapter {
+	if parts <= 0 {
+		return nil
+	}
+
+	out := make([]InternalStreamAdapter, parts)
+	// Which source group and scope each part's open group came from, so that entries from
+	// one source scope collect together instead of opening a group each.
+	lastRes := make([]int, parts)
+	lastScope := make([]int, parts)
+	for p := range out {
+		out[p].Labels, out[p].Hash = s.Labels, s.Hash
+		lastRes[p], lastScope[p] = -1, -1
+	}
+
+	idx := 0
+	for i := range s.ResourceLogs {
+		res := &s.ResourceLogs[i]
+		for j := range res.ScopeLogs {
+			scope := &res.ScopeLogs[j]
+			for k := range scope.Entries {
+				entry := &scope.Entries[k]
+
+				part := assign(idx, entry)
+				idx++
+				if part < 0 || part >= parts {
+					continue
+				}
+				dst := &out[part]
+
+				switch {
+				case lastRes[part] != i:
+					dst.ResourceLogs = append(dst.ResourceLogs, ResourceLogs{
+						Attrs:     res.Attrs,
+						ScopeLogs: []ScopeLogs{{Attrs: scope.Attrs}},
+					})
+					lastRes[part], lastScope[part] = i, j
+
+				case lastScope[part] != j:
+					group := &dst.ResourceLogs[len(dst.ResourceLogs)-1]
+					group.ScopeLogs = append(group.ScopeLogs, ScopeLogs{Attrs: scope.Attrs})
+					lastScope[part] = j
+				}
+
+				group := &dst.ResourceLogs[len(dst.ResourceLogs)-1]
+				target := &group.ScopeLogs[len(group.ScopeLogs)-1]
+				target.Entries = append(target.Entries, *entry)
+			}
+		}
+	}
+	return out
+}
+
+// SortByTimestamp orders entries by timestamp within each scope. It is stable, so entries
+// sharing a timestamp keep their arrival order.
+//
+// This is not a global sort: an entry cannot leave the resource and scope whose attributes
+// apply to it, so a stream carrying several groups is ordered only within each of them. For
+// a stream of one group and one scope — which is every native push — it is a full sort.
+func (s *InternalStreamAdapter) SortByTimestamp() {
+	for i := range s.ResourceLogs {
+		for j := range s.ResourceLogs[i].ScopeLogs {
+			slices.SortStableFunc(s.ResourceLogs[i].ScopeLogs[j].Entries, func(a, b push.Entry) int {
+				return a.Timestamp.Compare(b.Timestamp)
+			})
+		}
+	}
+}
+
+// RewriteSharedAttrs replaces every group's and scope's attributes with the result of fn.
+//
+// It is copy-on-write by contract: fn must not write through the slice it is given, and
+// returns either that same slice or a new one. The parser hands the same resource's
+// attributes to every stream that resource fed, so writing through would change the value
+// for streams that are not being processed.
+//
+// Rewriting once per group rather than once per entry is not only cheaper than the flattened
+// form's per-entry work, it is the only correct way: the set is shared, so it cannot be
+// edited in place while any entry still refers to it.
+func (s *InternalStreamAdapter) RewriteSharedAttrs(fn func(attrs []push.LabelAdapter) []push.LabelAdapter) {
+	for i := range s.ResourceLogs {
+		res := &s.ResourceLogs[i]
+		res.Attrs = fn(res.Attrs)
+		for j := range res.ScopeLogs {
+			res.ScopeLogs[j].Attrs = fn(res.ScopeLogs[j].Attrs)
+		}
+	}
+}
+
 // TruncateLines shortens any line longer than maxLen so that the result, suffix included, is
 // at most maxLen bytes. It reports how many lines it changed and how many bytes it removed.
 //

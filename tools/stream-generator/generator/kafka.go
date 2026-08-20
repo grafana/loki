@@ -90,8 +90,12 @@ func (s *Generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 
 			// Calculate log size from actual entries
 			var logSize uint64
-			for _, entry := range stream.Stream.Entries {
-				logSize += uint64(len(entry.Line))
+			for i := range stream.Stream.ResourceLogs {
+				for j := range stream.Stream.ResourceLogs[i].ScopeLogs {
+					for _, entry := range stream.Stream.ResourceLogs[i].ScopeLogs[j].Entries {
+						logSize += uint64(len(entry.Line))
+					}
+				}
 			}
 
 			metadata := proto.StreamMetadata{

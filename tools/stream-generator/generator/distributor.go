@@ -20,9 +20,10 @@ func (s *Generator) sendStreams(ctx context.Context, tenant string, batch []dist
 
 	pushStreams := make([]logproto.Stream, len(batch))
 	for i, stream := range batch {
+		flat := stream.Stream.ToStream()
 		pushStreams[i] = logproto.Stream{
 			Labels:  stream.Stream.Labels,
-			Entries: stream.Stream.Entries,
+			Entries: flat.Entries,
 		}
 	}
 

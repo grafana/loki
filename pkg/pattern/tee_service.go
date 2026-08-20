@@ -275,7 +275,9 @@ func (ts *TeeService) batchesForTenant(
 			batches[tenant][addr] = batch
 		}
 
-		batch.Streams = append(batch.Streams, stream.Stream)
+		// The pattern ingester's push RPC takes flat entries, so the attributes are
+		// expanded here.
+		batch.Streams = append(batch.Streams, stream.Stream.ToStream())
 		ts.metrics.teedStreams.WithLabelValues("batched").Inc()
 	}
 
@@ -456,7 +458,7 @@ func (ts *TeeService) Duplicate(_ context.Context, tenant string, streams []dist
 
 	for _, stream := range streams {
 		// Skip streams with no entries.
-		if len(stream.Stream.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 

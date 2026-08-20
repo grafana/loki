@@ -154,7 +154,7 @@ func (v Validator) IsInternalStream(ls labels.Labels) bool {
 }
 
 // Validate labels returns an error if the labels are invalid and if the stream is an aggregated metric stream
-func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy, format string) error {
+func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream *logproto.InternalStreamAdapter, retentionHours, policy, format string) error {
 	if ls.IsEmpty() {
 		// TODO: is this one correct?
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, vCtx.userID, retentionHours, policy, format).Inc()
@@ -173,10 +173,11 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 		numLabelNames--
 	}
 
-	entriesSize := util.EntriesTotalSize(stream.Entries)
+	entriesSize := stream.UnexpandedSize()
+	entryCount := stream.EntryCount()
 
 	if numLabelNames > vCtx.maxLabelNamesPerSeries {
-		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)
+		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, entryCount, format)
 		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
 	}
 
@@ -184,13 +185,13 @@ func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stre
 
 	return ls.Validate(func(l labels.Label) error {
 		if len(l.Name) > vCtx.maxLabelNameLength {
-			v.reportDiscardedData(validation.LabelNameTooLong, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)
+			v.reportDiscardedData(validation.LabelNameTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
 			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > vCtx.maxLabelValueLength {
-			v.reportDiscardedData(validation.LabelValueTooLong, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)
+			v.reportDiscardedData(validation.LabelValueTooLong, vCtx, retentionHours, policy, entriesSize, entryCount, format)
 			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
-			v.reportDiscardedData(validation.DuplicateLabelNames, vCtx, retentionHours, policy, entriesSize, len(stream.Entries), format)
+			v.reportDiscardedData(validation.DuplicateLabelNames, vCtx, retentionHours, policy, entriesSize, entryCount, format)
 			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name

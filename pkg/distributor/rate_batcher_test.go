@@ -59,20 +59,20 @@ func TestRateBatcher_Add_AccumulatesStreams(t *testing.T) {
 	streams := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.Stream{
+				Stream: logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
-				},
+				}),
 				Policy: "default",
 			},
 			SegmentationKeyHash: 123,
 		},
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.Stream{
+				Stream: logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test2"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test2"}},
-				},
+				}),
 				Policy: "default",
 			},
 			SegmentationKeyHash: 456,
@@ -110,10 +110,10 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	stream1 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.Stream{
+				Stream: logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "hello"}},
-				},
+				}),
 			},
 			SegmentationKeyHash: 123,
 		},
@@ -123,10 +123,10 @@ func TestRateBatcher_AccumulatesSize(t *testing.T) {
 	stream2 := []segmentedStream{
 		{
 			KeyedStream: KeyedStream{
-				Stream: logproto.Stream{
+				Stream: logproto.FromStream(logproto.Stream{
 					Labels:  `{app="test"}`,
 					Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "world!"}},
-				},
+				}),
 			},
 			SegmentationKeyHash: 123, // Same hash
 		},

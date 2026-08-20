@@ -224,7 +224,7 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream segmen
 		return
 	}
 
-	records, err := kafka.EncodeWithTopic(t.cfg.Topic, partition, tenant, stream.Stream, t.cfg.MaxBufferedBytes)
+	records, err := kafka.EncodeWithTopic(t.cfg.Topic, partition, tenant, stream.Stream.ToStream(), t.cfg.MaxBufferedBytes)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to encode stream", "err", err)
 		t.streamFailures.Inc()

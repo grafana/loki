@@ -338,3 +338,159 @@ func TestToStreamIsTheExactInverseOfTheNesting(t *testing.T) {
 	require.Equal(t, push.LabelsAdapter(pairs("c", "own", "b", "resource", "a", "scope")),
 		got.Entries[0].StructuredMetadata)
 }
+
+func TestDivideRoundRobinKeepsGroupAttributes(t *testing.T) {
+	s := nested([]string{"res", "1"}, []string{"sc", "2"},
+		entry("a"), entry("b"), entry("c"), entry("d"))
+
+	parts := s.Divide(3, func(idx int, _ *push.Entry) int { return idx % 3 })
+
+	require.Len(t, parts, 3)
+	require.Equal(t, []string{"a", "d"}, linesOf(parts[0].ResourceLogs[0].ScopeLogs[0].Entries))
+	require.Equal(t, []string{"b"}, linesOf(parts[1].ResourceLogs[0].ScopeLogs[0].Entries))
+	require.Equal(t, []string{"c"}, linesOf(parts[2].ResourceLogs[0].ScopeLogs[0].Entries))
+
+	for _, part := range parts {
+		require.Equal(t, `{app="a"}`, part.Labels)
+		require.Equal(t, pairs("res", "1"), part.ResourceLogs[0].Attrs,
+			"a shard must carry the attributes that applied to its entries")
+		require.Equal(t, pairs("sc", "2"), part.ResourceLogs[0].ScopeLogs[0].Attrs)
+	}
+}
+
+func TestDivideReturnsEmptyPartsSoIndexesStillMean(t *testing.T) {
+	s := nested(nil, nil, entry("a"), entry("b"))
+
+	// Nothing lands in part 1, but it must still be returned so part 2 is still part 2 to
+	// a caller stamping shard labels.
+	parts := s.Divide(3, func(_ int, e *push.Entry) int {
+		if e.Line == "a" {
+			return 0
+		}
+		return 2
+	})
+
+	require.Len(t, parts, 3)
+	require.Equal(t, 1, parts[0].EntryCount())
+	require.Zero(t, parts[1].EntryCount())
+	require.Empty(t, parts[1].ResourceLogs, "an empty part must not carry an empty group")
+	require.Equal(t, 1, parts[2].EntryCount())
+}
+
+func TestDivideDiscardsOutOfRangeAssignments(t *testing.T) {
+	s := nested(nil, nil, entry("keep"), entry("drop"), entry("also drop"))
+
+	parts := s.Divide(1, func(_ int, e *push.Entry) int {
+		switch e.Line {
+		case "drop":
+			return -1
+		case "also drop":
+			return 5
+		}
+		return 0
+	})
+
+	require.Len(t, parts, 1)
+	require.Equal(t, []string{"keep"}, linesOf(parts[0].ResourceLogs[0].ScopeLogs[0].Entries))
+}
+
+func TestDivideAsksOncePerEntryInContainmentOrder(t *testing.T) {
+	s := InternalStreamAdapter{ResourceLogs: []ResourceLogs{
+		{ScopeLogs: []ScopeLogs{
+			{Entries: []push.Entry{entry("a"), entry("b")}},
+			{Entries: []push.Entry{entry("c")}},
+		}},
+		{ScopeLogs: []ScopeLogs{
+			{Entries: []push.Entry{entry("d")}},
+		}},
+	}}
+
+	var seen []string
+	var indexes []int
+	s.Divide(1, func(idx int, e *push.Entry) int {
+		seen = append(seen, e.Line)
+		indexes = append(indexes, idx)
+		return 0
+	})
+
+	require.Equal(t, []string{"a", "b", "c", "d"}, seen)
+	require.Equal(t, []int{0, 1, 2, 3}, indexes)
+}
+
+func TestDivideKeepsEntriesFromDifferentSourceGroupsApart(t *testing.T) {
+	// Two resources with different attributes. Entries from both land in one part, and
+	// must not be merged into one group or each would inherit the other's attributes.
+	s := InternalStreamAdapter{ResourceLogs: []ResourceLogs{
+		{Attrs: pairs("host", "one"), ScopeLogs: []ScopeLogs{{Entries: []push.Entry{entry("a")}}}},
+		{Attrs: pairs("host", "two"), ScopeLogs: []ScopeLogs{{Entries: []push.Entry{entry("b")}}}},
+	}}
+
+	parts := s.Divide(1, func(int, *push.Entry) int { return 0 })
+
+	require.Len(t, parts[0].ResourceLogs, 2)
+	require.Equal(t, pairs("host", "one"), parts[0].ResourceLogs[0].Attrs)
+	require.Equal(t, []string{"a"}, linesOf(parts[0].ResourceLogs[0].ScopeLogs[0].Entries))
+	require.Equal(t, pairs("host", "two"), parts[0].ResourceLogs[1].Attrs)
+	require.Equal(t, []string{"b"}, linesOf(parts[0].ResourceLogs[1].ScopeLogs[0].Entries))
+}
+
+func TestDivideCollectsEntriesOfOneScopeTogether(t *testing.T) {
+	// Alternate two parts across four entries of one scope: each part should end up with
+	// one group holding two entries, not two groups holding one each.
+	s := nested([]string{"res", "1"}, nil, entry("a"), entry("b"), entry("c"), entry("d"))
+
+	parts := s.Divide(2, func(idx int, _ *push.Entry) int { return idx % 2 })
+
+	for _, part := range parts {
+		require.Len(t, part.ResourceLogs, 1)
+		require.Len(t, part.ResourceLogs[0].ScopeLogs, 1)
+		require.Len(t, part.ResourceLogs[0].ScopeLogs[0].Entries, 2)
+	}
+}
+
+func TestSortByTimestampIsAFullSortForANativePush(t *testing.T) {
+	at := func(ns int64) push.Entry {
+		return push.Entry{Timestamp: time.Unix(0, ns), Line: "line"}
+	}
+	s := FromStream(Stream{Entries: []push.Entry{at(30), at(10), at(20)}})
+
+	s.SortByTimestamp()
+
+	got := make([]int64, 0, 3)
+	for _, e := range s.ResourceLogs[0].ScopeLogs[0].Entries {
+		got = append(got, e.Timestamp.UnixNano())
+	}
+	require.Equal(t, []int64{10, 20, 30}, got)
+}
+
+func TestSortByTimestampIsStable(t *testing.T) {
+	same := func(line string) push.Entry {
+		return push.Entry{Timestamp: time.Unix(0, 10), Line: line}
+	}
+	s := FromStream(Stream{Entries: []push.Entry{same("a"), same("b"), same("c")}})
+
+	s.SortByTimestamp()
+
+	require.Equal(t, []string{"a", "b", "c"}, linesOf(s.ResourceLogs[0].ScopeLogs[0].Entries))
+}
+
+func TestSortByTimestampOrdersWithinEachScopeOnly(t *testing.T) {
+	// An entry cannot leave the scope whose attributes apply to it, so the result is
+	// ordered per scope and not across them.
+	at := func(ns int64) push.Entry {
+		return push.Entry{Timestamp: time.Unix(0, ns), Line: "line"}
+	}
+	s := InternalStreamAdapter{ResourceLogs: []ResourceLogs{{ScopeLogs: []ScopeLogs{
+		{Entries: []push.Entry{at(30), at(10)}},
+		{Entries: []push.Entry{at(40), at(20)}},
+	}}}}
+
+	s.SortByTimestamp()
+
+	first := s.ResourceLogs[0].ScopeLogs[0].Entries
+	second := s.ResourceLogs[0].ScopeLogs[1].Entries
+	require.Equal(t, int64(10), first[0].Timestamp.UnixNano())
+	require.Equal(t, int64(30), first[1].Timestamp.UnixNano())
+	require.Equal(t, int64(20), second[0].Timestamp.UnixNano())
+	require.Equal(t, int64(40), second[1].Timestamp.UnixNano())
+}

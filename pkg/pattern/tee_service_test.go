@@ -72,35 +72,35 @@ func TestPatternTee_Basic(t *testing.T) {
 
 	now := time.Now()
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: push.Stream{
+		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
 				{Timestamp: now, Line: "foo1"},
 				{Timestamp: now.Add(1 * time.Second), Line: "bar1"},
 				{Timestamp: now.Add(2 * time.Second), Line: "baz1"},
 			},
-		}},
+		})},
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: push.Stream{
+		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []push.Entry{
 				{Timestamp: now.Add(3 * time.Second), Line: "foo2"},
 				{Timestamp: now.Add(4 * time.Second), Line: "bar2"},
 				{Timestamp: now.Add(5 * time.Second), Line: "baz2"},
 			},
-		}},
+		})},
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 456, Stream: push.Stream{
+		{HashKey: 456, Stream: logproto.FromStream(push.Stream{
 			Labels: `{ping="pong"}`,
 			Entries: []push.Entry{
 				{Timestamp: now.Add(1 * time.Second), Line: "ping"},
 				{Timestamp: now.Add(2 * time.Second), Line: "pong"},
 			},
-		}},
+		})},
 	}, nil)
 
 	cancel()
@@ -163,17 +163,17 @@ func TestPatternTee_EmptyStream(t *testing.T) {
 	require.NoError(t, tee.Start(ctx))
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 123, Stream: push.Stream{
+		{HashKey: 123, Stream: logproto.FromStream(push.Stream{
 			Labels:  `{foo="bar"}`,
 			Entries: []push.Entry{},
-		}},
+		})},
 	}, nil)
 
 	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
-		{HashKey: 456, Stream: push.Stream{
+		{HashKey: 456, Stream: logproto.FromStream(push.Stream{
 			Labels:  `{ping="pong"}`,
 			Entries: []push.Entry{},
-		}},
+		})},
 	}, nil)
 
 	cancel()
@@ -195,13 +195,13 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 
 		s1 := distributor.KeyedStream{
 			HashKey: 123,
-			Stream: push.Stream{
+			Stream: logproto.FromStream(push.Stream{
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
 					Line:      strings.Repeat("abc", 2<<11), // 4KB
 				}},
-			},
+			}),
 		}
 
 		tee.cfg.TeeConfig.MaxBufferedBytes = 0
@@ -224,13 +224,13 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// Stream should be accepted, less than 1KB.
 		s1 := distributor.KeyedStream{
 			HashKey: 123,
-			Stream: push.Stream{
+			Stream: logproto.FromStream(push.Stream{
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
 					Line:      "abc",
 				}},
-			},
+			}),
 		}
 		require.LessOrEqual(t, s1.Stream.Size(), 1024)
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s1}, nil)
@@ -244,13 +244,13 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// Stream should be rejected, more than 1KB.
 		s2 := distributor.KeyedStream{
 			HashKey: 123,
-			Stream: push.Stream{
+			Stream: logproto.FromStream(push.Stream{
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
 					Line:      strings.Repeat("d", 1024),
 				}},
-			},
+			}),
 		}
 		require.Greater(t, s2.Stream.Size(), 1024)
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s2}, nil)
@@ -265,13 +265,13 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// Stream should be accepted, total of s1 and s3 is less than 1KB.
 		s3 := distributor.KeyedStream{
 			HashKey: 123,
-			Stream: push.Stream{
+			Stream: logproto.FromStream(push.Stream{
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
 					Line:      strings.Repeat("d", 512),
 				}},
-			},
+			}),
 		}
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s3}, nil)
 		bufferedBytes3 := tee.bufferedBytes
@@ -286,13 +286,13 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		// Stream should be rejected, total of s1, s3 and s4 is more than 1KB.
 		s4 := distributor.KeyedStream{
 			HashKey: 123,
-			Stream: push.Stream{
+			Stream: logproto.FromStream(push.Stream{
 				Labels: `{foo="bar"}`,
 				Entries: []push.Entry{{
 					Timestamp: time.Now(),
 					Line:      strings.Repeat("e", 512),
 				}},
-			},
+			}),
 		}
 		tee.Duplicate(ctx, "test", []distributor.KeyedStream{s4}, nil)
 		// The total size of s4 is less than s1 and s3, but not 0.

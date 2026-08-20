@@ -153,6 +153,34 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.DeferOTLPAttributeExpansion, "distributor.defer-otlp-attribute-expansion", false, "Encode push requests with OTLP resource and scope attributes stored once per group instead of expanded onto every entry. Every ingester and Kafka consumer must understand the internal push format before this is enabled. Defaults to false.")
 }
 
+// sanitizeStructuredMetadata normalises attribute names and strips invalid UTF-8 from
+// values, returning the result. It never writes through attrs, so it is safe to call on a
+// set shared by several streams.
+func (d *Distributor) sanitizeStructuredMetadata(tenantID, format string, attrs []logproto.LabelAdapter, labelNamer otlptranslator.LabelNamer) ([]logproto.LabelAdapter, error) {
+	structuredMetadata := logproto.FromLabelAdaptersToLabels(attrs)
+	normalizedBuilder := labels.NewBuilder(structuredMetadata)
+
+	for _, lbl := range attrs {
+		normalized, err := labelNamer.Build(lbl.Name)
+		if err != nil {
+			return nil, err
+		}
+		if normalized != lbl.Name {
+			// Swap the name with the normalized one.
+			normalizedBuilder.Del(lbl.Name)
+			normalizedBuilder.Set(normalized, lbl.Value)
+
+			d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+		}
+		if strings.ContainsRune(lbl.Value, utf8.RuneError) {
+			normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
+			d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+		}
+	}
+
+	return logproto.CopyToLabelAdapters(nil, normalizedBuilder.Labels()), nil
+}
+
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return errors.New("at least one of kafka and ingestor writes must be enabled")
@@ -610,7 +638,7 @@ func (d *Distributor) stopping(_ error) error {
 type KeyedStream struct {
 	HashKey        uint32
 	HashKeyNoShard uint64
-	Stream         logproto.Stream
+	Stream         logproto.InternalStreamAdapter
 	Policy         string
 }
 
@@ -687,18 +715,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // The returned error is the last one seen.
 func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	requestSize := int64(internalReq.Size())
-
-	// SCAFFOLDING: validation, sharding and the send paths below still work on the flat
-	// form, and are converted in the commit that follows this one. Expanding here keeps
-	// behaviour identical in the meantime — for a native push it is the no-op fast path in
-	// ToStream, and for OTLP it reproduces exactly what the parser used to hand over. This
-	// is the only place the two forms meet, and it goes away next.
-	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, 0, len(internalReq.Streams)),
-	}
-	for i := range internalReq.Streams {
-		req.Streams = append(req.Streams, internalReq.Streams[i].ToStream())
-	}
 	newInflightBytes := d.inflightBytes.Add(requestSize)
 	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
 	defer d.inflightBytes.Add(-requestSize)
@@ -717,7 +733,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
 	// Return early if request does not contain any streams
-	if len(req.Streams) == 0 {
+	if len(internalReq.Streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
@@ -725,7 +741,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 	// First we flatten out the request into a list of samples.
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
-	streams := make([]KeyedStream, 0, len(req.Streams))
+	streams := make([]KeyedStream, 0, len(internalReq.Streams))
 
 	var validationErrors util.GroupedErrors
 
@@ -738,7 +754,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
 	// and threaded into these closures, so a policy can override the tenant sharding behavior
 	// (e.g. toggle time sharding or use a different desired_rate).
-	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
+	maybeShardByRate := func(stream logproto.InternalStreamAdapter, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		if shardStreamsCfg.Enabled {
 			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
 			return
@@ -751,7 +767,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
+	maybeShardStreams := func(stream logproto.InternalStreamAdapter, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
 		// Backfill streams implement time sharding on the client side (via the
 		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
 		// exploding stream cardinality. Rate-based sharding still applies.
@@ -785,14 +801,16 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 		sp.AddEvent("start to validate request")
 		defer sp.AddEvent("finished to validate request")
 
-		for _, stream := range req.Streams {
+		for streamIdx := range internalReq.Streams {
+			stream := &internalReq.Streams[streamIdx]
+
 			// Return early if stream does not contain any entries
-			if len(stream.Entries) == 0 {
+			if stream.EntryCount() == 0 {
 				continue
 			}
 
 			// Truncate first so subsequent steps have consistent line lengths
-			d.truncateLines(validationContext, &stream)
+			d.truncateLines(validationContext, stream)
 
 			var lbs labels.Labels
 			var retentionHours, policy string
@@ -800,8 +818,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
+				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
 				continue
 			}
 
@@ -810,16 +827,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
-					discardedBytes := util.EntriesTotalSize(stream.Entries)
-					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
+					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
 					continue
 				}
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
+				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, stream.UnexpandedSize(), stream.EntryCount(), format)
 
 				// If the status code is 200, return no error.
 				// Note that we still log the error and increment the metrics.
@@ -833,10 +848,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 				continue
 			}
 
-			n := 0
-			prevTs := stream.Entries[0].Timestamp
-			streamEntriesSize := 0
-
 			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
 			// label is reserved: the push parsers reject streams that already carry it, so it can
 			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
@@ -847,82 +858,90 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			}
 
 			labelNamer := otlptranslator.LabelNamer{}
-			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
+
+			// Sanitise each shared attribute set once for the group that owns it, instead of
+			// once for every entry beneath it.
+			var sanitizeErr error
+			stream.RewriteSharedAttrs(func(attrs []logproto.LabelAdapter) []logproto.LabelAdapter {
+				if sanitizeErr != nil || len(attrs) == 0 {
+					return attrs
+				}
+				sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, attrs, labelNamer)
+				if err != nil {
+					sanitizeErr = err
+					return attrs
+				}
+				return sanitized
+			})
+			if sanitizeErr != nil {
+				return sanitizeErr
+			}
+
+			var mdBuf []logproto.LabelAdapter
+			dropped := stream.Filter(func(res *logproto.ResourceLogs, scope *logproto.ScopeLogs, entry *logproto.Entry) bool {
+				if sanitizeErr != nil {
+					return false
+				}
+
+				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, *entry, retentionHours, policy, format); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
-					continue
+					return false
 				}
 
-				var normalized string
-				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-
-				normalizedBuilder := labels.NewBuilder(structuredMetadata)
-
-				for _, lbl := range entry.StructuredMetadata {
-					normalized, err = labelNamer.Build(lbl.Name)
-					if err != nil {
-						return err
-					}
-					if normalized != lbl.Name {
-						// Swap the name with the normalized one.
-						normalizedBuilder.Del(lbl.Name)
-						normalizedBuilder.Set(normalized, lbl.Value)
-
-						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
-					}
-					if strings.ContainsRune(lbl.Value, utf8.RuneError) {
-						normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
-						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
-					}
+				sanitized, err := d.sanitizeStructuredMetadata(tenantID, format, entry.StructuredMetadata, labelNamer)
+				if err != nil {
+					sanitizeErr = err
+					return false
 				}
+				entry.StructuredMetadata = sanitized
 
-				// Update structured metadata with normalized labels. We also need to
-				// update the original stream to reflect the changes.
-				structuredMetadata = normalizedBuilder.Labels()
-				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
+				if shouldDiscoverLevels || shouldDiscoverGenericFields {
+					// Detection reads the entry's effective metadata, so an attribute that
+					// arrived on the resource or the scope is visible to it — which is what
+					// it saw when those attributes were copied onto the entry.
+					mdBuf = logproto.AppendEffectiveMetadata(mdBuf[:0], res.Attrs, scope.Attrs, entry)
+					effective := logproto.FromLabelAdaptersToLabels(mdBuf)
 
-				if shouldDiscoverLevels {
-					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
-						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
-						if ok {
-							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-						}
-					})
-				}
-				if shouldDiscoverGenericFields {
-					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
-						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
-							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+					if shouldDiscoverLevels {
+						pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+							logLevel, ok := fieldDetector.extractLogLevel(lbs, effective, *entry)
 							if ok {
-								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+								entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
 							}
-						}
-					})
-				}
-				stream.Entries[n] = entry
-
-				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
-				// since Loki will accept out of order writes it doesn't account for separate
-				// pushes with overlapping time ranges having entries with duplicate timestamps
-
-				if validationContext.incrementDuplicateTimestamps && n != 0 {
-					// Traditional logic for Loki is that 2 lines with the same timestamp and
-					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp.Equal(prevTs) || entry.Timestamp.Equal(stream.Entries[n-1].Timestamp)) {
-						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
-					} else {
-						prevTs = entry.Timestamp
+						})
+					}
+					if shouldDiscoverGenericFields {
+						pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+							for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+								extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, effective, *entry)
+								if ok {
+									entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+								}
+							}
+						})
 					}
 				}
 
-				n++
-				entrySize := util.EntryTotalSize(&entry)
-				streamEntriesSize += entrySize
+				return true
+			})
+			_ = dropped
+			if sanitizeErr != nil {
+				return sanitizeErr
 			}
-			stream.Entries = stream.Entries[:n]
-			if len(stream.Entries) == 0 {
+
+			// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
+			// since Loki will accept out of order writes it doesn't account for separate
+			// pushes with overlapping time ranges having entries with duplicate timestamps
+			if validationContext.incrementDuplicateTimestamps {
+				stream.EnforceTimestampOrder()
+			}
+
+			// The tenant-facing number: what they sent, with a shared attribute set counted
+			// once rather than once for every entry beneath it.
+			streamEntriesSize := stream.UnexpandedSize()
+			n := stream.EntryCount()
+			if n == 0 {
 				// Empty stream after validating all the entries
 				continue
 			}
@@ -942,7 +961,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 			b.lines += n
 
 			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
+			maybeShardStreams(*stream, lbs, streamEntriesSize, policy, shardCfg)
 		}
 		return nil
 	}()
@@ -964,7 +983,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, internalReq.Streams, validationContext, streamResolver, format); err != nil {
 		return nil, err
 	}
 
@@ -974,7 +993,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, internalReq *logprot
 		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
 		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
 			if len(rejected) > 0 {
-				discardedStreams := make([]logproto.Stream, 0, len(rejected))
+				discardedStreams := make([]logproto.InternalStreamAdapter, 0, len(rejected))
 				for _, stream := range rejected {
 					discardedStreams = append(discardedStreams, stream.Stream)
 				}
@@ -1198,7 +1217,7 @@ func (d *Distributor) enforceIngestionRateLimits(
 	now time.Time,
 	tenantID string,
 	rlBuckets map[string]*rateLimitBucket,
-	streams []logproto.Stream,
+	streams []logproto.InternalStreamAdapter,
 	validationContext validationContext,
 	streamResolver push.StreamResolver,
 	format string,
@@ -1262,7 +1281,7 @@ func (d *Distributor) enforceIngestionRateLimits(
 // single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
-	streams []logproto.Stream,
+	streams []logproto.InternalStreamAdapter,
 	validationContext validationContext,
 	tenantID string,
 	reason string,
@@ -1271,7 +1290,7 @@ func (d *Distributor) trackDiscardedData(
 	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
-		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, &stream, streamResolver, format)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
@@ -1279,8 +1298,8 @@ func (d *Distributor) trackDiscardedData(
 		if policyMatch != nil && !policyMatch(policy) {
 			continue
 		}
-		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
+		discardedStreamBytes := stream.UnexpandedSize()
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(stream.EntryCount()))
 		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
 		if d.usageTracker != nil {
 			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
@@ -1289,40 +1308,70 @@ func (d *Distributor) trackDiscardedData(
 }
 
 type streamWithTimeShard struct {
-	logproto.Stream
+	Stream        logproto.InternalStreamAdapter
 	linesTotalLen int
 }
 
-// This should shard the stream into multiple sub-streams based on the log
-// timestamps, but with no new alocations for the log entries. It will sort them
-// in-place in the given stream object (so it may modify it!) and reference
-// sub-slices of the same stream.Entries slice.
+// shardIdentity is the labels and hash a shard will carry. The entries arrive separately from
+// Divide, so the identity has to be held while the shards are being worked out.
+type shardIdentity struct {
+	labels string
+	hash   uint64
+}
+
+// This shards the stream into multiple sub-streams based on the log timestamps.
+//
+// Which shard an entry lands in is decided from a sorted view of the entries rather than by
+// sorting the stream: an entry cannot leave the resource and scope whose attributes apply to
+// it. Each shard is then ordered within itself, which for a stream of one group and scope —
+// every native push — is the same total order the entries used to be put in.
 //
 // If the second result is false, it means that either there were no logs in the
 // stream, or all of the logs in the stream occurred after the given value of
 // ignoreLogsFrom, so there was no need to shard - the original `streams` value
-// can be used. However, due to the in-place logs sorting by their timestamp, it
-// might still have been reordered.
-func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen time.Duration, ignoreLogsFrom time.Time) ([]streamWithTimeShard, bool) {
-	entries := stream.Entries
-	entriesLen := len(entries)
+// can be used.
+func shardStreamByTime(stream logproto.InternalStreamAdapter, lbls labels.Labels, timeShardLen time.Duration, ignoreLogsFrom time.Time) ([]streamWithTimeShard, bool) {
+	entriesLen := stream.EntryCount()
 	if entriesLen == 0 {
 		return nil, false
 	}
 
-	slices.SortStableFunc(entries, func(a, b logproto.Entry) int { return a.Timestamp.Compare(b.Timestamp) })
+	// One record per entry: where it sits in containment order, when it happened, and how
+	// long its line is. Sorting these leaves the entries themselves untouched.
+	type positioned struct {
+		pos      int
+		ts       time.Time
+		lineSize int
+	}
+	order := make([]positioned, 0, entriesLen)
+	pos := 0
+	for i := range stream.ResourceLogs {
+		for j := range stream.ResourceLogs[i].ScopeLogs {
+			entries := stream.ResourceLogs[i].ScopeLogs[j].Entries
+			for k := range entries {
+				order = append(order, positioned{pos: pos, ts: entries[k].Timestamp, lineSize: len(entries[k].Line)})
+				pos++
+			}
+		}
+	}
+	slices.SortStableFunc(order, func(a, b positioned) int { return a.ts.Compare(b.ts) })
 
 	// Shortcut to do no work if all of the logs are recent
-	if entries[0].Timestamp.After(ignoreLogsFrom) {
+	if order[0].ts.After(ignoreLogsFrom) {
 		return nil, false
 	}
 
-	result := make([]streamWithTimeShard, 0, (entries[entriesLen-1].Timestamp.Sub(entries[0].Timestamp)/timeShardLen)+1)
+	shardCap := int((order[entriesLen-1].ts.Sub(order[0].ts) / timeShardLen) + 1)
+	result := make([]streamWithTimeShard, 0, shardCap)
+	identities := make([]shardIdentity, 0, shardCap)
 	labelBuilder := labels.NewBuilder(lbls)
 
+	// shardOf[pos] is the shard the entry at that position belongs to.
+	shardOf := make([]int, entriesLen)
+
 	startIdx := 0
-	for startIdx < entriesLen && entries[startIdx].Timestamp.Before(ignoreLogsFrom) /* the index is changed below */ {
-		timeShardStart := entries[startIdx].Timestamp.Truncate(timeShardLen)
+	for startIdx < entriesLen && order[startIdx].ts.Before(ignoreLogsFrom) /* the index is changed below */ {
+		timeShardStart := order[startIdx].ts.Truncate(timeShardLen)
 		timeShardEnd := timeShardStart.Add(timeShardLen)
 
 		timeShardCutoff := timeShardEnd
@@ -1332,44 +1381,43 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 			timeShardCutoff = ignoreLogsFrom
 		}
 
+		shard := len(result)
 		endIdx := startIdx + 1
-		linesTotalLen := len(entries[startIdx].Line)
-		for ; endIdx < entriesLen && entries[endIdx].Timestamp.Before(timeShardCutoff); endIdx++ {
-			linesTotalLen += len(entries[endIdx].Line)
+		linesTotalLen := order[startIdx].lineSize
+		shardOf[order[startIdx].pos] = shard
+		for ; endIdx < entriesLen && order[endIdx].ts.Before(timeShardCutoff); endIdx++ {
+			linesTotalLen += order[endIdx].lineSize
+			shardOf[order[endIdx].pos] = shard
 		}
 
 		shardLbls := labelBuilder.Set(timeShardLabel, fmt.Sprintf("%d_%d", timeShardStart.Unix(), timeShardEnd.Unix())).Labels()
-		result = append(result, streamWithTimeShard{
-			Stream: logproto.Stream{
-				Labels:  shardLbls.String(),
-				Hash:    labels.StableHash(shardLbls),
-				Entries: stream.Entries[startIdx:endIdx],
-			},
-			linesTotalLen: linesTotalLen,
-		})
+		result = append(result, streamWithTimeShard{linesTotalLen: linesTotalLen})
+		identities = append(identities, shardIdentity{labels: shardLbls.String(), hash: labels.StableHash(shardLbls)})
 
 		startIdx = endIdx
 	}
 
-	if startIdx == entriesLen {
-		// We do not have any remaining entries
-		return result, true
+	// Everything at or after ignoreLogsFrom goes into one last shard, which keeps the
+	// stream's own labels rather than gaining a time shard label.
+	if startIdx < entriesLen {
+		shard := len(result)
+		logsWithoutTimeShardLen := 0
+		for i := startIdx; i < entriesLen; i++ {
+			logsWithoutTimeShardLen += order[i].lineSize
+			shardOf[order[i].pos] = shard
+		}
+		result = append(result, streamWithTimeShard{linesTotalLen: logsWithoutTimeShardLen})
+		identities = append(identities, shardIdentity{labels: stream.Labels, hash: stream.Hash})
 	}
 
-	// Append one last shard with all of the logs without a time shard
-	logsWithoutTimeShardLen := 0
-	for i := startIdx; i < entriesLen; i++ {
-		logsWithoutTimeShardLen += len(entries[i].Line)
+	divided := stream.Divide(len(result), func(idx int, _ *logproto.Entry) int { return shardOf[idx] })
+	for i := range result {
+		divided[i].Labels, divided[i].Hash = identities[i].labels, identities[i].hash
+		divided[i].SortByTimestamp()
+		result[i].Stream = divided[i]
 	}
 
-	return append(result, streamWithTimeShard{
-		Stream: logproto.Stream{
-			Labels:  stream.Labels,
-			Hash:    stream.Hash,
-			Entries: stream.Entries[startIdx:entriesLen],
-		},
-		linesTotalLen: logsWithoutTimeShardLen,
-	}), true
+	return result, true
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
@@ -1377,7 +1425,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
+func (d *Distributor) shardStream(stream logproto.InternalStreamAdapter, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
@@ -1393,57 +1441,63 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream, policy string) []KeyedStream {
-	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg, policy)
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.InternalStreamAdapter, policy string) []KeyedStream {
+	derivedStreams, identities := d.createShards(stream, totalShards, tenantID, shardStreamsCfg, policy)
+	if len(derivedStreams) == 0 {
+		return derivedStreams
+	}
 
-	for i := 0; i < len(stream.Entries); i++ {
-		streamIndex := i % len(derivedStreams)
-		entries := append(derivedStreams[streamIndex].Stream.Entries, stream.Entries[i])
-		derivedStreams[streamIndex].Stream.Entries = entries
+	// Round robin, as before: entry i goes to shard i%N.
+	parts := stream.Divide(len(derivedStreams), func(idx int, _ *logproto.Entry) int {
+		return idx % len(derivedStreams)
+	})
+	for i := range derivedStreams {
+		parts[i].Labels, parts[i].Hash = identities[i].labels, identities[i].hash
+		derivedStreams[i].Stream = parts[i]
 	}
 
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config, policy string) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.InternalStreamAdapter, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config, policy string) ([]KeyedStream, []shardIdentity) {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
 		derivedStreams = make([]KeyedStream, 0, totalShards)
+		identities     = make([]shardIdentity, 0, totalShards)
 
 		streamCount = streamCount(totalShards, stream)
 	)
 
 	if totalShards <= 0 {
-		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
-		return derivedStreams
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", stream.EntryCount())
+		return derivedStreams, identities
 	}
 
-	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
+		shard := d.createShard(streamLabels, streamPattern, shardNum)
 
 		derivedStreams = append(derivedStreams, KeyedStream{
-			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
+			HashKey:        lokiring.TokenFor(tenantID, shard.labels),
 			HashKeyNoShard: stream.Hash,
-			Stream:         shard,
 			Policy:         policy,
 		})
+		identities = append(identities, shard)
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.labels)
 		}
 	}
 	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
 
-	return derivedStreams
+	return derivedStreams, identities
 }
 
-func streamCount(totalShards int, stream logproto.Stream) int {
-	if len(stream.Entries) < totalShards {
-		return len(stream.Entries)
+func streamCount(totalShards int, stream logproto.InternalStreamAdapter) int {
+	if stream.EntryCount() < totalShards {
+		return stream.EntryCount()
 	}
 	return totalShards
 }
@@ -1462,7 +1516,9 @@ func labelTemplate(lbls string, logger log.Logger) labels.Labels {
 	return builder.Labels()
 }
 
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
+// createShard works out the labels and hash one shard will carry. Divide sizes and fills the
+// entries, so nothing is pre-allocated here.
+func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber int) shardIdentity {
 	shardLabel := strconv.Itoa(shardNumber)
 
 	builder := labels.NewBuilder(lbls)
@@ -1471,34 +1527,18 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	}
 	lbls = builder.Labels()
 
-	return logproto.Stream{
-		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		Hash:    labels.StableHash(lbls),
-		Entries: make([]logproto.Entry, 0, numOfEntries),
+	return shardIdentity{
+		labels: strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
+		hash:   labels.StableHash(lbls),
 	}
 }
 
-func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
+func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.InternalStreamAdapter) {
 	if !vContext.maxLineSizeTruncate {
 		return
 	}
 
-	suffix := vContext.maxLineSizeTruncateIdentifier
-
-	var truncatedSamples, truncatedBytes int
-	for i, e := range stream.Entries {
-		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
-			truncateTo := maxSize - len(suffix)
-			if truncateTo <= 0 {
-				continue
-			}
-
-			stream.Entries[i].Line = e.Line[:truncateTo] + suffix
-
-			truncatedSamples++
-			truncatedBytes += len(e.Line) - truncateTo
-		}
-	}
+	truncatedSamples, truncatedBytes := stream.TruncateLines(vContext.maxLineSize, vContext.maxLineSizeTruncateIdentifier)
 
 	if truncatedSamples > 0 {
 		validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
@@ -1578,7 +1618,9 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
-		req.Streams[i] = s.Stream
+		// The ingester's push RPC takes flat entries, so the attributes are expanded here.
+		// A second RPC carrying the nested form is what removes this.
+		req.Streams[i] = s.Stream.ToStream()
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
@@ -1645,14 +1687,23 @@ func (d *Distributor) recordsForStreams(
 	for _, stream := range streams {
 		// TODO(grobinson): Check if this is still needed, I would have expected
 		// streams with no entries to have be removed when the request was validated.
-		if len(stream.Stream.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 		partition, err := subring.ActivePartitionForKey(stream.HashKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find partition for stream: %w", err)
 		}
-		streamRecords, err := kafka.Encode(partition, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+
+		// The one decision the config makes: keep the attributes stored once per group, or
+		// expand them onto every entry so that consumers reading only the old format still
+		// understand the record.
+		var streamRecords []*kgo.Record
+		if d.cfg.DeferOTLPAttributeExpansion {
+			streamRecords, err = kafka.EncodeInternal(partition, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		} else {
+			streamRecords, err = kafka.Encode(partition, tenant, stream.Stream.ToStream(), d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal streams to records: %w", err)
 		}
@@ -1678,7 +1729,7 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream *logproto.InternalStreamAdapter, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
@@ -1711,7 +1762,7 @@ func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validation
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.InternalStreamAdapter, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -1749,11 +1800,20 @@ func calculateShards(rate int64, pushSize, desiredRate int) int {
 	return int(math.Ceil(shards))
 }
 
-func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+func calculateStreamSizes(stream logproto.InternalStreamAdapter) (uint64, uint64) {
 	var entriesSize, structuredMetadataSize uint64
-	for _, entry := range stream.Entries {
-		entriesSize += uint64(len(entry.Line))
-		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	for i := range stream.ResourceLogs {
+		res := &stream.ResourceLogs[i]
+		for j := range res.ScopeLogs {
+			scope := &res.ScopeLogs[j]
+			for k := range scope.Entries {
+				entry := &scope.Entries[k]
+				entriesSize += uint64(len(entry.Line))
+				// Everything that applies to the entry, so a resource or scope attribute
+				// counts here just as it did when it sat on the entry itself.
+				structuredMetadataSize += uint64(logproto.EffectiveMetadataSize(res.Attrs, scope.Attrs, entry))
+			}
+		}
 	}
 	return entriesSize, structuredMetadataSize
 }
