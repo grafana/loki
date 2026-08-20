@@ -430,27 +430,9 @@ func (g *Gateway) boundedShards(
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 
-	resp := &logproto.ShardsResponse{}
-	if len(refs) == 0 {
-		// Edge case: if there are no chunks, we still need to return a single shard
-		resp.Shards = []logproto.Shard{
-			{
-				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
-				Stats:  &logproto.IndexStatsResponse{},
-			},
-		}
-	} else {
-		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
-		if err != nil {
-			return err
-		}
-		resp.Shards = shards
-
-		// If the index gateway is configured to precompute chunks, we can return the chunk groups
-		// alongside the shards, otherwise discarding them
-		if g.limits.TSDBPrecomputeChunks(instanceID) {
-			resp.ChunkGroups = chunkGrps
-		}
+	resp, err := buildShardsResponse(req, refs, g.limits.TSDBPrecomputeChunks(instanceID))
+	if err != nil {
+		return err
 	}
 
 	sp.AddEvent("send shards response", trace.WithAttributes(
@@ -477,20 +459,55 @@ func (g *Gateway) boundedShards(
 		"end_delta", time.Since(req.Through.Time()).String(),
 	)
 
-	// Populate index statistics for metrics logging
-	resp.Statistics.Index.TotalChunks = int64(ct)
-	resp.Statistics.Index.PostFilterChunks = int64(ct)
-	// compute unique streams matched post-filtering
-	{
-		seen := make(map[model.Fingerprint]struct{}, 1024)
-		for _, ref := range refs {
-			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
-		}
-		resp.Statistics.Index.TotalStreams = int64(len(seen))
-	}
 	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	return server.Send(resp)
+}
+
+// buildShardsResponse builds the response for a shards request from the chunk refs
+// resolved from the index. precomputeChunks controls whether the per-shard chunk
+// groups are returned alongside the shards.
+func buildShardsResponse(
+	req *logproto.ShardsRequest,
+	refs []logproto.ChunkRefWithSizingInfo,
+	precomputeChunks bool,
+) (*logproto.ShardsResponse, error) {
+	resp := &logproto.ShardsResponse{}
+
+	if len(refs) == 0 {
+		// Edge case: if there are no chunks, we still need to return a single shard
+		resp.Shards = []logproto.Shard{
+			{
+				Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64},
+				Stats:  &logproto.IndexStatsResponse{},
+			},
+		}
+	} else {
+		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
+		if err != nil {
+			return nil, err
+		}
+		resp.Shards = shards
+
+		// If the index gateway is configured to precompute chunks, we can return the chunk groups
+		// alongside the shards, otherwise discarding them
+		if precomputeChunks {
+			resp.ChunkGroups = chunkGrps
+		}
+	}
+
+	// Populate index statistics for metrics logging
+	ct := len(refs)
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(ct)
+	// compute unique streams matched post-filtering
+	seen := make(map[model.Fingerprint]struct{}, 1024)
+	for _, ref := range refs {
+		seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+	}
+	resp.Statistics.Index.TotalStreams = int64(len(seen))
+
+	return resp, nil
 }
 
 // ExtractShardRequestMatchersAndAST extracts the matchers and AST from a query string.
