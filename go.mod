@@ -77,7 +77,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/spf13/afero v1.15.0
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	go.etcd.io/bbolt v1.5.0
 	go.uber.org/atomic v1.11.0
@@ -89,7 +89,6 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/api v0.293.0
 	google.golang.org/grpc v1.83.0
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 )
 
