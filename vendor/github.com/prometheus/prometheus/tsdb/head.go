@@ -415,6 +415,7 @@ func (h *Head) resetWLReplayResources() {
 
 type headMetrics struct {
 	activeAppenders           prometheus.Gauge
+	appendersCreated          prometheus.Counter
 	series                    prometheus.GaugeFunc
 	staleSeries               prometheus.GaugeFunc
 	nativeHistogramSeries     prometheus.GaugeFunc
@@ -458,6 +459,10 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 		activeAppenders: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "prometheus_tsdb_head_active_appenders",
 			Help: "Number of currently active appender transactions",
+		}),
+		appendersCreated: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "prometheus_tsdb_head_appenders_created_total",
+			Help: "Total number of appender transactions created.",
 		}),
 		series: prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Name: "prometheus_tsdb_head_series",
@@ -608,6 +613,7 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 	if r != nil {
 		r.MustRegister(
 			m.activeAppenders,
+			m.appendersCreated,
 			m.series,
 			m.staleSeries,
 			m.nativeHistogramSeries,
@@ -924,7 +930,7 @@ func (h *Head) Init(minValidTime int64) error {
 		if err != nil {
 			return err
 		}
-		h.logger.Info("WAL segment loaded", "segment", i, "maxSegment", endAt, "duration", time.Since(walSegmentStart))
+		h.logger.Info("WAL segment loaded", "segment", i, "maxSegment", endAt, "duration", time.Since(walSegmentStart).String())
 		h.updateWALReplayStatusRead(i)
 	}
 	walReplayDuration := time.Since(walReplayStart)
@@ -1586,7 +1592,7 @@ func (h *Head) truncateWAL(mint int64) error {
 	h.metrics.walTruncateDuration.Observe(time.Since(start).Seconds())
 
 	h.logger.Info("WAL checkpoint complete",
-		"first", first, "last", last, "duration", time.Since(start))
+		"first", first, "last", last, "duration", time.Since(start).String())
 
 	return nil
 }
@@ -1624,7 +1630,7 @@ func (h *Head) truncateSeriesAndChunkDiskMapper(caller string) error {
 	start := time.Now()
 	headMaxt := h.MaxTime()
 	actualMint, minOOOTime, minMmapFile := h.gc()
-	h.logger.Info("Head GC completed", "caller", caller, "duration", time.Since(start))
+	h.logger.Info("Head GC completed", "caller", caller, "duration", time.Since(start).String())
 	h.metrics.gcDuration.Observe(time.Since(start).Seconds())
 
 	if actualMint > h.minTime.Load() {
@@ -2920,7 +2926,7 @@ func (s *memSeries) truncateChunksBefore(mint int64, minOOOMmapRef chunks.ChunkD
 			removedOOO = i + 1
 		}
 		s.ooo.oooMmappedChunks = append(s.ooo.oooMmappedChunks[:0], s.ooo.oooMmappedChunks[removedOOO:]...)
-		s.ooo.firstOOOChunkID += chunks.HeadChunkID(removedOOO)
+		s.ooo.firstOOOChunkID = (s.ooo.firstOOOChunkID + chunks.HeadChunkID(removedOOO)) & (oooChunkIDMask - 1)
 
 		if len(s.ooo.oooMmappedChunks) == 0 && s.ooo.oooHeadChunk == nil {
 			s.ooo = nil
