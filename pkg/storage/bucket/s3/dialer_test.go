@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -184,14 +185,9 @@ func TestShufflingDialerHonoursContextCancellation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// dialerCounter reads a go-conntrack counter for one dialer name off the
-// default registry, which is where go-conntrack registers its metrics.
-func dialerCounter(t *testing.T, metric, dialerName string) float64 {
-	t.Helper()
-
-	families, err := prometheus.DefaultGatherer.Gather()
-	require.NoError(t, err)
-
+// dialerCounter reads a go-conntrack counter for one dialer name.
+func dialerCounter(families []*dto.MetricFamily, metric, dialerName string) float64 {
+	metric = "net_conntrack_dialer_conn_" + metric + "_total"
 	total := 0.0
 	for _, family := range families {
 		if family.GetName() != metric {
@@ -222,34 +218,33 @@ func TestInstrumentedDialContextCountsConnections(t *testing.T) {
 	name := "test"
 	dial := instrumentedDialContextFunc((&net.Dialer{}).DialContext, name)
 
-	// Measured as deltas: go-conntrack registers on the default
-	// registry, so a repeated run starts from a non-zero baseline.
+	// Get the baseline in case the counters were incremented in another test run.
+	// go-conntrack registers its metrics in the default registry.
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
 	base := map[string]float64{}
 	for _, metric := range []string{"attempted", "established", "failed", "closed"} {
-		metric = "net_conntrack_dialer_conn_" + metric + "_total"
-		base[metric] = dialerCounter(t, metric, name)
+		base[metric] = dialerCounter(families, metric, name)
 	}
-	counter := func(metric string) float64 {
-		metric = "net_conntrack_dialer_conn_" + metric + "_total"
-		return dialerCounter(t, metric, name) - base[metric]
+
+	type m map[string]float64
+	checkCounters := func(t *testing.T, metrics m) {
+		families, err := prometheus.DefaultGatherer.Gather()
+		require.NoError(t, err)
+		for metric, expected := range metrics {
+			assert.Equal(t, expected, dialerCounter(families, metric, name)-base[metric], metric)
+		}
 	}
 
 	conn, err := dial(context.Background(), "tcp", l.Addr().String())
 	require.NoError(t, err)
-
-	assert.Equal(t, 1.0, counter("attempted"))
-	assert.Equal(t, 1.0, counter("established"))
-	assert.Equal(t, 0.0, counter("closed"))
+	checkCounters(t, m{"attempted": 1, "established": 1, "failed": 0, "closed": 0})
 
 	require.NoError(t, conn.Close())
-	assert.Equal(t, 1.0, counter("closed"))
+	checkCounters(t, m{"attempted": 1, "established": 1, "failed": 0, "closed": 1})
 
 	_, err = dial(context.Background(), "tcp", deadAddr)
 	require.Error(t, err)
-
-	assert.Equal(t, 2.0, counter("attempted"))
-	assert.Equal(t, 1.0, counter("established"))
-	// Summed across reasons rather than compared exactly: go-conntrack
-	// counts a refused connection under both "refused" and "unknown".
-	assert.GreaterOrEqual(t, counter("failed"), 1.0)
+	// failed should be 2 because go-conntrack counts a refused connection under both "refused" and "unknown".
+	checkCounters(t, m{"attempted": 2, "established": 1, "failed": 2, "closed": 1})
 }
