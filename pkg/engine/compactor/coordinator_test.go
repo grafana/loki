@@ -1739,6 +1739,51 @@ func TestRunTenantLoop_LogEnabledRunsBothPhases(t *testing.T) {
 		"log-enabled tenant flips between index-merge and log-merge")
 }
 
+func TestRunTenantLoop_RunsMultipleIndexMergesPerLogMerge(t *testing.T) {
+	window := imWindow()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bucket := logMergeBucket(ctx, t, window, "acme", []string{"a", "b"})
+	replacer := &fakeReplacer{swapped: true}
+	limits := newFakeLimits("acme")
+	limits.setLog("acme", true)
+	c := newTestCoordinator(t, bucket, &fakeRunner{}, replacer, fixedClock(window.Add(time.Hour)), limits)
+
+	var mu sync.Mutex
+	var phases []string
+	c.runPlan = func(_ context.Context, opts workflow.Options, _ *physical.Plan) (arrow.RecordBatch, error) {
+		mu.Lock()
+		phases = append(phases, opts.Actor[1])
+		if opts.Actor[1] == "log-merge" {
+			cancel()
+		}
+		mu.Unlock()
+		return v2.BuildResultRecord(memory.DefaultAllocator, []v2.ResultArtifact{{Path: "indexes/aa/bb"}}), nil
+	}
+
+	done := make(chan struct{})
+	go func() { c.runTenantLoop(ctx, "acme"); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("tenant loop did not reach log merge")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	expectation := []string{}
+	for range indexMergeIterations {
+		expectation = append(expectation, "index-merge")
+	}
+	expectation = append(expectation, "log-merge")
+
+	// expect: index-merge, index-merge, index-merge, log-merge
+	require.Equal(t, expectation, phases)
+}
+
 // TestRunTenantLoop_DisablingLogMidRunStopsLogMerge verifies that turning off
 // log compaction while the loop runs stops further log-merge dispatches on the
 // next iteration while index-merge continues, because runTenantLoop re-reads
