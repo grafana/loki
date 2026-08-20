@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 
 	"github.com/stretchr/testify/require"
 
