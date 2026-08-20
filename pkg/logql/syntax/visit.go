@@ -16,6 +16,8 @@ type SampleExprVisitor interface {
 	VisitBinOp(*BinOpExpr)
 	VisitVectorAggregation(*VectorAggregationExpr)
 	VisitRangeAggregation(*RangeAggregationExpr)
+	VisitLabelAggregation(*LabelAggregationExpr)
+	VisitCountDistinctSketch(*CountDistinctSketchExpr)
 	VisitLabelReplace(*LabelReplaceExpr)
 	VisitLiteral(*LiteralExpr)
 	VisitVector(*VectorExpr)
@@ -63,6 +65,8 @@ type DepthFirstTraversal struct {
 	VisitMatchersFn               func(v RootVisitor, e *MatchersExpr)
 	VisitPipelineFn               func(v RootVisitor, e *PipelineExpr)
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
+	VisitLabelAggregationFn       func(v RootVisitor, e *LabelAggregationExpr)
+	VisitCountDistinctSketchFn    func(v RootVisitor, e *CountDistinctSketchExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
 }
@@ -261,6 +265,30 @@ func (v *DepthFirstTraversal) VisitRangeAggregation(e *RangeAggregationExpr) {
 	}
 	if v.VisitRangeAggregationFn != nil {
 		v.VisitRangeAggregationFn(v, e)
+	} else {
+		e.Left.Accept(v)
+	}
+}
+
+// VisitLabelAggregation implements RootVisitor.
+func (v *DepthFirstTraversal) VisitLabelAggregation(e *LabelAggregationExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitLabelAggregationFn != nil {
+		v.VisitLabelAggregationFn(v, e)
+	} else {
+		e.Left.Accept(v)
+	}
+}
+
+// VisitCountDistinctSketch implements RootVisitor.
+func (v *DepthFirstTraversal) VisitCountDistinctSketch(e *CountDistinctSketchExpr) {
+	if e == nil {
+		return
+	}
+	if v.VisitCountDistinctSketchFn != nil {
+		v.VisitCountDistinctSketchFn(v, e)
 	} else {
 		e.Left.Accept(v)
 	}
