@@ -757,7 +757,7 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 				return
 
 			}
-			// FetchChunks doesn't guarantee the order.
+			// assign fetched chunk by key as FetchChunks doesn't guarantee the order.
 			for _, chk := range chks {
 				index[s.ExternalKey(chk.ChunkRef)].Chunk = chk
 			}
