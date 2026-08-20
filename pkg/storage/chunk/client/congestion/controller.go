@@ -97,7 +97,6 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	statsCtx := stats.FromContext(ctx)
 
 	rc, sz, err := a.retrier.Do(
-		ctx,
 		func(attempt int) (io.ReadCloser, int64, error) {
 			a.metrics.requests.Add(1)
 
