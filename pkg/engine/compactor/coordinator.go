@@ -22,6 +22,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
+const indexMergeIterations = 3
+
 // tocReplacer is the subset of *metastore.TableOfContentsWriter the
 // coordinator needs.
 type tocReplacer interface {
@@ -653,14 +655,13 @@ func (p phase) flip() phase {
 	return phaseIndexMerge
 }
 
-// phaseOutcome is the result of running one phase; it drives the flip-vs-retry
-// decision.
+// phaseOutcome is the result of running one phase
 type phaseOutcome int
 
 const (
 	phaseOutcomeError   phaseOutcome = iota // re-arm same phase
-	phaseOutcomeNoWork                      // success, nothing to do; flip
-	phaseOutcomeSwapped                     // ToC swap applied/observed; flip
+	phaseOutcomeNoWork                      // success, nothing to do
+	phaseOutcomeSwapped                     // ToC swap applied/observed
 )
 
 // runIndexMergePhase runs IndexMerge for the tenant's current window and swaps
@@ -802,7 +803,12 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			continue
 		}
 
-		outcome := c.runPhaseAllWindows(ctx, tenant, p)
+		iterations := 1
+		if p == phaseIndexMerge {
+			iterations = indexMergeIterations
+		}
+
+		outcome := c.runMultiplePhasesForAllWindows(ctx, tenant, p, iterations)
 		if ctx.Err() != nil {
 			return
 		}
@@ -813,28 +819,30 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	}
 }
 
-// runPhaseAllWindows runs phase p for the tenant against each compacted window,
+// runMultiplePhasesForAllWindows runs phase p for the tenant against each compacted window, iterations times,
 // recording the worker-loop cycle metric per window, and returns the worst
 // outcome across them. Error dominates (the caller re-arms the same phase);
 // otherwise swapped (progress) outranks no-work. Windows are independent: a
 // window with no ToC no-ops while a populated one does real work.
-func (c *coordinator) runPhaseAllWindows(ctx context.Context, tenant string, p phase) phaseOutcome {
+func (c *coordinator) runMultiplePhasesForAllWindows(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
 	worst := phaseOutcomeNoWork
-	for _, window := range c.windows() {
-		if ctx.Err() != nil {
-			return worst
-		}
+	for range iterations {
+		for _, window := range c.windows() {
+			if ctx.Err() != nil {
+				return worst
+			}
 
-		start := c.clock()
-		var outcome phaseOutcome
-		switch p {
-		case phaseIndexMerge:
-			outcome = c.runIndexMergePhase(ctx, tenant, window)
-		case phaseLogMerge:
-			outcome = c.runLogMergePhase(ctx, tenant, window)
+			start := c.clock()
+			var outcome phaseOutcome
+			switch p {
+			case phaseIndexMerge:
+				outcome = c.runIndexMergePhase(ctx, tenant, window)
+			case phaseLogMerge:
+				outcome = c.runLogMergePhase(ctx, tenant, window)
+			}
+			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+			worst = worstOutcome(worst, outcome)
 		}
-		c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
-		worst = worstOutcome(worst, outcome)
 	}
 	return worst
 }
