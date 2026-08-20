@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -54,7 +55,8 @@ func TestApproxCountDistinctLocalEval(t *testing.T) {
 }
 
 func TestApproxCountDistinctInstantOnly(t *testing.T) {
-	eng := NewEngine(EngineOpts{}, NewMockQuerier(1, nil), NoLimits, nil)
+	q := &countingSampleQuerier{MockQuerier: NewMockQuerier(1, nil)}
+	eng := NewEngine(EngineOpts{}, q, NoLimits, nil)
 	params, err := NewLiteralParams(
 		`approx_count_distinct(mac, {job="devices"}[1m]) by (version)`,
 		time.Unix(0, 0), time.Unix(60, 0), time.Second, 0, logproto.FORWARD, 1000, nil, nil,
@@ -64,6 +66,17 @@ func TestApproxCountDistinctInstantOnly(t *testing.T) {
 	_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "only supported on instant queries")
+	require.Zero(t, q.selectSamples)
+}
+
+type countingSampleQuerier struct {
+	MockQuerier
+	selectSamples int
+}
+
+func (q *countingSampleQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
+	q.selectSamples++
+	return q.MockQuerier.SelectSamples(ctx, req)
 }
 
 func TestApproxCountDistinctBoundaries(t *testing.T) {
