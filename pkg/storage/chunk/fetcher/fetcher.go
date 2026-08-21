@@ -242,7 +242,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		}
 		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
 		if c.propagateChunkFetchErrors {
-			return append(fromCache, fromStorage...), storageErr
+			return nil, storageErr
 		}
 	}
 
