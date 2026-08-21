@@ -45,9 +45,9 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.OwnerReferences, want.OwnerReferences)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, want.OwnerReferences, got.OwnerReferences)
 }
 
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
@@ -74,10 +74,10 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure partial mutation applied
-	require.Equal(t, got.Labels, want.Labels)
-	require.Equal(t, got.Annotations, want.Annotations)
-	require.Equal(t, got.BinaryData, got.BinaryData)
-	require.Equal(t, got.Data, want.Data)
+	require.Equal(t, want.Labels, got.Labels)
+	require.Equal(t, want.Annotations, got.Annotations)
+	require.Equal(t, want.BinaryData, got.BinaryData)
+	require.Equal(t, want.Data, got.Data)
 }
 
 func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
@@ -121,12 +121,12 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure partial mutation applied
-	require.ElementsMatch(t, got.Spec.Ports, want.Spec.Ports)
-	require.Exactly(t, got.Spec.Selector, want.Spec.Selector)
+	require.ElementsMatch(t, want.Spec.Ports, got.Spec.Ports)
+	require.Exactly(t, want.Spec.Selector, got.Spec.Selector)
 
 	// Ensure not mutated
-	require.Equal(t, got.Spec.ClusterIP, "none")
-	require.Exactly(t, got.Spec.ClusterIPs, []string{"8.8.8.8"})
+	require.Equal(t, "none", got.Spec.ClusterIP)
+	require.Exactly(t, []string{"8.8.8.8"}, got.Spec.ClusterIPs)
 }
 
 func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
@@ -235,14 +235,14 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 			require.NoError(t, err)
 
 			// Partial mutation checks
-			require.Exactly(t, tt.got.Labels, tt.want.Labels)
-			require.Exactly(t, tt.got.Annotations, tt.want.Annotations)
+			require.Exactly(t, tt.want.Labels, tt.got.Labels)
+			require.Exactly(t, tt.want.Annotations, tt.got.Annotations)
 
 			if tt.got.Secrets != nil {
-				require.NotEqual(t, tt.got.Secrets, tt.want.Secrets)
+				require.NotEqual(t, tt.want.Secrets, tt.got.Secrets)
 			}
 			if tt.got.ImagePullSecrets != nil {
-				require.NotEqual(t, tt.got.ImagePullSecrets, tt.want.ImagePullSecrets)
+				require.NotEqual(t, tt.want.ImagePullSecrets, tt.got.ImagePullSecrets)
 			}
 		})
 	}
@@ -297,9 +297,9 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.Rules, want.Rules)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, want.Rules, got.Rules)
 }
 
 func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
@@ -362,10 +362,10 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.RoleRef, roleRef)
-	require.Exactly(t, got.Subjects, want.Subjects)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, roleRef, got.RoleRef)
+	require.Exactly(t, want.Subjects, got.Subjects)
 }
 
 func TestGetMutateFunc_MutateRole(t *testing.T) {
@@ -417,9 +417,9 @@ func TestGetMutateFunc_MutateRole(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.Rules, want.Rules)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, want.Rules, got.Rules)
 }
 
 func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
@@ -482,10 +482,10 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.RoleRef, roleRef)
-	require.Exactly(t, got.Subjects, want.Subjects)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, roleRef, got.RoleRef)
+	require.Exactly(t, want.Subjects, got.Subjects)
 }
 
 func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
@@ -634,15 +634,15 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 
 			// Ensure conditional mutation applied
 			if tst.got.CreationTimestamp.IsZero() {
-				require.Equal(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
+				require.Equal(t, tst.want.Spec.Selector, tst.got.Spec.Selector)
 			} else {
-				require.NotEqual(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
+				require.NotEqual(t, tst.want.Spec.Selector, tst.got.Spec.Selector)
 			}
 
 			// Ensure partial mutation applied
-			require.Equal(t, tst.got.Spec.Replicas, tst.want.Spec.Replicas)
-			require.Equal(t, tst.got.Spec.Template, tst.want.Spec.Template)
-			require.Equal(t, tst.got.Spec.Strategy, tst.want.Spec.Strategy)
+			require.Equal(t, tst.want.Spec.Replicas, tst.got.Spec.Replicas)
+			require.Equal(t, tst.want.Spec.Template, tst.got.Spec.Template)
+			require.Equal(t, tst.want.Spec.Strategy, tst.got.Spec.Strategy)
 		})
 	}
 }
@@ -817,21 +817,22 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 	for _, tst := range table {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
+			initialSpec := tst.got.Spec.DeepCopy()
 			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
 			// Ensure conditional mutation applied
 			if tst.got.CreationTimestamp.IsZero() {
-				require.Equal(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
+				require.Equal(t, tst.want.Spec.Selector, tst.got.Spec.Selector)
 			} else {
-				require.NotEqual(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
+				require.NotEqual(t, tst.want.Spec.Selector, tst.got.Spec.Selector)
 			}
 
 			// Ensure partial mutation applied
-			require.Equal(t, tst.got.Spec.Replicas, tst.want.Spec.Replicas)
-			require.Equal(t, tst.got.Spec.Template, tst.want.Spec.Template)
-			require.Equal(t, tst.got.Spec.VolumeClaimTemplates, tst.got.Spec.VolumeClaimTemplates)
+			require.Equal(t, tst.want.Spec.Replicas, tst.got.Spec.Replicas)
+			require.Equal(t, tst.want.Spec.Template, tst.got.Spec.Template)
+			require.Equal(t, initialSpec.VolumeClaimTemplates, tst.got.Spec.VolumeClaimTemplates)
 		})
 	}
 }
@@ -1034,13 +1035,13 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 			require.NoError(t, err)
 
 			// Ensure not mutated
-			require.Equal(t, tst.got.Annotations, tst.want.Annotations)
-			require.Equal(t, tst.got.Labels, tst.want.Labels)
-			require.Equal(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
-			require.Equal(t, tst.got.Spec.JobLabel, tst.want.Spec.JobLabel)
-			require.Equal(t, tst.got.Spec.Endpoints, tst.want.Spec.Endpoints)
-			require.NotEqual(t, tst.got.Spec.NamespaceSelector, tst.want.Spec.NamespaceSelector)
-			require.NotEqual(t, tst.got.Spec.Selector, tst.want.Spec.Selector)
+			require.Equal(t, tst.want.Annotations, tst.got.Annotations)
+			require.Equal(t, tst.want.Labels, tst.got.Labels)
+			require.Equal(t, tst.want.Spec.Endpoints, tst.got.Spec.Endpoints)
+			require.Equal(t, tst.want.Spec.JobLabel, tst.got.Spec.JobLabel)
+			require.Equal(t, tst.want.Spec.Endpoints, tst.got.Spec.Endpoints)
+			require.NotEqual(t, tst.want.Spec.NamespaceSelector, tst.got.Spec.NamespaceSelector)
+			require.NotEqual(t, tst.want.Spec.Selector, tst.got.Spec.Selector)
 		})
 	}
 }
@@ -1106,11 +1107,11 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.Spec.DefaultBackend, want.Spec.DefaultBackend)
-	require.Exactly(t, got.Spec.Rules, want.Spec.Rules)
-	require.Exactly(t, got.Spec.TLS, want.Spec.TLS)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, want.Spec.DefaultBackend, got.Spec.DefaultBackend)
+	require.Exactly(t, want.Spec.Rules, got.Spec.Rules)
+	require.Exactly(t, want.Spec.TLS, got.Spec.TLS)
 }
 
 func TestGetMutateFunc_MutateRoute(t *testing.T) {
@@ -1159,9 +1160,9 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	// Partial mutation checks
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Annotations, want.Annotations)
-	require.Exactly(t, got.Spec, want.Spec)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Annotations, got.Annotations)
+	require.Exactly(t, want.Spec, got.Spec)
 }
 
 func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
@@ -1197,6 +1198,6 @@ func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
 	err := f()
 
 	require.NoError(t, err)
-	require.Exactly(t, got.Labels, want.Labels)
-	require.Exactly(t, got.Spec, want.Spec)
+	require.Exactly(t, want.Labels, got.Labels)
+	require.Exactly(t, want.Spec, got.Spec)
 }
