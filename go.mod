@@ -153,7 +153,7 @@ require (
 	github.com/go-openapi/swag/pools v0.28.0 // indirect
 	go.opentelemetry.io/collector/consumer/xconsumer v0.159.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.159.0 // indirect
-	go.opentelemetry.io/collector/processor/xprocessor v0.158.0 // indirect
+	go.opentelemetry.io/collector/processor/xprocessor v0.159.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -240,7 +240,7 @@ require (
 	github.com/ncw/swift v1.0.53 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.159.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.159.0 // indirect
-	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.158.0 // indirect
+	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.159.0 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.5.0 // indirect
 	github.com/parquet-go/bitpack v1.1.0 // indirect
 	github.com/parquet-go/jsonlite v1.5.5 // indirect
