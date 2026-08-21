@@ -105,7 +105,14 @@ func TestRender(t *testing.T) {
 		"| range | `sum(a)`<br>window: 1h | 1m | 1.00 s / – | 1.00 s / – | 1.00 s / – | 5 B / – | – / – | – / – | – / – | – / – | 1.00 / – | – / – | – / – |\n" +
 		"| range | `sum(b)`<br>window: 2h | 5m | – / 5.00 s | – / 5.00 s | – / 5.00 s | – / 10 B | – / – | – / – | – / – | – / – | – / 4.00 | – / – | – / – |\n" +
 		"\n" +
-		"_Each cell is `a / b (±% of b vs a)`. All figures are per single query._ Latency min/50p/max come from the per-run latencies. Processed bytes come from the query responses; fetched bytes, object-storage requests and CPU seconds come from the metrics window; all are summed and divided by the run count. Querier peak CPU, memory peak and allocation rate are peaks or rates, already independent of the run count, so they are shown as captured. A `–` marks a query absent from one report or a metric that could not be captured; the percentage is omitted when either side is missing or the `a` value is zero.\n"
+		"Notes:\n" +
+		"\n" +
+		"- Each cell is `a / b (±% of b vs a)`.\n" +
+		"- All figures are per single query.\n" +
+		"- Latency min/50p/max come from the per-run latencies.\n" +
+		"- Processed bytes come from the query responses; fetched bytes, object-storage requests and CPU seconds come from the metrics window; all are summed and divided by the run count.\n" +
+		"- Querier peak CPU, memory peak and allocation rate are peaks or rates, already independent of the run count, so they are shown as captured.\n" +
+		"- A `–` marks a query absent from one report or a metric that could not be captured; the percentage is omitted when either side is missing or the `a` value is zero.\n"
 
 	if got != want {
 		t.Fatalf("Render output mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)

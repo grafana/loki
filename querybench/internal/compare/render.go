@@ -25,7 +25,7 @@ func Render(a, b Input) string {
 	var sb strings.Builder
 	writeHeader(&sb, a, b)
 	writeTable(&sb, a, b)
-	writeNotes(&sb, a, b)
+	writeNotes(&sb)
 	return sb.String()
 }
 
@@ -220,13 +220,14 @@ func runsPerQuery(r *report.Report) int {
 	return r.Queries[0].Runs
 }
 
-func writeNotes(sb *strings.Builder, a, b Input) {
-	sb.WriteString("\n")
-	sb.WriteString("_Each cell is `a / b (±% of b vs a)`. All figures are per single query._ ")
-	sb.WriteString("Latency min/50p/max come from the per-run latencies. ")
-	sb.WriteString("Processed bytes come from the query responses; fetched bytes, object-storage requests and CPU seconds come from the metrics window; all are summed and divided by the run count. ")
-	sb.WriteString("Querier peak CPU, memory peak and allocation rate are peaks or rates, already independent of the run count, so they are shown as captured. ")
-	sb.WriteString("A `–` marks a query absent from one report or a metric that could not be captured; the percentage is omitted when either side is missing or the `a` value is zero.\n")
+func writeNotes(sb *strings.Builder) {
+	sb.WriteString("\nNotes:\n\n")
+	sb.WriteString("- Each cell is `a / b (±% of b vs a)`.\n")
+	sb.WriteString("- All figures are per single query.\n")
+	sb.WriteString("- Latency min/50p/max come from the per-run latencies.\n")
+	sb.WriteString("- Processed bytes come from the query responses; fetched bytes, object-storage requests and CPU seconds come from the metrics window; all are summed and divided by the run count.\n")
+	sb.WriteString("- Querier peak CPU, memory peak and allocation rate are peaks or rates, already independent of the run count, so they are shown as captured.\n")
+	sb.WriteString("- A `–` marks a query absent from one report or a metric that could not be captured; the percentage is omitted when either side is missing or the `a` value is zero.\n")
 }
 
 // percentile returns the p-th percentile of vals by index scaling: it indexes
