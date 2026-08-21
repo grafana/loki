@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -1777,6 +1778,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			Shards:    nil,
 			Start:     time.Unix(0, 1),
 			End:       time.Unix(0, time.Now().UnixNano()),
+			Plan:      testutil.MustPlan(`{foo="bar"}`),
 		}})
 		if err != nil {
 			b.Fatal(err)

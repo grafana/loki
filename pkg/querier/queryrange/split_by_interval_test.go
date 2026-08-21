@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -83,9 +84,7 @@ func Test_splitQuery(t *testing.T) {
 					EndTs:     end,
 					Direction: logproto.BACKWARD,
 					Path:      "/query",
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`{app="foo"}`),
-					},
+					Plan:      testutil.MustPlan(`{app="foo"}`),
 				}
 			},
 		},
@@ -99,9 +98,7 @@ func Test_splitQuery(t *testing.T) {
 					EndTs:     end,
 					Direction: logproto.BACKWARD,
 					Path:      "/query",
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`{app="foo"}`),
-					},
+					Plan:      testutil.MustPlan(`{app="foo"}`),
 				}
 			},
 		},
@@ -1331,9 +1328,7 @@ func Test_splitMetricQuery(t *testing.T) {
 		},
 	} {
 		// Set query plans
-		tc.input.Plan = &plan.QueryPlan{
-			AST: syntax.MustParseExpr(tc.input.Query),
-		}
+		tc.input.Plan = testutil.MustPlan(tc.input.Query)
 
 		for _, e := range tc.expected {
 			e.(*LokiRequest).Plan = &plan.QueryPlan{
