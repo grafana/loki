@@ -92,9 +92,9 @@ func iterSection(ctx context.Context, section *Section, cfg iterConfig) result.S
 		}
 
 		r := dataset.NewRowReader(dataset.RowReaderOptions{
-			Dataset:  dset,
-			Columns:  columns,
-			Prefetch: true,
+			Dataset:           dset,
+			Columns:           columns,
+			PrefetchAllOnOpen: true,
 		})
 		defer r.Close()
 

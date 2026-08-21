@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -174,6 +175,44 @@ func (cfg *ConfigWithNamedStores) Validate() error {
 	}
 
 	return cfg.NamedStores.Validate()
+}
+
+// DisableRetries configures a backend, or a named backend, to make only one
+// request. A caller should use this only when another layer provides retries.
+func (cfg *ConfigWithNamedStores) DisableRetries(backend string) error {
+	storeType, named := cfg.NamedStores.LookupStoreType(backend)
+	if !named {
+		return cfg.Config.disableRetries(backend)
+	}
+
+	switch storeType {
+	case S3:
+		cfg.NamedStores.S3 = maps.Clone(cfg.NamedStores.S3)
+		storeCfg := cfg.NamedStores.S3[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.S3[backend] = storeCfg
+	case GCS:
+		cfg.NamedStores.GCS = maps.Clone(cfg.NamedStores.GCS)
+		storeCfg := cfg.NamedStores.GCS[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.GCS[backend] = storeCfg
+	case Azure:
+		cfg.NamedStores.Azure = maps.Clone(cfg.NamedStores.Azure)
+		storeCfg := cfg.NamedStores.Azure[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.Azure[backend] = storeCfg
+	case Swift:
+		cfg.NamedStores.Swift = maps.Clone(cfg.NamedStores.Swift)
+		storeCfg := cfg.NamedStores.Swift[backend]
+		storeCfg.MaxRetries = 1
+		cfg.NamedStores.Swift[backend] = storeCfg
+	case Filesystem:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot disable retries for backend: %s", storeType)
+	}
+
+	return nil
 }
 
 func (cfg *Config) disableRetries(backend string) error {

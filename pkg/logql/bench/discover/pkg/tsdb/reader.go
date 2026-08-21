@@ -6,8 +6,6 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-
 	lokitsdb "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -55,7 +53,7 @@ func openAndInspectIndex(path string) (result IndexReaderResult, err error) {
 
 	// Full index handle for structural discovery (ForSeries traversal).
 	// This stays open — the caller must close it via result.Index.Close().
-	idx, _, err := lokitsdb.NewTSDBIndexFromFile(path, indexshipper.IndexReaderModeMmap)
+	idx, _, err := lokitsdb.NewTSDBIndexFromFile(path, tsdbindex.MmapOptions{})
 	if err != nil {
 		return IndexReaderResult{}, fmt.Errorf("open TSDB index for discovery %q: %w", path, err)
 	}

@@ -28,7 +28,7 @@ type readerConstructor struct {
 func allReaderConstructors() []readerConstructor {
 	return []readerConstructor{
 		{name: "MmapReader", open: func(p string) (Reader, error) { return NewMmapFileReader(p) }},
-		{name: "StreamReader", open: func(p string) (Reader, error) { return NewStreamFileReader(p) }},
+		{name: "StreamReader", open: func(p string) (Reader, error) { return NewStreamFileReader(p, DefaultStreamOptions()) }},
 	}
 }
 
@@ -94,7 +94,7 @@ func openBothReaders(t testing.TB, path string) (*ByteSliceReader, *StreamReader
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, mmap.Close()) })
 
-	stream, err := NewStreamFileReader(path)
+	stream, err := NewStreamFileReader(path, DefaultStreamOptions())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, stream.Close()) })
 
@@ -120,7 +120,7 @@ func BenchmarkNewStreamFileReader(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		r, err := NewStreamFileReader(path)
+		r, err := NewStreamFileReader(path, DefaultStreamOptions())
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -146,7 +146,7 @@ func writeBenchmarkFixture(t testing.TB, numSeries int, numChunksPerLabel int) s
 
 func BenchmarkPostings(b *testing.B) {
 	path := writeBenchmarkFixture(b, 1_000_000, 3)
-	r, err := NewStreamFileReader(path)
+	r, err := NewStreamFileReader(path, DefaultStreamOptions())
 	require.NoError(b, err)
 
 	b.ReportAllocs()
@@ -433,7 +433,7 @@ func TestReaders_RejectsCorruptSectionChecksum(t *testing.T) {
 					path := writeCrossCheckFixture(t, FormatV3)
 
 					// Locate the section from the TOC
-					reader, err := NewStreamFileReader(path)
+					reader, err := NewStreamFileReader(path, DefaultStreamOptions())
 					require.NoError(t, err)
 					offset := sectionOffset(reader.toc)
 					require.NoError(t, reader.Close())

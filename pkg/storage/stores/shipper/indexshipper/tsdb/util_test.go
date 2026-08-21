@@ -9,8 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -37,7 +35,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst, indexshipper.IndexReaderModeMmap)
+	idx, err := NewShippableTSDBFile(dst, index.MmapOptions{})
 	require.Nil(t, err)
 	return idx
 }

@@ -2,7 +2,6 @@ package jsonlite
 
 import (
 	"fmt"
-	"hash/maphash"
 	"unsafe"
 )
 
@@ -250,9 +249,9 @@ func parseIndexedObject(c *indexCursor, start, maxDepth int, p *parser) (Value, 
 
 			fields := result[1:]
 			if n > smallObjectFields {
-				hashes := make([]byte, n)
+				hashes := p.allocTags(n)
 				for i := range fields {
-					hashes[i] = byte(maphash.String(hashseed, fields[i].k))
+					hashes[i] = hashKey(fields[i].k)
 				}
 				result[0].k = unsafe.String(unsafe.SliceData(hashes), n)
 			}

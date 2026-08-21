@@ -136,7 +136,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		d.logPushRequestStreams(r.Context(), logger, req.Streams, streamResolver, pushStats, presumedAgentIP)
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
+	_, err = d.pushWithResolver(r.Context(), req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -181,9 +181,7 @@ func (d *Distributor) shouldLogPushRequestStreams(tenantID, presumedAgentIP stri
 	if len(filterPushRequestStreamsIPs) > 0 {
 		// If there are filter IPs, we want to log if the presumed agent IP is in the list,
 		// this would also then exclude any requests that don't have a presumed agent IP.
-		if !slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP) {
-			return false
-		}
+		return slices.Contains(filterPushRequestStreamsIPs, presumedAgentIP)
 	}
 	return true
 }
