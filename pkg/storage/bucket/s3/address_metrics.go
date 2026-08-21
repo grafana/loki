@@ -36,17 +36,16 @@ func init() {
 }
 
 // addressTracker records which remote IP addresses a dialer connects to.
-//
-// The two metrics answer different questions: the counter says how many
-// addresses we have ever reached, so its increase over a range shows whether
-// re-resolving DNS is finding new ones; the gauge says how many we are spread
-// across right now, which is what the connection rebalancing is trying to move.
 type addressTracker struct {
 	mu   sync.Mutex
 	seen map[string]struct{} // every address connected to, bounded
 	open map[string]int      // address -> currently open connections
 
+	// how many addresses we have ever reached, so its increase over
+	// a range shows whether re-resolving DNS is finding new ones.
 	distinct prometheus.Counter
+	// how many we are spread across right now, so we can see if
+	// shufflingDialer is working.
 	openGaug prometheus.Gauge
 }
 
@@ -59,9 +58,7 @@ func newAddressTracker(dialerName string) *addressTracker {
 	}
 }
 
-// wrap returns dial with address tracking added. It must sit below any dialer
-// that walks several addresses per call, so that it sees the address actually
-// connected to rather than the hostname it started from.
+// wrap returns dial with address tracking added.
 func (t *addressTracker) wrap(dial dialContextFunc) func(ctx context.Context, network, address string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, err := dial(ctx, network, address)
@@ -106,8 +103,7 @@ func (t *addressTracker) release(addr string) {
 	t.openGaug.Dec()
 }
 
-// remoteIP is the address without its port, so that the metrics count hosts
-// rather than connections.
+// remoteIP is the address without its port.
 func remoteIP(conn net.Conn) string {
 	remote := conn.RemoteAddr()
 	if remote == nil {
