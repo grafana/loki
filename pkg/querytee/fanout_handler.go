@@ -17,17 +17,15 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querytee/comparator"
-	"github.com/grafana/loki/v3/pkg/querytee/goldfish"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 // FanOutHandler implements queryrangebase.Handler and fans out requests to multiple backends.
 // It returns the preferred backend's response as soon as ready, while capturing remaining
-// responses for goldfish comparison in the background.
+// responses for comparison in the background.
 type FanOutHandler struct {
 	backends                      []*ProxyBackend
 	codec                         queryrangebase.Codec
-	goldfishManager               goldfish.Manager
 	logger                        log.Logger
 	metrics                       *ProxyMetrics
 	routeName                     string
@@ -42,7 +40,6 @@ type FanOutHandler struct {
 type FanOutHandlerConfig struct {
 	Backends                      []*ProxyBackend
 	Codec                         queryrangebase.Codec
-	GoldfishManager               goldfish.Manager
 	Logger                        log.Logger
 	Metrics                       *ProxyMetrics
 	RouteName                     string
@@ -58,7 +55,6 @@ func NewFanOutHandler(cfg FanOutHandlerConfig) *FanOutHandler {
 	return &FanOutHandler{
 		backends:                      cfg.Backends,
 		codec:                         cfg.Codec,
-		goldfishManager:               cfg.GoldfishManager,
 		logger:                        cfg.Logger,
 		metrics:                       cfg.Metrics,
 		routeName:                     cfg.RouteName,
@@ -96,7 +92,7 @@ func (h *FanOutHandler) shouldCompare(r *backendResult, preferV1 bool) bool {
 }
 
 // Do implements queryrangebase.Handler. It fans out the request to all backends, returns the preferred backend's
-// response, and captures remaining responses for goldfish comparison in the background.
+// response, and captures remaining responses for comparison in the background.
 func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	httpReq, err := h.codec.EncodeRequest(ctx, req)
 	if err != nil {
@@ -116,13 +112,11 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 	}
 
 	issuer := detectIssuer(httpReq)
-	user := goldfish.ExtractUserFromQueryTags(httpReq)
 	level.Debug(h.logger).Log(
 		"msg", "Received request",
 		"path", httpReq.URL.Path,
 		"query", httpReq.URL.RawQuery,
 		"issuer", issuer,
-		"user", user,
 	)
 
 	// Read body for reuse across backends
@@ -135,42 +129,20 @@ func (h *FanOutHandler) Do(ctx context.Context, req queryrangebase.Request) (que
 		httpReq.Body.Close()
 	}
 
-	// Determine if we should sample this query.
-	// Check if the upstream SplittingHandler already made a sampling decision and stored it in context.
-	// If so, use that decision to avoid double-sampling.
-	var correlationID string
-	if decision, hasDecision := goldfish.SamplingDecisionFromContext(ctx); hasDecision {
-		correlationID = decision.CorrelationID // empty if not sampled
-	} else {
-		// No upstream decision — fall back to calling shouldSample ourselves.
-		tenants, err := tenant.TenantIDs(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to extract tenant IDs: %w", err)
-		}
-		_, correlationID = h.shouldSample(tenants, httpReq)
-	}
-
-	if correlationID != "" {
-		httpreq.AppendQueryTagsHeader(
-			httpReq.Header,
-			fmt.Sprintf("%s=%s", goldfish.GoldfishCorrelationIDQueryTagKey, correlationID),
-		)
-	}
-
 	results := h.makeBackendRequests(ctx, httpReq, body, req, issuer)
 	collected := make([]*backendResult, 0, len(h.backends))
 
 	switch h.routingMode {
 	case RoutingModeRace:
-		return h.doWithRacing(results, collected, httpReq, correlationID)
+		return h.doWithRacing(results, collected, httpReq)
 	case RoutingModeV2Preferred:
-		return h.doWithPreferred(results, collected, httpReq, correlationID, false)
+		return h.doWithPreferred(results, collected, httpReq, false)
 	default:
-		return h.doWithPreferred(results, collected, httpReq, correlationID, true)
+		return h.doWithPreferred(results, collected, httpReq, true)
 	}
 }
 
-func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, correlationID string) (queryrangebase.Response, error) {
+func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request) (queryrangebase.Response, error) {
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
@@ -191,14 +163,14 @@ func (h *FanOutHandler) doWithRacing(results <-chan *backendResult, collected []
 				}
 			}
 
-			return h.finishRace(winner, remaining, httpReq, results, collected, correlationID)
+			return h.finishRace(winner, remaining, httpReq, results, collected)
 		}
 	}
 
 	return h.returnFallback(collected)
 }
 
-func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, correlationID string, preferV1 bool) (queryrangebase.Response, error) {
+func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected []*backendResult, httpReq *http.Request, preferV1 bool) (queryrangebase.Response, error) {
 	for i := 0; i < len(h.backends); i++ {
 		result := <-results
 		collected = append(collected, result)
@@ -216,7 +188,7 @@ func (h *FanOutHandler) doWithPreferred(results <-chan *backendResult, collected
 
 			remaining := len(h.backends) - i - 1
 			go func() {
-				h.collectRemainingAndCompare(remaining, httpReq, results, collected, correlationID, preferV1)
+				h.collectRemainingAndCompare(remaining, httpReq, results, collected, preferV1)
 			}()
 
 			// when the preferred backends succeeds, but with error, that indicates an invalid request
@@ -259,7 +231,7 @@ func (h *FanOutHandler) returnFallback(collected []*backendResult) (queryrangeba
 }
 
 // finishRace records the race winner and spawns a goroutine to collect remaining results.
-func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, correlationID string) (queryrangebase.Response, error) {
+func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult) (queryrangebase.Response, error) {
 	h.metrics.raceWins.WithLabelValues(
 		winner.backend.name,
 		winner.backend.Alias(),
@@ -268,7 +240,7 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 	).Inc()
 
 	go func() {
-		h.collectRemainingAndCompare(remaining, httpReq, results, collected, correlationID, true)
+		h.collectRemainingAndCompare(remaining, httpReq, results, collected, true)
 	}()
 
 	if winner.response != nil && h.addRoutingDecisionsToWarnings {
@@ -278,9 +250,9 @@ func (h *FanOutHandler) finishRace(winner *backendResult, remaining int, httpReq
 	return winner.response, nil
 }
 
-// collectRemainingAndCompare collects remaining backend results, performs comparisons,
-// and processes goldfish sampling. Should be called asynchronously to not block preferred response from returning.
-func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, correlationID string, preferV1 bool) {
+// collectRemainingAndCompare collects remaining backend results and performs comparisons.
+// Should be called asynchronously to not block preferred response from returning.
+func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.Request, results <-chan *backendResult, collected []*backendResult, preferV1 bool) {
 	issuer := detectIssuer(httpReq)
 	tenantID, _, err := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
 	if err != nil {
@@ -336,10 +308,6 @@ func (h *FanOutHandler) collectRemainingAndCompare(remaining int, httpReq *http.
 				r.backend.name, r.backend.Alias(), h.routeName, result, issuer, tenantID,
 			).Inc()
 		}
-	}
-
-	if correlationID != "" {
-		h.processGoldfishComparison(httpReq, preferredResult, collected, correlationID, preferV1)
 	}
 }
 
@@ -454,60 +422,6 @@ func (h *FanOutHandler) recordMetrics(result *backendResult, method, issuer stri
 	).Observe(result.backendResp.duration.Seconds())
 }
 
-// processGoldfishComparison processes responses for goldfish comparison.
-func (h *FanOutHandler) processGoldfishComparison(httpReq *http.Request, preferredResult *backendResult, results []*backendResult, correlationID string, preferV1 bool) {
-	if h.goldfishManager == nil || len(results) < 2 || preferredResult == nil {
-		return
-	}
-	tenantID, _, _ := tenant.ExtractTenantIDFromHTTPRequest(httpReq)
-
-	// NOTE: Currently one correlation ID is generated per sampled request, assuming
-	// exactly 2 backends (one preferred, one comparison). If >2 backends are ever
-	// supported, this model would need to separate "request ID" (shared across all
-	// comparisons from one request) from "comparison ID" (unique per pair).
-
-	// Find preferred and non-preferred responses
-	for _, r := range results {
-		if r.err != nil || (preferV1 && r.backend.v1Preferred) || (!preferV1 && r.backend.v2Preferred) {
-			continue
-		}
-		level.Info(h.logger).Log("msg", "processing responses with Goldfish",
-			"tenant", tenantID,
-			"query", httpReq.URL.Query().Get("query"),
-			"cellA_backend", preferredResult.backend.name,
-			"cellA_status", preferredResult.backendResp.status,
-			"cellB_backend", r.backend.name,
-			"cellB_status", r.backendResp.status,
-		)
-
-		// Re-encode responses to capture body bytes for goldfish
-		h.sendToGoldfish(httpReq, preferredResult, r, correlationID)
-	}
-}
-
-// sendToGoldfish sends the responses to goldfish for comparison.
-func (h *FanOutHandler) sendToGoldfish(httpReq *http.Request, cellA, cellB *backendResult, correlationID string) {
-	cellAResp := &goldfish.BackendResponse{
-		BackendName: cellA.backend.name,
-		Status:      cellA.backendResp.status,
-		Body:        cellA.backendResp.body,
-		Duration:    cellA.backendResp.duration,
-		TraceID:     cellA.backendResp.traceID,
-		SpanID:      cellA.backendResp.spanID,
-	}
-
-	cellBResp := &goldfish.BackendResponse{
-		BackendName: cellB.backend.name,
-		Status:      cellB.backendResp.status,
-		Body:        cellB.backendResp.body,
-		Duration:    cellB.backendResp.duration,
-		TraceID:     cellB.backendResp.traceID,
-		SpanID:      cellB.backendResp.spanID,
-	}
-
-	h.goldfishManager.SendToGoldfish(httpReq, cellAResp, cellBResp, correlationID)
-}
-
 // WithMetrics sets metrics for the handler.
 func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
 	h.metrics = metrics
@@ -518,28 +432,6 @@ func (h *FanOutHandler) WithMetrics(metrics *ProxyMetrics) *FanOutHandler {
 func (h *FanOutHandler) WithComparator(comparator comparator.ResponsesComparator) *FanOutHandler {
 	h.comparator = comparator
 	return h
-}
-
-// shouldSample determines if a query should be sampled for goldfish comparison.
-// Returns (true, correlationID) for the first sampled tenant, or (false, "") if none.
-func (h *FanOutHandler) shouldSample(tenants []string, httpReq *http.Request) (bool, string) {
-	if h.goldfishManager == nil {
-		return false, ""
-	}
-
-	for _, tenant := range tenants {
-		sampled, correlationID := h.goldfishManager.ShouldSample(tenant)
-		if sampled {
-			level.Debug(h.logger).Log(
-				"msg", "Goldfish sampling decision",
-				"tenant", tenant,
-				"sampled", true,
-				"path", httpReq.URL.Path)
-			return true, correlationID
-		}
-	}
-
-	return false, ""
 }
 
 // makeBackendRequests initiates backend requests and returns a channel for receiving results.
